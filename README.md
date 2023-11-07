@@ -10,4 +10,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 - Inertia
 - Tailwind CSS
 - shad-ui
-- MySQL or Postgres
+- PostgreSQL
