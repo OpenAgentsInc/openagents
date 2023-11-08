@@ -9,6 +9,8 @@ class Agent extends Model
 {
     use HasFactory;
 
+    protected $guarded = [];
+
     public function conversations()
     {
       return $this->hasMany(Conversation::class);
