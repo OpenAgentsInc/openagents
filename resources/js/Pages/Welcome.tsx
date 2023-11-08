@@ -22,7 +22,7 @@ function Welcome() {
               <h1 className="text-4xl font-bold tracking-tight text-white sm:text-6xl">Open Agents</h1>
               <p className="mt-6 text-lg leading-8 text-gray-300">
                 Train AI agents to do anything you need. Then deploy them to our GPU swarm where they'll work for you
-                forever.
+                forever. <strong>Coming soon.</strong>
               </p>
             </div>
           </div>
