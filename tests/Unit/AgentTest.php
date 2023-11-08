@@ -2,6 +2,7 @@
 
 use App\Models\Agent;
 use App\Models\Conversation;
+use App\Models\Task;
 use App\Models\User;
 
 it('has many conversations', function () {
@@ -13,6 +14,13 @@ it('has many conversations', function () {
   ]);
 
   $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->conversations);
-
   $this->assertInstanceOf(Conversation::class, $agent->conversations->first());
+});
+
+it('has many tasks', function () {
+  $agent = Agent::factory()->create();
+  $task = Task::factory()->create(['agent_id' => $agent->id]);
+
+  $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->tasks);
+  $this->assertInstanceOf(Task::class, $agent->tasks->first());
 });

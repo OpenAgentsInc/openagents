@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Agent>
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Task>
  */
-class AgentFactory extends Factory
+class TaskFactory extends Factory
 {
     /**
      * Define the model's default state.
@@ -20,7 +20,7 @@ class AgentFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id' => User::factory(),
+            // 'user_id' => User::factory(),
         ];
     }
 }
