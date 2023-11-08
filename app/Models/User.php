@@ -46,11 +46,16 @@ class User extends Authenticatable
 
     public function agents()
     {
-      return $this->hasMany('App\Models\Agent');
+      return $this->hasMany(Agent::class);
     }
 
     public function conversations()
     {
-      return $this->hasMany('App\Models\Conversation');
+      return $this->hasMany(Conversation::class);
+    }
+
+    public function files()
+    {
+      return $this->hasMany(File::class);
     }
 }
