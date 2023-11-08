@@ -44,9 +44,13 @@ class User extends Authenticatable
     ];
 
 
-    // has many agents
     public function agents()
     {
       return $this->hasMany('App\Models\Agent');
+    }
+
+    public function conversations()
+    {
+      return $this->hasMany('App\Models\Conversation');
     }
 }
