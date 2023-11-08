@@ -19,20 +19,11 @@ function Welcome() {
         <div className="-mt-24 sm:mt-0 py-24 sm:py-32 lg:pb-40">
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <h1 className="text-4xl font-bold tracking-tight text-white sm:text-6xl">Build your AI army.</h1>
+              <h1 className="text-4xl font-bold tracking-tight text-white sm:text-6xl">Open Agents</h1>
               <p className="mt-6 text-lg leading-8 text-gray-300">
                 Train AI agents to do anything you need. Then deploy them to our GPU swarm where they'll work for you
                 forever.
               </p>
-              <div className="mt-10 flex items-center justify-center gap-x-6">
-                <a
-                  href="/waitlist"
-                  className="rounded-md big-green-button px-5 py-3 text-lg font-semibold text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-400"
-                  dusk="waitlist-button"
-                >
-                  Join the waitlist
-                </a>
-              </div>
             </div>
           </div>
         </div>
