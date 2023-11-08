@@ -30,3 +30,18 @@ it('has input and output fields', function () {
   expect($step->input)->toBe(json_encode($input));
   expect($step->output)->toBe(json_encode($output));
 });
+
+it('has many artifacts', function () {
+  $step = Step::factory()->create();
+  $step->artifacts()->create([
+    'name' => 'foo',
+    'path' => 'bar',
+    'agent_id' => $step->agent->id,
+  ]);
+  $step->artifacts()->create([
+    'name' => 'baz',
+    'path' => 'qux',
+    'agent_id' => $step->agent->id,
+  ]);
+  expect($step->artifacts)->toHaveCount(2);
+});

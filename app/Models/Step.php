@@ -16,6 +16,11 @@ class Step extends Model
     return $this->belongsTo(Agent::class);
   }
 
+  public function artifacts()
+  {
+    return $this->hasMany(Artifact::class);
+  }
+
   public function task()
   {
     return $this->belongsTo(Task::class);

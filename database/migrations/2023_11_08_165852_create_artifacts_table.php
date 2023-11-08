@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\Agent;
+use App\Models\Step;
+use App\Models\Task;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -13,8 +16,9 @@ return new class extends Migration
   {
     Schema::create('artifacts', function (Blueprint $table) {
       $table->id();
-      $table->foreignIdFor(\App\Models\Agent::class)->constrained()->cascadeOnDelete();
-      $table->foreignIdFor(\App\Models\Task::class)->constrained()->cascadeOnDelete();
+      $table->foreignIdFor(Agent::class)->constrained()->cascadeOnDelete();
+      $table->foreignIdFor(Step::class)->cascadeOnDelete()->nullable();
+      $table->foreignIdFor(Task::class)->cascadeOnDelete()->nullable();
       $table->string('name')->nullable();
       $table->string('path')->nullable();
       $table->json('data')->nullable();
