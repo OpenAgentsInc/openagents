@@ -11,6 +11,11 @@ class Agent extends Model
 
     public function conversations()
     {
-      return $this->hasMany('App\Models\Conversation');
+      return $this->hasMany(Conversation::class);
+    }
+
+    public function tasks()
+    {
+      return $this->hasMany(Task::class);
     }
 }
