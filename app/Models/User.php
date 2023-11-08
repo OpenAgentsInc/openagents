@@ -42,4 +42,11 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
+
+
+    // has many agents
+    public function agents()
+    {
+      return $this->hasMany('App\Models\Agent');
+    }
 }
