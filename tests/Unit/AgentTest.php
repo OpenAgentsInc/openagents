@@ -12,13 +12,7 @@ it('has many conversations', function () {
     'user_id' => $user->id
   ]);
 
-  $this->assertInstanceOf(
-    'Illuminate\Database\Eloquent\Collection',
-    $agent->conversations
-  );
+  $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->conversations);
 
-  $this->assertInstanceOf(
-    'App\Models\Conversation',
-    $agent->conversations->first()
-  );
+  $this->assertInstanceOf(Conversation::class, $agent->conversations->first());
 });
