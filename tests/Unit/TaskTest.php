@@ -5,6 +5,28 @@ use App\Models\Artifact;
 use App\Models\Step;
 use App\Models\Task;
 
+it('has one output', function () {
+  $task = Task::factory()->create();
+  expect($task->output)->toBeNull();
+
+  $task = Task::factory()->create([
+    'output' => json_encode(['foo' => 'bar'])
+  ]);
+  expect($task->output)->toBe(json_encode(['foo' => 'bar']));
+});
+
+it('has many steps', function () {
+  $agent = Agent::factory()->create();
+  $task = Task::factory()->create();
+  $task->steps()->create([
+    'agent_id' => $agent->id,
+  ]);
+  $task->steps()->create([
+    'agent_id' => $agent->id,
+  ]);
+  expect($task->steps)->toHaveCount(2);
+});
+
 it('belongs to an agent', function () {
   $task = Task::factory()->create();
   expect($task->agent)->toBeInstanceOf(Agent::class);
