@@ -3,12 +3,13 @@
 namespace Database\Factories;
 
 use App\Models\Agent;
+use App\Models\Task;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Task>
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Artifact>
  */
-class TaskFactory extends Factory
+class ArtifactFactory extends Factory
 {
   /**
    * Define the model's default state.
@@ -19,7 +20,7 @@ class TaskFactory extends Factory
   {
     return [
       'agent_id' => Agent::factory(),
-      'prompt' => $this->faker->sentence(),
+      'task_id' => Task::factory(),
     ];
   }
 }

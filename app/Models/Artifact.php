@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Task extends Model
+class Artifact extends Model
 {
   use HasFactory;
 
@@ -16,8 +16,8 @@ class Task extends Model
     return $this->belongsTo(Agent::class);
   }
 
-  public function artifacts()
+  public function task()
   {
-    return $this->hasMany(Artifact::class);
+    return $this->belongsTo(Task::class);
   }
 }
