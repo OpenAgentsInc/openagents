@@ -18,3 +18,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 2. [Choosing a Tech Stack](https://twitter.com/GPUtopia/status/1721966796515754266)
 3. [Hello Laravel](https://twitter.com/GPUtopia/status/1721979219763155232)
 4. [Deploying a Landing Page](https://twitter.com/GPUtopia/status/1722068606714835283)
+5. [Agent First Principles](https://twitter.com/GPUtopia/status/1722274309727752427)
