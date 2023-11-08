@@ -15,6 +15,10 @@ it('belongs to a task', function () {
 });
 
 it('has input and output fields', function () {
+  $step = Step::factory()->create();
+  expect($step->input)->toBeNull();
+  expect($step->output)->toBeNull();
+
   $input = ['foo' => 'bar'];
   $output = ['result' => 'success'];
 
