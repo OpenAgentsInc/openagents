@@ -24,6 +24,7 @@ class MessageFactory extends Factory
             'conversation_id' => Conversation::factory(),
             'user_id' => User::factory(),
             'body' => $this->faker->paragraph,
+            'sender' => $this->faker->randomElement(['user', 'agent']),
         ];
     }
 }
