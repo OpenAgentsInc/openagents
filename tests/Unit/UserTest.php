@@ -3,6 +3,7 @@
 use App\Models\Agent;
 use App\Models\File;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Models\User;
 
 it('has many agents', function () {
@@ -19,6 +20,15 @@ it('has many conversations', function () {
 
   $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->conversations);
   $this->assertInstanceOf(Conversation::class, $user->conversations->first());
+});
+
+it('has many messages', function () {
+  $user = User::factory()->create();
+  $conversation = Conversation::factory()->create(['user_id' => $user->id]);
+  $message = Message::factory()->create(['user_id' => $user->id, 'conversation_id' => $conversation->id]);
+
+  $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->messages);
+  $this->assertInstanceOf(Message::class, $user->messages->first());
 });
 
 it('has many files', function () {

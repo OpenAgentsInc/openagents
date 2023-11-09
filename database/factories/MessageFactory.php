@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Conversation;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -21,6 +22,7 @@ class MessageFactory extends Factory
     {
         return [
             'conversation_id' => Conversation::factory(),
+            'user_id' => User::factory(),
         ];
     }
 }
