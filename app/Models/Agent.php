@@ -20,4 +20,18 @@ class Agent extends Model
     {
       return $this->hasMany(Task::class);
     }
+
+    public function user()
+    {
+      return $this->belongsTo(User::class);
+    }
+
+    public function sendMessage($conversationId, $body)
+    {
+      Message::create([
+        'conversation_id' => $conversationId,
+        'user_id' => $this->user->id,
+        'body' => $body
+      ]);
+    }
 }

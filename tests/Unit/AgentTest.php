@@ -5,6 +5,13 @@ use App\Models\Conversation;
 use App\Models\Task;
 use App\Models\User;
 
+it('belongs to a user', function () {
+  $user = User::factory()->create();
+  $agent = Agent::factory()->create(['user_id' => $user->id]);
+
+  $this->assertInstanceOf(User::class, $agent->user);
+});
+
 it('has a name', function () {
   $agent = Agent::factory()->create(['name' => 'My Agent']);
   expect($agent->name)->toBe('My Agent');
