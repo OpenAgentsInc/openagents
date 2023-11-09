@@ -29,6 +29,7 @@ class Agent extends Model
     public function sendMessage($conversationId, $body)
     {
       Message::create([
+        'sender' => 'agent',
         'conversation_id' => $conversationId,
         'user_id' => $this->user->id,
         'body' => $body

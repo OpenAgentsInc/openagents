@@ -19,6 +19,7 @@ class MessageController extends Controller
     request()->user()->messages()->create([
       'body' => request('body'),
       'conversation_id' => request('conversation_id'),
+      'sender' => 'user'
     ]);
 
     return response()->json([], 201);
