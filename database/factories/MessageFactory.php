@@ -23,6 +23,7 @@ class MessageFactory extends Factory
         return [
             'conversation_id' => Conversation::factory(),
             'user_id' => User::factory(),
+            'body' => $this->faker->paragraph,
         ];
     }
 }
