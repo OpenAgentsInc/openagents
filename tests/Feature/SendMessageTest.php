@@ -84,4 +84,22 @@ test('conversation_id cannot be null', function() {
   $this->assertCount(0, Message::all());
 });
 
-// 4. agent can send a message
+// agent can send a message -- similar to user sends message, except no API call needed - we call a method on the model
+test('agent can send a message', function() {
+
+  // create a user
+  $user = User::factory()->create();
+  $this->actingAs($user);
+
+  // create an agent
+  $user->agents()->create();
+
+  $agent = Agent::first();
+  $agent->sendMessage(
+    Conversation::factory()->create(['agent_id' => $agent->id])->id,
+    'Hello, world!'
+  );
+
+  // assert that the message exists
+  $this->assertCount(1, Message::all());
+});
