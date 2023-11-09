@@ -27,13 +27,8 @@ test('user must send agent_id when creating conversation', function() {
 
   $this->assertCount(0, Conversation::all());
 
-  $response = $this->postJson(route('conversations.store'), [
-    // 'agent_id' => Agent::first()->id,
-  ]);
+  $response = $this->postJson(route('conversations.store'), []);
 
   $response->assertStatus(422);
   $this->assertCount(0, Conversation::all());
 });
-
-// 3. user can send a message
-// 4. agent can send a message
