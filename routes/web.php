@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AgentController;
+use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
@@ -34,6 +35,10 @@ Route::middleware('auth')->group(function () {
 
 Route::post('/api/agents', [AgentController::class, 'store'])
   ->middleware(['auth']);
+
+Route::post('/api/conversations', [ConversationController::class, 'store'])
+  ->middleware(['auth'])
+  ->name('conversations.store');
 
 Route::post('/api/files', [FileController::class, 'store'])
   ->middleware('auth')
