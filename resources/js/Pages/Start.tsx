@@ -1,7 +1,6 @@
 import GuestLayout from '@/Layouts/GuestLayout'
-import { Link } from '@inertiajs/react'
 
-function Welcome() {
+function Start() {
   return (
     <div className="dark bg-black h-screen overflow-hidden">
       <div className="relative isolate pt-14 flex flex-col justify-center items-center h-full">
@@ -20,19 +19,9 @@ function Welcome() {
         <div className="-mt-24 sm:mt-0 py-24 sm:py-32 lg:pb-40">
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <h1 className="text-4xl font-bold tracking-tight text-white sm:text-6xl">Open Agents</h1>
               <p className="mt-6 text-lg leading-8 text-gray-300">
-                Train AI agents to do anything you need. Then deploy them to our GPU swarm where they'll work for you
-                forever. <strong>Coming soon.</strong>
+                Drop a file here
               </p>
-              <div className="mt-12">
-              <Link
-                href="/start"
-                className="tracking-wider font-medium big-green-button rounded-xl px-5 py-4 text-lg text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
-              >
-                See what's cookin
-              </Link>
-              </div>
             </div>
           </div>
         </div>
@@ -53,6 +42,6 @@ function Welcome() {
   )
 }
 
-Welcome.layout = (page) => <GuestLayout children={page} title="Home" />
+Start.layout = (page) => <GuestLayout children={page} title="Home" />
 
-export default Welcome
+export default Start
