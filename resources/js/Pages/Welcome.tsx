@@ -29,7 +29,7 @@ function Welcome() {
                 href="/start"
                 className="tracking-wider font-medium big-green-button rounded-xl px-5 py-4 text-lg text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
               >
-                Try it now
+                See what's cookin
               </a>
               </div>
             </div>
