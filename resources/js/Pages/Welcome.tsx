@@ -24,6 +24,14 @@ function Welcome() {
                 Train AI agents to do anything you need. Then deploy them to our GPU swarm where they'll work for you
                 forever. <strong>Coming soon.</strong>
               </p>
+              <div className="mt-12">
+              <a
+                href="/start"
+                className="tracking-wider font-medium big-green-button rounded-xl px-5 py-4 text-lg text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
+              >
+                Try it now
+              </a>
+              </div>
             </div>
           </div>
         </div>
