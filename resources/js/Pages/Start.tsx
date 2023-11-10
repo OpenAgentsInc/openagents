@@ -22,7 +22,7 @@ function Start() {
             <div className="mx-auto max-w-2xl text-center">
 
               <div className="py-12">
-                <div className="flex flex-col justify-center items-center max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <div className="flex flex-col justify-start items-start max-w-7xl mx-auto sm:px-6 lg:px-8">
                   <UploadDocForm />
                 </div>
               </div>
