@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { Button } from '@/Components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/Components/ui/card'
 import { Input } from '@/Components/ui/input'
 import { Label } from '@/Components/ui/label'
@@ -12,18 +11,19 @@ export function UploadDocForm() {
   const onDrop = React.useCallback((acceptedFiles) => {
     setData('file', acceptedFiles[0])
   }, [])
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop })
 
   const props = usePage().props
   const { data, setData, post, progress } = useForm({
     file: null
   })
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!file) return
 
+  React.useEffect(() => {
+    if (!data.file) return
+    console.log(data.file)
     // Make API request
-    post('/api/ingest', {
+    post('/api/files', {
       onSuccess: (res) => {
         console.log(res)
         setData('file', null)
@@ -32,79 +32,69 @@ export function UploadDocForm() {
         console.log(err)
       }
     })
-  }
+  }, [data.file])
+
+
   return (
-    <Card className="w-full">
+    <Card className="w-[400px]">
       <CardHeader>
-        <CardTitle>Upload File</CardTitle>
-        <CardDescription>Upload a document to begin training</CardDescription>
+        <CardTitle>Upload a PDF</CardTitle>
+        <CardDescription>Create your first agent from a document</CardDescription>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
-        <CardContent>
-          {props.progress && (
-            <Alert className="mb-4">
-              <RocketIcon className="h-4 w-4" />
-              <AlertTitle>Uploading</AlertTitle>
-              <AlertDescription>{props.progress}</AlertDescription>
-            </Alert>
-          )}
-          {props.flash.message && (
-            <Alert className="mb-4">
-              <RocketIcon className="h-4 w-4" />
-              <AlertTitle>{props.flash.message === 'File uploaded.' ? 'Success!' : 'Message'}</AlertTitle>
-              <AlertDescription>{props.flash.message}</AlertDescription>
-            </Alert>
-          )}
-          {/* <div className="grid w-full items-center gap-4">
-            <div className="flex flex-col space-y-1.5">
-              <Label htmlFor="file">File</Label>
-              <Input id="file" type="file" onChange={(e) => setData('file', e.target.files[0])} />
-            </div>
-          </div> */}
-          <div {...getRootProps()} className="grid w-full items-center gap-4">
-            <label
-              className="border-2 border-dashed border-border rounded-lg p-6 text-center h-64 flex flex-col justify-center items-center cursor-pointer"
-              htmlFor="file"
+
+      <CardContent>
+        {props.progress && (
+          <Alert className="mb-4">
+            <RocketIcon className="h-4 w-4" />
+            <AlertTitle>Uploading</AlertTitle>
+            <AlertDescription>{props.progress}</AlertDescription>
+          </Alert>
+        )}
+        {props.flash?.message && (
+          <Alert className="mb-4">
+            <RocketIcon className="h-4 w-4" />
+            <AlertTitle>{props.flash.message === 'File uploaded.' ? 'Success!' : 'Message'}</AlertTitle>
+            <AlertDescription>{props.flash.message}</AlertDescription>
+          </Alert>
+        )}
+        <div {...getRootProps()} className="grid w-full items-center gap-4">
+          <label
+            className="border-2 border-dashed border-border rounded-lg p-6 text-center h-64 flex flex-col justify-center items-center cursor-pointer"
+            htmlFor="file"
+          >
+            <svg
+              className="text-gray-400 mx-auto mb-4 w-12 h-12"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
             >
-              <svg
-                className=" text-gray-400 mx-auto mb-4 w-12 h-12"
-                fill="none"
-                height="24"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                width="24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" x2="12" y1="3" y2="15" />
-              </svg>
-              <span>{isDragActive ? <p>Drop the files here ...</p> : <p>Drag+drop a file or click to select</p>}</span>
-              <Input className="sr-only" id="file" type="file" {...getInputProps()} />
-            </label>
-            <div className="flex flex-col space-y-1.5 hidden">
-              <Label htmlFor="progress">Upload Progress</Label>
-              <div className="h-3 bg-gray-700 rounded" id="progress">
-                <div
-                  className="h-full bg-green-500 rounded"
-                  style={{
-                    width: '0%'
-                  }}
-                />
-              </div>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" x2="12" y1="3" y2="15" />
+            </svg>
+            <span>{isDragActive ? <p>Feed me</p> : <p>Drop a PDF here</p>}</span>
+            <Input className="sr-only" id="file" type="file" {...getInputProps()} />
+          </label>
+          <div className="flex flex-col space-y-1.5 hidden">
+            <Label htmlFor="progress">Upload Progress</Label>
+            <div className="h-3 bg-gray-700 rounded" id="progress">
+              <div
+                className="h-full bg-green-500 rounded"
+                style={{
+                  width: '0%'
+                }}
+              />
             </div>
           </div>
-        </CardContent>
-        <CardFooter className="flex justify-between">
-          <div />
-          <Button variant="outline" type="submit">
-            Upload
-          </Button>
-        </CardFooter>
-      </form>
+        </div>
+      </CardContent>
+
     </Card>
   )
 }
