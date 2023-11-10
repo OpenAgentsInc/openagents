@@ -1,4 +1,5 @@
 import GuestLayout from '@/Layouts/GuestLayout'
+import { UploadDocForm } from '@/Components/Start/UploadDocForm'
 
 function Start() {
   return (
@@ -19,9 +20,13 @@ function Start() {
         <div className="-mt-24 sm:mt-0 py-24 sm:py-32 lg:pb-40">
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <p className="mt-6 text-lg leading-8 text-gray-300">
-                Drop a file here
-              </p>
+
+              <div className="py-12">
+                <div className="flex flex-col justify-center items-center max-w-7xl mx-auto sm:px-6 lg:px-8">
+                  <UploadDocForm />
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
