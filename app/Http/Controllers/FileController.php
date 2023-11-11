@@ -25,6 +25,10 @@ class FileController extends Controller
       // Store the file
       $path = Storage::putFile('uploads', $file);
 
+      // TODO: Send file to Vectara, save something in our local database
+      // $vectara = new Vectara();
+      // $vectara->upload($file);
+
       return Redirect::route('start')
         ->with('message', 'File uploaded.')
         ->with('filename', $file->getClientOriginalName());
