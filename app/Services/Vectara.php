@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 
 class Vectara
@@ -35,7 +36,7 @@ class Vectara
         return $response->successful() ? $response->json()['access_token'] : null;
     }
 
-    public function createCorpus($customer_id, $corpusData)
+    public function createCorpus($corpusData)
     {
         $jwtToken = $this->getJwtToken();
         if (!$jwtToken) {
@@ -49,6 +50,30 @@ class Vectara
             'grpc-timeout' => '30S'
         ])->post($this->baseUrl . '/v1/create-corpus', [
             'corpus' => $corpusData
+        ]);
+
+        return $response->successful()
+               ? ['ok' => true, 'data' => $response->json()]
+               : ['ok' => false, 'error' => $response->body()];
+    }
+
+    public function upload($corpus_id, UploadedFile $file, $doc_metadata = [])
+    {
+        $jwtToken = $this->getJwtToken();
+        if (!$jwtToken) {
+            return ['ok' => false, 'error' => 'Failed to obtain JWT token'];
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $jwtToken,
+            'customer-id' => "352100613",
+            'grpc-timeout' => '30S'
+        ])->attach(
+            'file', fopen($file->getRealPath(), 'r'), $file->getClientOriginalName()
+        )->post($this->baseUrl . '/v1/upload', [
+            'c' => "352100613",
+            'o' => $corpus_id,
+            // 'doc_metadata' => json_encode($doc_metadata)
         ]);
 
         return $response->successful()
