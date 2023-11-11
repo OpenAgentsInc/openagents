@@ -36,3 +36,10 @@ test('can upload file to corpus', function () {
 
   expect($uploadResponse['ok'])->toBeTrue();
 });
+
+test('can query corpus', function () {
+  $vectara = new Vectara();
+  $uploadResponse = $vectara->query(4, "What is a softbot?");
+
+  expect($uploadResponse['ok'])->toBeTrue();
+});

@@ -80,4 +80,33 @@ class Vectara
                ? ['ok' => true, 'data' => $response->json()]
                : ['ok' => false, 'error' => $response->body()];
     }
+
+    public function query($corpus_id, $query, $numResults = 10)
+    {
+        $jwtToken = $this->getJwtToken();
+        if (!$jwtToken) {
+            return ['ok' => false, 'error' => 'Failed to obtain JWT token'];
+        }
+
+        $query_data = [
+            'query' => $query,
+            'numResults' => $numResults,
+            'corpusKey' => [
+                [
+                    'customerId' => "352100613",
+                    'corpusId' => $corpus_id,
+                ],
+            ],
+        ];
+
+        $response = Http::withHeaders([
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $jwtToken,
+            'customer-id' => "352100613"
+        ])->post($this->baseUrl . '/v1/query', ['query' => [$query_data]]);
+
+        return $response->successful()
+               ? ['ok' => true, 'data' => $response->json()]
+               : ['ok' => false, 'error' => $response->body()];
+    }
 }
