@@ -5,7 +5,7 @@ import { IconArrowElbow, IconPlus } from '@/Components/ui/icons'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/Components/ui/tooltip'
 // import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import { useEnterSubmit } from '@/lib/use-enter-submit'
+import { useEnterSubmit } from '@/lib/hooks/use-enter-submit'
 
 export interface PromptProps extends Pick<UseChatHelpers, 'input' | 'setInput'> {
   onSubmit: (value: string) => Promise<void>

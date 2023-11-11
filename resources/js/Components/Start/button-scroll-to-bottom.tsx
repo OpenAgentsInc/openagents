@@ -3,13 +3,15 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { Button, type ButtonProps } from '@/Components/ui/button'
 import { IconArrowDown } from '@/Components/ui/icons'
+import { useAtBottom } from '@/lib/hooks/use-at-bottom'
 
 interface ButtonScrollToBottomProps extends ButtonProps {
   containerRef: React.RefObject<HTMLElement>
 }
 
 export function ButtonScrollToBottom({ className, containerRef, ...props }: ButtonScrollToBottomProps) {
-  const isAtBottom = false //useAtBottom()
+  const isAtBottom = false//  useAtBottom()
+  console.log(isAtBottom)
 
   return (
     <Button
