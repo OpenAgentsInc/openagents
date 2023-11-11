@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Vectara;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
@@ -25,9 +26,20 @@ class FileController extends Controller
       // Store the file
       $path = Storage::putFile('uploads', $file);
 
-      // TODO: Send file to Vectara, save something in our local database
-      // $vectara = new Vectara();
-      // $vectara->upload($file);
+      if (!app()->runningUnitTests()) {
+        // Create an UploadedFile from there
+        $file = new \Illuminate\Http\UploadedFile(
+          storage_path('app/' . $path),
+          $file->getClientOriginalName(),
+          $file->getMimeType(),
+          null,
+          true
+        );
+
+        // TODO: Send file to Vectara, save something in our local database
+        $vectara = new Vectara();
+        $vectara->upload(6, $file);
+      }
 
       return Redirect::route('start')
         ->with('message', 'File uploaded.')
