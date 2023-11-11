@@ -25,11 +25,11 @@ class FileController extends Controller
       // Store the file
       $path = Storage::putFile('uploads', $file);
 
-      // Logic to ingest the file content, create finetuning job, etc.
-
-      return Redirect::route('start')->with('message', 'File uploaded.');
+      return Redirect::route('start')
+        ->with('message', 'File uploaded.')
+        ->with('filename', $file->getClientOriginalName());
     } catch (\Exception $e) {
-      dd($e);
+      // dd($e);
       return Redirect::route('start')->with('error', 'Error uploading file.');
     }
   }
