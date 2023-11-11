@@ -21,3 +21,5 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 5. [Agent First Principles](https://twitter.com/GPUtopia/status/1722274309727752427)
 6. [Implementing Agent Data Models via TDD](https://twitter.com/GPUtopia/status/1722287956419871177)
 7. [First Feature Tests](https://twitter.com/GPUtopia/status/1722313899771347362)
+8. [Agent UX Design](https://twitter.com/GPUtopia/status/1722742595409830389)
+9. [Building the UI](https://twitter.com/GPUtopia/status/1723164712957862115)
