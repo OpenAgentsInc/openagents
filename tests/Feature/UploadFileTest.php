@@ -3,7 +3,7 @@
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 
-test('upload a file via api', function () {
+test('authed user can upload a file via api', function () {
   $user = User::factory()->create();
   $this->actingAs($user);
 
@@ -13,6 +13,18 @@ test('upload a file via api', function () {
     'file' => $file
   ]);
 
-  $response->assertRedirect();
+  $response->assertRedirectToRoute('start');
+  $response->assertSessionHas('message');
+});
+
+// temporary?
+test('unauthed user can upload a file via api', function () {
+  $file = UploadedFile::fake()->create('document.jsonl', 1000);
+
+  $response = $this->postJson(route('files.store'), [
+    'file' => $file
+  ]);
+
+  $response->assertRedirectToRoute('start');
   $response->assertSessionHas('message');
 });

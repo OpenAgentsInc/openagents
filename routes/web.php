@@ -26,7 +26,7 @@ Route::get('/', function () {
 
 Route::get('/start', function () {
   return Inertia::render('Start');
-});
+})->name('start');
 
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
@@ -50,7 +50,7 @@ Route::post('/api/messages', [MessageController::class, 'store'])
   ->name('messages.store');
 
 Route::post('/api/files', [FileController::class, 'store'])
-  ->middleware('auth')
+  // ->middleware('auth')
   ->name('files.store');
 
 require __DIR__.'/auth.php';
