@@ -14,21 +14,25 @@ test('can create corpus', function () {
   $vectara = new Vectara();
   $jwtToken = $vectara->getJwtToken();
 
-  $corpusData = [
+  $response = $vectara->createCorpus([
     'name' => 'Test Corpus',
     'description' => 'This is a test corpus',
-  ];
-
-  $response = $vectara->createCorpus(1, $corpusData);
+  ]);
   expect($response['ok'])->toBeTrue();
 
 });
 
-// test('can upload file to vectara', function () {
-//   $file = UploadedFile::fake()->create('document.pdf', 1000);
+test('can upload file to corpus', function () {
+  $file = new UploadedFile(
+    storage_path('app/uploads/0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf'),
+    '0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf',
+    'application/pdf',
+    null,
+    true
+  );
 
-//   $vectara = new Vectara();
-//   $uploadResponse = $vectara->upload($file);
+  $vectara = new Vectara();
+  $uploadResponse = $vectara->upload(5, $file);
 
-//   expect($uploadResponse['ok'])->toBeTrue();
-// });
+  expect($uploadResponse['ok'])->toBeTrue();
+});
