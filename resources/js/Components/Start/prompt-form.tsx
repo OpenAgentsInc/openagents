@@ -7,12 +7,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/Comp
 import { cn } from '@/lib/utils'
 import { useEnterSubmit } from '@/lib/hooks/use-enter-submit'
 
-export interface PromptProps extends Pick<UseChatHelpers, 'input' | 'setInput'> {
+export interface PromptProps { // UseChatHelpers, extends Pick<'input' | 'setInput'
   onSubmit: (value: string) => Promise<void>
   isLoading: boolean
 }
 
-export function PromptForm({ onSubmit, input, setInput, isLoading }: PromptProps) {
+export function PromptForm({ onSubmit, input, setInput, isLoading }: any) {
   const { formRef, onKeyDown } = useEnterSubmit()
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
   // const router = useRouter()
