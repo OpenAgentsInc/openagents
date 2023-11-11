@@ -6,10 +6,10 @@ export function Chat() {
   const id = 1
   const isLoading = false
   const append = (what) => {
-    console.log('append', what)
+    setMessages((messages) => [...messages, what])
   }
   const reload = () => { }
-  const messages = []
+  const [messages, setMessages] = React.useState([])
   const [input, setInput] = React.useState('')
   const containerRef = React.useRef(null)
   return (
