@@ -27,10 +27,10 @@ class FileController extends Controller
 
       // Logic to ingest the file content, create finetuning job, etc.
 
-      return Redirect::route('dashboard')->with('message', 'File uploaded.');
+      return Redirect::route('start')->with('message', 'File uploaded.');
     } catch (\Exception $e) {
       dd($e);
-      return Redirect::route('dashboard')->with('error', 'Error uploading file.');
+      return Redirect::route('start')->with('error', 'Error uploading file.');
     }
   }
 }
