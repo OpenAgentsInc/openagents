@@ -28,7 +28,7 @@ export function ChatPanel({
     <div className="sticky bottom-0 pb-2">
       {/* <ButtonScrollToBottom containerRef={containerRef} /> */}
       <div className="mx-auto sm:max-w-2xl sm:px-4">
-        <div className="flex h-10 items-center justify-end">
+        {/* <div className="flex h-10 items-center justify-end">
           {isLoading ? (
             <Button variant="outline" onClick={() => stop()} className="bg-background">
               <IconStop className="mr-2" />
@@ -42,7 +42,7 @@ export function ChatPanel({
               </Button>
             )
           )}
-        </div>
+        </div> */}
         <div className="space-y-4 border-t bg-background px-4 py-2 shadow-lg sm:rounded-t-xl sm:border md:py-4 w-full">
           <PromptForm
             onSubmit={async value => {

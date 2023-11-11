@@ -1,6 +1,8 @@
 import React from "react"
 import { EmptyScreen } from "./empty-screen"
 import { ChatPanel } from "./chat-panel"
+import { ChatList } from "./chat-list"
+import { ChatScrollAnchor } from "./chat-scroll-anchor"
 
 export function Chat() {
   const id = 1
@@ -18,7 +20,7 @@ export function Chat() {
         className="flex flex-col relative pl-[2rem] z-1 w-full overflow-y-auto h-full"
         ref={containerRef}
       >
-        <div className='flex-1 pt-4 md:pt-10 pb-4'>
+        <div className='w-[600px] flex-1 pt-4 md:pt-10 pb-4'>
           {messages.length ? (
             <>
               <ChatList messages={messages} />
