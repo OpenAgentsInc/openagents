@@ -6,6 +6,7 @@ import { useForm, usePage } from '@inertiajs/react'
 import { RocketIcon } from '@radix-ui/react-icons'
 import { Alert, AlertDescription, AlertTitle } from '@/Components/ui/alert'
 import { useDropzone } from 'react-dropzone'
+import { Chat } from './Chat'
 
 export function UploadDocForm() {
   const onDrop = React.useCallback((acceptedFiles) => {
@@ -34,10 +35,11 @@ export function UploadDocForm() {
     })
   }, [data.file])
 
-  const filename = props.flash?.filename ?? null
+  const filename = 'asodfujass'
+  // const filename = props.flash?.filename ?? null
 
-  if (filename) {
-    return <p>CHAT WILL GO HERE :)</p>
+  if (!!filename) {
+    return <Chat />
   }
 
   return (
