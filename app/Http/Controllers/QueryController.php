@@ -20,6 +20,7 @@ class QueryController extends Controller
 
         $vectara = new Vectara();
         $res = $vectara->query($corpus_id, $query);
+
         // Check if the query was successful and has data
         if ($res['ok'] && isset($res['data']['responseSet'][0]['response'])) {
             $queryResults = $res['data']['responseSet'][0]['response'];
@@ -34,6 +35,7 @@ class QueryController extends Controller
             return response()->json([
                 'ok' => true,
                 'results' => $parsedResults,
+                'summary' => $res['summary'],
             ], 200);
         }
 

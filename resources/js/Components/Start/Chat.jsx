@@ -22,16 +22,11 @@ export function Chat() {
       corpus_id: 3
     })
       .then(function (response) {
-        console.log(response);
-
         if (response.data && response.data.ok) {
-          // Extract the 'text' from each result and concatenate them
-          const concatenatedResponse = response.data.results.map(r => r.text).join(' ');
-
           // Create a new message object for the response
           const responseMessage = {
             id: messages.length + 1, // Assuming ID is just the next number in sequence
-            content: concatenatedResponse,
+            content: response.data.summary,
             role: 'assistant' // or any appropriate role for the response
           };
 
