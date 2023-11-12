@@ -19,7 +19,7 @@ export function Chat() {
     // Send an axios POST request to /api/query with the user's message and corpus ID of 4
     axios.post('/api/query', {
       query: what.content,
-      corpus_id: 4
+      corpus_id: 3
     })
       .then(function (response) {
         console.log(response);
