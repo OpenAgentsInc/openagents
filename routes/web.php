@@ -5,6 +5,7 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\QueryController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -52,6 +53,9 @@ Route::post('/api/messages', [MessageController::class, 'store'])
 Route::post('/api/files', [FileController::class, 'store'])
   // ->middleware('auth')
   ->name('files.store');
+
+Route::post('/api/query', [QueryController::class, 'store'])
+  ->name('query.store');
 
 require __DIR__.'/auth.php';
 
