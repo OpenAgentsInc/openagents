@@ -69,7 +69,9 @@ class Vectara
             'customer-id' => "352100613",
             'grpc-timeout' => '30S'
         ])->attach(
-            'file', fopen($file->getRealPath(), 'r'), $file->getClientOriginalName()
+            'file',
+            fopen($file->getRealPath(), 'r'),
+            $file->getClientOriginalName()
         )->post($this->baseUrl . '/v1/upload', [
             'c' => "352100613",
             'o' => $corpus_id,
@@ -91,12 +93,19 @@ class Vectara
         $query_data = [
             'query' => $query,
             'numResults' => $numResults,
+            'summary' => [
+              [
+                  'summarizerPromptName' => 'vectara-summary-ext-v1.2.0', // Replace with the actual summarizer+prompt name
+                  'maxSummarizedResults' => 1,
+                  'responseLang' => 'auto', // Or specify a language code if required
+              ],
+            ],
             'corpusKey' => [
                 [
                     'customerId' => "352100613",
                     'corpusId' => $corpus_id,
                 ],
-            ],
+            ]
         ];
 
         $response = Http::withHeaders([
@@ -105,8 +114,18 @@ class Vectara
             'customer-id' => "352100613"
         ])->post($this->baseUrl . '/v1/query', ['query' => [$query_data]]);
 
-        return $response->successful()
-               ? ['ok' => true, 'data' => $response->json()]
-               : ['ok' => false, 'error' => $response->body()];
+        if ($response->successful()) {
+            $responseData = $response->json();
+
+            // Check if summary is available and has content
+            $summaryText = "";
+            if (!empty($responseData['responseSet'][0]['summary'][0]['text'])) {
+                $summaryText = $responseData['responseSet'][0]['summary'][0]['text'];
+            }
+
+            return ['ok' => true, 'data' => $responseData, 'summary' => $summaryText];
+        } else {
+            return ['ok' => false, 'error' => $response->body()];
+        }
     }
 }

@@ -6,6 +6,8 @@ test('anyone can query corpus via api', function () {
     'query' => "What is a softbot?",
   ]);
 
+  // dd($response->json());
+
   $response->assertStatus(200);
   $response->assertJson([
     'ok' => true,
