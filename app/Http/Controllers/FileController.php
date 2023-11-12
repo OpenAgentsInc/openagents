@@ -26,7 +26,11 @@ class FileController extends Controller
       // Store the file
       $path = Storage::putFile('uploads', $file);
 
-      if (!app()->runningUnitTests()) {
+
+      // Create a Vectara corpus
+      $vectara = new Vectara();
+
+      // if (!app()->runningUnitTests()) {
         // Create an UploadedFile from there
         $file = new \Illuminate\Http\UploadedFile(
           storage_path('app/' . $path),
@@ -37,9 +41,9 @@ class FileController extends Controller
         );
 
         // TODO: Send file to Vectara, save something in our local database
-        $vectara = new Vectara();
-        $vectara->upload(6, $file);
-      }
+
+        $res = $vectara->upload(4, $file);
+      // }
 
       return Redirect::route('start')
         ->with('message', 'File uploaded.')
