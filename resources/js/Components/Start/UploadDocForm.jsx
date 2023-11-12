@@ -35,8 +35,8 @@ export function UploadDocForm() {
     })
   }, [data.file])
 
-  const filename = 'asodfujass'
-  // const filename = props.flash?.filename ?? null
+  // const filename = 'asodfujass'
+  const filename = props.flash?.filename ?? null
 
   if (!!filename) {
     return <Chat />
