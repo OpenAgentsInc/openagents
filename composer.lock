@@ -4,8 +4,60 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "daae422c3c03f265eb1c9404c644ae09",
+    "content-hash": "cc5a9593f0d83130981e1486afc36de8",
     "packages": [
+        {
+            "name": "ankane/pgvector",
+            "version": "v0.1.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/pgvector/pgvector-php.git",
+                "reference": "ff407388899b5e9e268021448c106655846ede91"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/pgvector/pgvector-php/zipball/ff407388899b5e9e268021448c106655846ede91",
+                "reference": "ff407388899b5e9e268021448c106655846ede91",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">= 7.4"
+            },
+            "require-dev": {
+                "illuminate/database": ">= 9.0",
+                "phpunit/phpunit": "^9"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Pgvector\\Laravel\\PgvectorServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Pgvector\\": "src/",
+                    "Pgvector\\Laravel\\": "src/laravel/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Andrew Kane",
+                    "email": "andrew@ankane.org"
+                }
+            ],
+            "description": "pgvector support for PHP",
+            "support": {
+                "issues": "https://github.com/pgvector/pgvector-php/issues",
+                "source": "https://github.com/pgvector/pgvector-php"
+            },
+            "time": "2023-10-03T23:29:14+00:00"
+        },
         {
             "name": "brick/math",
             "version": "0.11.0",
