@@ -24,3 +24,6 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 8. [Agent UX Design](https://twitter.com/GPUtopia/status/1722742595409830389)
 9. [Building the UI](https://twitter.com/GPUtopia/status/1723164712957862115)
 10. [Connecting to Vectara](https://twitter.com/GPUtopia/status/1723203092647137636)
+11. [Chatting with a PDF](https://twitter.com/GPUtopia/status/1723525820357005661)
+12. [RAG Planning](https://twitter.com/GPUtopia/status/1723888973213286760)
+13. [RAG First Principles](https://twitter.com/GPUtopia/status/1724432749275095365)
