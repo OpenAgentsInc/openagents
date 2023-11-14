@@ -27,3 +27,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 11. [Chatting with a PDF](https://twitter.com/GPUtopia/status/1723525820357005661)
 12. [RAG Planning](https://twitter.com/GPUtopia/status/1723888973213286760)
 13. [RAG First Principles](https://twitter.com/GPUtopia/status/1724432749275095365)
+14. [Embeddings 101](https://twitter.com/GPUtopia/status/1724509783086989333)
