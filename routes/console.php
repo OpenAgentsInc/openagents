@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Embedding;
+use App\Services\QueenbeeGateway;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 
@@ -17,3 +19,26 @@ use Illuminate\Support\Facades\Artisan;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+
+Artisan::command('insert', function() {
+
+    $sayings = [
+        'Felines say meow',
+        'Canines say woof',
+        'Birds say tweet',
+        'Humans say hello',
+    ];
+
+    $gateway = new QueenbeeGateway();
+    $result = $gateway->createEmbedding($sayings);
+
+    foreach ($sayings as $key=>$saying) {
+        Embedding::query()->create([
+            'embedding' => $result[$key]["embedding"],
+            'metadata' => [
+                'saying' => $saying,
+            ]
+        ]);
+    }
+});
