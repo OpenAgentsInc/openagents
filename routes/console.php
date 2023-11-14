@@ -4,6 +4,7 @@ use App\Models\Embedding;
 use App\Services\QueenbeeGateway;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Pgvector\Laravel\Vector;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,8 +22,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 
-Artisan::command('insert', function() {
-
+Artisan::command('insert', function () {
     $sayings = [
         'Felines say meow',
         'Canines say woof',
@@ -41,4 +41,21 @@ Artisan::command('insert', function() {
             ]
         ]);
     }
+});
+
+
+Artisan::command('search {query}', function ($query) {
+    $gateway = new QueenbeeGateway();
+    $result = $gateway->createEmbedding($query);
+    print_r("Embedding length: " . count($result[0]["embedding"]) . "\n");
+
+    $embedding = new Vector($result[0]["embedding"]);
+
+    $this->table(
+        ['saying'],
+        Embedding::query()
+            ->orderByRaw('embedding <-> ?', [$embedding])
+            ->take(1)
+            ->pluck('metadata')
+    );
 });
