@@ -4,15 +4,16 @@ use App\Services\QueenbeeGateway;
 
 test('can create embedding from text', function () {
 
-  $gateway = new QueenbeeGateway();
-  $embedding = $gateway->createEmbedding("What is an AI agent?");
+    $gateway = new QueenbeeGateway();
+    $result = $gateway->createEmbedding("What is an AI agent?");
+    $embedding = $result[0]['embedding'];
 
-  // Check if the array contains exactly 768 elements
-  expect(count($embedding))->toBe(768);
+    // Check if the array contains exactly 768 elements
+    expect(count($embedding))->toBe(768);
 
-  // Optionally, check if all elements are numeric or within a certain range
-  foreach ($embedding as $value) {
-    expect(is_numeric($value))->toBeTrue();
-  }
-
+    // Check if elements are numeric
+    expect(is_numeric($embedding[0]))->toBeTrue();
+    expect(is_numeric($embedding[1]))->toBeTrue();
+    expect(is_numeric($embedding[2]))->toBeTrue();
+    expect(is_numeric($embedding[3]))->toBeTrue();
 });

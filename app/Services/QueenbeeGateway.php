@@ -31,7 +31,7 @@ class QueenbeeGateway {
     // Parse the response
     if ($response->getStatusCode() == 200) {
       $body = json_decode($response->getBody()->getContents(), true);
-      return $body['data'][0]['embedding'] ?? [];
+      return $body['data'];
     } else {
       // Handle error case
       return []; // or throw an exception
