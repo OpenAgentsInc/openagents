@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\Embedding;
+use App\Services\QueenbeeGateway;
 use Spatie\PdfToText\Pdf;
 
-test('can ingest pdf', function () {
+test('can ingest pdf to database as chunked embeddings', function () {
 
     // Given a PDF, extract the text
     $fileText = Pdf::getText(
@@ -10,16 +12,35 @@ test('can ingest pdf', function () {
         config('services.pdftotext.path')
     );
 
-    dd($fileText);
+    // Clean up and convert into chunks
+    $chunks = Str::of($fileText)
+        ->split("/\f/") // Splitting the text into pages based on the form feed character
+        ->transform(function ($page) {
+            return (string) Str::of($page)
+                ->replace("\n", " ") // Replacing newline characters with spaces
+                ->trim(); // Trimming leading and trailing whitespace
+        })
+        ->toArray();
 
+    // Create embeddings for each chunk
+    $gateway = new QueenbeeGateway();
+    $result = $gateway->createEmbedding($chunks);
+
+    // Store the embeddings in a database
+    foreach ($chunks as $key=>$chunk) {
+        Embedding::query()->create([
+            'embedding' => $result[$key]["embedding"],
+            'metadata' => [
+                'text' => $chunk,
+            ]
+        ]);
+    }
+
+    // Assert that we have the correct number of embeddings (the amount of chunks)
+    expect(Embedding::query()->count())->toBe(count($chunks));
 });
 
 
-
-
-// Convert into chunks
-// Create embeddings for each chunk
-// Store the embeddings in a database
 
 // Given a query
 // Convert query into embedding
