@@ -31,4 +31,8 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'pdftotext' => [
+      'path' => env('PDF_TO_TEXT_PATH', '/opt/homebrew/bin/pdftotext')
+    ],
+
 ];
