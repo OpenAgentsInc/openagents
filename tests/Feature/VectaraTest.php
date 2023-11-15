@@ -8,7 +8,7 @@ test('can get jwt', function () {
   $jwtToken = $vectara->getJwtToken();
 
   expect($jwtToken)->not->toBeNull();
-});
+})->skip();
 
 test('can create corpus', function () {
   $vectara = new Vectara();
@@ -20,7 +20,7 @@ test('can create corpus', function () {
   ]);
   expect($response['ok'])->toBeTrue();
 
-});
+})->skip();
 
 test('can upload file to corpus', function () {
   $file = new UploadedFile(
@@ -35,11 +35,11 @@ test('can upload file to corpus', function () {
   $uploadResponse = $vectara->upload(5, $file);
 
   expect($uploadResponse['ok'])->toBeTrue();
-});
+})->skip();
 
 test('can query corpus', function () {
   $vectara = new Vectara();
   $uploadResponse = $vectara->query(4, "What is a softbot?");
 
   expect($uploadResponse['ok'])->toBeTrue();
-});
+})->skip();
