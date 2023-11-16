@@ -42,7 +42,7 @@ class FileController extends Controller
 
         // TODO: Send file to Vectara, save something in our local database
 
-        $res = $vectara->upload(4, $file);
+        // $res = $vectara->upload(4, $file);
       // }
 
       return Redirect::route('start')
