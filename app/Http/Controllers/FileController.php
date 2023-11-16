@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Parser;
 use App\Services\Vectara;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -12,12 +13,10 @@ class FileController extends Controller
     public function store(Request $request)
     {
         try {
-            // If we're not testing
+            // If we're not testing, validate the request
             if (!app()->runningUnitTests()) {
-                // Validate incoming request
                 $request->validate([
-                  'file' => 'required|mimetypes:application/pdf'
-                  // 'file' => 'required|mimetypes:application/json,application/pdf,text/markdown,text/plain', // |max:1000240
+                  'file' => 'required|mimetypes:application/pdf' // application/json,text/markdown,text/plain|max:1000240
                 ]);
             }
 
@@ -26,14 +25,8 @@ class FileController extends Controller
             $path = Storage::putFile('uploads', $file);
 
             // Parse the file
-
-            // $file = new \Illuminate\Http\UploadedFile(
-            //     storage_path('app/' . $path),
-            //     $file->getClientOriginalName(),
-            //     $file->getMimeType(),
-            //     null,
-            //     true
-            // );
+            $parser = new Parser();
+            $parser->parsePdf($path);
 
             return Redirect::route('start')
               ->with('message', 'File uploaded.')
