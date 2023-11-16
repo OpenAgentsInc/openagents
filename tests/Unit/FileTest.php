@@ -2,6 +2,12 @@
 
 use App\Models\File;
 
+it('has a path', function () {
+    $file = File::factory()->create();
+
+    expect($file->path)->toBeString();
+});
+
 it('has many embeddings', function () {
     $file = File::factory()->create();
     $file->embeddings()->createMany([

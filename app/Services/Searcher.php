@@ -11,7 +11,6 @@ class Searcher
     {
         $gateway = new QueenbeeGateway();
         $result = $gateway->createEmbedding($query);
-        print_r("Embedding length: " . count($result[0]["embedding"]) . "\n");
 
         $embedding = new Vector($result[0]["embedding"]);
 
@@ -21,6 +20,8 @@ class Searcher
             ->orderByRaw('embedding <-> ?', [$embedding])
             ->take(3)
             ->pluck('metadata');
+
+        // dd($searchResults);
 
         // Format the response with the actual search results
         return [
