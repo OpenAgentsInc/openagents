@@ -23,18 +23,30 @@ class QueenbeeGateway {
       'encoding_format' => 'float',
     ];
 
-    $response = Http::withHeaders([
-      'Authorization' => 'Bearer ' . $this->token,
-      'Content-Type' => 'application/json'
-    ])->post($this->api_url . '/embeddings', $data);
+    $maxRetries = 10;
+    $retryCount = 0;
 
-    // Parse the response
-    if ($response->getStatusCode() == 200) {
-      $body = json_decode($response->getBody()->getContents(), true);
-      return $body['data'];
-    } else {
-      // Handle error case
-      return []; // or throw an exception
+    while ($retryCount < $maxRetries) {
+      try {
+        $response = Http::withHeaders([
+          'Authorization' => 'Bearer ' . $this->token,
+          'Content-Type' => 'application/json'
+        ])->timeout(3) // Set timeout to 3 seconds
+          ->post($this->api_url . '/embeddings', $data);
+
+        if ($response->getStatusCode() == 200) {
+          $body = json_decode($response->getBody()->getContents(), true);
+          return $body['data'];
+        } else {
+          $retryCount++;
+        }
+      } catch (\Exception $e) {
+        // Retry on exception (e.g., timeout)
+        $retryCount++;
+      }
     }
+
+    // Handle case where all retries failed
+    return []; // or throw an exception
   }
 }
