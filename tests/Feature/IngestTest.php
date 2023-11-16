@@ -73,7 +73,7 @@ test('can ingest pdf to database as chunked embeddings', function () {
     expect(Embedding::query()->count())->toBe(count($chunks));
 
     // dd all embeddings
-    dd(Embedding::query()->get()->toArray());
+    // dd(Embedding::query()->get()->toArray());
 });
 
 
