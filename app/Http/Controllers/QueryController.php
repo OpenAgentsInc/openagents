@@ -2,40 +2,28 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\Vectara;
+use App\Services\Searcher;
 
 class QueryController extends Controller
 {
     public function store()
     {
-
-        // validate that request has corpus_id and query
+        // validate that request has file_id and query
         request()->validate([
-          'corpus_id' => 'required',
+          'file_id' => 'required',
           'query' => 'required',
         ]);
 
-        $corpus_id = request('corpus_id');
+        $file_id = request('file_id');
         $query = request('query');
 
-        $vectara = new Vectara();
-        $res = $vectara->query($corpus_id, $query);
+        $searcher = new Searcher();
+        $res = $searcher->query($file_id, $query);
 
-        // Check if the query was successful and has data
-        if ($res['ok'] && isset($res['data']['responseSet'][0]['response'])) {
-            $queryResults = $res['data']['responseSet'][0]['response'];
-            $parsedResults = array_map(function ($item) {
-                return [
-                    'text' => $item['text'],
-                    'score' => $item['score'],
-                    'metadata' => array_column($item['metadata'], 'value', 'name')
-                ];
-            }, $queryResults);
-
+        if ($res['ok'] && isset($res['results'])) {
             return response()->json([
                 'ok' => true,
-                'results' => $parsedResults,
-                'summary' => $res['summary'],
+                'results' => $res['results'],
             ], 200);
         }
 
