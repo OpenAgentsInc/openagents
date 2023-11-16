@@ -37,7 +37,8 @@ class FileController extends Controller
 
             return Redirect::route('start')
               ->with('message', 'File uploaded.')
-              ->with('filename', $file->getClientOriginalName());
+              ->with('filename', $res["file_id"]);
+              // ->with('filename', $file->getClientOriginalName());
         } catch (\Exception $e) {
             // Log just the error message
             Log::error('FileController:store: $e->getMessage(): ' . print_r($e->getMessage(), true));

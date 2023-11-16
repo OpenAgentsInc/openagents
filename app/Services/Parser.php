@@ -50,6 +50,7 @@ class Parser
         }
 
         return [
+            'file_id' => $file->id,
             'chunks' => $chunks,
             'embeddings' => $result,
         ];

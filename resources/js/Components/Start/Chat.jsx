@@ -3,11 +3,13 @@ import { EmptyScreen } from "./empty-screen"
 import { ChatPanel } from "./chat-panel"
 import { ChatList } from "./chat-list"
 import { ChatScrollAnchor } from "./chat-scroll-anchor"
+import { usePage } from '@inertiajs/react'
 import axios from "axios"
 
 export function Chat() {
   const id = 1
   const isLoading = false
+  const props = usePage().props
   const reload = () => { }
   const [messages, setMessages] = React.useState([])
   const [input, setInput] = React.useState('')
@@ -19,7 +21,7 @@ export function Chat() {
     // Send an axios POST request to /api/query with the user's message and corpus ID of 4
     axios.post('/api/query', {
       query: what.content,
-      file_id: 2
+      file_id: props.flash?.filename ?? null
     })
       .then(function (response) {
         console.log(response)
