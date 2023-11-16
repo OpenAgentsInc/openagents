@@ -31,3 +31,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 15. [Similarity Search](https://twitter.com/GPUtopia/status/1724568957598708192)
 16. [PDF to Embeddings](https://twitter.com/GPUtopia/status/1724801372602950026)
 17. [Connecting the UI](https://twitter.com/GPUtopia/status/1725197866409267544)
+18. [Connecting the UI, Part 2](https://twitter.com/GPUtopia/status/1725246583623590158)
