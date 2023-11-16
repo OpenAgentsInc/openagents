@@ -5,37 +5,6 @@ use App\Services\QueenbeeGateway;
 use Illuminate\Http\UploadedFile;
 use Spatie\PdfToText\Pdf;
 
-// test('can ingest pdf via api, creating embeddings', function () {
-
-//   $this->withoutExceptionHandling();
-
-//   Storage::fake('uploads');
-
-
-//   $file = UploadedFile::fake()->create('document.pdf', 1000);
-
-//   $response = $this->postJson(route("files.store"), [
-//       'file' => $file,
-//   ]);
-
-//   // dd($response);
-
-//   // $response = $this->postJson(route('files.store'), [
-//   //     'file' => new UploadedFile(base_path('tests/demo_pdf_softbots.pdf'), 'tests/demo_pdf_softbots.pdf', 'application/pdf', null, true),
-//   // ]);
-
-//   // Replace the above with an actual PDF, not simulated
-//   // $response = $this->postJson(route('files.store'), [
-//   //     'file' => new UploadedFile(storage_path('app/uploads/0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf'), '0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf', 'application/pdf', null, true),
-//   // ]);
-
-
-
-//   // Assert the file was stored...
-//   // Storage::disk('uploads')->assertExists('0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf');
-//   Storage::disk('uploads')->assertExists($file->hashName());
-
-// });
 
 test('can ingest pdf to database as chunked embeddings', function () {
 
