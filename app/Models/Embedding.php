@@ -16,4 +16,9 @@ class Embedding extends Model
         'embedding' => Vector::class,
         'metadata' => 'array',
     ];
+
+    public function file()
+    {
+        return $this->belongsTo(File::class);
+    }
 }

@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('embeddings', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('file_id')->constrained()->onDelete('cascade');
             $table->vector('embedding', 768);
             $table->json('metadata');
             $table->timestamps();
