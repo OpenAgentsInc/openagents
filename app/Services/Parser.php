@@ -10,11 +10,11 @@ use Spatie\PdfToText\Pdf;
 
 class Parser
 {
-    public function parsePdf()
+    public function parsePdf($path)
     {
         // Given a PDF, extract the text
         $fileText = Pdf::getText(
-            storage_path('app/uploads/0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf'),
+            storage_path($path),
             config('services.pdftotext.path')
         );
 
