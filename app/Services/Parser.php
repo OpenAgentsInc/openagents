@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Embedding;
+use App\Models\File;
 use App\Services\QueenbeeGateway;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
@@ -17,6 +18,11 @@ class Parser
             storage_path("app/" . $path),
             config('services.pdftotext.path')
         );
+
+        // First create a new File
+        $file = File::query()->create([
+          'path' => $path,
+        ]);
 
         // Clean up and convert into chunks
         $chunks = Str::of($fileText)
@@ -35,6 +41,7 @@ class Parser
         // Store the embeddings in a database
         foreach ($chunks as $key=>$chunk) {
             Embedding::query()->create([
+                'file_id' => $file->id,
                 'embedding' => $result[$key]["embedding"],
                 'metadata' => [
                     'text' => $chunk,

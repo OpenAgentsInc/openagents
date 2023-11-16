@@ -19,7 +19,7 @@ export function Chat() {
     // Send an axios POST request to /api/query with the user's message and corpus ID of 4
     axios.post('/api/query', {
       query: what.content,
-      corpus_id: 3
+      file_id: 2
     })
       .then(function (response) {
         console.log(response)
@@ -27,7 +27,8 @@ export function Chat() {
           // Create a new message object for the response
           const responseMessage = {
             id: messages.length + 1, // Assuming ID is just the next number in sequence
-            content: response.data.summary,
+            content: response.data.results[0].text,
+            // content: response.data.summary,
             role: 'assistant' // or any appropriate role for the response
           };
 
