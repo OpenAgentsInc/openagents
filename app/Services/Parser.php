@@ -14,7 +14,7 @@ class Parser
     {
         // Given a PDF, extract the text
         $fileText = Pdf::getText(
-            storage_path($path),
+            storage_path("app/" . $path),
             config('services.pdftotext.path')
         );
 
