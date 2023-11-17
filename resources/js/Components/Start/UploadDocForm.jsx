@@ -29,7 +29,6 @@ export function UploadDocForm() {
     setUploading(true)
     post('/api/files', {
       onSuccess: (res) => {
-        console.log(res)
         setData('file', null)
         setUploading(false)
       },
@@ -40,7 +39,6 @@ export function UploadDocForm() {
     })
   }, [data.file])
 
-  // const filename = 'asodfujass'
   const filename = props.flash?.filename ?? null
 
   if (!!filename) {
