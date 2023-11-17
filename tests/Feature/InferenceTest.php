@@ -12,8 +12,6 @@ test('can summarize from context', function () {
   $searcher = new Searcher();
   $summary = $searcher->summarize($data, 'What is the meaning of life?');
 
-  print_r($summary);
-
   $this->assertIsString($summary);
   $this->assertGreaterThanOrEqual(50, strlen($summary));
 });
