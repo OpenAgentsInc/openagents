@@ -14,7 +14,7 @@ test('can summarize from context', function () {
 
   $this->assertIsString($summary);
   $this->assertGreaterThanOrEqual(50, strlen($summary));
-});
+})->group('queenbee');
 
 
 test('can do chat completion', function () {
@@ -35,4 +35,4 @@ test('can do chat completion', function () {
   $this->assertIsArray($response['choices']);
   $this->assertIsArray($response['usage']);
   $this->assertIsInt($response['created']);
-});
+})->group('queenbee');
