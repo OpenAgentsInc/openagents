@@ -16,6 +16,20 @@ class QueenbeeGateway {
     $this->token = "ac4a9ce1c028c7a1e652d11f4d7e009e";
   }
 
+  public function makeChatCompletion($data)
+  {
+    $response = Http::withHeaders([
+      'Authorization' => 'Bearer ' . $this->token,
+    ])->post($this->api_url . '/chat/completions', $data);
+
+    return $response->json();
+  }
+
+  public function defaultModel()
+  {
+    return 'vicuna-v1-7b-q4f32_0';
+  }
+
   public function createEmbedding($text, $model = 'fastembed:BAAI/bge-base-en-v1.5', $user = 'default-user', $gpu_filter = []) {
     $data = [
       'input' => $text,
