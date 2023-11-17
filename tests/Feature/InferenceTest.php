@@ -1,6 +1,19 @@
 <?php
 
 use App\Services\QueenbeeGateway;
+use App\Services\Searcher;
+
+test('can summarize from context', function () {
+  $data = [];
+  $searcher = new Searcher();
+  $summary = $searcher->summarize($data);
+
+  print_r($summary);
+
+  $this->assertIsString($summary);
+  $this->assertGreaterThanOrEqual(50, strlen($summary));
+});
+
 
 test('can do chat completion', function () {
   $gateway = new QueenbeeGateway();
