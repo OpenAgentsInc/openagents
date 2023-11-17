@@ -21,12 +21,14 @@ class Searcher
             ->take(3)
             ->pluck('metadata');
 
-        // dd($searchResults);
-
         // Format the response with the actual search results
         return [
           "ok" => true,
           "results" => $searchResults
         ];
+    }
+
+    public function summarize($data) {
+      return "helloooo";
     }
 }

@@ -24,6 +24,7 @@ class QueryController extends Controller
             return response()->json([
                 'ok' => true,
                 'results' => $res['results'],
+                'summary' => $res['summary'],
             ], 200);
         }
 
