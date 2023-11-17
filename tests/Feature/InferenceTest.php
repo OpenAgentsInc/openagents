@@ -4,9 +4,13 @@ use App\Services\QueenbeeGateway;
 use App\Services\Searcher;
 
 test('can summarize from context', function () {
-  $data = [];
+  $data = [
+    ['text' => 'The meaning of life is 42.'],
+    ['text' => 'That saying comes from the Hitchhiker\'s Guide to the Galaxy.'],
+    ['text' => 'The book is a comedy science fiction series created by Douglas Adams.'],
+  ];
   $searcher = new Searcher();
-  $summary = $searcher->summarize($data);
+  $summary = $searcher->summarize($data, 'What is the meaning of life?');
 
   print_r($summary);
 
