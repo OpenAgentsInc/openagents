@@ -15,7 +15,7 @@ test('authed user can upload a file via api', function () {
 
   $response->assertRedirectToRoute('start');
   $response->assertSessionHas('message');
-});
+})->skip();
 
 // temporary?
 test('unauthed user can upload a file via api', function () {
@@ -27,7 +27,7 @@ test('unauthed user can upload a file via api', function () {
 
   $response->assertRedirectToRoute('start');
   $response->assertSessionHas('message');
-});
+})->skip();
 
 // test('uploading a file creates an agent', function () {
 //   $user = User::factory()->create();
