@@ -26,4 +26,4 @@ test('anyone can query their uploaded file via api', function () {
       // ],
     ],
   ]);
-});
+})->group('queenbee');
