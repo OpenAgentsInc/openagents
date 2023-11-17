@@ -58,7 +58,7 @@ class Parser
         Log::info(count($smallerChunks));
 
         // Send only the first 3 chunks to Queenbee
-        $smallerChunks = array_slice($smallerChunks, 0, 3);
+        $smallerChunks = $chunks; // array_slice($smallerChunks, 0, 8);
         Log::info($smallerChunks);
 
         // Create embeddings for each chunk
