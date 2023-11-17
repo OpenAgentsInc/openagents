@@ -19,11 +19,9 @@ class Searcher
         $searchResults = Embedding::query()
             ->where('file_id', $file_id)
             ->orderByRaw('embedding <-> ?', [$embedding])
-            ->take(3)
+            ->take(1)
             ->pluck('metadata');
 
-
-        // Log::info($searchResults);
         $summary = $this->summarize($searchResults, $query);
 
         // Format the response with the actual search results
@@ -50,6 +48,8 @@ class Searcher
           ['role' => 'user', 'content' => $query],
         ],
       ]);
+
+      Log::info($response);
 
       return $response["choices"][0]["message"]["content"];
     }
