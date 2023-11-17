@@ -7,7 +7,7 @@ use Illuminate\Http\UploadedFile;
 use Spatie\PdfToText\Pdf;
 
 test('can ingest pdf to database as chunked embeddings', function () {
-  $path = 'app/uploads/0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf';
+  $path = 'uploads/0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf';
   $parser = new Parser();
   $parsed = $parser->parsePdf($path);
 
