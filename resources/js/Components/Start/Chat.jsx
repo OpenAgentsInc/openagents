@@ -29,7 +29,7 @@ export function Chat() {
           // Create a new message object for the response
           const responseMessage = {
             id: messages.length + 1, // Assuming ID is just the next number in sequence
-            content: response.data.results[0].text,
+            content: response.data.summary,
             // content: response.data.summary,
             role: 'assistant' // or any appropriate role for the response
           };

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 
 class QueenbeeGateway {
@@ -16,14 +17,35 @@ class QueenbeeGateway {
     $this->token = "ac4a9ce1c028c7a1e652d11f4d7e009e";
   }
 
+
   public function makeChatCompletion($data)
   {
-    $response = Http::withHeaders([
-      'Authorization' => 'Bearer ' . $this->token,
-    ])->post($this->api_url . '/chat/completions', $data);
+      Log::info($data);
+      $maxRetries = 10; // Maximum number of retries
+      $retryCount = 0; // Current retry count
 
-    return $response->json();
+      while ($retryCount < $maxRetries) {
+          try {
+              $response = Http::withHeaders([
+                  'Authorization' => 'Bearer ' . $this->token,
+              ])->timeout(30) // Set timeout to 3 seconds
+                ->post($this->api_url . '/chat/completions', $data);
+
+              if ($response->getStatusCode() == 200) {
+                  return $response->json();
+              } else {
+                  $retryCount++; // Increment retry count on failure
+              }
+          } catch (\Exception $e) {
+              // Retry on exception (e.g., timeout)
+              $retryCount++;
+          }
+      }
+
+      // Handle case where all retries failed
+      return []; // or throw an exception
   }
+
 
   public function defaultModel()
   {
@@ -45,7 +67,7 @@ class QueenbeeGateway {
         $response = Http::withHeaders([
           'Authorization' => 'Bearer ' . $this->token,
           'Content-Type' => 'application/json'
-        ])->timeout(3) // Set timeout to 3 seconds
+        ])->timeout(5) // Set timeout to 3 seconds
           ->post($this->api_url . '/embeddings', $data);
 
         if ($response->getStatusCode() == 200) {
