@@ -19,7 +19,7 @@ test('can respond to github issue as faerie', function () {
   $prompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
 
 You have been summoned to ArcadeLabsInc/openagents issue #1.
-i
+
 The issue is titled `" . $title . "`
 
 The issue body is:
