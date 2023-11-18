@@ -12,4 +12,4 @@ test('can ingest pdf to database as chunked embeddings', function () {
   $parsed = $parser->parsePdf($path);
 
   expect(Embedding::query()->count())->toBe(count($parsed["chunks"]));
-});
+})->group('queenbee');
