@@ -34,3 +34,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 18. [Connecting the UI, Part 2](https://twitter.com/GPUtopia/status/1725246583623590158)
 19. [Chat with PDF, GPUtopia Edition](https://twitter.com/GPUtopia/status/1725349984952827929)
 20. [Planning a GitHub Agent](https://twitter.com/GPUtopia/status/1725597044981617119)
+21. [Hello Faerie](https://twitter.com/GPUtopia/status/1725910351563165748)
