@@ -28,7 +28,9 @@ class OpenAIGateway {
   {
     $response = Http::withHeaders([
       'Authorization' => 'Bearer ' . $this->token,
-    ])->post($this->api_url . '/chat/completions', $data);
+    ])
+        ->timeout(90)
+        ->post($this->api_url . '/chat/completions', $data);
 
     return $response->json();
   }
