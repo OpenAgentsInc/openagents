@@ -15,7 +15,7 @@ test('can create embeddings from a file', function () {
 
   // Assert that there are embeddings
   expect($file->embeddings()->count())->toBeGreaterThan(0);
-});
+})->group('integration');
 
 
 // create embeddings from a folder
@@ -32,7 +32,7 @@ test('can create embeddings from a folder', function () {
 
   // Assert that number of Files is equal to number of Embeddings
   expect(File::query()->count())->toBe(Embedding::query()->count());
-});
+})->group('integration');
 
 
 // create embeddings from entire codebase
