@@ -35,28 +35,28 @@ class CommentOnIssue extends Command
         $body = $response['body'];
         $title = $response['title'];
 
-        $prompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
+        $systemPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
 
   You have been summoned to ArcadeLabsInc/openagents issue #1.
 
   The issue is titled `" . $title . "`
 
-  The issue body is:
-  ```
-  " . $body . "
-  ```
+  The issue body is the first message below.
 
   Please respond with the comment you would like to add to the issue. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
+
+        // Combine these two arrays
+        $systemMessages = [
+          ['role' => 'system', 'content' => $systemPrompt],
+        ];
+        $userAndAssistantMessages = $this->formatIssueAndComments($body, $commentsResponse);
+        $messages = array_merge($systemMessages, $userAndAssistantMessages);
 
         $gateway = new OpenAIGateway();
 
         $response = $gateway->makeChatCompletion([
           'model' => 'gpt-4',
-          'messages' => $this->formatIssueAndCommentsAsMessages($body, $commentsResponse),
-          // 'messages' => [
-          //   // ['role' => 'system', 'content' => 'You are a helpful assistant.'],
-          //   ['role' => 'user', 'content' => $prompt],
-          // ],
+          'messages' => $messages,
         ]);
 
         $comment = $response['choices'][0]['message']['content'];
