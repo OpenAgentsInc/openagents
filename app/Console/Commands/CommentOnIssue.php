@@ -30,6 +30,7 @@ class CommentOnIssue extends Command
         $issueNum = $this->argument('issuenum');
 
         $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', $issueNum);
+        $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', 1);
 
         $body = $response['body'];
         $title = $response['title'];
@@ -51,10 +52,11 @@ class CommentOnIssue extends Command
 
         $response = $gateway->makeChatCompletion([
           'model' => 'gpt-4',
-          'messages' => [
-            // ['role' => 'system', 'content' => 'You are a helpful assistant.'],
-            ['role' => 'user', 'content' => $prompt],
-          ],
+          'messages' => $this->formatIssueAndCommentsAsMessages($body, $commentsResponse),
+          // 'messages' => [
+          //   // ['role' => 'system', 'content' => 'You are a helpful assistant.'],
+          //   ['role' => 'user', 'content' => $prompt],
+          // ],
         ]);
 
         $comment = $response['choices'][0]['message']['content'];
@@ -63,5 +65,26 @@ class CommentOnIssue extends Command
 
         GitHub::api('issue')->comments()->create('ArcadeLabsInc', 'openagents', $issueNum, array('body' => $comment));
         $this->info("DONE!");
+    }
+
+    /**
+     * Format the issue and comments as messages.
+     *
+     * @param string $issueBody
+     * @param array $commentsResponse
+     * @return array
+     */
+    private function formatIssueAndCommentsAsMessages(string $issueBody, array $commentsResponse): array
+    {
+        $messages = [];
+
+        $messages[] = ['role' => 'user', 'content' => $issueBody];
+
+        foreach ($commentsResponse as $comment) {
+            $role = $comment['user']['login'] === 'FaerieAI' ? 'assistant' : 'user';
+            $messages[] = ['role' => $role, 'content' => $comment['body']];
+        }
+
+        return $messages;
     }
 }
