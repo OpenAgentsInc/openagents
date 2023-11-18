@@ -36,3 +36,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 20. [Planning a GitHub Agent](https://twitter.com/GPUtopia/status/1725597044981617119)
 21. [Hello Faerie](https://twitter.com/GPUtopia/status/1725910351563165748)
 22. [Conversing with Faerie](https://twitter.com/GPUtopia/status/1725928497367908432)
+23. [Embedding our Codebase](https://twitter.com/GPUtopia/status/1725948809593638971)
