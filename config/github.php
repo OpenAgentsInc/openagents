@@ -24,7 +24,7 @@ return [
     |
     */
 
-    'default' => 'none',
+    'default' => 'main',
 
     /*
     |--------------------------------------------------------------------------
@@ -42,7 +42,7 @@ return [
 
         'main' => [
             'method'     => 'token',
-            'token'      => 'your-token',
+            'token'      => env('GITHUB_TOKEN'),
             // 'backoff'    => false,
             // 'cache'      => false,
             // 'version'    => 'v3',

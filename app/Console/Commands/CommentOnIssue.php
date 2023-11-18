@@ -61,7 +61,7 @@ class CommentOnIssue extends Command
         $this->info($comment);
         $this->info("POSTING...");
 
-        GitHub::comments()->create('ArcadeLabsInc', 'openagents', $issueNum, array('body' => $comment));
+        GitHub::api('issue')->comments()->create('ArcadeLabsInc', 'openagents', $issueNum, array('body' => $comment));
         $this->info("DONE!");
     }
 }
