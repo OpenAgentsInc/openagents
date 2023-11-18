@@ -1,6 +1,6 @@
 <?php
 
-use App\Services\QueenbeeGateway;
+use App\Services\OpenAIGateway;
 
 test('can fetch github issue', function () {
   $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', 1);
@@ -29,20 +29,15 @@ The issue body is:
 
 Please respond with the comment you would like to add to the issue. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
 
-  print_r($prompt);
-  print_r("\n\n");
-
-  $gateway = new QueenbeeGateway();
+  $gateway = new OpenAIGateway();
 
   $response = $gateway->makeChatCompletion([
-    'model' => $gateway->defaultModel(),
+    'model' => 'gpt-4',
     'messages' => [
       // ['role' => 'system', 'content' => 'You are a helpful assistant.'],
       ['role' => 'user', 'content' => $prompt],
     ],
   ]);
-
-  print_r($response);
 
   $this->assertIsArray($response);
   $this->assertIsString($response['id']);
@@ -51,5 +46,4 @@ Please respond with the comment you would like to add to the issue. Write like a
   $this->assertIsArray($response['choices']);
   $this->assertIsArray($response['usage']);
   $this->assertIsInt($response['created']);
-
 });
