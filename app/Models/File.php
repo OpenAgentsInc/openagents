@@ -19,6 +19,9 @@ class File extends Model
 
     public function createEmbeddings()
     {
+        if (is_file($this->path) === false) {
+            return;
+        }
         // Open the file and read its text contents into a variable
         $text = file_get_contents($this->path);
 
