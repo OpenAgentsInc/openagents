@@ -28,18 +28,22 @@ class CommentOnIssue extends Command
      */
     public function handle()
     {
+        // Grab the issue number from the command line
         $issueNum = $this->argument('issuenum');
 
+        // Grab the issue body and comments from GitHub
         $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', $issueNum);
         $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', 1);
-
         $body = $response['body'];
         $title = $response['title'];
 
-
+        // Format the issue and comments as messages
         $userAndAssistantMessages = $this->formatIssueAndCommentsAsMessages($body, $commentsResponse);
+
+        // Build the context from a summary of the messages passed as query to a similarity search
         $context = $this->buildContextFrom($userAndAssistantMessages);
 
+        // Build the prompt from the context and the issue title
         $systemPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
 
   You have been summoned to ArcadeLabsInc/openagents issue #1.
@@ -55,23 +59,23 @@ class CommentOnIssue extends Command
 
   Please respond with the comment you would like to add to the issue. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
 
-        // Combine these two arrays
+        // Build the messages array
         $systemMessages = [
           ['role' => 'system', 'content' => $systemPrompt],
         ];
         $messages = array_merge($systemMessages, $userAndAssistantMessages);
 
+        // Make the chat completion to generate the comment
         $gateway = new OpenAIGateway();
-
         $response = $gateway->makeChatCompletion([
           'model' => 'gpt-4',
           'messages' => $messages,
         ]);
-
         $comment = $response['choices'][0]['message']['content'];
         $this->info($comment);
-        $this->info("POSTING...");
 
+        // Post the comment to GitHub
+        $this->info("POSTING...");
         GitHub::api('issue')->comments()->create('ArcadeLabsInc', 'openagents', $issueNum, array('body' => $comment));
         $this->info("DONE!");
     }
