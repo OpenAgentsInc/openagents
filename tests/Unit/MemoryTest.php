@@ -38,9 +38,7 @@ it('can delete a memory', function() {
         'last_accessed' => null,
     ]);
 
-    $memoryId = $memory->id;
     $memory->delete();
 
-    // $this->assertDeleted($memory);
-    $this->assertDatabaseMissing('memories', ['id' => $memoryId]);
+    $this->assertDatabaseMissing('memories', ['id' => $memory->id]);
 });
