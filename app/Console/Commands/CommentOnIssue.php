@@ -44,7 +44,44 @@ class CommentOnIssue extends Command
         $context = $this->buildContextFrom($userAndAssistantMessages);
 
         // Build the prompt from the context and the issue title
-        $systemPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
+        $commitPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
+
+  You have been summoned to solve an issue titled `" . $title . "`
+
+  You cannot speak English, but you can write code. You respond only with code.
+
+  The issue body is the first message below.
+
+  For additional context, consult the following code snippets:
+  ---
+  " . $context . "
+  ---
+
+  Remember, respond ONLY with a unified code diff. Do not include any other text. Do not use natural language. Only code.";
+
+        $systemMessages = [
+            ['role' => 'system', 'content' => $commitPrompt],
+        ];
+        $messages = array_merge($systemMessages, $userAndAssistantMessages,
+        [
+            ['role' => 'user', 'content' => 'Please respond ONLY with a unified code diff we can submit directly to GitHub. Do not include any other text. Do not use natural language. Only the code diff.'],
+        ]);
+
+        $gateway = new OpenAIGateway();
+        $response = $gateway->makeChatCompletion([
+          'model' => 'gpt-4',
+          'messages' => $messages,
+        ]);
+        $commit = $response['choices'][0]['message']['content'];
+        $this->info($commit);
+
+
+
+
+        dd();
+
+        // Build the prompt from the context and the issue title
+        $commentPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
 
   You have been summoned to ArcadeLabsInc/openagents issue #1.
 
@@ -61,12 +98,11 @@ class CommentOnIssue extends Command
 
         // Build the messages array
         $systemMessages = [
-          ['role' => 'system', 'content' => $systemPrompt],
+          ['role' => 'system', 'content' => $commentPrompt],
         ];
         $messages = array_merge($systemMessages, $userAndAssistantMessages);
 
         // Make the chat completion to generate the comment
-        $gateway = new OpenAIGateway();
         $response = $gateway->makeChatCompletion([
           'model' => 'gpt-4',
           'messages' => $messages,
