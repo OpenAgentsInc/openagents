@@ -2,6 +2,27 @@
 
 use App\Services\OpenAIGateway;
 
+test('can create and delete github branch', function () {
+    $owner = 'ArcadeLabsInc';
+    $repo = 'openagents';
+    $baseBranch = 'main';
+
+    $commit = GitHub::api('repo')->commits()->all($owner, $repo, array('sha' => $baseBranch))[0];
+    $latestCommitSha = $commit['sha'];
+
+    // Step 2: Create the new branch
+    $newBranch = 'delete_me';
+    $response = GitHub::api('git')->references()->create($owner, $repo, array(
+        'ref' => 'refs/heads/' . $newBranch,
+        'sha' => $latestCommitSha
+    ));
+    expect($response['ref'])->toBe('refs/heads/' . $newBranch);
+
+    // Step 3: Delete the branch
+    $response = GitHub::api('git')->references()->remove($owner, $repo, 'heads/' . $newBranch);
+    expect($response)->toBe('');
+});
+
 test('can fetch github issue', function () {
     $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', 1);
 
