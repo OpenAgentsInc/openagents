@@ -10,16 +10,47 @@ class Patcher
     public function __construct()
     {
         $this->searcher = new Searcher();
+        $this->patches = [];
     }
 
     private function generatePrTitle()
     {
-        return "placeholder";
+        // ask LLM o write a basic PR title based on the array of patches, $this->patches
+        $prompt = "Write a PR title for the patches below. Use just text, no quotations or punctuation\n\n";
+        foreach ($this->patches as $patch) {
+            if ($patch === null) {
+                continue;
+            }
+            $prompt .= $patch['file_name'] . "\n";
+        }
+        $prompt .= "\nPR title:";
+        $title = $this->complete($prompt);
+        return $title;
     }
 
     private function generatePrBody()
     {
-        return "placeholder";
+        // ask LLM o write a basic PR body in Markdown based on the array of patches, $this->patches
+        $prompt = "Write a PR body for the patches below. Use just Markdown text, no quotations or punctuation\n\n";
+        foreach ($this->patches as $patch) {
+            if ($patch === null) {
+                continue;
+            }
+            $prompt .= $patch['file_name'] . "\n";
+        }
+        $prompt .= "\nPR body:";
+        $body = $this->complete($prompt);
+        return $body;
+    }
+
+    private function generateCommitMessage($patch)
+    {
+        // ask LLM to write a basic commit message comparing the old and new content of the patch
+        $prompt = "Write a commit message for the patch below. Use just text, no quotations or punctuation\n\n
+
+        Old content:\n\n" . $patch['content'] . "\n\nNew content:\n\n" . $patch['new_content'] . "\n\nCommit message:";
+        $msg = $this->complete($prompt);
+        return $msg;
     }
 
     /**
@@ -32,6 +63,7 @@ class Patcher
      */
     public function submitPatchesToGitHub(array $patches, string $fullrepo = "ArcadeLabsInc/openagents", string $branch = 'main')
     {
+        $this->patches = $patches;
         foreach ($patches as $patch) {
             if ($patch === null) {
                 continue;
@@ -55,7 +87,9 @@ class Patcher
                 $blobSha = $fileInfo['sha'];
 
                 // Update the file
-                $commitMessage = "Update " . basename($path) . " - Patch applied";
+                $commitMessage = $this->generateCommitMessage($patch);
+
+                // $commitMessage = "Update " . basename($path) . " - Patch applied";
                 GitHub::api('repo')->contents()->update($owner, $repository, $path, $newContent, $commitMessage, $blobSha, $branch);
             } catch (\Exception $e) {
                 echo "Error updating file {$path}: " . $e->getMessage() . "\n";
