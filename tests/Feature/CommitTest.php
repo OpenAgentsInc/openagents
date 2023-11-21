@@ -30,9 +30,9 @@ test('can submit issue patches to github', function () {
   $patcher = new Patcher();
   $issue = [
       "title" => "Capitalize all comments",
-      "body" => "Make sure all comments are IN ALL CAPS.",
+      "body" => "Make sure all comments (lines beginning with //) are IN ALL CAPS.",
   ];
-  $patches = $patcher->getIssuePatches($issue, 2);
-  $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "testbranch2");
+  $patches = $patcher->getIssuePatches($issue, 3);
+  $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "testbranch");
   print_r($res);
 });

@@ -12,6 +12,16 @@ class Patcher
         $this->searcher = new Searcher();
     }
 
+    private function generatePrTitle()
+    {
+        return "placeholder";
+    }
+
+    private function generatePrBody()
+    {
+        return "placeholder";
+    }
+
     /**
      * Submits the given patches to GitHub as a pull request.
      *
@@ -53,8 +63,8 @@ class Patcher
         }
 
         // Create pull request
-        $prTitle = "Test pull request"; // Define your PR title
-        $prBody = "Testing our ability to create pull requests."; // Define your PR body
+        $prTitle = $this->generatePrTitle(); // Define your PR title
+        $prBody = $this->generatePrBody(); // Define your PR body
         $res = GitHub::api('pull_request')->create($owner, $repository, [
             'title' => $prTitle,
             'body' => $prBody,
