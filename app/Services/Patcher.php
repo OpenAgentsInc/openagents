@@ -3,12 +3,68 @@
 namespace App\Services;
 
 use App\Services\Searcher;
+use GitHub;
 
 class Patcher
 {
     public function __construct()
     {
         $this->searcher = new Searcher();
+    }
+
+    /**
+     * Submits the given patches to GitHub as a pull request.
+     *
+     * @param array $patches An array of patches.
+     * @param string $repository The target repository in the format 'owner/repo'.
+     * @param string $branch The branch to apply the patches to.
+     * @return void
+     */
+    public function submitPatchesToGitHub(array $patches, string $fullrepo = "ArcadeLabsInc/openagents", string $branch = 'main')
+    {
+        foreach ($patches as $patch) {
+            if ($patch === null) {
+                continue;
+            }
+
+            $path = $patch['file_name'];
+            $newContent = $patch['new_content'];
+
+            // Split fullrepo by / into org and repo
+            $repo = explode("/", $fullrepo);
+            $owner = $repo[0];
+            $repository = $repo[1];
+
+            try {
+                // Get the reference of the branch
+                $reference = GitHub::api('git')->references()->show($owner, $repository, 'heads/' . $branch);
+                $sha = $reference['object']['sha'];
+
+                // Get the blob SHA of the file
+                $fileInfo = GitHub::api('repo')->contents()->show($owner, $repository, $path, $branch);
+                $blobSha = $fileInfo['sha'];
+
+                // Update the file
+                $commitMessage = "Update " . basename($path) . " - Patch applied";
+                GitHub::api('repo')->contents()->update($owner, $repository, $path, $newContent, $commitMessage, $blobSha, $branch);
+            } catch (\Exception $e) {
+                echo "Error updating file {$path}: " . $e->getMessage() . "\n";
+            }
+        }
+
+        // Create pull request
+        $prTitle = "Test pull request"; // Define your PR title
+        $prBody = "Testing our ability to create pull requests."; // Define your PR body
+        $res = GitHub::api('pull_request')->create($owner, $repository, [
+            'title' => $prTitle,
+            'body' => $prBody,
+            'head' => $branch,
+            'base' => 'main' // Base branch in the upstream repository
+        ]);
+        return [
+            "ok" => true,
+            "res" => $res
+        ];
     }
 
     /**
