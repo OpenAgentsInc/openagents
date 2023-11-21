@@ -9,6 +9,6 @@ class Memory extends Model
 {
     use HasFactory;
 
-    // All the attributes we want to mass assign must be specified in the `$fillable` property
+    // ALL THE ATTRIBUTES WE WANT TO MASS ASSIGN MUST BE SPECIFIED IN THE `$FILLABLE` PROPERTY
     protected $fillable = ['description', 'last_accessed'];
 }
