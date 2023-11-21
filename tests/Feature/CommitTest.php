@@ -17,12 +17,11 @@ test('can get issue patches', function () {
         "title" => "Capitalize all comments",
         "body" => "Make sure all comments are IN ALL CAPS.",
     ];
-    $patches = $patcher->getIssuePatches($issue, 10);
-    dd($patches);
+    $patches = $patcher->getIssuePatches($issue, 2);
 
-    // expect($patches)->toBeArray();
-    // expect($patches)->toHaveCount(1);
-    // expect($patches[0])->toHaveKey('file_name');
-    // expect($patches[0])->toHaveKey('content');
-    // expect($patches[0])->toHaveKey('new_content');
+    expect($patches)->toBeArray();
+    expect($patches)->toHaveCount(2);
+    expect($patches[0])->toHaveKey('file_name');
+    expect($patches[0])->toHaveKey('content');
+    expect($patches[0])->toHaveKey('new_content');
 });
