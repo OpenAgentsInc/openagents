@@ -6,12 +6,12 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
 
-it('has many agents', function () {
-  $user = User::factory()->create();
-  $agent = Agent::factory()->create(['user_id' => $user->id]);
+IT('HAS MANY AGENTS', FUNCTION () {
+  $USER = USER::FACTORY()->CREATE();
+  $AGENT = AGENT::FACTORY()->CREATE(['USER_ID' => $USER->ID]);
 
-  $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->agents);
-  $this->assertInstanceOf(Agent::class, $user->agents->first());
+  $THIS->ASSERTINSTANCEOF('ILLUMINATE\DATABASE\ELoQUENT\COLLECTION', $USER->AGENTS);
+  $THIS->ASSERTINSTANCEOF(AGENT::CLASS, $USER->AGENTS->FIRST());
 });
 
 it('has many conversations', function () {
