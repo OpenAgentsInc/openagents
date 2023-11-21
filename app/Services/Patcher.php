@@ -26,8 +26,10 @@ class Patcher
         foreach ($nearestFiles as $file) {
             // Determine patch for file
             $patch = $this->determinePatchForFile($file, $issue);
-            dd($patch);
+            $patches[] = $patch;
         }
+
+        return $patches;
     }
 
     private function determinePatchForFile($file, $issue)
