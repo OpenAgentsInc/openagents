@@ -4,14 +4,14 @@ use App\Models\Conversation;
 use App\Models\File;
 use App\Models\Message;
 
-it('has a body', function () {
-  $message = Message::factory()->create(['body' => 'Hello, world!']);
+IT('HAS A BODY', FUNCTION () {
+  $MESSAGE = MESSAGE::FACTORY()->CREATE(['BODY' => 'HELLO, WORLD!']);
 
-  $this->assertEquals('Hello, world!', $message->body);
+  $THIS->ASSERTEQUALS('HELLO, WORLD!', $MESSAGE->BODY);
 });
 
-it('has a sender of user or agent', function () {
-  $message = Message::factory()->create(['sender' => 'user']);
+IT('HAS A SENDER OF USER OR AGENT', FUNCTION () {
+  $MESSAGE = MESSAGE::FACTORY()->CREATE(['SENDER' => 'USER']);
 
-  $this->assertEquals('user', $message->sender);
+  $THIS->ASSERTEQUALS('USER', $MESSAGE->SENDER);
 });
