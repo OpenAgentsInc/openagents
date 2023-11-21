@@ -4,9 +4,9 @@ use App\Models\Agent;
 use App\Models\Artifact;
 use App\Models\Task;
 
-it('has a name', function () {
-  $artifact = Artifact::factory()->create(['name' => 'My Artifact']);
-  expect($artifact->name)->toBe('My Artifact');
+IT('HAS A NAME', FUNCTION () {
+  $ARTIFACT = ARTIFACT::FACTORY()->CREATE(['NAME' => 'MY ARTIFACT']);
+  EXPECT($ARTIFACT->NAME)->TOBE('MY ARTIFACT');
 });
 
 it('belongs to an agent', function () {
