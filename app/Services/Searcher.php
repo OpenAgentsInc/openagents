@@ -8,7 +8,7 @@ use Pgvector\Laravel\Vector;
 
 class Searcher
 {
-    public function queryAllFiles($query)
+    public function queryAllFiles($query, $take = 8)
     {
         $gateway = new QueenbeeGateway();
         $result = $gateway->createEmbedding($query);
@@ -16,7 +16,7 @@ class Searcher
 
         $searchResults = Embedding::query()
             ->orderByRaw('embedding <-> ?', [$embedding])
-            ->take(8)
+            ->take($take)
             ->pluck('metadata');
 
         return [

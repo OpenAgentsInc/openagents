@@ -12,12 +12,13 @@ test('can clean code block', function () {
 
 
 test('can get issue patches', function () {
-    $cleaner = new Patcher();
+    $patcher = new Patcher();
     $issue = [
-        "title" => "Example issue",
-        "body" => "Example issue body",
+        "title" => "Capitalize all comments",
+        "body" => "Make sure all comments are IN ALL CAPS.",
     ];
-    $patches = $cleaner->getIssuePatches($issue);
+    $patches = $patcher->getIssuePatches($issue, 10);
+    dd($patches);
 
     // expect($patches)->toBeArray();
     // expect($patches)->toHaveCount(1);
