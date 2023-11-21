@@ -27,10 +27,10 @@ class EmbedFolders extends Command
     public function handle()
     {
         $folders = [
-          'app/Http/Controllers'
-          // 'app/Models',
-          // 'database/migrations',
-          // 'tests/Unit'
+          'app/Http/Controllers',
+          'app/Models',
+          'database/migrations',
+          'tests/Unit'
         ];
 
         $embedder = new Embedder();
