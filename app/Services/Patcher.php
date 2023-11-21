@@ -18,14 +18,15 @@ class Patcher
      *                     which should include 'title', 'body', and other relevant data.
      * @return array An array of patches.
      */
-    public function getIssuePatches($issue)
+    public function getIssuePatches($issue, $take = 5)
     {
         $patches = [];
-        $nearestFiles = $this->getNearestFiles($issue);
+        $nearestFiles = $this->getNearestFiles($issue, $take);
 
         foreach ($nearestFiles as $file) {
             // Determine patch for file
             $patch = $this->determinePatchForFile($file, $issue);
+            dd($patch);
         }
     }
 
@@ -40,7 +41,7 @@ class Patcher
         $fileContent = file_get_contents($file);
 
         // Construct the prompt for checking if a patch is needed
-        $prompt = "Below is an issue on for the [remote_path] codebase.\nIssue: {$issue['title']} - {$issue['body']}\n\nHere is a potential file that may need to be updated to fix the issue:\n";
+        $prompt = "Below is an issue on OpenAgents codebase.\nIssue: {$issue['title']} - {$issue['body']}\n\nHere is a potential file that may need to be updated to fix the issue:\n";
         $prompt .= "{$file}```\n{$fileContent}```\n";
         $actionPrompt1 = "Does this file need to be changed to resolve the issue? Respond with only `Yes` or `No`.";
         $needsPatch = $this->complete($prompt . $actionPrompt1);
@@ -55,7 +56,7 @@ class Patcher
         $change = $this->complete($prompt . $actionPrompt2);
 
         if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
-            echo "Warning: incorrect output format\n";
+            dd("Warning: incorrect output format\n");
             return null;
         }
 
@@ -64,7 +65,7 @@ class Patcher
         $after = $this->cleanCodeBlock($after);
 
         if (strpos($fileContent, $before) === false) {
-            echo "Warning: cannot locate `Before` block\n";
+            dd("Warning: cannot locate `Before` block\n");
             return null;
         }
 
@@ -83,12 +84,12 @@ class Patcher
      * @param array $issue An associative array representing an issue.
      * @return array An array of file paths.
      */
-    private function getNearestFiles($issue)
+    private function getNearestFiles($issue, $take = 5)
     {
         // Placeholder logic: This method should contain the logic to determine the nearest files
         // For now, it returns an empty array.
 
-        $files = $this->searcher->queryAllFiles($issue['title']);
+        $files = $this->searcher->queryAllFiles($issue['title'] . "\n" . $issue['body'], $take);
 
         // if $files["ok"] == true, then $files["results"] contains the files,each having "path" with path. Just return an array of that
         if ($files["ok"]) {
@@ -135,7 +136,8 @@ class Patcher
     private function complete($prompt, $tokensResponse = 1024)
     {
         $maxContentLength = 4097; // Define this constant based on your use case
-        $modelCompletion = "text-davinci-003"; // Define this constant for the model you're using
+        $modelCompletion = "gpt-3.5-turbo-instruct"; // Define this constant for the model you're using
+        // $modelCompletion = "text-davinci-003"; // Define this constant for the model you're using
 
         if (strlen($prompt) > $maxContentLength - $tokensResponse) {
             $nonSequitur = '\n...truncated\n';
@@ -177,6 +179,6 @@ class Patcher
             }
         }
 
-        return ''; // Return empty string or handle error appropriately
+        return '---'; // Return empty string or handle error appropriately
     }
 }
