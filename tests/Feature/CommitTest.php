@@ -33,7 +33,7 @@ test('can submit issue patches to github', function () {
       "body" => "Make sure all comments (lines beginning with //) are IN ALL CAPS.",
   ];
   $patches = $patcher->getIssuePatches($issue, 3);
-  $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "testbranch5");
+  $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/trashheap", "testbranch");
 
   expect($res)->toBeArray();
   expect($res["ok"])->toBeTrue();
