@@ -85,6 +85,7 @@ class Patcher
                 // Get the blob SHA of the file
                 $fileInfo = GitHub::api('repo')->contents()->show($owner, $repository, $path, $branch);
                 $blobSha = $fileInfo['sha'];
+                // dd($blobSha);
 
                 // Update the file
                 $commitMessage = $this->generateCommitMessage($patch);
