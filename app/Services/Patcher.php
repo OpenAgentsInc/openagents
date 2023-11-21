@@ -22,44 +22,58 @@ class Patcher
     {
         $patches = [];
         $nearestFiles = $this->getNearestFiles($issue);
-        dd($nearestFiles);
 
         foreach ($nearestFiles as $file) {
-            echo "Processing file: {$file}\n";
+            // Determine patch for file
+            $patch = $this->determinePatchForFile($file, $issue);
+        }
+    }
 
-            // Here you would have some logic to determine the 'Before' and 'After' contents
-            $beforeContent = "/* predefined 'Before' content */";
-            $afterContent = "/* predefined 'After' content */";
-
-            // Read the file content
-            if (!file_exists($file)) {
-                echo "File not found: {$file}\n";
-                continue;
-            }
-            $fileContent = file_get_contents($file);
-
-            // Clean the 'Before' and 'After' contents
-            $beforeContent = $this->cleanCodeBlock($beforeContent);
-            $afterContent = $this->cleanCodeBlock($afterContent);
-
-            // Check if the 'Before' content exists in the file
-            if (strpos($fileContent, $beforeContent) === false) {
-                echo "The specified 'Before' content was not found in the file: {$file}\n";
-                continue;
-            }
-
-            // Create the patch
-            $newFileContent = str_replace($beforeContent, $afterContent, $fileContent);
-            $patch = [
-                "file_name" => $file,
-                "content" => $fileContent,
-                "new_content" => $newFileContent
-            ];
-            $patches[] = $patch;
+    private function determinePatchForFile($file, $issue)
+    {
+        // Check if the file exists
+        if (!file_exists($file)) {
+            dd("File not found: {$file}\n");
         }
 
-        echo "Generated " . count($patches) . " patches for the issue.\n";
-        return $patches;
+        // Read the file content
+        $fileContent = file_get_contents($file);
+
+        // Construct the prompt for checking if a patch is needed
+        $prompt = "Below is an issue on for the [remote_path] codebase.\nIssue: {$issue['title']} - {$issue['body']}\n\nHere is a potential file that may need to be updated to fix the issue:\n";
+        $prompt .= "{$file}```\n{$fileContent}```\n";
+        $actionPrompt1 = "Does this file need to be changed to resolve the issue? Respond with only `Yes` or `No`.";
+        $needsPatch = $this->complete($prompt . $actionPrompt1);
+
+        // Assuming needsPatch is 'Yes' or 'No', proceed accordingly
+        if ($needsPatch === 'No') {
+            return null;
+        }
+
+        // Construct the prompt for getting the 'Before' and 'After' contents
+        $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
+        $change = $this->complete($prompt . $actionPrompt2);
+
+        if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
+            echo "Warning: incorrect output format\n";
+            return null;
+        }
+
+        list($before, $after) = explode("After:", explode("Before:", $change, 2)[1], 2);
+        $before = $this->cleanCodeBlock($before);
+        $after = $this->cleanCodeBlock($after);
+
+        if (strpos($fileContent, $before) === false) {
+            echo "Warning: cannot locate `Before` block\n";
+            return null;
+        }
+
+        $newFileContent = str_replace($before, $after, $fileContent);
+        return [
+            "file_name" => $file,
+            "content" => $fileContent,
+            "new_content" => $newFileContent
+        ];
     }
 
     /**
@@ -109,5 +123,60 @@ class Patcher
 
         // Trim again to remove any whitespace left after removing the syntax
         return trim($codeBlock);
+    }
+
+    /**
+     * Generates a response from OpenAI's Completion API based on the provided prompt.
+     *
+     * @param string $prompt The prompt to send to the API.
+     * @param int $tokensResponse The maximum number of tokens in the response.
+     * @return string The response text from the API.
+     */
+    private function complete($prompt, $tokensResponse = 1024)
+    {
+        $maxContentLength = 4097; // Define this constant based on your use case
+        $modelCompletion = "text-davinci-003"; // Define this constant for the model you're using
+
+        if (strlen($prompt) > $maxContentLength - $tokensResponse) {
+            $nonSequitur = '\n...truncated\n';
+            $margin = intdiv(strlen($nonSequitur), 2);
+            $firstHalf = intdiv($maxContentLength - $tokensResponse, 2);
+            $prompt = substr($prompt, 0, $firstHalf - $margin) . $nonSequitur . substr($prompt, -$firstHalf + $margin);
+        }
+
+        for ($i = 0; $i < 3; $i++) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, 'https://api.openai.com/v1/engines/' . $modelCompletion . '/completions');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+                'prompt' => $prompt,
+                'max_tokens' => $tokensResponse,
+                'temperature' => 0.2,
+                'top_p' => 1,
+                'frequency_penalty' => 0.5,
+                'presence_penalty' => 0.6
+            ]));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . env("OPENAI_API_KEY")
+            ]);
+
+            $result = curl_exec($ch);
+            if (curl_errno($ch)) {
+                echo "Tried $i times. Couldn't get response, trying again...\n";
+                sleep(1);
+                continue;
+            }
+
+            $response = json_decode($result, true);
+            curl_close($ch);
+
+            if (isset($response['choices'][0]['text'])) {
+                return trim($response['choices'][0]['text']);
+            }
+        }
+
+        return ''; // Return empty string or handle error appropriately
     }
 }
