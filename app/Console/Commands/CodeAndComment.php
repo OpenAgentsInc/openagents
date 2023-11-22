@@ -16,7 +16,7 @@ class CodeIssue extends Command
      *
      * @var string
      */
-    protected $signature = 'code {issuenum}';
+    protected $signature = 'codenow {issuenum}';
 
     /**
      * The console command description.
@@ -48,77 +48,76 @@ class CodeIssue extends Command
         // Build the context from a summary of the messages passed as query to a similarity search
         $context = $this->buildContextFrom($userAndAssistantMessages);
 
+        $taskDescription = $planner->createPlan($userAndAssistantMessages);
+
         // Build the prompt from the context and the issue title
-        $commitPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
+  //       $commitPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
 
-  You have been summoned to solve an issue titled `" . $title . "`
+  // You have been summoned to solve an issue titled `" . $title . "`
 
-  You cannot speak English, but you can write code. You respond only with code.
+  // You cannot speak English, but you can write code. You respond only with code.
 
-  The issue body is the first message below.
+        $planPrompt = "A description of your next task is:" . $taskDescription . "
 
   For additional context, consult the following code snippets:
   ---
-  " . $context . "
-  ---
+  " . $context;
 
-  Remember, respond ONLY with a unified code diff. Do not include any other text. Do not use natural language. Only code.";
+  // Remember, respond ONLY with a unified code diff. Do not include any other text. Do not use natural language. Only code.";
 
-        $systemMessages = [
-            ['role' => 'system', 'content' => $commitPrompt],
-        ];
-        $messages = array_merge($systemMessages, $userAndAssistantMessages,
-        [
-            ['role' => 'user', 'content' => 'Please respond ONLY with a unified code diff we can submit directly to GitHub. Do not include any other text. Do not use natural language. Only the code diff.'],
+        $patches = $patcher->getIssuePatches([
+            "title" => $title,
+            "body" => $planPrompt
         ]);
 
-        $gateway = new OpenAIGateway();
-        $response = $gateway->makeChatCompletion([
-          'model' => 'gpt-4',
-          'messages' => $messages,
-        ]);
-        $commit = $response['choices'][0]['message']['content'];
-        $this->info($commit);
+        print_r($patches);
+        print_r("---");
+
+        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/trashheap", "testbranch");
+        print_r($res);
+
+
+        $this->info("Done!");
 
 
 
 
-        dd();
+  //       dd();
 
-        // Build the prompt from the context and the issue title
-        $commentPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
+  //       // Build the prompt from the context and the issue title
+  //       $commentPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
 
-  You have been summoned to ArcadeLabsInc/openagents issue #1.
+  // You have been summoned to ArcadeLabsInc/openagents issue #1.
 
-  The issue is titled `" . $title . "`
+  // The issue is titled `" . $title . "`
 
-  The issue body is the first message below.
+  // The issue body is the first message below.
 
-  For additional context, consult the following code snippets:
-  ---
-  " . $context . "
-  ---
+  // For additional context, consult the following code snippets:
+  // ---
+  // " . $context . "
+  // ---
 
-  Please respond with the comment you would like to add to the issue. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
+  // Please respond with the comment you would like to add to the issue. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
 
-        // Build the messages array
-        $systemMessages = [
-          ['role' => 'system', 'content' => $commentPrompt],
-        ];
-        $messages = array_merge($systemMessages, $userAndAssistantMessages);
+  //       // Build the messages array
+  //       $systemMessages = [
+  //         ['role' => 'system', 'content' => $commentPrompt],
+  //       ];
+  //       $messages = array_merge($systemMessages, $userAndAssistantMessages);
 
-        // Make the chat completion to generate the comment
-        $response = $gateway->makeChatCompletion([
-          'model' => 'gpt-4',
-          'messages' => $messages,
-        ]);
-        $comment = $response['choices'][0]['message']['content'];
-        $this->info($comment);
+  //       // Make the chat completion to generate the comment
+  //       $response = $gateway->makeChatCompletion([
+  //         'model' => 'gpt-4',
+  //         'messages' => $messages,
+  //       ]);
+  //       $comment = $response['choices'][0]['message']['content'];
+  //       $this->info($comment);
 
-        // Post the comment to GitHub
-        $this->info("POSTING...");
-        GitHub::api('issue')->comments()->create('ArcadeLabsInc', 'openagents', $issueNum, array('body' => $comment));
-        $this->info("DONE!");
+  //       // Post the comment to GitHub
+  //       $this->info("POSTING...");
+  //       GitHub::api('issue')->comments()->create('ArcadeLabsInc', 'openagents', $issueNum, array('body' => $comment));
+        // $this->info("DONE!");
     }
 
     private function buildContextFrom(array $messages): string
