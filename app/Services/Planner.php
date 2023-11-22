@@ -4,7 +4,6 @@ namespace App\Services;
 
 class Planner
 {
-    // in constructor initiate a new OpenAIGateway
     private $gateway;
 
     public function __construct()
