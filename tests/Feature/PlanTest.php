@@ -15,6 +15,6 @@ test('can create plan based on github conversation', function () {
     $plan = $planner->createPlan($messages);
 
     // The plan should be a single string
-    print_r($plan);
+    // print_r($plan);
     expect($plan)->toBeString();
 });

@@ -28,6 +28,7 @@ class CommentOnIssue extends Command
      */
     public function handle()
     {
+        dd("test");
         // Grab the issue number from the command line
         $issueNum = $this->argument('issuenum');
 
