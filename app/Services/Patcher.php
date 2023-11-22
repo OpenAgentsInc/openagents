@@ -115,16 +115,20 @@ class Patcher
                 $reference = GitHub::api('git')->references()->show($owner, $repository, 'heads/' . $branch);
                 $sha = $reference['object']['sha'];
 
-                // Get the blob SHA of the file
-                $fileInfo = GitHub::api('repo')->contents()->show($owner, $repository, $path, $branch);
-                $blobSha = $fileInfo['sha'];
-                // dd($blobSha);
-
-                // Update the file
+                $fileExists = GitHub::api('repo')->contents()->exists($owner, $repository, $path, $branch);
                 $commitMessage = $this->generateCommitMessage($patch);
 
-                // $commitMessage = "Update " . basename($path) . " - Patch applied";
-                GitHub::api('repo')->contents()->update($owner, $repository, $path, $newContent, $commitMessage, $blobSha, $branch);
+                if ($fileExists) {
+                    // Existing file update logic
+                    print_r("Updating file {$path}");
+                    $fileInfo = GitHub::api('repo')->contents()->show($owner, $repository, $path, $branch);
+                    $blobSha = $fileInfo['sha'];
+                    GitHub::api('repo')->contents()->update($owner, $repository, $path, $newContent, $commitMessage, $blobSha, $branch);
+                } else {
+                    // New file creation logic
+                    print_r("Creating file {$path}");
+                    GitHub::api('repo')->contents()->create($owner, $repository, $path, $newContent, $commitMessage, $branch);
+                }
             } catch (\Exception $e) {
                 echo "Error updating file {$path}: " . $e->getMessage() . "\n";
             }
@@ -152,12 +156,26 @@ class Patcher
      *                     which should include 'title', 'body', and other relevant data.
      * @return array An array of patches.
      */
-    public function getIssuePatches($issue, $take = 5)
+    public function getIssuePatches($issue, $take = 8)
     {
         $patches = [];
         $this->issue = $issue;
         $this->task = explode("For additional context, consult the following code snippets:", $issue["body"])[0];
-        // dd($this->task);
+
+        // CREATE NEW FILES
+        $newFiles = $this->promptForNewFiles();
+        foreach ($newFiles as $newFilePath) {
+            $newFileContent = $this->promptForNewFileContent($newFilePath, $issue);
+            print_r("NEW FILE CONTENT!");
+            print_r($newFileContent);
+            $patches[] = [
+                "file_name" => $newFilePath,
+                "content" => '',
+                "new_content" => $newFileContent
+            ];
+        }
+
+        // UPDATE EXISTING FILES
         $nearestFiles = $this->getNearestFiles($issue, $take);
 
         foreach ($nearestFiles as $file) {
@@ -167,6 +185,43 @@ class Patcher
         }
 
         return $patches;
+    }
+
+    private function promptForNewFileContent($newFilePath, $issue)
+    {
+        $prompt = "Below is an issue on OpenAgents codebase.\nIssue: {$this->issue['title']} \n\n Issue body: {$this->issue['body']}\n";
+        $actionPrompt1 = "Please enter the content for the new file {$newFilePath}. Return only code, no comments or other explanation. Place your code in Markdown backticks. Use no English words to explain, only the code in a code block.";
+
+        $newFileContent = $this->complete($prompt . $actionPrompt1);
+
+        return $this->cleanCodeBlock($newFileContent);
+    }
+
+    private function promptForNewFiles()
+    {
+        $prompt = "Below is an issue on OpenAgents codebase.\nIssue: {$this->issue['title']} \n\n Issue body: {$this->issue['body']}\n";
+        $actionPrompt1 = "Please enter the file paths of any files that need to be created to resolve the issue. Separate multiple file paths with a comma.";
+        $newFiles = $this->complete($prompt . $actionPrompt1);
+
+        if ($newFiles === '') {
+            return [];
+        }
+
+        // Explode the string into an array and trim each element
+        $filePaths = array_map('trim', explode(",", $newFiles));
+
+        // Filter out invalid paths and check if the file exists
+        $filePaths = array_filter($filePaths, function ($path) {
+            // Regular expression to validate file paths (modify as needed)
+            if (!preg_match('/^[a-zA-Z0-9\/\._-]+$/', $path)) {
+                return false;
+            }
+
+            // Check if the file exists
+            return !file_exists($path);
+        });
+
+        return array_values($filePaths); // Re-index the array
     }
 
     private function determinePatchForFile($file, $issue)
@@ -184,7 +239,6 @@ class Patcher
         $prompt .= "{$file}```\n{$fileContent}```\n";
         $actionPrompt1 = "Does this file need to be changed to resolve the issue? Respond with only `Yes` or `No`.";
         $needsPatch = $this->complete($prompt . $actionPrompt1);
-        // print_r("Needs patch: {$needsPatch}\n");
 
         // Assuming needsPatch is 'Yes' or 'No', proceed accordingly
         if ($needsPatch === 'No') {
@@ -249,75 +303,8 @@ class Patcher
                 "content" => $fileContent,
                 "new_content" => $newFileContent
             ];
-
-            // list($before, $after) = explode("After:", explode("Before:", $change, 2)[1], 2);
-            // $before = $this->cleanCodeBlock($before);
-            // $after = $this->cleanCodeBlock($after);
-
-            // if (strpos($fileContent, $before) === false) {
-            //     if (++$retryCount >= $maxRetries) {
-            //         dd("Warning: exceeded maximum retries for finding `Before` block\n");
-            //         return null;
-            //     }
-            //     continue;
-            // }
-
-            // $newFileContent = str_replace($before, $after, $fileContent);
-            // return [
-            //     "file_name" => $file,
-            //     "content" => $fileContent,
-            //     "new_content" => $newFileContent
-            // ];
         }
     }
-
-
-    // private function determinePatchForFile($file, $issue)
-    // {
-    //     // Check if the file exists
-    //     if (!file_exists($file)) {
-    //         dd("File not found: {$file}\n");
-    //     }
-
-    //     // Read the file content
-    //     $fileContent = file_get_contents($file);
-
-    //     // Construct the prompt for checking if a patch is needed
-    //     $prompt = "Below is an issue on OpenAgents codebase.\nIssue: {$issue['title']} - {$issue['body']}\n\nHere is a potential file that may need to be updated to fix the issue:\n";
-    //     $prompt .= "{$file}```\n{$fileContent}```\n";
-    //     $actionPrompt1 = "Does this file need to be changed to resolve the issue? Respond with only `Yes` or `No`.";
-    //     $needsPatch = $this->complete($prompt . $actionPrompt1);
-
-    //     // Assuming needsPatch is 'Yes' or 'No', proceed accordingly
-    //     if ($needsPatch === 'No') {
-    //         return null;
-    //     }
-
-    //     // Construct the prompt for getting the 'Before' and 'After' contents
-    //     $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
-    //     $change = $this->complete($prompt . $actionPrompt2);
-
-    //     if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
-    //         dd("Warning: incorrect output format\n");
-    //         return null;
-    //     }
-
-    //     list($before, $after) = explode("After:", explode("Before:", $change, 2)[1], 2);
-    //     $before = $this->cleanCodeBlock($before);
-    //     $after = $this->cleanCodeBlock($after);
-
-    //     if (strpos($fileContent, $before) === false) {
-    //         dd("Warning: cannot locate `Before` block\n");
-    //         return null;
-    //     }
-
-    //     $newFileContent = str_replace($before, $after, $fileContent);
-    //     return [
-    //         "file_name" => $file,
-    //         "content" => $fileContent,
-    //         "new_content" => $newFileContent
-    //     ];
-    // }
 
     /**
      * Placeholder for the getNearestFiles method.
