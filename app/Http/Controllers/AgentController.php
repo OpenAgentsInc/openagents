@@ -15,15 +15,15 @@ class AgentController extends Controller
     ]);
 
     $name = request('name');
+// create agent in database
+$agent = Agent::create([
+    'user_id' => auth()->user()->id,
+    'name' => $name,
+]);
 
-    // create agent in database
-    $agent = Agent::create([
-      'user_id' => auth()->user()->id,
-      'name' => $name,
-    ]);
-
-    return response()->json([
-      'name' => $name,
-    ], 201);
-  }
+return response()->json([
+    'agent_id' => $agent->id, // add agent id to response
+    'name' => $name,
+], 201);
+}
 }
