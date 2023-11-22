@@ -31,14 +31,19 @@ it('can update a memory', function() {
         'description' => 'Updated description',
     ]);
 });
-
 it('can delete a memory', function() {
+    // Create a new memory
     $memory = Memory::create([
         'description' => 'Test description',
         'last_accessed' => null,
     ]);
 
-    $memory->delete();
+    // Delete the memory
+    $response = $this->delete('/api/memories/' . $memory->id);
 
+    // Verify that the memory was deleted from the database
     $this->assertDatabaseMissing('memories', ['id' => $memory->id]);
+
+    // Verify that the correct status code is returned
+    $response->assertStatus(200);
 });
