@@ -16,19 +16,19 @@ it('has a name', function () {
   $agent = Agent::factory()->create(['name' => 'My Agent']);
   expect($agent->name)->toBe('My Agent');
 });
-
 it('has many conversations', function () {
   $user = User::factory()->create();
   $agent = Agent::factory()->create(['user_id' => $user->id]);
-  $conversation = Conversation::factory()->create([
+  // Create multiple conversations for the agent
+  Conversation::factory()->count(3)->create([
     'agent_id' => $agent->id,
     'user_id' => $user->id
   ]);
 
-  $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->conversations);
-  $this->assertInstanceOf(Conversation::class, $agent->conversations->first());
+  // Check if the agent has a collection of conversations and if the first conversation is an instance of Conversation model
+  expect($agent->conversations)->toBeInstanceOf('Illuminate\Database\Eloquent\Collection');
+  expect($agent->conversations[0])->toBeInstanceOf(Conversation::class);
 });
-
 it('has many tasks', function () {
   $agent = Agent::factory()->create();
   $task = Task::factory()->create(['agent_id' => $agent->id]);
