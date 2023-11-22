@@ -14,14 +14,20 @@ class MessageController extends Controller
       'body' => 'required',
       'conversation_id' => 'required',
     ]);
+// create a message in the given conversation
+$message = request()->user()->messages()->create([
+  'body' => request('body'),
+  'conversation_id' => request('conversation_id'),
+]);
 
-    // create a message in the given conversation
-    request()->user()->messages()->create([
-      'body' => request('body'),
-      'conversation_id' => request('conversation_id'),
-      'sender' => 'user'
-    ]);
+// set sender based on user role
+if (request()->user() instanceof Agent) {
+    $message->sender = 'agent';
+} else {
+    $message->sender = 'user';
+}
 
-    return response()->json([], 201);
+$message->save();
+return response()->json([], 201);
   }
 }
