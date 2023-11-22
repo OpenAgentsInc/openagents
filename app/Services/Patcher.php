@@ -10,46 +10,79 @@ class Patcher
     public function __construct()
     {
         $this->searcher = new Searcher();
+        $this->issue = null;
+        $this->task = "";
         $this->patches = [];
     }
 
     private function generatePrTitle()
     {
-        // ask LLM o write a basic PR title based on the array of patches, $this->patches
-        $prompt = "Write a PR title for the patches below. Use just text, no quotations or punctuation\n\n";
+        // ask LLM to write a basic PR title based on the array of patches, $this->patches
+        $prompt = "Write a PR title for the patches below. Use less than 50 characters.\n\n";
         foreach ($this->patches as $patch) {
             if ($patch === null) {
                 continue;
             }
-            $prompt .= $patch['file_name'] . "\n";
+            // $prompt .= $patch['file_name'] . "\n";
+            // Append file_name, content (old), and new_content (new) to the prompt
+            $prompt .= $patch['file_name'] . "\n\nOld content:\n" . $patch['content'] . "\n\nNew content:\n\n" . $patch['new_content'] . "\n";
         }
         $prompt .= "\nPR title:";
         $title = $this->complete($prompt);
+
+        // Strip off any double quotation marks at beginning and end of the title
+        $title = trim($title, '"');
+
+        // Remove all double-quotations from this string
+        $title = str_replace('"', '', $title);
+
         return $title;
     }
 
     private function generatePrBody()
     {
+        print_r("TASK:");
+        print_r($this->task);
+        print_r("-----");
+
         // ask LLM o write a basic PR body in Markdown based on the array of patches, $this->patches
-        $prompt = "Write a PR body for the patches below. Use just Markdown text, no quotations or punctuation\n\n";
+        $prompt = "You are a senior developer about to submit a PR. You were directed to do the following task:\n\n ---\n" . $this->task . "\n---\n\n
+
+        Write a PR body in Markdown for the patches below. Include a summary of the changes at the top, followed by a description of individual changes. Do not use the word 'patch'. Only describe the differences between the new and old content, do not summarize existing code.\n\n";
+
+        print_r("PR BODY:");
+        print_r($prompt);
+
+        // explode by "For additional context, consult the following code snippets:"
+
+
         foreach ($this->patches as $patch) {
             if ($patch === null) {
                 continue;
             }
-            $prompt .= $patch['file_name'] . "\n";
+            $prompt .= $patch['file_name'] . "\n\nOld content:\n" . $patch['content'] . "\nUpdated content:\n\n" . $patch['new_content'] . "\n";
         }
         $prompt .= "\nPR body:";
         $body = $this->complete($prompt);
+
+        $body .= "\n\n For additional context, here were my instructions:\n\n ---\n" . $this->task;
+
         return $body;
     }
 
     private function generateCommitMessage($patch)
     {
         // ask LLM to write a basic commit message comparing the old and new content of the patch
-        $prompt = "Write a commit message for the patch below. Use just text, no quotations or punctuation\n\n
+        $prompt = "Write a commit message for the patch below. Use less than 50 characters.\n\n
 
         Old content:\n\n" . $patch['content'] . "\n\nNew content:\n\n" . $patch['new_content'] . "\n\nCommit message:";
         $msg = $this->complete($prompt);
+
+        // Strip off any double quotation marks at beginning and end of the title
+        $msg = trim($msg, '"');
+
+        // Remove all double-quotations from this string
+        $msg = str_replace('"', '', $msg);
         return $msg;
     }
 
@@ -122,6 +155,9 @@ class Patcher
     public function getIssuePatches($issue, $take = 5)
     {
         $patches = [];
+        $this->issue = $issue;
+        $this->task = explode("For additional context, consult the following code snippets:", $issue["body"])[0];
+        // dd($this->task);
         $nearestFiles = $this->getNearestFiles($issue, $take);
 
         foreach ($nearestFiles as $file) {
@@ -148,37 +184,140 @@ class Patcher
         $prompt .= "{$file}```\n{$fileContent}```\n";
         $actionPrompt1 = "Does this file need to be changed to resolve the issue? Respond with only `Yes` or `No`.";
         $needsPatch = $this->complete($prompt . $actionPrompt1);
+        // print_r("Needs patch: {$needsPatch}\n");
 
         // Assuming needsPatch is 'Yes' or 'No', proceed accordingly
         if ($needsPatch === 'No') {
             return null;
         }
 
-        // Construct the prompt for getting the 'Before' and 'After' contents
-        $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
-        $change = $this->complete($prompt . $actionPrompt2);
+        // Configure a maximum number of retries
+        $maxRetries = 5;
+        $retryCount = 0;
 
-        if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
-            dd("Warning: incorrect output format\n");
-            return null;
+        while (true) {
+            print_r("Trying code block for {$file}, attempt #{$retryCount}\n");
+            // Construct the prompt for getting the 'Before' and 'After' contents
+            $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
+            // print_r($prompt . $actionPrompt2 . "\n");
+            $change = $this->complete($prompt . $actionPrompt2);
+            // print_r($change);
+
+            if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
+                dd("Warning: incorrect output format\n");
+                return null;
+            }
+
+            list($before, $after) = explode("After:", explode("Before:", $change, 2)[1], 2);
+            $before = $this->cleanCodeBlock($before);
+            $after = $this->cleanCodeBlock($after);
+
+            // Use preg_quote to escape any special characters in the $before string
+            $escapedBefore = preg_quote($before, '/');
+
+            // Create a regular expression that allows for flexible matching
+            $pattern = "/\s*" . str_replace("\n", "\s*", $escapedBefore) . "\s*/s";
+
+            if (!preg_match($pattern, $fileContent)) {
+                print_r("didnt match");
+                if (++$retryCount >= $maxRetries) {
+                    dd("Warning: exceeded maximum retries for finding `Before` block\n");
+                    return null;
+                }
+                continue;
+            }
+
+            // Ensure that the 'after' block ends with a newline character
+            if (!str_ends_with($after, "\n")) {
+                $after .= "\n";
+            }
+
+            // Ensure that the 'after block begins with a newline character
+            if (!str_starts_with($after, "\n")) {
+                $after = "\n" . $after;
+            }
+
+            // Find and replace using preg_replace
+            $newFileContent = preg_replace($pattern, $after, $fileContent, 1);
+
+            // Additional step to ensure proper spacing between lines if necessary
+            // This step can be adjusted based on the specific formatting issues you are encountering
+            $newFileContent = preg_replace('/([;}])it/', "$1\nit", $newFileContent);
+
+            return [
+                "file_name" => $file,
+                "content" => $fileContent,
+                "new_content" => $newFileContent
+            ];
+
+            // list($before, $after) = explode("After:", explode("Before:", $change, 2)[1], 2);
+            // $before = $this->cleanCodeBlock($before);
+            // $after = $this->cleanCodeBlock($after);
+
+            // if (strpos($fileContent, $before) === false) {
+            //     if (++$retryCount >= $maxRetries) {
+            //         dd("Warning: exceeded maximum retries for finding `Before` block\n");
+            //         return null;
+            //     }
+            //     continue;
+            // }
+
+            // $newFileContent = str_replace($before, $after, $fileContent);
+            // return [
+            //     "file_name" => $file,
+            //     "content" => $fileContent,
+            //     "new_content" => $newFileContent
+            // ];
         }
-
-        list($before, $after) = explode("After:", explode("Before:", $change, 2)[1], 2);
-        $before = $this->cleanCodeBlock($before);
-        $after = $this->cleanCodeBlock($after);
-
-        if (strpos($fileContent, $before) === false) {
-            dd("Warning: cannot locate `Before` block\n");
-            return null;
-        }
-
-        $newFileContent = str_replace($before, $after, $fileContent);
-        return [
-            "file_name" => $file,
-            "content" => $fileContent,
-            "new_content" => $newFileContent
-        ];
     }
+
+
+    // private function determinePatchForFile($file, $issue)
+    // {
+    //     // Check if the file exists
+    //     if (!file_exists($file)) {
+    //         dd("File not found: {$file}\n");
+    //     }
+
+    //     // Read the file content
+    //     $fileContent = file_get_contents($file);
+
+    //     // Construct the prompt for checking if a patch is needed
+    //     $prompt = "Below is an issue on OpenAgents codebase.\nIssue: {$issue['title']} - {$issue['body']}\n\nHere is a potential file that may need to be updated to fix the issue:\n";
+    //     $prompt .= "{$file}```\n{$fileContent}```\n";
+    //     $actionPrompt1 = "Does this file need to be changed to resolve the issue? Respond with only `Yes` or `No`.";
+    //     $needsPatch = $this->complete($prompt . $actionPrompt1);
+
+    //     // Assuming needsPatch is 'Yes' or 'No', proceed accordingly
+    //     if ($needsPatch === 'No') {
+    //         return null;
+    //     }
+
+    //     // Construct the prompt for getting the 'Before' and 'After' contents
+    //     $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
+    //     $change = $this->complete($prompt . $actionPrompt2);
+
+    //     if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
+    //         dd("Warning: incorrect output format\n");
+    //         return null;
+    //     }
+
+    //     list($before, $after) = explode("After:", explode("Before:", $change, 2)[1], 2);
+    //     $before = $this->cleanCodeBlock($before);
+    //     $after = $this->cleanCodeBlock($after);
+
+    //     if (strpos($fileContent, $before) === false) {
+    //         dd("Warning: cannot locate `Before` block\n");
+    //         return null;
+    //     }
+
+    //     $newFileContent = str_replace($before, $after, $fileContent);
+    //     return [
+    //         "file_name" => $file,
+    //         "content" => $fileContent,
+    //         "new_content" => $newFileContent
+    //     ];
+    // }
 
     /**
      * Placeholder for the getNearestFiles method.
@@ -218,6 +357,9 @@ class Patcher
         $codeBlock = trim($codeBlock);
 
         // Remove markdown code block syntax if present
+        if (substr($codeBlock, 0, 6) === "```php") {
+            $codeBlock = substr($codeBlock, 6);
+        }
         if (substr($codeBlock, 0, 3) === "```") {
             $codeBlock = substr($codeBlock, 3);
         }
@@ -242,12 +384,12 @@ class Patcher
         $modelCompletion = "gpt-3.5-turbo-instruct"; // Define this constant for the model you're using
         // $modelCompletion = "text-davinci-003"; // Define this constant for the model you're using
 
-        if (strlen($prompt) > $maxContentLength - $tokensResponse) {
-            $nonSequitur = '\n...truncated\n';
-            $margin = intdiv(strlen($nonSequitur), 2);
-            $firstHalf = intdiv($maxContentLength - $tokensResponse, 2);
-            $prompt = substr($prompt, 0, $firstHalf - $margin) . $nonSequitur . substr($prompt, -$firstHalf + $margin);
-        }
+        // if (strlen($prompt) > $maxContentLength - $tokensResponse) {
+        //     $nonSequitur = '\n...truncated\n';
+        //     $margin = intdiv(strlen($nonSequitur), 2);
+        //     $firstHalf = intdiv($maxContentLength - $tokensResponse, 2);
+        //     $prompt = substr($prompt, 0, $firstHalf - $margin) . $nonSequitur . substr($prompt, -$firstHalf + $margin);
+        // }
 
         for ($i = 0; $i < 3; $i++) {
             $ch = curl_init();
