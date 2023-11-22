@@ -31,14 +31,13 @@ it('can update a memory', function() {
         'description' => 'Updated description',
     ]);
 });
-
 it('can delete a memory', function() {
     $memory = Memory::create([
         'description' => 'Test description',
         'last_accessed' => null,
     ]);
 
-    $memory->delete();
+    $this->assertTrue($memory->delete());
 
     $this->assertDatabaseMissing('memories', ['id' => $memory->id]);
 });
