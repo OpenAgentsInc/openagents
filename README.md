@@ -41,3 +41,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 25. [Faerie Writes Code](https://twitter.com/GPUtopia/status/1725977712043372666)
 26. [Faerie Commits Code](https://twitter.com/GPUtopia/status/1727018763915247784)
 27. [Smarter Pull Requests](https://twitter.com/GPUtopia/status/1727424427825193041)
+28. [Creating New Files](https://twitter.com/GPUtopia/status/1727433378063135085)

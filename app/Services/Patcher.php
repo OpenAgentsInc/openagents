@@ -41,9 +41,9 @@ class Patcher
 
     private function generatePrBody()
     {
-        print_r("TASK:");
-        print_r($this->task);
-        print_r("-----");
+        // print_r("TASK:");
+        // print_r($this->task);
+        // print_r("-----");
 
         // ask LLM o write a basic PR body in Markdown based on the array of patches, $this->patches
         $prompt = "You are a senior developer about to submit a PR. You were directed to do the following task:\n\n ---\n" . $this->task . "\n---\n\n
@@ -51,7 +51,7 @@ class Patcher
         Write a PR body in Markdown for the patches below. Include a summary of the changes at the top, followed by a description of individual changes. Do not use the word 'patch'. Only describe the differences between the new and old content, do not summarize existing code.\n\n";
 
         print_r("PR BODY:");
-        print_r($prompt);
+        // print_r($prompt);
 
         // explode by "For additional context, consult the following code snippets:"
 
@@ -367,6 +367,10 @@ class Patcher
      */
     private function complete($prompt, $tokensResponse = 1024)
     {
+        print_r("ATTEMTING TO COMPLETE PROMPT:" . $prompt . "\n");
+
+
+
         $maxContentLength = 4097; // Define this constant based on your use case
         $modelCompletion = "gpt-3.5-turbo-instruct"; // Define this constant for the model you're using
         // $modelCompletion = "text-davinci-003"; // Define this constant for the model you're using
@@ -387,9 +391,9 @@ class Patcher
                 'prompt' => $prompt,
                 'max_tokens' => $tokensResponse,
                 'temperature' => 0.2,
-                'top_p' => 1,
-                'frequency_penalty' => 0.5,
-                'presence_penalty' => 0.6
+                // 'top_p' => 1,
+                // 'frequency_penalty' => 0.5,
+                // 'presence_penalty' => 0.6
             ]));
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json',
@@ -408,6 +412,11 @@ class Patcher
 
             if (isset($response['choices'][0]['text'])) {
                 return trim($response['choices'][0]['text']);
+            } else {
+                print_r("failed response:");
+                print_r($response);
+                print_r("^^^ fail ^^^");
+                sleep(1);
             }
         }
 
