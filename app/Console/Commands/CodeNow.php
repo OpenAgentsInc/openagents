@@ -48,9 +48,10 @@ class CodeNow extends Command
         // Build the context from a summary of the messages passed as query to a similarity search
         $context = $this->buildContextFrom($userAndAssistantMessages);
 
+        // Create a plan from the messages
         $taskDescription = $planner->createPlan($userAndAssistantMessages);
 
-        $planPrompt = "A description of your next task is:" . $taskDescription . "
+        $planPrompt = "A description of your next task is:\n" . $taskDescription . "
 
   For additional context, consult the following code snippets:
   ---
@@ -61,10 +62,12 @@ class CodeNow extends Command
             "body" => $planPrompt
         ]);
 
+        print_r("PATCHES:");
         print_r($patches);
         print_r("---");
 
-        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/trashheap", "testbranch");
+        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "testpr5");
+        print_r("RESPONSE:");
         print_r($res);
 
         $this->info("Done!");
