@@ -28,18 +28,20 @@ class FileController extends Controller
             // Store the file
             $file = $request->file('file');
             $path = Storage::putFile('uploads', $file);
-            Log::info('FileController:store: $path: ' . print_r($path, true));
+            Log::info('FileController:store: $path: ' . print_r($path, true));// Parse the file
+$parser = new Parser();
+$res = $parser->parsePdf($path);
+Log::info('FileController:store: $res: ' . print_r($res, true));
 
-            // Parse the file
-            $parser = new Parser();
-            $res = $parser->parsePdf($path);
-            Log::info('FileController:store: $res: ' . print_r($res, true));
+// Create a new memory instance with the parsed data
+$memory = Memory::create([
+    'description' => $res['description'],
+    'last_accessed' => null,
+]);
 
-            return Redirect::route('start')
-              ->with('message', 'File uploaded.')
-              ->with('filename', $res["file_id"]);
-              // ->with('filename', $file->getClientOriginalName());
-        } catch (\Exception $e) {
+return Redirect::route('start')
+    ->with('message', 'Memory created.')
+    ->with('memory_id', $memory->id);} catch (\Exception $e) {
             // Log just the error message
             Log::error('FileController:store: $e->getMessage(): ' . print_r($e->getMessage(), true));
 
