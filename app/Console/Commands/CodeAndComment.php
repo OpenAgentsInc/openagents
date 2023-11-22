@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\OpenAIGateway;
 use App\Services\Patcher;
+use App\Services\Planner;
 use App\Services\Searcher;
 use GitHub;
 use Illuminate\Console\Command;
@@ -39,9 +40,10 @@ class CodeIssue extends Command
         $title = $response['title'];
 
         $patcher = new Patcher();
+        $planner = new Planner();
 
         // Format the issue and comments as messages
-        $userAndAssistantMessages = $this->formatIssueAndCommentsAsMessages($body, $commentsResponse);
+        $userAndAssistantMessages = $planner->formatIssueAndCommentsAsMessages($body, $commentsResponse);
 
         // Build the context from a summary of the messages passed as query to a similarity search
         $context = $this->buildContextFrom($userAndAssistantMessages);
@@ -119,31 +121,11 @@ class CodeIssue extends Command
         $this->info("DONE!");
     }
 
-    /**
-     * Format the issue and comments as messages.
-     *
-     * @param string $issueBody
-     * @param array $commentsResponse
-     * @return array
-     */
-    private function formatIssueAndCommentsAsMessages(string $issueBody, array $commentsResponse): array
-    {
-        $messages = [];
-
-        $messages[] = ['role' => 'user', 'content' => $issueBody];
-
-        foreach ($commentsResponse as $comment) {
-            $role = $comment['user']['login'] === 'FaerieAI' ? 'assistant' : 'user';
-            $messages[] = ['role' => $role, 'content' => $comment['body']];
-        }
-
-        return $messages;
-    }
-
     private function buildContextFrom(array $messages): string
     {
         $queryInput = '';
 
+        // todo: add author to each message?
         foreach ($messages as $message) {
             $queryInput .= $message['content'] . "\n---\n";
         }
@@ -169,17 +151,6 @@ class CodeIssue extends Command
             $content = $this->getFileContent($result['path']);
             $context .= $content . "\n```\n\n";
         }
-
-        // // Loop through the results, and for each one, add the file name and the first X lines of the file to the context
-        // $context = '';
-        // foreach ($results["results"] as $result) {
-        //     $context .= "Content of " . $result['path'] . ": \n```\n";
-        //     $content = $this->getFileContent($result['path']);
-        //     $context .= implode("\n", array_slice(explode("\n", $content), 0, 20)) . "\n```\n\n";
-        // }
-
-        // dd($context);
-
 
         return $context;
     }
