@@ -66,9 +66,9 @@ class CodeNow extends Command
         print_r($patches);
         print_r("---");
 
-        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "testpr5");
-        print_r("RESPONSE:");
-        print_r($res);
+        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "testpr7");
+        // print_r("RESPONSE:");
+        // print_r($res);
 
         $this->info("Done!");
     }
