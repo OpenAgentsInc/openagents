@@ -29,13 +29,17 @@ class FileController extends Controller
             $file = $request->file('file');
             $path = Storage::putFile('uploads', $file);
             Log::info('FileController:store: $path: ' . print_r($path, true));
+// Parse the file
+$parser = new Parser();
+$res = $parser->parsePdf($path);
+Log::info('FileController:store: $res: ' . print_r($res, true));
 
-            // Parse the file
-            $parser = new Parser();
-            $res = $parser->parsePdf($path);
-            Log::info('FileController:store: $res: ' . print_r($res, true));
-
-            return Redirect::route('start')
+// Create a new memory object and save it to the database
+Memory::create([
+  'description' => 'Test description',
+  'last_accessed' => null,
+]);
+return Redirect::route('start')
               ->with('message', 'File uploaded.')
               ->with('filename', $res["file_id"]);
               // ->with('filename', $file->getClientOriginalName());
