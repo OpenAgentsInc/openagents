@@ -5,15 +5,17 @@ use App\Models\File;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
-
 it('has many agents', function () {
   $user = User::factory()->create();
-  $agent = Agent::factory()->create(['user_id' => $user->id]);
+  // Create multiple agents for the user
+  Agent::factory(3)->create(['user_id' => $user->id]);
 
+  // Check that the user has a collection of agents and that each agent is an instance of the Agent model
   $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->agents);
-  $this->assertInstanceOf(Agent::class, $user->agents->first());
+  foreach ($user->agents as $agent) {
+    $this->assertInstanceOf(Agent::class, $agent);
+  }
 });
-
 it('has many conversations', function () {
   $user = User::factory()->create();
   $conversation = Conversation::factory()->create(['user_id' => $user->id]);
