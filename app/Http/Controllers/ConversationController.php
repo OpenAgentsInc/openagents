@@ -9,16 +9,32 @@ use Inertia\Response;
 
 class ConversationController extends Controller
 {
-  public function store() {
-    request()->validate([
-      'agent_id' => 'required',
-    ]);
+public function store() {
+    try {
+        // Validate the request
+        request()->validate([
+            'agent_id' => 'required',
+        ]);
 
-    // Given we have an authenticated user
-    request()->user()->conversations()->create([
-      'agent_id' => request('agent_id'),
-    ]);
+        // Create a new conversation for the authenticated user
+        $conversation = request()->user()->conversations()->create([
+            'agent_id' => request('agent_id'),
+        ]);
 
-    return response()->json([], 201);
-  }
+        // Return a success response with the created conversation data
+        return response()->json([
+            'ok' => true,
+            'conversation' => $conversation,
+        ], 201);
+        
+    } catch (\Exception $e) {
+        // Log any errors and return an error response
+        Log::error('ConversationController:store: $e->getMessage(): ' . print_r($e->getMessage(), true));
+
+        return response()->json([
+            'ok' => false,
+            'error' => 'Error creating conversation.',
+        ], 400);
+    }
+}
 }
