@@ -28,11 +28,10 @@ it('has many conversations', function () {
   $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->conversations);
   $this->assertInstanceOf(Conversation::class, $agent->conversations->first());
 });
-
 it('has many tasks', function () {
-  $agent = Agent::factory()->create();
+  $user = User::factory()->create();
+  $agent = Agent::factory()->create(['user_id' => $user->id]);
   $task = Task::factory()->create(['agent_id' => $agent->id]);
 
-  $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->tasks);
-  $this->assertInstanceOf(Task::class, $agent->tasks->first());
+  expect($agent->tasks)->toHaveCount(1);
 });
