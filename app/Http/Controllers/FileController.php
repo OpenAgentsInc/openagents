@@ -29,17 +29,21 @@ class FileController extends Controller
             $file = $request->file('file');
             $path = Storage::putFile('uploads', $file);
             Log::info('FileController:store: $path: ' . print_r($path, true));
+// Parse the file
+$parser = new Parser();
+$res = $parser->parsePdf($path);
+Log::info('FileController:store: $res: ' . print_r($res, true));
 
-            // Parse the file
-            $parser = new Parser();
-            $res = $parser->parsePdf($path);
-            Log::info('FileController:store: $res: ' . print_r($res, true));
+// Save the parsed file to the database
+$file = File::create([
+    'name' => $file->getClientOriginalName(),
+    'path' => $path,
+]);
 
-            return Redirect::route('start')
-              ->with('message', 'File uploaded.')
-              ->with('filename', $res["file_id"]);
-              // ->with('filename', $file->getClientOriginalName());
-        } catch (\Exception $e) {
+return Redirect::route('start')
+  ->with('message', 'File uploaded.')
+  ->with('filename', $file->id);
+} catch (\Exception $e) {
             // Log just the error message
             Log::error('FileController:store: $e->getMessage(): ' . print_r($e->getMessage(), true));
 
