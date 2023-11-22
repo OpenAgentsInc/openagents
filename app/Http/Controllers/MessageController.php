@@ -14,14 +14,13 @@ class MessageController extends Controller
       'body' => 'required',
       'conversation_id' => 'required',
     ]);
-
-    // create a message in the given conversation
-    request()->user()->messages()->create([
-      'body' => request('body'),
-      'conversation_id' => request('conversation_id'),
-      'sender' => 'user'
-    ]);
-
-    return response()->json([], 201);
+// create a message in the given conversation
+$message = [
+    'body' => request('body'),
+    'conversation_id' => request('conversation_id'),
+    'sender' => 'user'
+];
+$request->user()->messages()->create($message);
+return response()->json([], 201);
   }
 }
