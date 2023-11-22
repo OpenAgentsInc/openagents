@@ -13,12 +13,13 @@ class ConversationController extends Controller
     request()->validate([
       'agent_id' => 'required',
     ]);
+// Given we have an authenticated user, find the agent associated with the given ID
+$agent = Agent::find(request('agent_id'));
 
-    // Given we have an authenticated user
-    request()->user()->conversations()->create([
-      'agent_id' => request('agent_id'),
-    ]);
-
-    return response()->json([], 201);
+// Create a conversation between the user and the agent
+$request->user()->conversations()->create([
+  'agent_id' => $agent->id,
+]);
+return response()->json([], 201);
   }
 }
