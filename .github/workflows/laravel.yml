@@ -53,6 +53,7 @@ jobs:
     - name: Remove node_modules
       run: rm -rf node_modules
     - name: Execute tests (Unit and Feature tests) via PHPUnit
+      id: test_step
       env:
         DB_CONNECTION: pgsql
         DB_HOST: localhost
@@ -66,11 +67,11 @@ jobs:
       uses: actions/github-script@v5
       with:
         script: |
-          const testOutcome = '${{ steps.tests.outcome }}';
+          const testOutcome = '${{ steps.test_step.outcome }}';
           const prNumber = context.issue.number;
           const message = (testOutcome == 'success') ?
             "✅ Tests passed!" :
-            "❌ Tests failed. Check the logs for more details.";
+            `❌ Tests failed or were inconclusive. Outcome: ${testOutcome}. Check the logs for more details.`;
 
           github.rest.issues.createComment({
             owner: context.repo.owner,
