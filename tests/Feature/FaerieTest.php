@@ -21,7 +21,7 @@ test('can create and delete github branch', function () {
     // Step 3: Delete the branch
     $response = GitHub::api('git')->references()->remove($owner, $repo, 'heads/' . $newBranch);
     expect($response)->toBe('');
-});
+})->group('integration');
 
 test('can fetch github issue', function () {
     $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', 1);
@@ -29,7 +29,7 @@ test('can fetch github issue', function () {
     expect($response['url'])->toBe('https://api.github.com/repos/ArcadeLabsInc/openagents/issues/1');
     expect($response['repository_url'])->toBe('https://api.github.com/repos/ArcadeLabsInc/openagents');
     expect($response['body'])->toContain("We will implement the 'memory stream' architecture mentioned in the Generative Agents paper, excerpted below and slightly modified to reflect our 'autodev' use case.");
-});
+})->group('integration');
 
 test('can fetch github issue comments', function () {
     // $response = GitHub::api('issue')->comments()->show('ArcadeLabsInc', 'openagents', 1);
@@ -48,7 +48,7 @@ test('can fetch github issue comments', function () {
     expect($response[1]['issue_url'])->toBe('https://api.github.com/repos/ArcadeLabsInc/openagents/issues/1');
     expect($response[1]['user']['login'])->toBe('AtlantisPleb');
     expect($response[1]['body'])->toContain("Thank you @FaerieAI, that was a good initial answer.");
-});
+})->group('integration');
 
 
 test('can respond to github issue as faerie', function () {
