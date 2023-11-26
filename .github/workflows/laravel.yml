@@ -13,7 +13,7 @@ jobs:
 
     services:
       postgres:
-        image: atlantispleb/postgres-pgvector:latest
+        image: ankane/pgvector:latest
         env:
           POSTGRES_USER: root
           POSTGRES_PASSWORD: password
