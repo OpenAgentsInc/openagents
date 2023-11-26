@@ -13,7 +13,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15
+        image: atlantispleb/postgres-pgvector:latest
         env:
           POSTGRES_USER: root
           POSTGRES_PASSWORD: password
@@ -41,14 +41,7 @@ jobs:
     - name: Directory Permissions
       run: chmod -R 777 storage bootstrap/cache
     - name: Install pgvector extension
-      run: |
-        docker exec postgres apt-get update
-        docker exec postgres apt-get install -y build-essential postgresql-server-dev-15 git
-        docker exec postgres git clone https://github.com/ankane/pgvector.git
-        docker exec postgres bash -c "cd pgvector && make && make install"
-        docker exec postgres apt-get purge -y build-essential postgresql-server-dev-15 git
-        docker exec postgres rm -rf /var/lib/apt/lists/* /pgvector
-        PGPASSWORD=password psql -h localhost -U root -d laravel_test -c "CREATE EXTENSION pgvector;"
+      run: PGPASSWORD=password psql -h localhost -U root -d laravel_test -c "CREATE EXTENSION pgvector;"
     - name: Execute tests (Unit and Feature tests) via PHPUnit
       env:
         DB_CONNECTION: pgsql
