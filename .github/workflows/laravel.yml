@@ -68,19 +68,65 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          const testOutcome = '${{ steps.test_step.outcome }}';
           const prNumber = context.issue.number;
-          let message;
+          let message = '';
 
-          if (testOutcome === 'success') {
-            // If tests passed, send a simple success message
-            message = "✅ Tests passed!";
-          } else {
-            // If tests failed, include the test summary in the comment
+          // Read the test summary file if it exists
+          if (fs.existsSync('test-summary.txt')) {
             const testSummary = fs.readFileSync('test-summary.txt', { encoding: 'utf8' });
-            message = "❌ Tests failed. Below is the summary of the test results:\n```\n" + testSummary + "\n```";
+            const testSummaryLines = testSummary.split('\n');
+
+            // Initialize an array to hold our formatted failing test lines
+            const failingTests = [];
+            let captureTrace = false;
+            let currentTest = [];
+
+            // Iterate over each line of the test summary
+            for (const line of testSummaryLines) {
+              // Check if the line is a file path and reset capture if we hit a new file
+              if (line.startsWith('/home/runner/work/')) {
+                captureTrace = false;
+                if (currentTest.length > 0) {
+                  failingTests.push(currentTest.join('\n'));
+                  currentTest = [];
+                }
+              }
+              // If the line indicates a failing test, start capturing
+              if (line.startsWith(' ✘')) {
+                captureTrace = true;
+                currentTest.push(line);
+                continue;
+              }
+              // If capturing, add the stack trace lines
+              if (captureTrace) {
+                if (line.trim() === '') {
+                  // Empty line might signal the end of the stack trace
+                  captureTrace = false;
+                  failingTests.push(currentTest.join('\n'));
+                  currentTest = [];
+                } else {
+                  // Continue capturing the stack trace
+                  currentTest.push(line);
+                }
+              }
+            }
+
+            // Check if there's a leftover test case at the end of the file
+            if (currentTest.length > 0) {
+              failingTests.push(currentTest.join('\n'));
+            }
+
+            if (failingTests.length > 0) {
+              // Join the failing tests with two new lines and wrap in a code block for markdown
+              message = `❌ Tests failed. Below are the details:\n\`\`\`\n${failingTests.join('\n\n')}\n\`\`\``;
+            } else {
+              message = "✅ All tests passed!";
+            }
+          } else {
+            message = "⚠️ No test summary file found.";
           }
 
+          // Create the PR comment
           github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
