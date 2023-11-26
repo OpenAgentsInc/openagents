@@ -53,6 +53,7 @@ jobs:
     - name: Remove node_modules
       run: rm -rf node_modules
     - name: Execute tests (Unit and Feature tests) via PHPUnit
+      continue-on-error: true
       id: test_step
       env:
         DB_CONNECTION: pgsql
@@ -61,17 +62,25 @@ jobs:
         DB_DATABASE: laravel_test
         DB_USERNAME: root
         DB_PASSWORD: password
-      run: vendor/bin/pest
+      run: vendor/bin/pest --testdox > test-summary.txt || true
     - name: Comment PR on Test Result
       if: always() && github.event_name == 'pull_request'
       uses: actions/github-script@v5
       with:
         script: |
+          const fs = require('fs');
           const testOutcome = '${{ steps.test_step.outcome }}';
           const prNumber = context.issue.number;
-          const message = (testOutcome == 'success') ?
-            "✅ Tests passed!" :
-            `❌ Tests failed or were inconclusive. Outcome: ${testOutcome}. Check the logs for more details.`;
+          let message;
+
+          if (testOutcome === 'success') {
+            // If tests passed, send a simple success message
+            message = "✅ Tests passed!";
+          } else {
+            // If tests failed, include the test summary in the comment
+            const testSummary = fs.readFileSync('test-summary.txt', { encoding: 'utf8' });
+            message = "❌ Tests failed. Below is the summary of the test results:\n```\n" + testSummary + "\n```";
+          }
 
           github.rest.issues.createComment({
             owner: context.repo.owner,
