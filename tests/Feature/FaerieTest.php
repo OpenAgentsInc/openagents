@@ -3,7 +3,12 @@
 use App\Services\OpenAIGateway;
 
 test('can comment on pr conversation', function () {
-    $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', 14);
+
+    $owner = 'ArcadeLabsInc';
+    $repository = 'openagents';
+    $pullRequestNumber = 14;
+
+    $response = GitHub::issues()->show($owner, $repository, $pullRequestNumber);
     $title = $response['title'];
 
     $system = "You are Faerie, an AI agent specialized in writing & analyzing code.
@@ -14,7 +19,7 @@ The pull request is titled `" . $title . "`
 
 Please respond with the comment you would like to add based on the comments. If there are any failing tests, suggest how to fix them. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
 
-    $comments = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', 14);
+    $comments = GitHub::api('issue')->comments()->all($owner, $repository, $pullRequestNumber);
 
     // For each comment, add it to the messages array with role user
     $messages = [];
@@ -35,7 +40,9 @@ Please respond with the comment you would like to add based on the comments. If 
     $comment = $response['choices'][0]['message']['content'];
     print_r($comment);
     expect($comment)->toBeString();
-});
+
+    // GitHub::api('issue')->comments()->create($owner, $repository, $pullRequestNumber, array('body' => $comment));
+})->group('integration');
 
 test('can pull runs from pr', function () {
     $owner = 'ArcadeLabsInc';
