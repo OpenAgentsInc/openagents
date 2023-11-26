@@ -41,7 +41,14 @@ jobs:
     - name: Directory Permissions
       run: chmod -R 777 storage bootstrap/cache
     - name: Install pgvector extension
-      run: PGPASSWORD=password psql -h localhost -U root -d laravel_test -c "CREATE EXTENSION pgvector;"
+      run: |
+        docker exec postgres_container apt-get update
+        docker exec postgres_container apt-get install -y build-essential postgresql-server-dev-15 git
+        docker exec postgres_container git clone https://github.com/ankane/pgvector.git
+        docker exec postgres_container bash -c "cd pgvector && make && make install"
+        docker exec postgres_container apt-get purge -y build-essential postgresql-server-dev-15 git
+        docker exec postgres_container rm -rf /var/lib/apt/lists/* /pgvector
+        PGPASSWORD=password psql -h localhost -U root -d laravel_test -c "CREATE EXTENSION pgvector;"
     - name: Execute tests (Unit and Feature tests) via PHPUnit
       env:
         DB_CONNECTION: pgsql
