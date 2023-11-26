@@ -42,6 +42,16 @@ jobs:
       run: chmod -R 777 storage bootstrap/cache
     - name: Install pgvector extension
       run: PGPASSWORD=password psql -h localhost -U root -d laravel_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    - name: Install Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+    - name: Install Front-End Dependencies with npm ci
+      run: npm ci
+    - name: Build Front-End Assets
+      run: npm run build
+    - name: Remove node_modules
+      run: rm -rf node_modules
     - name: Execute tests (Unit and Feature tests) via PHPUnit
       env:
         DB_CONNECTION: pgsql
