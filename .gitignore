@@ -19,3 +19,4 @@ yarn-error.log
 /.vscode
 .DS_Store
 test-summary.txt
+test-results.xml

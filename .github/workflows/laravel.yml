@@ -53,7 +53,6 @@ jobs:
     - name: Remove node_modules
       run: rm -rf node_modules
     - name: Execute tests (Unit and Feature tests) via PHPUnit
-      continue-on-error: true
       id: test_step
       env:
         DB_CONNECTION: pgsql
@@ -62,7 +61,7 @@ jobs:
         DB_DATABASE: laravel_test
         DB_USERNAME: root
         DB_PASSWORD: password
-      run: vendor/bin/pest --testdox > test-summary.txt || true
+      run: vendor/bin/pest --testdox > test-summary.txt
     - name: Comment PR on Test Result
       if: always() && github.event_name == 'pull_request'
       uses: actions/github-script@v5
