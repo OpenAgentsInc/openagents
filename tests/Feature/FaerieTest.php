@@ -2,23 +2,54 @@
 
 use App\Services\OpenAIGateway;
 
-// test('can download run logs', function () {
-//   // $logUrl = GitHub::api('repo')->actions()->logs($owner, $repo, $runId, true);
-//   dd($logUrl);
-// });
+test('can comment on pr conversation', function () {
+
+    $owner = 'ArcadeLabsInc';
+    $repository = 'openagents';
+    $pullRequestNumber = 14;
+
+    $response = GitHub::issues()->show($owner, $repository, $pullRequestNumber);
+    $title = $response['title'];
+
+    $system = "You are Faerie, an AI agent specialized in writing & analyzing code.
+
+You have been summoned to ArcadeLabsInc/openagents pull request.
+
+The pull request is titled `" . $title . "`
+
+Please respond with the comment you would like to add based on the comments. If there are any failing tests, suggest how to fix them. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
+
+    $comments = GitHub::api('issue')->comments()->all($owner, $repository, $pullRequestNumber);
+
+    // For each comment, add it to the messages array with role user
+    $messages = [];
+    foreach ($comments as $comment) {
+        $messages[] = ['role' => 'user', 'content' => $comment['body']];
+    }
+
+    $gateway = new OpenAIGateway();
+
+    $response = $gateway->makeChatCompletion([
+      'model' => 'gpt-4',
+      'messages' => [
+        ['role' => 'system', 'content' => $system],
+        ...$messages,
+      ],
+    ]);
+
+    $comment = $response['choices'][0]['message']['content'];
+    print_r($comment);
+    expect($comment)->toBeString();
+
+    // GitHub::api('issue')->comments()->create($owner, $repository, $pullRequestNumber, array('body' => $comment));
+})->group('integration');
 
 test('can pull runs from pr', function () {
     $owner = 'ArcadeLabsInc';
     $repo = 'openagents';
     $reference = 'testpestpr';
     $checks = GitHub::api('repo')->checkRuns()->allForReference($owner, $repo, $reference);
-    // Process the fetched check runs
-    // foreach ($checks['check_runs'] as $check) {
-    //     // Access check run details
-    //     // For example, to get the name and conclusion of each check run
-    //     echo "Check Run Name: " . $check['name'] . ", Conclusion: " . $check['conclusion'] . "\n";
-    //     // dd($check);
-    // }
+    expect($checks["total_count"])->toBeInt();
 })->group('integration');
 
 test('can create and delete github branch', function () {
