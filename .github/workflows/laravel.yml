@@ -68,16 +68,14 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          const testOutcome = '${{ steps.test_step.outcome }}';
+          const testSummary = fs.existsSync('test-summary.txt') ? fs.readFileSync('test-summary.txt', { encoding: 'utf8' }) : 'No test summary file found.';
           const prNumber = context.issue.number;
+          const jobStatus = ${{ job.status }};
           let message;
 
-          if (testOutcome === 'success') {
-            // If tests passed, send a simple success message
+          if (jobStatus === 'success') {
             message = "✅ Tests passed!";
           } else {
-            // If tests failed, include the test summary in the comment
-            const testSummary = fs.readFileSync('test-summary.txt', { encoding: 'utf8' });
             message = "❌ Tests failed. Below is the summary of the test results:\n```\n" + testSummary + "\n```";
           }
 
