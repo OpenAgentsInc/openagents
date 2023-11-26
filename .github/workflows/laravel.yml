@@ -61,3 +61,22 @@ jobs:
         DB_USERNAME: root
         DB_PASSWORD: password
       run: vendor/bin/pest
+    - name: Comment PR on Test Result
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v5
+      with:
+        script: |
+          const testOutcome = '${{ steps.tests.outcome }}';
+          const prNumber = context.issue.number;
+          const message = (testOutcome == 'success') ?
+            "✅ Tests passed!" :
+            "❌ Tests failed. Check the logs for more details.";
+
+          github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+            body: message
+          });
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
