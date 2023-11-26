@@ -63,7 +63,7 @@ jobs:
         DB_PASSWORD: password
       run: vendor/bin/pest
     - name: Comment PR on Test Result
-      if: github.event_name == 'pull_request'
+      if: always() && github.event_name == 'pull_request'
       uses: actions/github-script@v5
       with:
         script: |
