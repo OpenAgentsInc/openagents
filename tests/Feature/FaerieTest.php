@@ -2,11 +2,29 @@
 
 use App\Services\OpenAIGateway;
 
+// test('can download run logs', function () {
+//   // $logUrl = GitHub::api('repo')->actions()->logs($owner, $repo, $runId, true);
+//   dd($logUrl);
+// });
+
+test('can pull runs from pr', function () {
+    $owner = 'ArcadeLabsInc';
+    $repo = 'openagents';
+    $reference = 'testpestpr';
+    $checks = GitHub::api('repo')->checkRuns()->allForReference($owner, $repo, $reference);
+    // Process the fetched check runs
+    // foreach ($checks['check_runs'] as $check) {
+    //     // Access check run details
+    //     // For example, to get the name and conclusion of each check run
+    //     echo "Check Run Name: " . $check['name'] . ", Conclusion: " . $check['conclusion'] . "\n";
+    //     // dd($check);
+    // }
+})->group('integration');
+
 test('can create and delete github branch', function () {
     $owner = 'ArcadeLabsInc';
     $repo = 'openagents';
     $baseBranch = 'main';
-
     $commit = GitHub::api('repo')->commits()->all($owner, $repo, array('sha' => $baseBranch))[0];
     $latestCommitSha = $commit['sha'];
 
