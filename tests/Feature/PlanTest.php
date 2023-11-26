@@ -17,4 +17,4 @@ test('can create plan based on github conversation', function () {
     // The plan should be a single string
     // print_r($plan);
     expect($plan)->toBeString();
-});
+})->group('integration');

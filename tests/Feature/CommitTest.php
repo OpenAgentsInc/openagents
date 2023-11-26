@@ -24,7 +24,7 @@ test('can get issue patches', function () {
     expect($patches[0])->toHaveKey('file_name');
     expect($patches[0])->toHaveKey('content');
     expect($patches[0])->toHaveKey('new_content');
-});
+})->group('integration');
 
 test('can submit issue patches to github', function () {
   $patcher = new Patcher();
@@ -37,4 +37,4 @@ test('can submit issue patches to github', function () {
 
   expect($res)->toBeArray();
   expect($res["ok"])->toBeTrue();
-});
+})->group('integration');
