@@ -12,13 +12,7 @@ test('can pull runs from pr', function () {
     $repo = 'openagents';
     $reference = 'testpestpr';
     $checks = GitHub::api('repo')->checkRuns()->allForReference($owner, $repo, $reference);
-    // Process the fetched check runs
-    // foreach ($checks['check_runs'] as $check) {
-    //     // Access check run details
-    //     // For example, to get the name and conclusion of each check run
-    //     echo "Check Run Name: " . $check['name'] . ", Conclusion: " . $check['conclusion'] . "\n";
-    //     // dd($check);
-    // }
+    expect($checks["total_count"])->toBeInt();
 })->group('integration');
 
 test('can create and delete github branch', function () {
