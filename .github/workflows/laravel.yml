@@ -41,7 +41,7 @@ jobs:
     - name: Directory Permissions
       run: chmod -R 777 storage bootstrap/cache
     - name: Install pgvector extension
-      run: PGPASSWORD=password psql -h localhost -U root -d laravel_test -c "CREATE EXTENSION pgvector;"
+      run: PGPASSWORD=password psql -h localhost -U root -d laravel_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
     - name: Execute tests (Unit and Feature tests) via PHPUnit
       env:
         DB_CONNECTION: pgsql
