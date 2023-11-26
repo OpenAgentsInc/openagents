@@ -9,7 +9,7 @@ RUN apt-get update \
        postgresql-server-dev-15 \
        git \
     # Clone and build pgvector
-    && git clone https://github.com/ankane/pgvector.git \
+    && git clone https://github.com/pgvector/pgvector.git \
     && cd pgvector \
     && make \
     && make install \
