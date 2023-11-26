@@ -9,7 +9,7 @@ namespace App\Console\Commands;
 // use GitHub;
 use Illuminate\Console\Command;
 
-class CodeIssue extends Command
+class CodeAndComment extends Command
 {
     /**
      * The name and signature of the console command.
