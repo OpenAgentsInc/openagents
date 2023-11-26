@@ -2,10 +2,13 @@
 
 use App\Services\OpenAIGateway;
 
-// test('can download run logs', function () {
-//   // $logUrl = GitHub::api('repo')->actions()->logs($owner, $repo, $runId, true);
-//   dd($logUrl);
-// });
+test('can comment on pr conversation', function () {
+    $comments = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', 14);
+    foreach ($comments as $comment) {
+        // Output the comment body
+        print_r($comment['body']);
+    }
+});
 
 test('can pull runs from pr', function () {
     $owner = 'ArcadeLabsInc';
