@@ -25,6 +25,10 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 });
 
+Route::get('/test', function () {
+  return Inertia::render('Test');
+});
+
 Route::get('/start', function () {
   return Inertia::render('Start');
 })->name('start');
