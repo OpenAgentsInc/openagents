@@ -26,7 +26,8 @@ export default function RetroGrid({ className }: { className?: string }) {
       </div>
 
       {/* Background Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-white to-transparent to-60% dark:from-black" />
+      <div className="absolute inset-0 bg-gradient-to-b from-white to-transparent to-80% dark:from-black" />
+      <div className="absolute inset-0 bg-gradient-to-b from-white via-white to-transparent dark:from-black" style={{ backgroundSize: '100% 23%', backgroundRepeat: 'no-repeat' }} />
     </div>
   );
 }
