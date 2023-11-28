@@ -71,7 +71,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-black text-white;
+    /* @apply bg-black text-white; */
     /* @apply bg-background text-foreground; */
   }
   textarea {
