@@ -1,5 +1,7 @@
+import DotPattern from "@/Components/magicui/dot-pattern";
 import RetroGrid from "@/Components/magicui/retro-grid";
 import ShimmerButton from "@/Components/magicui/shimmer-button";
+import { cn } from "@/lib/utils";
 import { Head } from "@inertiajs/react";
 
 export default function Test() {
@@ -15,11 +17,23 @@ export default function Test() {
           <RetroGrid />
         </div>
 
-        <ShimmerButton className="mx-auto mt-16 shadow-2xl">
-          <span className="whitespace-pre-wrap text-center text-sm font-medium leading-none tracking-tight text-white dark:from-white dark:to-slate-900/10 lg:text-lg">
-            Try the beta
-          </span>
-        </ShimmerButton>
+        <div className="mt-16 relative flex h-full w-full items-center justify-center overflow-hidden rounded-lg border bg-background p-20 shadow-2xl">
+          <ShimmerButton className="mx-auto shadow-2xl">
+            <span className="whitespace-pre-wrap text-center text-sm font-medium leading-none tracking-tight text-white dark:from-white dark:to-slate-900/10 lg:text-lg">
+              Try the beta
+            </span>
+          </ShimmerButton>
+          <DotPattern
+            width={20}
+            height={20}
+            cx={1}
+            cy={1}
+            cr={1}
+            className={cn(
+              "[mask-image:linear-gradient(to_bottom_right,white,transparent,transparent)] ",
+            )}
+          />
+        </div>
       </div>
     </>
   )
