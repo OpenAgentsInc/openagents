@@ -9,7 +9,7 @@ export default function ComingSoon() {
       <Head title="Home" />
       <div className="dark w-[500px] max-w-full px-12 md:w-[700px] mx-auto h-screen flex flex-col justify-center items-center">
         <div className="relative flex w-full items-center justify-center overflow-hidden rounded-lg border bg-background p-6 md:p-20 shadow-2xl">
-          <span className="pointer-events-none z-10 whitespace-pre-wrap bg-gradient-to-b from-[#FFFFFF] via-[#D3D3D3] to-[#A9A9A9] bg-clip-text text-center text-4xl md:text-7xl font-bold leading-relaxed text-transparent">
+          <span className="py-1 pointer-events-none z-10 whitespace-pre-wrap bg-gradient-to-b from-[#FFFFFF] via-[#D3D3D3] to-[#A9A9A9] bg-clip-text text-center text-4xl md:text-7xl font-bold leading-relaxed text-transparent">
             Open Agents
           </span>
 
