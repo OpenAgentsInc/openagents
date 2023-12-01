@@ -37,7 +37,7 @@ class Patcher
         while (true) {
             print_r("Trying code block for {$filePath}, attempt #{$retryCount}\n");
             // Construct the prompt for getting the 'Before' and 'After' contents
-            $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
+            $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file. When writing tests, use Pest syntax not bare PHPUnit.";
             // print_r($prompt . $actionPrompt2 . "\n");
             $change = $this->complete($prompt . $actionPrompt2);
             // print_r($change);
