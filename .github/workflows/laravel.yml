@@ -62,7 +62,7 @@ jobs:
         DB_USERNAME: root
         DB_PASSWORD: password
       run: |
-        vendor/bin/pest --testdox > test-summary.txt
+        vendor/bin/pest --testdox > test-summary.txt 2>&1
         echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
     - name: Comment PR on Test Result
       if: always() && github.event_name == 'pull_request'
