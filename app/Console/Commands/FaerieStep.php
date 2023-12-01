@@ -54,23 +54,24 @@ class FaerieStep extends Command
             return;
         }
 
-
         // Analyze the PR to see if it's ready to merge
         $analysis = $this->analyzePr();
 
-        // If so, see if they are ready to merge (all checks passed - and also analyze the comments)
-        if ($analysis["ready"]) {
-            // If so, merge them and comment on the PR
-            $this->info('PR is ready to merge');
-        // TODO: merge PR
-        } elseif ($analysis["reason"] == "Tests failed") {
-            // If not because tests are failing, add a commit to the PR that fixes the tests, and comment on the PR
-            $this->info('PR is not ready to merge because tests are failing - adding a commit to fix the tests');
-            $fix = $this->fixTests();
+        if ($analysis == "TESTFIX") {
+            $this->info('PR needs tests fixed.');
+            $this->fixTests();
+            return false;
+        } elseif ($analysis == "READY_FOR_REVIEW") {
+            $this->info('PR is ready to merge.');
+            return true;
+        } elseif ($analysis == "COMMENT") {
+            $this->info('PR needs more work - lets comment - unimplemented');
+            return false;
         } else {
-            // If not because some requested feature is missing, add a commit to the PR that adds the feature, and comment on the PR
-            $this->info('PR is not ready to merge - no handler for this reason');
+            $this->info('Unknown response');
+            return false;
         }
+
     }
 
     /**
@@ -110,13 +111,18 @@ class FaerieStep extends Command
         } elseif ($comment == "COMMENT") {
             $this->info('Faerie needs to write a comment');
             dd('unimplemented');
-            // $this->writeComment();
+        // $this->writeComment();
         } else {
             $this->info('Faerie did not respond with CODE or COMMENT. Retrying...');
             $this->analyzeIssue();
         }
 
         return true;
+    }
+
+    private function getAllCommitsFromPr(int $prNumber): array
+    {
+        return GitHub::pullRequest()->commits($this->org, $this->repo, $prNumber);
     }
 
     /**
@@ -130,26 +136,159 @@ class FaerieStep extends Command
         $this->info('Fixing tests...');
         $pr = $this->pr;
 
-        $system = "You are Faerie, an AI agent specialized in writing & analyzing code.\n\n Please review this PR:";
+        $system = "You are Faerie, an AI agent specialized in writing & analyzing code.\n\n Please review this PR and determine why the tests failed:\n\n";
         $system .= $this->getPrSummary();
-        $prompt = "Summarize the status of the PR.";
+        $commits = $this->getAllCommitsFromPr($pr['number']);
 
-        print_r($system);
+        // For each commit, get the SHA
+        // For each commit, get the diff
+        foreach ($commits as $commit) {
+            $sha = $commit['sha'];
+            $commit_resp = GitHub::repo()->commits()->show($this->org, $this->repo, $sha);
+            $system .= "\n\nHere is the diff for " . $commit_resp["files"][0]["filename"] . ":\n\n";
+            // dd($commit_resp["files"][0]["patch"]);
+            $system .= $commit_resp["files"][0]["patch"];
+            // $diff = GitHub::repo()->commits()->compare($this->org, $this->repo, $sha);
+        }
 
-        // $gateway = new OpenAIGateway();
-        // $response = $gateway->makeChatCompletion([
-        //   'model' => 'gpt-4',
-        //   'messages' => [
-        //     ['role' => 'system', 'content' => $system],
-        //     ['role' => 'user', 'content' => $prompt],
-        //   ],
-        // ]);
-        // $comment = $response['choices'][0]['message']['content'];
-        // print_r($comment);
-        // expect($comment)->toBeString();
+        $prompt = "Why did the tests fail?";
 
-        // $this->info('Done fixing tests');
+        $systemMessage = ['role' => 'system', 'content' => $system];
+
+        $gateway = new OpenAIGateway();
+        $response = $gateway->makeChatCompletion([
+          'model' => 'gpt-4',
+          'messages' => [
+            $systemMessage,
+            ['role' => 'user', 'content' => $prompt],
+          ],
+        ]);
+        $fixdescription = $response['choices'][0]['message']['content'];
+
+
+        $patcher = new Patcher();
+        $planner = new Planner();
+
+        // Build the context from a summary of the messages passed as query to a similarity search
+        $context = $this->buildContextFrom($fixdescription);
+
+        // Create a plan from the messages
+        $taskDescription = $planner->createPlan([$systemMessage]);
+
+        $planPrompt = "A description of your next task is:\n" . $taskDescription . "
+
+        For additional context, consult the following code snippets:
+        ---
+        " . $context;
+
+        $patches = $patcher->getPrPatches([
+            "title" => $this->pr["title"],
+            "body" => $planPrompt
+        ], $commits);
+
+        print_r("PATCHES:");
+        print_r($patches);
+        print_r("---");
+
+        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test1", false);
+        print_r("RESPONSE:");
+        print_r($res);
+
+        $this->info("Done!");
     }
+
+    /**
+     * Execute the console command.
+     */
+    public function writeCode()
+    {
+        // Grab the issue body and comments from GitHub
+        $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', $this->issue_number);
+        $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', $this->issue_number);
+        $body = $response['body'];
+        $title = $response['title'];
+
+        $patcher = new Patcher();
+        $planner = new Planner();
+
+        // Format the issue and comments as messages
+        $userAndAssistantMessages = $planner->formatIssueAndCommentsAsMessages($body, $commentsResponse);
+
+        // Build the context from a summary of the messages passed as query to a similarity search
+        $context = $this->buildContextFrom($userAndAssistantMessages);
+
+        // Create a plan from the messages
+        $taskDescription = $planner->createPlan($userAndAssistantMessages);
+
+        $planPrompt = "A description of your next task is:\n" . $taskDescription . "
+
+  For additional context, consult the following code snippets:
+  ---
+  " . $context;
+
+        $patches = $patcher->getIssuePatches([
+            "title" => $title,
+            "body" => $planPrompt
+        ]);
+
+        print_r("PATCHES:");
+        print_r($patches);
+        print_r("---");
+
+        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test1");
+        print_r("RESPONSE:");
+        print_r($res);
+
+        $this->info("Done!");
+    }
+
+    private function buildContextFrom($input): string
+    {
+        $queryInput = '';
+
+        if (is_array($input)) {
+            // Original handling for arrays
+            foreach ($input as $message) {
+                $queryInput .= $message['content'] . "\n---\n";
+            }
+        } elseif (is_string($input)) {
+            // If the input is a string, use it directly
+            $queryInput = $input;
+        }
+
+        // Remaining part of the function stays the same
+        $gateway = new OpenAIGateway();
+        $response = $gateway->makeChatCompletion([
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'system', 'content' => 'You are a helpful assistant. Speak concisely. Answer the user\'s question based only on the following context: ' . $queryInput],
+                ['role' => 'user', 'content' => 'Write 2-3 sentences explaining the types of files we should search for in our codebase to provide the next response in the conversation. Focus only on the next step, not future optimizations. Ignore mentions of video transcriptions or readme/documentation.'],
+            ],
+        ]);
+        $query = $response['choices'][0]['message']['content'];
+
+        $searcher = new Searcher();
+        $results = $searcher->queryAllFiles($query);
+
+        $context = '';
+        foreach ($results["results"] as $result) {
+            $context .= "Content of " . $result['path'] . ": \n```\n";
+            $content = $this->getFileContent($result['path']);
+            $context .= $content . "\n```\n\n";
+        }
+
+        return $context;
+    }
+
+    private function getFileContent(string $path): string
+    {
+        $file = fopen($path, 'r');
+        $content = fread($file, filesize($path));
+        fclose($file);
+
+        return $content;
+    }
+
 
     /**
      * Get a summary of the PR
@@ -198,6 +337,7 @@ class FaerieStep extends Command
             "title" => $response["title"],
             "body" => $response["body"],
             "state" => $response["state"],
+            "number" => $response["number"], // "number" is the PR number, "id" is the issue number
             "comments" => $comments
         ];
 
@@ -205,7 +345,6 @@ class FaerieStep extends Command
         return $pr;
     }
 
-    // get issue
     /**
      * Fetch the issue and conversation
      * @return array
@@ -253,7 +392,14 @@ class FaerieStep extends Command
         $this->info('Analyzing PR...');
         $system = "You are Faerie, an AI agent specialized in writing & analyzing code.\n\n Please review this PR:";
         $system .= $this->getPrSummary();
-        $prompt = "Summarize the status of the PR.";
+        // $prompt = "Summarize the status of the PR as eit";
+        $prompt = "Based on the above, respond only with TESTFIX, READY_FOR_REVIEW, or COMMENT.
+
+        TESTFIX means that the PR needs tests fixed.
+
+        READY_FOR_REVIEW means that the PR is ready for review.
+
+        COMMENT means that the PR needs more work and you should write a comment with additional details.";
 
         $gateway = new OpenAIGateway();
         $response = $gateway->makeChatCompletion([
@@ -264,99 +410,6 @@ class FaerieStep extends Command
           ],
         ]);
         $comment = $response['choices'][0]['message']['content'];
-        print_r($comment);
-
-        return [
-            "ready" => true,
-            "reason" => "All checks passed"
-        ];
-    }
-
-    /**
-     * Execute the console command.
-     */
-    public function writeCode()
-    {
-        // Grab the issue body and comments from GitHub
-        $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', $this->issue_number);
-        $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', $this->issue_number);
-        $body = $response['body'];
-        $title = $response['title'];
-
-        $patcher = new Patcher();
-        $planner = new Planner();
-
-        // Format the issue and comments as messages
-        $userAndAssistantMessages = $planner->formatIssueAndCommentsAsMessages($body, $commentsResponse);
-
-        // Build the context from a summary of the messages passed as query to a similarity search
-        $context = $this->buildContextFrom($userAndAssistantMessages);
-
-        // Create a plan from the messages
-        $taskDescription = $planner->createPlan($userAndAssistantMessages);
-
-        $planPrompt = "A description of your next task is:\n" . $taskDescription . "
-
-  For additional context, consult the following code snippets:
-  ---
-  " . $context;
-
-        $patches = $patcher->getIssuePatches([
-            "title" => $title,
-            "body" => $planPrompt
-        ]);
-
-        print_r("PATCHES:");
-        print_r($patches);
-        print_r("---");
-
-        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test1");
-        print_r("RESPONSE:");
-        print_r($res);
-
-        $this->info("Done!");
-    }
-
-    private function buildContextFrom(array $messages): string
-    {
-        $queryInput = '';
-
-        // todo: add author to each message?
-        foreach ($messages as $message) {
-            $queryInput .= $message['content'] . "\n---\n";
-        }
-
-        // Let's do one LLM call to summarize queryInput with an emphasis on the types of files we need to look up
-        $gateway = new OpenAIGateway();
-        $response = $gateway->makeChatCompletion([
-          'model' => 'gpt-4',
-          'messages' => [
-            ['role' => 'system', 'content' => 'You are a helpful assistant. Speak concisely. Answer the user\'s question based only on the following context: ' . $queryInput],
-            ['role' => 'user', 'content' => 'Write 2-3 sentences explaining the types of files we should search for in our codebase to provide the next response in the conversation. Focus only on the next step, not future optimizations. Ignore mentions of video transcriptions or readme/documentation.'],
-          ],
-        ]);
-        $query = $response['choices'][0]['message']['content'];
-
-        $searcher = new Searcher();
-        $results = $searcher->queryAllFiles($query);
-
-        // Loop through the results, and for each one, add the file name and the entire content of the file to the context
-        $context = '';
-        foreach ($results["results"] as $result) {
-            $context .= "Content of " . $result['path'] . ": \n```\n";
-            $content = $this->getFileContent($result['path']);
-            $context .= $content . "\n```\n\n";
-        }
-
-        return $context;
-    }
-
-    private function getFileContent(string $path): string
-    {
-        $file = fopen($path, 'r');
-        $content = fread($file, filesize($path));
-        fclose($file);
-
-        return $content;
+        return $comment;
     }
 }

@@ -13,6 +13,134 @@ class Patcher
         $this->issue = null;
         $this->task = "";
         $this->patches = [];
+        $this->org = 'ArcadeLabsInc';
+        $this->repo = 'openagents';
+    }
+
+    private function determinePatchForRemoteFile($filePath, $fileContent, $issue)
+    {
+        // Construct the prompt for checking if a patch is needed
+        $prompt = "Below is an issue on OpenAgents codebase.\nIssue: {$issue['title']} - {$issue['body']}\n\nHere is a potential file that may need to be updated to fix the issue:\n";
+        $prompt .= "{$filePath}```\n{$fileContent}```\n";
+        $actionPrompt1 = "Does this file need to be changed to resolve the issue? Respond with only `Yes` or `No`.";
+        $needsPatch = $this->complete($prompt . $actionPrompt1);
+
+        // Assuming needsPatch is 'Yes' or 'No', proceed accordingly
+        if ($needsPatch === 'No') {
+            return null;
+        }
+
+        // Configure a maximum number of retries
+        $maxRetries = 5;
+        $retryCount = 0;
+
+        while (true) {
+            print_r("Trying code block for {$filePath}, attempt #{$retryCount}\n");
+            // Construct the prompt for getting the 'Before' and 'After' contents
+            $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
+            $change = $this->complete($prompt . $actionPrompt2);
+
+            if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
+                dd("Warning: incorrect output format\n");
+                return null;
+            }
+
+            list($before, $after) = explode("After:", explode("Before:", $change, 2)[1], 2);
+            $before = $this->cleanCodeBlock($before);
+            $after = $this->cleanCodeBlock($after);
+
+            // Use preg_quote to escape any special characters in the $before string
+            $escapedBefore = preg_quote($before, '/');
+
+            // Create a regular expression that allows for flexible matching
+            $pattern = "/\s*" . str_replace("\n", "\s*", $escapedBefore) . "\s*/s";
+
+            if (!preg_match($pattern, $fileContent)) {
+                print_r("didn't match");
+                if (++$retryCount >= $maxRetries) {
+                    dd("Warning: exceeded maximum retries for finding `Before` block\n");
+                    return null;
+                }
+                continue;
+            }
+
+            // Ensure that the 'after' block ends with a newline character
+            if (!str_ends_with($after, "\n")) {
+                $after .= "\n";
+            }
+
+            // Ensure that the 'after' block begins with a newline character
+            if (!str_starts_with($after, "\n")) {
+                $after = "\n" . $after;
+            }
+
+            // Find and replace using preg_replace
+            $newFileContent = preg_replace($pattern, $after, $fileContent, 1);
+
+            // Additional step to ensure proper spacing between lines if necessary
+            $newFileContent = preg_replace('/([;}])it/', "$1\nit", $newFileContent);
+
+            return [
+                "file_name" => $filePath,
+                "content" => $fileContent,
+                "new_content" => $newFileContent
+            ];
+        }
+    }
+
+
+    private function getFileContentFromGitHub(string $path, string $sha): string
+    {
+        $response = GitHub::api('repo')->contents()->show($this->org, $this->repo, $path, $sha);
+        return base64_decode($response['content']);
+    }
+
+    private function getModifiedFilesInCommit(string $commitSha): array
+    {
+        $commitDetails = GitHub::api('repo')->commits()->show($this->org, $this->repo, $commitSha);
+
+        $relevantFiles = [];
+
+        foreach ($commitDetails['files'] as $file) {
+            // Include both modified and added files
+            if ($file['status'] === 'modified' || $file['status'] === 'added') {
+                $relevantFiles[] = $file['filename'];
+            }
+        }
+
+        return $relevantFiles;
+    }
+
+    public function getPrPatches($issue, $commits, $take = 8)
+    {
+        $patches = [];
+        $this->issue = $issue;
+        $this->task = explode("For additional context, consult the following code snippets:", $issue["body"])[0];
+
+        // Retrieve and process each file modified in the commits
+        foreach ($commits as $commit) {
+            print_r("COMMIT:");
+            print_r($commit);
+            print_r("---");
+            $modifiedFiles = $this->getModifiedFilesInCommit($commit['sha']);
+            print_r("MODIFIED FILES:");
+            print_r($modifiedFiles);
+            print_r("---");
+
+            foreach ($modifiedFiles as $filePath) {
+                $fileContent = $this->getFileContentFromGitHub($filePath, $commit['sha']);
+                // dd($fileContent);
+
+                // Determine patch for each modified file
+                $patch = $this->determinePatchForRemoteFile($filePath, $fileContent, $issue);
+                $patches[] = $patch;
+            }
+        }
+
+        // Continue with the rest of your existing logic, if necessary
+        // ...
+
+        return $patches;
     }
 
     private function generatePrTitle()
@@ -94,9 +222,13 @@ class Patcher
      * @param string $branch The branch to apply the patches to.
      * @return void
      */
-    public function submitPatchesToGitHub(array $patches, string $fullrepo = "ArcadeLabsInc/openagents", string $branch = 'main')
+    public function submitPatchesToGitHub(array $patches, string $fullrepo = "ArcadeLabsInc/openagents", string $branch = 'main', bool $createPR = true)
     {
+        $repo = explode("/", $fullrepo);
+        $owner = $repo[0];
+        $repository = $repo[1];
         $this->patches = $patches;
+        print_r("Number of patches submitting: " . count($patches) . "\n");
         foreach ($patches as $patch) {
             if ($patch === null) {
                 continue;
@@ -106,9 +238,6 @@ class Patcher
             $newContent = $patch['new_content'];
 
             // Split fullrepo by / into org and repo
-            $repo = explode("/", $fullrepo);
-            $owner = $repo[0];
-            $repository = $repo[1];
 
             try {
                 // Get the reference of the branch
@@ -124,25 +253,40 @@ class Patcher
                     $fileInfo = GitHub::api('repo')->contents()->show($owner, $repository, $path, $branch);
                     $blobSha = $fileInfo['sha'];
                     GitHub::api('repo')->contents()->update($owner, $repository, $path, $newContent, $commitMessage, $blobSha, $branch);
+                    print_r("Updated file {$path}");
                 } else {
                     // New file creation logic
                     print_r("Creating file {$path}");
                     GitHub::api('repo')->contents()->create($owner, $repository, $path, $newContent, $commitMessage, $branch);
+                    print_r("Created file {$path}");
                 }
             } catch (\Exception $e) {
                 echo "Error updating file {$path}: " . $e->getMessage() . "\n";
             }
         }
 
-        // Create pull request
-        $prTitle = $this->generatePrTitle(); // Define your PR title
-        $prBody = $this->generatePrBody(); // Define your PR body
-        $res = GitHub::api('pull_request')->create($owner, $repository, [
-            'title' => $prTitle,
-            'body' => $prBody,
-            'head' => $branch,
-            'base' => 'main' // Base branch in the upstream repository
-        ]);
+        $res = null;
+        if ($createPR) {
+            // Create pull request
+            $prTitle = $this->generatePrTitle(); // Define your PR title
+            $prBody = $this->generatePrBody(); // Define your PR body
+            $res = GitHub::api('pull_request')->create($owner, $repository, [
+                'title' => $prTitle,
+                'body' => $prBody,
+                'head' => $branch,
+                'base' => 'main' // Base branch in the upstream repository
+            ]);
+        } else {
+            // print("didnt create new PR, what happened there?");
+            // Just add commits to this PR
+            // $res = GitHub::api('pull_request')->update($owner, $repository, 1, [
+            //     'title' => $prTitle,
+            //     'body' => $prBody,
+            //     'head' => $branch,
+            //     'base' => 'main' // Base branch in the upstream repository
+            // ]);
+        }
+
         return [
             "ok" => true,
             "res" => $res
