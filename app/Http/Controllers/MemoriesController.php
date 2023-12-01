@@ -28,11 +28,13 @@ class MemoriesController extends Controller
         ]);
         return $memory;
     }
+public function delete(int $id)
+{
+    $memory = Memory::findOrFail($id);
+    $memory->delete();
+    return response()->json(['message' => 'Memory deleted successfully'], 204);
+}
+```
 
-    public function delete(int $id)
-    {
-        $memory = Memory::findOrFail($id);
-        $memory->delete();
-        return response()->json(['message' => 'Memory deleted successfully']);
-    }
+Explanation: The code block needs to be changed to return a 204 response code instead of a 200 response code. This is because a 204 response code indicates that the request was successful but no content is being returned, which is more appropriate for a delete operation. Additionally, the test cases should be updated to expect a 204 response code instead of a 200 response code.
 }
