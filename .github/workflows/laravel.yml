@@ -62,8 +62,9 @@ jobs:
         DB_USERNAME: root
         DB_PASSWORD: password
       run: |
-        vendor/bin/pest --testdox > test-summary.txt || true
-        echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
+          vendor/bin/pest --testdox > test-summary.txt
+          echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
+          if [ "$TEST_EXIT_CODE" != "0" ]; then exit $TEST_EXIT_CODE; fi
     - name: Comment PR on Test Result
       if: always() && github.event_name == 'pull_request'
       uses: actions/github-script@v5
