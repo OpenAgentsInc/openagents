@@ -61,82 +61,77 @@ jobs:
         DB_DATABASE: laravel_test
         DB_USERNAME: root
         DB_PASSWORD: password
-      run: |
-        vendor/bin/pest --testdox > test-summary.txt 2>&1
-        echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
+      run: vendor/bin/pest --testdox > test-summary.txt
     - name: Comment PR on Test Result
       if: always() && github.event_name == 'pull_request'
       uses: actions/github-script@v5
       with:
         script: |
-            const fs = require('fs');
-            const prNumber = context.issue.number;
-            let message = '';
+          const fs = require('fs');
+          const prNumber = context.issue.number;
+          let message = '';
 
-            if (process.env.TEST_EXIT_CODE !== '0') {
-                message = "❌ Tests failed to complete successfully.";
-            } else if (fs.existsSync('test-summary.txt')) {
-                const testSummary = fs.readFileSync('test-summary.txt', { encoding: 'utf8' });
-                if (testSummary.trim() === '') {
-                    message = "⚠️ Test summary file is empty.";
-                } else {
-                    const testSummaryLines = testSummary.split('\n');
-                    const failingTests = [];
-                    let captureTrace = false;
-                    let currentTest = [];
+          // Read the test summary file if it exists
+          if (fs.existsSync('test-summary.txt')) {
+            const testSummary = fs.readFileSync('test-summary.txt', { encoding: 'utf8' });
+            const testSummaryLines = testSummary.split('\n');
 
-                    for (const line of testSummaryLines) {
-                        if (line.startsWith('/home/runner/work/')) {
-                            captureTrace = false;
-                            if (currentTest.length > 0) {
-                                failingTests.push(currentTest.join('\n'));
-                                currentTest = [];
-                            }
-                        }
-                        if (line.startsWith(' ✘')) {
-                            captureTrace = true;
-                            currentTest.push(line);
-                            continue;
-                        }
-                        if (captureTrace) {
-                            if (line.trim() === '') {
-                                captureTrace = false;
-                                failingTests.push(currentTest.join('\n'));
-                                currentTest = [];
-                            } else {
-                                currentTest.push(line);
-                            }
-                        }
-                    }
+            // Initialize an array to hold our formatted failing test lines
+            const failingTests = [];
+            let captureTrace = false;
+            let currentTest = [];
 
-                    if (currentTest.length > 0) {
-                        failingTests.push(currentTest.join('\n'));
-                    }
-
-                    if (failingTests.length > 0) {
-                        message = `❌ Tests failed. Below are the details:\n\`\`\`\n${failingTests.join('\n\n')}\n\`\`\``;
-                    } else {
-                        message = "✅ All tests passed!";
-                    }
+            // Iterate over each line of the test summary
+            for (const line of testSummaryLines) {
+              // Check if the line is a file path and reset capture if we hit a new file
+              if (line.startsWith('/home/runner/work/')) {
+                captureTrace = false;
+                if (currentTest.length > 0) {
+                  failingTests.push(currentTest.join('\n'));
+                  currentTest = [];
                 }
-            } else {
-                message = "⚠️ No test summary file found.";
+              }
+              // If the line indicates a failing test, start capturing
+              if (line.startsWith(' ✘')) {
+                captureTrace = true;
+                currentTest.push(line);
+                continue;
+              }
+              // If capturing, add the stack trace lines
+              if (captureTrace) {
+                if (line.trim() === '') {
+                  // Empty line might signal the end of the stack trace
+                  captureTrace = false;
+                  failingTests.push(currentTest.join('\n'));
+                  currentTest = [];
+                } else {
+                  // Continue capturing the stack trace
+                  currentTest.push(line);
+                }
+              }
             }
 
-            // Create the PR comment
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: message
-            });
+            // Check if there's a leftover test case at the end of the file
+            if (currentTest.length > 0) {
+              failingTests.push(currentTest.join('\n'));
+            }
+
+            if (failingTests.length > 0) {
+              // Join the failing tests with two new lines and wrap in a code block for markdown
+              message = `❌ Tests failed. Below are the details:\n\`\`\`\n${failingTests.join('\n\n')}\n\`\`\``;
+            } else {
+              message = "✅ All tests passed!";
+            }
+          } else {
+            message = "⚠️ No test summary file found.";
+          }
+
+          // Create the PR comment
+          github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+            body: message
+          });
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - name: Set job outcome based on test results
-      if: always()
-      run: |
-        if [ "$TEST_EXIT_CODE" != "0" ]; then
-          exit $TEST_EXIT_CODE
-        fi
-      env:
-        TEST_EXIT_CODE: ${{ env.TEST_EXIT_CODE }}
