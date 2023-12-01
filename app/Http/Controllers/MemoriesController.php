@@ -13,9 +13,8 @@ class MemoriesController extends Controller
         $memory->title = $request->title;
         $memory->description = $request->description;
         $memory->save();
-
-        return response()->json(['message' => 'Memory created successfully']);
-    }
+return response()->json(['message' => 'Memory created successfully'], 201);
+}
 
     public function read($id)
     {
