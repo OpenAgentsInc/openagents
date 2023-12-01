@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\OpenAIGateway;
+use GitHub;
 use Illuminate\Console\Command;
 
 class FaerieStep extends Command
@@ -12,7 +13,7 @@ class FaerieStep extends Command
      *
      * @var string
      */
-    protected $signature = 'faerie:step';
+    protected $signature = 'faerie:step {--org=} {--repo=} {--pr=}';
 
     /**
      * The console command description.
@@ -21,41 +22,37 @@ class FaerieStep extends Command
      */
     protected $description = 'Makes Faerie advance a step';
 
+    private $org;
+    private $repo;
+    private $pr_number;
+    private $pr;
+
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $this->info('Faerie observing...');
+        $this->org = $this->option('org') ?? 'ArcadeLabsInc';
+        $this->repo = $this->option('repo') ?? 'openagents';
+        $this->pr_number = $this->option('pr') ?? 14;
+        $this->pr = $this->getPr();
 
-        // See if there are any open PRs
-        $openPrs = $this->getOpenPrs();
-        if (count($openPrs) > 0) {
-            $this->info('Found ' . count($openPrs) . ' open PRs');
-            foreach ($openPrs as $pr) {
-                $this->info('PR: ' . $pr["title"]);
+        // Analyze the PR to see if it's ready to merge
+        $analysis = $this->analyzePr();
+        dd();
 
-                // Analyze the PR to see if it's ready to merge
-                $analysis = $this->analyzePr($pr);
-
-                // If so, see if they are ready to merge (all checks passed - and also analyze the comments)
-                if ($analysis["ready"]) {
-                    // If so, merge them and comment on the PR
-                    $this->info('PR is ready to merge');
-                    // TODO: merge PR
-                } else if ($analysis["reason"] == "Tests failed") {
-                    // If not because tests are failing, add a commit to the PR that fixes the tests, and comment on the PR
-                    $this->info('PR is not ready to merge because tests are failing - adding a commit to fix the tests');
-                    $fix = $this->fixTests($pr);
-                } else {
-                  // If not because some requested feature is missing, add a commit to the PR that adds the feature, and comment on the PR
-                  $this->info('PR is not ready to merge - no handler for this reason');
-                }
-            }
+        // If so, see if they are ready to merge (all checks passed - and also analyze the comments)
+        if ($analysis["ready"]) {
+            // If so, merge them and comment on the PR
+            $this->info('PR is ready to merge');
+        // TODO: merge PR
+        } elseif ($analysis["reason"] == "Tests failed") {
+            // If not because tests are failing, add a commit to the PR that fixes the tests, and comment on the PR
+            $this->info('PR is not ready to merge because tests are failing - adding a commit to fix the tests');
+            $fix = $this->fixTests();
         } else {
-            $this->info('No open PRs found');
-            // If no open PRs, look for any open issues
-            // Analyze the conversation to see if what's needed next is a comment or a PR with code - and take that action
+            // If not because some requested feature is missing, add a commit to the PR that adds the feature, and comment on the PR
+            $this->info('PR is not ready to merge - no handler for this reason');
         }
     }
 
@@ -65,17 +62,14 @@ class FaerieStep extends Command
      * @param array $pr
      * @return void
      */
-    private function fixTests($pr)
+    private function fixTests()
     {
         $this->info('Fixing tests...');
+        $pr = $this->pr;
 
-        $system = "You are Faerie, an AI agent specialized in writing & analyzing code. Here is the PR title and body: \n\n" . $pr["title"] . "\n\n" . $pr["body"];
-        // Append all the comments to the system message
-        foreach ($pr["comments"] as $comment) {
-            $system .= "\n\n" . $comment["author"] . " said: " . $comment["body"];
-        }
-
-        $prompt = "Write the code that fixes the tests and commit it to the PR.";
+        $system = "You are Faerie, an AI agent specialized in writing & analyzing code.\n\n Please review this PR:";
+        $system .= $this->getPrSummary();
+        $prompt = "Summarize the status of the PR.";
 
         print_r($system);
 
@@ -95,27 +89,49 @@ class FaerieStep extends Command
     }
 
     /**
-     * Get all open PRs
+     * Get a summary of the PR
+     *
+     * @param array $pr
+     * @return string
+     */
+    private function getPrSummary()
+    {
+        $pr = $this->pr;
+        $summary = "The PR is titled '" . $pr["title"] . "' and is " . $pr["state"] . ".\n\n";
+        $summary .= "There are " . count($pr["comments"]) . " comments on this PR. They are:\n\n";
+        foreach ($pr["comments"] as $comment) {
+            $summary .= "\n\n" . $comment["author"] . " said: " . $comment["body"] . "\n";
+        }
+        return $summary;
+    }
+
+    /**
+     * Fetch the PR and conversation
      *
      * @return array
      */
-    private function getOpenPrs()
+    private function getPr()
     {
-        $prs = [
-            [
-                "title" => "Test PR",
-                "body" => "This is a test PR",
-                "comments" => [
-                    [
-                        "author" => "FaerieAI",
-                        "body" => "This is a test comment"
-                    ]
-                ]
-            ]
+        $this->info('Getting PR...');
+        $response = GitHub::issues()->show($this->org, $this->repo, $this->pr_number);
+        $comments_response = GitHub::api('issue')->comments()->all($this->org, $this->repo, $this->pr_number);
+        $comments = [];
+        foreach ($comments_response as $comment) {
+            $comments[] = [
+                "author" => $comment["user"]["login"],
+                "body" => $comment["body"]
+            ];
+        }
+
+        $pr = [
+            "title" => $response["title"],
+            "body" => $response["body"],
+            "state" => $response["state"],
+            "comments" => $comments
         ];
-        $this->info('Getting open PRs...');
-        $this->info('Done getting open PRs');
-        return $prs;
+
+        $this->info('Done getting ' . $pr["state"] . ' PR titled "' . $pr["title"] . '" with ' . count($pr["comments"]) . ' comments');
+        return $pr;
     }
 
     /**
@@ -124,17 +140,27 @@ class FaerieStep extends Command
      * @param array $pr
      * @return bool
      */
-    private function analyzePr($pr)
+    private function analyzePr()
     {
         $this->info('Analyzing PR...');
-        $this->info('Done analyzing PR');
+        $system = "You are Faerie, an AI agent specialized in writing & analyzing code.\n\n Please review this PR:";
+        $system .= $this->getPrSummary();
+        $prompt = "Summarize the status of the PR.";
+
+        $gateway = new OpenAIGateway();
+        $response = $gateway->makeChatCompletion([
+          'model' => 'gpt-4',
+          'messages' => [
+            ['role' => 'system', 'content' => $system],
+            ['role' => 'user', 'content' => $prompt],
+          ],
+        ]);
+        $comment = $response['choices'][0]['message']['content'];
+        print_r($comment);
+
         return [
-            "ready" => false,
-            "reason" => "Tests failed"
+            "ready" => true,
+            "reason" => "All checks passed"
         ];
-        // return [
-        //     "ready" => true,
-        //     "reason" => "All checks passed"
-        // ];
     }
 }
