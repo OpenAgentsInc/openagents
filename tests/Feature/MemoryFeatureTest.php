@@ -31,10 +31,8 @@ class MemoryFeatureTest extends TestCase
             'date' => $this->faker->date,
             'location' => $this->faker->address,
         ];
-
-        $response = $this->post('/api/memories', $data);
-
-        $response->assertStatus(201)
+$response = $this->post('/api/memories', $data)->assertStatus(201)->assertJson($data);
+$response->assertStatus(201)
             ->assertJson($data);
     }
 
