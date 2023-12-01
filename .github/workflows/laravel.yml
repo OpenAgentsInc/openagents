@@ -64,7 +64,6 @@ jobs:
       run: |
           vendor/bin/pest --testdox > test-summary.txt
           echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
-          if [ "$TEST_EXIT_CODE" != "0" ]; then exit $TEST_EXIT_CODE; fi
     - name: Comment PR on Test Result
       if: always() && github.event_name == 'pull_request'
       uses: actions/github-script@v5
@@ -133,3 +132,11 @@ jobs:
             });
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set job outcome based on test results
+      if: always()
+      run: |
+        if [ "$TEST_EXIT_CODE" != "0" ]; then
+          exit $TEST_EXIT_CODE
+        fi
+      env:
+        TEST_EXIT_CODE: ${{ env.TEST_EXIT_CODE }}
