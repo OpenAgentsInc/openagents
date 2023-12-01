@@ -38,7 +38,9 @@ class Patcher
             print_r("Trying code block for {$filePath}, attempt #{$retryCount}\n");
             // Construct the prompt for getting the 'Before' and 'After' contents
             $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
+            // print_r($prompt . $actionPrompt2 . "\n");
             $change = $this->complete($prompt . $actionPrompt2);
+            // print_r($change);
 
             if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
                 dd("Warning: incorrect output format\n");
@@ -56,7 +58,7 @@ class Patcher
             $pattern = "/\s*" . str_replace("\n", "\s*", $escapedBefore) . "\s*/s";
 
             if (!preg_match($pattern, $fileContent)) {
-                print_r("didn't match");
+                print_r("didnt match");
                 if (++$retryCount >= $maxRetries) {
                     dd("Warning: exceeded maximum retries for finding `Before` block\n");
                     return null;
@@ -69,7 +71,7 @@ class Patcher
                 $after .= "\n";
             }
 
-            // Ensure that the 'after' block begins with a newline character
+            // Ensure that the 'after block begins with a newline character
             if (!str_starts_with($after, "\n")) {
                 $after = "\n" . $after;
             }
@@ -78,6 +80,7 @@ class Patcher
             $newFileContent = preg_replace($pattern, $after, $fileContent, 1);
 
             // Additional step to ensure proper spacing between lines if necessary
+            // This step can be adjusted based on the specific formatting issues you are encountering
             $newFileContent = preg_replace('/([;}])it/', "$1\nit", $newFileContent);
 
             return [
