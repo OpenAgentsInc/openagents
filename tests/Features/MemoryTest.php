@@ -1,10 +1,8 @@
 <?php
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-
 uses(RefreshDatabase::class);
 
-it('can store memory', function () {
+it('can store memory', function() {
     $memory = [
         'title' => 'Test Memory',
         'description' => 'This is a test memory',
@@ -18,7 +16,7 @@ it('can store memory', function () {
         ->assertJson($memory);
 });
 
-it('can get all memories', function () {
+it('can get all memories', function() {
     $memories = factory(Memory::class, 5)->create();
 
     $this->get(route('memories.index'))
@@ -26,7 +24,7 @@ it('can get all memories', function () {
         ->assertJson($memories->toArray());
 });
 
-it('can get memory', function () {
+it('can get memory', function() {
     $memory = factory(Memory::class)->create();
 
     $this->get(route('memories.show', $memory->id))
@@ -34,7 +32,7 @@ it('can get memory', function () {
         ->assertJson($memory->toArray());
 });
 
-it('can update memory', function () {
+it('can update memory', function() {
     $memory = factory(Memory::class)->create();
 
     $updatedMemory = [
@@ -50,9 +48,47 @@ it('can update memory', function () {
         ->assertJson($updatedMemory);
 });
 
-it('can delete memory', function () {
+it('can delete memory', function() {
     $memory = factory(Memory::class)->create();
 
     $this->delete(route('memories.destroy', $memory->id))
         ->assertStatus(204);
 });
+```
+
+After:
+```
+uses(RefreshDatabase::class);
+
+it('can store memory', function() {
+    $memory = [
+        'title' => 'Test Memory',
+        'description' => 'This is a test memory',
+        'date' => '2021-01-01',
+        'location' => 'Test Location',
+        'image' => 'test_image.jpg',
+    ];
+
+    $this->post(route('memories.store'), $memory)
+        ->assertStatus(201)
+        ->assertJson($memory);
+});
+
+it('can get all memories', function() {
+    $memories = factory(Memory::class, 5)->create();
+
+    $this->get(route('memories.index'))
+        ->assertStatus(200)
+        ->assertJson($memories->toArray());
+});
+
+it('can get memory', function() {
+    $memory = factory(Memory::class)->create();
+
+    $this->get(route('memories.show', $memory->id))
+        ->assertStatus(200)
+        ->assertJson($memory->toArray());
+});
+
+it('can update memory', function() {
+    $memory = factory(Memory::class)->create();
