@@ -43,7 +43,6 @@ it('can update a memory from HTTP request', function() {
         'description' => 'Updated description',
     ]);
 });
-
 it('can delete a memory from HTTP request', function() {
     $memory = Memory::create([
         'description' => 'Test description',
@@ -52,6 +51,6 @@ it('can delete a memory from HTTP request', function() {
 
     $response = $this->deleteJson("/memories/{$memory->id}");
 
-    $response->assertOk();
+    $response->assertStatus(204);
     $this->assertDatabaseMissing('memories', ['id' => $memory->id]);
 });
