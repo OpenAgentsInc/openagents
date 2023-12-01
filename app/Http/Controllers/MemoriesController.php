@@ -16,21 +16,19 @@ class MemoriesController extends Controller
     {
         return view('memories.create');
     }
+public function store(Request $request)
+{
+    $memory = Memory::create([
+        'title' => $request->title,
+        'description' => $request->description,
+        'date' => $request->date,
+        'location' => $request->location,
+        'image' => $request->image,
+    ]);
 
-    public function store(Request $request)
-    {
-        $memory = Memory::create([
-            'title' => $request->title,
-            'description' => $request->description,
-            'date' => $request->date,
-            'location' => $request->location,
-            'image' => $request->image,
-        ]);
-
-        return response()->json($memory, 201);
-    }
-
-    public function show($id)
+    return response()->json($memory, 201);
+}
+public function show($id)
     {
         return Memory::findOrFail($id);
     }
