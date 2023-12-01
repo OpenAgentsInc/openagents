@@ -11,13 +11,12 @@ class MemoriesController extends Controller
     {
         return Memory::all();
     }
-
-    public function store(Request $request)
-    {
-        return Memory::create($request->all());
-    }
-
-    public function update(Request $request, $id)
+public function store(Request $request)
+{
+    $memory = Memory::create($request->all());
+    return response()->json($memory, 201);
+}
+public function update(Request $request, $id)
     {
         $memory = Memory::findOrFail($id);
         $memory->update($request->all());
