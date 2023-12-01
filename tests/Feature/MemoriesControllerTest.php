@@ -12,44 +12,15 @@ class MemoriesControllerTest extends TestCase
 
     public function test_create_memory()
     {
-$response = $this->post('/memories', [
-    'title' => 'Test Memory',
-    'description' => 'This is a test memory',
-    'date' => '2020-01-01',
-    'location' => 'Test Location',
-    'image' => 'test.jpg'
-], [], ['Accept' => 'application/json']);
+        $response = $this->post('/memories', [
+            'title' => 'Test Memory',
+            'description' => 'This is a test memory',
+            'date' => '2020-01-01',
+            'location' => 'Test Location',
+            'image' => 'test.jpg'
+        ]);
 
-Before:
-$response = $this->get('/memories/' . $memory->id);
-
-After:
-$response = $this->get('/memories/' . $memory->id, [], ['Accept' => 'application/json']);
-
-Before:
-$response = $this->put('/memories/' . $memory->id, [
-    'title' => 'Updated Memory',
-    'description' => 'This is an updated memory',
-    'date' => '2020-02-02',
-    'location' => 'Updated Location',
-    'image' => 'updated.jpg'
-]);
-
-After:
-$response = $this->put('/memories/' . $memory->id, [
-    'title' => 'Updated Memory',
-    'description' => 'This is an updated memory',
-    'date' => '2020-02-02',
-    'location' => 'Updated Location',
-    'image' => 'updated.jpg'
-], [], ['Accept' => 'application/json']);
-
-Before:
-$response = $this->delete('/memories/' . $memory->id);
-
-After:
-$response = $this->delete('/memories/' . $memory->id, [], ['Accept' => 'application/json']);
-$response->assertStatus(201);
+        $response->assertStatus(201);
         $this->assertDatabaseHas('memories', [
             'title' => 'Test Memory',
             'description' => 'This is a test memory',
@@ -64,9 +35,8 @@ $response->assertStatus(201);
         $memory = factory(\App\Memory::class)->create();
 
         $response = $this->get('/memories/' . $memory->id);
-
-        $response->assertStatus(200);
-        $response->assertJson([
+$response->assertStatus(201);
+$response->assertJson([
             'title' => $memory->title,
             'description' => $memory->description,
             'date' => $memory->date,
