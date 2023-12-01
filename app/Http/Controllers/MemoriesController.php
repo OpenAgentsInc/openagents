@@ -7,16 +7,16 @@ use App\Memory;
 
 class MemoriesController extends Controller
 {
-    public function create(Request $request)
-    {
-        $memory = new Memory;
-        $memory->title = $request->title;
-        $memory->description = $request->description;
-        $memory->save();
-return response()->json(['message' => 'Memory created successfully'], 201);
-}
+public function create(Request $request)
+{
+    $memory = new Memory;
+    $memory->title = $request->title;
+    $memory->description = $request->description;
+    $memory->save();
 
-    public function read($id)
+    return response()->json(['message' => 'Memory created successfully'], 201);
+}
+public function read($id)
     {
         $memory = Memory::find($id);
 
