@@ -347,7 +347,7 @@ class Patcher
     private function promptForNewFiles()
     {
         $prompt = "Below is an issue on OpenAgents codebase.\nIssue: {$this->issue['title']} \n\n Issue body: {$this->issue['body']}\n";
-        $actionPrompt1 = "Please enter the file paths of any files that need to be created to resolve the issue. Separate multiple file paths with a comma.";
+        $actionPrompt1 = "Please enter the file paths of any files that need to be created to resolve the issue. Separate multiple file paths with a comma. If it's a feature test, make sure it goes in tests/Feature (not Features).";
         $newFiles = $this->complete($prompt . $actionPrompt1);
 
         if ($newFiles === '') {
