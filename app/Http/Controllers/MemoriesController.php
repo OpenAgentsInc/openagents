@@ -28,6 +28,42 @@ public function store(Request $request)
 
     return response()->json($memory, 201);
 }
+```
+
+Before:
+```
+public function update(Request $request, $id)
+{
+    $memory = Memory::findOrFail($id);
+
+    $memory->update([
+        'title' => $request->title,
+        'description' => $request->description,
+        'date' => $request->date,
+        'location' => $request->location,
+        'image' => $request->image,
+    ]);
+
+    return response()->json($memory, 200);
+}
+```
+
+After:
+```
+public function update(Request $request, $id)
+{
+    $memory = Memory::findOrFail($id);
+
+    $memory->update([
+        'title' => $request->title,
+        'description' => $request->description,
+        'date' => $request->date,
+        'location' => $request->location,
+        'image' => $request->image,
+    ]);
+
+    return response()->json($memory, 200);
+}
 public function show($id)
     {
         return Memory::findOrFail($id);
