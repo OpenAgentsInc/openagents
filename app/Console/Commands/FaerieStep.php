@@ -57,7 +57,6 @@ class FaerieStep extends Command
 
         // Analyze the PR to see if it's ready to merge
         $analysis = $this->analyzePr();
-        dd();
 
         // If so, see if they are ready to merge (all checks passed - and also analyze the comments)
         if ($analysis["ready"]) {
@@ -105,8 +104,6 @@ class FaerieStep extends Command
         ]);
         $comment = $response['choices'][0]['message']['content'];
 
-        dd($comment);
-
         if ($comment == "CODE") {
             $this->info('Faerie is ready to write code');
             $this->writeCode();
@@ -115,8 +112,8 @@ class FaerieStep extends Command
             dd('unimplemented');
             // $this->writeComment();
         } else {
-            $this->info('User did not respond with CODE or COMMENT');
-            dd();
+            $this->info('Faerie did not respond with CODE or COMMENT. Retrying...');
+            $this->analyzeIssue();
         }
 
         return true;
