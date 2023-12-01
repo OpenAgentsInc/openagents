@@ -190,7 +190,7 @@ class FaerieStep extends Command
         print_r($patches);
         print_r("---");
 
-        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test6", false);
+        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test11", false);
         print_r("RESPONSE:");
         print_r($res);
 
@@ -235,7 +235,7 @@ class FaerieStep extends Command
         print_r($patches);
         print_r("---");
 
-        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test6");
+        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test11");
         print_r("RESPONSE:");
         print_r($res);
 

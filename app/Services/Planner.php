@@ -22,7 +22,7 @@ class Planner
 
         }
 
-        $prompt = "Based on the following conversation, please respond with a step-by-step plan for our junior developer to follow. Be extremely specific about code needs to be added, what files need to be edited, what tests need to be written, and the expected outcome. But do not write any of the code! You are just providing instructions to the junior developer. Do not give any general advice. Only give specific tasks that can be completed with code. And when writing tests, the developer must use Pest syntax not bare PHPUnit. \n\n-----\n\n" . $plan;
+        $prompt = "Based on the following conversation, please respond with a step-by-step plan for our junior developer to follow. Be extremely specific about code needs to be added, what files need to be edited, what tests need to be written, and the expected outcome. But do not write any of the code! You are just providing instructions to the junior developer. Do not give any general advice. Only give specific tasks that can be completed with code. And make sure to emphasize: when writing tests, the developer must use Pest syntax not bare PHPUnit. \n\n-----\n\n" . $plan;
         $plan = $this->complete($prompt);
 
         return $plan;
