@@ -183,7 +183,7 @@ class Patcher
 
         Write a PR body in Markdown for the patches below. Include a summary of the changes at the top, followed by a description of individual changes. Do not use the word 'patch'. Only describe the differences between the new and old content, do not summarize existing code.\n\n";
 
-        print_r("PR BODY:");
+        // print_r("PR BODY:");
         // print_r($prompt);
 
         // explode by "For additional context, consult the following code snippets:"
@@ -594,7 +594,7 @@ class Patcher
             print_r($formattedPatch);
 
             // Create the LLM prompt
-            $llmPrompt = "Please review the following patch for a PHP file. Identify any syntax errors, logical flaws, or deviations from standard PHP practices in the new content, and provide a corrected version if necessary. Respond only with code. You can add comments with explanation.";
+            $llmPrompt = "Replace this code block with a cleaned code block. Identify any syntax errors, logical flaws, or deviations from standard PHP practices in the new content, and provide a corrected version if necessary. Respond only with code. You can add comments inside the code, but respond only with code we can directly replace the code block with.";
             $llmPrompt .= "\n\n" . $formattedPatch;
 
             // Query the LLM
