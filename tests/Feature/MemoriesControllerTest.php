@@ -1,3 +1,6 @@
+The code seems to be replaced with the same content from the file. As per the PHP standards, there are no issues with the code provided. Hence, the new content should be the same as the old one.
+
+```php
 <?php
 
 namespace Tests\Feature;
@@ -13,6 +16,7 @@ class MemoriesControllerTest extends TestCase
     public function test_can_store_a_new_memory()
     {
         $memory = Memory::factory()->make();
+
         $response = $this->postJson('/api/memories', $memory->toArray());
 
         $response->assertStatus(201);
@@ -60,3 +64,4 @@ class MemoriesControllerTest extends TestCase
         $response->assertJson($memories->toArray());
     }
 }
+```
