@@ -594,13 +594,13 @@ class Patcher
             print_r($formattedPatch);
 
             // Create the LLM prompt
-            $llmPrompt = "Replace this code block with a cleaned code block. Identify any syntax errors, logical flaws, or deviations from standard PHP practices in the new content, and provide a corrected version if necessary. Respond only with code. You can add comments inside the code, but respond only with code we can directly replace the code block with.";
+            $llmPrompt = "Replace the 'New Content' code block with a cleaned code block. Identify any syntax errors, logical flaws, or deviations from standard PHP practices in the new content, and provide a corrected version if necessary. Respond only with code. You can add comments inside the code, but respond only with code we can directly replace the code block with. If no changes need to be made, reply with the original code. Do not respond with Markdown backticks, only the code itself.";
             $llmPrompt .= "\n\n" . $formattedPatch;
 
             // Query the LLM
             $gateway = new OpenAIGateway();
             $response = $gateway->makeChatCompletion([
-                'model' => 'gpt-4',
+                'model' => 'gpt-3.5-turbo',
                 'messages' => [
                     ['role' => 'system', 'content' => $llmPrompt],
                 ],
@@ -628,7 +628,13 @@ class Patcher
      */
     public function formatPatchForLLM($patch)
     {
-        $formattedPatch = "File: " . $patch['file_name'] . "\n\n";
+        $formattedPatch = "";
+        try {
+          $formattedPatch .= "File: " . $patch['file_name'] . "\n\n";
+        } catch (Exception $e) {
+          // $formattedPatch .= "File: " . $patch['file'] . "\n\n";
+        }
+
         $formattedPatch .= "Original Content:\n" . $patch['content'] . "\n\n";
         $formattedPatch .= "New Content:\n" . $patch['new_content'];
 
