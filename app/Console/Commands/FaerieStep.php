@@ -191,8 +191,6 @@ class FaerieStep extends Command
         print_r("---");
 
         $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test17", false);
-        // print_r("RESPONSE:");
-        // print_r($res);
 
         $this->info("Done!");
     }
@@ -403,11 +401,11 @@ class FaerieStep extends Command
 
         $gateway = new OpenAIGateway();
         $response = $gateway->makeChatCompletion([
-          'model' => 'gpt-4',
-          'messages' => [
-            ['role' => 'system', 'content' => $system],
-            ['role' => 'user', 'content' => $prompt],
-          ],
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => $prompt],
+            ],
         ]);
         $comment = $response['choices'][0]['message']['content'];
         return $comment;
