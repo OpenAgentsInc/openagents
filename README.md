@@ -45,3 +45,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 29. [Automating Tests](https://twitter.com/GPUtopia/status/1728590361805672788)
 30. [Faerie Debugs Failing Tests](https://twitter.com/GPUtopia/status/1728614813675274300)
 31. [Faerie as Daemon](https://twitter.com/GPUtopia/status/1730253928896291251)
+32. [Toward Semi-Automation](https://twitter.com/GPUtopia/status/1731086330694651924)
