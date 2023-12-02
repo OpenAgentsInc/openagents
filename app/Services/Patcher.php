@@ -132,20 +132,32 @@ class Patcher
 
             foreach ($modifiedFiles as $filePath) {
                 $fileContent = $this->getFileContentFromGitHub($filePath, $commit['sha']);
-                // dd($fileContent);
-
                 // Determine patch for each modified file
                 $patch = $this->determinePatchForRemoteFile($filePath, $fileContent, $issue);
                 $patches[] = $patch;
             }
         }
 
-        // Continue with the rest of your existing logic, if necessary
-        // ...
+        // Validate and potentially rewrite patches
+        do {
+            $needsRewrite = false;
+            $validatedPatches = $this->validatePatches($patches);
 
-        $patches = $this->validatePatches($patches);
+            foreach ($validatedPatches as &$patch) {
+                if ($patch['status'] === 'NEEDS_REWRITE') {
+                    $needsRewrite = true;
+                    // Redetermine patch for file
+                    $patch = $this->determinePatchForRemoteFile($patch['file_name'], $patch['content'], $issue);
+                    // Revalidate this patch
+                    $revalidatedPatch = $this->validatePatches([$patch]);
+                    $patch = $revalidatedPatch[0]; // Assuming validatePatches returns an array of patches
+                }
+            }
 
-        return $patches;
+            $patches = $validatedPatches;
+        } while ($needsRewrite);
+
+        return $validatedPatches;
     }
 
     private function generatePrTitle()
@@ -298,13 +310,6 @@ class Patcher
         ];
     }
 
-    /**
-     * Generates patches for a single issue based on the 'Before' and 'After' content.
-     *
-     * @param array $issue An associative array representing an issue,
-     *                     which should include 'title', 'body', and other relevant data.
-     * @return array An array of patches.
-     */
     public function getIssuePatches($issue, $take = 8)
     {
         $patches = [];
@@ -326,16 +331,31 @@ class Patcher
 
         // UPDATE EXISTING FILES
         $nearestFiles = $this->getNearestFiles($issue, $take);
-
         foreach ($nearestFiles as $file) {
-            // Determine patch for file
             $patch = $this->determinePatchForFile($file, $issue);
             $patches[] = $patch;
         }
 
-        $patches = $this->validatePatches($patches);
+        // Validate and potentially rewrite patches
+        do {
+            $needsRewrite = false;
+            $validatedPatches = $this->validatePatches($patches);
 
-        return $patches;
+            foreach ($validatedPatches as &$patch) {
+                if ($patch['status'] === 'NEEDS_REWRITE') {
+                    $needsRewrite = true;
+                    // Reapply the patch determination logic
+                    $patch = $this->determinePatchForFile($patch['file_name'], $issue);
+                    // Revalidate this patch
+                    $revalidatedPatch = $this->validatePatches([$patch]);
+                    $patch = $revalidatedPatch[0]; // Assuming validatePatches returns an array of patches
+                }
+            }
+
+            $patches = $validatedPatches;
+        } while ($needsRewrite);
+
+        return $validatedPatches;
     }
 
     private function promptForNewFileContent($newFilePath, $issue)
@@ -572,12 +592,6 @@ class Patcher
         return '---'; // Return empty string or handle error appropriately
     }
 
-    /**
-     * Validates and potentially corrects patches using an LLM.
-     *
-     * @param array $patches Array of patches.
-     * @return array Array of validated and corrected patches.
-     */
     public function validatePatches($patches)
     {
         $validatedPatches = [];
@@ -613,8 +627,14 @@ class Patcher
 
             print_r("-----");
 
-            // Update the patch with corrected content
-            $patch['new_content'] = $correctedContent;
+            // Check if the corrected content is different from the original
+            if (trim($correctedContent) === trim($patch['new_content'])) {
+                $patch['status'] = 'VALID';
+            } else {
+                $patch['status'] = 'NEEDS_REWRITE';
+                $patch['new_content'] = $correctedContent;
+            }
+
             $validatedPatches[] = $patch;
         }
 
@@ -631,9 +651,9 @@ class Patcher
     {
         $formattedPatch = "";
         try {
-          $formattedPatch .= "File: " . $patch['file_name'] . "\n\n";
+            $formattedPatch .= "File: " . $patch['file_name'] . "\n\n";
         } catch (Exception $e) {
-          // $formattedPatch .= "File: " . $patch['file'] . "\n\n";
+            // $formattedPatch .= "File: " . $patch['file'] . "\n\n";
         }
 
         $formattedPatch .= "Original Content:\n" . $patch['content'] . "\n\n";
