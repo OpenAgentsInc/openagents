@@ -13,7 +13,6 @@ class MemoriesControllerTest extends TestCase
     public function test_can_store_a_new_memory()
     {
         $memory = Memory::factory()->make();
-
         $response = $this->postJson('/api/memories', $memory->toArray());
 
         $response->assertStatus(201);
