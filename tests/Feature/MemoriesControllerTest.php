@@ -1,11 +1,9 @@
-The code seems to be replaced with the same content from the file. As per the PHP standards, there are no issues with the code provided. Hence, the new content should be the same as the old one.
-
-```php
 <?php
 
 namespace Tests\Feature;
 
 use App\Models\Memory;
+use App\Factories\MemoryFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -15,8 +13,7 @@ class MemoriesControllerTest extends TestCase
 
     public function test_can_store_a_new_memory()
     {
-        $memory = Memory::factory()->make();
-
+        $memory = MemoryFactory::new()->make();
         $response = $this->postJson('/api/memories', $memory->toArray());
 
         $response->assertStatus(201);
@@ -25,7 +22,7 @@ class MemoriesControllerTest extends TestCase
 
     public function test_can_show_an_existing_memory()
     {
-        $memory = Memory::factory()->create();
+        $memory = MemoryFactory::new()->create();
 
         $response = $this->getJson('/api/memories/' . $memory->id);
 
@@ -35,8 +32,8 @@ class MemoriesControllerTest extends TestCase
 
     public function test_can_update_a_memory()
     {
-        $memory = Memory::factory()->create();
-        $newData = Memory::factory()->make();
+        $memory = MemoryFactory::new()->create();
+        $newData = MemoryFactory::new()->make();
 
         $response = $this->putJson('/api/memories/' . $memory->id, $newData->toArray());
 
@@ -46,7 +43,7 @@ class MemoriesControllerTest extends TestCase
 
     public function test_can_delete_a_memory()
     {
-        $memory = Memory::factory()->create();
+        $memory = MemoryFactory::new()->create();
 
         $response = $this->deleteJson('/api/memories/' . $memory->id);
 
@@ -56,7 +53,7 @@ class MemoriesControllerTest extends TestCase
 
     public function test_can_return_all_memories()
     {
-        $memories = Memory::factory()->count(5)->create();
+        $memories = MemoryFactory::new()->count(5)->create();
 
         $response = $this->getJson('/api/memories');
 
@@ -64,4 +61,3 @@ class MemoriesControllerTest extends TestCase
         $response->assertJson($memories->toArray());
     }
 }
-```
