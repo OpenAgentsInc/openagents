@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Memory;
+use App\Models\Memory; // The correct namespace for Memory Model
 use Illuminate\Http\Request;
 
 class MemoriesController extends Controller
