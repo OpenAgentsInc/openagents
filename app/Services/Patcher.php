@@ -139,25 +139,28 @@ class Patcher
         }
 
         // Validate and potentially rewrite patches
-        do {
-            $needsRewrite = false;
-            $validatedPatches = $this->validatePatches($patches);
+        return $patches;
+        // do {
+        //     $needsRewrite = false;
+        //     $validatedPatches = $this->validatePatches($patches);
 
-            foreach ($validatedPatches as &$patch) {
-                if ($patch['status'] === 'NEEDS_REWRITE') {
-                    $needsRewrite = true;
-                    // Redetermine patch for file
-                    $patch = $this->determinePatchForRemoteFile($patch['file_name'], $patch['content'], $issue);
-                    // Revalidate this patch
-                    $revalidatedPatch = $this->validatePatches([$patch]);
-                    $patch = $revalidatedPatch[0]; // Assuming validatePatches returns an array of patches
-                }
-            }
+        //     foreach ($validatedPatches as &$patch) {
+        //         if ($patch['status'] === 'NEEDS_REWRITE') {
+        //             print_r("REWRITING PATCH\n");
+        //             print_r($patch);
+        //             $needsRewrite = true;
+        //             // Redetermine patch for file
+        //             $patch = $this->determinePatchForRemoteFile($patch['file_name'], $patch['content'], $issue);
+        //             // Revalidate this patch
+        //             $revalidatedPatch = $this->validatePatches([$patch]);
+        //             $patch = $revalidatedPatch[0]; // Assuming validatePatches returns an array of patches
+        //         }
+        //     }
 
-            $patches = $validatedPatches;
-        } while ($needsRewrite);
+        //     $patches = $validatedPatches;
+        // } while ($needsRewrite);
 
-        return $validatedPatches;
+        // return $validatedPatches;
     }
 
     private function generatePrTitle()
@@ -337,25 +340,26 @@ class Patcher
         }
 
         // Validate and potentially rewrite patches
-        do {
-            $needsRewrite = false;
-            $validatedPatches = $this->validatePatches($patches);
+        // do {
+        //     $needsRewrite = false;
+        //     $validatedPatches = $this->validatePatches($patches);
 
-            foreach ($validatedPatches as &$patch) {
-                if ($patch['status'] === 'NEEDS_REWRITE') {
-                    $needsRewrite = true;
-                    // Reapply the patch determination logic
-                    $patch = $this->determinePatchForFile($patch['file_name'], $issue);
-                    // Revalidate this patch
-                    $revalidatedPatch = $this->validatePatches([$patch]);
-                    $patch = $revalidatedPatch[0]; // Assuming validatePatches returns an array of patches
-                }
-            }
+        //     foreach ($validatedPatches as &$patch) {
+        //         if ($patch['status'] === 'NEEDS_REWRITE') {
+        //             $needsRewrite = true;
+        //             // Reapply the patch determination logic
+        //             $patch = $this->determinePatchForFile($patch['file_name'], $issue);
+        //             // Revalidate this patch
+        //             $revalidatedPatch = $this->validatePatches([$patch]);
+        //             $patch = $revalidatedPatch[0]; // Assuming validatePatches returns an array of patches
+        //         }
+        //     }
 
-            $patches = $validatedPatches;
-        } while ($needsRewrite);
+        //     $patches = $validatedPatches;
+        // } while ($needsRewrite);
 
-        return $validatedPatches;
+        // return $validatedPatches;
+        return $patches;
     }
 
     private function promptForNewFileContent($newFilePath, $issue)
@@ -399,7 +403,9 @@ class Patcher
     {
         // Check if the file exists
         if (!file_exists($file)) {
-            dd("File not found: {$file}\n");
+            print_r("File not found: {$file} - trying to skip\n");
+            // $this->determinePatchForRemoteFile($file, $issue);
+            return;
         }
 
         // Read the file content
@@ -538,7 +544,7 @@ class Patcher
      */
     private function complete($prompt, $tokensResponse = 1024)
     {
-        print_r("ATTEMTING TO COMPLETE PROMPT:" . $prompt . "\n");
+        // print_r("ATTEMTING TO COMPLETE PROMPT:" . $prompt . "\n");
 
         $maxContentLength = 4097; // Define this constant based on your use case
         $modelCompletion = "gpt-3.5-turbo-instruct"; // Define this constant for the model you're using
