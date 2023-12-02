@@ -14,9 +14,72 @@ class MemoriesTest extends TestCase
     /** @test */
     public function it_can_create_a_memory()
     {
-        $memory = Memory::factory()->create();
+$memory = MemoryFactory::new()->create();
+```
 
-        $this->post('/api/memories', $memory->toArray())
+Before:
+```
+$this->post('/api/memories', $memory->toArray())
+```
+
+After:
+```
+$this->post('/api/memories', $memory->toArray())
+    ->assertStatus(201)
+    ->assertJson($memory->toArray());
+```
+
+Before:
+```
+$this->get('/api/memories/' . $memory->id)
+```
+
+After:
+```
+$this->get('/api/memories/' . $memory->id)
+    ->assertStatus(200)
+    ->assertJson($memory->toArray());
+```
+
+Before:
+```
+$this->put('/api/memories/' . $memory->id, $updatedMemory->toArray())
+```
+
+After:
+```
+$this->put('/api/memories/' . $memory->id, $updatedMemory->toArray())
+    ->assertStatus(200)
+    ->assertJson($updatedMemory->toArray());
+```
+
+Before:
+```
+$this->delete('/api/memories/' . $memory->id)
+```
+
+After:
+```
+$this->delete('/api/memories/' . $memory->id)
+    ->assertStatus(204);
+```
+
+Before:
+```
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\WithFaker;
+use Tests\TestCase;
+use App\Models\Memory;
+```
+
+After:
+```
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\WithFaker;
+use Tests\TestCase;
+use App\Models\Memory;
+use Database\Factories\MemoryFactory;
+$this->post('/api/memories', $memory->toArray())
             ->assertStatus(201)
             ->assertJson($memory->toArray());
     }
