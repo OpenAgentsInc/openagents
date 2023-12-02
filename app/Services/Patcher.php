@@ -143,6 +143,8 @@ class Patcher
         // Continue with the rest of your existing logic, if necessary
         // ...
 
+        $patches = $this->validatePatches($patches);
+
         return $patches;
     }
 
@@ -331,6 +333,8 @@ class Patcher
             $patches[] = $patch;
         }
 
+        $patches = $this->validatePatches($patches);
+
         return $patches;
     }
 
@@ -516,8 +520,6 @@ class Patcher
     {
         print_r("ATTEMTING TO COMPLETE PROMPT:" . $prompt . "\n");
 
-
-
         $maxContentLength = 4097; // Define this constant based on your use case
         $modelCompletion = "gpt-3.5-turbo-instruct"; // Define this constant for the model you're using
         // $modelCompletion = "text-davinci-003"; // Define this constant for the model you're using
@@ -568,5 +570,68 @@ class Patcher
         }
 
         return '---'; // Return empty string or handle error appropriately
+    }
+
+    /**
+     * Validates and potentially corrects patches using an LLM.
+     *
+     * @param array $patches Array of patches.
+     * @return array Array of validated and corrected patches.
+     */
+    public function validatePatches($patches)
+    {
+        $validatedPatches = [];
+
+        foreach ($patches as $patch) {
+
+            print_r("VALIDATING PATCH:\n");
+            print_r($patch);
+
+            // Format the patch for LLM processing
+            $formattedPatch = $this->formatPatchForLLM($patch);
+
+            print_r("FORMATTED PATCH:\n");
+            print_r($formattedPatch);
+
+            // Create the LLM prompt
+            $llmPrompt = "Please review the following patch for a PHP file. Identify any syntax errors, logical flaws, or deviations from standard PHP practices in the new content, and provide a corrected version if necessary. Respond only with code. You can add comments with explanation.";
+            $llmPrompt .= "\n\n" . $formattedPatch;
+
+            // Query the LLM
+            $gateway = new OpenAIGateway();
+            $response = $gateway->makeChatCompletion([
+                'model' => 'gpt-4',
+                'messages' => [
+                    ['role' => 'system', 'content' => $llmPrompt],
+                ],
+            ]);
+            $correctedContent = $response['choices'][0]['message']['content'];
+
+            print_r("LLM RESPONSE:\n");
+            print_r($correctedContent);
+
+            print_r("-----");
+
+            // Update the patch with corrected content
+            $patch['new_content'] = $correctedContent;
+            $validatedPatches[] = $patch;
+        }
+
+        return $validatedPatches;
+    }
+
+    /**
+     * Formats a patch for LLM processing.
+     *
+     * @param array $patch Single patch array.
+     * @return string Formatted patch for LLM.
+     */
+    public function formatPatchForLLM($patch)
+    {
+        $formattedPatch = "File: " . $patch['file_name'] . "\n\n";
+        $formattedPatch .= "Original Content:\n" . $patch['content'] . "\n\n";
+        $formattedPatch .= "New Content:\n" . $patch['new_content'];
+
+        return $formattedPatch;
     }
 }

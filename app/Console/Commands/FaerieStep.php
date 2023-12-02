@@ -412,4 +412,27 @@ class FaerieStep extends Command
         $comment = $response['choices'][0]['message']['content'];
         return $comment;
     }
+
+    public function validateAndCorrectCode($generatedDiff) {
+      // Format the diff for LLM processing
+      $formattedDiff = $this->formatDiffForLLM($generatedDiff);
+
+      // Create the LLM prompt
+      $llmPrompt = "Please review the following PHP code diff. Identify any syntax errors, logical flaws, or deviations from standard PHP practices, and provide a corrected version of the code:";
+      $llmPrompt .= "\n\n" . $formattedDiff;
+
+      // Query the LLM
+      $gateway = new OpenAIGateway();
+      $response = $gateway->makeChatCompletion([
+          'model' => 'gpt-4',
+          'messages' => [
+              ['role' => 'system', 'content' => $llmPrompt],
+          ],
+      ]);
+      $correctedCode = $response['choices'][0]['message']['content'];
+
+      // Return the corrected code
+      return $correctedCode;
+  }
+
 }
