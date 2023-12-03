@@ -18,6 +18,8 @@ class Faerie {
     }
 
     private function curl ($url) {
+        $startTime = microtime(true); // Start time
+
         $curl = curl_init();
         curl_setopt_array($curl, [
             CURLOPT_RETURNTRANSFER => 1,
@@ -30,6 +32,14 @@ class Faerie {
         ]);
         $response = curl_exec($curl);
         curl_close($curl);
+
+        $endTime = microtime(true); // End time
+        $duration = ($endTime - $startTime) * 1000; // Duration in milliseconds
+
+        // You can return the duration along with the response
+        // Or you can log it, print it, or handle it as needed
+        echo "Request duration: " . $duration . " ms\n";
+
         return json_decode($response, true);
     }
 }
