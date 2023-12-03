@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Agent;
 use App\Models\Step;
 use App\Models\Task;
+use App\Models\User;
 
 class Faerie {
     public $owner;
@@ -16,8 +17,9 @@ class Faerie {
     public function __construct($owner = "ArcadeLabsInc", $repo = "openagents") {
         $this->owner = $owner;
         $this->repo = $repo;
+        $user_id = auth()->user()->id ?? User::factory()->create()->id;
         $this->agent = Agent::create([
-            'user_id' => auth()->user()->id,
+            'user_id' => $user_id,
             'name' => $this->owner . '/' . $this->repo,
         ]);
         $this->task = Task::create([
@@ -28,6 +30,7 @@ class Faerie {
 
     public function run() {
         $openPR = $this->repoHasOpenPR();
+        $this->fetchMostRecentIssue();
         return [
             'status' => 'success',
         ];
@@ -55,10 +58,10 @@ class Faerie {
     }
 
     public function fetchMostRecentIssue() {
-        $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/issues?state=all";
+        $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/issues?state=open";
         $response = $this->curl($url);
         $this->recordStep('Fetch most recent issue', [], $response);
-        return $response[0];
+        return $response["response"][0];
     }
 
     private function curl ($url) {
@@ -84,6 +87,9 @@ class Faerie {
         // Or you can log it, print it, or handle it as needed
         echo "Request duration: " . $duration . " ms\n";
 
-        return json_decode($response, true);
+        return [
+            "response" => json_decode($response, true),
+            "tokens_used" => $duration
+        ];
     }
 }

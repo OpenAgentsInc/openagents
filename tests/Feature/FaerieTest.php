@@ -63,7 +63,6 @@ it('can fetch the most recent issue', function () {
  */
 
 it('can run a task', function () {
-    // We start with 0 zteps
     expect(Step::count())->toBe(0);
 
     $faerie = new Faerie();

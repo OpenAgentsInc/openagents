@@ -34,7 +34,12 @@
 
                                 @if($outputDecoded)
                                     <p class="text-sm text-gray-500">
-                                        Response: <span class="font-medium text-gray-700">{{ $outputDecoded->response ?? 'N/A' }}</span>
+                                    Response:
+@if(is_array($outputDecoded->response))
+    <pre class="font-medium text-gray-700">{{ json_encode($outputDecoded->response, JSON_PRETTY_PRINT) }}</pre>
+@else
+    <span class="font-medium text-gray-700">{{ $outputDecoded->response ?? 'N/A' }}</span>
+@endif
                                     </p>
                                     <p class="text-sm text-gray-500">
                                         Tokens Used: <span class="font-medium text-gray-700">{{ $outputDecoded->tokens_used ?? 'N/A' }}</span>
