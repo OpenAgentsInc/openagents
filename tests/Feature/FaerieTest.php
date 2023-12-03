@@ -34,3 +34,12 @@ it('can fetch the most recent issue', function () {
     expect($response)->toBeArray();
     expect($response['title'])->toBeString();
 });
+
+/**
+ * HAPPY PATH
+ */
+
+// it('can run a task', function () {
+//     $faerie = new Faerie();
+//     $response = $faerie->run();
+// });
