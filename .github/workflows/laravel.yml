@@ -61,6 +61,7 @@ jobs:
         DB_DATABASE: laravel_test
         DB_USERNAME: root
         DB_PASSWORD: password
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: vendor/bin/pest --testdox > test-summary.txt
     - name: Comment PR on Test Result
       if: always() && github.event_name == 'pull_request'
