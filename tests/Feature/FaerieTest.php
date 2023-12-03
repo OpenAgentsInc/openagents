@@ -1,6 +1,12 @@
 <?php
 
+use App\Models\Step;
+use App\Models\User;
 use App\Services\Faerie;
+
+beforeEach(function () {
+    $this->actingAs(User::factory()->create());
+});
 
 /**
  * INSTANTIATION
@@ -16,6 +22,23 @@ it('can be instantiated with a different repo', function () {
     $faerie = new Faerie('foo', 'bar');
     expect($faerie->owner)->toBe('foo');
     expect($faerie->repo)->toBe('bar');
+});
+
+/**
+ * RECORD STEPS
+ */
+it('can record a step', function () {
+    $faerie = new Faerie();
+    $response = $faerie->recordStep('foo', 'bar', 'baz');
+    expect($response)->toBeArray();
+    expect($response['status'])->toBe('success');
+
+    // expect response step to be an instance of Step
+    expect($response['step'])->toBeInstanceOf(Step::class);
+
+    expect($response['step']['description'])->toBe('foo');
+    expect(json_decode($response['step']['input']))->toBe('bar');
+    expect(json_decode($response['step']['output']))->toBe('baz');
 });
 
 /**
@@ -39,7 +62,14 @@ it('can fetch the most recent issue', function () {
  * HAPPY PATH
  */
 
-// it('can run a task', function () {
-//     $faerie = new Faerie();
-//     $response = $faerie->run();
-// });
+it('can run a task', function () {
+    // We start with 0 zteps
+    expect(Step::count())->toBe(0);
+
+    $faerie = new Faerie();
+    $response = $faerie->run();
+
+    expect($response)->toBeArray();
+    expect($response['status'])->toBe('success');
+    expect(Step::count())->toBeGreaterThan(0);
+});

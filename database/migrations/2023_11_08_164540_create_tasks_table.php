@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('tasks', function (Blueprint $table) {
             $table->id();
-            $table->string('prompt');
+            $table->string('prompt')->nullable();
+            $table->string('description')->nullable();
             $table->foreignId('agent_id')->constrained()->cascadeOnDelete()->cascadeOnUpdate();
             $table->json('output')->nullable();
             $table->timestamps();

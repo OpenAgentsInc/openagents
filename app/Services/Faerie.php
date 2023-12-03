@@ -2,24 +2,62 @@
 
 namespace App\Services;
 
+use App\Models\Agent;
+use App\Models\Step;
+use App\Models\Task;
+
 class Faerie {
     public $owner;
     public $repo;
 
+    private $agent;
+    private $task;
+
     public function __construct($owner = "ArcadeLabsInc", $repo = "openagents") {
         $this->owner = $owner;
         $this->repo = $repo;
+        $this->agent = Agent::create([
+            'user_id' => auth()->user()->id,
+            'name' => $this->owner . '/' . $this->repo,
+        ]);
+        $this->task = Task::create([
+            'agent_id' => $this->agent->id,
+            'description' => 'Test task',
+        ]);
+    }
+
+    public function run() {
+        $openPR = $this->repoHasOpenPR();
+        return [
+            'status' => 'success',
+        ];
+    }
+
+    public function recordStep($description, $input, $output) {
+        $step = Step::create([
+            'agent_id' => $this->agent->id,
+            'task_id' => $this->task->id,
+            'description' => $description,
+            'input' => json_encode($input),
+            'output' => json_encode($output),
+        ]);
+        return [
+            'status' => 'success',
+            'step' => $step,
+        ];
     }
 
     public function repoHasOpenPR() {
         $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/pulls?state=open";
         $response = $this->curl($url);
+        $this->recordStep('Check if repo has open PR', [], $response);
         return count($response) > 0;
     }
 
     public function fetchMostRecentIssue() {
         $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/issues?state=all";
         $response = $this->curl($url);
+        $this->recordStep('Fetch most recent issue', [], $response);
         return $response[0];
     }
 

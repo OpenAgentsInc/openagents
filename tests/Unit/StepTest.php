@@ -4,6 +4,21 @@ use App\Models\Agent;
 use App\Models\Step;
 use App\Models\Task;
 
+it('has a description', function () {
+    $step = Step::factory()->create([
+        'input' => null,
+        'output' => null
+    ]);
+    expect($step->description)->toBeNull();
+
+    $step = Step::factory()->create([
+        'input' => null,
+        'output' => null,
+        'description' => 'foo'
+    ]);
+    expect($step->description)->toBe('foo');
+});
+
 it('belongs to an agent', function () {
     $step = Step::factory()->create();
     expect($step->agent)->toBeInstanceOf(Agent::class);
