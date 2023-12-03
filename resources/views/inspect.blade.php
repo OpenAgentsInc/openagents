@@ -1,4 +1,4 @@
-@vite(['resources/css/app.css', 'resources/js/app.js'])
+@vite(['resources/css/app.css'])
 
 <div class="max-w-4xl mx-auto py-6">
     <h2 class="text-lg font-semibold mb-4">{{ $agents->count() }} agents</h2>
