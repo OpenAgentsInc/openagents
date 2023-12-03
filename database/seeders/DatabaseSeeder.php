@@ -2,7 +2,10 @@
 
 namespace Database\Seeders;
 
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Agent;
+use App\Models\Task;
+use App\Models\Step;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -12,11 +15,19 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // \App\Models\User::factory(10)->create();
+        // Seed Agents
+        Agent::factory(3)->create()->each(function ($agent) {
+            // For each agent, create a task
+            $task = Task::factory()->create([
+                'agent_id' => $agent->id,
+                'prompt' => "Make a pull request that solves a GitHub issue",
+            ]);
 
-        // \App\Models\User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
+            // For each task, create steps
+            Step::factory(5)->create([
+                'agent_id' => $agent->id,
+                'task_id' => $task->id,
+            ]);
+        });
     }
 }

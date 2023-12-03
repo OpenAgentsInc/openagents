@@ -11,16 +11,32 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class StepFactory extends Factory
 {
-  /**
-   * Define the model's default state.
-   *
-   * @return array<string, mixed>
-   */
-  public function definition(): array
-  {
-    return [
-      'agent_id' => Agent::factory(),
-      'task_id' => Task::factory(),
-    ];
-  }
+    /**
+     * Define the model's default state.
+     *
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        $inputTypes = ['llm', 'vector_query'];
+        $inputType = $this->faker->randomElement($inputTypes);
+
+        $input = [
+            'type' => $inputType,
+            'model' => $inputType == 'llm' ? 'gpt-4' : null,
+            'instruction' => $this->faker->sentence,
+        ];
+
+        $output = [
+            'response' => implode("\n", $this->faker->sentences(3)),
+            'tokens_used' => $this->faker->numberBetween(1000, 2000),
+        ];
+
+        return [
+            'agent_id' => Agent::factory(),
+            'task_id' => Task::factory(),
+            'input' => json_encode($input),
+            'output' => json_encode($output),
+        ];
+    }
 }
