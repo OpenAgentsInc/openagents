@@ -3,6 +3,7 @@
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\InspectController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QueryController;
@@ -25,9 +26,7 @@ Route::get('/', function () {
     return Inertia::render('ComingSoon');
 });
 
-Route::get('/inspect', function () {
-    return view('inspect');
-})->name('inspect');
+Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 
 Route::get('/start', function () {
   return Inertia::render('Start');
