@@ -28,9 +28,9 @@ it('can determine if repo has an open PR', function () {
     expect($response)->toBeBool();
 });
 
-// it('can read a github repo', function () {
-//     $faerie = new Faerie();
-//     $response = $faerie->readRepo();
-//     expect($response)->toBeArray();
-//     expect($response['name'])->toBe('openagents');
-// });
+it('can fetch the most recent issue', function () {
+    $faerie = new Faerie();
+    $response = $faerie->fetchMostRecentIssue();
+    expect($response)->toBeArray();
+    expect($response['title'])->toBeString();
+});

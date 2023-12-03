@@ -17,6 +17,12 @@ class Faerie {
         return count($response) > 0;
     }
 
+    public function fetchMostRecentIssue() {
+        $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/issues?state=all";
+        $response = $this->curl($url);
+        return $response[0];
+    }
+
     private function curl ($url) {
         $startTime = microtime(true); // Start time
 
