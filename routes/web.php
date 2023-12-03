@@ -25,6 +25,10 @@ Route::get('/', function () {
     return Inertia::render('ComingSoon');
 });
 
+Route::get('/inspect', function () {
+    return view('inspect');
+})->name('inspect');
+
 Route::get('/start', function () {
   return Inertia::render('Start');
 })->name('start');
