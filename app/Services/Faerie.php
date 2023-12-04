@@ -198,8 +198,9 @@ class Faerie {
                 "response" => $output
             ]);
         } catch (\Exception $e) {
+            $comment = $e->getMessage();
             $this->recordStep('LLM chat completion error', $input, [
-                "response" => $e->getMessage()
+                "response" => $comment
             ]);
         }
 
