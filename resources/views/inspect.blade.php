@@ -12,7 +12,7 @@
                     @foreach($agent->tasks as $task)
                         <div class="px-4 py-5 sm:px-6">
                             <p class="text-sm font-medium text-gray-600">
-                                Task: <a href="{{ route('inspect.show', $task->id) }}"
+                                Task: <a href="{{ route('inspect-task', $task->id) }}"
                                     class="text-blue-600 hover:text-blue-800">{{ $task->prompt }}</a>
                             </p>
 

@@ -34,7 +34,7 @@ test('can visit task run page and see all steps taken', function () {
     $task = Task::first();
     $steps = $task->steps;
 
-    $response = $this->get("/inspect/{$task->id}");
+    $response = $this->get("/task/{$task->id}");
 
     $response->assertStatus(200);
 
@@ -50,6 +50,21 @@ test('can visit task run page and see all steps taken', function () {
     }
 });
 
-// can click on any step to see full details of input/output/metadata
+test('can click on any step to see full details of input/output/metadata', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    $step = Step::first();
+    $stepInput = json_decode($step->input);
+    $stepOutput = json_decode($step->output);
+
+    $response = $this->get("/step/{$step->id}");
+
+    $response->assertStatus(200)
+        ->assertSee($stepInput->type)
+        ->assertSee($stepInput->model ?? '')
+        ->assertSee($stepInput->instruction)
+        ->assertSee($stepOutput->response)
+        ->assertSee($stepOutput->tokens_used);
+});
 
 // later: agent owner can modify prompts used
