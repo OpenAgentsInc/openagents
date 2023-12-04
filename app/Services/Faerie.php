@@ -191,11 +191,18 @@ class Faerie {
             'messages' => $messages,
         ];
         $response = $this->gateway->makeChatCompletion($input);
-        $output = $response['choices'][0];
-        $comment = $output['message']['content'];
-        $this->recordStep('LLM chat completion', $input, [
-            "response" => $output
-        ]);
+        try {
+            $output = $response['choices'][0];
+            $comment = $output['message']['content'];
+            $this->recordStep('LLM chat completion', $input, [
+                "response" => $output
+            ]);
+        } catch (\Exception $e) {
+            $this->recordStep('LLM chat completion error', $input, [
+                "response" => $e->getMessage()
+            ]);
+        }
+
         return $comment;
     }
 }
