@@ -180,7 +180,7 @@ class Faerie {
 
         return [
             "response" => json_decode($response, true),
-            "tokens_used" => $duration
+            "tokens_used" => round($duration)
         ];
     }
 
@@ -193,7 +193,9 @@ class Faerie {
         $response = $this->gateway->makeChatCompletion($input);
         $output = $response['choices'][0];
         $comment = $output['message']['content'];
-        $this->recordStep('LLM chat completion', $input, $output);
+        $this->recordStep('LLM chat completion', $input, [
+            "response" => $output
+        ]);
         return $comment;
     }
 }

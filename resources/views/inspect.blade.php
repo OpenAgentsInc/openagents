@@ -13,7 +13,7 @@
                         <div class="px-4 py-5 sm:px-6">
                             <p class="text-sm font-medium text-gray-600">
                                 Task: <a href="{{ route('inspect-task', $task->id) }}"
-                                    class="text-blue-600 hover:text-blue-800">{{ $task->prompt }}</a>
+                                    class="text-blue-600 hover:text-blue-800">{{ $task->description }}</a>
                             </p>
 
                             @foreach($task->steps as $step)
@@ -40,18 +40,11 @@
 
                                     @if($outputDecoded)
                                         <p class="text-sm text-gray-500">
-                                            Response:
-                                            @if(is_array($outputDecoded->response))
-                                                <pre
-                                                    class="font-medium text-gray-700">{{ json_encode($outputDecoded->response, JSON_PRETTY_PRINT) }}</pre>
-                                            @else
-                                                <span
-                                                    class="font-medium text-gray-700">{{ $outputDecoded->response ?? 'N/A' }}</span>
-                                            @endif
+                                            Click to see output
                                         </p>
                                         <p class="text-sm text-gray-500">
-                                            Tokens Used: <span
-                                                class="font-medium text-gray-700">{{ $outputDecoded->tokens_used ?? 'N/A' }}</span>
+                                            Duration: <span
+                                                class="font-medium text-gray-700">{{ $outputDecoded->tokens_used ?? 'N/A' }}ms</span>
                                         </p>
                                     @endif
                                 </div>
