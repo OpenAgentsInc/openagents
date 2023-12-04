@@ -122,13 +122,13 @@ class Patcher
 
         // Retrieve and process each file modified in the commits
         foreach ($commits as $commit) {
-            print_r("COMMIT:");
-            print_r($commit);
-            print_r("---");
+            // print_r("COMMIT:");
+            // print_r($commit);
+            // print_r("---");
             $modifiedFiles = $this->getModifiedFilesInCommit($commit['sha']);
-            print_r("MODIFIED FILES:");
-            print_r($modifiedFiles);
-            print_r("---");
+            // print_r("MODIFIED FILES:");
+            // print_r($modifiedFiles);
+            // print_r("---");
 
             foreach ($modifiedFiles as $filePath) {
                 $fileContent = $this->getFileContentFromGitHub($filePath, $commit['sha']);

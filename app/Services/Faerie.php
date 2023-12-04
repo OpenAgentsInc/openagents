@@ -6,6 +6,7 @@ use App\Models\Agent;
 use App\Models\Step;
 use App\Models\Task;
 use App\Models\User;
+use GitHub;
 
 class Faerie
 {
@@ -53,7 +54,59 @@ class Faerie
 
     public function fixTests() {
         print_r("Fixing tests...\n");
-        $this->recordStep('Fix tests', [], []);
+        $pr = $this->pr;
+
+        $system = "You are Faerie, an AI agent specialized in writing & analyzing code.\n\n Please review this PR and determine why the tests failed:\n\n";
+        $system .= $this->getPrSummary();
+        $commits = $this->getAllCommitsFromPr($pr['number']);
+
+        foreach ($commits as $commit) {
+            $sha = $commit['sha'];
+            $commit_resp = GitHub::repo()->commits()->show($this->owner, $this->repo, $sha);
+            $system .= "\n\nHere is the diff for " . $commit_resp["files"][0]["filename"] . ":\n\n";
+            $system .= $commit_resp["files"][0]["patch"];
+        }
+
+        $prompt = "Why did the tests fail?";
+
+        $systemMessage = ['role' => 'system', 'content' => $system];
+        $fixdescription = $this->chatComplete([
+            $systemMessage,
+            ['role' => 'user', 'content' => $prompt]
+        ]);
+        $this->recordStep("Generated fix description", $fixdescription, null);
+
+        $patcher = new Patcher();
+        $planner = new Planner();
+
+        // Build the context from a summary of the messages passed as query to a similarity search
+        $context = $this->buildContextFrom($fixdescription);
+        $this->recordStep("Built context", $fixdescription, $context);
+
+        // Create a plan from the messages
+        $taskDescription = $planner->createPlan([$systemMessage]);
+        $this->recordStep("Created plan", [$systemMessage], $taskDescription);
+
+        $planPrompt = "A description of your next task is:\n" . $taskDescription . "
+
+        For additional context, consult the following code snippets:
+        ---
+        " . $context;
+
+        $patchInput = [
+            "title" => $this->pr["title"],
+            "body" => $planPrompt
+        ];
+        $patches = $patcher->getPrPatches($patchInput, $commits);
+        $this->recordStep("Created patches", $patchInput, $patches);
+
+        // print_r("PATCHES:");
+        // print_r($patches);
+        print_r("--- . . skipping submitting");
+
+        // $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test17", false);
+
+        print_r("Done!");
     }
 
     public function recordStep($description, $input, $output)
@@ -69,6 +122,14 @@ class Faerie
             'status' => 'success',
             'step' => $step,
         ];
+    }
+
+    public function getAllCommitsFromPr($pr_number)
+    {
+        $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/pulls/{$pr_number}/commits";
+        $response = $this->curl($url);
+        $this->recordStep('Get all commits from PR', [], $response);
+        return $response["response"];
     }
 
     public function repoHasOpenPR()
@@ -113,8 +174,9 @@ class Faerie
     {
         $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/issues?state=open";
         $response = $this->curl($url);
-        $this->recordStep('Fetch most recent issue', [], $response);
-        $this->issue = $response["response"][0];
+        $issue = $response["response"][0];
+        $this->recordStep('Fetch most recent issue', [], $issue);
+        $this->issue = $issue;
         return $this->issue;
     }
 
@@ -220,9 +282,9 @@ class Faerie
             'messages' => $messages,
         ];
 
-        print_r($input);
+        // print_r($input);
         $response = $this->gateway->makeChatCompletion($input);
-        print_r($response);
+        // print_r($response);
         try {
             $output = $response['choices'][0];
             $comment = $output['message']['content'];
@@ -239,5 +301,38 @@ class Faerie
         }
 
         return $comment;
+    }
+
+    private function buildContextFrom($input): string
+    {
+        $queryInput = '';
+
+        if (is_array($input)) {
+            // Original handling for arrays
+            foreach ($input as $message) {
+                $queryInput .= $message['content'] . "\n---\n";
+            }
+        } elseif (is_string($input)) {
+            // If the input is a string, use it directly
+            $queryInput = $input;
+        }
+
+        // Remaining part of the function stays the same
+        $query = $this->chatComplete([
+            ['role' => 'system', 'content' => 'You are a helpful assistant. Speak concisely. Answer the user\'s question based only on the following context: ' . $queryInput],
+            ['role' => 'user', 'content' => 'Write 2-3 sentences explaining the types of files we should search for in our codebase to provide the next response in the conversation. Focus only on the next step, not future optimizations. Ignore mentions of video transcriptions or readme/documentation.'],
+        ]);
+
+        $searcher = new Searcher();
+        $results = $searcher->queryAllFiles($query);
+
+        $context = '';
+        foreach ($results["results"] as $result) {
+            $context .= "Content of " . $result['path'] . ": \n```\n";
+            $content = $this->getFileContent($result['path']);
+            $context .= $content . "\n```\n\n";
+        }
+
+        return $context;
     }
 }
