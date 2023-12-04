@@ -5,11 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Agent;
 use App\Models\Step;
 use App\Models\Task;
+use Inertia\Inertia;
 
 class InspectController extends Controller
 {
     public function index() {
-        return view('inspect', [
+        return Inertia::render('Inspect', [
             'agents' => Agent::all(),
             'tasks' => Task::all(),
             'steps' => Step::all(),

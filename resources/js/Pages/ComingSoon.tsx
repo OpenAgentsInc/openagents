@@ -24,13 +24,13 @@ export default function ComingSoon() {
                         )}
                     />
                 </div>
-                <a href="/inspect">
+                <Link href="/inspect">
                     <ShimmerButton className="mt-8 mx-auto p-4 md:mt-12 shadow-2xl">
                         <span className="whitespace-pre-wrap text-center text-md md:text-sm font-medium leading-none tracking-tight text-white dark:from-white dark:to-slate-900/10 lg:text-lg">
                             Coming soon
                         </span>
                     </ShimmerButton>
-                </a>
+                </Link>
             </div>
         </>
     )
