@@ -66,6 +66,19 @@ it('can fetch the most recent PR', function () {
 });
 
 /**
+ * ANALYZE GITHUB REPO
+ */
+it('can analyze a PR', function () {
+    $faerie = new Faerie();
+    $faerie->fetchMostRecentPR();
+    $response = $faerie->analyzePr();
+    // print_r($response);
+    expect($response)->toBeArray();
+    expect($response['status'])->toBe('success');
+    expect($response['comment'])->toBeString();
+});
+
+/**
  * HAPPY PATH
  */
 

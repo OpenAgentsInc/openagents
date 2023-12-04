@@ -14,6 +14,9 @@ class Faerie {
     private $agent;
     private $task;
 
+    private $issue;
+    private $pr;
+
     public function __construct($owner = "ArcadeLabsInc", $repo = "openagents") {
         $this->owner = $owner;
         $this->repo = $repo;
@@ -29,9 +32,16 @@ class Faerie {
     }
 
     public function run() {
-        // See if this repo has an open PR
-        $openPR = $this->repoHasOpenPR();
-        $this->fetchMostRecentIssue();
+        // If there is an open PR, analyze it
+        if($this->repoHasOpenPR()) {
+            $this->fetchMostRecentPR();
+            $this->analyzePr();
+        // Otherwise, analyze the most recent issue
+        } else {
+            $this->fetchMostRecentIssue();
+            $this->analyzeIssue();
+        }
+
         return [
             'status' => 'success',
         ];
@@ -62,14 +72,87 @@ class Faerie {
         $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/pulls?state=open";
         $response = $this->curl($url);
         $this->recordStep('Fetch most recent PR', [], $response);
-        return $response["response"][0];
+
+        // And fetch the comments on that PR
+        $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/issues/{$response["response"][0]['number']}/comments";
+        $comments_response = $this->curl($url)["response"];
+        $pr_first = $response["response"][0];
+
+        $comments = [];
+        foreach ($comments_response as $comment) {
+            $comments[] = [
+                "author" => $comment["user"]["login"],
+                "body" => $comment["body"]
+            ];
+        }
+
+        $this->pr = [
+            "title" => $pr_first["title"],
+            "body" => $pr_first["body"],
+            "state" => $pr_first["state"],
+            "number" => $pr_first["number"],
+            "comments" => $comments,
+        ];
+
+        return $this->pr;
     }
 
     public function fetchMostRecentIssue() {
         $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/issues?state=open";
         $response = $this->curl($url);
         $this->recordStep('Fetch most recent issue', [], $response);
-        return $response["response"][0];
+        $this->issue = $response["response"][0];
+        return $this->issue;
+    }
+
+    /**
+     * Get a summary of the PR
+     *
+     * @param array $pr
+     * @return string
+     */
+    private function getPrSummary()
+    {
+        $pr = $this->pr;
+        $summary = "The PR is titled '" . $pr["title"] . "' and is " . $pr["state"] . ".\n\n";
+        $summary .= "There are " . count($pr["comments"]) . " comments on this PR. They are:\n\n";
+        foreach ($pr["comments"] as $comment) {
+            $summary .= "\n\n" . $comment["author"] . " said: " . $comment["body"] . "\n";
+        }
+        return $summary;
+    }
+
+    /**
+     * Analyze a PR to see if it's ready to merge
+     *
+     * @param array $pr
+     * @return bool
+     */
+    public function analyzePr()
+    {
+        $system = "You are Faerie, an AI agent specialized in writing & analyzing code.\n\n Please review this PR:";
+        $system .= $this->getPrSummary();
+        $prompt = "Based on the above, respond only with TESTFIX, READY_FOR_REVIEW, or COMMENT.
+
+        TESTFIX means that the PR needs tests fixed.
+
+        READY_FOR_REVIEW means that the PR is ready for review.
+
+        COMMENT means that the PR needs more work and you should write a comment with additional details.";
+
+        $gateway = new OpenAIGateway();
+        $response = $gateway->makeChatCompletion([
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => $prompt],
+            ],
+        ]);
+        $comment = $response['choices'][0]['message']['content'];
+        return [
+            'status' => 'success',
+            'comment' => $comment,
+        ];
     }
 
     private function curl ($url) {
