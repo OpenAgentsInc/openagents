@@ -27,6 +27,7 @@ Route::get('/', function () {
 });
 
 Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
+Route::get('/inspect/{id}', [InspectController::class, 'show'])->name('inspect.show');
 
 Route::get('/start', function () {
   return Inertia::render('Start');

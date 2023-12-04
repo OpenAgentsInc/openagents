@@ -28,7 +28,28 @@ test('guest can visit inspection dashboard and see all agents: tasks & steps', f
         ->assertSee($stepOutput->tokens_used);
 });
 
-// can visit task run page and see all steps taken
+test('can visit task run page and see all steps taken', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    $task = Task::first();
+    $steps = $task->steps;
+
+    $response = $this->get("/inspect/{$task->id}");
+
+    $response->assertStatus(200);
+
+    foreach ($steps as $step) {
+        $stepInput = json_decode($step->input);
+        $stepOutput = json_decode($step->output);
+
+        $response->assertSee($stepInput->type)
+            ->assertSee($stepInput->model ?? '')
+            ->assertSee($stepInput->instruction)
+            ->assertSee($stepOutput->response)
+            ->assertSee($stepOutput->tokens_used);
+    }
+});
+
 // can click on any step to see full details of input/output/metadata
 
 // later: agent owner can modify prompts used

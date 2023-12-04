@@ -15,4 +15,31 @@ class InspectController extends Controller
             'steps' => Step::all(),
         ]);
     }
+
+    public function show($id) {
+        // Return the inspect-task view with just the task and its steps
+        $task = Task::with('steps')->findOrFail($id);
+        return view('inspect-task', [
+            'task' => $task,
+            'steps' => $task->steps,
+        ]);
+    }
+
+    // public function store() {
+    //     request()->validate([
+    //         'name' => 'required',
+    //     ]);
+
+    //     $name = request('name');
+
+    //     // create agent in database
+    //     $agent = Agent::create([
+    //         'user_id' => auth()->user()->id,
+    //         'name' => $name,
+    //     ]);
+
+    //     return response()->json([
+    //         'name' => $name,
+    //     ], 201);
+    // }
 }
