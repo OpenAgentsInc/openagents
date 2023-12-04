@@ -17,7 +17,10 @@ class Faerie {
     private $issue;
     private $pr;
 
+    private $gateway;
+
     public function __construct($owner = "ArcadeLabsInc", $repo = "openagents") {
+        $this->gateway = new OpenAIGateway();
         $this->owner = $owner;
         $this->repo = $repo;
         $user_id = auth()->user()->id ?? User::factory()->create()->id;
@@ -140,15 +143,12 @@ class Faerie {
 
         COMMENT means that the PR needs more work and you should write a comment with additional details.";
 
-        $gateway = new OpenAIGateway();
-        $response = $gateway->makeChatCompletion([
-            'model' => 'gpt-4',
-            'messages' => [
-                ['role' => 'system', 'content' => $system],
-                ['role' => 'user', 'content' => $prompt],
-            ],
-        ]);
-        $comment = $response['choices'][0]['message']['content'];
+        $messages = [
+            ['role' => 'system', 'content' => $system],
+            ['role' => 'user', 'content' => $prompt],
+        ];
+
+        $comment = $this->chatComplete($messages);
         return [
             'status' => 'success',
             'comment' => $comment,
@@ -182,5 +182,18 @@ class Faerie {
             "response" => json_decode($response, true),
             "tokens_used" => $duration
         ];
+    }
+
+    public function chatComplete($messages, $model = 'gpt-4')
+    {
+        $input = [
+            'model' => $model,
+            'messages' => $messages,
+        ];
+        $response = $this->gateway->makeChatCompletion($input);
+        $output = $response['choices'][0];
+        $comment = $output['message']['content'];
+        $this->recordStep('LLM chat completion', $input, $output);
+        return $comment;
     }
 }
