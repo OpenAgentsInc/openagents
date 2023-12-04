@@ -40,35 +40,35 @@ import {
 const data: Payment[] = [
   {
     id: "m5gr84i9",
-    amount: 316,
+    amount: 0.04,
     status: "success",
     description: "Faerie opened pull request",
     email: "ken99@yahoo.com",
   },
   {
     id: "3u1reuv4",
-    amount: 242,
+    amount: 0.01,
     status: "failed",
     description: "MarketerBot tried to send a tweet",
     email: "Abe45@gmail.com",
   },
   {
     id: "derv1ws0",
-    amount: 837,
+    amount: 0.02,
     status: "pending",
     description: "Faerie opened pull request",
     email: "Monserrat44@gmail.com",
   },
   {
     id: "5kma53ae",
-    amount: 874,
+    amount: 0.023,
     status: "success",
     description: "Faerie opened pull request",
     email: "Silas22@gmail.com",
   },
   {
     id: "bhqecj4p",
-    amount: 721,
+    amount: 0.01,
     status: "failed",
     description: "Faerie opened pull request",
     email: "carmella@hotmail.com",
@@ -108,7 +108,7 @@ export const columns: ColumnDef<Payment>[] = [
   },
   {
     accessorKey: "amount",
-    header: () => <div className="text-right">Amount</div>,
+    header: () => <div className="text-right">Cost</div>,
     cell: ({ row }) => {
       const amount = parseFloat(row.getValue("amount"))
 
