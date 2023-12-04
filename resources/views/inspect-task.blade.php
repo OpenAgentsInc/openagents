@@ -13,6 +13,9 @@
                     @endphp
 
                     <div class="px-4 py-5 sm:px-6">
+                    <h4 class="text-lg font-medium text-blue-600">
+                        <a href="{{ route('inspect-step', $step->id) }}">Step {{ $loop->iteration }}</a>
+                    </h4>
                         @if($inputDecoded)
                             <p class="text-sm text-gray-500">
                                 Type: <span
