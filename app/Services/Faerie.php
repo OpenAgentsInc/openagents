@@ -29,6 +29,7 @@ class Faerie {
     }
 
     public function run() {
+        // See if this repo has an open PR
         $openPR = $this->repoHasOpenPR();
         $this->fetchMostRecentIssue();
         return [
@@ -55,6 +56,13 @@ class Faerie {
         $response = $this->curl($url);
         $this->recordStep('Check if repo has open PR', [], $response);
         return count($response) > 0;
+    }
+
+    public function fetchMostRecentPR() {
+        $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/pulls?state=open";
+        $response = $this->curl($url);
+        $this->recordStep('Fetch most recent PR', [], $response);
+        return $response["response"][0];
     }
 
     public function fetchMostRecentIssue() {

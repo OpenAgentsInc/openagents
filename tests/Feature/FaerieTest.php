@@ -58,6 +58,13 @@ it('can fetch the most recent issue', function () {
     expect($response['title'])->toBeString();
 });
 
+it('can fetch the most recent PR', function () {
+    $faerie = new Faerie();
+    $response = $faerie->fetchMostRecentPR();
+    expect($response)->toBeArray();
+    expect($response['title'])->toBeString();
+});
+
 /**
  * HAPPY PATH
  */
