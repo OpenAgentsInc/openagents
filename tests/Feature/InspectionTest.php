@@ -10,14 +10,12 @@ test('guest can visit inspection dashboard and see all agents: tasks & steps', f
 
     $response = $this->get('/inspect');
 
-    // You might need to retrieve some instances to assert against
     $agent = Agent::first();
     $task = Task::first();
     $step = Step::first();
     $stepInput = json_decode($step->input);
     $stepOutput = json_decode($step->output);
 
-    // assert see all agents/tasks/steps
     $response->assertStatus(200)
         ->assertSee($agent->name)
         ->assertSee($task->prompt)
