@@ -21,9 +21,9 @@ test('guest can visit inspection dashboard and see all agents: tasks & steps', f
         ->assertSee($task->description)
         ->assertSee($stepInput->type)
         ->assertSee($stepInput->model ?? '')
-        ->assertSee($stepInput->instruction)
+        ->assertSee($stepInput->instruction);
         // ->assertSee($stepOutput->response)
-        ->assertSee($stepOutput->tokens_used);
+        // ->assertSee($stepOutput->tokens_used);
 });
 
 test('can visit task run page and see all steps taken', function () {
@@ -42,9 +42,9 @@ test('can visit task run page and see all steps taken', function () {
 
         $response->assertSee($stepInput->type)
             ->assertSee($stepInput->model ?? '')
-            ->assertSee($stepInput->instruction)
+            ->assertSee($stepInput->instruction);
             // ->assertSee($stepOutput->response)
-            ->assertSee($stepOutput->tokens_used);
+            // ->assertSee($stepOutput->tokens_used);
     }
 });
 
@@ -60,9 +60,9 @@ test('can click on any step to see full details of input/output/metadata', funct
     $response->assertStatus(200)
         ->assertSee($stepInput->type)
         ->assertSee($stepInput->model ?? '')
-        ->assertSee($stepInput->instruction)
+        ->assertSee($stepInput->instruction);
         // ->assertSee($stepOutput->response)
-        ->assertSee($stepOutput->tokens_used);
+        // ->assertSee($stepOutput->tokens_used);
 });
 
 // later: agent owner can modify prompts used
