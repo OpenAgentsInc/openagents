@@ -33,10 +33,13 @@
                             <pre
                                 class="font-medium text-gray-700">{{ json_encode($outputDecoded->response, JSON_PRETTY_PRINT) }}</pre>
                         </p>
+                        @if(is_object($outputDecoded) && property_exists($outputDecoded, 'usage'))
                         <p class="text-sm text-gray-500">
-                            Tokens Used: <span
-                                class="font-medium text-gray-700">{{ $outputDecoded->tokens_used ?? 'N/A' }}</span>
+                            Tokens Used:
+                            <pre
+                                class="font-medium text-gray-700">{{ json_encode($outputDecoded->usage, JSON_PRETTY_PRINT) }}</pre>
                         </p>
+                        @endif
                     @endif
                 </div>
             </div>

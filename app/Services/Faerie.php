@@ -186,21 +186,46 @@ class Faerie {
 
     public function chatComplete($messages, $model = 'gpt-4')
     {
+        $maxChars = 6000; // Maximum character limit
+        $totalChars = 0;
+
+        // Filter messages to stay within the character limit
+        foreach ($messages as $index => $message) {
+            $messageLength = strlen($message['content']);
+            $totalChars += $messageLength;
+            $minCharsPerMessage = 2000; // Minimum characters per message
+
+            if ($totalChars > $maxChars) {
+                // Truncate the array up to the current index
+                // $messages = array_slice($messages, 0, $index);
+                // Truncate each message to the minimum character length
+
+                $messages[$index]['content'] = substr($message['content'], 0, $minCharsPerMessage);
+                break;
+            }
+        }
+        echo "Total chars: $totalChars\n";
+
         $input = [
             'model' => $model,
             'messages' => $messages,
         ];
+
+        print_r($input);
         $response = $this->gateway->makeChatCompletion($input);
+        print_r($response);
         try {
             $output = $response['choices'][0];
             $comment = $output['message']['content'];
             $this->recordStep('LLM chat completion', $input, [
-                "response" => $output
+                "response" => $output,
+                "usage" => $response["usage"]
             ]);
         } catch (\Exception $e) {
             $comment = $e->getMessage();
             $this->recordStep('LLM chat completion error', $input, [
-                "response" => $comment
+                "response" => $comment,
+                "usage" => $response["usage"]
             ]);
         }
 
