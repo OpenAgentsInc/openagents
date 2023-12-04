@@ -4,7 +4,7 @@ import InspectLayout from '@/Layouts/InspectLayout'
 
 function Inspect() {
     return (
-        <div className="pt-32 mx-auto h-screen w-2/3">
+        <div className="pt-32 mx-auto h-screen px-4 w-full md:w-2/3">
             <Card>
                 <CardHeader>
                     <CardTitle>Recent agent runs</CardTitle>
