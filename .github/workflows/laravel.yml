@@ -62,6 +62,7 @@ jobs:
         DB_USERNAME: root
         DB_PASSWORD: password
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: vendor/bin/pest --testdox > test-summary.txt
     - name: Comment PR on Test Result
       if: always() && github.event_name == 'pull_request'
