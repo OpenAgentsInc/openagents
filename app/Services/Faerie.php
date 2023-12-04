@@ -7,7 +7,8 @@ use App\Models\Step;
 use App\Models\Task;
 use App\Models\User;
 
-class Faerie {
+class Faerie
+{
     public $owner;
     public $repo;
 
@@ -19,7 +20,8 @@ class Faerie {
 
     private $gateway;
 
-    public function __construct($owner = "ArcadeLabsInc", $repo = "openagents") {
+    public function __construct($owner = "ArcadeLabsInc", $repo = "openagents")
+    {
         $this->gateway = new OpenAIGateway();
         $this->owner = $owner;
         $this->repo = $repo;
@@ -34,23 +36,28 @@ class Faerie {
         ]);
     }
 
-    public function run() {
-        // If there is an open PR, analyze it
-        if($this->repoHasOpenPR()) {
-            $this->fetchMostRecentPR();
-            $this->analyzePr();
-        // Otherwise, analyze the most recent issue
-        } else {
-            $this->fetchMostRecentIssue();
-            $this->analyzeIssue();
+    public function run()
+    {
+        if(!$this->repoHasOpenPR()) {
+            return ['status' => 'no_open_pr'];
         }
 
-        return [
-            'status' => 'success',
-        ];
+        $this->fetchMostRecentPR();
+        $analysis = $this->analyzePr()["comment"];
+        if ($analysis == "TESTFIX") {
+            $this->fixTests();
+        } else {
+            dd("Unhandled analysis: " . $analysis);
+        }
     }
 
-    public function recordStep($description, $input, $output) {
+    public function fixTests() {
+        print_r("Fixing tests...\n");
+        $this->recordStep('Fix tests', [], []);
+    }
+
+    public function recordStep($description, $input, $output)
+    {
         $step = Step::create([
             'agent_id' => $this->agent->id,
             'task_id' => $this->task->id,
@@ -64,14 +71,16 @@ class Faerie {
         ];
     }
 
-    public function repoHasOpenPR() {
+    public function repoHasOpenPR()
+    {
         $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/pulls?state=open";
         $response = $this->curl($url);
         $this->recordStep('Check if repo has open PR', [], $response);
         return count($response) > 0;
     }
 
-    public function fetchMostRecentPR() {
+    public function fetchMostRecentPR()
+    {
         $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/pulls?state=open";
         $response = $this->curl($url);
         $this->recordStep('Fetch most recent PR', [], $response);
@@ -100,7 +109,8 @@ class Faerie {
         return $this->pr;
     }
 
-    public function fetchMostRecentIssue() {
+    public function fetchMostRecentIssue()
+    {
         $url = "https://api.github.com/repos/{$this->owner}/{$this->repo}/issues?state=open";
         $response = $this->curl($url);
         $this->recordStep('Fetch most recent issue', [], $response);
@@ -120,7 +130,9 @@ class Faerie {
         $summary = "The PR is titled '" . $pr["title"] . "' and is " . $pr["state"] . ".\n\n";
         $summary .= "There are " . count($pr["comments"]) . " comments on this PR. They are:\n\n";
         foreach ($pr["comments"] as $comment) {
-            $summary .= "\n\n" . $comment["author"] . " said: " . $comment["body"] . "\n";
+            // Truncate the comment body to 1000 characters. Todo: use LLM to summarize
+            $commentbody = substr($comment["body"], 0, 1000);
+            $summary .= "\n\n" . $comment["author"] . " said: " . $commentbody . "\n";
         }
         return $summary;
     }
@@ -155,7 +167,8 @@ class Faerie {
         ];
     }
 
-    private function curl ($url) {
+    private function curl($url)
+    {
         $startTime = microtime(true); // Start time
 
         $curl = curl_init();
@@ -189,17 +202,13 @@ class Faerie {
         $maxChars = 6000; // Maximum character limit
         $totalChars = 0;
 
-        // Filter messages to stay within the character limit
+        // Filter messages to stay within the character limit. @todo: make this less horribly hacky
         foreach ($messages as $index => $message) {
             $messageLength = strlen($message['content']);
             $totalChars += $messageLength;
             $minCharsPerMessage = 2000; // Minimum characters per message
 
             if ($totalChars > $maxChars) {
-                // Truncate the array up to the current index
-                // $messages = array_slice($messages, 0, $index);
-                // Truncate each message to the minimum character length
-
                 $messages[$index]['content'] = substr($message['content'], 0, $minCharsPerMessage);
                 break;
             }
