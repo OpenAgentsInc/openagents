@@ -62,7 +62,7 @@ Route::post('/api/files', [FileController::class, 'store'])
 Route::post('/api/query', [QueryController::class, 'store'])
   ->name('query.store');
 
-require __DIR__.'/auth.php';
+// require __DIR__.'/auth.php';
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {
