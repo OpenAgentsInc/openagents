@@ -1,8 +1,7 @@
-import { RunTable } from '@/Components/RunTable'
 import { Button } from '@/Components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card'
 import InspectLayout from '@/Layouts/InspectLayout'
-import { EnvelopeOpenIcon, GitHubLogoIcon } from '@radix-ui/react-icons'
+import { GitHubLogoIcon } from '@radix-ui/react-icons'
 
 function Login() {
     return (
@@ -14,7 +13,7 @@ function Login() {
                 </CardHeader>
                 <CardContent className="text-center">
                     <Button size="lg" className="mt-2 px-4 py-6">
-                        <GitHubLogoIcon className="mr-3 h-4 w-4" />
+                        <GitHubLogoIcon className="mr-3 h-6 w-6" />
                         <span className="text-lg">Log in with GitHub</span>
                     </Button>
                     <p className="text-muted-foreground mt-8 text-xs">By logging in, you agree to our terms of service and privacy policy.</p>
