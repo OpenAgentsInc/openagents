@@ -14,7 +14,7 @@ export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
-    <header className="w-full bg-white shadow">
+    <header className="absolute w-full bg-white shadow">
       <nav className="mx-auto flex max-w-7xl items-center justify-between p-6 lg:px-8" aria-label="Global">
         <Link href="/" className="-m-1.5 p-1.5">
           <h1 className="text-xl tracking-wide">OpenAgents</h1>
