@@ -26,11 +26,16 @@ Route::get('/', function () {
     return Inertia::render('ComingSoon');
 });
 
+Route::get('/login', function () {
+    return Inertia::render('Login');
+});
+
 Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
 Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
 
 Route::get('/start', function () {
+  return Inertia::render('Start');
   return Inertia::render('Start');
 })->name('start');
 

@@ -35,9 +35,9 @@ export const Header = () => {
               {item.name}
             </a>
           ))}
-          <a href="/login" className="text-sm  leading-6 text-gray-900">
+          <Link href="/login" className="text-sm leading-6 text-gray-900">
             Log in <span aria-hidden="true">&rarr;</span>
-          </a>
+          </Link>
         </div>
       </nav>
       <Dialog as="div" className="lg:hidden" open={mobileMenuOpen} onClose={setMobileMenuOpen}>
