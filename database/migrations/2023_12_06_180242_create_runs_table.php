@@ -16,6 +16,8 @@ return new class extends Migration
             $table->foreignIdFor(\App\Models\Agent::class)->constrained()->cascadeOnDelete();
             $table->foreignIdFor(\App\Models\Task::class)->constrained()->cascadeOnDelete();
             $table->string('status')->nullable();
+            $table->string('description')->nullable();
+            $table->float('amount')->nullable();
             // $table->json('input')->nullable();
             $table->json('output')->nullable();
             $table->timestamps();

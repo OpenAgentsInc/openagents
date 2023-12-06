@@ -13,8 +13,9 @@ class InspectController extends Controller
     public function index() {
         return Inertia::render('Inspect', [
             'agents' => Agent::all()->load('tasks'),
-            'tasks' => Task::all(),
+            'runs' => Run::all(),
             'steps' => Step::all(),
+            'tasks' => Task::all(),
         ]);
     }
 

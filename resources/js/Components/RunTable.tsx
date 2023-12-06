@@ -147,7 +147,9 @@ export const columns: ColumnDef<Run>[] = [
   },
 ]
 
-export function RunTable() {
+export function RunTable({ runs }) {
+    console.log(runs)
+
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
@@ -157,7 +159,7 @@ export function RunTable() {
   const [rowSelection, setRowSelection] = React.useState({})
 
   const table = useReactTable({
-    data,
+    data: runs,
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,

@@ -21,7 +21,7 @@ class RunFactory extends Factory
         return [
             'agent_id' => Agent::factory(),
             'task_id' => Task::factory(),
-            'status' => 'succeeded',
+            'status' => 'success',
             'output' => json_encode(['hello' => 'world'])
         ];
     }

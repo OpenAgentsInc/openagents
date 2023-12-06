@@ -28,6 +28,8 @@ class DatabaseSeeder extends Seeder
             Run::factory()->create([
                 'agent_id' => $agent->id,
                 'task_id' => $task->id,
+                'amount' => 0.01,
+                'description' => "MarketerAgent tried to send a tweet",
                 'status' => 'failed',
                 'output' => json_encode(['huge error because lol'])
             ]);
@@ -35,7 +37,9 @@ class DatabaseSeeder extends Seeder
             Run::factory()->create([
                 'agent_id' => $agent->id,
                 'task_id' => $task->id,
-                'status' => 'succeeded',
+                'amount' => 0.02,
+                'description' => "GitHubAgent opened pull request",
+                'status' => 'success',
                 'output' => json_encode(['response' => 'heyyyyyy lol that work'])
             ]);
 
