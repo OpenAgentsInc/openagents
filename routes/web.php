@@ -34,21 +34,6 @@ Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
 Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
 
-Route::get('/start', function () {
-  return Inertia::render('Start');
-  return Inertia::render('Start');
-})->name('start');
-
-// Route::get('/dashboard', function () {
-//     return Inertia::render('Dashboard');
-// })->middleware(['auth', 'verified'])->name('dashboard');
-
-// Route::middleware('auth')->group(function () {
-//     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-//     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-//     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-// });
-
 Route::post('/api/agents', [AgentController::class, 'store'])
   ->middleware(['auth']);
 
@@ -61,13 +46,10 @@ Route::post('/api/messages', [MessageController::class, 'store'])
   ->name('messages.store');
 
 Route::post('/api/files', [FileController::class, 'store'])
-  // ->middleware('auth')
   ->name('files.store');
 
 Route::post('/api/query', [QueryController::class, 'store'])
   ->name('query.store');
-
-// require __DIR__.'/auth.php';
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {
