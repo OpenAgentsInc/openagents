@@ -18,7 +18,7 @@ test('guest can visit inspection dashboard and see all agents: tasks & steps', f
     $step = Step::first();
     $stepInput = json_decode($step->input);
     $stepOutput = json_decode($step->output);
-
+,
     $response->assertStatus(200)
         ->assertInertia(
             fn (Assert $page) => $page
