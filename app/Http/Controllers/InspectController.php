@@ -11,7 +11,7 @@ class InspectController extends Controller
 {
     public function index() {
         return Inertia::render('Inspect', [
-            'agents' => Agent::all(),
+            'agents' => Agent::all()->load('tasks'),
             'tasks' => Task::all(),
             'steps' => Step::all(),
         ]);
@@ -35,22 +35,4 @@ class InspectController extends Controller
             'output' => $step->output,
         ]);
     }
-
-    // public function store() {
-    //     request()->validate([
-    //         'name' => 'required',
-    //     ]);
-
-    //     $name = request('name');
-
-    //     // create agent in database
-    //     $agent = Agent::create([
-    //         'user_id' => auth()->user()->id,
-    //         'name' => $name,
-    //     ]);
-
-    //     return response()->json([
-    //         'name' => $name,
-    //     ], 201);
-    // }
 }
