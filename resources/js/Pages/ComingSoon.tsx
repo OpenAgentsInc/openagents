@@ -1,55 +1,69 @@
 import InspectLayout from "@/Layouts/InspectLayout";
 import {
+    AdjustmentsHorizontalIcon,
     ArrowPathIcon,
-    Bars3Icon,
     CloudArrowUpIcon,
-    FingerPrintIcon,
-    LockClosedIcon,
-    XMarkIcon,
 } from '@heroicons/react/24/outline'
+import { Link } from "@inertiajs/react";
+import { LightningBoltIcon } from "@radix-ui/react-icons";
 
 function ComingSoon() {
     const features = [
         {
-            name: 'Push to deploy',
+            name: 'Configurable',
             description:
-                'Morbi viverra dui mi arcu sed. Tellus semper adipiscing suspendisse semper morbi. Odio urna massa nunc massa.',
+                'Configure your agent with a large selection of open models, customizable prompts, and more',
+            icon: AdjustmentsHorizontalIcon,
+        },
+        {
+            name: 'Deploy to our cloud',
+            description:
+                'Put them in the open compute network - we handle the hosting for you',
             icon: CloudArrowUpIcon,
         },
         {
-            name: 'SSL certificates',
+            name: 'Infinite work',
             description:
-                'Sit quis amet rutrum tellus ullamcorper ultricies libero dolor eget. Sem sodales gravida quam turpis enim lacus amet.',
-            icon: LockClosedIcon,
-        },
-        {
-            name: 'Simple queues',
-            description:
-                'Quisque est vel vulputate cursus. Risus proin diam nunc commodo. Lobortis auctor congue commodo diam neque.',
+                'Why stop? These are long-running processes that will keep working as long as compute is paid for',
             icon: ArrowPathIcon,
         },
         {
-            name: 'Advanced security',
+            name: 'Earn and spend',
             description:
-                'Arcu egestas dolor vel iaculis in ipsum mauris. Tincidunt mattis aliquet hac quis. Id hac maecenas ac donec pharetra eget.',
-            icon: FingerPrintIcon,
+                'Agents can have wallets using the native currency of the internet, Bitcoin via the Lightning Network',
+            icon: LightningBoltIcon,
         },
     ]
     return (
         <div className="w-full px-12 mx-auto flex flex-col justify-center items-center">
             <main className="w-full">
                 <div className="w-full relative">
-                    <div className="py-24 sm:py-32">
+                    <div className="py-24 sm:py-28">
                         <div className="mx-auto max-w-7xl px-6 lg:px-8">
                             <div className="mx-auto max-w-2xl text-center">
                                 <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
                                     Make AI work for you.
                                 </h1>
                                 <p className="mt-6 text-lg leading-8 text-gray-600">
-                                    Train your own AI agent &mdash; no code required. <span className="font-bold">Coming soon.</span>
+                                    Train your own AI agent with a few clicks &mdash; no coding required.
+                                </p>
+                                <p className="mt-2 text-lg leading-8 text-gray-600">
+                                    Supercharge your productivity and earn bitcoin rewards.
                                 </p>
                             </div>
-                            <div className="mt-16 flow-root sm:mt-24">
+                            <div className="mt-8 flex items-center justify-center gap-x-6">
+                                {/* <Link
+                                    href="/login"
+                                    className="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                                >
+                                    Get started
+                                </Link> */}
+                                <a href="#supercharge" className="text-sm font-semibold leading-6 text-gray-900">
+                                    Learn more <span aria-hidden="true">↓</span>
+                                </a>
+                            </div>
+
+                            <div className="mt-16 flow-root">
                                 <div className="-m-2 rounded-xl bg-gray-900/5 p-2 ring-1 ring-inset ring-gray-900/10 lg:-m-4 lg:rounded-2xl lg:p-4">
                                     <img
                                         src="https://tailwindui.com/img/component-images/project-app-screenshot.png"
@@ -65,12 +79,13 @@ function ComingSoon() {
                     {/* Feature section */}
                     <div className="mx-auto mt-4 max-w-7xl px-6 pb-32 lg:px-8">
                         <div className="mx-auto max-w-2xl lg:text-center">
+                            <a id="supercharge" />
                             <h2 className="text-base font-semibold leading-7 text-indigo-600">Work smarter</h2>
                             <p className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
                                 Supercharge your productivity
                             </p>
                             <p className="mt-6 text-lg leading-8 text-gray-600">
-                                How many AI agents are working for you right now?<br />Zero? Let's fix that.<br />Launch your first OpenAgent in 5 minutes.
+                                How many AI agents are working for you right now?<br /><span className="font-bold">ZERO?!</span> Let's fix that.<br />Launch your first OpenAgent in 5 minutes.
                             </p>
                         </div>
                         <div className="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-4xl">
