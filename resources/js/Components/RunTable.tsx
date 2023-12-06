@@ -120,8 +120,6 @@ export const columns: ColumnDef<Run>[] = [
 ]
 
 export function RunTable({ runs }) {
-    console.log(runs)
-
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
