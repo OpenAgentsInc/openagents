@@ -20,8 +20,9 @@ class InspectController extends Controller
     }
 
     public function showRun($id) {
+        $run = Run::find($id)->load('task.steps');
         return Inertia::render('Run', [
-            'run' => Run::find($id)
+            'run' => $run,
         ]);
     }
 

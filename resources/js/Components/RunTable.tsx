@@ -72,10 +72,15 @@ const data: Run[] = [
 ]
 
 export type Run = {
-  id: number
+  agent_id?: number
   amount: number
+  created_at?: string
   description: string
+  id: number
+  output?: object
   status: "pending" | "processing" | "success" | "failed"
+  task?: any
+  task_id?: number
 }
 
 export const columns: ColumnDef<Run>[] = [
