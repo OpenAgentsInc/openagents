@@ -20,7 +20,7 @@ class InspectController extends Controller
     public function showTask($id) {
         // Return the inspect-task view with just the task and its steps
         $task = Task::with('steps')->findOrFail($id);
-        return view('inspect-task', [
+        return view('inspect-task', [i
             'task' => $task,
             'steps' => $task->steps,
         ]);

@@ -33,6 +33,7 @@ test('guest can visit inspection dashboard and see all agents: tasks & steps', f
                     $agent->tasks->count(),
                     fn (Assert $page) => $page
                     ->where('description', $task->description) // Adjust based on actual structure
+                    ->where('output', $task->output) // Adjust based on actual structure
                     ->etc()
                 )
                     ->etc()
