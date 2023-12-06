@@ -19,6 +19,22 @@ it('has a description', function () {
     expect($step->description)->toBe('foo');
 });
 
+it('has a status', function () {
+    $step = Step::factory()->create([
+        'input' => null,
+        'output' => null,
+        'status' => 'pending'
+    ]);
+    expect($step->status)->toBe('pending');
+
+    $step = Step::factory()->create([
+        'input' => null,
+        'output' => null,
+        'status' => 'success'
+    ]);
+    expect($step->status)->toBe('success');
+});
+
 it('belongs to an agent', function () {
     $step = Step::factory()->create();
     expect($step->agent)->toBeInstanceOf(Agent::class);

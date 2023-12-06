@@ -1,6 +1,7 @@
 import { Button } from '@/Components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card';
 import { Stats } from './RunStats';
+import { router } from "@inertiajs/react"
 
 // Dummy data types
 interface RunStats {
@@ -11,8 +12,10 @@ interface RunStats {
 }
 
 interface Step {
+    id: number
     name: string;
     status: string;
+    description: string;
 }
 
 interface Task {
@@ -21,18 +24,10 @@ interface Task {
 }
 
 export const RunDetails = ({ runStats, task }: { runStats: RunStats; task: Task }) => {
-    console.log(task)
+    // console.log(task)
     return (
         <div className="pt-6 px-8 rounded-lg">
             <Stats />
-            {/* <div className="flex justify-between items-center mb-6">
-                {Object.entries(runStats).map(([key, value], index) => (
-                    <div key={index} className="rounded-lg p-4 text-center">
-                        <h3 className="font-bold text-lg">{key}</h3>
-                        <p>{value}</p>
-                    </div>
-                ))}
-            </div> */}
             <Card>
                 <CardHeader>
                     <CardTitle>Task</CardTitle>
@@ -42,16 +37,24 @@ export const RunDetails = ({ runStats, task }: { runStats: RunStats; task: Task 
                 </CardContent>
             </Card>
             <div className="my-6">
-                <h2 className="text-2xl mb-4">Steps</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {task.steps.map((step, index) => (
-                        <div key={index} className="rounded-lg p-4 bg-card">
-                            <div className="flex justify-between items-center">
-                                <span>{index + 1}. {step.description}</span>
-                                <span className={`text-${step.status === 'Succeeded' ? 'green' : 'red'}-400`}>{step.status}</span>
-                            </div>
-                            <Button className="mt-4">Inspect</Button>
-                        </div>
+                        <Card key={index}
+                            onClick={() => {
+                                router.get(`/step/${step.id}`)
+                            }}
+                            style={{ cursor: 'pointer' }}
+                        >
+                            <CardHeader>
+                                <CardTitle>Step {index + 1}</CardTitle>
+                                <CardDescription>{step.description}</CardDescription>
+                            </CardHeader>
+                            {/* <CardContent>
+                                <div className="flex justify-between items-center">
+                                    <span className={`text-${step.status === 'success' ? 'green' : 'red'}-400`}>{step.status}</span>
+                                </div>
+                            </CardContent> */}
+                        </Card>
                     ))}
                 </div>
             </div>

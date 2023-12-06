@@ -22,7 +22,7 @@ const Run = () => {
     };
 
     return (
-        <div className="pt-8 mx-auto px-4 w-full lg:w-2/3">
+        <div className="pt-8 mx-auto px-4 w-full lg:w-3/4">
             {/* go back */}
             <Link href="/inspect" className="px-8">
                 <Button variant="outline">
