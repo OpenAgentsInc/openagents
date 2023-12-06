@@ -50,6 +50,9 @@ function ComingSoon() {
                                 <p className="mt-2 text-lg leading-8 text-gray-600">
                                     Supercharge your productivity and earn bitcoin rewards.
                                 </p>
+                                <p className="mt-2 font-bold text-lg leading-8 text-gray-600">
+                                    Coming soon!
+                                </p>
                             </div>
                             <div className="mt-8 flex items-center justify-center gap-x-6">
                                 {/* <Link
