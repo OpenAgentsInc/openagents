@@ -11,7 +11,7 @@ interface RunStats {
     status: string;
 }
 
-interface Step {
+export interface Step {
     id: number
     name: string;
     status: string;

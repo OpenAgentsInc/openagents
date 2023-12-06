@@ -38,7 +38,7 @@ class InspectController extends Controller
     public function showStep($id) {
         // Return the inspect-step view with just the step and its input/output
         $step = Step::findOrFail($id);
-        return view('inspect-step', [
+        return Inertia('Step', [
             'step' => $step,
             'input' => $step->input,
             'output' => $step->output,
