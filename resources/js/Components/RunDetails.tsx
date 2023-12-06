@@ -1,5 +1,6 @@
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
+import { Stats } from './RunStats';
 
 // Dummy data types
 interface RunStats {
@@ -22,15 +23,16 @@ interface Task {
 export const RunDetails = ({ runStats, task }: { runStats: RunStats; task: Task }) => {
     console.log(task)
     return (
-        <div className="p-8 rounded-lg">
-            <div className="flex justify-between items-center mb-6">
+        <div className="pt-6 px-8 rounded-lg">
+            <Stats />
+            {/* <div className="flex justify-between items-center mb-6">
                 {Object.entries(runStats).map(([key, value], index) => (
                     <div key={index} className="rounded-lg p-4 text-center">
                         <h3 className="font-bold text-lg">{key}</h3>
                         <p>{value}</p>
                     </div>
                 ))}
-            </div>
+            </div> */}
             <Card>
                 <CardHeader>
                     <CardTitle>Task</CardTitle>
