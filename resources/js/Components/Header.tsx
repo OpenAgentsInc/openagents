@@ -4,10 +4,8 @@ import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
 import { Link } from '@inertiajs/react'
 
 const navigation = [
-//   { name: 'Product', href: '#' },
   { name: 'Inspect', href: '/inspect' },
-  { name: 'Marketplace', href: '/marketplace' },
-//   { name: 'Company', href: '#' },
+//   { name: 'Marketplace', href: '/marketplace' },
 ]
 
 export const Header = () => {
