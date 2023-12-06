@@ -36,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/Components/ui/table"
+import { router } from "@inertiajs/react"
 
 const data: Payment[] = [
   {
@@ -244,7 +245,10 @@ export function RunTable() {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={() => console.log(row.original.id)}
+                  onClick={() => {
+                    console.log(row.original.id)
+                    router.visit(`/runs/${row.original.id}`)
+                  }}
                   style={{ cursor: 'pointer' }}
                 >
                   {row.getVisibleCells().map((cell) => (
