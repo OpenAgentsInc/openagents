@@ -38,53 +38,47 @@ import {
 } from "@/Components/ui/table"
 import { router } from "@inertiajs/react"
 
-const data: Payment[] = [
+const data: Run[] = [
   {
-    id: "m5gr84i9",
+    id: 1,
     amount: 0.04,
     status: "success",
     description: "GitHubAgent opened pull request",
-    email: "ken99@yahoo.com",
   },
   {
-    id: "3u1reuv4",
+    id: 2,
     amount: 0.01,
     status: "failed",
     description: "MarketerAgent tried to send a tweet",
-    email: "Abe45@gmail.com",
   },
   {
-    id: "derv1ws0",
+    id: 3,
     amount: 0.02,
     status: "pending",
     description: "GitHubAgent opened pull request",
-    email: "Monserrat44@gmail.com",
   },
   {
-    id: "5kma53ae",
+    id: 4,
     amount: 0.023,
     status: "success",
     description: "GitHubAgent opened pull request",
-    email: "Silas22@gmail.com",
   },
   {
-    id: "bhqecj4p",
+    id: 5,
     amount: 0.01,
     status: "failed",
     description: "GitHubAgent opened pull request",
-    email: "carmella@hotmail.com",
   },
 ]
 
-export type Payment = {
-  id: string
+export type Run = {
+  id: number
   amount: number
   description: string
   status: "pending" | "processing" | "success" | "failed"
-  email: string
 }
 
-export const columns: ColumnDef<Payment>[] = [
+export const columns: ColumnDef<Run>[] = [
   {
     accessorKey: "description",
     header: ({ column }) => {
@@ -139,7 +133,7 @@ export const columns: ColumnDef<Payment>[] = [
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuItem
-              onClick={() => navigator.clipboard.writeText(payment.id)}
+              onClick={() => navigator.clipboard.writeText(payment.id.toString())}
             >
               Copy payment ID
             </DropdownMenuItem>
@@ -246,7 +240,6 @@ export function RunTable() {
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   onClick={() => {
-                    console.log(row.original.id)
                     router.visit(`/runs/${row.original.id}`)
                   }}
                   style={{ cursor: 'pointer' }}
