@@ -4,7 +4,7 @@ function ComingSoon() {
     return (
         <div className="w-full px-12 mx-auto flex flex-col justify-center items-center">
             <main className="w-full">
-                <div className="w-full relative pt-14">
+                <div className="w-full relative">
                     <div className="py-24 sm:py-32">
                         <div className="mx-auto max-w-7xl px-6 lg:px-8">
                             <div className="mx-auto max-w-2xl text-center">

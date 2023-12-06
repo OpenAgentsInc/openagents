@@ -12,7 +12,7 @@ export default function InspectLayout({ children, title = "OpenAgents" }) {
                         <h1 className="p-6 text-xl">OpenAgents</h1>
                     </Link>
                 </div> */}
-                <div className="w-full overflow-hidden">{children}</div>
+                <div className="pt-16 w-full overflow-hidden">{children}</div>
             </div>
         </div>
     )
