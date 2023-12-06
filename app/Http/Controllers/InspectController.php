@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Agent;
+use App\Models\Run;
 use App\Models\Step;
 use App\Models\Task;
 use Inertia\Inertia;
@@ -14,6 +15,12 @@ class InspectController extends Controller
             'agents' => Agent::all()->load('tasks'),
             'tasks' => Task::all(),
             'steps' => Step::all(),
+        ]);
+    }
+
+    public function showRun($id) {
+        return Inertia::render('Run', [
+            'run' => Run::findOrFail($id)
         ]);
     }
 

@@ -11,17 +11,6 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| contains the "web" middleware group. Now create something great!
-|
-*/
-
 Route::get('/', function () {
     return Inertia::render('ComingSoon');
 });
@@ -31,6 +20,7 @@ Route::get('/login', function () {
 });
 
 Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
+Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
 Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
 Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
 

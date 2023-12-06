@@ -3,8 +3,9 @@
 namespace Database\Seeders;
 
 use App\Models\Agent;
-use App\Models\Task;
+use App\Models\Run;
 use App\Models\Step;
+use App\Models\Task;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -21,6 +22,21 @@ class DatabaseSeeder extends Seeder
             $task = Task::factory()->create([
                 'agent_id' => $agent->id,
                 'prompt' => "Make a pull request that solves a GitHub issue",
+            ]);
+
+            // For each agent, create two runs
+            Run::factory()->create([
+                'agent_id' => $agent->id,
+                'task_id' => $task->id,
+                'status' => 'failed',
+                'output' => json_encode(['huge error because lol'])
+            ]);
+
+            Run::factory()->create([
+                'agent_id' => $agent->id,
+                'task_id' => $task->id,
+                'status' => 'succeeded',
+                'output' => json_encode(['response' => 'heyyyyyy lol that work'])
             ]);
 
             // For each task, create steps
