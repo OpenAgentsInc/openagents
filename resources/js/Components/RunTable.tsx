@@ -36,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/Components/ui/table"
-import { router } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 
 const data: Run[] = [
   {
@@ -242,7 +242,7 @@ export function RunTable({ runs }) {
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   onClick={() => {
-                    router.visit(`/runs/${row.original.id}`)
+                    router.get(`/run/${row.original.id}`)
                   }}
                   style={{ cursor: 'pointer' }}
                 >

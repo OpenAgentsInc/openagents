@@ -20,7 +20,6 @@ class InspectController extends Controller
     }
 
     public function showRun($id) {
-        dd($id);
         return Inertia::render('Run', [
             'run' => Run::find($id)
         ]);

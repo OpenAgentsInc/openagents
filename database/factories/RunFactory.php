@@ -21,6 +21,7 @@ class RunFactory extends Factory
         return [
             'agent_id' => Agent::factory(),
             'task_id' => Task::factory(),
+            'description' => $this->faker->sentence,
             'status' => 'success',
             'output' => json_encode(['hello' => 'world'])
         ];
