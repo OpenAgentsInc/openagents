@@ -35,6 +35,7 @@ class StepFactory extends Factory
         return [
             'agent_id' => Agent::factory(),
             'task_id' => Task::factory(),
+            'description' => $this->faker->sentence(),
             'input' => json_encode($input),
             'output' => json_encode($output),
         ];

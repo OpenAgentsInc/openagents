@@ -1,7 +1,8 @@
 import InspectLayout from '@/Layouts/InspectLayout';
-import { usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { RunDetails } from '@/Components/RunDetails';
 import { Run as RunType } from '@/Components/RunTable';
+import { Button } from '@/Components/ui/button';
 
 const Run = () => {
     const { props } = usePage();
@@ -22,6 +23,12 @@ const Run = () => {
 
     return (
         <div className="pt-12 mx-auto px-4 w-full lg:w-2/3">
+            {/* go back */}
+            <Link href="/inspect" className="px-8">
+                <Button variant="outline">
+                    &larr; Back to runs
+                </Button>
+            </Link>
             <RunDetails runStats={runStats} task={task} />
         </div>
     );

@@ -36,40 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/Components/ui/table"
-import { Link, router } from "@inertiajs/react"
-
-const data: Run[] = [
-  {
-    id: 1,
-    amount: 0.04,
-    status: "success",
-    description: "GitHubAgent opened pull request",
-  },
-  {
-    id: 2,
-    amount: 0.01,
-    status: "failed",
-    description: "MarketerAgent tried to send a tweet",
-  },
-  {
-    id: 3,
-    amount: 0.02,
-    status: "pending",
-    description: "GitHubAgent opened pull request",
-  },
-  {
-    id: 4,
-    amount: 0.023,
-    status: "success",
-    description: "GitHubAgent opened pull request",
-  },
-  {
-    id: 5,
-    amount: 0.01,
-    status: "failed",
-    description: "GitHubAgent opened pull request",
-  },
-]
+import { router } from "@inertiajs/react"
 
 export type Run = {
   agent_id?: number
