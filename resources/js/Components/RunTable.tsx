@@ -244,6 +244,8 @@ export function RunTable() {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  onClick={() => console.log(row.original.id)}
+                  style={{ cursor: 'pointer' }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="pl-4">
