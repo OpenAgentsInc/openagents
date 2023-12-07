@@ -13,17 +13,18 @@ interface RunStats {
 
 export interface Step {
     id: number
+    run_id: number
     name: string;
     status: string;
     description: string;
 }
 
-interface Task {
+export interface Task {
     description: string;
     steps: Step[];
 }
 
-export const RunDetails = ({ runStats, task }: { runStats: RunStats; task: Task }) => {
+export const RunDetails = ({ runStats, steps, task }: { runStats: RunStats; steps: any; task: Task }) => {
     // console.log(task)
     return (
         <div className="pt-6 px-8 rounded-lg">
@@ -38,7 +39,7 @@ export const RunDetails = ({ runStats, task }: { runStats: RunStats; task: Task 
             </Card>
             <div className="my-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {task.steps.map((step, index) => (
+                    {steps.map((step, index) => (
                         <Card key={index}
                             onClick={() => {
                                 router.get(`/step/${step.id}`)

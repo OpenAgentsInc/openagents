@@ -20,10 +20,11 @@ class InspectController extends Controller
     }
 
     public function showRun($id) {
-        $run = Run::findOrFail($id);
-        // $run = Run::find($id)->load('steps');
+        $run = Run::findOrFail($id)->load('steps');
         return Inertia::render('Run', [
             'run' => $run,
+            'steps' => $run->steps,
+            'task' => Task::findOrFail($run->task_id),
         ]);
     }
 

@@ -1,12 +1,15 @@
 import InspectLayout from '@/Layouts/InspectLayout';
 import { Link, usePage } from '@inertiajs/react';
-import { RunDetails } from '@/Components/RunDetails';
+import { RunDetails, Task } from '@/Components/RunDetails';
 import { Run as RunType } from '@/Components/RunTable';
 import { Button } from '@/Components/ui/button';
 
 const Run = () => {
     const { props } = usePage();
     const run = props.run as RunType;
+    const steps = props.steps
+    const task = props.task as Task
+    // console.log({ run, steps, task })
 
     // Assuming `run` contains the stats and task data, otherwise, you would fetch or calculate them here.
     const runStats = {
@@ -16,10 +19,10 @@ const Run = () => {
         status: "completed" // run.status,
     };
 
-    const task = {
-        description: run.task.description,
-        steps: run.task.steps,
-    };
+    // const task = {
+    //     description: run.task.description,
+    //     steps: run.task.steps,
+    // };
 
     return (
         <div className="pt-8 mx-auto px-4 w-full lg:w-3/4">
@@ -29,7 +32,7 @@ const Run = () => {
                     &larr; Back to runs
                 </Button>
             </Link>
-            <RunDetails runStats={runStats} task={task} />
+            <RunDetails runStats={runStats} steps={steps} task={task} />
         </div>
     );
 };
