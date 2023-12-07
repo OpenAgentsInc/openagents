@@ -19,7 +19,7 @@ export interface Task {
 export const StepDetails = ({ step }: { step: Step }) => {
     return (
         <div className="pt-6 px-8 rounded-lg">
-            <StepStats />
+            {/* <StepStats /> */}
             <Card>
                 <CardHeader>
                     <CardTitle>Step</CardTitle>

@@ -28,7 +28,7 @@ export const RunDetails = ({ runStats, steps, task }: { runStats: RunStats; step
     // console.log(task)
     return (
         <div className="pt-6 px-8 rounded-lg">
-            <RunStats />
+            {/* <RunStats /> */}
             <Card>
                 <CardHeader>
                     <CardTitle>Task</CardTitle>
