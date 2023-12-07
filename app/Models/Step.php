@@ -21,9 +21,9 @@ class Step extends Model
     return $this->hasMany(Artifact::class);
   }
 
-  public function runs()
+  public function run()
   {
-    return $this->hasMany(Run::class);
+    return $this->belongsTo(Run::class);
   }
 
   public function task()

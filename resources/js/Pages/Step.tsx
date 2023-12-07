@@ -6,12 +6,13 @@ import { Step as RunStep } from '@/Components/RunDetails';
 
 const Step = () => {
     const { props } = usePage();
-    const step = props.step as RunStep;
-    console.log(step)
+    console.log(props)
+    // const step = props.step as RunStep;
+    // console.log(step)
     return null
     return (
         <div className="pt-8 mx-auto px-4 w-full lg:w-3/4">
-            <Link href={`/run/${step.id}`} className="px-8">
+            <Link href={`/run/${props.run.id}`} className="px-8">
                 <Button variant="outline">
                     &larr; Back to step
                 </Button>

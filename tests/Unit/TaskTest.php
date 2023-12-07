@@ -27,18 +27,6 @@ it('has one output', function () {
     expect($task->output)->toBe(json_encode(['foo' => 'bar']));
 });
 
-it('has many steps', function () {
-    $agent = Agent::factory()->create();
-    $task = Task::factory()->create();
-    $task->steps()->create([
-      'agent_id' => $agent->id,
-    ]);
-    $task->steps()->create([
-      'agent_id' => $agent->id,
-    ]);
-    expect($task->steps)->toHaveCount(2);
-});
-
 it('belongs to an agent', function () {
     $task = Task::factory()->create();
     expect($task->agent)->toBeInstanceOf(Agent::class);
@@ -71,11 +59,11 @@ it('has proper relationships', function () {
 
     $step = Step::factory()->create([
       'agent_id' => $agent->id,
-      'task_id' => $task->id
+    //   'task_id' => $task->id
     ]);
 
     expect($step->agent->id)->toBe($agent->id);
-    expect($step->task->id)->toBe($task->id);
+    // expect($step->task->id)->toBe($task->id);
 
     $artifact = Artifact::factory()->create([
       'agent_id' => $agent->id,

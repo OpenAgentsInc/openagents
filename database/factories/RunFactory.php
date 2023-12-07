@@ -21,7 +21,6 @@ class RunFactory extends Factory
     {
         return [
             'agent_id' => Agent::factory(),
-            'step_id' => Step::factory(),
             'task_id' => Task::factory(),
             'description' => $this->faker->sentence,
             'status' => 'success',

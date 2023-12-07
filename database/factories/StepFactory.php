@@ -4,7 +4,6 @@ namespace Database\Factories;
 
 use App\Models\Agent;
 use App\Models\Run;
-use App\Models\Task;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -35,7 +34,7 @@ class StepFactory extends Factory
 
         return [
             'agent_id' => Agent::factory(),
-            'task_id' => Task::factory(),
+            'run_id' => Run::factory(),
             'description' => $this->faker->sentence(),
             'status' => $this->faker->randomElement(['success', 'failure']),
             'input' => json_encode($input),

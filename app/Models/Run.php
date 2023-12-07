@@ -16,6 +16,11 @@ class Run extends Model
       return $this->belongsTo(Agent::class);
     }
 
+    public function steps()
+    {
+        return $this->hasMany(Step::class);
+    }
+
     public function task()
     {
       return $this->belongsTo(Task::class);

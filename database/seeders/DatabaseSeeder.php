@@ -25,7 +25,7 @@ class DatabaseSeeder extends Seeder
             ]);
 
             // For each agent, create two runs
-            Run::factory()->create([
+            $run1 = Run::factory()->create([
                 'agent_id' => $agent->id,
                 'task_id' => $task->id,
                 'amount' => 0.01,
@@ -34,7 +34,13 @@ class DatabaseSeeder extends Seeder
                 'output' => json_encode(['huge error because lol'])
             ]);
 
-            Run::factory()->create([
+            // For each run, create steps
+            Step::factory(5)->create([
+                'agent_id' => $agent->id,
+                'run_id' => $run1->id,
+            ]);
+
+            $run2 = Run::factory()->create([
                 'agent_id' => $agent->id,
                 'task_id' => $task->id,
                 'amount' => 0.02,
@@ -43,10 +49,9 @@ class DatabaseSeeder extends Seeder
                 'output' => json_encode(['response' => 'heyyyyyy lol that work'])
             ]);
 
-            // For each task, create steps
             Step::factory(5)->create([
                 'agent_id' => $agent->id,
-                'task_id' => $task->id,
+                'run_id' => $run2->id,
             ]);
         });
     }

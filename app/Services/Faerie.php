@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Agent;
+use App\Models\Run;
 use App\Models\Step;
 use App\Models\Task;
 use App\Models\User;
@@ -14,7 +15,7 @@ class Faerie
     public $repo;
 
     private $agent;
-    private $task;
+    private $run;
 
     private $issue;
     private $pr;
@@ -31,8 +32,13 @@ class Faerie
             'user_id' => $user_id,
             'name' => $this->owner . '/' . $this->repo,
         ]);
-        $this->task = Task::create([
+        $task = Task::create([
             'agent_id' => $this->agent->id,
+            'description' => 'Faerie doin cool stuff',
+        ]);
+        $this->run = Run::create([
+            'agent_id' => $this->agent->id,
+            'task_id' => $task->id,
             'description' => 'Test task',
         ]);
     }

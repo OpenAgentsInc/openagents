@@ -14,7 +14,7 @@ return new class extends Migration
     Schema::create('steps', function (Blueprint $table) {
       $table->id();
       $table->foreignIdFor(\App\Models\Agent::class)->constrained()->cascadeOnDelete();
-      $table->foreignIdFor(\App\Models\Task::class)->constrained()->cascadeOnDelete();
+      $table->foreignIdFor(\App\Models\Run::class)->constrained()->cascadeOnDelete();
       $table->string('description')->nullable();
       $table->string('status')->nullable();
       $table->json('input')->nullable();
