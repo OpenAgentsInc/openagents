@@ -1,6 +1,6 @@
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card';
-import { Stats } from './RunStats';
+import { RunStats } from './RunStats';
 import { router } from "@inertiajs/react"
 
 // Dummy data types
@@ -28,7 +28,7 @@ export const RunDetails = ({ runStats, steps, task }: { runStats: RunStats; step
     // console.log(task)
     return (
         <div className="pt-6 px-8 rounded-lg">
-            <Stats />
+            <RunStats />
             <Card>
                 <CardHeader>
                     <CardTitle>Task</CardTitle>

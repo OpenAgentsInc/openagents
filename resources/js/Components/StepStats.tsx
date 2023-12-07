@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 
-export const RunStats = () => {
+export const StepStats = () => {
     return (
         <div className="mb-6 space-y-4">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
