@@ -16,6 +16,7 @@ class Faerie
 
     private $agent;
     private $run;
+    private $task;
 
     private $issue;
     private $pr;
@@ -32,13 +33,13 @@ class Faerie
             'user_id' => $user_id,
             'name' => $this->owner . '/' . $this->repo,
         ]);
-        $task = Task::create([
+        $this->task = Task::create([
             'agent_id' => $this->agent->id,
             'description' => 'Faerie doin cool stuff',
         ]);
         $this->run = Run::create([
             'agent_id' => $this->agent->id,
-            'task_id' => $task->id,
+            'task_id' => $this->task->id,
             'description' => 'Test task',
         ]);
     }
@@ -119,7 +120,7 @@ class Faerie
     {
         $step = Step::create([
             'agent_id' => $this->agent->id,
-            'task_id' => $this->task->id,
+            'run_id' => $this->run->id,
             'description' => $description,
             'input' => json_encode($input),
             'output' => json_encode($output),

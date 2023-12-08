@@ -39,7 +39,7 @@ it('can record a step', function () {
     expect($response['step']['description'])->toBe('foo');
     expect(json_decode($response['step']['input']))->toBe('bar');
     expect(json_decode($response['step']['output']))->toBe('baz');
-})->group('integration');
+});
 
 /**
  * READ GITHUB REPO
@@ -49,21 +49,21 @@ it('can determine if repo has an open PR', function () {
     $faerie = new Faerie();
     $response = $faerie->repoHasOpenPR();
     expect($response)->toBeBool();
-})->group('integration');
+})->group('faerie');
 
 it('can fetch the most recent issue', function () {
     $faerie = new Faerie();
     $response = $faerie->fetchMostRecentIssue();
     expect($response)->toBeArray();
     expect($response['title'])->toBeString();
-})->group('integration');
+})->group('faerie');
 
 it('can fetch the most recent PR', function () {
     $faerie = new Faerie();
     $response = $faerie->fetchMostRecentPR();
     expect($response)->toBeArray();
     expect($response['title'])->toBeString();
-})->group('integration');
+})->group('faerie');
 
 /**
  * ANALYZE GITHUB REPO
@@ -76,7 +76,7 @@ it('can analyze a PR', function () {
     expect($response)->toBeArray();
     expect($response['status'])->toBe('success');
     expect($response['comment'])->toBeString();
-})->group('integration');
+})->group('faerie');
 
 /**
  * HAPPY PATH
@@ -91,4 +91,4 @@ it('can run a task', function () {
     expect($response)->toBeArray();
     expect($response['status'])->toBe('success');
     expect(Step::count())->toBeGreaterThan(0);
-})->group('integration');
+})->group('faerie');

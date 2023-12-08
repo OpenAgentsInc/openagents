@@ -19,8 +19,9 @@
   </source>
   <groups>
     <exclude>
-      <group>queenbee</group>
+      <group>faerie</group>
       <group>integration</group>
+      <group>queenbee</group>
     </exclude>
   </groups>
   <php>
