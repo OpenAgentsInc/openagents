@@ -16,7 +16,7 @@ export interface Task {
     steps: Step[];
 }
 
-export const StepDetails = ({ step }: { step: Step }) => {
+export const StepDetails = ({ step }: { step: any }) => {
     return (
         <div className="pt-6 px-8 rounded-lg">
             {/* <StepStats /> */}
