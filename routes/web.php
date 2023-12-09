@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\ConversationController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\InspectController;
 use App\Http\Controllers\MessageController;
@@ -15,31 +16,36 @@ Route::get('/', function () {
     return Inertia::render('Splash');
 });
 
-// Route::get('/login', function () {
-//     return Inertia::render('Login');
-// });
+if (env('APP_ENV') !== "production") {
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->middleware(['auth']);
 
-Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
-Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
-Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
-Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
+    Route::get('/login', function () {
+        return Inertia::render('Login');
+    })->name('login');
 
-Route::post('/api/agents', [AgentController::class, 'store'])
-  ->middleware(['auth']);
+    Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
+    Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
+    Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
+    Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
 
-Route::post('/api/conversations', [ConversationController::class, 'store'])
-  ->middleware(['auth'])
-  ->name('conversations.store');
+    Route::post('/api/agents', [AgentController::class, 'store'])
+      ->middleware(['auth']);
 
-Route::post('/api/messages', [MessageController::class, 'store'])
-  ->middleware(['auth'])
-  ->name('messages.store');
+    Route::post('/api/conversations', [ConversationController::class, 'store'])
+      ->middleware(['auth'])
+      ->name('conversations.store');
 
-Route::post('/api/files', [FileController::class, 'store'])
-  ->name('files.store');
+    Route::post('/api/messages', [MessageController::class, 'store'])
+      ->middleware(['auth'])
+      ->name('messages.store');
 
-Route::post('/api/query', [QueryController::class, 'store'])
-  ->name('query.store');
+    Route::post('/api/files', [FileController::class, 'store'])
+      ->name('files.store');
+
+    Route::post('/api/query', [QueryController::class, 'store'])
+      ->name('query.store');
+}
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {

@@ -43,6 +43,7 @@ class HandleInertiaRequests extends Middleware
                 ...(new Ziggy)->toArray(),
                 'location' => $request->url(),
             ],
+            'env' => config('app.env')
         ];
     }
 }
