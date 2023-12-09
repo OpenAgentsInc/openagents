@@ -15,9 +15,9 @@ Route::get('/', function () {
     return Inertia::render('Splash');
 });
 
-Route::get('/login', function () {
-    return Inertia::render('Login');
-});
+// Route::get('/login', function () {
+//     return Inertia::render('Login');
+// });
 
 Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
