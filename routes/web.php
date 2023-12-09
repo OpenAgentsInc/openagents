@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', function () {
-    return Inertia::render('ComingSoon');
+    return Inertia::render('Splash');
 });
 
 Route::get('/login', function () {
