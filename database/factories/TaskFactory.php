@@ -19,6 +19,7 @@ class TaskFactory extends Factory
   {
     return [
       'agent_id' => Agent::factory(),
+      'description' => $this->faker->sentence(),
       'prompt' => $this->faker->sentence(),
     ];
   }

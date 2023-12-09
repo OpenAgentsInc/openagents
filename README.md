@@ -1,4 +1,4 @@
-# Open Agents
+# OpenAgents
 
 An open platform for AI agents, built in public from scratch.
 

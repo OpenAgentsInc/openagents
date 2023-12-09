@@ -20,7 +20,7 @@ function Welcome() {
         <div className="-mt-24 sm:mt-0 py-24 sm:py-32 lg:pb-40">
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <h1 className="text-4xl font-bold tracking-tight text-white sm:text-6xl">Open Agents</h1>
+              <h1 className="text-4xl font-bold tracking-tight text-white sm:text-6xl">OpenAgents</h1>
               <p className="mt-6 text-lg leading-8 text-gray-300">
                 Train AI agents to do anything you need. Then deploy them to our GPU swarm where they'll work for you
                 forever. <strong>Coming soon.</strong>

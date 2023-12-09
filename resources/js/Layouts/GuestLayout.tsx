@@ -1,6 +1,6 @@
 import { Head } from '@inertiajs/react'
 
-export default function Guest({ children, title = "Open Agents" }) {
+export default function Guest({ children, title = "OpenAgents" }) {
   return (
     <div className="dark">
       <Head title={title} />
