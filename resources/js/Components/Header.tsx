@@ -11,7 +11,6 @@ const navigation = [
 export const Header = () => {
     const env = usePage().props.env
     const showLogin = env === 'local'
-    console.log(env)
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
     return (
