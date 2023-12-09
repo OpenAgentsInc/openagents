@@ -11,11 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('tasks', function (Blueprint $table) {
+        Schema::create('runs', function (Blueprint $table) {
             $table->id();
-            $table->string('prompt')->nullable();
+            $table->foreignIdFor(\App\Models\Agent::class)->constrained()->cascadeOnDelete();
+            $table->foreignIdFor(\App\Models\Task::class)->constrained()->cascadeOnDelete();
+            $table->string('status')->nullable();
             $table->string('description')->nullable();
-            $table->foreignId('agent_id')->constrained()->cascadeOnDelete()->cascadeOnUpdate();
+            $table->float('amount')->nullable();
+            // $table->json('input')->nullable();
             $table->json('output')->nullable();
             $table->timestamps();
         });
@@ -26,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('tasks');
+        Schema::dropIfExists('runs');
     }
 };
