@@ -14,11 +14,12 @@ return new class extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('email')->unique()->nullable(); // Making email nullable
-            $table->string('password')->nullable(); // Making password nullable
-            $table->bigInteger('github_id')->unique()->nullable(); // GitHub ID
-            $table->string('github_nickname')->nullable(); // GitHub Nickname
-            $table->string('github_avatar')->nullable(); // GitHub Avatar URL
+            $table->string('email')->unique()->nullable();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password')->nullable();
+            $table->bigInteger('github_id')->unique()->nullable();
+            $table->string('github_nickname')->nullable();
+            $table->string('github_avatar')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });
