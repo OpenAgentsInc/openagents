@@ -36,11 +36,13 @@ export const Header = () => {
                     </div>
                 )}
                 <div className="hidden md:flex md:gap-x-12">
-                    {navigation.map((item) => (
-                        <a key={item.name} href={item.href} className="text-sm leading-6 text-gray-900">
-                            {item.name}
-                        </a>
-                    ))}
+                    {showLogin || authed && <>
+                        {navigation.map((item) => (
+                            <a key={item.name} href={item.href} className="text-sm leading-6 text-gray-900">
+                                {item.name}
+                            </a>
+                        ))}
+                    </>}
 
                     {showLogin && !authed && (
                         <Link href="/login" className="text-sm leading-6 text-gray-900">
