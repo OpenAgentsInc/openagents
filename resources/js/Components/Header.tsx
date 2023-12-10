@@ -9,7 +9,10 @@ const navigation = [
 ]
 
 export const Header = () => {
-    const env = usePage().props.env
+    const props = usePage().props
+    const env = props.env
+    const auth = props.auth as any
+    const authed = !!auth.user?.id || false
     const showLogin = env === 'local'
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -38,9 +41,18 @@ export const Header = () => {
                                 {item.name}
                             </a>
                         ))}
-                        <Link href="/login" className="text-sm leading-6 text-gray-900">
-                            Log in <span aria-hidden="true">&rarr;</span>
-                        </Link>
+
+                        {!authed && (
+                            <Link href="/login" className="text-sm leading-6 text-gray-900">
+                                Log in <span aria-hidden="true">&rarr;</span>
+                            </Link>
+                        )}
+
+                        {authed && (
+                            <Link href="/dashboard" className="text-sm leading-6 text-gray-900">
+                                Dashboard <span aria-hidden="true">&rarr;</span>
+                            </Link>
+                        )}
                     </div>
                 )}
             </nav>
@@ -72,7 +84,7 @@ export const Header = () => {
                                     ))}
                                 </div>
 
-                                {showLogin && (
+                                {showLogin && !authed && (
                                     <div className="py-6">
                                         <a
                                             href="/login"
@@ -80,6 +92,17 @@ export const Header = () => {
                                         >
                                             Log in
                                         </a>
+                                    </div>
+                                )}
+
+                                {authed && (
+                                    <div className="py-6">
+                                        <Link
+                                            href="/dashboard"
+                                            className="-mx-3 block rounded-lg px-3 py-2.5 text-base  leading-7 text-gray-900 hover:bg-gray-50"
+                                        >
+                                            Dashboard
+                                        </Link>
                                     </div>
                                 )}
 
