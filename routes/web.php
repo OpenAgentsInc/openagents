@@ -36,13 +36,22 @@ Route::get('/github', function () {
         ]
     );
 
-    // Perform any post-login operations with $user
-    dd($user);
+    // Log in this user
+    auth()->login($user, true);
+
+    return redirect('/dashboard');
 });
+
+Route::any('/logout', function () {
+    auth()->logout();
+
+    return redirect('/');
+})->name('logout');
 
 if (env('APP_ENV') !== "production") {
     Route::get('/dashboard', [DashboardController::class, 'index'])
-        ->middleware(['auth']);
+        ->middleware(['auth'])
+        ->name('dashboard');
 
     Route::get('/login', function () {
         return Inertia::render('Login');
