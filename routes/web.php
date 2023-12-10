@@ -18,6 +18,10 @@ Route::get('/', function () {
     return Inertia::render('Splash');
 });
 
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->middleware(['auth'])
+    ->name('dashboard');
+
 Route::get('/login/github', function () {
     return Socialite::driver('github')->redirect();
 });
@@ -49,10 +53,6 @@ Route::any('/logout', function () {
 })->name('logout');
 
 if (env('APP_ENV') !== "production") {
-    Route::get('/dashboard', [DashboardController::class, 'index'])
-        ->middleware(['auth'])
-        ->name('dashboard');
-
     Route::get('/login', function () {
         return Inertia::render('Login');
     })->name('login');
@@ -82,5 +82,5 @@ if (env('APP_ENV') !== "production") {
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {
-  return redirect('/');
+    return redirect('/');
 })->where('any', '.*');
