@@ -24,6 +24,10 @@ if (env('APP_ENV') !== "production") {
         return Inertia::render('Login');
     })->name('login');
 
+    Route::get('/github', function () {
+        dd("back from github");
+    });
+
     Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
     Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
     Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
