@@ -8,6 +8,7 @@ use App\Http\Controllers\InspectController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QueryController;
+use App\Models\User;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -22,8 +23,20 @@ Route::get('/login/github', function () {
 });
 
 Route::get('/github', function () {
-    $user = Socialite::driver('github')->user();
+    $githubUser = Socialite::driver('github')->user();
 
+    $user = User::updateOrCreate(
+        ['github_id' => $githubUser->id], // Check if GitHub ID exists
+        [
+            'name' => $githubUser->name,
+            'email' => $githubUser->email,
+            'github_nickname' => $githubUser->nickname,
+            'github_avatar' => $githubUser->avatar,
+            // Add other fields as needed
+        ]
+    );
+
+    // Perform any post-login operations with $user
     dd($user);
 });
 
