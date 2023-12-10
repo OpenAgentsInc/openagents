@@ -78,6 +78,10 @@ if (env('APP_ENV') !== "production") {
 
     Route::post('/api/query', [QueryController::class, 'store'])
       ->name('query.store');
+} else {
+    Route::get('/login', function () {
+        return redirect('/');
+    })->name('login');
 }
 
 // Add a catch-all redirect to the homepage
