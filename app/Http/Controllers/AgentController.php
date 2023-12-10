@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Agent;
+use App\Services\Faerie;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -10,14 +11,18 @@ class AgentController extends Controller
 {
     public function run() {
         $user = auth()->user();
-        // Reject if user nickname is not AtlantisPleb
         if ($user->github_nickname !== 'AtlantisPleb') {
             return response()->json([
                 'message' => 'You are not AtlantisPleb',
             ], 403);
         }
 
-        return [];
+        $faerie = new Faerie();
+        $issue = $faerie->fetchMostRecentIssue();
+
+        return [
+            "issue" => $issue,
+        ];
     }
 
   public function store() {
