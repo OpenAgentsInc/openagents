@@ -11,9 +11,20 @@ use App\Http\Controllers\QueryController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use Laravel\Socialite\Facades\Socialite;
 
 Route::get('/', function () {
     return Inertia::render('Splash');
+});
+
+Route::get('/login/github', function () {
+    return Socialite::driver('github')->redirect();
+});
+
+Route::get('/github', function () {
+    $user = Socialite::driver('github')->user();
+
+    dd($user);
 });
 
 if (env('APP_ENV') !== "production") {
@@ -23,10 +34,6 @@ if (env('APP_ENV') !== "production") {
     Route::get('/login', function () {
         return Inertia::render('Login');
     })->name('login');
-
-    Route::get('/github', function () {
-        dd("back from github");
-    });
 
     Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
     Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
