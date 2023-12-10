@@ -8,12 +8,36 @@ use App\Http\Controllers\InspectController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QueryController;
+use App\Models\User;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use Laravel\Socialite\Facades\Socialite;
 
 Route::get('/', function () {
     return Inertia::render('Splash');
+});
+
+Route::get('/login/github', function () {
+    return Socialite::driver('github')->redirect();
+});
+
+Route::get('/github', function () {
+    $githubUser = Socialite::driver('github')->user();
+
+    $user = User::updateOrCreate(
+        ['github_id' => $githubUser->id], // Check if GitHub ID exists
+        [
+            'name' => $githubUser->name,
+            'email' => $githubUser->email,
+            'github_nickname' => $githubUser->nickname,
+            'github_avatar' => $githubUser->avatar,
+            // Add other fields as needed
+        ]
+    );
+
+    // Perform any post-login operations with $user
+    dd($user);
 });
 
 if (env('APP_ENV') !== "production") {

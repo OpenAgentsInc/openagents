@@ -12,10 +12,12 @@ function Login() {
                     <CardDescription>Please log in to continue.</CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
-                    <Button size="lg" className="mt-2 px-4 py-6">
-                        <GitHubLogoIcon className="mr-3 h-6 w-6" />
-                        <span className="text-lg">Log in with GitHub</span>
-                    </Button>
+                    <a href="/login/github">
+                        <Button size="lg" className="mt-2 px-4 py-6">
+                            <GitHubLogoIcon className="mr-3 h-6 w-6" />
+                            <span className="text-lg">Log in with GitHub</span>
+                        </Button>
+                    </a>
                     <p className="text-muted-foreground mt-8 text-xs">By logging in, you agree to our terms of service and privacy policy.</p>
                 </CardContent>
             </Card>
