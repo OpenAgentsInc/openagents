@@ -17,12 +17,15 @@ class AgentController extends Controller
             ], 403);
         }
 
-        $faerie = new Faerie();
-        $issue = $faerie->fetchMostRecentIssue();
-
-        return [
-            "issue" => $issue,
-        ];
+        try {
+            $faerie = new Faerie();
+            $run = $faerie->fetchMostRecentIssue();
+            return $run;
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
   public function store() {
