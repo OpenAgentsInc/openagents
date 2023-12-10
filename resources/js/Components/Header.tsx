@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Dialog } from '@headlessui/react'
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
 import { Link, usePage } from '@inertiajs/react'
+import ApplicationLogo from './ApplicationLogo'
 
 const navigation = [
     { name: 'Inspect', href: '/inspect' },
@@ -20,7 +21,7 @@ export const Header = () => {
         <header className="fixed w-full bg-background/80 shadow backdrop-blur" style={{ zIndex: 9000 }}>
             <nav className="mx-auto flex max-w-7xl items-center justify-between py-5 px-6 lg:px-8" aria-label="Global">
                 <Link href="/" className="-m-1.5 p-1.5">
-                    <h1 className="text-xl tracking-wide">OpenAgents</h1>
+                    <ApplicationLogo />
                 </Link>
                 {showLogin && (
                     <div className="flex md:hidden">
@@ -34,27 +35,25 @@ export const Header = () => {
                         </button>
                     </div>
                 )}
-                {showLogin && (
-                    <div className="hidden md:flex md:gap-x-12">
-                        {navigation.map((item) => (
-                            <a key={item.name} href={item.href} className="text-sm leading-6 text-gray-900">
-                                {item.name}
-                            </a>
-                        ))}
+                <div className="hidden md:flex md:gap-x-12">
+                    {navigation.map((item) => (
+                        <a key={item.name} href={item.href} className="text-sm leading-6 text-gray-900">
+                            {item.name}
+                        </a>
+                    ))}
 
-                        {!authed && (
-                            <Link href="/login" className="text-sm leading-6 text-gray-900">
-                                Log in <span aria-hidden="true">&rarr;</span>
-                            </Link>
-                        )}
+                    {showLogin && !authed && (
+                        <Link href="/login" className="text-sm leading-6 text-gray-900">
+                            Log in <span aria-hidden="true">&rarr;</span>
+                        </Link>
+                    )}
 
-                        {authed && (
-                            <Link href="/dashboard" className="text-sm leading-6 text-gray-900">
-                                Dashboard <span aria-hidden="true">&rarr;</span>
-                            </Link>
-                        )}
-                    </div>
-                )}
+                    {authed && (
+                        <Link href="/dashboard" className="text-sm leading-6 text-gray-900">
+                            Dashboard <span aria-hidden="true">&rarr;</span>
+                        </Link>
+                    )}
+                </div>
             </nav>
             {showLogin && (
                 <Dialog as="div" className="md:hidden" open={mobileMenuOpen} onClose={setMobileMenuOpen}>
