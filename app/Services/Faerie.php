@@ -57,6 +57,8 @@ class Faerie
         } else {
             dd("Unhandled analysis: " . $analysis);
         }
+
+        return ['status' => 'success'];
     }
 
     public function fixTests() {
