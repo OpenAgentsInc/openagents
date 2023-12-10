@@ -21,6 +21,8 @@ Route::get('/', function () {
 Route::post('/faerie-run', [AgentController::class, 'run'])
     ->middleware(['auth']);
 
+Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
+
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth'])
     ->name('dashboard');
@@ -60,7 +62,6 @@ if (env('APP_ENV') !== "production") {
         return Inertia::render('Login');
     })->name('login');
 
-    Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
     Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
     Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
     Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
