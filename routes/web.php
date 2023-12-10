@@ -40,9 +40,6 @@ Route::get('/github', function () {
     auth()->login($user, true);
 
     return redirect('/dashboard');
-
-    // Perform any post-login operations with $user
-    // dd($user);
 });
 
 Route::any('/logout', function () {
