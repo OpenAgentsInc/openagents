@@ -8,6 +8,18 @@ use Inertia\Response;
 
 class AgentController extends Controller
 {
+    public function run() {
+        $user = auth()->user();
+        // Reject if user nickname is not AtlantisPleb
+        if ($user->github_nickname !== 'AtlantisPleb') {
+            return response()->json([
+                'message' => 'You are not AtlantisPleb',
+            ], 403);
+        }
+
+        return [];
+    }
+
   public function store() {
     request()->validate([
       'name' => 'required',

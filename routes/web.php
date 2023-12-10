@@ -18,6 +18,9 @@ Route::get('/', function () {
     return Inertia::render('Splash');
 });
 
+Route::post('/faerie-run', [AgentController::class, 'run'])
+    ->middleware(['auth']);
+
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth'])
     ->name('dashboard');
