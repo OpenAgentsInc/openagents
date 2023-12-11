@@ -17,4 +17,4 @@ test('chris can trigger a run', function () {
     $this->actingAs($user);
 
     $this->post('/faerie-run')->assertOk();
-});
+})->group('faerie');
