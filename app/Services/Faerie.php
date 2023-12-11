@@ -260,7 +260,7 @@ class Faerie
 
         // You can return the duration along with the response
         // Or you can log it, print it, or handle it as needed
-        echo "Request duration: " . $duration . " ms\n";
+        // Log::info("Request duration: " . $duration . " ms\n");
 
         return [
             "response" => json_decode($response, true),
@@ -284,7 +284,7 @@ class Faerie
                 break;
             }
         }
-        echo "Total chars: $totalChars\n";
+        // echo "Total chars: $totalChars\n";
 
         $input = [
             'model' => $model,
