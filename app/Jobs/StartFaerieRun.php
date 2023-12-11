@@ -28,7 +28,9 @@ class StartFaerieRun implements ShouldQueue
      */
     public function handle(): void
     {
-        dump("HI FAERIE JOB REPORTING");
-        dump($this->faerie);
+        dump("HI FAERIE REPORTING FOR DUTY");
+        $run = $this->faerie->run();
+        dump($run);
+        dump("DONE?");
     }
 }

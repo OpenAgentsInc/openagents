@@ -56,6 +56,7 @@ class Faerie
         // $this->log("Running StartFaerieRun event");
         // event(new StartFaerieRun($this));
         StartFaerieRun::dispatch($this);
+        return ['status' => 'Job dispatched'];
     }
 
     public function run()
@@ -141,22 +142,27 @@ class Faerie
 
     public function recordStep($description, $input, $output)
     {
-        $this->log("Attempting to record step.");
-        try {
-            $step = Step::create([
-                'agent_id' => $this->agent->id,
-                'run_id' => $this->run->id,
-                'description' => $description,
-                'input' => json_encode($input),
-                'output' => json_encode($output),
-            ]);
-        } catch (\Exception $e) {
-            $this->log("Failed to record step: " . $e->getMessage());
-            return [
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ];
-        }
+        $this->log("Skipped recording step: " . $description);
+        return [
+            'status' => 'skipped',
+        ];
+
+        // $this->log("Attempting to record step.");
+        // try {
+        //     $step = Step::create([
+        //         'agent_id' => $this->agent->id,
+        //         'run_id' => $this->run->id,
+        //         'description' => $description,
+        //         'input' => json_encode($input),
+        //         'output' => json_encode($output),
+        //     ]);
+        // } catch (\Exception $e) {
+        //     $this->log("Failed to record step: " . $e->getMessage());
+        //     return [
+        //         'status' => 'error',
+        //         'message' => $e->getMessage(),
+        //     ];
+        // }
 
         return [
             'status' => 'success',
@@ -307,22 +313,45 @@ class Faerie
         $maxChars = 6000; // Maximum character limit
         $totalChars = 0;
 
-        // Filter messages to stay within the character limit. @todo: make this less horribly hacky
+        // Loop through each message to ensure it is valid UTF-8 and filter out invalid messages
         foreach ($messages as $index => $message) {
-            $messageLength = strlen($message['content']);
-            $totalChars += $messageLength;
-            $minCharsPerMessage = 2000; // Minimum characters per message
-
-            if ($totalChars > $maxChars) {
-                $messages[$index]['content'] = substr($message['content'], 0, $minCharsPerMessage);
-                break;
+            $message['content'] = mb_convert_encoding($message['content'], 'UTF-8', 'UTF-8');
+            if (mb_check_encoding($message['content'], 'UTF-8')) {
+                $messages[$index]['content'] = $message['content'];
+            } else {
+                // dd("INVALID MESSAGE");
+                unset($messages[$index]);
             }
         }
+
+        // Filter messages to stay within the character limit. @todo: make this less horribly hacky
+        // foreach ($messages as $index => $message) {
+        //     $messageLength = strlen($message['content']);
+        //     $totalChars += $messageLength;
+        //     $minCharsPerMessage = 2000; // Minimum characters per message
+
+        //     if ($totalChars > $maxChars) {
+        //         $messages[$index]['content'] = substr($message['content'], 0, $minCharsPerMessage);
+        //         break;
+        //     }
+        // }
         // echo "Total chars: $totalChars\n";
+
+        // dd($messages);
 
         $input = [
             'model' => $model,
             'messages' => $messages,
+            // "messages" => [
+            //     [
+            //         "role" => "system",
+            //         "content" => "Hello, I'm a chatbot that can help you find files. What would you like to search for?"
+            //     ],
+            //     [
+            //         "role" => "user",
+            //         "content" => "I'm looking for a file about the new product launch."
+            //     ]
+            // ],
         ];
 
         // // print_r($input);
