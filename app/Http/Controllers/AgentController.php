@@ -19,7 +19,7 @@ class AgentController extends Controller
 
         try {
             $faerie = new Faerie();
-            $run = $faerie->run();
+            $run = $faerie->runJob();
             return $run;
         } catch (\Exception $e) {
             return response()->json([

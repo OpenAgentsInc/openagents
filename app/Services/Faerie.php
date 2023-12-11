@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Events\StartFaerieRun;
 use App\Models\Agent;
 use App\Models\Run;
 use App\Models\Step;
 use App\Models\Task;
 use App\Models\User;
 use GitHub;
+use Illuminate\Support\Facades\Log;
 
 class Faerie
 {
@@ -44,14 +46,31 @@ class Faerie
         ]);
     }
 
+    public function log($wat) {
+        dump($wat);
+    }
+
+    public function runJob() {
+        // run the StartFaerieRun event
+        // $this->log("Running StartFaerieRun event");
+        event(new StartFaerieRun($this));
+    }
+
     public function run()
     {
         if(!$this->repoHasOpenPR()) {
             return ['status' => 'no_open_pr'];
         }
 
+        $this->log("Hello from Faerie!");
+
+
         $this->fetchMostRecentPR();
+        $this->log("Running Faerie on PR " . $this->pr['number']);
+
         $analysis = $this->analyzePr()["comment"];
+        $this->log($analysis);
+
         if ($analysis == "TESTFIX") {
             $this->fixTests();
         } else {
@@ -120,13 +139,23 @@ class Faerie
 
     public function recordStep($description, $input, $output)
     {
-        $step = Step::create([
-            'agent_id' => $this->agent->id,
-            'run_id' => $this->run->id,
-            'description' => $description,
-            'input' => json_encode($input),
-            'output' => json_encode($output),
-        ]);
+        $this->log("Attempting to record step.");
+        try {
+            $step = Step::create([
+                'agent_id' => $this->agent->id,
+                'run_id' => $this->run->id,
+                'description' => $description,
+                'input' => json_encode($input),
+                'output' => json_encode($output),
+            ]);
+        } catch (\Exception $e) {
+            $this->log("Failed to record step: " . $e->getMessage());
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ];
+        }
+
         return [
             'status' => 'success',
             'step' => $step,
@@ -231,7 +260,10 @@ class Faerie
             ['role' => 'user', 'content' => $prompt],
         ];
 
+        dump($messages);
+
         $comment = $this->chatComplete($messages);
+        dump($comment);
         return [
             'status' => 'success',
             'comment' => $comment,
@@ -292,7 +324,10 @@ class Faerie
         ];
 
         // // print_r($input);
+        dump("Attempting to make chat completion");
         $response = $this->gateway->makeChatCompletion($input);
+        dump($response);
+
         // // print_r($response);
         try {
             $output = $response['choices'][0];
