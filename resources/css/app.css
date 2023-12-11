@@ -4,24 +4,24 @@
 
 @font-face {
     font-family: 'BeausiteClassic';
-    src: url('fonts/BeausiteClassicWeb-Regular.woff2') format('woff2'),
-         url('fonts/BeausiteClassicWeb-Regular.woff') format('woff');
+    src: url('/fonts/BeausiteClassicWeb-Regular.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-Regular.woff') format('woff');
     font-weight: normal;
     font-style: normal;
 }
 
 @font-face {
     font-family: 'BeausiteClassic';
-    src: url('fonts/BeausiteClassicWeb-Bold.woff2') format('woff2'),
-         url('fonts/BeausiteClassicWeb-Bold.woff') format('woff');
+    src: url('/fonts/BeausiteClassicWeb-Bold.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-Bold.woff') format('woff');
     font-weight: 700;
     font-style: normal;
 }
 
 @font-face {
     font-family: 'BeausiteClassic';
-    src: url('fonts/BeausiteClassicWeb-RegularItalic.woff2') format('woff2'),
-         url('fonts/BeausiteClassicWeb-RegularItalic.woff') format('woff');
+    src: url('/fonts/BeausiteClassicWeb-RegularItalic.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-RegularItalic.woff') format('woff');
     font-weight: normal;
     font-style: italic;
 }
