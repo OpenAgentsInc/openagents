@@ -26,11 +26,17 @@ class OpenAIGateway {
 
   public function makeChatCompletion($data)
   {
+    dump("ABout to go do a thing");
     $response = Http::withHeaders([
       'Authorization' => 'Bearer ' . $this->token,
     ])
         ->timeout(90)
         ->post($this->api_url . '/chat/completions', $data);
+
+    dump("RESPONSE:");
+    dump($response);
+    dump("RESPONSE JSON:");
+    dump($response->json());
 
     return $response->json();
   }
