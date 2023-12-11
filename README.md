@@ -48,3 +48,4 @@ See the [wiki](https://github.com/ArcadeLabsInc/openagents/wiki) for more.
 32. [Toward Semi-Automation](https://twitter.com/GPUtopia/status/1731086330694651924)
 33. [Agent Inspectability Planning](https://twitter.com/GPUtopia/status/1731156734335398303)
 34. [Agent Inspection UX Design](https://twitter.com/GPUtopia/status/1731733390641050106)
+35. [Agent Inspection UI](https://twitter.com/GPUtopia/status/1734044762255036737)
