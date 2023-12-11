@@ -19,7 +19,7 @@ class AgentController extends Controller
 
         try {
             $faerie = new Faerie();
-            $run = $faerie->fetchMostRecentIssue();
+            $run = $faerie->run();
             return $run;
         } catch (\Exception $e) {
             return response()->json([
