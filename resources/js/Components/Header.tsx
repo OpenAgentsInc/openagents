@@ -41,7 +41,7 @@ export const Header = () => {
                 )}
                 <div className="hidden md:flex md:gap-x-12">
                     {(showLogin || authed) && <>
-                        {navigation.map((item) => (
+                        {navigation.map((item: any) => (
                             <Link key={item.name} href={item.href} className="text-sm leading-6 text-gray-900">
                                 {item.name}
                             </Link>
@@ -82,7 +82,7 @@ export const Header = () => {
                         <div className="mt-6 flow-root">
                             <div className="-my-6 divide-y divide-gray-500/10">
                                 <div className="space-y-2 py-6">
-                                    {navigation.map((item) => (
+                                    {navigation.map((item: any) => (
                                         <a
                                             key={item.name}
                                             href={item.href}
