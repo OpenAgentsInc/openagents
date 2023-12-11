@@ -13,7 +13,7 @@
         "laravel/framework": "^10.10",
         "laravel/sanctum": "^3.2",
         "laravel/socialite": "^5.11",
-        "laravel/telescope": "*",
+        "laravel/telescope": "^4.17",
         "laravel/tinker": "^2.8",
         "openai-php/client": "^0.7.10",
         "spatie/pdf-to-text": "^1.52",
