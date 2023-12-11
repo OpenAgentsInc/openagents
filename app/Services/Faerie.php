@@ -38,12 +38,14 @@ class Faerie
         ]);
         $this->task = Task::create([
             'agent_id' => $this->agent->id,
-            'description' => 'Faerie doin cool stuff',
+            'description' => 'Analyze a PR and make a commit',
         ]);
         $this->run = Run::create([
             'agent_id' => $this->agent->id,
             'task_id' => $this->task->id,
-            'description' => 'Test task',
+            'description' => 'GitHubAgent analyzes a PR and makes a commit',
+            'status' => 'pending',
+            'amount' => 0
         ]);
     }
 
@@ -142,27 +144,27 @@ class Faerie
 
     public function recordStep($description, $input, $output)
     {
-        $this->log("Skipped recording step: " . $description);
-        return [
-            'status' => 'skipped',
-        ];
+        // $this->log("Skipped recording step: " . $description);
+        // return [
+        //     'status' => 'skipped',
+        // ];
 
-        // $this->log("Attempting to record step.");
-        // try {
-        //     $step = Step::create([
-        //         'agent_id' => $this->agent->id,
-        //         'run_id' => $this->run->id,
-        //         'description' => $description,
-        //         'input' => json_encode($input),
-        //         'output' => json_encode($output),
-        //     ]);
-        // } catch (\Exception $e) {
-        //     $this->log("Failed to record step: " . $e->getMessage());
-        //     return [
-        //         'status' => 'error',
-        //         'message' => $e->getMessage(),
-        //     ];
-        // }
+        $this->log("Attempting to record step.");
+        try {
+            $step = Step::create([
+                'agent_id' => $this->agent->id,
+                'run_id' => $this->run->id,
+                'description' => $description,
+                'input' => json_encode($input),
+                'output' => json_encode($output),
+            ]);
+        } catch (\Exception $e) {
+            $this->log("Failed to record step: " . $e->getMessage());
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ];
+        }
 
         return [
             'status' => 'success',
@@ -312,6 +314,18 @@ class Faerie
     {
         $maxChars = 6000; // Maximum character limit
         $totalChars = 0;
+
+        // Filter messages to stay within the character limit. @todo: make this less horribly hacky
+        foreach ($messages as $index => $message) {
+            $messageLength = strlen($message['content']);
+            $totalChars += $messageLength;
+            $minCharsPerMessage = 2000; // Minimum characters per message
+
+            if ($totalChars > $maxChars) {
+                $messages[$index]['content'] = substr($message['content'], 0, $minCharsPerMessage);
+                break;
+            }
+        }
 
         // Loop through each message to ensure it is valid UTF-8 and filter out invalid messages
         foreach ($messages as $index => $message) {

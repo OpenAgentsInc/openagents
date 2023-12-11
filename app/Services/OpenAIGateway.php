@@ -59,7 +59,7 @@ class OpenAIGateway
 
         // dump("Did what");
 
-        dd($response->json());
+        // dd($response->json());
         // dump("RESPONSE:");
         // dump($response);
         // dump("RESPONSE JSON:");
