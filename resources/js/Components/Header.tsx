@@ -5,7 +5,7 @@ import { Link, usePage } from '@inertiajs/react'
 import ApplicationLogo from './ApplicationLogo'
 
 const navigation = [
-    { name: 'Inspect', href: '/inspect' },
+    // { name: 'Inspect', href: '/inspect' },
     //   { name: 'Marketplace', href: '/marketplace' },
 ]
 
@@ -19,7 +19,7 @@ export const Header = () => {
 
     return (
         <header className="fixed w-full bg-background/80 shadow backdrop-blur" style={{ zIndex: 9000 }}>
-            <nav className="mx-auto flex max-w-7xl items-center justify-between py-5 px-6 lg:px-8" aria-label="Global">
+            <nav className="mx-auto flex max-w-7xl items-center justify-between h-16 px-6 lg:px-8" aria-label="Global">
                 <Link href="/" className="-m-1.5 p-1.5">
                     <ApplicationLogo />
                 </Link>
@@ -36,11 +36,11 @@ export const Header = () => {
                     </div>
                 )}
                 <div className="hidden md:flex md:gap-x-12">
-                    {showLogin || authed && <>
+                    {(showLogin || authed) && <>
                         {navigation.map((item) => (
-                            <a key={item.name} href={item.href} className="text-sm leading-6 text-gray-900">
+                            <Link key={item.name} href={item.href} className="text-sm leading-6 text-gray-900">
                                 {item.name}
-                            </a>
+                            </Link>
                         ))}
                     </>}
 
