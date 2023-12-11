@@ -2,7 +2,8 @@
 
 namespace App\Services;
 
-use App\Events\StartFaerieRun;
+// use App\Events\StartFaerieRun;
+use App\Jobs\StartFaerieRun;
 use App\Models\Agent;
 use App\Models\Run;
 use App\Models\Step;
@@ -53,7 +54,8 @@ class Faerie
     public function runJob() {
         // run the StartFaerieRun event
         // $this->log("Running StartFaerieRun event");
-        event(new StartFaerieRun($this));
+        // event(new StartFaerieRun($this));
+        StartFaerieRun::dispatch($this);
     }
 
     public function run()

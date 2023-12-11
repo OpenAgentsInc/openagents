@@ -14,7 +14,7 @@ class StartFaerieRun
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    private $faerie;
+    public $faerie;
 
     /**
      * Create a new event instance.
@@ -23,15 +23,6 @@ class StartFaerieRun
     {
         dump("Constructing the event");
         $this->faerie = $faerie;
-    }
-
-    // handle the event
-    public function handle()
-    {
-        dump("Handling the event");
-        Log::info("Handling the event");
-
-        // $this->gateway->makeChatCompletion($data);
     }
 
     /**
