@@ -62,7 +62,7 @@ class Faerie
     }
 
     public function fixTests() {
-        print_r("Fixing tests...\n");
+        // print_r("Fixing tests...\n");
         $pr = $this->pr;
 
         $system = "You are Faerie, an AI agent specialized in writing & analyzing code.\n\n Please review this PR and determine why the tests failed:\n\n";
@@ -109,13 +109,13 @@ class Faerie
         $patches = $patcher->getPrPatches($patchInput, $commits);
         $this->recordStep("Created patches", $patchInput, $patches);
 
-        // print_r("PATCHES:");
-        // print_r($patches);
-        print_r("--- . . skipping submitting");
+        // // print_r("PATCHES:");
+        // // print_r($patches);
+        // print_r("--- . . skipping submitting");
 
         // $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test17", false);
 
-        print_r("Done!");
+        // print_r("Done!");
     }
 
     public function recordStep($description, $input, $output)
@@ -291,9 +291,9 @@ class Faerie
             'messages' => $messages,
         ];
 
-        // print_r($input);
+        // // print_r($input);
         $response = $this->gateway->makeChatCompletion($input);
-        // print_r($response);
+        // // print_r($response);
         try {
             $output = $response['choices'][0];
             $comment = $output['message']['content'];

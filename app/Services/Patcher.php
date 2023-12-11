@@ -35,12 +35,12 @@ class Patcher
         $retryCount = 0;
 
         while (true) {
-            print_r("Trying code block for {$filePath}, attempt #{$retryCount}\n");
+            // print_r("Trying code block for {$filePath}, attempt #{$retryCount}\n");
             // Construct the prompt for getting the 'Before' and 'After' contents
             $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file. When writing tests, use Pest syntax not bare PHPUnit.";
-            // print_r($prompt . $actionPrompt2 . "\n");
+            // // print_r($prompt . $actionPrompt2 . "\n");
             $change = $this->complete($prompt . $actionPrompt2);
-            // print_r($change);
+            // // print_r($change);
 
             if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
                 dd("Warning: incorrect output format\n");
@@ -58,7 +58,7 @@ class Patcher
             $pattern = "/\s*" . str_replace("\n", "\s*", $escapedBefore) . "\s*/s";
 
             if (!preg_match($pattern, $fileContent)) {
-                print_r("didnt match");
+                // print_r("didnt match");
                 if (++$retryCount >= $maxRetries) {
                     dd("Warning: exceeded maximum retries for finding `Before` block\n");
                     return null;
@@ -122,13 +122,13 @@ class Patcher
 
         // Retrieve and process each file modified in the commits
         foreach ($commits as $commit) {
-            // print_r("COMMIT:");
-            // print_r($commit);
-            // print_r("---");
+            // // print_r("COMMIT:");
+            // // print_r($commit);
+            // // print_r("---");
             $modifiedFiles = $this->getModifiedFilesInCommit($commit['sha']);
-            // print_r("MODIFIED FILES:");
-            // print_r($modifiedFiles);
-            // print_r("---");
+            // // print_r("MODIFIED FILES:");
+            // // print_r($modifiedFiles);
+            // // print_r("---");
 
             foreach ($modifiedFiles as $filePath) {
                 $fileContent = $this->getFileContentFromGitHub($filePath, $commit['sha']);
@@ -146,8 +146,8 @@ class Patcher
 
         //     foreach ($validatedPatches as &$patch) {
         //         if ($patch['status'] === 'NEEDS_REWRITE') {
-        //             print_r("REWRITING PATCH\n");
-        //             print_r($patch);
+        //             // print_r("REWRITING PATCH\n");
+        //             // print_r($patch);
         //             $needsRewrite = true;
         //             // Redetermine patch for file
         //             $patch = $this->determinePatchForRemoteFile($patch['file_name'], $patch['content'], $issue);
@@ -189,17 +189,17 @@ class Patcher
 
     private function generatePrBody()
     {
-        // print_r("TASK:");
-        // print_r($this->task);
-        // print_r("-----");
+        // // print_r("TASK:");
+        // // print_r($this->task);
+        // // print_r("-----");
 
         // ask LLM o write a basic PR body in Markdown based on the array of patches, $this->patches
         $prompt = "You are a senior developer about to submit a PR. You were directed to do the following task:\n\n ---\n" . $this->task . "\n---\n\n
 
         Write a PR body in Markdown for the patches below. Include a summary of the changes at the top, followed by a description of individual changes. Do not use the word 'patch'. Only describe the differences between the new and old content, do not summarize existing code.\n\n";
 
-        // print_r("PR BODY:");
-        // print_r($prompt);
+        // // print_r("PR BODY:");
+        // // print_r($prompt);
 
         // explode by "For additional context, consult the following code snippets:"
 
@@ -248,7 +248,7 @@ class Patcher
         $owner = $repo[0];
         $repository = $repo[1];
         $this->patches = $patches;
-        print_r("Number of patches submitting: " . count($patches) . "\n");
+        // print_r("Number of patches submitting: " . count($patches) . "\n");
         foreach ($patches as $patch) {
             if ($patch === null) {
                 continue;
@@ -269,19 +269,19 @@ class Patcher
 
                 if ($fileExists) {
                     // Existing file update logic
-                    print_r("Updating file {$path}");
+                    // print_r("Updating file {$path}");
                     $fileInfo = GitHub::api('repo')->contents()->show($owner, $repository, $path, $branch);
                     $blobSha = $fileInfo['sha'];
                     GitHub::api('repo')->contents()->update($owner, $repository, $path, $newContent, $commitMessage, $blobSha, $branch);
-                    print_r("Updated file {$path}");
+                    // print_r("Updated file {$path}");
                 } else {
                     // New file creation logic
-                    print_r("Creating file {$path}");
+                    // print_r("Creating file {$path}");
                     GitHub::api('repo')->contents()->create($owner, $repository, $path, $newContent, $commitMessage, $branch);
-                    print_r("Created file {$path}");
+                    // print_r("Created file {$path}");
                 }
             } catch (\Exception $e) {
-                echo "Error updating file {$path}: " . $e->getMessage() . "\n";
+                // echo "Error updating file {$path}: " . $e->getMessage() . "\n";
             }
         }
 
@@ -323,8 +323,8 @@ class Patcher
         $newFiles = $this->promptForNewFiles();
         foreach ($newFiles as $newFilePath) {
             $newFileContent = $this->promptForNewFileContent($newFilePath, $issue);
-            print_r("NEW FILE CONTENT!");
-            print_r($newFileContent);
+            // print_r("NEW FILE CONTENT!");
+            // print_r($newFileContent);
             $patches[] = [
                 "file_name" => $newFilePath,
                 "content" => '',
@@ -403,7 +403,7 @@ class Patcher
     {
         // Check if the file exists
         if (!file_exists($file)) {
-            print_r("File not found: {$file} - trying to skip\n");
+            // print_r("File not found: {$file} - trying to skip\n");
             // $this->determinePatchForRemoteFile($file, $issue);
             return;
         }
@@ -427,12 +427,12 @@ class Patcher
         $retryCount = 0;
 
         while (true) {
-            print_r("Trying code block for {$file}, attempt #{$retryCount}\n");
+            // print_r("Trying code block for {$file}, attempt #{$retryCount}\n");
             // Construct the prompt for getting the 'Before' and 'After' contents
             $actionPrompt2 = "Identify which code block needs to be changed (mark it up with \"Before:\") and output the change (mark it up with \"After:\"). Make your change match the coding style of the original file.";
-            // print_r($prompt . $actionPrompt2 . "\n");
+            // // print_r($prompt . $actionPrompt2 . "\n");
             $change = $this->complete($prompt . $actionPrompt2);
-            // print_r($change);
+            // // print_r($change);
 
             if (strpos($change, "Before:") === false || strpos($change, "After:") === false) {
                 dd("Warning: incorrect output format\n");
@@ -450,7 +450,7 @@ class Patcher
             $pattern = "/\s*" . str_replace("\n", "\s*", $escapedBefore) . "\s*/s";
 
             if (!preg_match($pattern, $fileContent)) {
-                print_r("didnt match");
+                // print_r("didnt match");
                 if (++$retryCount >= $maxRetries) {
                     dd("Warning: exceeded maximum retries for finding `Before` block\n");
                     return null;
@@ -544,7 +544,7 @@ class Patcher
      */
     private function complete($prompt, $tokensResponse = 1024)
     {
-        // print_r("ATTEMTING TO COMPLETE PROMPT:" . $prompt . "\n");
+        // // print_r("ATTEMTING TO COMPLETE PROMPT:" . $prompt . "\n");
 
         $maxContentLength = 4097; // Define this constant based on your use case
         $modelCompletion = "gpt-3.5-turbo-instruct"; // Define this constant for the model you're using
@@ -577,7 +577,7 @@ class Patcher
 
             $result = curl_exec($ch);
             if (curl_errno($ch)) {
-                echo "Tried $i times. Couldn't get response, trying again...\n";
+                // echo "Tried $i times. Couldn't get response, trying again...\n";
                 sleep(1);
                 continue;
             }
@@ -588,9 +588,9 @@ class Patcher
             if (isset($response['choices'][0]['text'])) {
                 return trim($response['choices'][0]['text']);
             } else {
-                print_r("failed response:");
-                print_r($response);
-                print_r("^^^ fail ^^^");
+                // print_r("failed response:");
+                // print_r($response);
+                // print_r("^^^ fail ^^^");
                 sleep(1);
             }
         }
@@ -604,14 +604,14 @@ class Patcher
 
         foreach ($patches as $patch) {
 
-            print_r("VALIDATING PATCH:\n");
-            print_r($patch);
+            // print_r("VALIDATING PATCH:\n");
+            // print_r($patch);
 
             // Format the patch for LLM processing
             $formattedPatch = $this->formatPatchForLLM($patch);
 
-            print_r("FORMATTED PATCH:\n");
-            print_r($formattedPatch);
+            // print_r("FORMATTED PATCH:\n");
+            // print_r($formattedPatch);
 
             // Create the LLM prompt
             $llmPrompt = "Replace the 'New Content' code block with a cleaned code block. Identify any syntax errors, logical flaws, or deviations from standard PHP practices in the new content, and provide a corrected version if necessary. Respond only with code. Respond only with code we can directly replace the code block with. If no changes need to be made, reply with the original code.";
@@ -628,10 +628,10 @@ class Patcher
             ]);
             $correctedContent = $response['choices'][0]['message']['content'];
 
-            print_r("LLM RESPONSE:\n");
-            print_r($correctedContent);
+            // print_r("LLM RESPONSE:\n");
+            // print_r($correctedContent);
 
-            print_r("-----");
+            // print_r("-----");
 
             // Check if the corrected content is different from the original
             if (trim($correctedContent) === trim($patch['new_content'])) {
