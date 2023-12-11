@@ -149,7 +149,7 @@ class Faerie
         //     'status' => 'skipped',
         // ];
 
-        $this->log("Attempting to record step.");
+        // $this->log("Attempting to record step.");
         try {
             $step = Step::create([
                 'agent_id' => $this->agent->id,
@@ -369,9 +369,9 @@ class Faerie
         ];
 
         // // print_r($input);
-        dump("Attempting to make chat completion");
+        // dump("Attempting to make chat completion");
         $response = $this->gateway->makeChatCompletion($input);
-        dump($response);
+        // dump($response);
 
         // // print_r($response);
         try {
