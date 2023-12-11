@@ -3,6 +3,8 @@ import { Dialog } from '@headlessui/react'
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
 import { Link, usePage } from '@inertiajs/react'
 import ApplicationLogo from './ApplicationLogo'
+import { Button } from './ui/button'
+import { router } from "@inertiajs/react"
 
 const navigation = [
     // { name: 'Inspect', href: '/inspect' },
@@ -11,8 +13,10 @@ const navigation = [
 
 export const Header = () => {
     const props = usePage().props
+    const ziggy = props.ziggy as any
     const env = props.env
     const auth = props.auth as any
+    const isLoginPage = ziggy.location.includes('login')
     const authed = !!auth.user?.id || false
     const showLogin = env === 'local'
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -44,15 +48,19 @@ export const Header = () => {
                         ))}
                     </>}
 
-                    {showLogin && !authed && (
-                        <Link href="/login" className="text-sm leading-6 text-gray-900">
-                            Log in <span aria-hidden="true">&rarr;</span>
+                    {showLogin && !authed && !isLoginPage && (
+                        <Link href="/login">
+                            <Button className="text-sm leading-6" variant="outline">
+                                Log in<span aria-hidden="true" className="pl-2">&rarr;</span>
+                            </Button>
                         </Link>
                     )}
 
                     {authed && (
-                        <Link href="/dashboard" className="text-sm leading-6 text-gray-900">
-                            Dashboard <span aria-hidden="true">&rarr;</span>
+                        <Link href="/dashboard">
+                            <Button className="text-sm leading-6" variant="outline">
+                                Dashboard <span aria-hidden="true" className="pl-2">&rarr;</span>
+                            </Button>
                         </Link>
                     )}
                 </div>
