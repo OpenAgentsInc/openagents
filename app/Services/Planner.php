@@ -80,7 +80,18 @@ class Planner
                 break;
             }
         }
-        echo "Total chars: $totalChars\n";
+        // echo "Total chars: $totalChars\n";
+
+        // Loop through each message to ensure it is valid UTF-8 and filter out invalid messages
+        foreach ($messages as $index => $message) {
+            $message['content'] = mb_convert_encoding($message['content'], 'UTF-8', 'UTF-8');
+            if (mb_check_encoding($message['content'], 'UTF-8')) {
+                $messages[$index]['content'] = $message['content'];
+            } else {
+                // dd("INVALID MESSAGE");
+                unset($messages[$index]);
+            }
+        }
 
         $input = [
             'model' => $model,
