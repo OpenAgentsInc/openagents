@@ -4,10 +4,74 @@
 
 @font-face {
     font-family: 'BeausiteClassic';
+    src: url('/fonts/BeausiteClassicWeb-Ultralight.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-Ultralight.woff') format('woff');
+    font-weight: 50;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'BeausiteClassic';
+    src: url('/fonts/BeausiteClassicWeb-Thin.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-Thin.woff') format('woff');
+    font-weight: 100;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'BeausiteClassic';
+    src: url('/fonts/BeausiteClassicWeb-Light.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-Light.woff') format('woff');
+    font-weight: 200;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'BeausiteClassic';
+    src: url('/fonts/BeausiteClassicWeb-LightItalic.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-LightItalic.woff') format('woff');
+    font-weight: 200;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: 'BeausiteClassic';
+    src: url('/fonts/BeausiteClassicWeb-Clear.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-Clear.woff') format('woff');
+    font-weight: 300;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'BeausiteClassic';
     src: url('/fonts/BeausiteClassicWeb-Regular.woff2') format('woff2'),
          url('/fonts/BeausiteClassicWeb-Regular.woff') format('woff');
     font-weight: normal;
     font-style: normal;
+}
+
+@font-face {
+    font-family: 'BeausiteClassic';
+    src: url('/fonts/BeausiteClassicWeb-Medium.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-Medium.woff') format('woff');
+    font-weight: 500;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'BeausiteClassic';
+    src: url('/fonts/BeausiteClassicWeb-Semibold.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-Semibold.woff') format('woff');
+    font-weight: 600;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'BeausiteClassic';
+    src: url('/fonts/BeausiteClassicWeb-SemiboldItalic.woff2') format('woff2'),
+         url('/fonts/BeausiteClassicWeb-SemiboldItalic.woff') format('woff');
+    font-weight: 600;
+    font-style: italic;
 }
 
 @font-face {
