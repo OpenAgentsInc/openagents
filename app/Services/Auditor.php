@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use GitHub;
+use App\Events\StepCreated;
 use App\Jobs\StartAudit;
 use App\Models\Agent;
 use App\Models\Run;
@@ -86,6 +87,8 @@ class Auditor
                 'input' => json_encode($input),
                 'output' => json_encode($output),
             ]);
+
+            StepCreated::dispatch($step);
         } catch (\Exception $e) {
             $this->log("Failed to record step: " . $e->getMessage());
             return [
