@@ -4,8 +4,8 @@ use App\Services\Planner;
 
 test('can create plan based on github conversation', function () {
     // Given a GitHub issue and conversation
-    $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', 1);
-    $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', 1);
+    $response = GitHub::issues()->show('OpenAgentsInc', 'openagents', 1);
+    $commentsResponse = GitHub::api('issue')->comments()->all('OpenAgentsInc', 'openagents', 1);
     $body = $response['body'];
     $title = $response['title'];
 

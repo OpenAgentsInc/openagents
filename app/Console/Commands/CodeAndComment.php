@@ -30,45 +30,45 @@ class CodeAndComment extends Command
      */
     public function handle()
     {
-          dd("TEST");
-  //       // Grab the issue number from the command line
-  //       $issueNum = $this->argument('issuenum');
+        dd("TEST");
+        //       // Grab the issue number from the command line
+        //       $issueNum = $this->argument('issuenum');
 
-  //       // Grab the issue body and comments from GitHub
-  //       $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', $issueNum);
-  //       $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', 1);
-  //       $body = $response['body'];
-  //       $title = $response['title'];
+        //       // Grab the issue body and comments from GitHub
+        //       $response = GitHub::issues()->show('OpenAgentsInc', 'openagents', $issueNum);
+        //       $commentsResponse = GitHub::api('issue')->comments()->all('OpenAgentsInc', 'openagents', 1);
+        //       $body = $response['body'];
+        //       $title = $response['title'];
 
-  //       $patcher = new Patcher();
-  //       $planner = new Planner();
+        //       $patcher = new Patcher();
+        //       $planner = new Planner();
 
-  //       // Format the issue and comments as messages
-  //       $userAndAssistantMessages = $planner->formatIssueAndCommentsAsMessages($body, $commentsResponse);
+        //       // Format the issue and comments as messages
+        //       $userAndAssistantMessages = $planner->formatIssueAndCommentsAsMessages($body, $commentsResponse);
 
-  //       // Build the context from a summary of the messages passed as query to a similarity search
-  //       $context = $this->buildContextFrom($userAndAssistantMessages);
+        //       // Build the context from a summary of the messages passed as query to a similarity search
+        //       $context = $this->buildContextFrom($userAndAssistantMessages);
 
-  //       $taskDescription = $planner->createPlan($userAndAssistantMessages);
+        //       $taskDescription = $planner->createPlan($userAndAssistantMessages);
 
-  //       $planPrompt = "A description of your next task is:" . $taskDescription . "
+        //       $planPrompt = "A description of your next task is:" . $taskDescription . "
 
-  // For additional context, consult the following code snippets:
-  // ---
-  // " . $context;
+        // For additional context, consult the following code snippets:
+        // ---
+        // " . $context;
 
-  //       $patches = $patcher->getIssuePatches([
-  //           "title" => $title,
-  //           "body" => $planPrompt
-  //       ]);
+        //       $patches = $patcher->getIssuePatches([
+        //           "title" => $title,
+        //           "body" => $planPrompt
+        //       ]);
 
-  //       print_r($patches);
-  //       print_r("---");
+        //       print_r($patches);
+        //       print_r("---");
 
-  //       $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/trashheap", "testbranch");
-  //       print_r($res);
+        //       $res = $patcher->submitPatchesToGitHub($patches, "OpenAgentsInc/trashheap", "testbranch");
+        //       print_r($res);
 
-  //       $this->info("Done!");
+        //       $this->info("Done!");
     }
 
     // private function buildContextFrom(array $messages): string

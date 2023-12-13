@@ -140,7 +140,7 @@ class Faerie
         // // print_r($patches);
         // print_r("--- . . skipping submitting");
 
-        // $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test17", false);
+        // $res = $patcher->submitPatchesToGitHub($patches, "OpenAgentsInc/openagents", "vid32test17", false);
 
         // print_r("Done!");
     }
@@ -291,7 +291,7 @@ class Faerie
         curl_setopt_array($curl, [
             CURLOPT_RETURNTRANSFER => 1,
             CURLOPT_URL => $url,
-            CURLOPT_USERAGENT => 'ArcadeLabsInc',
+            CURLOPT_USERAGENT => 'OpenAgentsInc',
             CURLOPT_HTTPHEADER => [
                 'Accept: application/vnd.github.v3+json',
                 'Authorization: token ' . env('GITHUB_TOKEN'),

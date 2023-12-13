@@ -37,7 +37,7 @@ class FaerieStep extends Command
      */
     public function handle()
     {
-        $this->org = $this->option('org') ?? 'ArcadeLabsInc';
+        $this->org = $this->option('org') ?? 'OpenAgentsInc';
         $this->repo = $this->option('repo') ?? 'openagents';
 
         // See if there's an open PR
@@ -190,7 +190,7 @@ class FaerieStep extends Command
         print_r($patches);
         print_r("---");
 
-        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test17", false);
+        $res = $patcher->submitPatchesToGitHub($patches, "OpenAgentsInc/openagents", "vid32test17", false);
 
         $this->info("Done!");
     }
@@ -201,8 +201,8 @@ class FaerieStep extends Command
     public function writeCode()
     {
         // Grab the issue body and comments from GitHub
-        $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', $this->issue_number);
-        $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', $this->issue_number);
+        $response = GitHub::issues()->show('OpenAgentsInc', 'openagents', $this->issue_number);
+        $commentsResponse = GitHub::api('issue')->comments()->all('OpenAgentsInc', 'openagents', $this->issue_number);
         $body = $response['body'];
         $title = $response['title'];
 
@@ -233,7 +233,7 @@ class FaerieStep extends Command
         print_r($patches);
         print_r("---");
 
-        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test17");
+        $res = $patcher->submitPatchesToGitHub($patches, "OpenAgentsInc/openagents", "vid32test17");
         print_r("RESPONSE:");
         print_r($res);
 
