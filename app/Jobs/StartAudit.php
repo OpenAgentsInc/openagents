@@ -29,6 +29,5 @@ class StartAudit implements ShouldQueue
     public function handle(): void
     {
         $contents = $this->auditor->audit();
-        dump("Done.");
     }
 }
