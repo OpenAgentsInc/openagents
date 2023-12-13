@@ -41,7 +41,6 @@ Route::get('/github', function () {
             'email' => $githubUser->email,
             'github_nickname' => $githubUser->nickname,
             'github_avatar' => $githubUser->avatar,
-            // Add other fields as needed
         ]
     );
 
