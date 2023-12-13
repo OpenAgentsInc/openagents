@@ -22,6 +22,9 @@ class AuditController extends Controller
 
         // Initialize Auditor with those two vars
         $auditor = new Auditor($owner, $name);
+        // $repo = $auditor->getRepo();
+        $contents = $auditor->getFolderContents();
+        dd($contents);
 
         return redirect()->back()->with('message', 'Auditor initialized');
     }

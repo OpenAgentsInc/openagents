@@ -14,4 +14,16 @@ class Auditor
         $this->owner = $owner;
         $this->repo = $repo;
     }
+
+    // Get repo info
+    public function getRepo()
+    {
+        return GitHub::repo()->show($this->owner, $this->repo);
+    }
+
+    // Get file contents of folder
+    public function getFolderContents($path = null)
+    {
+        return GitHub::repo()->contents()->show($this->owner, $this->repo, $path);
+    }
 }
