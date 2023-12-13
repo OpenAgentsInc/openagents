@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/react';
 import { RunDetails, Task } from '@/Components/RunDetails';
 import { Run as RunType } from '@/Components/RunTable';
 import { Button } from '@/Components/ui/button';
+import { useEffect } from 'react';
 
 const Run = () => {
   const { props } = usePage();
@@ -10,6 +11,14 @@ const Run = () => {
   const steps = props.steps
   const task = props.task as Task
   // console.log({ run, steps, task })
+
+  useEffect(() => {
+    // @ts-ignore
+    window.Echo.private(`runs.${run.id}`)
+      .listen('OrderShipmentStatusUpdated', (e) => {
+        console.log(e.order);
+      });
+  }, [])
 
   // Assuming `run` contains the stats and task data, otherwise, you would fetch or calculate them here.
   const runStats = {
