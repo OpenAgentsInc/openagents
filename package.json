@@ -37,6 +37,8 @@
     "@tanstack/react-table": "^8.10.7",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
+    "laravel-echo": "^1.15.3",
+    "pusher-js": "^8.4.0-rc2",
     "react-dropzone": "^14.2.3",
     "react-intersection-observer": "^9.4.4",
     "react-markdown": "^8.0.7",
