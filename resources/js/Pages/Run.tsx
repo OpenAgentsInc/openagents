@@ -17,6 +17,7 @@ const Run = () => {
     window.Echo.private(`run.${run.id}`)
       .listen('StepCreated', (e) => {
         // console.log(e);
+        console.log(e)
         setSteps((steps) => [...steps, e.step]);
       });
   }, [])
