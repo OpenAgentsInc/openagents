@@ -32,6 +32,7 @@ class StepCreated implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
+        \Log::info("Broadcasting with run id" . $this->step->run->id);
         return [
             new PrivateChannel('run.' . $this->step->run->id)
         ];
