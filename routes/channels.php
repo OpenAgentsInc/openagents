@@ -18,6 +18,6 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
-Broadcast::channel('runs.{run}', function ($user, Run $run) {
+Broadcast::channel('run.{run}', function ($user, Run $run) {
     return $user->id === $run->agent->user_id;
 });

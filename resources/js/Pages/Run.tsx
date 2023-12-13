@@ -14,9 +14,9 @@ const Run = () => {
 
   useEffect(() => {
     // @ts-ignore
-    window.Echo.private(`runs.${run.id}`)
-      .listen('OrderShipmentStatusUpdated', (e) => {
-        console.log(e.order);
+    window.Echo.private(`run.${run.id}`)
+      .listen('StepCreated', (e) => {
+        console.log(e);
       });
   }, [])
 
