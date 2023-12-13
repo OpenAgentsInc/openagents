@@ -36,10 +36,19 @@ class Auditor
         ]);
     }
 
+    public function audit()
+    {
+        $this->getRepo();
+        $this->getFolderContents();
+        // $this->reflect();
+    }
+
     // Get repo info
     public function getRepo()
     {
-        return GitHub::repo()->show($this->owner, $this->repo);
+        $info = GitHub::repo()->show($this->owner, $this->repo);
+        $this->recordStep('Get repo data', null, $info);
+        return $info;
     }
 
     // Get file contents of folder
@@ -51,7 +60,7 @@ class Auditor
     }
 
     // Begin audit job
-    public function audit()
+    public function dispatchAuditJob()
     {
         StartAudit::dispatch($this);
     }

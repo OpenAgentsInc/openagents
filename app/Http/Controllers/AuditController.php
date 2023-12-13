@@ -20,7 +20,7 @@ class AuditController extends Controller
             [$owner, $name] = explode('/', $repo);
             $auditor = new Auditor($owner, $name);
             $run_id = $auditor->run->id;
-            $auditor->audit();
+            $auditor->dispatchAuditJob();
             return redirect()->route('inspect-run', $run_id);
         } catch (\Exception $e) {
             return redirect()->back()->with('message', 'Error: '. $e->getMessage());
