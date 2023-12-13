@@ -17,7 +17,8 @@ class Step extends Model
     {
         static::created(function ($step) {
             \Log::info('StepCreated...');
-            broadcast(new StepCreated($step));
+            StepCreated::dispatch($step);
+            // broadcast(new StepCreated($step));
         });
     }
 
