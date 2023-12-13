@@ -36,8 +36,8 @@ return [
             'secret' => env('PUSHER_APP_SECRET', 'app-secret'),
             'app_id' => env('PUSHER_APP_ID', 'app-id'),
             'options' => [
-                'host' => env('PUSHER_HOST', '127.0.0.1'),
-                'port' => env('PUSHER_PORT', 6001),
+                'host' => '127.0.0.1', // env('PUSHER_HOST', '127.0.0.1'),
+                'port' => 6001, // env('PUSHER_PORT', 6001),
                 'scheme' => env('PUSHER_SCHEME', 'http'),
                 'encrypted' => true,
                 'useTLS' => env('PUSHER_SCHEME') === 'https',
