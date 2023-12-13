@@ -1,9 +1,9 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { PageProps } from '@/types';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout'
+import { PageProps } from '@/types'
 
 export default function Dashboard({ auth }: PageProps) {
   return (
-    <AuthenticatedLayout user={auth.user} header={null}>
+    <AuthenticatedLayout user={auth.user}>
     </AuthenticatedLayout>
-  );
+  )
 }

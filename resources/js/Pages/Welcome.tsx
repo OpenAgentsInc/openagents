@@ -26,12 +26,12 @@ function Welcome() {
                 forever. <strong>Coming soon.</strong>
               </p>
               <div className="mt-12">
-              <Link
-                href="/start"
-                className="tracking-wider font-medium big-green-button rounded-xl px-5 py-4 text-lg text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
-              >
-                See what's cookin
-              </Link>
+                <Link
+                  href="/start"
+                  className="tracking-wider font-medium big-green-button rounded-xl px-5 py-4 text-lg text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
+                >
+                  See what's cookin
+                </Link>
               </div>
             </div>
           </div>
