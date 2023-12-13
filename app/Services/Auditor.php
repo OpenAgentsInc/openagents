@@ -67,7 +67,13 @@ class Auditor
 
     public function log($wat)
     {
-        dump($wat);
+        // Only dump if env is local
+        if (app()->environment('local')) {
+            dump($wat);
+        } else {
+            // Use regular Laravel log
+            \Log::info($wat);
+        }
     }
 
     public function recordStep($description, $input, $output)
