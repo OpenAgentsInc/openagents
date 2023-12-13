@@ -10,6 +10,7 @@ use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QueryController;
 use App\Models\User;
+use App\Services\Auditor;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -17,6 +18,12 @@ use Laravel\Socialite\Facades\Socialite;
 
 Route::get('/', function () {
     return Inertia::render('Splash');
+});
+
+Route::get('/broadcasttest', function () {
+    $auditor = new Auditor();
+    $auditor->getRepo();
+    return response()->json(['ok' => true]);
 });
 
 Route::post('/audit', [AuditController::class, 'store']);
