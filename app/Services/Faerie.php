@@ -26,7 +26,7 @@ class Faerie
 
     private $gateway;
 
-    public function __construct($owner = "ArcadeLabsInc", $repo = "openagents")
+    public function __construct($owner = "OpenAgentsInc", $repo = "openagents")
     {
         $this->gateway = new OpenAIGateway();
         $this->owner = $owner;
@@ -49,11 +49,13 @@ class Faerie
         ]);
     }
 
-    public function log($wat) {
+    public function log($wat)
+    {
         dump($wat);
     }
 
-    public function runJob() {
+    public function runJob()
+    {
         // run the StartFaerieRun event
         // $this->log("Running StartFaerieRun event");
         // event(new StartFaerieRun($this));
@@ -85,7 +87,8 @@ class Faerie
         return ['status' => 'success'];
     }
 
-    public function fixTests() {
+    public function fixTests()
+    {
         // print_r("Fixing tests...\n");
         $pr = $this->pr;
 
@@ -137,7 +140,7 @@ class Faerie
         // // print_r($patches);
         // print_r("--- . . skipping submitting");
 
-        // $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "vid32test17", false);
+        // $res = $patcher->submitPatchesToGitHub($patches, "OpenAgentsInc/openagents", "vid32test17", false);
 
         // print_r("Done!");
     }
@@ -288,7 +291,7 @@ class Faerie
         curl_setopt_array($curl, [
             CURLOPT_RETURNTRANSFER => 1,
             CURLOPT_URL => $url,
-            CURLOPT_USERAGENT => 'ArcadeLabsInc',
+            CURLOPT_USERAGENT => 'OpenAgentsInc',
             CURLOPT_HTTPHEADER => [
                 'Accept: application/vnd.github.v3+json',
                 'Authorization: token ' . env('GITHUB_TOKEN'),

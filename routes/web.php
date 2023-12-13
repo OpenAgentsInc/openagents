@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AgentController;
+use App\Http\Controllers\AuditController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileController;
@@ -17,6 +18,8 @@ use Laravel\Socialite\Facades\Socialite;
 Route::get('/', function () {
     return Inertia::render('Splash');
 });
+
+Route::post('/audit', [AuditController::class, 'store']);
 
 Route::post('/faerie-run', [AgentController::class, 'run'])
     ->middleware(['auth']);

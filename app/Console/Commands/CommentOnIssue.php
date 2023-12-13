@@ -33,8 +33,8 @@ class CommentOnIssue extends Command
         $issueNum = $this->argument('issuenum');
 
         // Grab the issue body and comments from GitHub
-        $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', $issueNum);
-        $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', 1);
+        $response = GitHub::issues()->show('OpenAgentsInc', 'openagents', $issueNum);
+        $commentsResponse = GitHub::api('issue')->comments()->all('OpenAgentsInc', 'openagents', 1);
         $body = $response['body'];
         $title = $response['title'];
 
@@ -63,10 +63,13 @@ class CommentOnIssue extends Command
         $systemMessages = [
             ['role' => 'system', 'content' => $commitPrompt],
         ];
-        $messages = array_merge($systemMessages, $userAndAssistantMessages,
-        [
+        $messages = array_merge(
+            $systemMessages,
+            $userAndAssistantMessages,
+            [
             ['role' => 'user', 'content' => 'Please respond ONLY with a unified code diff we can submit directly to GitHub. Do not include any other text. Do not use natural language. Only the code diff.'],
-        ]);
+        ]
+        );
 
         $gateway = new OpenAIGateway();
         $response = $gateway->makeChatCompletion([
@@ -84,7 +87,7 @@ class CommentOnIssue extends Command
         // Build the prompt from the context and the issue title
         $commentPrompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
 
-  You have been summoned to ArcadeLabsInc/openagents issue #1.
+  You have been summoned to OpenAgentsInc/openagents issue #1.
 
   The issue is titled `" . $title . "`
 
@@ -113,7 +116,7 @@ class CommentOnIssue extends Command
 
         // Post the comment to GitHub
         $this->info("POSTING...");
-        GitHub::api('issue')->comments()->create('ArcadeLabsInc', 'openagents', $issueNum, array('body' => $comment));
+        GitHub::api('issue')->comments()->create('OpenAgentsInc', 'openagents', $issueNum, array('body' => $comment));
         $this->info("DONE!");
     }
 

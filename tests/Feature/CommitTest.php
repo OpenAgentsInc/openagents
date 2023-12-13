@@ -27,14 +27,14 @@ test('can get issue patches', function () {
 })->group('integration');
 
 test('can submit issue patches to github', function () {
-  $patcher = new Patcher();
-  $issue = [
-      "title" => "Capitalize all comments",
-      "body" => "Make sure all comments (lines beginning with //) are IN ALL CAPS.",
-  ];
-  $patches = $patcher->getIssuePatches($issue, 3);
-  $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/trashheap", "testbranch");
+    $patcher = new Patcher();
+    $issue = [
+        "title" => "Capitalize all comments",
+        "body" => "Make sure all comments (lines beginning with //) are IN ALL CAPS.",
+    ];
+    $patches = $patcher->getIssuePatches($issue, 3);
+    $res = $patcher->submitPatchesToGitHub($patches, "OpenAgentsInc/trashheap", "testbranch");
 
-  expect($res)->toBeArray();
-  expect($res["ok"])->toBeTrue();
+    expect($res)->toBeArray();
+    expect($res["ok"])->toBeTrue();
 })->group('integration');
