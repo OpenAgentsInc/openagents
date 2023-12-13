@@ -19,8 +19,9 @@ class AuditController extends Controller
             $repo = request('repo');
             [$owner, $name] = explode('/', $repo);
             $auditor = new Auditor($owner, $name);
+            $run_id = $auditor->run->id;
             $auditor->audit();
-            return redirect()->back()->with('message', 'Auditing');
+            return redirect()->route('inspect-run', $run_id);
         } catch (\Exception $e) {
             return redirect()->back()->with('message', 'Error: '. $e->getMessage());
         }
