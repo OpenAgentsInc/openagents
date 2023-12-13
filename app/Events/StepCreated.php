@@ -22,7 +22,7 @@ class StepCreated implements ShouldBroadcast
     public function __construct($step)
     {
         \Log::info('StepCreated event fired');
-        $this->step = $step;w
+        $this->step = $step;
     }
 
     /**
