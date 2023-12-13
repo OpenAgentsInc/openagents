@@ -16,6 +16,7 @@
         "laravel/telescope": "^4.17",
         "laravel/tinker": "^2.8",
         "openai-php/client": "^0.7.10",
+        "pusher/pusher-php-server": "^7.2",
         "spatie/pdf-to-text": "^1.52",
         "tightenco/ziggy": "^1.0"
     },

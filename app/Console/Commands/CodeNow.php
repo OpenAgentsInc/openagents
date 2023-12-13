@@ -34,8 +34,8 @@ class CodeNow extends Command
         $issueNum = $this->argument('issuenum');
 
         // Grab the issue body and comments from GitHub
-        $response = GitHub::issues()->show('ArcadeLabsInc', 'openagents', $issueNum);
-        $commentsResponse = GitHub::api('issue')->comments()->all('ArcadeLabsInc', 'openagents', 1);
+        $response = GitHub::issues()->show('OpenAgentsInc', 'openagents', $issueNum);
+        $commentsResponse = GitHub::api('issue')->comments()->all('OpenAgentsInc', 'openagents', 1);
         $body = $response['body'];
         $title = $response['title'];
 
@@ -66,7 +66,7 @@ class CodeNow extends Command
         print_r($patches);
         print_r("---");
 
-        $res = $patcher->submitPatchesToGitHub($patches, "ArcadeLabsInc/openagents", "testpr8");
+        $res = $patcher->submitPatchesToGitHub($patches, "OpenAgentsInc/openagents", "testpr8");
         // print_r("RESPONSE:");
         // print_r($res);
 

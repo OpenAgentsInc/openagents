@@ -14,7 +14,7 @@ beforeEach(function () {
 
 it('defaults to the openagents repo', function () {
     $faerie = new Faerie();
-    expect($faerie->owner)->toBe('ArcadeLabsInc');
+    expect($faerie->owner)->toBe('OpenAgentsInc');
     expect($faerie->repo)->toBe('openagents');
 });
 

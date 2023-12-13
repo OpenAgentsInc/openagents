@@ -13,7 +13,7 @@ class Patcher
         $this->issue = null;
         $this->task = "";
         $this->patches = [];
-        $this->org = 'ArcadeLabsInc';
+        $this->org = 'OpenAgentsInc';
         $this->repo = 'openagents';
     }
 
@@ -242,7 +242,7 @@ class Patcher
      * @param string $branch The branch to apply the patches to.
      * @return void
      */
-    public function submitPatchesToGitHub(array $patches, string $fullrepo = "ArcadeLabsInc/openagents", string $branch = 'main', bool $createPR = true)
+    public function submitPatchesToGitHub(array $patches, string $fullrepo = "OpenAgentsInc/openagents", string $branch = 'main', bool $createPR = true)
     {
         $repo = explode("/", $fullrepo);
         $owner = $repo[0];
@@ -273,7 +273,7 @@ class Patcher
                     $fileInfo = GitHub::api('repo')->contents()->show($owner, $repository, $path, $branch);
                     $blobSha = $fileInfo['sha'];
                     GitHub::api('repo')->contents()->update($owner, $repository, $path, $newContent, $commitMessage, $blobSha, $branch);
-                    // print_r("Updated file {$path}");
+                // print_r("Updated file {$path}");
                 } else {
                     // New file creation logic
                     // print_r("Creating file {$path}");

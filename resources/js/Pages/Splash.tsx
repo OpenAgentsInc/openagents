@@ -4,9 +4,9 @@ import SimpleLayout from "@/Layouts/SimpleLayout";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
 
 function Splash() {
-    return (
-        <Hero />
-    )
+  return (
+    <Hero />
+  )
 }
 
 Splash.layout = (page) => <SimpleLayout children={page} title="Inspect" />
