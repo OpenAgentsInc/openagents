@@ -26,4 +26,10 @@ class Auditor
     {
         return GitHub::repo()->contents()->show($this->owner, $this->repo, $path);
     }
+
+    // Begin audit job
+    public function audit()
+    {
+
+    }
 }

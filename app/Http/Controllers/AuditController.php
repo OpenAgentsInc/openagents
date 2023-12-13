@@ -15,17 +15,14 @@ class AuditController extends Controller
             'repo' => 'required',
         ]);
 
-        $repo = request('repo');
-
-        // Split repo into owner and name
-        [$owner, $name] = explode('/', $repo);
-
-        // Initialize Auditor with those two vars
-        $auditor = new Auditor($owner, $name);
-        // $repo = $auditor->getRepo();
-        $contents = $auditor->getFolderContents();
-        dd($contents);
-
-        return redirect()->back()->with('message', 'Auditor initialized');
+        try {
+            $repo = request('repo');
+            [$owner, $name] = explode('/', $repo);
+            $auditor = new Auditor($owner, $name);
+            $auditor->audit();
+            return redirect()->back()->with('message', 'Auditing');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('message', 'Error: '. $e->getMessage());
+        }
     }
 }
