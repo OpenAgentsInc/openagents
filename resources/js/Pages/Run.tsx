@@ -27,9 +27,9 @@ const Run = () => {
   return (
     <div className="pt-8 mx-auto px-4 w-full lg:w-3/4">
       {/* go back */}
-      <Link href="/inspect" className="px-8">
+      <Link href="/dashboard" className="px-8">
         <Button variant="outline">
-          &larr; Back to runs
+          &larr; Back to dashboard
         </Button>
       </Link>
       <RunDetails runStats={runStats} steps={steps} task={task} />
