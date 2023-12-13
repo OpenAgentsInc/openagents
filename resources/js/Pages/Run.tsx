@@ -3,12 +3,12 @@ import { Link, usePage } from '@inertiajs/react';
 import { RunDetails, Task } from '@/Components/RunDetails';
 import { Run as RunType } from '@/Components/RunTable';
 import { Button } from '@/Components/ui/button';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 const Run = () => {
   const { props } = usePage();
   const run = props.run as RunType;
-  const steps = props.steps
+  const [steps, setSteps] = useState(props.steps) as any
   const task = props.task as Task
   // console.log({ run, steps, task })
 
@@ -16,7 +16,8 @@ const Run = () => {
     // @ts-ignore
     window.Echo.private(`run.${run.id}`)
       .listen('StepCreated', (e) => {
-        console.log(e);
+        // console.log(e);
+        setSteps((steps) => [...steps, e.step]);
       });
   }, [])
 
@@ -27,11 +28,6 @@ const Run = () => {
     usage: 13, // run.usage,
     status: "completed" // run.status,
   };
-
-  // const task = {
-  //     description: run.task.description,
-  //     steps: run.task.steps,
-  // };
 
   return (
     <div className="pt-8 mx-auto px-4 w-full lg:w-3/4">
