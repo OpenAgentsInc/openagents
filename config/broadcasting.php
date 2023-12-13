@@ -41,6 +41,10 @@ return [
                 'scheme' => 'http', // env('PUSHER_SCHEME', 'http'),
                 'encrypted' => true,
                 'useTLS' => false, // env('PUSHER_SCHEME') === 'https',
+                'curl_options' => [
+                    CURLOPT_SSL_VERIFYHOST => 0,
+                    CURLOPT_SSL_VERIFYPEER => 0,
+                ],
             ],
         ],
 
