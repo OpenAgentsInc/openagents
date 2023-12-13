@@ -1,4 +1,4 @@
-import { Auditor } from '@/Components/Auditor'
+import { Auditor } from '@/Components/audit/Auditor'
 import { Container } from '@/Components/landing/Container'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout'
 import { PageProps } from '@/types'
