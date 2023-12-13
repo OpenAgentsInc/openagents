@@ -59,14 +59,14 @@ Route::any('/logout', function () {
     return redirect('/');
 })->name('logout');
 
+Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
+Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
+Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
+
 if (env('APP_ENV') !== "production") {
     Route::get('/login', function () {
         return Inertia::render('Login');
     })->name('login');
-
-    Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
-    Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
-    Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
 
     Route::post('/api/agents', [AgentController::class, 'store'])
       ->middleware(['auth']);
