@@ -16,6 +16,7 @@ class Step extends Model
     protected static function booted()
     {
         static::created(function ($step) {
+            \Log::info('StepCreated...');
             broadcast(new StepCreated($step));
         });
     }
