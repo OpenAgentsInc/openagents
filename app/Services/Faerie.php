@@ -26,7 +26,7 @@ class Faerie
 
     private $gateway;
 
-    public function __construct($owner = "ArcadeLabsInc", $repo = "openagents")
+    public function __construct($owner = "OpenAgentsInc", $repo = "openagents")
     {
         $this->gateway = new OpenAIGateway();
         $this->owner = $owner;
@@ -49,11 +49,13 @@ class Faerie
         ]);
     }
 
-    public function log($wat) {
+    public function log($wat)
+    {
         dump($wat);
     }
 
-    public function runJob() {
+    public function runJob()
+    {
         // run the StartFaerieRun event
         // $this->log("Running StartFaerieRun event");
         // event(new StartFaerieRun($this));
@@ -85,7 +87,8 @@ class Faerie
         return ['status' => 'success'];
     }
 
-    public function fixTests() {
+    public function fixTests()
+    {
         // print_r("Fixing tests...\n");
         $pr = $this->pr;
 
