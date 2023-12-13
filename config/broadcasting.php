@@ -36,7 +36,7 @@ return [
             'secret' => env('PUSHER_APP_SECRET', 'app-secret'),
             'app_id' => env('PUSHER_APP_ID', 'app-id'),
             'options' => [
-                'host' => 'socket.openagents.com', // env('PUSHER_HOST', '127.0.0.1'),
+                'host' => '127.0.0.1', //'socket.openagents.com', // env('PUSHER_HOST', '127.0.0.1'),
                 'port' => 6002, // env('PUSHER_PORT', 6001),
                 'scheme' => 'http', // env('PUSHER_SCHEME', 'http'),
                 'encrypted' => true,
