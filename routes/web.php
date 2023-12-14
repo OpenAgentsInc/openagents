@@ -75,6 +75,14 @@ if (env('APP_ENV') !== "production") {
         return Inertia::render('Login');
     })->name('login');
 
+    Route::get('/terms', function () {
+        return Inertia::render('Terms');
+    })->name('terms');
+
+    Route::get('/privacy', function () {
+        return Inertia::render('Privacy');
+    })->name('privacy');
+
     Route::post('/api/agents', [AgentController::class, 'store'])
       ->middleware(['auth']);
 

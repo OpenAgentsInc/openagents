@@ -1,6 +1,7 @@
 import { Button } from '@/Components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card'
 import InspectLayout from '@/Layouts/InspectLayout'
+import { Link } from '@inertiajs/react'
 import { GitHubLogoIcon } from '@radix-ui/react-icons'
 
 function Login() {
@@ -18,7 +19,7 @@ function Login() {
               <span className="text-lg">Log in with GitHub</span>
             </Button>
           </a>
-          <p className="text-muted-foreground mt-8 text-xs">By logging in, you agree to our terms of service and privacy policy.</p>
+          <p className="text-muted-foreground mt-8 text-xs">By logging in you agree to our <Link href="/terms" className="underline">terms of service</Link> and <Link href="/privacy" className="underline">privacy policy</Link>.</p>
         </CardContent>
       </Card>
     </div>
