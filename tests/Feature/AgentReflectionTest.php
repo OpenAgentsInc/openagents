@@ -16,4 +16,4 @@ test('agent can reflect', function () {
     $this->assertDatabaseHas('thoughts', [
         'agent_id' => $agent->id,
     ]);
-});
+})->group('integration');
