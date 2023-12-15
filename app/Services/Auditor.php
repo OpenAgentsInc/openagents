@@ -41,7 +41,13 @@ class Auditor
     {
         $this->getRepo();
         $this->getFolderContents();
-        // $this->reflect();
+        $this->reflect();
+    }
+
+    public function reflect()
+    {
+        $thought = $this->agent->reflect();
+        $this->recordStep('Reflect', null, $thought);
     }
 
     // Get repo info

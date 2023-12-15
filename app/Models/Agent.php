@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\OpenAIGateway;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -48,12 +49,46 @@ class Agent extends Model
 
     public function reflect()
     {
-        // Grab all the steps for this agent
-        $steps = $this->steps()->get();
+        try {
+            // Grab all the steps for this agent
+            $steps = $this->steps()->get();
 
-        Thought::create([
-            'agent_id' => $this->id,
-            'body' => "I notice that I have {$steps->count()} steps."
-        ]);
+            $thoughts = [];
+
+            // Loop through each step and create a Thought for each
+            foreach ($steps as $step) {
+                $messages = [
+                    ['role' => 'system', 'content' => "You are an AI agent specializing in understanding unstructured data."],
+                    ['role' => 'user', 'content' => "What do you notice about this data?: " . json_encode($step)],
+                ];
+                $input = [
+                    'model' => "gpt-4",
+                    'messages' => $messages,
+                ];
+
+                $gateway = new OpenAIGateway();
+                $response = $gateway->makeChatCompletion($input);
+
+                $output = $response['choices'][0];
+                $comment = $output['message']['content'];
+
+                $thought = Thought::create([
+                    'agent_id' => $this->id,
+                    'body' => $comment,
+                    // 'body' => "I notice that I have {$steps->count()} steps."
+                ]);
+
+                $thoughts[] = $thought->body;
+            }
+
+            return $thoughts;
+        } catch (\Exception $e) {
+            // If $thoughts count is greater than 0, return the thoughts - otherwise return the error message
+            if (count($thoughts) > 0) {
+                return $thoughts;
+            }
+
+            return $e->getMessage();
+        }
     }
 }
