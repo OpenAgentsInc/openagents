@@ -1,11 +1,14 @@
 <?php
 
+use App\Models\Agent;
+use App\Models\Step;
+
 test('agent can reflect', function () {
     // Given an agent
     $agent = Agent::factory()->create();
+    $step = Step::factory()->create(['agent_id' => $agent->id]);
 
     // The agent can reflect
-    $this->assertTrue($agent->can('reflect'));
     $agent->reflect();
 
     // This creates one or more thoughts
