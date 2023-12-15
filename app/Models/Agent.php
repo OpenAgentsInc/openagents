@@ -51,5 +51,9 @@ class Agent extends Model
         // Grab all the steps for this agent
         $steps = $this->steps()->get();
 
+        Thought::create([
+            'agent_id' => $this->id,
+            'body' => "I notice that I have {$steps->count()} steps."
+        ]);
     }
 }

@@ -13,6 +13,7 @@ return new class extends Migration {
         Schema::create('thoughts', function (Blueprint $table) {
             $table->id();
             $table->foreignIdFor(\App\Models\Agent::class)->constrained()->cascadeOnDelete();
+            $table->text('body')->nullable();
             $table->timestamps();
         });
     }
