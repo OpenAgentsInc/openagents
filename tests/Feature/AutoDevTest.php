@@ -1,6 +1,14 @@
 <?php
 
+use App\Agents\AutoDev;
+
 it('works', function () {
-    $autodev = new \App\Agents\AutoDev();
+    $autodev = new AutoDev("OpenAgentsInc/openagents");
+    $autodev->run();
+});
+
+it('requires org and repo', function () {
+    $this->expectException(\Exception::class);
+    $autodev = new AutoDev("flamp");
     $autodev->run();
 });
