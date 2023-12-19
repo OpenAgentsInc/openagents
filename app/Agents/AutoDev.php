@@ -2,69 +2,40 @@
 
 namespace App\Agents;
 
-use App\Models\Agent;
+use App\Agents\Modules\Actions;
+use App\Agents\Modules\Critic;
+use App\Agents\Modules\Curriculum;
+use App\Agents\Modules\Environment;
+use App\Agents\Modules\Memory;
+use App\Agents\Modules\Reflection;
+use App\Agents\Modules\Skills;
+use App\Agents\Modules\Tools;
 
 class AutoDev
 {
-    private $environment;
-    private $curriculum;
     private $actions;
     private $critic;
+    private $curriculum;
+    private $environment;
+    private $memory;
+    private $reflection;
     private $skills;
+    private $tools;
 
     public function __construct()
     {
-        $this->environment = new Environment();
-        $this->curriculum = new Curriculum();
         $this->actions = new Actions();
         $this->critic = new Critic();
+        $this->curriculum = new Curriculum();
+        $this->environment = new Environment();
+        $this->memory = new Memory();
+        $this->reflection = new Reflection();
         $this->skills = new Skills();
+        $this->tools = new Tools();
     }
 
     public function run()
     {
-        $agentState = $this->environment->reset();
-        while (true) {
-            $explorationProgress = $this->curriculum->getExplorationProgress(
-                $this->curriculum->getCompletedTasks(),
-                $this->curriculum->getFailedTasks()
-            );
 
-            $task = $this->curriculum->proposeNextTask($agentState, $explorationProgress);
-
-            $code = null;
-            $environmentFeedback = null;
-            $executionErrors = null;
-            $critique = null;
-            $success = false;
-
-            // Try at most 4 rounds before moving on to the next task
-            for ($i = 0; $i < 4; $i++) {
-                $skills = $this->skills->retrieveSkills($task, $environmentFeedback);
-                $code = $this->actions->generateCode(
-                    $task,
-                    $code,
-                    $environmentFeedback,
-                    $executionErrors,
-                    $critique,
-                    $skills
-                );
-
-                list($agentState, $environmentFeedback, $executionErrors) = $this->environment->step($code);
-
-                list($success, $critique) = $this->critic->checkTaskSuccess($task, $agentState);
-
-                if ($success) {
-                    break;
-                }
-            }
-
-            if ($success) {
-                $this->skills->addSkill($code);
-                $this->curriculum->addCompletedTask($task);
-            } else {
-                $this->curriculum->addFailedTask($task);
-            }
-        }
     }
 }
