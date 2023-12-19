@@ -39,5 +39,19 @@ class AutoDev
     public function run()
     {
         // Observe the environment
+        $envSummary = $this->environment->getSummary();
+
+        // Build a curriculum (reading issue(s), inferring user intent) and get next task
+        $task = $this->curriculum->getNextTask();
+
+        // Load our skills and tools
+        $skills = $this->skills->getSkills();
+        $tools = $this->tools->getTools();
+
+        // Generate the code
+        $code = $this->actions->generateCode($task, $skills, $tools);
+
+        // Take action in the environment
+        [$state, $feedback, $errors] = $this->environment->step($code);
     }
 }
