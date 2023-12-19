@@ -9,6 +9,7 @@ use App\Models\Agent;
 use App\Models\Run;
 use App\Models\Step;
 use App\Models\Task;
+use App\Models\User;
 
 class Auditor
 {
