@@ -13,6 +13,7 @@ use App\Agents\Modules\Tools;
 
 class AutoDev
 {
+    // Agent modules
     private $actions;
     private $critic;
     private $curriculum;
@@ -22,12 +23,13 @@ class AutoDev
     private $skills;
     private $tools;
 
-    public function __construct()
+    public function __construct($fullRepo = "OpenAgentsInc/openagents")
     {
+        // Initialize agent modules
         $this->actions = new Actions();
         $this->critic = new Critic();
         $this->curriculum = new Curriculum();
-        $this->environment = new Environment();
+        $this->environment = new Environment($fullRepo);
         $this->memory = new Memory();
         $this->reflection = new Reflection();
         $this->skills = new Skills();
@@ -36,6 +38,6 @@ class AutoDev
 
     public function run()
     {
-
+        // Observe the environment
     }
 }
