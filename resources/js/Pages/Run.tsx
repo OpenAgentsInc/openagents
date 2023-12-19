@@ -25,10 +25,9 @@ const Run = () => {
 
   useEffect(() => {
     // @ts-ignore
-    window.Echo.private(`run.${run.id}`)
-      .listen('StepCreated', (e) => {
-        setSteps((steps) => [...steps, e.step]);
-      });
+    window.Echo.private(`run.${run.id}`).listen('StepCreated', (e) => {
+      setSteps((steps) => [...steps, e.step]);
+    });
   }, [])
 
   // Assuming `run` contains the stats and task data, otherwise, you would fetch or calculate them here.
