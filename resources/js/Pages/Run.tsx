@@ -6,9 +6,20 @@ import { Button } from '@/Components/ui/button';
 import { useEffect, useState } from 'react';
 
 const Run = () => {
-  const { props } = usePage();
+  const { props } = usePage() as any;
   const run = props.run as RunType;
-  const [steps, setSteps] = useState(props.steps) as any
+
+  // Convert steps to an array
+  const stepsArray = Object.keys(props.steps).map((key) => {
+    return props.steps[key];
+  });
+
+  // Sort the steps_array by the created_at
+  stepsArray.sort((a, b) => {
+    return a.created_at > b.created_at ? 1 : -1;
+  });
+
+  const [steps, setSteps] = useState(stepsArray) as any
   const task = props.task as Task
   // console.log({ run, steps, task })
 

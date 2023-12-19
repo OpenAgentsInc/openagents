@@ -10,7 +10,8 @@ use Inertia\Inertia;
 
 class InspectController extends Controller
 {
-    public function index() {
+    public function index()
+    {
         return Inertia::render('Inspect', [
             'agents' => Agent::all()->load('tasks'),
             'runs' => Run::all(),
@@ -19,7 +20,8 @@ class InspectController extends Controller
         ]);
     }
 
-    public function showRun($id) {
+    public function showRun($id)
+    {
         $run = Run::findOrFail($id)->load('steps');
         return Inertia::render('Run', [
             'run' => $run,
@@ -28,7 +30,8 @@ class InspectController extends Controller
         ]);
     }
 
-    public function showTask($id) {
+    public function showTask($id)
+    {
         // Return the inspect-task view with just the task and its steps
         $task = Task::with('steps')->findOrFail($id);
         return view('inspect-task', [
@@ -37,7 +40,8 @@ class InspectController extends Controller
         ]);
     }
 
-    public function showStep($id) {
+    public function showStep($id)
+    {
         // Return the inspect-step view with just the step and its input/output
         $step = Step::findOrFail($id);
         return Inertia('Step', [
