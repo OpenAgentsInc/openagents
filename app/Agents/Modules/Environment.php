@@ -2,16 +2,18 @@
 
 namespace App\Agents\Modules;
 
+use App\Traits\UsesLogger;
+
 class Environment
 {
-    protected $logger;
+    use UsesLogger;
 
     private $owner;
     private $repo;
 
     public function __construct($fullRepo)
     {
-        $this->logger = app(Logger::class);
+        $this->initializeLogger();
 
         // Validate fullRepo & split into owner & repo
         $fullRepo = explode("/", $fullRepo);
