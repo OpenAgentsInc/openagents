@@ -4,6 +4,7 @@ namespace App\Agents\Modules;
 
 use App\Traits\UsesCurl;
 use App\Traits\UsesLogger;
+use GitHub;
 
 class Environment
 {
@@ -21,9 +22,33 @@ class Environment
     public function getSummary()
     {
         $this->logger->log("Getting summary for $this->owner/$this->repo");
-        $summary = $this->fetchMostRecentIssue();
-        $this->logger->log("Summary for $this->owner/$this->repo: " . json_encode($summary));
-        return $summary;
+
+        $summaryArray = [
+            "issue" => $this->fetchMostRecentIssue(),
+            "repo" => $this->getRepo(),
+            "folderContents" => $this->getFolderContents(),
+        ];
+
+        $this->logger->log("Summary for $this->owner/$this->repo: ");
+        $this->logger->log($summaryArray);
+
+        return $summaryArray;
+    }
+
+    // Get repo info
+    public function getRepo()
+    {
+        $info = GitHub::repo()->show($this->owner, $this->repo);
+        $this->logger->recordStep('Get repo data', null, $info);
+        return $info;
+    }
+
+    // Get file contents of folder
+    public function getFolderContents($path = null)
+    {
+        $contents = GitHub::repo()->contents()->show($this->owner, $this->repo, $path);
+        $this->logger->recordStep('Get folder contents', $path, $contents);
+        return $contents;
     }
 
     public function fetchMostRecentIssue()

@@ -11,7 +11,12 @@ class Logger
     public function log($message)
     {
         echo("> ");
-        echo($message);
+        print_r($message);
         echo("\n");
+    }
+
+    public function recordStep($step)
+    {
+        $this->log("Step: " . $step);
     }
 }
