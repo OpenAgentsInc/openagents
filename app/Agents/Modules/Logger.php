@@ -10,6 +10,8 @@ class Logger
 
     public function log($message)
     {
+        echo("> ");
         echo($message);
+        echo("\n");
     }
 }
