@@ -3,7 +3,8 @@
 use App\Agents\AutoDev;
 
 it('works', function () {
-    $autodev = new AutoDev("OpenAgentsInc/openagents");
+    // $autodev = new AutoDev("OpenAgentsInc/openagents");
+    $autodev = new AutoDev("ggerganov/llama.cpp");
     $autodev->run();
 });
 
