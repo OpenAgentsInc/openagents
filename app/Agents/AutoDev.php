@@ -45,6 +45,7 @@ class AutoDev
     {
         // Observe the environment
         $envSummary = $this->environment->getSummary();
+        $this->logger->log($envSummary);
 
         // Build a curriculum (reading issue(s), inferring user intent) and get next task
         // $task = $this->curriculum->getNextTask();
@@ -59,4 +60,6 @@ class AutoDev
         // Take action in the environment
         // [$state, $feedback, $errors] = $this->environment->step($code);
     }
+
+    const SUMMARIZE_ENVIRONMENT_PROMPT = "You are a senior developer who excels in summarizing GitHub repo data into actionable insights. Respond concisely. You are talking to a junior developer who is getting acquainted with the repo.";
 }

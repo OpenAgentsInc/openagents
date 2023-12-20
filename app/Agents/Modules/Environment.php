@@ -2,7 +2,9 @@
 
 namespace App\Agents\Modules;
 
+use App\Agents\Autodev;
 use App\Traits\UsesCurl;
+use App\Traits\UsesInference;
 use App\Traits\UsesLogger;
 use GitHub;
 
@@ -11,7 +13,7 @@ use GitHub;
  */
 class Environment
 {
-    use UsesCurl, UsesLogger;
+    use UsesCurl, UsesInference, UsesLogger;
 
     private $owner;
     private $repo;
@@ -25,6 +27,7 @@ class Environment
      */
     public function __construct($fullRepo)
     {
+        $this->initializeInference();
         $this->initializeLogger();
         $this->validateRepo($fullRepo);
     }
@@ -45,10 +48,13 @@ class Environment
             "folderContents" => $this->getFolderContents(),
         ];
 
-        $this->logger->log("Summary for $this->owner/$this->repo: ");
+        $this->logger->log("Summary array for $this->owner/$this->repo: ");
         $this->logger->log($summaryArray);
 
-        return $summaryArray;
+        $summaryPrompt = AutoDev::SUMMARIZE_ENVIRONMENT_PROMPT;
+        $summary = $this->inference->summarizeUnstructuredData($summaryPrompt, $summaryArray);
+
+        return $summary;
     }
 
     /**
