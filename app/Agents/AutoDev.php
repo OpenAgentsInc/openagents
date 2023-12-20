@@ -10,9 +10,12 @@ use App\Agents\Modules\Memory;
 use App\Agents\Modules\Reflection;
 use App\Agents\Modules\Skills;
 use App\Agents\Modules\Tools;
+use App\Traits\UsesLogger;
 
 class AutoDev
 {
+    use UsesLogger;
+
     // Agent modules
     private $actions;
     private $critic;
@@ -25,6 +28,8 @@ class AutoDev
 
     public function __construct($fullRepo = "OpenAgentsInc/openagents")
     {
+        $this->initializeLogger();
+
         // Initialize agent modules
         $this->actions = new Actions();
         $this->critic = new Critic();
