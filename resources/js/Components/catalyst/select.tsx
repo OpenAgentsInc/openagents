@@ -1,5 +1,3 @@
-'use client'
-
 import { Select as HeadlessSelect, type SelectProps as HeadlessSelectProps } from '@headlessui/react'
 import { clsx } from 'clsx'
 
