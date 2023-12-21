@@ -9,7 +9,7 @@ import { GitHubLogoIcon, RocketIcon } from '@radix-ui/react-icons'
 
 function Login() {
   return (
-    <div className="absolute h-[80vh] w-screen flex flex-col justify-center items-center -pt-12 px-4 w-auto">
+    <div className="absolute h-[80vh] w-screen flex flex-col items-center pt-16 sm:pt-32 px-4 w-auto">
       <Card className="mb-8">
         <Alert variant="destructive">
           <XCircleIcon className="h-6 w-6 -mt-1" />
