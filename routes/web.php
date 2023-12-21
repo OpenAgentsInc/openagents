@@ -31,7 +31,7 @@ Route::post('/audit', [AuditController::class, 'store']);
 Route::post('/faerie-run', [AgentController::class, 'run'])
     ->middleware(['auth']);
 
-Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
+// Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth'])
