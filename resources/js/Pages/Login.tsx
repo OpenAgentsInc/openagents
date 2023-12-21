@@ -1,15 +1,27 @@
+import NavLink from '@/Components/NavLink'
+import { Alert, AlertDescription, AlertTitle } from '@/Components/ui/alert'
 import { Button } from '@/Components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card'
 import InspectLayout from '@/Layouts/InspectLayout'
+import { XCircleIcon } from '@heroicons/react/24/outline'
 import { Link } from '@inertiajs/react'
-import { GitHubLogoIcon } from '@radix-ui/react-icons'
+import { GitHubLogoIcon, RocketIcon } from '@radix-ui/react-icons'
 
 function Login() {
   return (
     <div className="absolute h-[80vh] w-screen flex flex-col justify-center items-center -pt-12 px-4 w-auto">
+      <Card className="mb-8">
+        <Alert variant="destructive">
+          <XCircleIcon className="h-6 w-6 -mt-1" />
+          <AlertTitle className="ml-1 font-bold">Developer preview</AlertTitle>
+          <AlertDescription className="ml-1">
+            This is pre-release code auto-deployed from our <a className="font-medium underline" target="_blank" href="https://github.com/OpenAgentsInc/openagents">GitHub repo</a>.<br />Don't expect anything to work!
+          </AlertDescription>
+        </Alert>
+      </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Welcome!</CardTitle>
+          <CardTitle>Welcome to OpenAgents!</CardTitle>
           <CardDescription>Please log in to continue.</CardDescription>
         </CardHeader>
         <CardContent className="text-center">
