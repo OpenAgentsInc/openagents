@@ -10,12 +10,23 @@ use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-    public function index() {
+    public function index()
+    {
+        // Loop through all runs and make an array of only runs belonging to this user's agents. TODO: refactor this
+        $userAgents = auth()->user()->agents()->get();
+        $allRuns = Run::all();
+        $userRuns = [];
+        foreach ($allRuns as $run) {
+            foreach ($userAgents as $agent) {
+                if ($run->agent_id == $agent->id) {
+                    array_push($userRuns, $run);
+                }
+            }
+        }
+
         return Inertia::render('Dashboard', [
             'agents' => Agent::all()->load('tasks'),
-            'runs' => Run::all(),
-            'steps' => Step::all(),
-            'tasks' => Task::all(),
+            'runs' => $userRuns,
         ]);
     }
 }
