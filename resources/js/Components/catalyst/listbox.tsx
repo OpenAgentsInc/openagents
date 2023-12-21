@@ -1,5 +1,3 @@
-'use client'
-
 import {
   Listbox as HeadlessListbox,
   ListboxButton as HeadlessListboxButton,

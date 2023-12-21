@@ -1,5 +1,3 @@
-'use client'
-
 import { Button as HeadlessButton, type ButtonProps as HeadlessButtonProps } from '@headlessui/react'
 import clsx from 'clsx'
 import React from 'react'
