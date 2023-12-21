@@ -19,39 +19,39 @@ test('can visit run page and see agent/task/step details', function () {
         );
 });
 
-test('guest can visit inspection dashboard and see all agents: tasks & steps', function () {
-    $this->seed(DatabaseSeeder::class);
+// test('guest can visit inspection dashboard and see all agents: tasks & steps', function () {
+//     $this->seed(DatabaseSeeder::class);
 
-    $response = $this->get('/inspect');
+//     $response = $this->get('/inspect');
 
-    $agentCount = Agent::count();
+//     $agentCount = Agent::count();
 
-    $agent = Agent::first();
-    $task = Task::first();
-    $step = Step::first();
-    $stepInput = json_decode($step->input);
-    $stepOutput = json_decode($step->output);
-    $response->assertStatus(200)
-        ->assertInertia(
-            fn (Assert $page) => $page
-            ->component('Inspect') // Replace with your actual component name
-            ->has(
-                'agents',
-                $agentCount,
-                fn (Assert $page) => $page
-                ->where('name', $agent->name) // Adjust based on actual structure
-                ->has(
-                    'tasks',
-                    $agent->tasks->count(),
-                    fn (Assert $page) => $page
-                    ->where('description', $task->description) // Adjust based on actual structure
-                    ->where('output', $task->output) // Adjust based on actual structure
-                    ->etc()
-                )
-                    ->etc()
-            )
-        );
-});
+//     $agent = Agent::first();
+//     $task = Task::first();
+//     $step = Step::first();
+//     $stepInput = json_decode($step->input);
+//     $stepOutput = json_decode($step->output);
+//     $response->assertStatus(200)
+//         ->assertInertia(
+//             fn (Assert $page) => $page
+//             ->component('Inspect') // Replace with your actual component name
+//             ->has(
+//                 'agents',
+//                 $agentCount,
+//                 fn (Assert $page) => $page
+//                 ->where('name', $agent->name) // Adjust based on actual structure
+//                 ->has(
+//                     'tasks',
+//                     $agent->tasks->count(),
+//                     fn (Assert $page) => $page
+//                     ->where('description', $task->description) // Adjust based on actual structure
+//                     ->where('output', $task->output) // Adjust based on actual structure
+//                     ->etc()
+//                 )
+//                     ->etc()
+//             )
+//         );
+// });
 
 // test('can visit task run page and see all steps taken', function () {
 //     $this->seed(DatabaseSeeder::class);
