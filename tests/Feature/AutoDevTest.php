@@ -6,7 +6,7 @@ it('works', function () {
     // $autodev = new AutoDev("OpenAgentsInc/openagents");
     $autodev = new AutoDev("ggerganov/llama.cpp");
     $autodev->run();
-});
+})->group('integration');
 
 it('requires org and repo', function () {
     $this->expectException(\Exception::class);
