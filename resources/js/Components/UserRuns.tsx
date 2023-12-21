@@ -38,6 +38,7 @@ export function UserRuns({ runs }) {
 }
 
 function timeSince(date) {
+  // @ts-ignore
   const seconds = Math.floor((new Date() - new Date(date)) / 1000);
 
   let interval = seconds / 31536000;
