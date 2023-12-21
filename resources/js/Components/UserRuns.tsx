@@ -9,6 +9,8 @@ export function UserRuns({ runs }) {
     // @ts-ignore
     return new Date(b.created_at) - new Date(a.created_at)
   })
+  // And return a maximum of 5 runs
+  runs = runs.slice(0, 5)
 
   return (
     <Table className="-mt-4">
