@@ -1,24 +1,15 @@
+import { UserRuns } from '@/Components/UserRuns'
 import { Auditor } from '@/Components/audit/Auditor'
-import { Strong, Text } from '@/Components/catalyst/text'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout'
 import { PageProps } from '@/types'
 
-export default function Dashboard({ auth }: PageProps) {
+export default function Dashboard({ auth, runs }: PageProps) {
   return (
     <AuthenticatedLayout user={auth.user}>
       <div className="flex min-h-full flex-col">
         <div className="mx-auto flex w-full max-w-7xl items-start gap-x-8 px-4 py-10 sm:px-6 lg:px-8">
           <aside className="sticky top-8 hidden w-44 shrink-0 lg:block">
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
-            <Text>An example run. <Strong>Noice!</Strong></Text>
+            <UserRuns runs={runs} />
           </aside>
           <main className="flex-1">
             <Auditor />
