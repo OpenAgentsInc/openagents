@@ -12,6 +12,19 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    // When user is created, check session for an r variable - then look up the user by username and set the referrer_id
+    protected static function booted()
+    {
+        static::creating(function ($user) {
+            if (session()->has('r')) {
+                $referrer = User::where('github_nickname', session('r'))->first();
+                if ($referrer) {
+                    $user->referrer_id = $referrer->id;
+                }
+            }
+        });
+    }
+
     /**
      * The attributes that are mass assignable.
      *
@@ -76,5 +89,11 @@ class User extends Authenticatable
     public function getUsernameAttribute()
     {
         return $this->github_nickname;
+    }
+
+    // has referrer
+    public function referrer()
+    {
+        return $this->belongsTo(User::class);
     }
 }
