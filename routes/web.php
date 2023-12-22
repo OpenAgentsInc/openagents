@@ -30,10 +30,6 @@ Route::get('/login', function () {
     return Inertia::render('Login');
 })->name('login');
 
-Route::get('/login2', function () {
-    return Inertia::render('Login');
-})->name('login2');
-
 Route::get('/login/github', function () {
     return Socialite::driver('github')->redirect();
 });
@@ -74,7 +70,6 @@ Route::any('/logout', function () {
     return redirect('/');
 })->name('logout');
 
-
 if (env('APP_ENV') !== "production") {
     Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 
@@ -97,10 +92,6 @@ if (env('APP_ENV') !== "production") {
 
     Route::post('/faerie-run', [AgentController::class, 'run'])
       ->middleware(['auth']);
-} else {
-    Route::get('/login', function () {
-        return redirect('/');
-    })->name('login');
 }
 
 // Add a catch-all redirect to the homepage
