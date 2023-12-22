@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuditController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileController;
@@ -25,6 +26,7 @@ Route::get('/github', [AuthController::class, 'githubCallback']);
 
 Route::group(['middleware' => ['auth']], function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/referrals', [DashboardController::class, 'referrals'])->name('referrals');
 
     Route::post('/audit', [AuditController::class, 'store']);
 
