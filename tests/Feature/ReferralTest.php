@@ -37,6 +37,7 @@ test('referrals page knows user referrals', function () {
             ->component('Referrals')
             ->has('referrals')
             ->where('referrals.0.id', $referral->id)
-            ->where('referrals.0.username', $referral->username)
+            ->where('referrals.0.github_nickname', $referral->username)
+            ->where('referrals.0.created_at', $referral->created_at->toJSON())
         );
 });

@@ -91,9 +91,15 @@ class User extends Authenticatable
         return $this->github_nickname;
     }
 
-    // has referrer
     public function referrer()
     {
         return $this->belongsTo(User::class);
+    }
+
+    // referrals are users that have this user as their referrer
+    public function referrals()
+    {
+        // only return user nickname and nothing else
+        return $this->hasMany(User::class, 'referrer_id')->select('id', 'github_nickname', 'created_at');
     }
 }
