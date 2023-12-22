@@ -9,6 +9,7 @@ use App\Http\Controllers\InspectController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QueryController;
+use App\Http\Controllers\StatsController;
 use App\Models\User;
 use App\Services\Auditor;
 use Illuminate\Foundation\Application;
@@ -23,6 +24,8 @@ Route::get('/', function () {
 Route::get('/chat', function () {
     return Inertia::render('Chat');
 });
+
+Route::get('/stats', [StatsController::class, 'index']);
 
 Route::post('/audit', [AuditController::class, 'store']);
 
