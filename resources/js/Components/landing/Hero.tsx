@@ -26,19 +26,6 @@ export function Hero() {
             <p>
               See you in January!
             </p>
-            {/* <p className="-mt-12 mb-12 text-7xl text-center tracking-widest">🌐🤖</p> */}
-            <div className="flex flex-row justify-center items-center space-x-6">
-              <a href="https://github.com/OpenAgentsInc/openagents" target="_blank">
-                <Button variant="outline" size="icon" className="shadow-xl text-black">
-                  <GitHubLogoIcon className="w-6 h-6" />
-                </Button>
-              </a>
-              <a href="https://twitter.com/OpenAgentsInc" target="_blank">
-                <Button variant="outline" size="icon" className="shadow-xl">
-                  <img src="/images/x-logo-black.png" className="w-6 h-6" />
-                </Button>
-              </a>
-            </div>
           </div>
         </div>
       </Container>
