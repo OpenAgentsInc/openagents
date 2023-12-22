@@ -16,3 +16,11 @@ test('if referral session var is set, set the referrer on new user signup', func
     $this->assertEquals($referrer->id, $user->referrer_id);
     $this->assertEquals($referrer->username, $user->referrer->username);
 });
+
+test('if visiting a referral link, set referral session variable', function () {
+    $referrer = User::factory()->create();
+
+    $this->get('/?r=' . $referrer->username);
+
+    $this->assertEquals($referrer->username, session('r'));
+});
