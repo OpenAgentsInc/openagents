@@ -26,6 +26,14 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth'])
     ->name('dashboard');
 
+Route::get('/login', function () {
+    return Inertia::render('Login');
+})->name('login');
+
+Route::get('/login2', function () {
+    return Inertia::render('Login');
+})->name('login2');
+
 Route::get('/login/github', function () {
     return Socialite::driver('github')->redirect();
 });
@@ -52,10 +60,6 @@ Route::get('/github', function () {
 Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
 Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
 Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
-
-Route::get('/login', function () {
-    return Inertia::render('Login');
-})->name('login');
 
 Route::get('/terms', function () {
     return Inertia::render('Terms');
