@@ -6,6 +6,11 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
 
+it('does not need a name', function () {
+    $user = User::factory()->create(['name' => null]);
+    $this->assertNotNull($user);
+});
+
 it('has a username', function () {
     $user = User::factory()->create(['github_nickname' => 'johndoe']);
     $this->assertEquals('johndoe', $user->username);
