@@ -9,6 +9,7 @@ use App\Http\Controllers\InspectController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QueryController;
+use App\Http\Controllers\StaticController;
 use App\Http\Controllers\StatsController;
 use App\Models\User;
 use App\Services\Auditor;
@@ -17,17 +18,15 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Socialite\Facades\Socialite;
 
-Route::get('/', function () {
-    return Inertia::render('Splash');
-});
+Route::get('/', [StaticController::class, 'splash']);
+Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
+Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
+Route::get('/stats', [StatsController::class, 'index']);
+Route::post('/audit', [AuditController::class, 'store']);
 
 Route::get('/chat', function () {
     return Inertia::render('Chat');
 });
-
-Route::get('/stats', [StatsController::class, 'index']);
-
-Route::post('/audit', [AuditController::class, 'store']);
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth'])
@@ -63,14 +62,6 @@ Route::get('/github', function () {
 Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
 Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
 Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
-
-Route::get('/terms', function () {
-    return Inertia::render('Terms');
-})->name('terms');
-
-Route::get('/privacy', function () {
-    return Inertia::render('Privacy');
-})->name('privacy');
 
 Route::any('/logout', function () {
     auth()->logout();
