@@ -1,11 +1,10 @@
 import { usePage } from "@inertiajs/react"
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout'
 
 export default function Referrals() {
   const props = usePage().props as any
   const referrals = props.referrals
-  console.log(props)
-  return <>
-
+  return <AuthenticatedLayout user={props.auth.user}>
     <h1>Your referral link:</h1>
     <p>https://openagents.com/?r={props.auth.user.github_nickname}</p>
 
@@ -19,5 +18,5 @@ export default function Referrals() {
         })}
       </tbody>
     </table>
-  </>
+  </AuthenticatedLayout>
 }

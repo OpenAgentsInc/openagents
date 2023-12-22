@@ -25,6 +25,9 @@ export default function Authenticated({ user, header, children }: PropsWithChild
                 <NavLink href={route('dashboard')} active={route().current('dashboard')}>
                   Dashboard
                 </NavLink>
+                <NavLink href={route('referrals')} active={route().current('referrals')}>
+                  Referrals
+                </NavLink>
               </div>
             </div>
 
@@ -98,6 +101,9 @@ export default function Authenticated({ user, header, children }: PropsWithChild
             <ResponsiveNavLink href={route('dashboard')} active={route().current('dashboard')}>
               Dashboard
             </ResponsiveNavLink>
+            <ResponsiveNavLink href={route('referrals')} active={route().current('referrals')}>
+              Referrals
+            </ResponsiveNavLink>
           </div>
 
           <div className="pt-4 pb-1 border-t border-gray-200 dark:border-gray-600">
@@ -109,7 +115,6 @@ export default function Authenticated({ user, header, children }: PropsWithChild
             </div>
 
             <div className="mt-3 space-y-1">
-              {/* <ResponsiveNavLink href={route('profile.edit')}>Profile</ResponsiveNavLink>*/}
               <ResponsiveNavLink method="post" href={route('logout')} as="button">
                 Log out
               </ResponsiveNavLink>
