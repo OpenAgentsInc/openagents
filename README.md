@@ -50,3 +50,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 34. [Agent Inspection UX Design](https://twitter.com/OpenAgentsInc/status/1731733390641050106)
 35. [Agent Inspection UI](https://twitter.com/OpenAgentsInc/status/1734044762255036737)
 36. [Agent Modules 101](https://twitter.com/OpenAgentsInc/status/1738000844476371445)
+37. [Flow of Funds](https://twitter.com/OpenAgentsInc/status/1738221896234373387)
