@@ -1,11 +1,10 @@
-import NavLink from '@/Components/NavLink'
 import { Alert, AlertDescription, AlertTitle } from '@/Components/ui/alert'
 import { Button } from '@/Components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card'
 import InspectLayout from '@/Layouts/InspectLayout'
 import { XCircleIcon } from '@heroicons/react/24/outline'
 import { Link } from '@inertiajs/react'
-import { GitHubLogoIcon, RocketIcon } from '@radix-ui/react-icons'
+import { GitHubLogoIcon } from '@radix-ui/react-icons'
 
 function Login() {
   return (
