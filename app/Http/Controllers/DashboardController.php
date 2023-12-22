@@ -32,6 +32,8 @@ class DashboardController extends Controller
 
     public function referrals()
     {
-        return Inertia::render('Referrals');
+        return Inertia::render('Referrals', [
+            'referrals' => auth()->user()->referrals()->get(),
+        ]);
     }
 }
