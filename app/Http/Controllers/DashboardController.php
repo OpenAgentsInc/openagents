@@ -29,4 +29,9 @@ class DashboardController extends Controller
             'runs' => $userRuns,
         ]);
     }
+
+    public function referrals()
+    {
+        return Inertia::render('Referrals');
+    }
 }
