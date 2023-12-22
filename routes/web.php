@@ -20,6 +20,10 @@ Route::get('/', function () {
     return Inertia::render('Splash');
 });
 
+Route::get('/chat', function () {
+    return Inertia::render('Chat');
+});
+
 Route::post('/audit', [AuditController::class, 'store']);
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
