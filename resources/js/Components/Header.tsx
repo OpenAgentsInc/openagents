@@ -51,7 +51,7 @@ export const Header = () => {
           {showLogin && !authed && !isLoginPage && (
             <Link href="/login">
               <Button className="text-sm leading-6" variant="outline">
-                Log in<span aria-hidden="true" className="pl-2">&rarr;</span>
+                Sneak peek<span aria-hidden="true" className="pl-2">&rarr;</span>
               </Button>
             </Link>
           )}
