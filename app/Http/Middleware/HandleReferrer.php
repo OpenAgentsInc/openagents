@@ -19,7 +19,7 @@ class HandleReferrer
 
         if (\strpos($uri, "?r=") !== false) {
             $ref = $request->query->get('r');
-            session()->put('r', $ref);
+            $request->session()->put('r', $ref);
             $urlminusquerystring = explode('?', $uri)[0];
             return redirect($urlminusquerystring);
         }
