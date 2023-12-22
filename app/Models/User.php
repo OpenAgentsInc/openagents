@@ -72,4 +72,9 @@ class User extends Authenticatable
         $this->balance += $amount;
         $this->save();
     }
+
+    public function getUsernameAttribute()
+    {
+        return $this->github_nickname;
+    }
 }
