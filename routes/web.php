@@ -11,64 +11,35 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QueryController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\StatsController;
-use App\Models\User;
-use App\Services\Auditor;
-use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use Laravel\Socialite\Facades\Socialite;
 
 Route::get('/', [StaticController::class, 'splash']);
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
 Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
 Route::get('/stats', [StatsController::class, 'index']);
-Route::post('/audit', [AuditController::class, 'store']);
 
-Route::get('/chat', function () {
-    return Inertia::render('Chat');
+Route::get('/login', [AuthController::class, 'login'])->name('login');
+Route::get('/login/github', [AuthController::class, 'loginGithub']);
+Route::get('/github', [AuthController::class, 'githubCallback']);
+
+Route::group(['middleware' => ['auth']], function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    Route::post('/audit', [AuditController::class, 'store']);
+
+    Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
+    Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
+    Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
+
+    Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
 });
-
-Route::get('/dashboard', [DashboardController::class, 'index'])
-    ->middleware(['auth'])
-    ->name('dashboard');
-
-Route::get('/login', function () {
-    return Inertia::render('Login');
-})->name('login');
-
-Route::get('/login/github', function () {
-    return Socialite::driver('github')->redirect();
-});
-
-Route::get('/github', function () {
-    $githubUser = Socialite::driver('github')->user();
-
-    $user = User::updateOrCreate(
-        ['github_id' => $githubUser->id], // Check if GitHub ID exists
-        [
-            'name' => $githubUser->name,
-            'email' => $githubUser->email,
-            'github_nickname' => $githubUser->nickname,
-            'github_avatar' => $githubUser->avatar,
-        ]
-    );
-
-    // Log in this user
-    auth()->login($user, true);
-
-    return redirect('/dashboard');
-});
-
-Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
-Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
-Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
-
-Route::any('/logout', function () {
-    auth()->logout();
-    return redirect('/');
-})->name('logout');
 
 if (env('APP_ENV') !== "production") {
+    Route::get('/chat', function () {
+        return Inertia::render('Chat');
+    });
+
     Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 
     Route::post('/api/agents', [AgentController::class, 'store'])

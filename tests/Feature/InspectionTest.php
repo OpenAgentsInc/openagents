@@ -11,12 +11,33 @@ test('can visit run page and see agent/task/step details', function () {
     $this->seed(DatabaseSeeder::class);
 
     $run = Run::first();
+    $user = $run->agent->user;
+    $this->actingAs($user);
 
     $this->get('/run/' . $run->id)
         ->assertInertia(
             fn (Assert $page) => $page
             ->component('Run')
         );
+});
+
+test('can click on any step to see full details of input/output/metadata', function () {
+    $this->seed(DatabaseSeeder::class);
+
+    $step = Step::first();
+    $user = $step->run->agent->user;
+    $this->actingAs($user);
+    $stepInput = json_decode($step->input);
+    $stepOutput = json_decode($step->output);
+
+    $response = $this->get("/step/{$step->id}");
+
+    $response->assertStatus(200)
+        ->assertSee($stepInput->type)
+        ->assertSee($stepInput->model ?? '')
+        ->assertSee($stepInput->instruction);
+    // ->assertSee($stepOutput->response)
+    // ->assertSee($stepOutput->tokens_used);
 });
 
 // test('guest can visit inspection dashboard and see all agents: tasks & steps', function () {
@@ -74,22 +95,5 @@ test('can visit run page and see agent/task/step details', function () {
 //         // ->assertSee($stepOutput->tokens_used);
 //     }
 // });
-
-test('can click on any step to see full details of input/output/metadata', function () {
-    $this->seed(DatabaseSeeder::class);
-
-    $step = Step::first();
-    $stepInput = json_decode($step->input);
-    $stepOutput = json_decode($step->output);
-
-    $response = $this->get("/step/{$step->id}");
-
-    $response->assertStatus(200)
-        ->assertSee($stepInput->type)
-        ->assertSee($stepInput->model ?? '')
-        ->assertSee($stepInput->instruction);
-    // ->assertSee($stepOutput->response)
-    // ->assertSee($stepOutput->tokens_used);
-});
 
 // later: agent owner can modify prompts used
