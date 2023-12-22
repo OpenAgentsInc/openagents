@@ -11,6 +11,7 @@ class StatsController extends Controller
     {
         return Inertia::render('Stats', [
             'userCount' => User::count(),
+            'userBalanceSum' => User::sum('balance'),
         ]);
     }
 }
