@@ -17,21 +17,26 @@ export default function Referrals() {
       <CardContent>
         <p>https://openagents.com/?r={props.auth.user.github_nickname}</p>
       </CardContent>
-      <CardFooter>
+      {/* <CardFooter>
         <Button>Share</Button>
-      </CardFooter>
+      </CardFooter> */}
     </Card>
 
-    <h1>Referrals ({referrals.length})</h1>
+    <Card className="mt-12 mx-auto w-[350px]">
+      <CardHeader>
+        <CardTitle>Referrals ({referrals.length})</CardTitle>
+        <CardDescription>List of users you referred</CardDescription>
+      </CardHeader>
 
-    <table>
-      <tbody>
-        {referrals.map((referral: any) => {
-          return <tr key={referral.id}>
-            <td>{referral.github_nickname}</td>
-          </tr>
-        })}
-      </tbody>
-    </table>
+      <table>
+        <tbody>
+          {referrals.map((referral: any) => {
+            return <tr key={referral.id}>
+              <td>{referral.github_nickname}</td>
+            </tr>
+          })}
+        </tbody>
+      </table>
+    </Card>
   </AuthenticatedLayout>
 }
