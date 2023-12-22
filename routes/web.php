@@ -20,18 +20,7 @@ Route::get('/', function () {
     return Inertia::render('Splash');
 });
 
-Route::get('/broadcasttest', function () {
-    $auditor = new Auditor();
-    $auditor->getRepo();
-    return response()->json(['ok' => true]);
-});
-
 Route::post('/audit', [AuditController::class, 'store']);
-
-Route::post('/faerie-run', [AgentController::class, 'run'])
-    ->middleware(['auth']);
-
-// Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth'])
@@ -60,28 +49,30 @@ Route::get('/github', function () {
     return redirect('/dashboard');
 });
 
-Route::any('/logout', function () {
-    auth()->logout();
-
-    return redirect('/');
-})->name('logout');
-
 Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
 Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
 Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
 
+Route::get('/login', function () {
+    return Inertia::render('Login');
+})->name('login');
+
+Route::get('/terms', function () {
+    return Inertia::render('Terms');
+})->name('terms');
+
+Route::get('/privacy', function () {
+    return Inertia::render('Privacy');
+})->name('privacy');
+
+Route::any('/logout', function () {
+    auth()->logout();
+    return redirect('/');
+})->name('logout');
+
+
 if (env('APP_ENV') !== "production") {
-    Route::get('/login', function () {
-        return Inertia::render('Login');
-    })->name('login');
-
-    Route::get('/terms', function () {
-        return Inertia::render('Terms');
-    })->name('terms');
-
-    Route::get('/privacy', function () {
-        return Inertia::render('Privacy');
-    })->name('privacy');
+    Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 
     Route::post('/api/agents', [AgentController::class, 'store'])
       ->middleware(['auth']);
@@ -99,6 +90,9 @@ if (env('APP_ENV') !== "production") {
 
     Route::post('/api/query', [QueryController::class, 'store'])
       ->name('query.store');
+
+    Route::post('/faerie-run', [AgentController::class, 'run'])
+      ->middleware(['auth']);
 } else {
     Route::get('/login', function () {
         return redirect('/');
