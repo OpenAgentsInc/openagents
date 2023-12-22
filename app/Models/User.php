@@ -49,21 +49,27 @@ class User extends Authenticatable
 
     public function agents()
     {
-      return $this->hasMany(Agent::class);
+        return $this->hasMany(Agent::class);
     }
 
     public function conversations()
     {
-      return $this->hasMany(Conversation::class);
+        return $this->hasMany(Conversation::class);
     }
 
     public function files()
     {
-      return $this->hasMany(File::class);
+        return $this->hasMany(File::class);
     }
 
     public function messages()
     {
-      return $this->hasMany(Message::class);
+        return $this->hasMany(Message::class);
+    }
+
+    public function pay(int $amount)
+    {
+        $this->balance += $amount;
+        $this->save();
     }
 }
