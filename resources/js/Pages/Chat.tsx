@@ -19,10 +19,19 @@ function Chat() {
                   <div className="pb-6 lg:pb-8 min-h-[calc(100%-60px)] sm:min-h-[calc(100%-120px)]">
                     <div className="relative space-y-6">
                       <div className="space-y-6">
+
+                        <div className="flex justify-end break-anywhere relative py-1">
+                          <div className="max-w-[83%] space-y-1 whitespace-pre-wrap">
+                            <div className="rounded-[10px] bg-neutral-200 p-3 ml-auto w-fit max-w-full">
+                              Who the hell are you?
+                            </div>
+                          </div>
+                        </div>
+
                         <div className="break-anywhere relative py-1">
                           <div className="flex items-center">
                             <div className="w-full">
-                              {[...Array(10)].map((_, i) => (
+                              {[...Array(3)].map((_, i) => (
                                 <div key={i} className="whitespace-pre-wrap mb-4 last:mb-0">
                                   <span>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span>
                                 </div>
@@ -30,12 +39,52 @@ function Chat() {
                             </div>
                           </div>
                         </div>
+
+                        <div className="flex justify-end break-anywhere relative py-1">
+                          <div className="max-w-[83%] space-y-1 whitespace-pre-wrap">
+                            <div className="rounded-[10px] bg-neutral-200 p-3 ml-auto w-fit max-w-full">
+                              What is that?
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="break-anywhere relative py-1">
+                          <div className="flex items-center">
+                            <div className="w-full">
+                              {[...Array(3)].map((_, i) => (
+                                <div key={i} className="whitespace-pre-wrap mb-4 last:mb-0">
+                                  <span>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
+          <div className="max-h-[40%] px-5 sm:px-0 z-15 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
+            <div className="relative flex h-full w-full cursor-text items-end border border-transparent bg-neutral-25 shadow-input transition-all duration-300 focus-within:border-neutral-400 focus-within:shadow-none hover:border-neutral-400 hover:shadow-none rounded-[30px]">
+              <div className="relative my-1.5 ml-1.5 z-10">
+                <button type="button" className="grid h-10 w-12 place-items-center rounded-full transition-colors duration-300 bg-neutral-200 hover:bg-neutral-200-hover active:bg-neutral-200-tap">
+
+                </button>
+              </div>
+              <div className="h-full grow overflow-y-auto py-3 pr-4 lg:py-[5px] 2xl:py-[8.5px] pl-2">
+                <textarea role="textbox" className="t-body-chat block w-full resize-none overflow-y-hidden whitespace-pre-wrap bg-transparent text-primary-700 outline-none placeholder:text-neutral-600" spellCheck="false" placeholder="Send a message" style={{ height: 32 }}></textarea>
+              </div>
+              <button aria-label="Submit text" className="flex h-9 w-9 items-center justify-center rounded-full p-1.5 text-neutral-600 bg-neutral-50 m-2 transition-colors duration-300" type="button" disabled={false}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="16" fill="currentColor"><path fillRule="evenodd" d="M.852 7.648a1.2 1.2 0 0 1 0-1.696l4.8-4.8a1.2 1.2 0 0 1 1.696 0l4.8 4.8a1.2 1.2 0 1 1-1.697 1.696L7.7 4.897V14a1.2 1.2 0 0 1-2.4 0V4.897L2.548 7.648a1.2 1.2 0 0 1-1.696 0Z" clipRule="evenodd"></path></svg></button>
+            </div>
+          </div>
+          <div className="px-5 py-6 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
+            {/* <div>
+              <div className="t-label mx-auto text-center text-neutral-900">How u like this.
+              </div>
+            </div> */}
           </div>
         </div>
       </div>
