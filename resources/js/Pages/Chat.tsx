@@ -1,4 +1,5 @@
-import Textarea from 'react-textarea-autosize'
+
+import { PromptForm } from "@/Components/chat/PromptForm"
 import ChatLayout from "@/Layouts/ChatLayout"
 
 function Chat() {
@@ -76,7 +77,7 @@ function Chat() {
                 </button> */}
               </div>
               <div className="h-full grow overflow-y-auto py-3 pr-4 lg:py-[5px] 2xl:py-[8.5px] pl-2">
-                <Textarea role="textbox" className="t-body-chat block w-full resize-none overflow-y-hidden whitespace-pre-wrap bg-transparent text-primary-700 outline-none placeholder:text-neutral-600" spellCheck="false" placeholder="Say something..." style={{ height: 32 }} />
+                <PromptForm />
               </div>
               <button aria-label="Submit text" className="shadow flex h-9 w-9 items-center justify-center rounded-full p-1.5 text-neutral-600 bg-neutral-50 m-2 transition-colors duration-300" type="button" disabled={false}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="16" fill="currentColor"><path fillRule="evenodd" d="M.852 7.648a1.2 1.2 0 0 1 0-1.696l4.8-4.8a1.2 1.2 0 0 1 1.696 0l4.8 4.8a1.2 1.2 0 1 1-1.697 1.696L7.7 4.897V14a1.2 1.2 0 0 1-2.4 0V4.897L2.548 7.648a1.2 1.2 0 0 1-1.696 0Z" clipRule="evenodd"></path></svg></button>
             </div>
