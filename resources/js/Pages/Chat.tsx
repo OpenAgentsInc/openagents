@@ -70,21 +70,9 @@ function Chat() {
             </div>
           </div>
           <div className="max-h-[40%] px-5 sm:px-0 z-15 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
-            <div className="shadow-lg relative flex h-full w-full cursor-text items-end border border-transparent bg-neutral-25 transition-all duration-300 focus-within:border-neutral-400 focus-within:shadow-none hover:border-neutral-400 hover:shadow-none rounded-[30px]">
-              <div className="relative my-1.5 ml-1.5 z-10">
-                {/* <button type="button" className="grid h-10 w-12 place-items-center rounded-full transition-colors duration-300 bg-neutral-200 hover:bg-neutral-200-hover active:bg-neutral-200-tap">
-
-                </button> */}
-              </div>
-              <div className="h-full grow overflow-y-auto py-3 pr-4 lg:py-[5px] 2xl:py-[8.5px] pl-2">
-                <PromptForm />
-              </div>
-              <button aria-label="Submit text" className="shadow flex h-9 w-9 items-center justify-center rounded-full p-1.5 text-neutral-600 bg-neutral-50 m-2 transition-colors duration-300" type="button" disabled={false}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="16" fill="currentColor"><path fillRule="evenodd" d="M.852 7.648a1.2 1.2 0 0 1 0-1.696l4.8-4.8a1.2 1.2 0 0 1 1.696 0l4.8 4.8a1.2 1.2 0 1 1-1.697 1.696L7.7 4.897V14a1.2 1.2 0 0 1-2.4 0V4.897L2.548 7.648a1.2 1.2 0 0 1-1.696 0Z" clipRule="evenodd"></path></svg></button>
-            </div>
+            <PromptForm />
           </div>
-          <div className="px-5 py-5 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
-
-          </div>
+          <div className="px-5 py-5 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]"></div>
         </div>
       </div>
     </div>
