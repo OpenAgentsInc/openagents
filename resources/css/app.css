@@ -167,9 +167,6 @@
   textarea:focus {
     @apply border-0 focus:ring-0;
   }
-  .shadow-input {
-    box-shadow: var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow);
-  }
 }
 
 .t-body-chat {
