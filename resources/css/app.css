@@ -176,6 +176,13 @@
   font-weight: 300;
 }
 
+.t-label {
+  font-size: .75rem;
+  line-height: .8999999999999999rem;
+  letter-spacing: -.24px;
+  font-weight: 350;
+}
+
 .h-dscreen {
   height: 100dvh;
 }
