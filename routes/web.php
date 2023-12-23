@@ -24,6 +24,10 @@ Route::get('/login', [AuthController::class, 'login'])->name('login');
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
 
+Route::get('/chat', function () {
+    return Inertia::render('Chat');
+});
+
 Route::group(['middleware' => ['auth']], function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/referrals', [DashboardController::class, 'referrals'])->name('referrals');
@@ -38,10 +42,6 @@ Route::group(['middleware' => ['auth']], function () {
 });
 
 if (env('APP_ENV') !== "production") {
-    Route::get('/chat', function () {
-        return Inertia::render('Chat');
-    });
-
     Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
 
     Route::post('/api/agents', [AgentController::class, 'store'])
