@@ -159,9 +159,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background;
-    /* @apply bg-black text-white; */
-    /* @apply bg-background text-foreground; */
+    @apply bg-background text-foreground;
   }
   textarea {
     @apply border-0 focus:ring-0;
@@ -169,15 +167,29 @@
   textarea:focus {
     @apply border-0 focus:ring-0;
   }
+  .shadow-input {
+    box-shadow: var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow);
+  }
 }
 
-.big-green-button {
-  background-color: rgba(67, 175, 67, 1);
-  box-shadow: 0 0 35px rgba(0, 255, 0, 0.25);
-  transition: box-shadow 0.3s ease;
+.t-body-chat {
+  font-size: 1.2rem;
+  line-height: 1.8rem;
+  letter-spacing: -.22px;
+  font-weight: 300;
 }
 
-.big-green-button:hover {
-  background-color: #53cf53;
-  box-shadow: 0 0 55px rgba(0, 255, 0, 0.55);
+.t-label {
+  font-size: .75rem;
+  line-height: .8999999999999999rem;
+  letter-spacing: -.24px;
+  font-weight: 350;
+}
+
+.h-dscreen {
+  height: 100dvh;
+}
+
+.max-w-1\.5xl {
+  max-width: 38.5rem;
 }
