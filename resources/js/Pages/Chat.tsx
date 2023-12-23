@@ -5,7 +5,8 @@ import ChatLayout from "@/Layouts/ChatLayout"
 function Chat() {
   return (
     <div className="flex flex-row w-screen h-full">
-      <div className="w-[5.5rem] border-r border-teal-800/25 shadow-xl nice-scrollbar overflow-y-auto">
+      <div className="hidden w-22 flex-col items-center border-r border-neutral-300 p-3 pt-5 lg:flex">
+        {/* <div className="w-[5.5rem] border-r border-teal-800/25 shadow-xl nice-scrollbar overflow-y-auto"> */}
         <div>
           {/* <Button>New conversation</Button> */}
         </div>
