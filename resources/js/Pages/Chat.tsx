@@ -12,9 +12,9 @@ function Chat() {
         <p>ChatList</p>
       </div >
       <div className="relative grow overflow-x-auto flex flex-col">
-        <div className="relative flex flex-col overflow-hidden sm:overflow-x-visible h-full pt-8 grow">
+        <div className="relative flex flex-col overflow-hidden sm:overflow-x-visible h-full grow">
           {/* <div className="relative w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
-            <div className="absolute w-full bg-gradient-to-b from-neutral-50 to-transparent lg:h-[50px] lg:bg-gradient-to-b lg:from-neutral-50 lg:to-transparent z-10 h-[50px]"></div>
+            <div className="absolute w-full bg-gradient-to-b from-gray-50 to-transparent lg:h-[50px] lg:bg-gradient-to-b lg:from-gray-50 lg:to-transparent z-10 h-[50px]"></div>
           </div> */}
           <div className="relative grow overflow-y-hidden">
             <div className="h-full">

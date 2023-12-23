@@ -183,8 +183,16 @@
 }
 
 .t-body-chat {
-  font-size: 1.375rem;
-  line-height: 1.99375rem;
+  font-size: 1.2rem;
+  line-height: 1.7rem;
   letter-spacing: -.22px;
-  font-weight: 350;
+  font-weight: 300;
+}
+
+.h-dscreen {
+  height: 100dvh;
+}
+
+.max-w-1\.5xl {
+  max-width: 38.5rem;
 }
