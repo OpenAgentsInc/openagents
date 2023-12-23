@@ -73,7 +73,7 @@ function Chat() {
             <div className="max-h-[40%] px-5 sm:px-0 z-15 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
               <PromptForm />
             </div>
-            <div className="px-5 py-5 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]"></div>
+            <div className="px-5 py-2 md:py-5 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]"></div>
           </div>
         </div>
       </div>
