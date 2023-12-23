@@ -13,9 +13,9 @@ function Chat() {
       </div >
       <div className="relative grow overflow-x-auto flex flex-col">
         <div className="relative flex flex-col overflow-hidden sm:overflow-x-visible h-full pt-8 grow">
-          <div className="relative w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
+          {/* <div className="relative w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
             <div className="absolute w-full bg-gradient-to-b from-neutral-50 to-transparent lg:h-[50px] lg:bg-gradient-to-b lg:from-neutral-50 lg:to-transparent z-10 h-[50px]"></div>
-          </div>
+          </div> */}
           <div className="relative grow overflow-y-hidden">
             <div className="h-full">
               <div className="scrollbar-gutter-both-edges relative h-full overflow-y-auto overflow-x-hidden">
@@ -27,12 +27,11 @@ function Chat() {
                         <div className="break-anywhere relative py-1">
                           <div className="flex items-center">
                             <div className="w-full">
-                              <div className="whitespace-pre-wrap mb-4 last:mb-0">
-                                <span>Hello world</span>
-                              </div>
-                              <div className="whitespace-pre-wrap mb-4 last:mb-0">
-                                <span>Hello world</span>
-                              </div>
+                              {[...Array(10)].map((_, i) => (
+                                <div key={i} className="whitespace-pre-wrap mb-4 last:mb-0">
+                                  <span>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </div>
