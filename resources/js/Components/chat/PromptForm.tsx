@@ -26,7 +26,6 @@ export const PromptForm = () => {
         rows={1}
         value={input}
         onChange={e => setInput(e.target.value)}
-        placeholder="Say something..."
         className="t-body-chat block w-full resize-none overflow-y-hidden whitespace-pre-wrap bg-transparent text-primary-700 outline-none placeholder:text-neutral-600" spellCheck="false" placeholder="Say something..." style={{ height: 32 }}
       />
     </form>
