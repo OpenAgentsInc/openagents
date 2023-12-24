@@ -52,6 +52,7 @@ class StreamController extends Controller
                 'conversation_id' => $conversation->id,
                 'user_id' => $conversation->user_id,
                 'body' => "",
+                'sender' => 'agent',
             ]);
 
             $content = "";
