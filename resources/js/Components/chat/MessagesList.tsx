@@ -45,7 +45,7 @@ const Trail: React.FC<{ open: boolean, children: any }> = ({ open, children }) =
         }
         return (
           <a.div key={index} style={style}>
-            <a.div className="whitespace-pre-wrap mb-4">{items[index]}</a.div>
+            <a.div className="whitespace-pre-wrap my-6">{items[index]}</a.div>
           </a.div>
         )
       })}
