@@ -3,22 +3,25 @@
 namespace App\Http;
 
 use Generator;
-use Psr\Http\Message\ResponseInterface;
+// use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 
 class StreamResponse
 {
-    private ResponseInterface $response;
+    // private ResponseInterface $response;
+    private $body;
 
-    public function __construct(ResponseInterface $response)
+    public function __construct($body)
     {
-        $this->response = $response;
+        $this->body = $body;
     }
 
     public function getIterator(): Generator
     {
-        while (!$this->response->getBody()->eof()) {
+        dump("in get iterator");
+        while (!$this->body->eof()) {
             $line = $this->readLine($this->response->getBody());
+            dump($line);
 
             if (!str_starts_with($line, 'data:')) {
                 continue;
