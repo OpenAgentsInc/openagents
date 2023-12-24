@@ -5,9 +5,7 @@ export const MessagesList = ({ messages }) => {
   return (
     <Trail open={true}>
       {messages.map((message, i) => (
-        <div key={i} >
-          <span>{message.content}</span>
-        </div>
+        <span key={i}>{message.content}</span>
       ))}
     </Trail>
   )
