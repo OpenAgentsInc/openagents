@@ -12,6 +12,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QueryController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\StatsController;
+use App\Http\Controllers\StreamController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
