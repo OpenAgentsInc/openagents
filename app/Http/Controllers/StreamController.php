@@ -37,7 +37,10 @@ class StreamController extends Controller
 
             $response = $client->post($url, [
                 'json' => $data,
-                'stream' => true, // Enable streaming
+                'stream' => true,
+                'headers' => [
+                    'Authorization' => 'Bearer ' . env('TOGETHER_API_KEY'),
+                ],
             ]);
 
             // Reading the streamed response
@@ -49,7 +52,6 @@ class StreamController extends Controller
             // Handle exception or errors here
             echo $e->getMessage();
         }
-
     }
 
 
