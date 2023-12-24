@@ -6,7 +6,7 @@ use App\Http\StreamResponse;
 use App\Events\ChatTokenReceived;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+// use Illuminate\Support\Facades\Log;
 use Nyholm\Psr7\Factory\Psr17Factory;
 
 class StreamController extends Controller
@@ -28,14 +28,14 @@ class StreamController extends Controller
             "stream_tokens" => true
         ];
 
-        Log::info($payload);
+        dump($payload);
 
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . env('TOGETHER_API_KEY'),
             'Content-Type' => 'application/json',
         ])->post($apiUrl, $payload);
 
-        Log::info("Did request");
+        dump("Did request");
 
         // $response->throw();
 
@@ -47,14 +47,14 @@ class StreamController extends Controller
             $response->headers()
         );
 
-        Log::info('did psr thing');
+        dump('did psr thing');
 
         $streamResponse = new StreamResponse($psrResponse);
-        Log::info('got psr response');
+        dump('got psr response');
         foreach ($streamResponse->getIterator() as $tokenData) {
 
-            Log::info('in a loop');
-            Log::info($tokenData);
+            dump('in a loop');
+            dump($tokenData);
 
             // Check for final message
             if (isset($tokenData['data']) && $tokenData['data'] === '[DONE]') {
