@@ -4,6 +4,7 @@ namespace App\Http;
 
 use Generator;
 // use Psr\Http\Message\ResponseInterface;
+use GuzzleHttp\Psr7\Stream;
 use Psr\Http\Message\StreamInterface;
 
 class StreamResponse
@@ -19,8 +20,10 @@ class StreamResponse
     public function getIterator(): Generator
     {
         dump("in get iterator");
+
         while (!$this->body->eof()) {
-            $line = $this->readLine($this->response->getBody());
+            dump("and im here");
+            $line = $this->readLine($this->body);
             dump($line);
 
             if (!str_starts_with($line, 'data:')) {
