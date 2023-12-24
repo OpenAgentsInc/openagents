@@ -88,11 +88,14 @@ class StreamController extends Controller
             foreach ($this->readStream($stream) as $responseLine) {
                 // $content .= $responseLine;
                 dump($responseLine);
+                $token = $responseLine["choices"][0]["text"];
+                dump($token);
+                broadcast(new ChatTokenReceived($token));
             }
 
             // dump($content);
             // dump($content);
-            broadcast(new ChatTokenReceived($content));
+
             // $stream = $response->getBody();
             // while (!$stream->eof()) {
             //     $line = $this->readLine($stream);
