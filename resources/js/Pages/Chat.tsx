@@ -3,12 +3,7 @@ import { MessagesList } from "@/Components/chat/MessagesList"
 import { PromptForm } from "@/Components/chat/PromptForm"
 import { useEffect, useState } from "react"
 
-// import ChatLayout from "@/Layouts/ChatLayout"
-
 function Chat() {
-
-  // const [systemMessages] = useState(["Welcome to the chat!"])
-  // const [messages, setMessages] = useState(systemMessages)
   const [messages, setMessages] = useState([{ role: "assistant", content: "Welcome to the chat!" }])
 
   useEffect(() => {
@@ -62,7 +57,5 @@ function Chat() {
     </div>
   )
 }
-
-// Chat.layout = (page) => <ChatLayout children={page} />
 
 export default Chat
