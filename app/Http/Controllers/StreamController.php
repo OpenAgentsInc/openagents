@@ -33,23 +33,29 @@ class StreamController extends Controller
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . env('TOGETHER_API_KEY'),
             'Content-Type' => 'application/json',
-        ])->post($apiUrl, $payload);
+        ])->withOptions([
+            'stream' => true,
+        ])
+        ->post($apiUrl, $payload);
 
         dump("Did request");
 
         // $response->throw();
 
         // Convert Laravel HTTP client response to PSR-7 response
-        $psr17Factory = new Psr17Factory();
-        $psrResponse = $psr17Factory->createResponse(
-            $response->status(),
-            $response->body(),
-            $response->headers()
-        );
+        // $psr17Factory = new Psr17Factory();
+        // $psrResponse = $psr17Factory->createResponse(
+        //     $response->status(),
+        //     $response->body(),
+        //     $response->headers()
+        // );
 
         dump('did psr thing');
+        $body = $response->toPsrResponse()->getBody();
+        dump('got body');
+        dump($body);
 
-        $streamResponse = new StreamResponse($psrResponse);
+        $streamResponse = new StreamResponse($body);
         dump('got psr response');
         foreach ($streamResponse->getIterator() as $tokenData) {
 
