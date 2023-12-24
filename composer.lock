@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "9d31ab09dee9fcb3350b5465ef859304",
+    "content-hash": "fc3f019ca3151b16afa12a48a3db713d",
     "packages": [
         {
             "name": "ankane/pgvector",
@@ -4581,6 +4581,98 @@
             "time": "2023-05-17T16:00:06+00:00"
         },
         {
+            "name": "qruto/laravel-wave",
+            "version": "0.8.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/qruto/laravel-wave.git",
+                "reference": "61d7b509d4c377cfee2649769d787e3cb4e56d85"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/qruto/laravel-wave/zipball/61d7b509d4c377cfee2649769d787e3cb4e56d85",
+                "reference": "61d7b509d4c377cfee2649769d787e3cb4e56d85",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/broadcasting": "^9.21|^10.0",
+                "illuminate/console": "^9.21|^10.0",
+                "illuminate/contracts": "^9.21|^10.0",
+                "illuminate/http": "^9.21|^10.0",
+                "illuminate/queue": "^9.21|^10.0",
+                "illuminate/routing": "^9.21|^10.0",
+                "php": "^8.0",
+                "spatie/laravel-package-tools": "^1.14.1"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.5|^1.13",
+                "m6web/redis-mock": "v5.6",
+                "nunomaduro/collision": "^6.1|^7.10",
+                "nunomaduro/larastan": "^2.6",
+                "orchestra/testbench": "^7.22.1|^8.0",
+                "pestphp/pest": "^v1.23|^2.24",
+                "pestphp/pest-plugin-laravel": "^1.4.0|^2.2.0",
+                "pestphp/pest-plugin-watch": "^1.x-dev|^2.0.1",
+                "phpstan/extension-installer": "^1.3",
+                "phpstan/phpstan-deprecation-rules": "^1.1",
+                "phpstan/phpstan-phpunit": "^1.3.10",
+                "rector/rector": "^0.18.10",
+                "spatie/laravel-ray": "^1.33"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Qruto\\Wave\\WaveServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Qruto\\Wave\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Slava Razum",
+                    "email": "razum@qruto.to",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Painless Laravel Broadcasting with SSE.",
+            "homepage": "https://github.com/qruto/laravel-wave",
+            "keywords": [
+                "event source",
+                "laravel",
+                "laravel-wave",
+                "live-update",
+                "php",
+                "qruto",
+                "realtime",
+                "server sent events",
+                "sse"
+            ],
+            "support": {
+                "issues": "https://github.com/qruto/laravel-wave/issues",
+                "source": "https://github.com/qruto/laravel-wave/tree/0.8.1"
+            },
+            "funding": [
+                {
+                    "url": "https://send.monobank.ua/jar/3eG4Vafvzq",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://github.com/qruto",
+                    "type": "github"
+                }
+            ],
+            "time": "2023-12-15T11:15:42+00:00"
+        },
+        {
             "name": "ralouphie/getallheaders",
             "version": "3.0.3",
             "source": {
@@ -4804,6 +4896,66 @@
                 }
             ],
             "time": "2023-11-08T05:53:05+00:00"
+        },
+        {
+            "name": "spatie/laravel-package-tools",
+            "version": "1.16.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/spatie/laravel-package-tools.git",
+                "reference": "cc7c991555a37f9fa6b814aa03af73f88026a83d"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/spatie/laravel-package-tools/zipball/cc7c991555a37f9fa6b814aa03af73f88026a83d",
+                "reference": "cc7c991555a37f9fa6b814aa03af73f88026a83d",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/contracts": "^9.28|^10.0",
+                "php": "^8.0"
+            },
+            "require-dev": {
+                "mockery/mockery": "^1.5",
+                "orchestra/testbench": "^7.7|^8.0",
+                "pestphp/pest": "^1.22",
+                "phpunit/phpunit": "^9.5.24",
+                "spatie/pest-plugin-test-time": "^1.1"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Spatie\\LaravelPackageTools\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Freek Van der Herten",
+                    "email": "freek@spatie.be",
+                    "role": "Developer"
+                }
+            ],
+            "description": "Tools for creating Laravel packages",
+            "homepage": "https://github.com/spatie/laravel-package-tools",
+            "keywords": [
+                "laravel-package-tools",
+                "spatie"
+            ],
+            "support": {
+                "issues": "https://github.com/spatie/laravel-package-tools/issues",
+                "source": "https://github.com/spatie/laravel-package-tools/tree/1.16.1"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/spatie",
+                    "type": "github"
+                }
+            ],
+            "time": "2023-08-23T09:04:39+00:00"
         },
         {
             "name": "spatie/pdf-to-text",
