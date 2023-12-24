@@ -48,6 +48,7 @@ class StreamController extends Controller
 
             // Read the stream content chunk by chunk
             while (!$stream->eof()) {
+                dump('in here');
                 $chunk = $stream->read(1024); // Read 1 KB at a time (adjust as needed)
                 // Process or output the chunk as needed
                 dump($chunk);
