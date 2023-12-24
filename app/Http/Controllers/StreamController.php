@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\StreamResponse;
 use App\Events\ChatTokenReceived;
+use App\Models\Conversation;
+use App\Models\Message;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
@@ -13,6 +15,10 @@ class StreamController extends Controller
 {
     public function streamTokens()
     {
+        $conversation = Conversation::create([
+            'user_id' => auth()->user()->id ?? 1,
+        ]);
+
         try {
             $client = new Client();
 
@@ -42,13 +48,28 @@ class StreamController extends Controller
             // Reading the streamed response
             $stream = $response->getBody();
 
+            $message = Message::create([
+                'conversation_id' => $conversation->id,
+                'user_id' => $conversation->user_id,
+                'body' => "",
+            ]);
+
+            $content = "";
+
             foreach ($this->readStream($stream) as $responseLine) {
                 // $content .= $responseLine;
-                dump($responseLine);
+                // dump($responseLine);
                 $token = $responseLine["choices"][0]["text"];
-                dump($token);
-                broadcast(new ChatTokenReceived($token));
+                $content .= $token;
+                // dump($token);
+                broadcast(new ChatTokenReceived($token, $messageId));
             }
+
+            $message->update([
+                'body' => $content,
+            ]);
+
+            dump("Success");
         } catch (RequestException $e) {
             // Handle exception or errors here
             echo $e->getMessage();
