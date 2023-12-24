@@ -14,7 +14,17 @@ export default function Nodes() {
         Lorem ipsum dolor sit amet consectetur adipisicing elit. Quisquam, voluptatum.
       </CardContent>
     </Card>,
-    <p className="font-thin">World</p>,
+    <Card>
+      <CardHeader>
+        <CardTitle>Card Title</CardTitle>
+      </CardHeader>
+      <CardDescription>
+        Lorem ipsum dolor sit
+      </CardDescription>
+      <CardContent>
+        Lorem ipsum dolor sit amet consectetur adipisicing elit. Quisquam, voluptatum.
+      </CardContent>
+    </Card>,
   ]
 
   return (
