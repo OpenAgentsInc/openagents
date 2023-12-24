@@ -45,8 +45,8 @@ class ChatTokenReceived implements ShouldBroadcast
      *
      * @return array
      */
-    public function broadcastWith(): string
+    public function broadcastWith(): array
     {
-        return $this->tokenData;
+        return ['token' => $this->tokenData];
     }
 }
