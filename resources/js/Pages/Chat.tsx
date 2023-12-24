@@ -6,8 +6,6 @@ import { useEffect, useState } from "react"
 function Chat() {
   const [messages, setMessages]: any = useState([{ id: 0, role: "assistant", content: "Welcome to the chat!", tokens: [] }])
 
-  // const [messages, setMessages] = useState({});
-
   useEffect(() => {
     // @ts-ignore
     window.Echo.channel('Chat')
@@ -30,24 +28,11 @@ function Chat() {
           message.content = message.tokens.sort((a, b) => a.tokenId - b.tokenId).map((token) => token.token).join("");
 
           return newMessages;
-          // // Clone the previous messages object
-          // const newMessages = { ...prevMessages };
-
-          // // If this ID already exists, append the token; otherwise, create a new entry
-          // if (newMessages[e.messageId]) {
-          //   newMessages[e.messageId].content += e.token;
-          // } else {
-          //   newMessages[e.messageId] = { id: e.messageId, role: "assistant", content: e.token };
-          // }
-
-          // return newMessages;
         });
       });
   }, []);
 
-  // Convert the messages object into an array for rendering
   const messagesArray = Object.values(messages);
-  // const messagesArray = Object.values(messages).sort((a, b) => a.id - b.id);
 
   return (
     <div className="h-dscreen w-full md:h-screen">
