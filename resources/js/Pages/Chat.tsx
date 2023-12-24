@@ -38,16 +38,6 @@ function Chat() {
                             </div>
                           </div>
 
-                          {/* {messages.map((message, index) => (
-                            <div key={index} className="flex justify-end break-anywhere relative py-1">
-                              <div className="max-w-[83%] space-y-1 whitespace-pre-wrap">
-                                <div className="rounded-[10px] bg-neutral-200 p-3 ml-auto w-fit max-w-full">
-                                  {message}
-                                </div>
-                              </div>
-                            </div>
-                          ))} */}
-
                         </div>
                       </div>
                     </div>

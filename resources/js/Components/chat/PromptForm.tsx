@@ -7,8 +7,7 @@ export const PromptForm = ({ messages, setMessages }) => {
   const [input, setInput] = useState('')
   const isLoading = false
   const onSubmit = useCallback(async (input: string) => {
-    console.log(input)
-    setMessages([...messages, { role: "user", content: input }])
+    setMessages([...messages, { role: "user", content: input }, { role: "assistant", content: "I disagree!" }])
   }, [messages])
   return (
     <form
