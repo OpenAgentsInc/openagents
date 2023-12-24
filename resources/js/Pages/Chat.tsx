@@ -1,7 +1,7 @@
 
 import { MessagesList } from "@/Components/chat/MessagesList"
 import { PromptForm } from "@/Components/chat/PromptForm"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 // import ChatLayout from "@/Layouts/ChatLayout"
 
@@ -11,6 +11,13 @@ function Chat() {
   // const [messages, setMessages] = useState(systemMessages)
   const [messages, setMessages] = useState([{ role: "assistant", content: "Welcome to the chat!" }])
 
+  useEffect(() => {
+    // @ts-ignore
+    window.Echo.channel('Chat')
+      .listen('ChatTokenReceived', (e) => {
+        console.log(e)
+      })
+  }, [])
 
   return (
     <div className="h-dscreen w-full md:h-screen">
