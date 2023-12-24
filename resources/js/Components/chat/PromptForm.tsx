@@ -1,4 +1,5 @@
 import { useEnterSubmit } from '@/lib/hooks/use-enter-submit'
+import axios from 'axios'
 import { useCallback, useState } from 'react'
 import Textarea from 'react-textarea-autosize'
 
@@ -7,6 +8,7 @@ export const PromptForm = ({ messages, setMessages }) => {
   const [input, setInput] = useState('')
   const isLoading = false
   const onSubmit = useCallback(async (input: string) => {
+    axios.post('/stream', { input })
     setMessages([...messages, { role: "user", content: input }, { role: "assistant", content: "I disagree!" }])
   }, [messages])
   return (
