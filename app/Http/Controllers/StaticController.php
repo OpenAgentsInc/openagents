@@ -9,6 +9,7 @@ class StaticController extends Controller
 {
     public function splash()
     {
+
         return Inertia::render('Splash');
     }
 
