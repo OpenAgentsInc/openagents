@@ -15,6 +15,19 @@ use Illuminate\Support\Facades\Http;
 
 class StreamController extends Controller
 {
+    public function readLine($stream)
+    {
+        $line = '';
+        while (!$stream->eof()) {
+            $char = $stream->read(1);
+            if ($char === "\n") {
+                break;
+            }
+            $line .= $char;
+        }
+        return $line;
+    }
+
     public function streamTokens()
     {
         try {
@@ -46,8 +59,30 @@ class StreamController extends Controller
             // Reading the streamed response
             $stream = $response->getBody();
             while (!$stream->eof()) {
-                echo $stream->read(1024);
+                $line = $this->readLine($stream);
+
+                if (!str_starts_with($line, 'data:')) {
+                    continue;
+                }
+
+                $data = trim(substr($line, strlen('data:')));
+
+                if ($data === '[DONE]') {
+                    break;
+                }
+
+                $response = json_decode($data, true, JSON_THROW_ON_ERROR);
+                dump($response);
+
+                if (isset($response['error'])) {
+                    throw new \Exception($response['error']);
+                }
+
+                yield $response;
             }
+            // while (!$stream->eof()) {
+            //     echo $stream->read(1024);
+            // }
         } catch (RequestException $e) {
             // Handle exception or errors here
             echo $e->getMessage();
