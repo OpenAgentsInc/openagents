@@ -46,6 +46,9 @@ class StreamController extends Controller
             $partialResult = json_decode($event->data, true);
             $token = $partialResult["choices"][0]["text"];
             // You can do something with $token here (e.g., save to a database, return as a response, etc.)
+
+            // Broadcast to the Chat channel
+            broadcast(new ChatTokenReceived($token));
         }
 
         if ($done) {
