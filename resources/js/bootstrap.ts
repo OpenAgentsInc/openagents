@@ -22,5 +22,5 @@ import { WaveConnector } from 'laravel-wave';
 // @ts-ignore
 window.Echo = new Echo({
   broadcaster: WaveConnector,
-  debug: true,
+  // debug: true,
 });
