@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\ChatTokenReceived;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Textalk\SseClient;
 
 class StreamController extends Controller
 {
@@ -32,18 +32,11 @@ class StreamController extends Controller
 
         $response->throw();
 
-        $sseClient = new SseClient($response->body());
-
         $done = false;
 
-        foreach ($sseClient->read() as $event) {
-            if ($event->data === "[DONE]") {
-                $done = true;
-                break;
-            }
-
-            // Process the streaming token data here
-            $partialResult = json_decode($event->data, true);
+        foreach ($response->body() as $line) {
+            // Parse the streaming token data here
+            $partialResult = json_decode($line, true);
             $token = $partialResult["choices"][0]["text"];
             // You can do something with $token here (e.g., save to a database, return as a response, etc.)
 
