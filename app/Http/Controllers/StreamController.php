@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\StreamResponse;
+use App\Events\ChatTokenReceived;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use App\Events\ChatTokenReceived;
 
 class StreamController extends Controller
 {
@@ -31,36 +31,23 @@ class StreamController extends Controller
             'Content-Type' => 'application/json',
         ])->post($apiUrl, $payload);
 
-        $response->throw();
+        // $response->throw();
 
-        $done = false;
+        $streamResponse = new StreamResponse($response);
 
-        // Decode the JSON response
-        $decodedResponse = json_decode($response->body(), true);
-        Log::info($decodedResponse);
-
-        if (is_array($decodedResponse) && isset($decodedResponse['data'])) {
-            foreach ($decodedResponse['data'] as $line) {
-                if ($line === "[DONE]") {
-                    $done = true;
-                    break;
-                }
-
-                // Parse the streaming token data here
-                $partialResult = json_decode($line, true);
-                $token = $partialResult["choices"][0]["text"];
-                // You can do something with $token here (e.g., save to a database, return as a response, etc.)
-
-                // Broadcast to the Chat channel
-                broadcast(new ChatTokenReceived($token));
+        foreach ($streamResponse->getIterator() as $tokenData) {
+            // Check for final message
+            if (isset($tokenData['data']) && $tokenData['data'] === '[DONE]') {
+                // Final message handling here
+                break;
             }
-        } else {
-            Log::info("NO GOOD DATA?");
-        }
 
-        if ($done) {
-            // Final message handling here
-            Log::info("Done?");
+            // Process the streaming token data here
+            $token = $tokenData["choices"][0]["text"];
+            // You can do something with $token here (e.g., save to a database, return as a response, etc.)
+
+            // Broadcast to the Chat channel
+            broadcast(new ChatTokenReceived($token));
         }
     }
 }
