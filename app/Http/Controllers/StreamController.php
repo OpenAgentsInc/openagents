@@ -28,6 +28,31 @@ class StreamController extends Controller
         return $line;
     }
 
+    public function readStream($stream)
+    {
+        while (!$stream->eof()) {
+            $line = $this->readLine($stream);
+
+            if (!str_starts_with($line, 'data:')) {
+                continue;
+            }
+
+            $data = trim(substr($line, strlen('data:')));
+
+            if ($data === '[DONE]') {
+                break;
+            }
+
+            $response = json_decode($data, true, JSON_THROW_ON_ERROR);
+
+            if (isset($response['error'])) {
+                throw new \Exception($response['error']);
+            }
+
+            yield $response;
+        }
+    }
+
     public function streamTokens()
     {
         try {
@@ -58,28 +83,39 @@ class StreamController extends Controller
 
             // Reading the streamed response
             $stream = $response->getBody();
-            while (!$stream->eof()) {
-                $line = $this->readLine($stream);
+            $content = '';
 
-                if (!str_starts_with($line, 'data:')) {
-                    continue;
-                }
-
-                $data = trim(substr($line, strlen('data:')));
-
-                if ($data === '[DONE]') {
-                    break;
-                }
-
-                $response = json_decode($data, true, JSON_THROW_ON_ERROR);
-                dump($response);
-
-                if (isset($response['error'])) {
-                    throw new \Exception($response['error']);
-                }
-
-                yield $response;
+            foreach ($this->readStream($stream) as $responseLine) {
+                $content .= $responseLine;
             }
+
+            dump($content);
+            dump($content);
+            broadcast(new ChatTokenReceived($content));
+            // $stream = $response->getBody();
+            // while (!$stream->eof()) {
+            //     $line = $this->readLine($stream);
+
+            //     if (!str_starts_with($line, 'data:')) {
+            //         continue;
+            //     }
+
+            //     $data = trim(substr($line, strlen('data:')));
+
+            //     if ($data === '[DONE]') {
+            //         break;
+            //     }
+
+            //     $response = json_decode($data, true, JSON_THROW_ON_ERROR);
+            //     dump($response);
+            //     broadcast(new ChatTokenReceived($chunk));
+
+            //     if (isset($response['error'])) {
+            //         throw new \Exception($response['error']);
+            //     }
+
+            //     yield $response;
+            // }
             // while (!$stream->eof()) {
             //     echo $stream->read(1024);
             // }
