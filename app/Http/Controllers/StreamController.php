@@ -38,7 +38,40 @@ class StreamController extends Controller
         ])
         ->post($apiUrl, $payload);
 
-        dump("Did request");
+
+
+
+        if ($response->successful()) {
+            dump("Response was successful");
+            // Open a stream to read the response
+            $stream = $response->toStream();
+
+            // Read the stream content chunk by chunk
+            while (!$stream->eof()) {
+                $chunk = $stream->read(1024); // Read 1 KB at a time (adjust as needed)
+                // Process or output the chunk as needed
+                dump($chunk);
+                broadcast(new ChatTokenReceived($chunk));
+                echo $chunk;
+            }
+
+            // Close the stream when done
+            $stream->close();
+        } else {
+            dump("Response was not successful");
+            // Handle the HTTP error response
+            $statusCode = $response->status();
+            dump($statusCode);
+            $errorMessage = $response->body();
+            dump($errorMessage);
+            // Handle the error as needed
+            // You can log, throw exceptions, or perform other error handling here
+        }
+
+
+
+
+        // dump("Did request");
 
         // $response->throw();
 
@@ -50,30 +83,30 @@ class StreamController extends Controller
         //     $response->headers()
         // );
 
-        dump('did psr thing');
-        $body = $response->toPsrResponse()->getBody();
-        dump('got body');
-        dump($body);
+        // dump('did psr thing');
+        // $body = $response->toPsrResponse()->getBody();
+        // dump('got body');
+        // dump($body);
 
-        $streamResponse = new StreamResponse($body);
-        dump('got psr response');
-        foreach ($streamResponse->getIterator() as $tokenData) {
+        // $streamResponse = new StreamResponse($body);
+        // dump('got psr response');
+        // foreach ($streamResponse->getIterator() as $tokenData) {
 
-            dump('in a loop');
-            dump($tokenData);
+        //     dump('in a loop');
+        //     dump($tokenData);
 
-            // Check for final message
-            if (isset($tokenData['data']) && $tokenData['data'] === '[DONE]') {
-                // Final message handling here
-                break;
-            }
+        //     // Check for final message
+        //     if (isset($tokenData['data']) && $tokenData['data'] === '[DONE]') {
+        //         // Final message handling here
+        //         break;
+        //     }
 
-            // Process the streaming token data here
-            $token = $tokenData["choices"][0]["text"];
-            // You can do something with $token here (e.g., save to a database, return as a response, etc.)
+        //     // Process the streaming token data here
+        //     $token = $tokenData["choices"][0]["text"];
+        //     // You can do something with $token here (e.g., save to a database, return as a response, etc.)
 
-            // Broadcast to the Chat channel
-            broadcast(new ChatTokenReceived($token));
-        }
+        //     // Broadcast to the Chat channel
+        //     broadcast(new ChatTokenReceived($token));
+        // }
     }
 }
