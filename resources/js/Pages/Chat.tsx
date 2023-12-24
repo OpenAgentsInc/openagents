@@ -7,9 +7,9 @@ import { useState } from "react"
 
 function Chat() {
 
-  const [systemMessages] = useState(["Welcome to the chat!"])
-  const [messages, setMessages] = useState(systemMessages)
-  // const [messages, setMessages] = useState([{ role: "assistant", content: "Welcome to the chat!" }])
+  // const [systemMessages] = useState(["Welcome to the chat!"])
+  // const [messages, setMessages] = useState(systemMessages)
+  const [messages, setMessages] = useState([{ role: "assistant", content: "Welcome to the chat!" }])
 
 
   return (
@@ -34,11 +34,11 @@ function Chat() {
 
                           <div className="break-anywhere relative py-1">
                             <div className="flex items-center">
-                              <MessagesList messages={systemMessages} />
+                              <MessagesList messages={messages} />
                             </div>
                           </div>
 
-                          {messages.map((message, index) => (
+                          {/* {messages.map((message, index) => (
                             <div key={index} className="flex justify-end break-anywhere relative py-1">
                               <div className="max-w-[83%] space-y-1 whitespace-pre-wrap">
                                 <div className="rounded-[10px] bg-neutral-200 p-3 ml-auto w-fit max-w-full">
@@ -46,7 +46,7 @@ function Chat() {
                                 </div>
                               </div>
                             </div>
-                          ))}
+                          ))} */}
 
                         </div>
                       </div>
