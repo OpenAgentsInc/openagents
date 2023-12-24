@@ -30,7 +30,7 @@ class StreamController extends Controller
             $client = new Client();
 
             $url = 'https://api.together.xyz/inference';
-            $model = 'togethercomputer/togethercomputer/RedPajama-INCITE-7B-Chat';
+            $model = 'togethercomputer/RedPajama-INCITE-7B-Chat';
 
             $data = [
                 "model" => $model,
