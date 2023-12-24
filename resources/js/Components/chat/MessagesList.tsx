@@ -19,7 +19,6 @@ export const MessagesList = ({ messages }) => {
 
 const Trail: React.FC<{ open: boolean, children: any }> = ({ open, children }) => {
   const items = React.Children.toArray(children)
-  console.log(items)
   const trail = useTrail(items.length, {
     config: { mass: 5, tension: 2000, friction: 200 },
     opacity: open ? 1 : 0,
@@ -29,6 +28,7 @@ const Trail: React.FC<{ open: boolean, children: any }> = ({ open, children }) =
   return (
     <div>
       {trail.map((style, index) => {
+        // @ts-ignore
         const role = items[index].props.message.role
         if (role === "user") {
           return (
