@@ -16,6 +16,7 @@
         "laravel/socialite": "^5.11",
         "laravel/telescope": "^4.17",
         "laravel/tinker": "^2.8",
+        "nyholm/psr7": "^1.8",
         "openai-php/client": "^0.7.10",
         "pusher/pusher-php-server": "^7.2",
         "qruto/laravel-wave": "^0.8.1",

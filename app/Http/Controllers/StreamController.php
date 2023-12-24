@@ -6,6 +6,7 @@ use App\Http\StreamResponse;
 use App\Events\ChatTokenReceived;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Nyholm\Psr7\Factory\Psr17Factory;
 
 class StreamController extends Controller
 {
@@ -33,8 +34,15 @@ class StreamController extends Controller
 
         // $response->throw();
 
-        $streamResponse = new StreamResponse($response);
+        // Convert Laravel HTTP client response to PSR-7 response
+        $psr17Factory = new Psr17Factory();
+        $psrResponse = $psr17Factory->createResponse(
+            $response->status(),
+            $response->body(),
+            $response->headers()
+        );
 
+        $streamResponse = new StreamResponse($psrResponse);
         foreach ($streamResponse->getIterator() as $tokenData) {
             // Check for final message
             if (isset($tokenData['data']) && $tokenData['data'] === '[DONE]') {
