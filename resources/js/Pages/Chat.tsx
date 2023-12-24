@@ -1,8 +1,11 @@
 
 import { PromptForm } from "@/Components/chat/PromptForm"
+import { useState } from "react"
 // import ChatLayout from "@/Layouts/ChatLayout"
 
 function Chat() {
+  const [systemMessages, setSystemMessages] = useState(["Welcome to the chat!"])
+  const [messages, setMessages] = useState(["Who the hell are you?"])
   return (
     <div className="h-dscreen w-full md:h-screen">
       <div className="flex h-dscreen bg-neutral-50">
@@ -23,45 +26,27 @@ function Chat() {
                       <div className="relative space-y-6">
                         <div className="space-y-6">
 
-                          <div className="flex justify-end break-anywhere relative py-1">
-                            <div className="max-w-[83%] space-y-1 whitespace-pre-wrap">
-                              <div className="rounded-[10px] bg-neutral-200 p-3 ml-auto w-fit max-w-full">
-                                Who the hell are you?
-                              </div>
-                            </div>
-                          </div>
-
                           <div className="break-anywhere relative py-1">
                             <div className="flex items-center">
                               <div className="w-full">
-                                {[...Array(2)].map((_, i) => (
+                                {systemMessages.map((message, i) => (
                                   <div key={i} className="whitespace-pre-wrap mb-4 last:mb-0">
-                                    <span>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span>
+                                    <span>{message}</span>
                                   </div>
                                 ))}
                               </div>
                             </div>
                           </div>
 
-                          <div className="flex justify-end break-anywhere relative py-1">
-                            <div className="max-w-[83%] space-y-1 whitespace-pre-wrap">
-                              <div className="rounded-[10px] bg-neutral-200 p-3 ml-auto w-fit max-w-full">
-                                What is that?
+                          {messages.map((message, index) => (
+                            <div key={index} className="flex justify-end break-anywhere relative py-1">
+                              <div className="max-w-[83%] space-y-1 whitespace-pre-wrap">
+                                <div className="rounded-[10px] bg-neutral-200 p-3 ml-auto w-fit max-w-full">
+                                  {message}
+                                </div>
                               </div>
                             </div>
-                          </div>
-
-                          <div className="break-anywhere relative py-1">
-                            <div className="flex items-center">
-                              <div className="w-full">
-                                {[...Array(2)].map((_, i) => (
-                                  <div key={i} className="whitespace-pre-wrap mb-4 last:mb-0">
-                                    <span>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
+                          ))}
 
                         </div>
                       </div>
@@ -71,7 +56,7 @@ function Chat() {
               </div>
             </div>
             <div className="max-h-[40%] px-5 sm:px-0 z-15 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
-              <PromptForm />
+              <PromptForm messages={messages} setMessages={setMessages} />
             </div>
             <div className="px-5 py-2 md:py-5 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]"></div>
           </div>
