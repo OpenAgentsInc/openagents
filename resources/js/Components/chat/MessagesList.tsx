@@ -22,8 +22,8 @@ const Trail: React.FC<{ open: boolean, children: any }> = ({ open, children }) =
   const trail = useTrail(items.length, {
     config: { mass: 5, tension: 2000, friction: 200 },
     opacity: open ? 1 : 0,
-    x: open ? 0 : 20,
-    from: { opacity: 0, x: 20 }
+    y: open ? 0 : 20,
+    from: { opacity: 0, y: 20 }
   })
   return (
     <div>
