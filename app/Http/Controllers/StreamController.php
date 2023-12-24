@@ -30,14 +30,14 @@ class StreamController extends Controller
             $client = new Client();
 
             $url = 'https://api.together.xyz/inference';
-            $model = 'togethercomputer/RedPajama-INCITE-7B-Chat';
+            $model = 'togethercomputer/togethercomputer/RedPajama-INCITE-7B-Chat';
 
             $data = [
                 "model" => $model,
                 "prompt" => $input,
-                "max_tokens" => 256,
-                "stop" => ".",
-                "temperature" => 0.1,
+                "max_tokens" => 128,
+                "stop" => ["\n\n"],
+                "temperature" => 0.7,
                 "top_p" => 0.7,
                 "top_k" => 50,
                 "repetition_penalty" => 1,
