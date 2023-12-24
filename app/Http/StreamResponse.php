@@ -19,7 +19,8 @@ class StreamResponse
 
     public function getIterator(): Generator
     {
-        dump("in get iterator");
+        dump("in get iterator. eof?");
+        dump($this->body->eof());
 
         while (!$this->body->eof()) {
             dump("and im here");
