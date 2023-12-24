@@ -4,15 +4,32 @@ import { PromptForm } from "@/Components/chat/PromptForm"
 import { useEffect, useState } from "react"
 
 function Chat() {
-  const [messages, setMessages] = useState([{ role: "assistant", content: "Welcome to the chat!" }])
+  const [messages, setMessages] = useState([{ id: 0, role: "assistant", content: "Welcome to the chat!" }])
+
+  // const [messages, setMessages] = useState({});
 
   useEffect(() => {
     // @ts-ignore
     window.Echo.channel('Chat')
       .listen('ChatTokenReceived', (e) => {
-        console.log(e.token)
-      })
-  }, [])
+        setMessages(prevMessages => {
+          // Clone the previous messages object
+          const newMessages = { ...prevMessages };
+
+          // If this ID already exists, append the token; otherwise, create a new entry
+          if (newMessages[e.messageId]) {
+            newMessages[e.messageId].content += e.token;
+          } else {
+            newMessages[e.messageId] = { id: e.messageId, role: "assistant", content: e.token };
+          }
+
+          return newMessages;
+        });
+      });
+  }, []);
+
+  // Convert the messages object into an array for rendering
+  const messagesArray = Object.values(messages);
 
   return (
     <div className="h-dscreen w-full md:h-screen">
@@ -36,7 +53,7 @@ function Chat() {
 
                           <div className="break-anywhere relative py-1">
                             <div className="flex items-center">
-                              <MessagesList messages={messages} />
+                              <MessagesList messages={messagesArray} />
                             </div>
                           </div>
 
@@ -48,7 +65,7 @@ function Chat() {
               </div>
             </div>
             <div className="max-h-[40%] px-5 sm:px-0 z-15 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
-              <PromptForm messages={messages} setMessages={setMessages} />
+              <PromptForm messages={messagesArray} setMessages={setMessages} />
             </div>
             <div className="px-5 py-2 md:py-5 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]"></div>
           </div>
