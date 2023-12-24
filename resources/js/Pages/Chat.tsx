@@ -1,11 +1,17 @@
 
+import { MessagesList } from "@/Components/chat/MessagesList"
 import { PromptForm } from "@/Components/chat/PromptForm"
 import { useState } from "react"
+
 // import ChatLayout from "@/Layouts/ChatLayout"
 
 function Chat() {
+
   const [systemMessages] = useState(["Welcome to the chat!"])
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState(systemMessages)
+  // const [messages, setMessages] = useState([{ role: "assistant", content: "Welcome to the chat!" }])
+
+
   return (
     <div className="h-dscreen w-full md:h-screen">
       <div className="flex h-dscreen bg-neutral-50">
@@ -28,13 +34,7 @@ function Chat() {
 
                           <div className="break-anywhere relative py-1">
                             <div className="flex items-center">
-                              <div className="w-full">
-                                {systemMessages.map((message, i) => (
-                                  <div key={i} className="whitespace-pre-wrap mb-4 last:mb-0">
-                                    <span>{message}</span>
-                                  </div>
-                                ))}
-                              </div>
+                              <MessagesList messages={systemMessages} />
                             </div>
                           </div>
 
