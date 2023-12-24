@@ -15,7 +15,7 @@ function Chat() {
     // @ts-ignore
     window.Echo.channel('Chat')
       .listen('ChatTokenReceived', (e) => {
-        console.log(e)
+        console.log(e.token)
       })
   }, [])
 
