@@ -19,8 +19,9 @@ import Echo from 'laravel-echo';
 
 import { WaveConnector } from 'laravel-wave';
 
-// @ts-ignore
-window.Echo = new Echo({
-  broadcaster: WaveConnector,
-  // debug: true,
-});
+if (import.meta.env.VITE_ENV !== "local") {
+  // @ts-ignore
+  window.Echo = new Echo({
+    broadcaster: WaveConnector,
+  });
+}
