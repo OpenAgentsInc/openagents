@@ -4,8 +4,8 @@ import { useState } from "react"
 // import ChatLayout from "@/Layouts/ChatLayout"
 
 function Chat() {
-  const [systemMessages, setSystemMessages] = useState(["Welcome to the chat!"])
-  const [messages, setMessages] = useState(["Who the hell are you?"])
+  const [systemMessages] = useState(["Welcome to the chat!"])
+  const [messages, setMessages] = useState([])
   return (
     <div className="h-dscreen w-full md:h-screen">
       <div className="flex h-dscreen bg-neutral-50">
