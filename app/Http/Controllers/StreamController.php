@@ -38,20 +38,15 @@ class StreamController extends Controller
                 "messages" => [
                     [
                         "role" => "system",
-                        "content" => "Hello, I'm a chatbot that can help you find files. What would you like to search for?"
+                        "content" => "You are a helpful assistant."
                     ],
                     [
                         "role" => "user",
-                        "content" => "I'm looking for a file about the new product launch."
+                        "content" => $input
                     ]
                 ],
-                // "prompt" => $input,
                 "max_tokens" => 128,
-                // "stop" => ["\n\n"],
                 "temperature" => 0.7,
-                // "top_p" => 0.7,
-                // "top_k" => 50,
-                // "repetition_penalty" => 1,
                 "stream_tokens" => true
             ];
 
