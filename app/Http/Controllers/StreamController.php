@@ -13,13 +13,13 @@ use Illuminate\Support\Facades\Http;
 // use Illuminate\Support\Facades\Log;
 // use Nyholm\Psr7\Factory\Psr17Factory;
 
-$client = new Client();
-
 class StreamController extends Controller
 {
     public function streamTokens()
     {
         try {
+            $client = new Client();
+
             $url = 'https://api.together.xyz/inference';
             $model = 'togethercomputer/RedPajama-INCITE-7B-Instruct';
 
