@@ -58,7 +58,7 @@ function DraggableList({ items }: { items: string[] }) {
 
 export default function Nodes() {
   return (
-    <div className="flex fill center">
+    <div className="flex flex-col justify-center items-center h-screen">
       <DraggableList items={'Lorem ipsum dolor sit'.split(' ')} />
     </div>
   )
