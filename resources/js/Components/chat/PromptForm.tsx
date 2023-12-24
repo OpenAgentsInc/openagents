@@ -9,7 +9,7 @@ export const PromptForm = ({ messages, setMessages }) => {
   const isLoading = false
   const onSubmit = useCallback(async (input: string) => {
     axios.post('/stream', { input })
-    setMessages([...messages, { role: "user", content: input }, { role: "assistant", content: "I disagree!" }])
+    setMessages([...messages, { role: "user", content: input }])
   }, [messages])
   return (
     <form
