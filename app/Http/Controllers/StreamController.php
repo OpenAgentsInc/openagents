@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use App\Events\ChatTokenReceived;
 
 class StreamController extends Controller
@@ -36,6 +37,7 @@ class StreamController extends Controller
 
         // Decode the JSON response
         $decodedResponse = json_decode($response->body(), true);
+        Log::info($decodedResponse);
 
         if (is_array($decodedResponse) && isset($decodedResponse['data'])) {
             foreach ($decodedResponse['data'] as $line) {
@@ -52,10 +54,13 @@ class StreamController extends Controller
                 // Broadcast to the Chat channel
                 broadcast(new ChatTokenReceived($token));
             }
+        } else {
+            Log::info("NO GOOD DATA?");
         }
 
         if ($done) {
             // Final message handling here
+            Log::info("Done?");
         }
     }
 }
