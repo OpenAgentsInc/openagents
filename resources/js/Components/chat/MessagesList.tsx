@@ -5,7 +5,7 @@ export const MessagesList = ({ messages }) => {
   return (
     <Trail open={true}>
       {messages.map((message, i) => (
-        <div key={i} className="whitespace-pre-wrap mb-4 last:mb-0">
+        <div key={i} >
           <span>{message.content}</span>
         </div>
       ))}
@@ -24,7 +24,7 @@ const Trail: React.FC<{ open: boolean, children: any }> = ({ open, children }) =
   return (
     <div>
       {trail.map((style, index) => (
-        <a.div key={index} style={style}>
+        <a.div key={index} style={style} className="whitespace-pre-wrap mb-8 last:mb-0">
           <a.div>{items[index]}</a.div>
         </a.div>
       ))}
