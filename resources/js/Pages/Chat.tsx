@@ -4,7 +4,7 @@ import { PromptForm } from "@/Components/chat/PromptForm"
 import { useEffect, useState } from "react"
 
 function Chat() {
-  const [messages, setMessages] = useState([{ id: 0, role: "assistant", content: "Welcome to the chat!" }])
+  const [messages, setMessages] = useState([{ id: 0, role: "assistant", content: [{ token: "Welcome to the chat!", tokenId: 0 }] }]);
 
   // const [messages, setMessages] = useState({});
 
@@ -16,20 +16,46 @@ function Chat() {
           // Clone the previous messages object
           const newMessages = { ...prevMessages };
 
-          // If this ID already exists, append the token; otherwise, create a new entry
-          if (newMessages[e.messageId]) {
-            newMessages[e.messageId].content += e.token;
-          } else {
-            newMessages[e.messageId] = { id: e.messageId, role: "assistant", content: e.token };
+          // Find the message by ID or create a new one if it doesn't exist
+          let message = newMessages[e.messageId];
+          if (!message) {
+            message = { id: e.messageId, role: "assistant", content: [] };
+            newMessages[e.messageId] = message;
           }
 
+          // Append the token to the message's content array
+          message.content.push({ token: e.token, tokenId: e.tokenId });
+
           return newMessages;
+          // // Clone the previous messages object
+          // const newMessages = { ...prevMessages };
+
+          // // If this ID already exists, append the token; otherwise, create a new entry
+          // if (newMessages[e.messageId]) {
+          //   newMessages[e.messageId].content += e.token;
+          // } else {
+          //   newMessages[e.messageId] = { id: e.messageId, role: "assistant", content: e.token };
+          // }
+
+          // return newMessages;
         });
       });
   }, []);
 
   // Convert the messages object into an array for rendering
-  const messagesArray = Object.values(messages);
+  // const messagesArray = Object.values(messages);
+  // const messagesArray = Object.values(messages).sort((a, b) => a.id - b.id);
+  // Convert the messages object into an array and sort by message ID and tokenId for rendering
+  const messagesArray = Object.values(messages).sort((a, b) => {
+    const idComparison = a.id - b.id;
+    if (idComparison !== 0) {
+      return idComparison;
+    }
+    // Extract the tokenId from the content and compare
+    const tokenIdA = a.content[0].tokenId;
+    const tokenIdB = b.content[0].tokenId;
+    return tokenIdA - tokenIdB;
+  });
 
   return (
     <div className="h-dscreen w-full md:h-screen">

@@ -69,14 +69,12 @@ class StreamController extends Controller
             ]);
 
             $content = "";
+            $tokenId = 0;
 
             foreach ($this->readStream($stream) as $responseLine) {
-                // $content .= $responseLine;
-                // dump($responseLine);
                 $token = $responseLine["choices"][0]["text"];
                 $content .= $token;
-                // dump($token);
-                broadcast(new ChatTokenReceived($token, $message->id));
+                broadcast(new ChatTokenReceived($token, $message->id, $tokenId++));
             }
 
             $message->update([

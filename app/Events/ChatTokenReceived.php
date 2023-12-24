@@ -18,16 +18,18 @@ class ChatTokenReceived implements ShouldBroadcast
      */
     public $tokenData;
     public $messageId;
+    public $tokenId;
 
     /**
      * Create a new event instance.
      *
      * @param array $tokenData The token data to be broadcasted
      */
-    public function __construct(string $tokenData, int $messageId)
+    public function __construct(string $tokenData, int $messageId, int $tokenId)
     {
         $this->tokenData = $tokenData;
         $this->messageId = $messageId;
+        $this->tokenId = $tokenId;
     }
 
     /**
@@ -51,6 +53,7 @@ class ChatTokenReceived implements ShouldBroadcast
     {
         return [
             'token' => $this->tokenData,
+            'tokenId' => $this->tokenId,
             'messageId' => $this->messageId,
         ];
     }
