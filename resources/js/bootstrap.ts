@@ -19,13 +19,8 @@ import Echo from 'laravel-echo';
 
 import { WaveConnector } from 'laravel-wave';
 
-// console.log(WaveConnector)
-
 // @ts-ignore
 window.Echo = new Echo({
   broadcaster: WaveConnector,
   debug: true,
 });
-// @ts-ignore
-// console.log(window.Echo)
-// console.log('im here')
