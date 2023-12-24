@@ -38,14 +38,14 @@ class StreamController extends Controller
                 "messages" => [
                     [
                         "role" => "system",
-                        "content" => "You are a helpful assistant."
+                        "content" => "You are a helpful assistant. Never mention OpenAI or any company other than OpenAgents. Be hilarious."
                     ],
                     [
                         "role" => "user",
                         "content" => $input
                     ]
                 ],
-                "max_tokens" => 128,
+                "max_tokens" => 256,
                 "temperature" => 0.7,
                 "stream_tokens" => true
             ];
