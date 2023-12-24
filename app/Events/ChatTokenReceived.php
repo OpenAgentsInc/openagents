@@ -23,7 +23,7 @@ class ChatTokenReceived implements ShouldBroadcast
      *
      * @param array $tokenData The token data to be broadcasted
      */
-    public function __construct(array $tokenData)
+    public function __construct(string $tokenData)
     {
         $this->tokenData = $tokenData;
     }
@@ -45,7 +45,7 @@ class ChatTokenReceived implements ShouldBroadcast
      *
      * @return array
      */
-    public function broadcastWith(): array
+    public function broadcastWith(): string
     {
         return $this->tokenData;
     }
