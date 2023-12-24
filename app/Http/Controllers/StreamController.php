@@ -4,14 +4,56 @@ namespace App\Http\Controllers;
 
 use App\Http\StreamResponse;
 use App\Events\ChatTokenReceived;
-use Illuminate\Http\Request;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Psr7\Request;
+// use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+
 // use Illuminate\Support\Facades\Log;
-use Nyholm\Psr7\Factory\Psr17Factory;
+// use Nyholm\Psr7\Factory\Psr17Factory;
+
+$client = new Client();
 
 class StreamController extends Controller
 {
-    public function streamTokens(Request $request)
+    public function streamTokens()
+    {
+        try {
+            $url = 'https://api.together.xyz/inference';
+            $model = 'togethercomputer/RedPajama-INCITE-7B-Instruct';
+
+            $data = [
+                "model" => $model,
+                "prompt" => "Alan Turing was",
+                "max_tokens" => 128,
+                "stop" => ["\n\n"],
+                "temperature" => 0.7,
+                "top_p" => 0.7,
+                "top_k" => 50,
+                "repetition_penalty" => 1,
+                "stream_tokens" => true
+            ];
+
+            $response = $client->post($url, [
+                'json' => $data,
+                'stream' => true, // Enable streaming
+            ]);
+
+            // Reading the streamed response
+            $stream = $response->getBody();
+            while (!$stream->eof()) {
+                echo $stream->read(1024);
+            }
+        } catch (RequestException $e) {
+            // Handle exception or errors here
+            echo $e->getMessage();
+        }
+
+    }
+
+
+    public function streamTokens2(Request $request)
     {
         $apiUrl = 'https://api.together.xyz/inference';
         $model = 'togethercomputer/RedPajama-INCITE-7B-Instruct';
