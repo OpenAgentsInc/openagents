@@ -63,7 +63,7 @@ class StreamController extends Controller
                 $token = $responseLine["choices"][0]["text"];
                 $content .= $token;
                 // dump($token);
-                broadcast(new ChatTokenReceived($token, $messageId));
+                broadcast(new ChatTokenReceived($token, $message->id));
             }
 
             $message->update([
