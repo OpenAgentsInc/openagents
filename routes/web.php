@@ -25,6 +25,7 @@ Route::get('/login', [AuthController::class, 'login'])->name('login');
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
 
+Route::post('/stream', [StreamController::class, 'chat']);
 Route::get('/stream', [StreamController::class, 'streamTokens']);
 
 Route::get('/chat', function () {
