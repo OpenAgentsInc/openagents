@@ -28,17 +28,7 @@ export const SidebarLayout = ({ children }) => {
           </a>
         </div>
         <div className="relative grow overflow-x-auto flex flex-col">
-          <div className="relative flex flex-col overflow-hidden sm:overflow-x-visible h-full grow">
-            <div className="relative grow overflow-y-hidden">
-              <div className="h-full">
-                <div className="scrollbar-gutter-both-edges relative h-full overflow-y-auto overflow-x-hidden">
-                  <div className="t-body-chat relative h-full space-y-6 px-5 text-primary-700 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
-                    {children}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          {children}
         </div>
       </div>
     </div>
