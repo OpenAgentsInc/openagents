@@ -50,6 +50,7 @@ export function DraggableList({ items }: { items: any[] }) {
             scale,
           }}
           children={items[i]}
+          className="select-none"
         />
       ))}
     </div>
