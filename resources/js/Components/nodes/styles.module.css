@@ -6,13 +6,8 @@
   position: absolute;
   width: 320px;
   height: auto;
-  transform-origin: 50% 50% 0px;
   border-radius: 15px;
   color: white;
-  line-height: 40px;
-  font-size: 14.5px;
-  background: lightblue;
-  letter-spacing: 2px;
   touch-action: none;
 }
 

@@ -11,7 +11,7 @@ const fn =
     (index: number) =>
       active && index === originalIndex
         ? {
-          y: curIndex * 250 + y,
+          y: curIndex * 210 + y,
           scale: 1.1,
           zIndex: 1,
           shadow: 15,
@@ -19,7 +19,7 @@ const fn =
           config: (key: string) => (key === 'y' ? config.stiff : config.default),
         }
         : {
-          y: order.indexOf(index) * 250,
+          y: order.indexOf(index) * 210,
           scale: 1,
           zIndex: 0,
           shadow: 1,
