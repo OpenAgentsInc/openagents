@@ -1,7 +1,8 @@
 import { DraggableList } from "@/Components/nodes/DraggableList";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/Components/ui/card";
+import { SidebarLayout } from "@/Layouts/SidebarLayout";
 
-export default function Nodes() {
+function Nodes() {
   const cards = [{
     title: 'Agent Details',
     description: 'Metadata',
@@ -35,3 +36,7 @@ export default function Nodes() {
     </div>
   )
 }
+
+Nodes.layout = (page) => <SidebarLayout children={page} />
+
+export default Nodes
