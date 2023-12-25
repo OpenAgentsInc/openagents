@@ -7,6 +7,7 @@ function Chat() {
   const [messages, setMessages]: any = useState([{ id: 0, role: "assistant", content: "Welcome to the chat!", tokens: [] }])
 
   useEffect(() => {
+    if (import.meta.env.VITE_ENV === "local") return
     // @ts-ignore
     window.Echo.channel('Chat')
       .listen('ChatTokenReceived', (e) => {
