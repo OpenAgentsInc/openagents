@@ -6,10 +6,10 @@ export default function Nodes() {
     <Card>
       <CardHeader>
         <CardTitle>Card Title</CardTitle>
+        <CardDescription>
+          Lorem ipsum dolor sit
+        </CardDescription>
       </CardHeader>
-      <CardDescription>
-        Lorem ipsum dolor sit
-      </CardDescription>
       <CardContent>
         Lorem ipsum dolor sit amet consectetur adipisicing elit. Quisquam, voluptatum.
       </CardContent>
@@ -17,10 +17,10 @@ export default function Nodes() {
     <Card>
       <CardHeader>
         <CardTitle>Card Title</CardTitle>
+        <CardDescription>
+          Lorem ipsum dolor sit
+        </CardDescription>
       </CardHeader>
-      <CardDescription>
-        Lorem ipsum dolor sit
-      </CardDescription>
       <CardContent>
         Lorem ipsum dolor sit amet consectetur adipisicing elit. Quisquam, voluptatum.
       </CardContent>
