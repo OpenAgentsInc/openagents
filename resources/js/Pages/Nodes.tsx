@@ -37,6 +37,6 @@ function Nodes() {
   )
 }
 
-Nodes.layout = (page) => <SidebarLayout children={page} />
+Nodes.layout = (page) => <SidebarLayout children={page} grid={true} />
 
 export default Nodes

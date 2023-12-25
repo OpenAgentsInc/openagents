@@ -1,9 +1,8 @@
 
 import { IconMessage } from "@/Components/ui/icons";
-import { HomeIcon } from "@heroicons/react/24/outline";
 import { Link } from "@inertiajs/react";
 
-export const SidebarLayout = ({ children }) => {
+export const SidebarLayout = ({ children, grid = false }) => {
   return (
     <div className="h-dscreen w-full md:h-screen">
       <div className="flex h-dscreen bg-neutral-50">
@@ -23,7 +22,7 @@ export const SidebarLayout = ({ children }) => {
             <div className="t-label mt-2">Profile</div>
           </a>
         </div>
-        <div className="relative grow overflow-x-auto flex flex-col">
+        <div className={`relative grow overflow-x-auto flex flex-col ${grid ? 'grid-background' : ''}`}>
           {children}
         </div>
       </div>
