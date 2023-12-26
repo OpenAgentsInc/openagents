@@ -3,9 +3,26 @@
 use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Step;
+use App\Models\StepExecuted;
 use App\Models\Task;
+use App\Models\TaskExecuted;
 use App\Models\Thought;
 use App\Models\User;
+use Database\Seeders\ConciergeSeeder;
+
+it('can run', function () {
+    $this->seed(ConciergeSeeder::class);
+    // Assert 0 TaskExecuted and StepExecuted
+    expect(TaskExecuted::count())->toBe(0);
+    expect(StepExecuted::count())->toBe(0);
+
+    $agent = Agent::first();
+    $agent->run("Does this work?");
+    // There should be one TaskExecuted and four StepExecuteds
+
+    expect(TaskExecuted::count())->toBe(1);
+    expect(StepExecuted::count())->toBe($agent->steps->count());
+});
 
 it('belongs to a user', function () {
     $user = User::factory()->create();

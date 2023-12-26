@@ -14,7 +14,7 @@ class AgentController extends Controller
         $input = request('input');
 
         $agent = Agent::findOrFail($id)->load('tasks.steps');
-        // $agentResponse = $agent->run();
+        $agentResponse = $agent->run($input);
 
         // Return standard JSON success response
         return response()->json([

@@ -12,6 +12,22 @@ class Agent extends Model
 
     protected $guarded = [];
 
+    public function run($input)
+    {
+        // Get the first task
+        $task = $this->tasks()->first()->load('steps');
+
+        // Loop through all steps, passing the output of each to the next
+        foreach ($task->steps as $step) {
+            if ($step->order == 1) {
+                $step->run($input);
+            } else {
+                $step->run($prev_step->output);
+            }
+            $prev_step = $step;
+        }
+    }
+
     public function conversations()
     {
         return $this->hasMany(Conversation::class);
