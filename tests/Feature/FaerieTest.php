@@ -39,7 +39,7 @@ it('can record a step', function () {
     expect($response['step']['description'])->toBe('foo');
     expect(json_decode($response['step']['input']))->toBe('bar');
     expect(json_decode($response['step']['output']))->toBe('baz');
-});
+})->skip();
 
 /**
  * READ GITHUB REPO

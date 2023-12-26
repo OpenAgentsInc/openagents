@@ -80,3 +80,9 @@ it('requires agent_id on create', function () {
       'agent_id' => null
     ]);
 });
+
+it('has many steps', function () {
+    $task = Task::factory()->create();
+    Step::factory(2)->create(['task_id' => $task->id]);
+    expect($task->steps)->toHaveCount(2);
+});
