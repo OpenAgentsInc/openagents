@@ -12,16 +12,10 @@ class Step extends Model
 
     protected $guarded = [];
 
-    // // Every time a Step is created, broadcast to its run channel
-    // protected static function booted()
-    // {
-    //     static::created(function ($step) {
-    //         \Log::info('StepCreated...');
-    //         StepCreated::dispatch($step);
-    //         // broadcast(new StepCreated($step));
-    //     });
-    // }
-
+    public function run()
+    {
+        $category = $this->category;
+    }
     public function agent()
     {
         return $this->belongsTo(Agent::class);

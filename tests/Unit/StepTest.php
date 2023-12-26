@@ -5,6 +5,11 @@ use App\Models\Run;
 use App\Models\Step;
 use App\Models\Task;
 
+it('can run', function () {
+    $step = Step::factory()->create(['category' => 'inference']);
+    $step->run();
+});
+
 it('has a category', function () {
     $step = Step::factory()->create(['category' => 'inference']);
     expect($step->category)->toBe("inference");

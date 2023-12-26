@@ -14,14 +14,13 @@ class Agent extends Model
 
     public function run($input)
     {
-
-
         // Get the first task
         $task = $this->tasks()->first()->load('steps');
         // Create from it a TaskExecuted
         $task_executed = TaskExecuted::create([
             'task_id' => $task->id,
-            'user_id' => ,
+            // Current user ID if authed or null
+            'user_id' => auth()->id(),
             'status' => 'pending'
         ]);
 
