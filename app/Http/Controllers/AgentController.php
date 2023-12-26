@@ -9,7 +9,7 @@ use Inertia\Response;
 
 class AgentController extends Controller
 {
-    public function show($id): Response
+    public function show($id)
     {
         try {
             $agent = Agent::findOrFail($id)->load('tasks.steps');
@@ -17,8 +17,8 @@ class AgentController extends Controller
                 'agent' => $agent,
             ]);
         } catch (\Exception $e) {
-            // redirect to homepage
-            return redirect('/');
+            // redirect to homepage, inertia style
+            return \to_route('chat');
         }
     }
 

@@ -33,7 +33,7 @@ Route::get('/nodes', function () {
 
 Route::get('/chat', function () {
     return Inertia::render('Chat');
-});
+})->name('chat');
 
 Route::post('/stream', [StreamController::class, 'chat']);
 
