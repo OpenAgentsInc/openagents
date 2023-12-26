@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Agent;
 use App\Models\Step;
 use App\Models\Task;
 use App\Models\User;
@@ -35,13 +36,51 @@ class ConciergeSeeder extends Seeder
 
         // Create the steps
         $step1 = Step::create([
+            'agent_id' => $agent->id,
+            'category' => 'validation',
             'description' => 'Ensure input is a valid chat message',
             'entry_type' => 'input',
-            'error_type' => 'Could not validate input',
+            'error_message' => 'Could not validate input',
             'name' => 'Validate Input',
             'order' => 1,
             'success_action' => 'next_node',
-            'task_id' => $task->id
+            'task_id' => $task->id,
+        ]);
+
+        $step2 = Step::create([
+            'agent_id' => $agent->id,
+            'category' => 'embedding',
+            'description' => 'Convert input to vector embedding',
+            'entry_type' => 'node',
+            'error_message' => 'Could not generate embedding',
+            'name' => 'Embed Input',
+            'order' => 2,
+            'success_action' => 'next_node',
+            'task_id' => $task->id,
+        ]);
+
+        $step3 = Step::create([
+            'agent_id' => $agent->id,
+            'category' => 'similarity_search',
+            'description' => 'Compare input to knowledge base',
+            'entry_type' => 'node',
+            'error_message' => 'Could not run similarity search',
+            'name' => 'Similarity Search',
+            'order' => 3,
+            'success_action' => 'next_node',
+            'task_id' => $task->id,
+        ]);
+
+        $step4 = Step::create([
+            'agent_id' => $agent->id,
+            'category' => 'inference',
+            'description' => 'Call to LLM to generate response',
+            'entry_type' => 'node',
+            'error_message' => 'Could not call to LLM',
+            'name' => 'Call LLM',
+            'order' => 4,
+            'success_action' => 'json_response',
+            'task_id' => $task->id,
         ]);
     }
 }
