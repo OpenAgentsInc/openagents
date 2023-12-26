@@ -58,7 +58,7 @@ function AgentNodes() {
                 style={{ cursor: 'pointer' }}
               >
                 <CardHeader>
-                  <CardTitle>Step {index + 1}</CardTitle>
+                  <CardTitle>Step {index + 1}: {step.name}</CardTitle>
                   <CardDescription>{step.description}</CardDescription>
                 </CardHeader>
                 {/* <CardContent>
