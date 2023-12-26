@@ -9,7 +9,15 @@ use Inertia\Response;
 
 class AgentController extends Controller
 {
-    public function run() {
+    public function show(Agent $agent): Response
+    {
+        return Inertia::render('AgentNodes', [
+            'agent' => $agent,
+        ]);
+    }
+
+    public function run()
+    {
         $user = auth()->user();
         if ($user->github_nickname !== 'AtlantisPleb') {
             return response()->json([
@@ -28,21 +36,22 @@ class AgentController extends Controller
         }
     }
 
-  public function store() {
-    request()->validate([
-      'name' => 'required',
-    ]);
+    public function store()
+    {
+        request()->validate([
+          'name' => 'required',
+        ]);
 
-    $name = request('name');
+        $name = request('name');
 
-    // create agent in database
-    $agent = Agent::create([
-      'user_id' => auth()->user()->id,
-      'name' => $name,
-    ]);
+        // create agent in database
+        $agent = Agent::create([
+          'user_id' => auth()->user()->id,
+          'name' => $name,
+        ]);
 
-    return response()->json([
-      'name' => $name,
-    ], 201);
-  }
+        return response()->json([
+          'name' => $name,
+        ], 201);
+    }
 }
