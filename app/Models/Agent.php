@@ -14,8 +14,16 @@ class Agent extends Model
 
     public function run($input)
     {
+
+
         // Get the first task
         $task = $this->tasks()->first()->load('steps');
+        // Create from it a TaskExecuted
+        $task_executed = TaskExecuted::create([
+            'task_id' => $task->id,
+            'user_id' => ,
+            'status' => 'pending'
+        ]);
 
         // Loop through all steps, passing the output of each to the next
         foreach ($task->steps as $step) {
