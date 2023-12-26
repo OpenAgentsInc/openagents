@@ -19,11 +19,12 @@ class ConciergeSeeder extends Seeder
         // If there's a User, use that. If not, create a user via factory.
         $user = User::find(1);
         if (!$user) {
-            $user = User::factory()->create();
+            $user = User::factory()->create(['id' => 1]);
         }
 
         // Create Concierge agent
         $agent = Agent::create([
+            'id' => 1,
             'user_id' => $user->id,
             'name' => 'The Concierge',
         ]);
