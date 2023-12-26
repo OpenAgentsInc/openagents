@@ -26,11 +26,19 @@ class Agent extends Model
 
         // Loop through all steps, passing the output of each to the next
         foreach ($task->steps as $step) {
-            if ($step->order == 1) {
-                $step->run($input);
-            } else {
-                $step->run($prev_step->output);
+            if ($step->order !== 1) {
+                $input = $prev_step->output;
             }
+            // Create a new StepExecuted with this step and task_executed
+            $step_executed = StepExecuted::create([
+                'step_id' => $step->id,
+                'order' => $step->order,
+                'task_executed_id' => $task_executed->id,
+                'user_id' => auth()->id(),
+                'status' => 'pending',
+                'output' => $step->output
+            ]);
+            $step_executed->run($input);
             $prev_step = $step;
         }
     }
