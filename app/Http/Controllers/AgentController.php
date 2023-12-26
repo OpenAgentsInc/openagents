@@ -9,8 +9,9 @@ use Inertia\Response;
 
 class AgentController extends Controller
 {
-    public function show(Agent $agent): Response
+    public function show($id): Response
     {
+        $agent = Agent::findOrFail($id)->load('tasks.steps');
         return Inertia::render('AgentNodes', [
             'agent' => $agent,
         ]);
