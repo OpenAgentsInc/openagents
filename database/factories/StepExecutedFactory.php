@@ -20,6 +20,7 @@ class StepExecutedFactory extends Factory
     public function definition(): array
     {
         return [
+            'order' => 1,
             'status' => 'pending',
             'step_id' => Step::factory(),
             'task_executed_id' => TaskExecuted::factory(),

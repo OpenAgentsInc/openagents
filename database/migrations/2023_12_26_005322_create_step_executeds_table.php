@@ -19,6 +19,7 @@ return new class extends Migration {
             $table->foreignIdFor(TaskExecuted::class)->constrained()->cascadeOnDelete();
             $table->foreignIdFor(User::class)->constrained()->cascadeOnDelete();
             $table->string('status');
+            $table->integer('order');
             $table->json('input')->nullable();
             $table->json('output')->nullable();
             $table->json('params')->nullable();

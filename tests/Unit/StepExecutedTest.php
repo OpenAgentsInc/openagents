@@ -5,6 +5,11 @@ use App\Models\StepExecuted;
 use App\Models\TaskExecuted;
 use App\Models\User;
 
+it('has an order', function () {
+    $step_executed = StepExecuted::factory()->create(['order' => 1]);
+    expect($step_executed->order)->toBe(1);
+});
+
 it('has a status', function () {
     $step_executed = StepExecuted::factory()->create(['status' => 'pending']);
     expect($step_executed->status)->toBe('pending');
