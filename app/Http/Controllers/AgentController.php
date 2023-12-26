@@ -11,10 +11,15 @@ class AgentController extends Controller
 {
     public function show($id): Response
     {
-        $agent = Agent::findOrFail($id)->load('tasks.steps');
-        return Inertia::render('AgentNodes', [
-            'agent' => $agent,
-        ]);
+        try {
+            $agent = Agent::findOrFail($id)->load('tasks.steps');
+            return Inertia::render('AgentNodes', [
+                'agent' => $agent,
+            ]);
+        } catch (\Exception $e) {
+            // redirect to homepage
+            return redirect('/');
+        }
     }
 
     public function run()
