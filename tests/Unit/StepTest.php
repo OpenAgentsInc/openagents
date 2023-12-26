@@ -48,6 +48,11 @@ it('belongs to an agent', function () {
     expect($step->agent)->toBeInstanceOf(Agent::class);
 });
 
+it('belongs to a task', function () {
+    $step = Step::factory()->create();
+    expect($step->task)->toBeInstanceOf(Task::class);
+});
+
 // TODO: has optional polymorphic ref
 
 

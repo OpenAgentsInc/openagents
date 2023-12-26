@@ -3,7 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Agent;
-use App\Models\Run;
+use App\Models\Task;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -34,6 +34,7 @@ class StepFactory extends Factory
 
         return [
             'agent_id' => Agent::factory(),
+            'task_id' => Task::factory(),
             'name' => $this->faker->username(),
             'description' => $this->faker->sentence(),
             'error_message' => $this->faker->sentence(),
