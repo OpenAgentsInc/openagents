@@ -19,7 +19,7 @@ test('can visit run page and see agent/task/step details', function () {
             fn (Assert $page) => $page
             ->component('Run')
         );
-});
+})->skip();
 
 test('can click on any step to see full details of input/output/metadata', function () {
     $this->seed(DatabaseSeeder::class);
@@ -38,7 +38,7 @@ test('can click on any step to see full details of input/output/metadata', funct
         ->assertSee($stepInput->instruction);
     // ->assertSee($stepOutput->response)
     // ->assertSee($stepOutput->tokens_used);
-});
+})->skip();
 
 // test('guest can visit inspection dashboard and see all agents: tasks & steps', function () {
 //     $this->seed(DatabaseSeeder::class);

@@ -18,7 +18,6 @@ class Faerie
     public $repo;
 
     private $agent;
-    private $run;
     private $task;
 
     private $issue;
@@ -40,13 +39,13 @@ class Faerie
             'agent_id' => $this->agent->id,
             'description' => 'Analyze a PR and make a commit',
         ]);
-        $this->run = Run::create([
-            'agent_id' => $this->agent->id,
-            'task_id' => $this->task->id,
-            'description' => 'GitHubAgent analyzes a PR and makes a commit',
-            'status' => 'pending',
-            'amount' => 0
-        ]);
+        // $this->run = Run::create([
+        //     'agent_id' => $this->agent->id,
+        //     'task_id' => $this->task->id,
+        //     'description' => 'GitHubAgent analyzes a PR and makes a commit',
+        //     'status' => 'pending',
+        //     'amount' => 0
+        // ]);
     }
 
     public function log($wat)
