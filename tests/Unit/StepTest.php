@@ -59,21 +59,7 @@ it('belongs to a task', function () {
 
 
 
-// it('has a status', function () {
-//     $step = Step::factory()->create([
-//         'input' => null,
-//         'output' => null,
-//         'status' => 'pending'
-//     ]);
-//     expect($step->status)->toBe('pending');
 
-//     $step = Step::factory()->create([
-//         'input' => null,
-//         'output' => null,
-//         'status' => 'success'
-//     ]);
-//     expect($step->status)->toBe('success');
-// });
 
 
 

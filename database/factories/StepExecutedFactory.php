@@ -3,6 +3,8 @@
 namespace Database\Factories;
 
 use App\Models\Step;
+use App\Models\TaskExecuted;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -18,7 +20,10 @@ class StepExecutedFactory extends Factory
     public function definition(): array
     {
         return [
+            'status' => 'pending',
             'step_id' => Step::factory(),
+            'task_executed_id' => TaskExecuted::factory(),
+            'user_id' => User::factory(),
         ];
     }
 }

@@ -24,9 +24,6 @@ return new class extends Migration {
             $table->string('success_action');
             $table->json('params')->nullable();
             // $table->foreignIdFor(Run::class)->constrained()->cascadeOnDelete();
-            // $table->string('status')->nullable();
-            // $table->json('input')->nullable();
-            // $table->json('output')->nullable();
             $table->timestamps();
         });
     }

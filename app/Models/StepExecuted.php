@@ -15,4 +15,14 @@ class StepExecuted extends Model
     {
         return $this->belongsTo(Step::class);
     }
+
+    public function task_executed()
+    {
+        return $this->belongsTo(TaskExecuted::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }
