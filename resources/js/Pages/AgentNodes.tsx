@@ -34,7 +34,6 @@ function AgentNodes() {
   const agent = props.agent as Agent
   const task = agent.tasks[0] as Task
   const steps = task.steps as Step[]
-  console.log(steps)
   // Show a Card per Step
   return (
     <div className="flex flex-col justify-center items-center h-screen">
