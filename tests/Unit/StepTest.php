@@ -30,6 +30,11 @@ it('has a name', function () {
     expect($step->name)->toBe("Inferencer");
 });
 
+it('has an order', function () {
+    $step = Step::factory()->create(['order' => 1]);
+    expect($step->order)->toBe(1);
+});
+
 it('has optional params', function () {
     $step = Step::factory()->create(['params' => null]);
     expect($step->params)->toBeNull();

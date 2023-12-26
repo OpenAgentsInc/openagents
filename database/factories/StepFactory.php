@@ -36,6 +36,7 @@ class StepFactory extends Factory
             'agent_id' => Agent::factory(),
             'task_id' => Task::factory(),
             'name' => $this->faker->username(),
+            'order' => 1,
             'description' => $this->faker->sentence(),
             'error_message' => $this->faker->sentence(),
             // 'status' => $this->faker->randomElement(['success', 'failure']),

@@ -19,6 +19,7 @@ return new class extends Migration {
             $table->string('entry_type');
             $table->string('category');
             $table->string('name');
+            $table->integer('order');
             $table->string('description')->nullable();
             $table->string('error_message');
             $table->string('success_action');
