@@ -42,18 +42,14 @@ it('has proper relationships', function () {
 
     $step = Step::factory()->create([
       'agent_id' => $agent->id,
-    //   'task_id' => $task->id
     ]);
 
     expect($step->agent->id)->toBe($agent->id);
-    // expect($step->task->id)->toBe($task->id);
 });
 
 it('requires agent_id on create', function () {
     $this->expectException(\Exception::class);
-    Task::factory()->create([
-      'agent_id' => null
-    ]);
+    Task::factory()->create(['agent_id' => null]);
 });
 
 it('has many steps', function () {
