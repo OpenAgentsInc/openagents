@@ -7,22 +7,17 @@ use Illuminate\Database\Eloquent\Model;
 
 class Task extends Model
 {
-  use HasFactory;
+    use HasFactory;
 
-  protected $guarded = [];
+    protected $guarded = [];
 
-  public function agent()
-  {
-    return $this->belongsTo(Agent::class);
-  }
+    public function agent()
+    {
+        return $this->belongsTo(Agent::class);
+    }
 
-  public function artifacts()
-  {
-    return $this->hasMany(Artifact::class);
-  }
-
-  public function steps()
-  {
-    return $this->hasMany(Step::class);
-  }
+    public function steps()
+    {
+        return $this->hasMany(Step::class);
+    }
 }
