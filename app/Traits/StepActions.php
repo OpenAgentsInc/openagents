@@ -4,23 +4,23 @@ namespace App\Traits;
 
 trait StepActions
 {
-    public function validation()
+    public function validation($input)
     {
-
+        return $input;
     }
 
-    public function inference()
+    public function inference($input)
     {
-
+        return $input;
     }
 
-    public function similarity_search()
+    public function similarity_search($input)
     {
-
+        return $input;
     }
 
-    public function embedding()
+    public function embedding($input)
     {
-
+        return $input;
     }
 }

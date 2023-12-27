@@ -17,7 +17,7 @@ it('can run', function () {
     expect(StepExecuted::count())->toBe(0);
 
     $agent = Agent::first();
-    $agent->run("Does this work?");
+    $agent->run(["query" => "Does this work?"]);
     // There should be one TaskExecuted and four StepExecuteds
 
     expect(TaskExecuted::count())->toBe(1);
