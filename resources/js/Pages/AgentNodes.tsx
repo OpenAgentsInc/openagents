@@ -44,15 +44,30 @@ function AgentNodes() {
     var canvas = new LGraphCanvas("#mycanvas", graph, { autoresize: true });
     canvas.resize()
 
+    let prevNode
     steps.forEach((step, index) => {
       // Using a general-purpose node type and setting the title
       var node = LiteGraph.createNode("basic/data");
       node.title = step.name;
-      node.pos = [100, 100 + index * 100];
+      node.pos = [200 + index * 100, 200 + index * 100];
+
       graph.add(node);
+
+      if (step.entry_type === 'input') {
+        node.addInput("userInput", "string")
+      } else if (step.entry_type === 'node') {
+        // Connect this node to the previous node
+        // let prevNode = graph.getNodeById(step.id - 1)
+        if (prevNode) {
+          node.connect(0, prevNode, 0);
+        } else {
+          console.log('No previous node found')
+        }
+      }
 
       // Customize the node as needed
       node.setValue(step.description);
+      prevNode = node
     });
 
     graph.start();
