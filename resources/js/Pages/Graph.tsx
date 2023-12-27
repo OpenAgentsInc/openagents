@@ -2,6 +2,22 @@ import { LGraph, LGraphCanvas, LiteGraph } from 'litegraph.js'
 import 'litegraph.js/css/litegraph.css'
 import { useEffect } from 'react'
 
+interface Step {
+  agent_id: number
+  category: string
+  created_at: string
+  description: string
+  entry_type: string
+  error_message: string
+  id: number
+  name: string
+  order: number
+  params: any
+  success_action: string
+  task_id: number
+  updated_at: string
+}
+
 export default function Graph() {
   useEffect(() => {
     var graph = new LGraph();
