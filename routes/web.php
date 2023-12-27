@@ -28,6 +28,10 @@ Route::get('/github', [AuthController::class, 'githubCallback']);
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
 
+Route::get('/graph', function () {
+    return Inertia::render('Graph');
+});
+
 Route::get('/nodes', function () {
     return Inertia::render('Nodes');
 });

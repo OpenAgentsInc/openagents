@@ -1,5 +1,6 @@
 {
     "compilerOptions": {
+        "skipLibCheck": true,
         "allowJs": true,
         "module": "ESNext",
         "moduleResolution": "bundler",
