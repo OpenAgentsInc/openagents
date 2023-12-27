@@ -2,6 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Models\Task;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -17,7 +19,9 @@ class TaskExecutedFactory extends Factory
     public function definition(): array
     {
         return [
-
+            'status' => 'pending',
+            'task_id' => Task::factory(),
+            'user_id' => User::factory(),
         ];
     }
 }

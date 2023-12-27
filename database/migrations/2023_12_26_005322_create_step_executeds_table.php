@@ -17,7 +17,7 @@ return new class extends Migration {
             $table->id();
             $table->foreignIdFor(Step::class)->constrained()->cascadeOnDelete();
             $table->foreignIdFor(TaskExecuted::class)->constrained()->cascadeOnDelete();
-            $table->foreignIdFor(User::class)->constrained()->cascadeOnDelete();
+            $table->foreignIdFor(User::class)->nullable();
             $table->string('status');
             $table->integer('order');
             $table->json('input')->nullable();

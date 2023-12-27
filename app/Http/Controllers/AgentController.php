@@ -9,6 +9,20 @@ use Inertia\Response;
 
 class AgentController extends Controller
 {
+    public function chat($id)
+    {
+        $input = request('input');
+
+        $agent = Agent::findOrFail($id)->load('tasks.steps');
+        $agentResponse = $agent->run(["input" => $input]);
+
+        // Return standard JSON success response
+        return response()->json([
+            'ok' => true,
+            'output' => 'Agent responded to your message'
+        ]);
+    }
+
     public function show($id)
     {
         try {

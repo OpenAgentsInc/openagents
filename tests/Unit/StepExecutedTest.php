@@ -5,6 +5,12 @@ use App\Models\StepExecuted;
 use App\Models\TaskExecuted;
 use App\Models\User;
 
+it('can run', function () {
+    $step_executed = StepExecuted::factory()->create();
+    $output = $step_executed->run(["Hello" => "World"]);
+    expect($output)->toBeArray();
+});
+
 it('has an order', function () {
     $step_executed = StepExecuted::factory()->create(['order' => 1]);
     expect($step_executed->order)->toBe(1);
