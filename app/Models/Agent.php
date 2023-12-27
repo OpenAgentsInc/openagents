@@ -12,6 +12,37 @@ class Agent extends Model
 
     protected $guarded = [];
 
+    public function run($input)
+    {
+        // Get the first task
+        $task = $this->tasks()->first()->load('steps');
+        // Create from it a TaskExecuted
+        $task_executed = TaskExecuted::create([
+            'task_id' => $task->id,
+            // Current user ID if authed or null
+            'user_id' => auth()->id(),
+            'status' => 'pending'
+        ]);
+
+        // Loop through all steps, passing the output of each to the next
+        foreach ($task->steps as $step) {
+            if ($step->order !== 1) {
+                $input = $prev_step->output;
+            }
+            // Create a new StepExecuted with this step and task_executed
+            $step_executed = StepExecuted::create([
+                'step_id' => $step->id,
+                'order' => $step->order,
+                'task_executed_id' => $task_executed->id,
+                'user_id' => auth()->id(),
+                'status' => 'pending',
+                'output' => $step->output
+            ]);
+            $step_executed->run($input);
+            $prev_step = $step;
+        }
+    }
+
     public function conversations()
     {
         return $this->hasMany(Conversation::class);

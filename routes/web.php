@@ -26,6 +26,7 @@ Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
 
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
+Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
 
 Route::get('/nodes', function () {
     return Inertia::render('Nodes');

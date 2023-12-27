@@ -8,4 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 class TaskExecuted extends Model
 {
     use HasFactory;
+
+    protected $guarded = [];
+
+    // belongs to a Task
+    public function task()
+    {
+        return $this->belongsTo(Task::class);
+    }
 }
