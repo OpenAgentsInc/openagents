@@ -1,8 +1,9 @@
 import React from 'react'
+import { useTransform } from './hooks/useTransform'
 
 interface NodeProps {
   data: any
-  position?: [number, number]
+  position?: { x: number; y: number }
 }
 
 export const Node = React.memo(
@@ -10,18 +11,15 @@ export const Node = React.memo(
     data,
     position = undefined
   }: NodeProps) => {
-    // const [rootRef, set] = useTransform<HTMLDivElement>()
-    console.log(position)
-    // React.useEffect(() => {
-    //   set({ x: position?.x, y: position?.y })
-    // }, [position, set])
-    //  ref={rootRef}
+    const [rootRef, set] = useTransform<HTMLDivElement>()
+    React.useEffect(() => {
+      set({ x: position?.x, y: position?.y })
+    }, [position, set])
     return (
-      <div className="w-64 h-64 bg-gray-200 rounded-lg shadow-lg">
+      <div ref={rootRef} className="w-64 h-64 bg-gray-200 rounded-lg shadow-lg">
         <div className="p-4">
           <h1 className="text-lg font-semibold">{data.name}</h1>
           <p className="text-sm">{data.description}</p>
-          {/* Then just dump the rest as a JSON stringified object */}
           <div className="mt-4">
             <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
           </div>
