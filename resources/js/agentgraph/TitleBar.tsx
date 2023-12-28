@@ -3,20 +3,20 @@ import { useDrag } from './hooks/useDrag';
 
 interface TitleBarProps {
   onDrag: (point: { x?: number; y?: number }) => void
-  onDragStart: (point: { x?: number; y?: number }) => void
-  onDragEnd: (point: { x?: number; y?: number }) => void
-  title: React.ReactNode
-  drag: boolean
-  filterEnabled: boolean
+  // onDragStart: (point: { x?: number; y?: number }) => void
+  // onDragEnd: (point: { x?: number; y?: number }) => void
+  title?: React.ReactNode
+  drag?: boolean
+  filterEnabled?: boolean
   from?: { x?: number; y?: number }
 }
 
 export function TitleBar({
   onDrag,
-  onDragStart,
-  onDragEnd,
+  // onDragStart,
+  // onDragEnd,
   title,
-  drag,
+  drag = true,
   filterEnabled,
   from,
 }: TitleBarProps) {
@@ -26,13 +26,13 @@ export function TitleBar({
     ({ offset: [x, y], first, last }) => {
       onDrag({ x, y })
 
-      if (first) {
-        onDragStart({ x, y })
-      }
+      // if (first) {
+      //   onDragStart({ x, y })
+      // }
 
-      if (last) {
-        onDragEnd({ x, y })
-      }
+      // if (last) {
+      //   onDragEnd({ x, y })
+      // }
     },
     {
       filterTaps: true,
@@ -41,7 +41,7 @@ export function TitleBar({
   )
 
   return (
-    <div {...(drag ? bind() : {})} className="flex items-center justify-between px-4 py-2 bg-gray-300 rounded-t-lg">
+    <div {...(drag ? bind() : {})} className="touch-none flex items-center justify-between px-4 py-2 bg-gray-300 rounded-t-lg">
       <div className="flex items-center">
         <div className="w-3 h-3 mr-2 bg-red-500 rounded-full"></div>
         <div className="w-3 h-3 mr-2 bg-yellow-500 rounded-full"></div>

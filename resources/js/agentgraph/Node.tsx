@@ -18,7 +18,11 @@ export const Node = React.memo(
     }, [position, set])
     return (
       <div ref={rootRef} className="absolute w-64 bg-gray-200 rounded-lg shadow-lg">
-        <TitleBar />
+        <TitleBar
+          onDrag={(point) => {
+            set(point)
+          }}
+        />
         <div className="p-4">
           <h1 className="text-lg font-semibold">{data.order}. {data.name}</h1>
           <p className="text-sm">{data.description}</p>
