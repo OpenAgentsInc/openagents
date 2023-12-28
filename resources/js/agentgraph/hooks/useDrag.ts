@@ -5,12 +5,12 @@ export function useDrag(handler: (state: FullGestureState<'drag'>) => any, confi
   // const { emitOnEditStart, emitOnEditEnd } = useInputContext()
   return useDragHook((state) => {
     if (state.first) {
-      // document.body.classList.add('leva__panel__dragged')
+      document.body.classList.add('agentgraph__panel__dragged')
       // emitOnEditStart?.()
     }
     const result = handler(state)
     if (state.last) {
-      // document.body.classList.remove('leva__panel__dragged')
+      document.body.classList.remove('agentgraph__panel__dragged')
       // emitOnEditEnd?.()
     }
     return result
