@@ -8,8 +8,14 @@ interface NodeProps {
 export const Node = React.memo(
   ({
     data,
-    position: undefined
+    position = undefined
   }: NodeProps) => {
+    // const [rootRef, set] = useTransform<HTMLDivElement>()
+    console.log(position)
+    // React.useEffect(() => {
+    //   set({ x: position?.x, y: position?.y })
+    // }, [position, set])
+    //  ref={rootRef}
     return (
       <div className="w-64 h-64 bg-gray-200 rounded-lg shadow-lg">
         <div className="p-4">
