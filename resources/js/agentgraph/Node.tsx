@@ -20,7 +20,6 @@ export const Node = React.memo(
       <div ref={rootRef} className="absolute w-64 bg-gray-200 rounded-lg shadow-lg">
         <TitleBar
           onDrag={(point) => {
-            // console.log(point)
             set(point)
           }}
         />

@@ -3,8 +3,6 @@ import { useDrag } from './hooks/useDrag';
 
 interface TitleBarProps {
   onDrag: (point: { x?: number; y?: number }) => void
-  // onDragStart: (point: { x?: number; y?: number }) => void
-  // onDragEnd: (point: { x?: number; y?: number }) => void
   title?: React.ReactNode
   drag?: boolean
   filterEnabled?: boolean
@@ -13,26 +11,12 @@ interface TitleBarProps {
 
 export function TitleBar({
   onDrag,
-  // onDragStart,
-  // onDragEnd,
-  title,
   drag = true,
-  filterEnabled,
   from,
 }: TitleBarProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-
   const bind = useDrag(
     ({ offset: [x, y], first, last }) => {
       onDrag({ x, y })
-
-      // if (first) {
-      //   onDragStart({ x, y })
-      // }
-
-      // if (last) {
-      //   onDragEnd({ x, y })
-      // }
     },
     {
       filterTaps: true,
@@ -47,7 +31,6 @@ export function TitleBar({
         <div className="w-3 h-3 mr-2 bg-yellow-500 rounded-full"></div>
         <div className="w-3 h-3 mr-2 bg-green-500 rounded-full"></div>
       </div>
-      {/* <span>{title}</span> */}
       <div className="pt-1 flex items-center">
         <div className="mr-2">
           <button className="w-4 h-4">
