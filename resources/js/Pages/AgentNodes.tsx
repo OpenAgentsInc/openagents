@@ -13,7 +13,7 @@ function AgentNodes() {
   return (
     <Canvas>
       {steps.map((step, index) => (
-        <Node key={index} data={step} position={{ x: 100 + 300 * index, y: 50 }} />
+        <Node key={index} data={step} titleBar={{ position: { x: 100 + 300 * index, y: 50 } }} />
       ))}
     </Canvas>
   )

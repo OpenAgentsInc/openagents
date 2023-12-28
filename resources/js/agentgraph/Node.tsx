@@ -5,14 +5,31 @@ import { TitleBar } from './TitleBar';
 interface NodeProps {
   data: any
   position?: { x: number; y: number }
+  titleBar: any
 }
 
 export const Node = React.memo(
   ({
     data,
-    position = undefined
+    titleBar = {
+      title: undefined,
+      drag: true,
+      filter: true,
+      position: undefined,
+      onDrag: undefined,
+      onDragStart: undefined,
+      onDragEnd: undefined,
+    },
   }: NodeProps) => {
-    const [rootRef, set] = useTransform<HTMLDivElement>()
+    const [rootRef, set, currentPos] = useTransform<HTMLDivElement>()
+    // const shouldShow = neverHide || paths.length > 0
+    const title = typeof titleBar === 'object' ? titleBar.title || undefined : undefined
+    const drag = typeof titleBar === 'object' ? titleBar.drag ?? true : true
+    const filterEnabled = typeof titleBar === 'object' ? titleBar.filter ?? true : true
+    const position = typeof titleBar === 'object' ? titleBar.position || undefined : undefined
+    const onDrag = typeof titleBar === 'object' ? titleBar.onDrag || undefined : undefined
+    const onDragStart = typeof titleBar === 'object' ? titleBar.onDragStart || undefined : undefined
+    const onDragEnd = typeof titleBar === 'object' ? titleBar.onDragEnd || undefined : undefined
     React.useEffect(() => {
       set({ x: position?.x, y: position?.y })
     }, [position, set])
@@ -22,6 +39,9 @@ export const Node = React.memo(
           onDrag={(point) => {
             set(point)
           }}
+          from={currentPos}
+          onDragStart={(point) => onDragStart?.(point)}
+          onDragEnd={(point) => onDragEnd?.(point)}
         />
         <div className="p-4">
           <h1 className="text-lg font-semibold">{data.order}. {data.name}</h1>

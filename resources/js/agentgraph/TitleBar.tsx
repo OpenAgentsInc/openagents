@@ -3,6 +3,8 @@ import { useDrag } from './hooks/useDrag';
 
 interface TitleBarProps {
   onDrag: (point: { x?: number; y?: number }) => void
+  onDragStart: (point: { x?: number; y?: number }) => void
+  onDragEnd: (point: { x?: number; y?: number }) => void
   title?: React.ReactNode
   drag?: boolean
   filterEnabled?: boolean
@@ -14,6 +16,7 @@ export function TitleBar({
   drag = true,
   from,
 }: TitleBarProps) {
+  console.log('from:', from)
   const bind = useDrag(
     ({ offset: [x, y], first, last }) => {
       onDrag({ x, y })
