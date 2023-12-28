@@ -196,3 +196,16 @@
                     linear-gradient(90deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
   background-size: 20px 20px;
 }
+
+.agentgraph__panel__dragged {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.agentgraph__panel__dragged input {
+  user-select: none;
+}
+
+.agentgraph__panel__dragged * {
+  cursor: ew-resize !important;
+}
