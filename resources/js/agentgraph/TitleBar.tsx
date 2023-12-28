@@ -16,7 +16,6 @@ export function TitleBar({
   drag = true,
   from,
 }: TitleBarProps) {
-  console.log('from:', from)
   const bind = useDrag(
     ({ offset: [x, y], first, last }) => {
       onDrag({ x, y })
