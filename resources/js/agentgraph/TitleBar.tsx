@@ -1,4 +1,5 @@
 import React, { useRef } from 'react'
+import { useDrag } from './hooks/useDrag';
 
 interface TitleBarProps {
   onDrag: (point: { x?: number; y?: number }) => void
@@ -40,31 +41,14 @@ export function TitleBar({
   )
 
   return (
-    <div  {...(drag ? bind() : {})} drag={drag} className="flex items-center justify-between px-4 py-2 bg-gray-300 rounded-t-lg">
+    <div {...(drag ? bind() : {})} className="flex items-center justify-between px-4 py-2 bg-gray-300 rounded-t-lg">
       <div className="flex items-center">
         <div className="w-3 h-3 mr-2 bg-red-500 rounded-full"></div>
         <div className="w-3 h-3 mr-2 bg-yellow-500 rounded-full"></div>
         <div className="w-3 h-3 mr-2 bg-green-500 rounded-full"></div>
       </div>
-      <span>{title}</span>
-      <div className="flex items-center">
-        <div className="mr-2">
-          <input
-            ref={inputRef}
-            type="checkbox"
-            checked={filterEnabled}
-            onChange={() => { }}
-            className="w-4 h-4"
-          />
-        </div>
-        <div className="mr-2">
-          <input
-            type="checkbox"
-            checked={drag}
-            onChange={() => { }}
-            className="w-4 h-4"
-          />
-        </div>
+      {/* <span>{title}</span> */}
+      <div className="pt-1 flex items-center">
         <div className="mr-2">
           <button className="w-4 h-4">
             <svg
@@ -79,7 +63,7 @@ export function TitleBar({
             </svg>
           </button>
         </div>
-        <div className="mr-2">
+        <div className="-mr-1">
           <button className="w-4 h-4">
             <svg
 
