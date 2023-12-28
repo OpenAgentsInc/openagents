@@ -16,7 +16,7 @@ export const Node = React.memo(
       set({ x: position?.x, y: position?.y })
     }, [position, set])
     return (
-      <div ref={rootRef} className="w-64 h-64 bg-gray-200 rounded-lg shadow-lg">
+      <div ref={rootRef} className="absolute w-64 bg-gray-200 rounded-lg shadow-lg">
         <div className="p-4">
           <h1 className="text-lg font-semibold">{data.name}</h1>
           <p className="text-sm">{data.description}</p>
