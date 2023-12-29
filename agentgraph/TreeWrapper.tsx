@@ -14,6 +14,7 @@ export const TreeWrapper = ({ tree }: TreeWrapperProps) => {
   return (
     <>
       {entries.map(([key, value]) => (
+        // @ts-ignore
         <Control key={key} path={value.path} data={value.data} />
       ))}
     </>

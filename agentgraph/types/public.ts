@@ -133,8 +133,8 @@
    | InputWithSettings<string>
    | IntervalInput
    | ColorVectorInput
-   | Vector2dInput
-   | Vector3dInput
+  //  | Vector2dInput
+  //  | Vector3dInput
    | ImageInput
    | SelectInput
    | BooleanInput

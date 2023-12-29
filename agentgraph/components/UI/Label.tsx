@@ -63,6 +63,7 @@ export function Label({ align, ...props }: LabelProps & { align?: 'top' }) {
       await navigator.clipboard.writeText(JSON.stringify({ [key]: value ?? '' }))
       setCopied(true)
     } catch {
+      // @ts-ignore
       warn(AgentgraphErrors.CLIPBOARD_ERROR, { [key]: value })
     }
   }
