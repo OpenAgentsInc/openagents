@@ -1,6 +1,8 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useTransform } from './hooks/useTransform'
 import { TitleBar } from './TitleBar';
+import { buildTree } from './tree'
+import { Tree, TreeWrapper } from './TreeWrapper'
 
 interface NodeProps {
   data: any // All data passed to the node will be rendered
@@ -19,6 +21,7 @@ export const Node = React.memo(
       onDragEnd: undefined,
     },
   }: NodeProps) => {
+    const tree = useMemo(() => buildTree(data), [data]) as Tree
     const [rootRef, set, currentPos] = useTransform<HTMLDivElement>()
     const drag = typeof titleBar === 'object' ? titleBar.drag ?? true : true
     const position = typeof titleBar === 'object' ? titleBar.position || undefined : undefined
@@ -44,7 +47,8 @@ export const Node = React.memo(
           <h1 className="text-lg font-semibold">{data.order}. {data.name}</h1>
           <p className="text-sm">{data.description}</p>
           <div className="mt-4">
-            <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>
+            <TreeWrapper tree={tree} />
+            {/* <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre> */}
           </div>
         </div>
       </div>
