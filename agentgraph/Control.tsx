@@ -21,8 +21,6 @@ export const Control = React.memo(({ path, data }: ControlProps) => {
       type = 'text'
   }
 
-  // console.log(type, data)
-
   const onUpdate = () => { }
   const onChange = () => { }
 
@@ -32,7 +30,7 @@ export const Control = React.memo(({ path, data }: ControlProps) => {
   if (type === 'text') {
     return (
       <Row input>
-        <Label>test label</Label>
+        <Label>{path}</Label>
         <String displayValue={data} onUpdate={onUpdate} onChange={onChange} />
       </Row>
     )
