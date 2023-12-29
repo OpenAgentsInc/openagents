@@ -55,6 +55,7 @@
     "remark-gfm": "^3.0.1",
     "remark-math": "^5.1.1",
     "tailwind-merge": "^2.0.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "zustand": "^3.6.9"
   }
 }
