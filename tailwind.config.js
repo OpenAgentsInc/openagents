@@ -10,6 +10,7 @@ export default {
     "./resources/views/**/*.blade.php",
     "./resources/js/**/*.tsx",
     "./resources/js/**/*.jsx",
+    "./agentgraph/**/*.tsx",
   ],
 
   theme: {
