@@ -345,11 +345,11 @@
   *
   * @example
   * ```ts
-  *  useInputContext<LevaInputProps<boolean>>()
+  *  useInputContext<AgentgraphInputProps<boolean>>()
   * ```
   * @public
   */
- export interface LevaInputProps<V, InternalSettings = {}, DisplayValue = V> {
+ export interface AgentgraphInputProps<V, InternalSettings = {}, DisplayValue = V> {
    path?: string
    id?: string
    hint?: string
