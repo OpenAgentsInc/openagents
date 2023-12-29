@@ -10,7 +10,7 @@ type TreeWrapperProps = {
 
 export const TreeWrapper = ({ tree }: TreeWrapperProps) => {
   const entries = Object.entries(tree)
-  console.log("TreeWrapper with entries:", entries)
+  // console.log("TreeWrapper with entries:", entries)
   return (
     <>
       {entries.map(([key, value]) => (
