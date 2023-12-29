@@ -3,7 +3,7 @@ import { useTransform } from './hooks/useTransform'
 import { TitleBar } from './TitleBar';
 
 interface NodeProps {
-  data: any
+  data: any // All data passed to the node will be rendered
   position?: { x: number; y: number }
   titleBar: any
 }
@@ -29,15 +29,17 @@ export const Node = React.memo(
     }, [position, set])
     return (
       <div ref={rootRef} className="absolute w-64 bg-gray-200 rounded-lg shadow-lg">
-        <TitleBar
-          onDrag={(point) => {
-            set(point)
-          }}
-          drag={drag}
-          from={currentPos}
-          onDragStart={(point) => onDragStart?.(point)}
-          onDragEnd={(point) => onDragEnd?.(point)}
-        />
+        {titleBar && (
+          <TitleBar
+            onDrag={(point) => {
+              set(point)
+            }}
+            drag={drag}
+            from={currentPos}
+            onDragStart={(point) => onDragStart?.(point)}
+            onDragEnd={(point) => onDragEnd?.(point)}
+          />
+        )}
         <div className="p-4">
           <h1 className="text-lg font-semibold">{data.order}. {data.name}</h1>
           <p className="text-sm">{data.description}</p>
