@@ -25,7 +25,7 @@ export const Control = React.memo(({ path, data }: ControlProps) => {
 
   const onUpdate = () => { }
   const onChange = () => { }
-  const disabled = true
+  const disabled = false
 
   if (!data) return <></>
 
