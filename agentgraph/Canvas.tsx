@@ -5,7 +5,6 @@ import { getDefaultTheme, mergeTheme } from "./styles"
 
 export const Canvas = ({ children }: { children: any }) => {
   const theme = getDefaultTheme()
-  console.log(theme)
   const themeContext = useDeepMemo(() => mergeTheme(theme), [theme])
   return (
     <div className="w-full h-full">
