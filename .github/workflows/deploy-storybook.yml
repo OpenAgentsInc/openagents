@@ -1,9 +1,10 @@
-name: Build and publish storybook to GitHub Pages
+name: Build and Publish storybook to GitHub Pages
 
 on:
   push:
     branches:
       - "main"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,13 +12,34 @@ permissions:
   id-token: write
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: actions/setup-node@v3
+      with:
+        node-version: '16.x'
+
+    - name: Build
+      run: |
+        npm ci
+        npm run build-storybook
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v2.0.0
+      with:
+        path: storybook-static
+
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.build-publish.outputs.page_url }}
     runs-on: ubuntu-latest
+    needs: build
     steps:
-      - id: build-publish
-        uses: bitovi/github-actions-storybook-to-github-pages@v1.0.0
+      - name: Deploy to GH Pages
+        id: deployment
+        uses: actions/deploy-pages@v3
         with:
-          path: storybook-static # change to your build folder
+          token: ${{ github.token }}
