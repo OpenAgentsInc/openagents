@@ -6,7 +6,7 @@ const demoStep: Step = {
   agent_id: 1,
   category: 'validation',
   created_at: '2021-08-31T15:00:00.000Z',
-  description: "Ensure input is a valid chat message - and that this doesnt run on too long",
+  description: "Ensure input is a valid chat message",
   entry_type: 'input',
   error_message: "Could not validate input",
   id: 1,
