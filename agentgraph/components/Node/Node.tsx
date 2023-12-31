@@ -8,7 +8,7 @@ export const Node = ({ step }: NodeProps) => {
   return (
     <NodePanel>
       <NodeTitleBar>
-        <p>#{step.order} - {step.name}</p>
+        <p>{step.order}. {step.name}</p>
       </NodeTitleBar>
       <NodeContent>
         <p>{step.description}</p>
