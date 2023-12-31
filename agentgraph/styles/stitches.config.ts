@@ -2,9 +2,12 @@ import { createStitches } from '@stitches/react'
 
 export const getDefaultTheme = () => ({
   colors: {
-    elevation1: '#292d39', // bg color of the root panel (main title bar)
-    elevation2: '#181c20', // bg color of the rows (main panel color)
-    elevation3: '#373c4b', // bg color of the inputs
+    elevation1: '#120B29', // bg color of the root panel (main title bar)
+    // elevation1: '#292d39', // bg color of the root panel (main title bar)
+    elevation2: '#1C133A', // bg color of the rows (main panel color)
+    // elevation2: '#181c20', // bg color of the rows (main panel color)
+    elevation3: '#2D2252',
+    // elevation3: '#373c4b', // bg color of the inputs
     accent1: '#0066dc',
     accent2: '#007bff',
     accent3: '#3c93ff',
