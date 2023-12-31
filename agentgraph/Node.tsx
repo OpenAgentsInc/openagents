@@ -6,6 +6,8 @@ import { Tree, TreeWrapper } from './TreeWrapper'
 import { PanelSettingsContext } from './context';
 import { globalStyles } from './styles';
 import { TitleWithFilter } from './components/Agentgraph/Filter';
+import { StyledContent, StyledWrapper } from './components/Folder/StyledFolder';
+import { StyledRoot } from './components/Agentgraph/StyledRoot';
 
 interface NodeProps {
   data: any // All data passed to the node will be rendered
@@ -43,7 +45,7 @@ export const Node = React.memo(
 
     return (
       <PanelSettingsContext.Provider value={{ hideCopyButton }}>
-        <div ref={rootRef} className="absolute w-64 bg-gray-200 rounded-lg shadow-lg">
+        <div ref={rootRef} className="absolute w-64 rounded-lg shadow-lg">
           {titleBar && (
             <TitleWithFilter
               onDrag={(point) => {
@@ -64,12 +66,13 @@ export const Node = React.memo(
             <h1 className="text-lg font-semibold">{data.order}. {data.name}</h1>
             <p className="text-sm">{data.description}</p>
             <div className="mt-4">
-              <TreeWrapper tree={tree} toggled={toggled} />
+              <TreeWrapper isRoot tree={tree} toggled={toggled} />
               {/* <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre> */}
             </div>
           </div>
         </div>
       </PanelSettingsContext.Provider>
+
     )
   }
 )

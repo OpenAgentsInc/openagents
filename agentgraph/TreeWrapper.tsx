@@ -6,15 +6,16 @@ export type Tree = {
 }
 
 type TreeWrapperProps = {
+  isRoot?: boolean
   toggled: boolean
   tree: Tree
 }
 
-export const TreeWrapper = ({ toggled, tree }: TreeWrapperProps) => {
+export const TreeWrapper = ({ isRoot, toggled, tree }: TreeWrapperProps) => {
   const entries = Object.entries(tree)
   // console.log("TreeWrapper with entries:", entries)
   return (
-    <StyledWrapper>
+    <StyledWrapper isRoot={isRoot}>
       <StyledContent toggled={toggled}>
         {entries.map(([key, value]) => (
           // @ts-ignore

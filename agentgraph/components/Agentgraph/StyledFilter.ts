@@ -18,6 +18,11 @@ export const Icon = styled('i', {
 })
 
 export const StyledTitleWithFilter = styled('div', {
+
+  // CD temp
+  backgroundColor: '$elevation1',
+  borderRadius: '4px',
+
   display: 'flex',
   alignItems: 'stretch',
   justifyContent: 'space-between',
