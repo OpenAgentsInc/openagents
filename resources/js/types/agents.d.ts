@@ -8,7 +8,7 @@ export interface Step {
   id: number
   name: string
   order: number
-  params: any
+  params?: any
   success_action: string
   task_id: number
   updated_at: string

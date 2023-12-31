@@ -34,7 +34,7 @@ export const getDefaultTheme = () => ({
   },
   fonts: {
     mono: `ui-monospace, SFMono-Regular, Menlo, 'Roboto Mono', monospace`,
-    sans: `system-ui, sans-serif`,
+    sans: `BeausiteClassic, system-ui, sans-serif`,
   },
   fontSizes: {
     root: '11px',
