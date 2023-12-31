@@ -4,7 +4,7 @@ import { TitleBar } from './TitleBar';
 import { buildTree } from './tree'
 import { Tree, TreeWrapper } from './TreeWrapper'
 import { PanelSettingsContext } from './context';
-import { globalStyles } from './styles';
+import { globalStyles, styled } from './styles';
 import { TitleWithFilter } from './components/Agentgraph/Filter';
 import { StyledContent, StyledWrapper } from './components/Folder/StyledFolder';
 import { StyledRoot } from './components/Agentgraph/StyledRoot';
@@ -45,7 +45,7 @@ export const Node = React.memo(
 
     return (
       <PanelSettingsContext.Provider value={{ hideCopyButton }}>
-        <div ref={rootRef} className="absolute w-64 rounded-lg shadow-lg">
+        <PanelMaybe ref={rootRef} className="absolute w-64 rounded-lg shadow-lg">
           {titleBar && (
             <TitleWithFilter
               onDrag={(point) => {
@@ -70,9 +70,15 @@ export const Node = React.memo(
               {/* <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre> */}
             </div>
           </div>
-        </div>
+        </PanelMaybe>
       </PanelSettingsContext.Provider>
 
     )
   }
 )
+
+const PanelMaybe = styled('div', {
+  color: '$highlight2',
+  backgroundColor: '$elevation2',
+  borderRadius: '4px'
+})
