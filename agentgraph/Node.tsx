@@ -1,13 +1,10 @@
 import React, { useMemo, useState } from 'react'
 import { useTransform } from './hooks/useTransform'
-import { TitleBar } from './TitleBar';
 import { buildTree } from './tree'
 import { Tree, TreeWrapper } from './TreeWrapper'
 import { PanelSettingsContext } from './context';
 import { globalStyles, styled } from './styles';
 import { TitleWithFilter } from './components/Agentgraph/Filter';
-import { StyledContent, StyledWrapper } from './components/Folder/StyledFolder';
-import { StyledRoot } from './components/Agentgraph/StyledRoot';
 
 interface NodeProps {
   data: any // All data passed to the node will be rendered
@@ -59,7 +56,7 @@ export const Node = React.memo(
               toggle={(flag?: boolean) => setToggle((t) => flag ?? !t)}
               toggled={toggled}
               title={data.name}
-              filterEnabled={filterEnabled}
+              filterEnabled={false}
             />
           )}
           <div className="p-4">
