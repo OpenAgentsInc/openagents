@@ -7,13 +7,12 @@ export const NodePanel = styled('div', {
   alignItems: 'stretch',
   justifyContent: 'space-between',
   flexDirection: 'column',
-  height: '100%',
   color: '$highlight3',
   fontFamily: '$sans',
   maxWidth: '350px',
 })
 
-export const NodeTitleBar = styled('div', {
+export const StyledTitleBar = styled('div', {
   backgroundColor: '$elevation1',
   borderRadius: '6px',
   height: '$titleBarHeight',
@@ -21,6 +20,7 @@ export const NodeTitleBar = styled('div', {
   fontFamily: '$mono',
   fontSize: '13px',
   textAlign: 'center',
+  cursor: 'grab',
 })
 
 export const NodeContent = styled('div', {
