@@ -33,6 +33,7 @@ export const StyledRow = styled('div', {
 export const StyledInputRow = styled(StyledRow, {
   gridTemplateColumns: 'auto $sizes$controlWidth',
   columnGap: '$colGap',
+  margin: '$sm'
 })
 
 export const CopyLabelContainer = styled('div', {

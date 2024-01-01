@@ -1,7 +1,7 @@
 import { styled } from '../../styles'
 
 export const NodePanel = styled('div', {
-  backgroundColor: '$elevation3',
+  backgroundColor: '$elevation2',
   borderRadius: '6px',
   display: 'flex',
   alignItems: 'stretch',
@@ -21,10 +21,13 @@ export const StyledTitleBar = styled('div', {
   fontSize: '13px',
   textAlign: 'center',
   cursor: 'grab',
+  userSelect: 'none'
 })
 
 export const NodeContent = styled('div', {
-  padding: '0 18px',
+  textAlign: 'center',
+  padding: '0 18px 8px',
   flexGrow: 1,
   overflow: 'auto',
+  fontSize: '13px'
 })
