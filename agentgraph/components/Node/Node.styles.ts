@@ -21,10 +21,12 @@ export const StyledTitleBar = styled('div', {
   fontSize: '13px',
   textAlign: 'center',
   cursor: 'grab',
+  userSelect: 'none'
 })
 
 export const NodeContent = styled('div', {
   padding: '0 18px',
   flexGrow: 1,
   overflow: 'auto',
+  fontSize: '13px'
 })
