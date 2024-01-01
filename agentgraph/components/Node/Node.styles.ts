@@ -7,7 +7,6 @@ export const NodePanel = styled('div', {
   alignItems: 'stretch',
   justifyContent: 'space-between',
   flexDirection: 'column',
-  height: '100%',
   color: '$highlight3',
   fontFamily: '$sans',
   maxWidth: '350px',

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react';
 import { Node } from '../../components/Node';
 import { Step } from '@/types/agents';
 
-const demoStep: Step = {
+export const demoStep: Step = {
   agent_id: 1,
   category: 'validation',
   created_at: '2021-08-31T15:00:00.000Z',
