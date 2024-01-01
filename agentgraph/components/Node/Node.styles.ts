@@ -1,6 +1,7 @@
 import { styled } from '../../styles'
 
 export const NodePanel = styled('div', {
+  position: 'absolute',
   backgroundColor: '$elevation2',
   borderRadius: '6px',
   display: 'flex',
