@@ -1,2 +1,2 @@
-export * from './Canvas'
-export * from './Node'
+export * from './components/Canvas'
+export * from './components/Node'
