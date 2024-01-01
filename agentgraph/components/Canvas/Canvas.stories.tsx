@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { Canvas } from './Canvas';
 import { Node } from '../Node'
-import { demoStep } from '../Node/Node.stories';
+import { demoStep } from '../Node/Node.demodata';
 
 const meta = {
   title: 'AgentGraph/Canvas',
