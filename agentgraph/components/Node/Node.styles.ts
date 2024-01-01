@@ -25,6 +25,7 @@ export const StyledTitleBar = styled('div', {
 })
 
 export const NodeContent = styled('div', {
+  textAlign: 'center',
   padding: '0 18px 8px',
   flexGrow: 1,
   overflow: 'auto',

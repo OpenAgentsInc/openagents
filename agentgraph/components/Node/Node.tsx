@@ -16,7 +16,7 @@ export const Node = ({ position, step }: NodeProps) => {
   // Only Step nodes supported for now, so return null if no step
   if (!step) return null
 
-  const fieldsToRender = ['category', 'entry_type', 'success_action']
+  const fieldsToRender = ['category', 'entry_type', 'success_action', 'created_at']
 
   return (
     <NodePanel ref={rootRef}>
@@ -29,8 +29,12 @@ export const Node = ({ position, step }: NodeProps) => {
         <p>{step.description}</p>
         {/* For every fieldToRender, render a Field */}
         {fieldsToRender.map((field) => {
-          const onUpdate = () => { }
-          const onChange = () => { }
+          const onUpdate = (update) => {
+            console.log('update:', update)
+          }
+          const onChange = (change) => {
+            console.log('change:', change)
+          }
           return (
             <Row input key={field}>
               <Label>{field}</Label>
