@@ -1,7 +1,7 @@
 import React from 'react'
-import { NodeProps } from "./Node.props"
-import { NodeContent, NodePanel, NodeTitleBar } from "./Node.styles"
 import { useTransform } from '../../hooks'
+import { NodeProps } from "./Node.props"
+import { NodeContent, NodePanel } from "./Node.styles"
 import { TitleBar } from './TitleBar'
 
 export const Node = ({ position, step }: NodeProps) => {
