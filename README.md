@@ -54,3 +54,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 35. [Agent Inspection UI](https://twitter.com/OpenAgentsInc/status/1734044762255036737)
 36. [Agent Modules 101](https://twitter.com/OpenAgentsInc/status/1738000844476371445)
 37. [Flow of Funds](https://twitter.com/OpenAgentsInc/status/1738221896234373387)
+38. [Agent Node Graphs](https://twitter.com/OpenAgentsInc/status/1741887869055119630)
