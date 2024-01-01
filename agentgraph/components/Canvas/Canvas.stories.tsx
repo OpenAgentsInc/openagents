@@ -22,11 +22,11 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-// Put a node in the canvas
 export const WithNode: Story = {
   args: {
     children: (
       <Node
+        position={{ x: 100, y: 100 }}
         step={demoStep}
       />
     )
