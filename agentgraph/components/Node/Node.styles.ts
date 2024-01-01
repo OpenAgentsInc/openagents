@@ -14,6 +14,9 @@ export const NodePanel = styled('div', {
 })
 
 export const StyledTitleBar = styled('div', {
+  touchAction: 'none',
+  $flexCenter: '',
+  flex: 1,
   backgroundColor: '$elevation1',
   borderRadius: '6px',
   height: '$titleBarHeight',
@@ -22,13 +25,14 @@ export const StyledTitleBar = styled('div', {
   fontSize: '13px',
   textAlign: 'center',
   cursor: 'grab',
-  userSelect: 'none'
+  userSelect: 'none',
+  padding: '8px 0'
 })
 
 export const NodeContent = styled('div', {
   textAlign: 'center',
-  padding: '0 18px 8px',
+  padding: '10px 18px 8px',
   flexGrow: 1,
   overflow: 'auto',
-  fontSize: '13px'
+  fontSize: '13px',
 })

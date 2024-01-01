@@ -34,7 +34,7 @@ export const TitleBar = ({ from, onDrag, title }: TitleBarProps) => {
 
   return (
     <StyledTitleBar {...bind()} ref={titleBarRef}>
-      <p>{title}</p>
+      <div>{title}</div>
     </StyledTitleBar>
   )
 }
