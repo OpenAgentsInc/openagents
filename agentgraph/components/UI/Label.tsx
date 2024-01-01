@@ -53,7 +53,7 @@ function RawLabel(props: LabelProps) {
 export function Label({ align, ...props }: LabelProps & { align?: 'top' }) {
   const { value, label, key, disabled } = useInputContext()
   // const { hideCopyButton } = usePanelSettingsContext()
-  const hideCopyButton = true
+  const hideCopyButton = false
 
   const copyEnabled = !hideCopyButton && key !== undefined
 
