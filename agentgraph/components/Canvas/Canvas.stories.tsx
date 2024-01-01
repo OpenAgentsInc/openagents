@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { Canvas } from './Canvas';
 import { Node } from '../Node'
-import { demoStep } from '../Node/Node.demodata';
+import { demoSteps } from '../Node/Node.demodata';
 
 const meta = {
   title: 'AgentGraph/Canvas',
@@ -27,8 +27,33 @@ export const WithNode: Story = {
     children: (
       <Node
         position={{ x: 100, y: 100 }}
-        step={demoStep}
+        step={demoSteps[0]}
       />
+    )
+  }
+}
+
+export const With4Nodes: Story = {
+  args: {
+    children: (
+      <>
+        <Node
+          position={{ x: 100, y: 100 }}
+          step={demoSteps[0]}
+        />
+        <Node
+          position={{ x: 450, y: 100 }}
+          step={demoSteps[1]}
+        />
+        <Node
+          position={{ x: 100, y: 350 }}
+          step={demoSteps[2]}
+        />
+        <Node
+          position={{ x: 450, y: 350 }}
+          step={demoSteps[3]}
+        />
+      </>
     )
   }
 }
