@@ -27,7 +27,11 @@ export function ValueInput({
   rows = 0,
   ...props
 }: ValueInputProps) {
-  const { id: _id, emitOnEditStart, emitOnEditEnd, disabled } = useInputContext()
+  const _id = undefined
+  const emitOnEditStart = () => { }
+  const emitOnEditEnd = () => { }
+  const disabled = false
+  // const { id: _id, emitOnEditStart, emitOnEditEnd, disabled } = useInputContext()
   const inputId = id || _id
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
 

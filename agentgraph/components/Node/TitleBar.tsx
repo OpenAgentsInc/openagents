@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useDrag } from "../../hooks";
 import { StyledTitleBar } from "./Node.styles";
 
@@ -8,10 +9,22 @@ interface TitleBarProps {
 }
 
 export const TitleBar = ({ from, onDrag, title }: TitleBarProps) => {
-
+  const titleBarRef = useRef<any>(null);
   const bind = useDrag(
     ({ offset: [x, y], first, last }) => {
       onDrag({ x, y })
+
+      if (first) {
+        if (titleBarRef.current) {
+          titleBarRef.current.style.cursor = 'grabbing';
+        }
+      }
+
+      if (last) {
+        if (titleBarRef.current) {
+          titleBarRef.current.style.cursor = 'grab';
+        }
+      }
     },
     {
       filterTaps: true,
@@ -20,7 +33,7 @@ export const TitleBar = ({ from, onDrag, title }: TitleBarProps) => {
   )
 
   return (
-    <StyledTitleBar {...bind()}>
+    <StyledTitleBar {...bind()} ref={titleBarRef}>
       <p>{title}</p>
     </StyledTitleBar>
   )
