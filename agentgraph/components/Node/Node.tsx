@@ -16,6 +16,7 @@ export const Node = ({ position, step }: NodeProps) => {
   return (
     <NodePanel ref={rootRef}>
       <TitleBar
+        from={currentPos}
         onDrag={(point) => {
           set(point)
         }}
