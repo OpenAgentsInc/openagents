@@ -1,5 +1,5 @@
 import { useDrag } from "../../hooks";
-import { NodeTitleBar } from "./Node.styles";
+import { StyledTitleBar } from "./Node.styles";
 
 interface TitleBarProps {
   from: { x?: number; y?: number }
@@ -20,8 +20,8 @@ export const TitleBar = ({ from, onDrag, title }: TitleBarProps) => {
   )
 
   return (
-    <NodeTitleBar {...bind()}>
+    <StyledTitleBar {...bind()}>
       <p>{title}</p>
-    </NodeTitleBar>
+    </StyledTitleBar>
   )
 }
