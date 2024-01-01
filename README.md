@@ -13,6 +13,7 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 - Tailwind CSS
 - shad-ui
 - PostgreSQL
+- [Storybook](https://storybook.openagents.com/)
 
 ## Video series
 
