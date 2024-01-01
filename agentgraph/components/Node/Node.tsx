@@ -1,15 +1,27 @@
+import React from 'react'
+import { useTransform } from '../../hooks'
 import { NodeProps } from "./Node.props"
-import { NodeContent, NodePanel, NodeTitleBar } from "./Node.styles"
+import { NodeContent, NodePanel } from "./Node.styles"
+import { TitleBar } from './TitleBar'
 
-export const Node = ({ step }: NodeProps) => {
+export const Node = ({ position, step }: NodeProps) => {
+  const [rootRef, set, currentPos] = useTransform<HTMLDivElement>()
+  React.useEffect(() => {
+    set({ x: position?.x, y: position?.y })
+  }, [position, set])
+
   // Only Step nodes supported for now, so return null if no step
   if (!step) return null
 
   return (
-    <NodePanel>
-      <NodeTitleBar>
-        <p>{step.order}. {step.name}</p>
-      </NodeTitleBar>
+    <NodePanel ref={rootRef}>
+      <TitleBar
+        from={currentPos}
+        onDrag={(point) => {
+          set(point)
+        }}
+        title={`${step.order}. ${step.name}`}
+      />
       <NodeContent>
         <p>{step.description}</p>
       </NodeContent >
