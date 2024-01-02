@@ -19,6 +19,7 @@ class DatapointFactory extends Factory
     {
         return [
             'brain_id' => Brain::factory(),
+            'data' => $this->faker->sentence
         ];
     }
 }

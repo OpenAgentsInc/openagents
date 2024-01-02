@@ -9,6 +9,8 @@ class Datapoint extends Model
 {
     use HasFactory;
 
+    protected $guarded = [];
+
     public function brain()
     {
         return $this->belongsTo(Brain::class);

@@ -7,6 +7,7 @@ import { Agent, Step, Task } from "@/types/agents"
 function AgentNodes() {
   const props = usePage().props as any
   const agent = props.agent as Agent
+  console.log(agent)
   const task = agent.tasks[0] as Task
   const steps = task.steps as Step[]
   // Show a Node per Step

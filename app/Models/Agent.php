@@ -49,6 +49,11 @@ class Agent extends Model
 
     }
 
+    public function brain()
+    {
+        return $this->hasOne(Brain::class);
+    }
+
     public function conversations()
     {
         return $this->hasMany(Conversation::class);

@@ -14,6 +14,7 @@ return new class extends Migration {
         Schema::create('datapoints', function (Blueprint $table) {
             $table->id();
             $table->foreignIdFor(Brain::class);
+            $table->text('data');
             $table->timestamps();
         });
     }

@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Agent;
+use App\Models\Brain;
 use App\Models\Step;
 use App\Models\Task;
 use App\Models\User;
@@ -28,6 +29,12 @@ class ConciergeSeeder extends Seeder
             'user_id' => $user->id,
             'name' => 'The Concierge',
         ]);
+
+        $brain = Brain::create([
+            'agent_id' => $agent->id,
+        ]);
+
+        $brain->createDatapoint("I am the concierge.");
 
         // Create main chat task
         $task = Task::create([

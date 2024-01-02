@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Agent;
+use App\Models\Brain;
 use App\Models\Conversation;
 use App\Models\Step;
 use App\Models\StepExecuted;
@@ -9,6 +10,11 @@ use App\Models\TaskExecuted;
 use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
+
+it('has a brain', function () {
+    $agent = Agent::factory()->create();
+    $this->assertInstanceOf(Brain::class, $agent->brain);
+});
 
 it('can run', function () {
     $this->seed(ConciergeSeeder::class);

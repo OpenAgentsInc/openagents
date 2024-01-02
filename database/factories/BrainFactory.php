@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Agent;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -17,7 +18,7 @@ class BrainFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'agent_id' => Agent::factory()
         ];
     }
 }
