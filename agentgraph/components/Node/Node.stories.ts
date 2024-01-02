@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { Node } from '../../components/Node';
-import { demoAgent, demoStep } from './Node.demodata';
+import { demoAgent, demoBrain, demoStep } from './Node.demodata';
 
 const meta = {
   title: 'AgentGraph/Node',
@@ -20,11 +20,11 @@ export const AgentNode: Story = {
   }
 }
 
-// export const TaskNode: Story = {
-//   args: {
-//     step: demoStep
-//   }
-// }
+export const BrainNode: Story = {
+  args: {
+    brain: demoBrain
+  }
+}
 
 export const StepNode: Story = {
   args: {

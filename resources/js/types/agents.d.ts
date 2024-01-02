@@ -1,3 +1,13 @@
+interface Thought {
+  content: string
+  embedding: number[]
+}
+
+export interface Brain {
+  id: number
+  thoughts: Thought[]
+}
+
 export interface Step {
   agent_id: number
   category: string
