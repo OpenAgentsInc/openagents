@@ -35,7 +35,7 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 16. [PDF to Embeddings](https://twitter.com/OpenAgentsInc/status/1724801372602950026)
 17. [Connecting the UI](https://twitter.com/OpenAgentsInc/status/1725197866409267544)
 18. [Connecting the UI, Part 2](https://twitter.com/OpenAgentsInc/status/1725246583623590158)
-19. [Chat with PDF, OpenAgentsInc Edition](https://twitter.com/OpenAgentsInc/status/1725349984952827929)
+19. [Chat with PDF, OpenAgents Edition](https://twitter.com/OpenAgentsInc/status/1725349984952827929)
 20. [Planning a GitHub Agent](https://twitter.com/OpenAgentsInc/status/1725597044981617119)
 21. [Hello Faerie](https://twitter.com/OpenAgentsInc/status/1725910351563165748)
 22. [Conversing with Faerie](https://twitter.com/OpenAgentsInc/status/1725928497367908432)
