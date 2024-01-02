@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Models\Embedding;
 use App\Services\QueenbeeGateway;
+use App\Services\OpenAIGateway;
 use GuzzleHttp\Client;
 use Pgvector\Laravel\Vector;
 
@@ -119,13 +120,10 @@ trait StepActions
         }
         $context .= '---';
 
-        $client = new Client();
-
-        $url = 'https://api.together.xyz/inference';
-        $model = 'DiscoResearch/DiscoLM-mixtral-8x7b-v2';
+        $gateway = new OpenAIGateway();
 
         $data = [
-            "model" => $model,
+            "model" => $gateway->defaultModel(),
             "messages" => [
                 [
                     "role" => "system",
@@ -133,21 +131,16 @@ trait StepActions
                 ],
                 [
                     "role" => "user",
-                    "content" => $input
+                    "content" => $input['input']
                 ]
             ],
             "max_tokens" => 256,
             "temperature" => 0.7,
         ];
 
-        $response = $client->post($url, [
-            'json' => $data,
-            // 'stream' => true,
-            'headers' => [
-                'Authorization' => 'Bearer ' . env('TOGETHER_API_KEY'),
-            ],
-        ]);
+        $chatResponse = $gateway->makeChatCompletion($data);
+        $last = $chatResponse["choices"][0]["content"];
 
-        dd($response);
+        return $last;
     }
 }
