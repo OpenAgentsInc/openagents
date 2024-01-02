@@ -14,4 +14,5 @@ it('can create a datapoint', function () {
     $brain->createDatapoint('Hello, world!');
     expect($brain->datapoints->count())->toBe(1);
     expect($brain->datapoints->first()->data)->toBe('Hello, world!');
+    expect(count($brain->datapoints->first()->embedding->toArray()))->toBe(768);
 });

@@ -15,6 +15,7 @@ return new class extends Migration {
             $table->id();
             $table->foreignIdFor(Brain::class);
             $table->text('data');
+            $table->vector('embedding', 768);
             $table->timestamps();
         });
     }

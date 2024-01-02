@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\QueenbeeGateway;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -16,10 +17,16 @@ class Brain extends Model
         return $this->hasMany(Datapoint::class);
     }
 
-    public function createDatapoint(string $point)
+    public function createDatapoint(string $text)
     {
+        // For now we'll generate the embedding synchronously, but in the future we'll want to use a queue
+        $gateway = new QueenbeeGateway();
+        $result = $gateway->createEmbedding($text);
+        $embedding = $result[0]['embedding'];
+
         return $this->datapoints()->create([
-            'data' => $point
+            'data' => $text,
+            'embedding' => $embedding
         ]);
     }
 }
