@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Agent;
 use App\Models\Brain;
+use App\Models\Datapoint;
 use App\Models\Step;
 use App\Models\Task;
 use App\Models\User;
