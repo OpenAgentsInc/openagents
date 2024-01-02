@@ -1,11 +1,12 @@
-interface Thought {
-  content: string
-  embedding: number[]
+interface Datapoint {
+  data: string
+  embedding?: number[]
 }
 
 export interface Brain {
+  created_at: string
   id: number
-  thoughts: Thought[]
+  datapoints: Datapoint[]
 }
 
 export interface Step {

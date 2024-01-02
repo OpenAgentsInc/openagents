@@ -24,7 +24,7 @@ export const Node = ({ agent, brain, position, step }: NodeProps) => {
         <NodeContent>
           {/* <p># Thoughts: {brain.thoughts.length}</p> */}
 
-          {brain.thoughts.map((thought, index) => {
+          {brain.datapoints.map((datapoint, index) => {
             const onUpdate = (update) => {
               console.log('update:', update)
             }
@@ -34,7 +34,7 @@ export const Node = ({ agent, brain, position, step }: NodeProps) => {
             return (
               <Row input key={index}>
                 <span></span>
-                <String displayValue={thought.content} onUpdate={onUpdate} onChange={onChange} />
+                <String displayValue={datapoint.data} onUpdate={onUpdate} onChange={onChange} />
               </Row>
             )
           })}
