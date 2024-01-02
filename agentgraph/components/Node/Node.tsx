@@ -23,7 +23,7 @@ export const Node = ({ agent, position, step }: NodeProps) => {
         />
         <NodeContent>
           <p>Task: {agent.tasks[0].description}</p>
-          <p>Steps: {agent.tasks[0].steps.length}</p>
+          {/* <p>Steps: {agent.tasks[0].steps.length}</p> */}
         </NodeContent>
       </NodePanel>
     )
