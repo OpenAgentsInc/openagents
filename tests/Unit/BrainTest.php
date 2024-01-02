@@ -1,7 +1,13 @@
 <?php
 
+use App\Models\Agent;
 use App\Models\Brain;
 use App\Models\Datapoint;
+
+it('belongs to an agent', function () {
+    $brain = Brain::factory()->create();
+    expect($brain->agent)->toBeInstanceOf(Agent::class);
+});
 
 it('has datapoints', function () {
     $brain = Brain::factory()->create();

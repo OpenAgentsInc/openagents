@@ -12,6 +12,11 @@ class Brain extends Model
 
     protected $guarded = [];
 
+    public function agent()
+    {
+        return $this->belongsTo(Agent::class);
+    }
+
     public function datapoints()
     {
         return $this->hasMany(Datapoint::class);

@@ -11,9 +11,11 @@ use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
 
-it('has a brain', function () {
+it('hasmany brains', function () {
     $agent = Agent::factory()->create();
-    $this->assertInstanceOf(Brain::class, $agent->brain);
+    $brain = Brain::factory()->create(['agent_id' => $agent->id]);
+    $brain2 = Brain::factory()->create(['agent_id' => $agent->id]);
+    expect($agent->brains->count())->toBe(2);
 });
 
 it('can run', function () {
