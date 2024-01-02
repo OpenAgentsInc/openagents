@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Agent;
+use App\Models\StepExecuted;
+use App\Models\TaskExecuted;
 use Database\Seeders\ConciergeSeeder;
 
 test('chat message sent to an agent executes its task', function () {
@@ -22,8 +24,7 @@ test('chat message sent to an agent executes its task', function () {
     // Assert the output is a string
     $this->expect($response->json('output'))->toBeString();
 
-    // It creates a message
-
-    // And creates four steps
-
+    // Assert we now have 1 TaskExecuted and 4 StepExecuted
+    $this->expect(TaskExecuted::count())->toBe(1);
+    $this->expect(StepExecuted::count())->toBe(4);
 });
