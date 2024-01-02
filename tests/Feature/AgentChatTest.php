@@ -27,4 +27,4 @@ test('chat message sent to an agent executes its task', function () {
     // Assert we now have 1 TaskExecuted and 4 StepExecuted
     $this->expect(TaskExecuted::count())->toBe(1);
     $this->expect(StepExecuted::count())->toBe(4);
-});
+})->group('integration');
