@@ -12,8 +12,9 @@ function AgentNodes() {
   // Show a Node per Step
   return (
     <Canvas>
+      <Node agent={agent} position={{ x: 480, y: 50 }} />
       {steps.map((step, index) => (
-        <Node key={index} step={step} position={{ x: 20 + 325 * index, y: 50 }} />
+        <Node key={index} step={step} position={{ x: 20 + 325 * index, y: 180 }} />
       ))}
     </Canvas>
   )
