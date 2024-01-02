@@ -30,12 +30,6 @@ class ConciergeSeeder extends Seeder
             'name' => 'The Concierge',
         ]);
 
-        $brain = Brain::create([
-            'agent_id' => $agent->id,
-        ]);
-
-        $brain->createDatapoint("I am the concierge.");
-
         // Create main chat task
         $task = Task::create([
             'agent_id' => $agent->id,
@@ -90,5 +84,18 @@ class ConciergeSeeder extends Seeder
             'success_action' => 'json_response',
             'task_id' => $task->id,
         ]);
+
+        $brain = Brain::create([
+            'agent_id' => $agent->id,
+        ]);
+
+        $brain->createDatapoint("OpenAgents is an open platform for AI agents.");
+        $brain->createDatapoint("Marketing copy: Soon every person and company will have multiple AI agents working on their behalf. Who will own those agents? A closed-source megacorp with a history of monopolization and regulatory capture? Or an open cloud built on open models and open data?");
+        $brain->createDatapoint("Do not mention OpenAI or other companies. Do not ever say 'real estate', these are AI agents.");
+        $brain->createDatapoint("Supercharge your productivity. How many agents will you want working for you?");
+        $brain->createDatapoint("OpenAgents benefit #1: Configurable. Configure your agent with a large selection of open models, customizable prompts, and third-party integrations.");
+        $brain->createDatapoint("OpenAgents benefit #2: Deploy to our cloud. Put them in the open compute network - we handle the hosting for you. No code or difficult setup required.");
+        $brain->createDatapoint("OpenAgents benefit #3: Infinite work. Why stop? These are long-running processes that will keep working as long as compute is paid for.");
+        $brain->createDatapoint("OpenAgents benefit #4: Earn and spend. Agents can earn and spend on your behalf using the native currency of the internet: Bitcoin.");
     }
 }
