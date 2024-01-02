@@ -15,6 +15,9 @@ class StepExecuted extends Model
     public function run($input = null)
     {
         // Based on the category, run the appropriate StepAction. [validation, embedding, similarity_search, inference]
+        // echo "Running step {$this->step->name} with input: \n";
+        // \print_r($input);
+        // echo "\n\n";
         $category = $this->step->category;
         $output = $this->$category($input);
         // Update the StepExecuted with completed status and output

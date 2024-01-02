@@ -17,12 +17,12 @@ it('can run', function () {
     expect(StepExecuted::count())->toBe(0);
 
     $agent = Agent::first();
-    $agent->run(["query" => "Does this work?"]);
+    $agent->run(["input" => "Does this work?"]);
     // There should be one TaskExecuted and four StepExecuteds
 
     expect(TaskExecuted::count())->toBe(1);
     expect(StepExecuted::count())->toBe($agent->steps->count());
-});
+})->group('integration');
 
 it('belongs to a user', function () {
     $user = User::factory()->create();
