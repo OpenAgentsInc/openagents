@@ -24,7 +24,7 @@ test('chat message sent to an agent executes its task', function () {
 
 
     // die and dump the output
-    dd($response->json('output'));
+    // dd($response->json('output'));
 
 
     // It creates a message

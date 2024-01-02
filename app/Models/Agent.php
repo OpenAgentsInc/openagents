@@ -16,6 +16,7 @@ class Agent extends Model
     {
         // Get the first task
         $task = $this->tasks()->first()->load('steps');
+
         // Create from it a TaskExecuted
         $task_executed = TaskExecuted::create([
             'task_id' => $task->id,
@@ -24,7 +25,7 @@ class Agent extends Model
             'status' => 'pending'
         ]);
 
-        // Loop through all steps, passing the output of each to the next
+        // Loop through all the task's steps, passing the output of each to the next
         foreach ($task->steps as $step) {
             if ($step->order !== 1) {
                 $input = $prev_step_executed->output;
@@ -37,17 +38,13 @@ class Agent extends Model
                 'user_id' => auth()->id(),
                 'status' => 'pending',
             ]);
-            // dd($step_executed->run($input));
             $step_executed->output = $step_executed->run($input);
             $step_executed->save();
-            // dd($step_executed->fresh());
 
             $prev_step_executed = $step_executed;
         }
 
         // Return the output of the final StepExecuted
-        // dd($step_executed->fresh());
-
         return $step_executed->fresh()->output;
 
     }
