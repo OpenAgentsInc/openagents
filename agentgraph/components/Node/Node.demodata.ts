@@ -1,4 +1,4 @@
-import { Step } from '@/types/agents';
+import { Agent, Step, Task } from '@/types/agents';
 
 export const demoSteps: Step[] = [
   {
@@ -60,3 +60,22 @@ export const demoSteps: Step[] = [
 ];
 
 export const demoStep: Step = demoSteps[0]
+
+export const demoTask: Task = {
+  agent_id: 1,
+  created_at: "2024-01-02T16:35:26.000000Z",
+  description: "Respond to user chat message after consulting knowledge base",
+  id: 49,
+  output: null,
+  steps: demoSteps,
+  updated_at: "2024-01-02T16:35:26.000000Z"
+}
+
+export const demoAgent: Agent = {
+  created_at: "2024-01-02T16:35:26.000000Z",
+  id: 1,
+  name: "The Concierge",
+  tasks: [demoTask],
+  updated_at: "2024-01-02T16:35:26.000000Z",
+  user_id: 1
+}

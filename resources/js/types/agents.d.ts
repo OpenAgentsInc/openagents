@@ -15,10 +15,20 @@ export interface Step {
 }
 
 export interface Task {
+  agent_id: number
+  created_at: string
   description: string
+  id: number
+  output: any
   steps: Step[]
+  updated_at: string
 }
 
 export interface Agent {
+  created_at: string
+  id: number
+  name: string
   tasks: Task[]
+  updated_at: string
+  user_id: number
 }
