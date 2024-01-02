@@ -26,7 +26,7 @@ class AgentController extends Controller
     public function show($id)
     {
         try {
-            $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains');
+            $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
             return Inertia::render('AgentNodes', [
                 'agent' => $agent,
             ]);
