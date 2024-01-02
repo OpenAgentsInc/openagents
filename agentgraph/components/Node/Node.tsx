@@ -6,12 +6,28 @@ import { TitleBar } from './TitleBar'
 import { Label, Row } from '../UI'
 import { String } from '../String/String'
 
-export const Node = ({ position, step }: NodeProps) => {
+export const Node = ({ agent, position, step }: NodeProps) => {
   // Handle canvas position & dragging
   const [rootRef, set, currentPos] = useTransform<HTMLDivElement>()
   useEffect(() => {
     set({ x: position?.x, y: position?.y })
   }, [position, set])
+
+  if (!!agent) {
+    return (
+      <NodePanel ref={rootRef}>
+        <TitleBar
+          from={currentPos}
+          onDrag={(point) => set(point)}
+          title={agent.name}
+        />
+        <NodeContent>
+          <p>Task: {agent.tasks[0].description}</p>
+          <p>Steps: {agent.tasks[0].steps.length}</p>
+        </NodeContent>
+      </NodePanel>
+    )
+  }
 
   // Only Step nodes supported for now, so return null if no step
   if (!step) return null
