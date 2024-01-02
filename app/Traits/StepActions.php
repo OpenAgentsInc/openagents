@@ -11,8 +11,8 @@ trait StepActions
     public function validation($input)
     {
         // Expect an array with key input and value string, nothing else.
-        echo "Validating input: \n";
-        \print_r($input);
+        // echo "Validating input: \n";
+        // \print_r($input);
 
         // Check if input is an array
         if (!is_array($input)) {
@@ -59,7 +59,7 @@ trait StepActions
         ];
     }
 
-    public function similarity_search($input)
+    public function similarity_search($input, $take = 8)
     {
         $embedding = $input['embedding'];
         if (!is_array($embedding)) {
@@ -67,7 +67,7 @@ trait StepActions
             dd($embedding);
         }
 
-        $vector = new Vector($result[0]["embedding"]);
+        $vector = new Vector($embedding);
 
         $searchResults = Embedding::query() // should be what?
             ->orderByRaw('embedding <-> ?', [$vector])
