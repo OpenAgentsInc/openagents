@@ -7,7 +7,7 @@ use App\Models\User;
 
 it('can run', function () {
     $step_executed = StepExecuted::factory()->create();
-    $output = $step_executed->run(["Hello" => "World"]);
+    $output = $step_executed->run(["input" => "Hi there"]);
     expect($output)->toBeArray();
 });
 

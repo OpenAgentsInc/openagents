@@ -19,7 +19,7 @@ class AgentController extends Controller
         // Return standard JSON success response
         return response()->json([
             'ok' => true,
-            'output' => 'Agent responded to your message'
+            'output' => $agentResponse
         ]);
     }
 
