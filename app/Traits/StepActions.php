@@ -139,8 +139,10 @@ trait StepActions
         ];
 
         $chatResponse = $gateway->makeChatCompletion($data);
-        $last = $chatResponse["choices"][0]["content"];
+        $last = $chatResponse["choices"][0]["message"]["content"];
 
-        return $last;
+        return [
+            "output" => $last
+        ];
     }
 }

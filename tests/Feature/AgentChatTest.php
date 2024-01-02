@@ -22,11 +22,6 @@ test('chat message sent to an agent executes its task', function () {
     // Assert the output is a string
     $this->expect($response->json('output'))->toBeString();
 
-
-    // die and dump the output
-    // dd($response->json('output'));
-
-
     // It creates a message
 
     // And creates four steps
