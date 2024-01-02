@@ -27,7 +27,7 @@ class Agent extends Model
         // Loop through all steps, passing the output of each to the next
         foreach ($task->steps as $step) {
             if ($step->order !== 1) {
-                $input = $prev_step->output;
+                $input = $prev_step_executed->output;
             }
             // Create a new StepExecuted with this step and task_executed
             $step_executed = StepExecuted::create([
@@ -36,11 +36,20 @@ class Agent extends Model
                 'task_executed_id' => $task_executed->id,
                 'user_id' => auth()->id(),
                 'status' => 'pending',
-                'output' => $step->output
             ]);
-            $step_executed->run($input);
-            $prev_step = $step;
+            // dd($step_executed->run($input));
+            $step_executed->output = $step_executed->run($input);
+            $step_executed->save();
+            // dd($step_executed->fresh());
+
+            $prev_step_executed = $step_executed;
         }
+
+        // Return the output of the final StepExecuted
+        // dd($step_executed->fresh());
+
+        return $step_executed->fresh()->output;
+
     }
 
     public function conversations()
