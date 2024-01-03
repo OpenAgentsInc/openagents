@@ -77,14 +77,24 @@ class StreamController extends Controller
             $messages = [
                 [
                     "role" => "system",
-                    "content" => $systemPrompt
+                    "content" => $systemPrompt,
+                ],
+                [
+                    "role" => "assistant",
+                    "content" => "Welcome! I am Concierge, the first OpenAgent.
+
+                    You can ask me basic questions about OpenAgents and I will try my best to answer.
+
+                    Click 'Agent' on the left to see what I know and how I act.
+
+                    I might lie or say something crazy. Oh well - thank you for testing!"
                 ]
             ];
 
             // Add previous messages to the array
             foreach ($previousMessages as $msg) {
                 $messages[] = [
-                    "role" => $msg['sender'] === 'user' ? 'user' : 'system',
+                    "role" => $msg['sender'] === 'user' ? 'user' : 'assistant',
                     "content" => $msg['body']
                 ];
             }
