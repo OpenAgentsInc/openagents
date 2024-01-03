@@ -87,6 +87,7 @@ export const demoTask: Task = {
 }
 
 export const demoAgent: Agent = {
+  brain: demoBrain,
   created_at: "2024-01-02T16:35:26.000000Z",
   id: 1,
   name: "The Concierge",

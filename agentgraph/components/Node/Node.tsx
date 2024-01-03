@@ -19,7 +19,7 @@ export const Node = ({ agent, brain, position, step }: NodeProps) => {
         <TitleBar
           from={currentPos}
           onDrag={(point) => set(point)}
-          title="A brain"
+          title="Knowledge Base"
         />
         <NodeContent>
           {/* <p># Thoughts: {brain.thoughts.length}</p> */}
