@@ -24,14 +24,32 @@ class StreamController extends Controller
         $this->doChat($input);
     }
 
+    public function fetchOrCreateConversation()
+    {
+        // Check session for conversation id
+        $conversationId = session('conversation_id');
+
+        $conversation = null;
+
+        if ($conversationId) {
+            $conversation = Conversation::find($conversationId);
+        }
+
+        if (!$conversation) {
+            $conversation = Conversation::create([
+                'user_id' => auth()->user()->id ?? 1,
+            ]);
+
+            // set the session
+            session(['conversation_id' => $conversation->id]);
+        }
+
+        return $conversation;
+    }
+
     public function doChat($input, $context = "")
     {
-        \Log::info($input);
-        \Log::info($context);
-
-        $conversation = Conversation::create([
-            'user_id' => auth()->user()->id ?? 1,
-        ]);
+        $conversation = $this->fetchOrCreateConversation();
 
         $systemPrompt = "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context;
 
