@@ -57,3 +57,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 38. [Agent Node Graphs](https://twitter.com/OpenAgentsInc/status/1741887869055119630)
 39. [Component-Driven Development](https://twitter.com/OpenAgentsInc/status/1742232060821934216)
 40. [Agent Brain Design](https://twitter.com/OpenAgentsInc/status/1742346953210388881)
+41. [Hello Concierge](https://twitter.com/OpenAgentsInc/status/1742609184875544613)
