@@ -117,7 +117,7 @@ trait StepActions
 
         // Initiate new StreamController
         $streamer = new StreamController();
-        $last = $streamer->doChat($input, $context);
+        $last = $streamer->doChat($input["input"], $context);
 
 
         // $data = [
