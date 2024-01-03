@@ -1,5 +1,6 @@
 
 import { IconMessage } from "@/Components/ui/icons";
+import { HomeIcon } from "@heroicons/react/24/outline";
 import { Link } from "@inertiajs/react";
 
 export const SidebarLayout = ({ children, grid = false }) => {
@@ -7,6 +8,10 @@ export const SidebarLayout = ({ children, grid = false }) => {
     <div className="h-dscreen w-full md:h-screen">
       <div className="flex h-dscreen bg-neutral-50">
         <div className="space-y-4 hidden w-22 flex-col items-center border-r border-neutral-300 p-3 pt-5 lg:flex">
+          <Link href="/" className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
+            <HomeIcon className="h-6 w-6" />
+            <div className="t-label mt-2">Home</div>
+          </Link>
           <Link href="/chat" className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
             <IconMessage className="h-6 w-6" />
             <div className="t-label mt-2">Chat</div>
