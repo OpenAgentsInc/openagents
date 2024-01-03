@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Agent;
+use App\Models\Brain;
 use App\Models\Run;
 use App\Models\Step;
 use App\Models\Task;

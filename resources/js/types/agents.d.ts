@@ -1,3 +1,14 @@
+interface Datapoint {
+  data: string
+  embedding?: number[]
+}
+
+export interface Brain {
+  created_at: string
+  id: number
+  datapoints: Datapoint[]
+}
+
 export interface Step {
   agent_id: number
   category: string
@@ -25,6 +36,7 @@ export interface Task {
 }
 
 export interface Agent {
+  brains: Brain[]
   created_at: string
   id: number
   name: string

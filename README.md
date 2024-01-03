@@ -4,7 +4,7 @@ An open platform for AI agents, built in public from scratch.
 
 See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](https://github.com/OpenAgentsInc/openagents/wiki/Roadmap) for more.
 
-![fournodes](https://github.com/OpenAgentsInc/openagents/assets/14167547/e0e954b7-6a97-4a71-b318-e25991a1fe05)
+![kb](https://github.com/OpenAgentsInc/openagents/assets/14167547/945f8a6c-1c54-4322-90f1-a25a907fd128)
 
 ## Tech Stack
 - Laravel

@@ -1,4 +1,19 @@
-import { Agent, Step, Task } from '@/types/agents';
+import { Agent, Brain, Step, Task } from '@/types/agents';
+
+export const demoBrain: Brain = {
+  created_at: "2024-01-02T23:50:33.000000Z",
+  id: 1,
+  datapoints: [ // We're not going to render the embeddings client-side so don't need them here
+    { data: "OpenAgents is an open platform for AI agents." },
+    { data: "Marketing copy: Soon every person and company will have multiple AI agents working on their behalf. Who will own those agents? A closed-source megacorp with a history of monopolization and regulatory capture? Or an open cloud built on open models and open data?" },
+    { data: "Do not mention OpenAI or other companies. Do not ever say 'real estate', these are AI agents."},
+    { data: "Supercharge your productivity. How many agents will you want working for you?"},
+    { data: "OpenAgents benefit #1: Configurable. Configure your agent with a large selection of open models, customizable prompts, and third-party integrations."},
+    { data: "OpenAgents benefit #2: Deploy to our cloud. Put them in the open compute network - we handle the hosting for you. No code or difficult setup required."},
+    { data: "OpenAgents benefit #3: Infinite work. Why stop? These are long-running processes that will keep working as long as compute is paid for."},
+    { data: "OpenAgents benefit #4: Earn and spend. Agents can earn and spend on your behalf using the native currency of the internet: Bitcoin."}
+  ]
+}
 
 export const demoSteps: Step[] = [
   {
@@ -72,6 +87,7 @@ export const demoTask: Task = {
 }
 
 export const demoAgent: Agent = {
+  brains: [demoBrain],
   created_at: "2024-01-02T16:35:26.000000Z",
   id: 1,
   name: "The Concierge",
