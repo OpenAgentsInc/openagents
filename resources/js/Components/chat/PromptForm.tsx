@@ -13,7 +13,7 @@ export const PromptForm = ({ messages, setMessages }) => {
     axios.post('/agent/1/chat', { input })
       // then console log the response
       .then(function (response) {
-        console.log(response);
+        // console.log(response);
       })
       // catch any errors
       .catch(function (error) {
