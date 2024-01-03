@@ -33,6 +33,7 @@ class Agent extends Model
             // Create a new StepExecuted with this step and task_executed
             $step_executed = StepExecuted::create([
                 'step_id' => $step->id,
+                'input' => $input,
                 'order' => $step->order,
                 'task_executed_id' => $task_executed->id,
                 'user_id' => auth()->id(),
