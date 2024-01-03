@@ -51,6 +51,13 @@ class StreamController extends Controller
     {
         $conversation = $this->fetchOrCreateConversation();
 
+        // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
+        $previousMessages = Message::where('conversation_id', $conversation->id)
+            ->orderBy('created_at', 'asc')
+            ->take(15)
+            ->get()
+            ->toArray();
+
         $systemPrompt = "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context;
 
         $message = Message::create([
@@ -66,18 +73,28 @@ class StreamController extends Controller
             $url = 'https://api.together.xyz/inference';
             $model = 'DiscoResearch/DiscoLM-mixtral-8x7b-v2';
 
+            // Start with the system prompt
+            $messages = [
+                [
+                    "role" => "system",
+                    "content" => $systemPrompt
+                ]
+            ];
+
+            // Add previous messages to the array
+            foreach ($previousMessages as $msg) {
+                $messages[] = [
+                    "role" => $msg['sender'] === 'user' ? 'user' : 'system',
+                    "content" => $msg['body']
+                ];
+            }
+
+            // Add the current user input as the last element
+            $messages[] = ["role" => "user", "content" => $input];
+
             $data = [
                 "model" => $model,
-                "messages" => [
-                    [
-                        "role" => "system",
-                        "content" => $systemPrompt
-                    ],
-                    [
-                        "role" => "user",
-                        "content" => $input
-                    ]
-                ],
+                "messages" => $messages,
                 "max_tokens" => 256,
                 "temperature" => 0.7,
                 "stream_tokens" => true
