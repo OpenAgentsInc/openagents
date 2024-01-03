@@ -5,7 +5,6 @@ import { demoAgent, demoBrain, demoStep } from './Node.demodata';
 const meta = {
   title: 'AgentGraph/Node',
   component: Node,
-  parameters: { layout: 'centered' },
   tags: ['autodocs'],
   argTypes: {},
 } satisfies Meta<typeof Node>;
@@ -16,7 +15,7 @@ type Story = StoryObj<typeof meta>;
 
 export const AgentNode: Story = {
   args: {
-    agent: demoAgent
+    agent: demoAgent,
   }
 }
 
