@@ -33,13 +33,17 @@ export const WithNode: Story = {
   }
 }
 
-export const With5Nodes: Story = {
+export const With6Nodes: Story = {
   args: {
     children: (
       <>
         <Node
           position={{ x: 260, y: 50 }}
           agent={demoAgent}
+        />
+        <Node
+          position={{ x: 800, y: 110 }}
+          brain={demoAgent.brain}
         />
         <Node
           position={{ x: 100, y: 200 }}
