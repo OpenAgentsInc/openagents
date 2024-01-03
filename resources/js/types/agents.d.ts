@@ -36,7 +36,7 @@ export interface Task {
 }
 
 export interface Agent {
-  brain: Brain
+  brains: Brain[]
   created_at: string
   id: number
   name: string
