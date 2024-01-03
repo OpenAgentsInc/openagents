@@ -43,7 +43,7 @@ export const With6Nodes: Story = {
         />
         <Node
           position={{ x: 800, y: 110 }}
-          brain={demoAgent.brain}
+          brain={demoAgent.brains[0]}
         />
         <Node
           position={{ x: 100, y: 200 }}
