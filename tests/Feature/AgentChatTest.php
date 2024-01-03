@@ -21,10 +21,13 @@ test('chat message sent to an agent executes its task', function () {
     // Assert ok is true
     $response->assertJson(['ok' => true]);
 
+    dd($response->json('output'));
+
     // Assert the output is a string
     $this->expect($response->json('output'))->toBeString();
 
     // Assert we now have 1 TaskExecuted and 4 StepExecuted
     $this->expect(TaskExecuted::count())->toBe(1);
     $this->expect(StepExecuted::count())->toBe(4);
-})->group('integration');
+});
+// ->group('integration')
