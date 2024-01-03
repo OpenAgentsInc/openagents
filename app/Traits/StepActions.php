@@ -19,28 +19,28 @@ trait StepActions
         // \print_r($input);
 
         // Check if input is an array
-        if (!is_array($input)) {
-            echo "Input is not an array.\n";
-            dd($input);
-        }
+        // if (!is_array($input)) {
+        //     echo "Input is not an array.\n";
+        //     dd($input);
+        // }
 
-        // Check if input has only one key
-        if (count($input) !== 1) {
-            echo "Input has more than one key.\n";
-            dd($input);
-        }
+        // // Check if input has only one key
+        // if (count($input) !== 1) {
+        //     echo "Input has more than one key.\n";
+        //     dd($input);
+        // }
 
-        // Check if input has key input
-        if (!array_key_exists('input', $input)) {
-            echo "Input does not have key input.\n";
-            dd($input);
-        }
+        // // Check if input has key input
+        // if (!array_key_exists('input', $input)) {
+        //     echo "Input does not have key input.\n";
+        //     dd($input);
+        // }
 
-        // Check if input[input] is a string
-        if (!is_string($input['input'])) {
-            echo "Input is not a string.\n";
-            dd($input);
-        }
+        // // Check if input[input] is a string
+        // if (!is_string($input['input'])) {
+        //     echo "Input is not a string.\n";
+        //     dd($input);
+        // }
 
         return $input;
     }
