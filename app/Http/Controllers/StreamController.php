@@ -26,10 +26,8 @@ class StreamController extends Controller
 
     public function doChat($input, $context = "")
     {
-        Log::info($input);
-        Log::info($context);
-
-        // dump($context);
+        \Log::info($input);
+        \Log::info($context);
 
         $conversation = Conversation::create([
             'user_id' => auth()->user()->id ?? 1,
