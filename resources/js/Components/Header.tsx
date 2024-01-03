@@ -57,9 +57,9 @@ export const Header = () => {
           )}
 
           {authed && (
-            <Link href="/dashboard">
+            <Link href="/chat">
               <Button className="text-sm leading-6" variant="outline">
-                Dashboard <span aria-hidden="true" className="pl-2">&rarr;</span>
+                Chat <span aria-hidden="true" className="pl-2">&rarr;</span>
               </Button>
             </Link>
           )}
