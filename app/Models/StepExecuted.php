@@ -15,6 +15,7 @@ class StepExecuted extends Model
     public function run()
     {
         $input = json_decode($this->input);
+        // dd($input);
 
         // Based on the category, run the appropriate StepAction. [validation, embedding, similarity_search, inference]
         // echo "Running step {$this->step->name} with input: \n";

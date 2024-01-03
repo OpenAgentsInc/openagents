@@ -14,6 +14,12 @@ trait StepActions
 {
     public function validation($input)
     {
+        // dd($input);
+
+        // convert stdclass $input to an array
+        $output = (array) $input;
+        return $output;
+
         // Expect an array with key input and value string, nothing else.
         // echo "Validating input: \n";
         // \print_r($input);
