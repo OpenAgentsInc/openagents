@@ -99,7 +99,7 @@ class StreamController extends Controller
             $data = [
                 "model" => $model,
                 "messages" => $messages,
-                "max_tokens" => 256,
+                "max_tokens" => 1024,
                 "temperature" => 0.7,
                 "stream_tokens" => true
             ];
