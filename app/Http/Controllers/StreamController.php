@@ -53,6 +53,13 @@ class StreamController extends Controller
 
         $systemPrompt = "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context;
 
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $conversation->user_id,
+            'body' => $input,
+            'sender' => 'user',
+        ]);
+
         try {
             $client = new Client();
 
