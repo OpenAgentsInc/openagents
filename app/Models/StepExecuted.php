@@ -16,12 +16,7 @@ class StepExecuted extends Model
     {
         $input = (array) json_decode($this->input);
 
-        // dd($input);
-
         // Based on the category, run the appropriate StepAction. [validation, embedding, similarity_search, inference]
-        // echo "Running step {$this->step->name} with input: \n";
-        // \print_r($input);
-        // echo "\n\n";
         $category = $this->step->category;
         $output = $this->$category($input);
         // Update the StepExecuted with completed status and output
