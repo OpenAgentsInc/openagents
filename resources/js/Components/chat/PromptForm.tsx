@@ -8,7 +8,19 @@ export const PromptForm = ({ messages, setMessages }) => {
   const [input, setInput] = useState('')
   const isLoading = false
   const onSubmit = useCallback(async (input: string) => {
-    axios.post('/stream', { input })
+    // axios.post('/stream', { input })
+
+    axios.post('/agent/1/chat', { input })
+      // then console log the response
+      .then(function (response) {
+        console.log(response);
+      })
+      // catch any errors
+      .catch(function (error) {
+        console.log(error);
+      });
+
+
     setMessages([...messages, { role: "user", content: input }])
   }, [messages])
   return (
