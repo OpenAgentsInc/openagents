@@ -29,7 +29,7 @@ class StreamController extends Controller
         Log::info($input);
         Log::info($context);
 
-        dump($context);
+        // dump($context);
 
         $conversation = Conversation::create([
             'user_id' => auth()->user()->id ?? 1,
