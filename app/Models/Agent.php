@@ -39,7 +39,7 @@ class Agent extends Model
                 'user_id' => auth()->id(),
                 'status' => 'pending',
             ]);
-            $step_executed->output = $step_executed->run($input);
+            $step_executed->output = $step_executed->run();
             $step_executed->save();
 
             $prev_step_executed = $step_executed;

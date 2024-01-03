@@ -12,8 +12,10 @@ class StepExecuted extends Model
 
     protected $guarded = [];
 
-    public function run($input = null)
+    public function run()
     {
+        $input = json_decode($this->input);
+
         // Based on the category, run the appropriate StepAction. [validation, embedding, similarity_search, inference]
         // echo "Running step {$this->step->name} with input: \n";
         // \print_r($input);
