@@ -6,8 +6,8 @@ use App\Models\TaskExecuted;
 use App\Models\User;
 
 it('can run', function () {
-    $step_executed = StepExecuted::factory()->create();
-    $output = $step_executed->run(["input" => "Hi there"]);
+    $step_executed = StepExecuted::factory()->create(["input" => json_encode(["input" => "Hi there"])]);
+    $output = $step_executed->run();
     expect($output)->toBeArray();
 });
 
