@@ -37,7 +37,11 @@ Route::get('/nodes', function () {
 });
 
 Route::get('/chat', function () {
-    return Inertia::render('Chat');
+    $streamer = new StreamController();
+    $conversation = $streamer->fetchOrCreateConversation();
+    return Inertia::render('Chat', [
+        'conversationId' => $conversation->id,
+    ]);
 })->name('chat');
 
 Route::post('/stream', [StreamController::class, 'chat']);
