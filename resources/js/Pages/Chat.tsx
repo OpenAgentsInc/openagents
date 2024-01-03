@@ -2,17 +2,19 @@
 import { MessagesList } from "@/Components/chat/MessagesList"
 import { PromptForm } from "@/Components/chat/PromptForm"
 import { SidebarLayout } from "@/Layouts/SidebarLayout";
-import { HomeIcon } from "@heroicons/react/24/outline";
-import { Link } from "@inertiajs/react";
+import { usePage } from "@inertiajs/react";
 import { useEffect, useState } from "react"
 
 function Chat() {
+  const props = usePage().props as any
+  const conversationId = props.conversationId as number
   const [messages, setMessages]: any = useState([{ id: 0, role: "assistant", content: "Welcome to the chat!", tokens: [] }])
 
   useEffect(() => {
     if (import.meta.env.VITE_ENV === "local") return
+    if (!conversationId) return
     // @ts-ignore
-    window.Echo.channel('Chat')
+    window.Echo.channel(`Conversation.${conversationId}`)
       .listen('ChatTokenReceived', (e) => {
         setMessages(prevMessages => {
           // Clone the previous messages object
@@ -34,7 +36,7 @@ function Chat() {
           return newMessages;
         });
       });
-  }, []);
+  }, [conversationId]);
 
   const messagesArray = Object.values(messages);
 

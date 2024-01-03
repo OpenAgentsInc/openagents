@@ -124,7 +124,7 @@ class StreamController extends Controller
             foreach ($this->readStream($stream) as $responseLine) {
                 $token = $responseLine["choices"][0]["text"];
                 $content .= $token;
-                broadcast(new ChatTokenReceived($token, $message->id, $tokenId++));
+                broadcast(new ChatTokenReceived($token, $message->id, $tokenId++, $conversation->id));
             }
 
             $message->update([
