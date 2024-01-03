@@ -56,3 +56,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 37. [Flow of Funds](https://twitter.com/OpenAgentsInc/status/1738221896234373387)
 38. [Agent Node Graphs](https://twitter.com/OpenAgentsInc/status/1741887869055119630)
 39. [Component-Driven Development](https://twitter.com/OpenAgentsInc/status/1742232060821934216)
+40. [Agent Brain Design](https://twitter.com/OpenAgentsInc/status/1742346953210388881)
