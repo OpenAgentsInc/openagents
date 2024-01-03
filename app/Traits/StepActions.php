@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Http\Controllers\StreamController;
 use App\Models\Datapoint;
 use App\Models\Embedding;
 use App\Services\QueenbeeGateway;
@@ -112,26 +113,31 @@ trait StepActions
         }
         $context .= '---';
 
-        $gateway = new OpenAIGateway();
+        // $gateway = new OpenAIGateway();
 
-        $data = [
-            "model" => $gateway->defaultModel(),
-            "messages" => [
-                [
-                    "role" => "system",
-                    "content" => "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context
-                ],
-                [
-                    "role" => "user",
-                    "content" => $input['input']
-                ]
-            ],
-            "max_tokens" => 256,
-            "temperature" => 0.7,
-        ];
+        // Initiate new StreamController
+        $streamer = new StreamController();
+        $last = $streamer->doChat($input, $context);
 
-        $chatResponse = $gateway->makeChatCompletion($data);
-        $last = $chatResponse["choices"][0]["message"]["content"];
+
+        // $data = [
+        //     "model" => $gateway->defaultModel(),
+        //     "messages" => [
+        //         [
+        //             "role" => "system",
+        //             "content" => "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context
+        //         ],
+        //         [
+        //             "role" => "user",
+        //             "content" => $input['input']
+        //         ]
+        //     ],
+        //     "max_tokens" => 256,
+        //     "temperature" => 0.7,
+        // ];
+
+        // $chatResponse = $gateway->makeChatCompletion($data);
+        // $last = $chatResponse["choices"][0]["message"]["content"];
 
         return [
             "output" => $last
