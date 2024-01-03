@@ -49,7 +49,7 @@ export const Header = () => {
           </>}
 
           {showLogin && !authed && !isLoginPage && (
-            <Link href="/login">
+            <Link href="/chat">
               <Button className="text-sm leading-6" variant="outline">
                 Sneak peek<span aria-hidden="true" className="pl-2">&rarr;</span>
               </Button>
