@@ -81,13 +81,7 @@ class StreamController extends Controller
                 ],
                 [
                     "role" => "assistant",
-                    "content" => "Welcome! I am Concierge, the first OpenAgent.
-
-                    You can ask me basic questions about OpenAgents and I will try my best to answer.
-
-                    Click 'Agent' on the left to see what I know and how I act.
-
-                    I might lie or say something crazy. Oh well - thank you for testing!"
+                    "content" => "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!"
                 ]
             ];
 
