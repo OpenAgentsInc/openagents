@@ -8,7 +8,7 @@ import { useEffect, useState } from "react"
 function Chat() {
   const props = usePage().props as any
   const conversationId = props.conversationId as number
-  const [messages, setMessages]: any = useState([{ id: 0, role: "assistant", content: "Welcome to the chat!", tokens: [] }])
+  const [messages, setMessages]: any = useState([{ id: 0, role: "assistant", content: "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!", tokens: [] }])
 
   useEffect(() => {
     if (import.meta.env.VITE_ENV === "local") return
