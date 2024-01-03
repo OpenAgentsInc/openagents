@@ -26,9 +26,16 @@ class StreamController extends Controller
 
     public function doChat($input, $context = "")
     {
+        Log::info($input);
+        Log::info($context);
+
+        dump($context);
+
         $conversation = Conversation::create([
             'user_id' => auth()->user()->id ?? 1,
         ]);
+
+        $systemPrompt = "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context;
 
         try {
             $client = new Client();
@@ -41,7 +48,7 @@ class StreamController extends Controller
                 "messages" => [
                     [
                         "role" => "system",
-                        "content" => "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context
+                        "content" => $systemPrompt
                     ],
                     [
                         "role" => "user",
