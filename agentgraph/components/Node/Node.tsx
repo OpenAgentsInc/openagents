@@ -6,12 +6,44 @@ import { TitleBar } from './TitleBar'
 import { Label, Row } from '../UI'
 import { String } from '../String/String'
 
-export const Node = ({ agent, position, step }: NodeProps) => {
+export const Node = ({ agent, brain, position, step }: NodeProps) => {
   // Handle canvas position & dragging
   const [rootRef, set, currentPos] = useTransform<HTMLDivElement>()
   useEffect(() => {
     set({ x: position?.x, y: position?.y })
   }, [position, set])
+
+  if (!!brain) {
+    return (
+      <NodePanel ref={rootRef}>
+        <TitleBar
+          from={currentPos}
+          onDrag={(point) => set(point)}
+          title="Knowledge Base"
+        />
+        <NodeContent>
+          {/* <p># Thoughts: {brain.thoughts.length}</p> */}
+
+          {brain.datapoints.map((datapoint, index) => {
+            const onUpdate = (update) => {
+              console.log('update:', update)
+            }
+            const onChange = (change) => {
+              console.log('change:', change)
+            }
+            return (
+              <Row input key={index}>
+                <span></span>
+                <String displayValue={datapoint.data} onUpdate={onUpdate} onChange={onChange} />
+              </Row>
+            )
+          })}
+
+        </NodeContent>
+      </NodePanel>
+    )
+  }
+
 
   if (!!agent) {
     return (

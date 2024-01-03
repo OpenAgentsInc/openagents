@@ -13,6 +13,7 @@ function AgentNodes() {
   return (
     <Canvas>
       <Node agent={agent} position={{ x: 480, y: 50 }} />
+      <Node brain={agent.brains[0]} position={{ x: 715, y: 405 }} />
       {steps.map((step, index) => (
         <Node key={index} step={step} position={{ x: 20 + 325 * index, y: 180 }} />
       ))}

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Agent;
+use App\Models\Brain;
 use App\Models\Conversation;
 use App\Models\Step;
 use App\Models\StepExecuted;
@@ -9,6 +10,13 @@ use App\Models\TaskExecuted;
 use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
+
+it('hasmany brains', function () {
+    $agent = Agent::factory()->create();
+    $brain = Brain::factory()->create(['agent_id' => $agent->id]);
+    $brain2 = Brain::factory()->create(['agent_id' => $agent->id]);
+    expect($agent->brains->count())->toBe(2);
+});
 
 it('can run', function () {
     $this->seed(ConciergeSeeder::class);

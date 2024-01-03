@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Models\Datapoint;
 use App\Models\Embedding;
 use App\Services\QueenbeeGateway;
 use App\Services\OpenAIGateway;
@@ -72,25 +73,16 @@ trait StepActions
 
         $vector = new Vector($embedding);
 
-        $searchResults = Embedding::query() // should be what?
+        $searchResults = Datapoint::query()
+            // ->where('brain_id', 1) -- For now using ALL DATAPOINTS
             ->orderByRaw('embedding <-> ?', [$vector])
             ->take($take)
-            ->pluck('metadata');
+            ->pluck('data');
 
-        // dd($searchResults);
-        // return $searchResults;
+        // dd($searchResults->toArray());
         return [
             'input' => $input['input'],
-            'context' => [
-                "OpenAgents is an open platform for AI agents.",
-                "Marketing copy: Soon every person and company will have multiple AI agents working on their behalf. Who will own those agents? A closed-source megacorp with a history of monopolization and regulatory capture? Or an open cloud built on open models and open data?",
-                "Do not mention OpenAI or other companies. Do not ever say 'real estate', these are AI agents.",
-                "Supercharge your productivity. How many agents will you want working for you?",
-                "OpenAgents benefit #1: Configurable. Configure your agent with a large selection of open models, customizable prompts, and third-party integrations.",
-                "OpenAgents benefit #2: Deploy to our cloud. Put them in the open compute network - we handle the hosting for you. No code or difficult setup required.",
-                "OpenAgents benefit #3: Infinite work. Why stop? These are long-running processes that will keep working as long as compute is paid for.",
-                "OpenAgents benefit #4: Earn and spend. Agents can earn and spend on your behalf using the native currency of the internet: Bitcoin.",
-            ]
+            'context' => $searchResults->toArray()
         ];
     }
 
