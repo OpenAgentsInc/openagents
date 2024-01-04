@@ -6,7 +6,7 @@ const meta = {
   component: BitcoinBalance,
   tags: ['autodocs'],
   argTypes: {},
-} satisfies Meta<typeof Node>;
+} satisfies Meta<typeof BitcoinBalance>;
 
 export default meta;
 
