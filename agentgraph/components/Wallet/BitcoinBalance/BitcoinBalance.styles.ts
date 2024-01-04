@@ -4,7 +4,7 @@ import { styled } from '../../../styles'
 export const BalanceContainer = styled('div', {
   position: 'relative',
   backgroundColor: '$elevation3',
-  padding: '9px',
+  padding: '7px',
   borderRadius: '6px',
   color: '$highlight3',
   fontFamily: '$sans',
