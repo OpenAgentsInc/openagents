@@ -60,3 +60,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 41. [Hello Concierge](https://twitter.com/OpenAgentsInc/status/1742609184875544613)
 42. [Agent Bitcoin Balance](https://twitter.com/OpenAgentsInc/status/1742952006166225330)
 43. [EpsteinGPT Postmortem](https://twitter.com/OpenAgentsInc/status/1742970915061731424)
+44. [Sleuth Agent Planning](https://twitter.com/OpenAgentsInc/status/1742992606785622272)
