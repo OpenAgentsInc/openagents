@@ -26,7 +26,11 @@ export const StyledTitleBar = styled('div', {
   textAlign: 'center',
   cursor: 'grab',
   userSelect: 'none',
-  padding: '8px 0'
+  padding: '8px 8px',
+})
+
+export const StyledTitleBarWithBalance = styled(StyledTitleBar, {
+  justifyContent: 'space-between',
 })
 
 export const NodeContent = styled('div', {

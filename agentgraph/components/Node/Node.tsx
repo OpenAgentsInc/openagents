@@ -23,7 +23,6 @@ export const Node = ({ agent, brain, position, step }: NodeProps) => {
         />
         <NodeContent>
           {/* <p># Thoughts: {brain.thoughts.length}</p> */}
-
           {brain.datapoints.map((datapoint, index) => {
             const onUpdate = (update) => {
               console.log('update:', update)
@@ -52,10 +51,10 @@ export const Node = ({ agent, brain, position, step }: NodeProps) => {
           from={currentPos}
           onDrag={(point) => set(point)}
           title={agent.name}
+          balance={agent.sats || 0}
         />
         <NodeContent>
           <p>Task: {agent.tasks[0].description}</p>
-          {/* <p>Steps: {agent.tasks[0].steps.length}</p> */}
         </NodeContent>
       </NodePanel>
     )
