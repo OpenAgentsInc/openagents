@@ -46,7 +46,7 @@ export const TitleBar = ({ balance, from, onDrag, title }: TitleBarProps) => {
     <StyledTitleBarWithBalance {...bind()} ref={titleBarRef}>
       <div style={{ width: 40 }}></div> {/* bad hack */}
       <div>{title}</div>
-      <BitcoinBalance sats={balance} />
+      <BitcoinBalance balance={balance} />
     </StyledTitleBarWithBalance>
   )
 }

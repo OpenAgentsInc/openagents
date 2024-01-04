@@ -11,6 +11,14 @@ use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
 
+it('has a balance', function () {
+    $agent = Agent::factory()->create();
+    expect($agent->balance)->toBe(0);
+
+    $agent = Agent::factory()->create(['balance' => 1000]);
+    expect($agent->balance)->toBe(1000);
+});
+
 it('hasmany brains', function () {
     $agent = Agent::factory()->create();
     $brain = Brain::factory()->create(['agent_id' => $agent->id]);
