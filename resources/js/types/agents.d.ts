@@ -40,7 +40,7 @@ export interface Agent {
   created_at: string
   id: number
   name: string
-  sats?: number
+  balance?: number
   tasks: Task[]
   updated_at: string
   user_id: number

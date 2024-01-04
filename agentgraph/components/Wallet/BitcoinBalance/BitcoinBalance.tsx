@@ -1,10 +1,10 @@
 
 import { BalanceContainer, Lightning } from "./BitcoinBalance.styles"
 
-export const BitcoinBalance = ({ sats }) => {
+export const BitcoinBalance = ({ balance }) => {
   return (
     <BalanceContainer>
-      <Lightning /> {sats}
+      <Lightning /> {balance}
     </BalanceContainer>
   )
 }

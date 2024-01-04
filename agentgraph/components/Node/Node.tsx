@@ -51,7 +51,7 @@ export const Node = ({ agent, brain, position, step }: NodeProps) => {
           from={currentPos}
           onDrag={(point) => set(point)}
           title={agent.name}
-          balance={agent.sats || 0}
+          balance={agent.balance || 0}
         />
         <NodeContent>
           <p>Task: {agent.tasks[0].description}</p>
