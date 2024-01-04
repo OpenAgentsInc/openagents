@@ -1,14 +1,16 @@
 import { useRef } from "react";
 import { useDrag } from "../../hooks";
-import { StyledTitleBar } from "./Node.styles";
+import { StyledTitleBar, StyledTitleBarWithBalance } from "./Node.styles";
+import { BitcoinBalance } from "../Wallet";
 
 interface TitleBarProps {
+  balance?: number
   from: { x?: number; y?: number }
   onDrag: (point: { x?: number; y?: number }) => void
   title: string
 }
 
-export const TitleBar = ({ from, onDrag, title }: TitleBarProps) => {
+export const TitleBar = ({ balance, from, onDrag, title }: TitleBarProps) => {
   const titleBarRef = useRef<any>(null);
   const bind = useDrag(
     ({ offset: [x, y], first, last }) => {
@@ -32,9 +34,19 @@ export const TitleBar = ({ from, onDrag, title }: TitleBarProps) => {
     }
   )
 
+  if (!balance) {
+    return (
+      <StyledTitleBar {...bind()} ref={titleBarRef}>
+        <div>{title}</div>
+      </StyledTitleBar>
+    )
+  }
+
   return (
-    <StyledTitleBar {...bind()} ref={titleBarRef}>
+    <StyledTitleBarWithBalance {...bind()} ref={titleBarRef}>
+      <div style={{ width: 40 }}></div> {/* bad hack */}
       <div>{title}</div>
-    </StyledTitleBar>
+      <BitcoinBalance sats={balance} />
+    </StyledTitleBarWithBalance>
   )
 }

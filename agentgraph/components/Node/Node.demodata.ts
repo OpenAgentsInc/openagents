@@ -91,6 +91,7 @@ export const demoAgent: Agent = {
   created_at: "2024-01-02T16:35:26.000000Z",
   id: 1,
   name: "The Concierge",
+  sats: 42,
   tasks: [demoTask],
   updated_at: "2024-01-02T16:35:26.000000Z",
   user_id: 1
