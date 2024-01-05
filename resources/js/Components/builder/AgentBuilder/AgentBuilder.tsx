@@ -44,7 +44,11 @@ export const AgentBuilder = () => {
                                           <div className="pt-0.5">
                                             <div className="gizmo-shadow-stroke flex h-6 w-6 items-center justify-center overflow-hidden rounded-full">
                                               <div className="relative p-1 rounded-sm h-9 w-9 text-white flex items-center justify-center"
-                                              // style="background-color: var(--brand-purple); width: 24px; height: 24px;"
+                                                style={{
+                                                  backgroundColor: 'var(--brand-purple)',
+                                                  width: '24px',
+                                                  height: '24px'
+                                                }}
                                               >
                                                 <svg width="41" height="41" viewBox="0 0 41 41" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-sm" role="img">
                                                   <text x="-9999" y="-9999">ChatGPT</text>
@@ -54,10 +58,8 @@ export const AgentBuilder = () => {
                                           </div>
                                         </div>
                                       </div>
-
-
                                       <div className="relative flex w-full flex-col lg:w-[calc(100%-115px)] agent-turn">
-                                        <div className="font-semibold select-none">GPT Builder</div>
+                                        <div className="font-semibold select-none">Agent Builder</div>
                                         <div className="flex-col gap-1 md:gap-3">
                                           <div className="flex flex-grow flex-col max-w-full">
                                             <div
@@ -67,7 +69,7 @@ export const AgentBuilder = () => {
                                             >
                                               <div className="markdown prose w-full break-words dark:prose-invert dark">
                                                 <p>
-                                                  Hi! I'll help you build a new GPT. You can say something like, "make
+                                                  Hi! I'll help you build a new Agent. You can say something like, "make
                                                   a creative who helps generate visuals for new products" or "make a
                                                   software engineer who helps format my code."
                                                 </p>
@@ -88,7 +90,7 @@ export const AgentBuilder = () => {
                                                   tabIndex={0}
                                                   data-id="6831a799-1f41-4d29-bf6d-a41af1c37faf"
                                                   rows={1}
-                                                  placeholder="Message GPT Builder…"
+                                                  placeholder="Message Agent Builder…"
                                                   className="m-0 w-full resize-none border-0 bg-transparent py-[10px] pr-10 focus:ring-0 focus-visible:ring-0 dark:bg-transparent md:py-3.5 md:pr-12 placeholder-black/50 dark:placeholder-white/50 pl-10 md:pl-[55px]"
                                                   style={{ maxHeight: '200px', height: '52px', overflowY: 'hidden' }}
                                                 ></textarea>
