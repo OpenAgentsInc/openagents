@@ -6,6 +6,14 @@ const meta = {
   component: ChatPane,
   // tags: ['autodocs'],
   argTypes: {},
+  parameters: { layout: 'fullscreen' },
+  decorators: [
+    (Story) => (
+      <div style={{ height: '100vh' }}>
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof ChatPane>;
 
 export default meta;
