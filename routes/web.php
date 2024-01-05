@@ -3,6 +3,7 @@
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuditController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BuilderController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileController;
@@ -20,6 +21,8 @@ Route::get('/', [StaticController::class, 'splash']);
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
 Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
 Route::get('/stats', [StatsController::class, 'index']);
+
+Route::get('/builder', [BuilderController::class, 'index'])->name('build');
 
 Route::get('/login', [AuthController::class, 'login'])->name('login');
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
