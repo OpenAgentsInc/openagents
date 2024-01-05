@@ -2,7 +2,7 @@ import { ChatPane } from "../ChatPane"
 
 export const AgentBuilder = () => {
   return (
-    <div className="flex h-screen w-full flex-col items-center">
+    <div className="dark flex h-screen w-full flex-col items-center">
       <div className="relative flex h-14 w-full items-center justify-between gap-2 border-b border-token-border-medium px-3 flex-shrink-0">
         <p>Agent Builder</p>
       </div>
