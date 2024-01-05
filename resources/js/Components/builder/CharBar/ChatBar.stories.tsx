@@ -1,12 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { AgentBuilder } from '.';
+import { ChatBar } from '.';
 
 const meta = {
-  title: 'OpenAgents/AgentBuilder/Page',
-  component: AgentBuilder,
+  title: 'OpenAgents/AgentBuilder/ChatBar',
+  component: ChatBar,
   // tags: ['autodocs'],
   argTypes: {},
-} satisfies Meta<typeof AgentBuilder>;
+} satisfies Meta<typeof ChatBar>;
 
 export default meta;
 
