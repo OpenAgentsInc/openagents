@@ -1,4 +1,3 @@
-// import { usePage } from "@inertiajs/react"
 import { ChatBar } from "../ChatBar"
 import { useState } from "react"
 import { MessagesList } from "../MessagesList";
@@ -19,10 +18,9 @@ export const ChatPane = ({ conversationId }) => {
 
                     <div className="break-anywhere relative py-1">
                       <div className="flex items-center">
-                        <MessagesList messages={[{ id: 0, role: "assistant", content: "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!", tokens: [] }]} />
+                        <MessagesList messages={[{ id: 0, role: "assistant", content: 'Hi! I\'ll help you build a new Agent. You can say something like, "make a creative who helps generate visuals for new products" or "make a software engineer who helps format my code."\n\nWhat would you like to make?', tokens: [] }]} />
                       </div>
                     </div>
-
                   </div>
                 </div>
               </div>
