@@ -2,11 +2,11 @@ import { Navbar } from "@/Components/nav/Navbar"
 
 export const NavLayout = ({ children }) => {
   return (
-    <div>
+    <>
       <Navbar />
-      <div className="pt-16">
+      <div className="pt-16 h-screen">
         {children}
       </div>
-    </div>
+    </>
   )
 }

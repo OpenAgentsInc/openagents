@@ -5,8 +5,8 @@ import { useState } from 'react';
 export const AgentBuilder = () => {
   const [selectedValue, setSelectedValue] = useState('create');
   return (
-    <div className="flex h-screen w-full flex-col items-center">
-      <div className="relative flex h-14 w-full items-center justify-between gap-2 border-b border-token-border-medium px-3 flex-shrink-0">
+    <div className="flex grow h-full w-full flex-col items-center">
+      {/* <div className="relative flex h-14 w-full items-center justify-between gap-2 border-b border-token-border-medium px-3 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Link href="/agents" className="cursor-pointer text-token-text-primary">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-lg">
@@ -14,7 +14,6 @@ export const AgentBuilder = () => {
             </svg>
           </Link>
           <div className="flex items-center gap-2">
-            {/* <div className="h-8 w-8 rounded-full border-2 border-dashed border-token-border-medium"></div> */}
             <div>
               <div className="text-sm font-medium">New Agent</div>
               <div className="text-xs text-token-text-secondary">
@@ -40,11 +39,11 @@ export const AgentBuilder = () => {
             </button>
           </span>
         </div>
-      </div>
+      </div> */}
       <div className="relative flex w-full grow overflow-hidden">
         <div className="flex w-full justify-center md:w-1/2">
           <div className="h-full grow overflow-hidden">
-            <div className="flex h-full flex-col px-2 pt-2">
+            <div className="flex h-full flex-col px-2 pt-4">
 
               <RadioGroup.Root role="radiogroup" aria-required="false" dir="ltr" className="flex w-full overflow-hidden rounded-xl bg-token-surface-secondary p-1.5 dark:bg-token-surface-tertiary md:w-1/2 mb-2 flex-shrink-0 self-center" tabIndex={0} style={{ outline: 'none' }}
                 onValueChange={(value) => {
