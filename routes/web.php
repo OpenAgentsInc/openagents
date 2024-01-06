@@ -36,7 +36,7 @@ Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
 Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
 Route::get('/stats', [StatsController::class, 'index']);
 
-Route::get('/agents', [BuilderController::class, 'showcase'])->name('build');
+Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
 Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
 
 Route::get('/login', [AuthController::class, 'login'])->name('login');

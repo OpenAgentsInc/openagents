@@ -35,7 +35,7 @@ class AuthController extends Controller
         // Log in this user
         auth()->login($user, true);
 
-        return redirect('/dashboard');
+        return redirect('/agents');
     }
 
     public function logout()
