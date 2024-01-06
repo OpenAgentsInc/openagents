@@ -1,6 +1,8 @@
 import * as RadioGroup from '@radix-ui/react-radio-group';
+import { useState } from 'react';
 
 export const AgentBuilder = () => {
+  const [selectedValue, setSelectedValue] = useState('create');
   return (
     <div className="flex h-screen w-full flex-col items-center">
       <div className="relative flex h-14 w-full items-center justify-between gap-2 border-b border-token-border-medium px-3 flex-shrink-0"><div className="flex items-center gap-2"><a className="cursor-pointer text-token-text-primary"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-lg"><path d="M15 5L8 12L15 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg></a><div className="flex items-center gap-2"><div className="h-8 w-8 rounded-full border-2 border-dashed border-token-border-medium"></div><div><div className="text-sm font-medium">New Agent</div><div className="text-xs text-token-text-secondary"><div className="flex items-center gap-1"><div className="h-1.5 w-1.5 rounded-full bg-token-text-tertiary"></div>Draft</div></div></div></div></div><div className="flex items-center gap-2"><span className="" data-state="closed"><button className="opacity-50 hover:bg-inherit cursor-not-allowed btn relative btn-primary h-8 rounded-lg border-token-border-light font-medium cursor-pointer whitespace-nowrap" disabled={false} type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="radix-:r0:" data-state="closed"><div className="flex w-full gap-2 items-center justify-center"><div className="flex items-center gap-1">Save<svg width="16" height="17" viewBox="0 0 16 17" fill="none"><path d="M11.3346 7.83203L8.00131 11.1654L4.66797 7.83203" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg></div></div></button></span></div></div>
@@ -9,13 +11,28 @@ export const AgentBuilder = () => {
           <div className="h-full grow overflow-hidden">
             <div className="flex h-full flex-col px-2 pt-2">
 
-              <RadioGroup.Root role="radiogroup" aria-required="false" dir="ltr" className="flex w-full overflow-hidden rounded-xl bg-token-surface-secondary p-1.5 dark:bg-token-surface-tertiary md:w-1/2 mb-2 flex-shrink-0 self-center" tabIndex={0} style={{ outline: 'none' }} onValueChange={(wat) => console.log(wat)}>
-                <RadioGroup.Item type="button" role="radio" aria-checked="true" data-state="checked" value="create" className="text-md w-1/3 flex-grow rounded-lg border-token-border-light p-1.5 font-medium text-token-text-tertiary transition hover:text-token-text-primary radix-state-checked:border radix-state-checked:bg-token-surface-primary radix-state-checked:text-token-text-primary radix-state-checked:shadow-[0_0_2px_rgba(0,0,0,.03)] radix-state-checked:dark:bg-token-surface-secondary md:w-1/2" tabIndex={0} data-radix-collection-item="">
+              <RadioGroup.Root role="radiogroup" aria-required="false" dir="ltr" className="flex w-full overflow-hidden rounded-xl bg-token-surface-secondary p-1.5 dark:bg-token-surface-tertiary md:w-1/2 mb-2 flex-shrink-0 self-center" tabIndex={0} style={{ outline: 'none' }}
+                onValueChange={(value) => {
+                  setSelectedValue(value);
+                }}
+              >
+                <RadioGroup.Item type="button" role="radio"
+                  aria-checked={selectedValue === 'create'}
+                  data-state={selectedValue === 'create' ? "checked" : "unchecked"}
+                  value="create"
+                  className="text-md w-1/3 flex-grow rounded-lg border-token-border-light p-1.5 font-medium text-token-text-tertiary transition hover:text-token-text-primary radix-state-checked:border radix-state-checked:bg-token-surface-primary radix-state-checked:text-token-text-primary radix-state-checked:shadow-[0_0_2px_rgba(0,0,0,.03)] radix-state-checked:dark:bg-token-surface-secondary md:w-1/2" tabIndex={0} data-radix-collection-item="">
                   Create
                 </RadioGroup.Item>
-                <RadioGroup.Item type="button" role="radio" aria-checked="false" data-state="unchecked" value="configure" className="text-md w-1/3 flex-grow rounded-lg border-token-border-light p-1.5 font-medium text-token-text-tertiary transition hover:text-token-text-primary radix-state-checked:border radix-state-checked:bg-token-surface-primary radix-state-checked:text-token-text-primary radix-state-checked:shadow-[0_0_2px_rgba(0,0,0,.03)] radix-state-checked:dark:bg-token-surface-secondary md:w-1/2" tabIndex={-1} data-radix-collection-item="">Configure
+                <RadioGroup.Item type="button" role="radio"
+                  aria-checked={selectedValue === 'configure'}
+                  data-state={selectedValue === 'configure' ? "checked" : "unchecked"}
+                  value="configure" className="text-md w-1/3 flex-grow rounded-lg border-token-border-light p-1.5 font-medium text-token-text-tertiary transition hover:text-token-text-primary radix-state-checked:border radix-state-checked:bg-token-surface-primary radix-state-checked:text-token-text-primary radix-state-checked:shadow-[0_0_2px_rgba(0,0,0,.03)] radix-state-checked:dark:bg-token-surface-secondary md:w-1/2" tabIndex={-1} data-radix-collection-item="">Configure
                 </RadioGroup.Item>
-                <div className="flex w-1/3 md:hidden"><RadioGroup.Item type="button" role="radio" aria-checked="false" data-state="unchecked" value="preview" className="text-md w-1/3 flex-grow rounded-lg border-token-border-light p-1.5 font-medium text-token-text-tertiary transition hover:text-token-text-primary radix-state-checked:border radix-state-checked:bg-token-surface-primary radix-state-checked:text-token-text-primary radix-state-checked:shadow-[0_0_2px_rgba(0,0,0,.03)] radix-state-checked:dark:bg-token-surface-secondary md:w-1/2" tabIndex={-1} data-radix-collection-item="">
+                <div className="flex w-1/3 md:hidden"><RadioGroup.Item type="button" role="radio"
+                  aria-checked={selectedValue === 'preview'}
+                  data-state={selectedValue === 'preview' ? "checked" : "unchecked"}
+                  value="preview"
+                  className="text-md w-1/3 flex-grow rounded-lg border-token-border-light p-1.5 font-medium text-token-text-tertiary transition hover:text-token-text-primary radix-state-checked:border radix-state-checked:bg-token-surface-primary radix-state-checked:text-token-text-primary radix-state-checked:shadow-[0_0_2px_rgba(0,0,0,.03)] radix-state-checked:dark:bg-token-surface-secondary md:w-1/2" tabIndex={-1} data-radix-collection-item="">
                   Preview
                 </RadioGroup.Item>
                 </div>
