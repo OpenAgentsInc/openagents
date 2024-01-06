@@ -331,7 +331,7 @@ export const AgentBuilder = () => {
                         </div>
                         <div className="flex flex-col gap-4">
                           <div className="rounded-lg text-gray-500">
-                            If you upload files under Knowledge, conversations with your Agent may include file contents. Files can be downloaded when Code Interpreter is enabled
+                            If you upload files under Knowledge, conversations with your Agent may include file contents.
                           </div>
                           <div>
                             <button className="btn relative btn-neutral h-8 rounded-lg border-token-border-light font-medium">
@@ -370,21 +370,6 @@ export const AgentBuilder = () => {
                             />
                             <label className="form-check-label text-gray-800 dark:text-gray-100 w-full cursor-pointer" htmlFor="dalle">
                               Image Generation
-                            </label>
-                          </div>
-                          <div className="form-check flex items-center">
-                            <input
-                              className="form-check-input float-left mr-2 h-4 w-4 cursor-pointer appearance-none rounded-sm border border-gray-300 bg-white bg-contain bg-center bg-no-repeat align-top transition duration-200 checked:border-blue-600 checked:bg-blue-600 focus:outline-none !rounded border-gray-950 checked:!bg-black dark:border-gray-600 dark:bg-gray-700"
-                              type="checkbox"
-                              id="python"
-                            />
-                            <label className="form-check-label text-gray-800 dark:text-gray-100 w-full cursor-pointer" htmlFor="python">
-                              <div className="flex items-center">
-                                Code Interpreter
-                                <span className="" data-state="closed">
-                                  <div className="ml-2 flex h-3.5 w-3.5 cursor-default items-center justify-center rounded-full border border-token-border-medium text-[0.5rem] font-medium leading-none text-gray-500 ">?</div>
-                                </span>
-                              </div>
                             </label>
                           </div>
                         </div>
