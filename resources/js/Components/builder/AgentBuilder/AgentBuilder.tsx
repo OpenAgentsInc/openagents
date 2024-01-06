@@ -14,7 +14,7 @@ export const AgentBuilder = () => {
             </svg>
           </Link>
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full border-2 border-dashed border-token-border-medium"></div>
+            {/* <div className="h-8 w-8 rounded-full border-2 border-dashed border-token-border-medium"></div> */}
             <div>
               <div className="text-sm font-medium">New Agent</div>
               <div className="text-xs text-token-text-secondary">
@@ -224,7 +224,7 @@ export const AgentBuilder = () => {
                   <div className="flex h-full grow flex-col overflow-y-auto px-2 pt-6 text-sm">
                     <div className="grow">
                       <div className="mb-6">
-                        <div className="flex w-full items-center justify-center gap-4">
+                        {/* <div className="flex w-full items-center justify-center gap-4">
                           <button
                             type="button"
                             id="radix-:r2a:"
@@ -251,7 +251,7 @@ export const AgentBuilder = () => {
                               </svg>
                             </div>
                           </button>
-                        </div>
+                        </div> */}
                         <div className="mb-1.5 flex items-center">
                           <span className="" data-state="closed">
                             <label className="block font-medium text-token-text-primary">Name</label>
@@ -378,7 +378,7 @@ export const AgentBuilder = () => {
                           </div>
                         </div>
                       </div>
-                      <div className="mb-6">
+                      {/* <div className="mb-6">
                         <div className="mb-1.5 flex items-center">
                           <span className="" data-state="closed">
                             <label className="block font-medium text-token-text-primary">Capabilities</label>
@@ -420,7 +420,7 @@ export const AgentBuilder = () => {
                             <div className="flex w-full gap-2 items-center justify-center">Create new action</div>
                           </button>
                         </div>
-                      </div>
+                      </div> */}
                     </div>
                   </div>
                 )}
