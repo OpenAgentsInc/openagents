@@ -10,6 +10,9 @@ import { easing } from 'maath'
 function Splash() {
   return (
     <>
+      <div className="pointer-events-none absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center" style={{ zIndex: 9999 }}>
+        <h1 className="-mt-32 text-7xl font-medium">Make AI <span className="italic">cool</span> again.</h1>
+      </div>
       <div className="splashoverlay" />
       <Canvas flat shadows camera={{ position: [-15, 0, 10], fov: 25 }} style={{ position: 'fixed' }}>
         <fog attach="fog" args={['black', 15, 21.5]} />
