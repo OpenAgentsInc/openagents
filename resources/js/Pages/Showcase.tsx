@@ -1,10 +1,10 @@
 import { AgentShowcase } from "@/Components/builder/AgentShowcase";
-import { SidebarLayout } from "@/Layouts/SidebarLayout";
+import { NavLayout } from "@/Layouts/NavLayout";
 
 function Showcase() {
   return <AgentShowcase />
 }
 
-Showcase.layout = (page) => <SidebarLayout children={page} />
+Showcase.layout = (page) => <NavLayout children={page} />
 
 export default Showcase

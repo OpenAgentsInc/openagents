@@ -1,4 +1,5 @@
 
+import { Navbar } from "@/Components/nav/Navbar";
 import { IconMessage } from "@/Components/ui/icons";
 import { HomeIcon } from "@heroicons/react/24/outline";
 import { Link } from "@inertiajs/react";
@@ -6,6 +7,7 @@ import { Link } from "@inertiajs/react";
 export const SidebarLayout = ({ children, grid = false }) => {
   return (
     <div className="h-dscreen w-full md:h-screen">
+      <Navbar />
       <div className="flex h-dscreen bg-neutral-50">
         <div className="space-y-4 hidden w-22 flex-col items-center border-r border-neutral-300 p-3 pt-5 lg:flex">
           <Link href="/" className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
