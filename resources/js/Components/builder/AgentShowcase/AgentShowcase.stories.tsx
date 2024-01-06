@@ -1,13 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { AgentBuilder } from '.';
+import { AgentShowcase } from '.';
 
 const meta = {
-  title: 'OpenAgents/AgentBuilder/Page',
-  component: AgentBuilder,
+  title: 'OpenAgents/AgentShowcase/Page',
+  component: AgentShowcase,
   parameters: { layout: 'fullscreen' },
   // tags: ['autodocs'],
   argTypes: {},
-} satisfies Meta<typeof AgentBuilder>;
+} satisfies Meta<typeof AgentShowcase>;
 
 export default meta;
 
