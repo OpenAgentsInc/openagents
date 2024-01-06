@@ -1,12 +1,12 @@
 import { usePage } from "@inertiajs/react"
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../Components/ui/card"
-import { Button } from "@/Components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../Components/ui/card"
 import { NavLayout } from "@/Layouts/NavLayout"
 
 export default function Referrals() {
   const props = usePage().props as any
   const referrals = props.referrals
+  const user = props.auth.user
+  const username = user?.twitter_nickname || user?.github_nickname || 'Guest'
   return (
     <NavLayout user={props.auth.user}>
       <Card className="mt-24 mx-auto w-[350px]">
@@ -16,7 +16,7 @@ export default function Referrals() {
         </CardHeader>
 
         <CardContent>
-          <p>https://openagents.com/?r={props.auth.user.github_nickname}</p>
+          <p>https://openagents.com/?r={username}</p>
         </CardContent>
         {/* <CardFooter>
         <Button>Share</Button>
