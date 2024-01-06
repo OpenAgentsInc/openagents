@@ -4,7 +4,7 @@ import { Bars3Icon, BellIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { PlusIcon } from '@heroicons/react/20/solid'
 import ApplicationLogo from '@/Components/ApplicationLogo'
 import { Link } from '@inertiajs/react'
-import { Button } from '@/Components/catalyst/button'
+import { Button } from '@/Components/ui/button'
 
 function classNames(...classes) {
   return classes.filter(Boolean).join(' ')
@@ -78,7 +78,7 @@ export const Navbar = ({ user }: HeaderProps) => {
                     // type="button"
                     // className="relative inline-flex items-center gap-x-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
                     >
-                      <PlusIcon className="-ml-0.5 h-5 w-5" aria-hidden="true" />
+                      <PlusIcon className="-ml-1 mr-2 h-4 w-4" aria-hidden="true" />
                       Create Agent
                     </Button>
                   </Link>
@@ -88,12 +88,11 @@ export const Navbar = ({ user }: HeaderProps) => {
 
                   {!user && (
                     <span className="flex items-center">
-                      <Button outline className="cursor-pointer">
-                        <span className="font-medium underline-transparent underline-thickness-1 underline-offset-4 group-hover:underline group-hover:underline-inherit">Log in</span>
-                        <svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="a-icon--arrow-north-east400 a-icon--text a-icon--no-align relative f-ui-1 -mr-1" style={{ width: "1em", height: "1em" }} data-new="" aria-hidden="true" data-v-67d7128c="">
-                          <polygon fill="currentColor" points="5 4.31 5 5.69 9.33 5.69 2.51 12.51 3.49 13.49 10.31 6.67 10.31 11 11.69 11 11.69 4.31 5 4.31" data-v-67d7128c=""></polygon>
-                        </svg>
-                      </Button>
+                      <Link href="/login">
+                        <Button className="text-sm leading-6" variant="outline">
+                          Log in <span aria-hidden="true" className="pl-2">&rarr;</span>
+                        </Button>
+                      </Link>
                     </span>
                   )}
                   {/* <button
@@ -157,15 +156,15 @@ export const Navbar = ({ user }: HeaderProps) => {
                           </Menu.Item>
                           <Menu.Item>
                             {({ active }) => (
-                              <a
-                                href="#"
+                              <Link
+                                href="/logout"
                                 className={classNames(
                                   active ? 'bg-gray-100' : '',
                                   'block px-4 py-2 text-sm text-gray-700'
                                 )}
                               >
-                                Sign out
-                              </a>
+                                Log out
+                              </Link>
                             )}
                           </Menu.Item>
                         </Menu.Items>
