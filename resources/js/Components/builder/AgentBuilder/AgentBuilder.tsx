@@ -131,7 +131,7 @@ export const AgentBuilder = () => {
                                           </div>
                                         </div>
 
-                                        <div className="group fixed bottom-3 right-3 z-10 hidden gap-1 lg:flex">
+                                        {/* <div className="group fixed bottom-3 right-3 z-10 hidden gap-1 lg:flex">
                                           <div className="group relative" data-headlessui-state="">
                                             <button
                                               className="flex items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-600 dark:border-white/10 dark:bg-white/10 dark:text-gray-200"
@@ -144,7 +144,7 @@ export const AgentBuilder = () => {
                                               <div className="flex h-6 w-6 items-center justify-center text-xs">?</div>
                                             </button>
                                           </div>
-                                        </div>
+                                        </div> */}
 
                                       </div>
 
@@ -453,7 +453,7 @@ export const AgentBuilder = () => {
                       style={{ maxHeight: '200px', height: '52px', overflowY: 'hidden' }}
 
                     ></textarea><button disabled={false} className="absolute md:bottom-3 md:right-3 dark:hover:bg-gray-900 dark:disabled:hover:bg-transparent right-2 dark:disabled:bg-white disabled:bg-black disabled:opacity-10 disabled:text-gray-400 enabled:bg-black text-white p-0.5 border border-black rounded-lg dark:border-white dark:bg-white bottom-1.5 transition-colors" data-testid="send-button"><span className="" data-state="closed"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-white dark:text-black"><path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg></span></button></div></div></div></form><div className="relative px-2 py-2 text-center text-xs text-gray-600 dark:text-gray-300 md:px-[60px]"></div></div></div>
-                    <div className="group fixed bottom-3 right-3 z-10 hidden gap-1 lg:flex"><div className="group relative" data-headlessui-state=""><button className="flex items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-600 dark:border-white/10 dark:bg-white/10 dark:text-gray-200" id="headlessui-menu-button-:rg:" type="button" aria-haspopup="true" aria-expanded="false" data-headlessui-state=""><div className="flex h-6 w-6 items-center justify-center text-xs">?</div></button></div></div>
+                    {/* <div className="group fixed bottom-3 right-3 z-10 hidden gap-1 lg:flex"><div className="group relative" data-headlessui-state=""><button className="flex items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-600 dark:border-white/10 dark:bg-white/10 dark:text-gray-200" id="headlessui-menu-button-:rg:" type="button" aria-haspopup="true" aria-expanded="false" data-headlessui-state=""><div className="flex h-6 w-6 items-center justify-center text-xs">?</div></button></div></div> */}
                   </div>
                 </div>
               </div>
