@@ -158,8 +158,13 @@
   * {
     @apply border-border;
   }
+  html {
+    @apply scroll-smooth;
+  }
   body {
+    @apply scrollbar-none !important;
     @apply bg-neutral-50 text-foreground;
+    margin-right: calc(100vw - 100%);
   }
   .t-body-chat {
     @apply border-0 focus:ring-0;

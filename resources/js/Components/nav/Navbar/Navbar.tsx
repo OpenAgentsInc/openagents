@@ -14,7 +14,7 @@ export const Navbar = () => {
     <Disclosure as="nav" className="fixed w-full bg-white shadow" style={{ zIndex: 9990 }}>
       {({ open }) => (
         <>
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="scrollbar-gutter-both-edges mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="flex h-16 justify-between">
               <div className="flex">
                 <div className="-ml-2 mr-2 flex items-center md:hidden">
