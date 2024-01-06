@@ -1,5 +1,10 @@
 import { AgentBuilder } from "@/Components/builder/AgentBuilder";
+import { SidebarLayout } from "@/Layouts/SidebarLayout";
 
-export default function Builder() {
+function Builder() {
   return <AgentBuilder />
 }
+
+Builder.layout = (page) => <SidebarLayout children={page} />
+
+export default Builder
