@@ -1,3 +1,4 @@
+import { Link } from '@inertiajs/react';
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import { useState } from 'react';
 
@@ -7,11 +8,11 @@ export const AgentBuilder = () => {
     <div className="flex h-screen w-full flex-col items-center">
       <div className="relative flex h-14 w-full items-center justify-between gap-2 border-b border-token-border-medium px-3 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <a className="cursor-pointer text-token-text-primary">
+          <Link href="/agents" className="cursor-pointer text-token-text-primary">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-lg">
               <path d="M15 5L8 12L15 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
             </svg>
-          </a>
+          </Link>
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-full border-2 border-dashed border-token-border-medium"></div>
             <div>
