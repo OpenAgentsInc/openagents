@@ -17,7 +17,21 @@ use App\Http\Controllers\StreamController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', [StaticController::class, 'splash']);
+// Route::get('/', [StaticController::class, 'splash']);
+
+Route::get('/', function () {
+    $streamer = new StreamController();
+    $conversation = $streamer->fetchOrCreateConversation();
+    return Inertia::render('Chat', [
+        'conversationId' => $conversation->id,
+    ]);
+})->name('chat');
+
+// New /chat endpoint just redirects to /
+Route::get('/chat', function () {
+    return redirect('/');
+});
+
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
 Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
 Route::get('/stats', [StatsController::class, 'index']);
@@ -39,14 +53,6 @@ Route::get('/graph', function () {
 Route::get('/nodes', function () {
     return Inertia::render('Nodes');
 });
-
-Route::get('/chat', function () {
-    $streamer = new StreamController();
-    $conversation = $streamer->fetchOrCreateConversation();
-    return Inertia::render('Chat', [
-        'conversationId' => $conversation->id,
-    ]);
-})->name('chat');
 
 Route::post('/stream', [StreamController::class, 'chat']);
 
