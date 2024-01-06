@@ -2,7 +2,7 @@ import { ChatPane } from "../ChatPane"
 
 export const AgentBuilder = () => {
   return (
-    <div className="dark flex h-screen w-full flex-col items-center">
+    <div className="flex h-screen w-full flex-col items-center">
       <div className="relative flex h-14 w-full items-center justify-between gap-2 border-b border-token-border-medium px-3 flex-shrink-0">
         <p>Agent Builder</p>
       </div>
@@ -165,6 +165,39 @@ export const AgentBuilder = () => {
                         </div>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="hidden w-1/2 justify-center border-l border-token-border-medium bg-token-surface-secondary pt-4 md:flex">
+          <div className="flex-grow pb-5">
+            <div className="h-full">
+              <div className="flex h-full w-full">
+                <div className="flex grow flex-col">
+                  <div className="relative mb-2 flex-shrink-0">
+                    <div className="flex justify-center py-1">
+                      <div className="group flex items-center gap-2 text-lg font-medium">
+                        <div className="icon-md"></div>
+                        <button className="flex items-center gap-2">
+                          Preview
+                          <div className="text-token-text-primary" style={{ transform: "none" }}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-md invisible group-hover:visible">
+                              <path d="M4.5 3.5V8H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
+                              <path d="M4.5 7.99645C5.93143 5.3205 8.75312 3.5 12 3.5C16.6944 3.5 20.5 7.30558 20.5 12C20.5 16.6944 16.6944 20.5 12 20.5C7.6439 20.5 4.05313 17.2232 3.5582 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"></path>
+                            </svg>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="relative grow overflow-auto px-2">
+                    <div role="presentation" className="flex h-full flex-col"><div className="flex-1 overflow-hidden"><div className="relative h-full w-full"><div className="absolute left-0 top-0 h-full w-full"><div className="flex h-full flex-col items-center justify-center"><div className="relative"><div className="mb-3 h-[72px] w-[72px]"><div className="gizmo-shadow-stroke relative flex h-full items-center justify-center rounded-full bg-white text-black"><svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" className="text-token-secondary h-2/3 w-2/3" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div></div></div><div className="flex flex-col items-center gap-0 p-2"><div className="text-center text-2xl font-medium"></div></div></div></div></div></div><div className="w-full pt-2 md:pt-0 dark:border-white/20 md:border-transparent md:dark:border-transparent md:w-[calc(100%-.5rem)]"><form className="stretch mx-2 flex flex-row gap-3 last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl"><div className="relative flex h-full flex-1 items-stretch md:flex-col"><div className="flex w-full items-center"><div className="overflow-hidden [&amp;:has(textarea:focus)]:border-token-border-xheavy [&amp;:has(textarea:focus)]:shadow-[0_2px_6px_rgba(0,0,0,.05)] flex flex-col w-full dark:border-token-border-heavy flex-grow relative border border-token-border-heavy dark:text-white rounded-2xl bg-white dark:bg-gray-800 shadow-[0_0_0_2px_rgba(255,255,255,0.95)] dark:shadow-[0_0_0_2px_rgba(52,53,65,0.95)]"><textarea id="prompt-textarea" tabIndex={0} data-id="root" rows={1} placeholder="Message Agent…" className="m-0 w-full resize-none border-0 bg-transparent py-[10px] pr-10 focus:ring-0 focus-visible:ring-0 dark:bg-transparent md:py-3.5 md:pr-12 placeholder-black/50 dark:placeholder-white/50 pl-3 md:pl-4"
+                      style={{ maxHeight: '200px', height: '52px', overflowY: 'hidden' }}
+
+                    ></textarea><button disabled={false} className="absolute md:bottom-3 md:right-3 dark:hover:bg-gray-900 dark:disabled:hover:bg-transparent right-2 dark:disabled:bg-white disabled:bg-black disabled:opacity-10 disabled:text-gray-400 enabled:bg-black text-white p-0.5 border border-black rounded-lg dark:border-white dark:bg-white bottom-1.5 transition-colors" data-testid="send-button"><span className="" data-state="closed"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-white dark:text-black"><path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg></span></button></div></div></div></form><div className="relative px-2 py-2 text-center text-xs text-gray-600 dark:text-gray-300 md:px-[60px]"></div></div></div>
+                    <div className="group fixed bottom-3 right-3 z-10 hidden gap-1 lg:flex"><div className="group relative" data-headlessui-state=""><button className="flex items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-600 dark:border-white/10 dark:bg-white/10 dark:text-gray-200" id="headlessui-menu-button-:rg:" type="button" aria-haspopup="true" aria-expanded="false" data-headlessui-state=""><div className="flex h-6 w-6 items-center justify-center text-xs">?</div></button></div></div>
                   </div>
                 </div>
               </div>
