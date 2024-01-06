@@ -23,23 +23,41 @@ class AuthController extends Controller
         return Socialite::driver('twitter')->redirect();
     }
 
-    public function githubCallback()
+    public function twitterCallback()
     {
         $twitterUser = Socialite::driver('twitter')->user();
-        dd($twitterUser);
 
-        // $user = User::updateOrCreate(
-        //     ['github_id' => $githubUser->id], // Check if GitHub ID exists
-        //     [
-        //         'name' => $githubUser->name,
-        //         'email' => $githubUser->email,
-        //         'github_nickname' => $githubUser->nickname,
-        //         'github_avatar' => $githubUser->avatar,
-        //     ]
-        // );
+        $user = User::updateOrCreate(
+            ['twitter_id' => $twitterUser->id], // Check if Twitter ID exists
+            [
+                'name' => $twitterUser->name,
+                'email' => $twitterUser->email,
+                'twitter_nickname' => $twitterUser->nickname,
+                'twitter_avatar' => $twitterUser->avatar,
+            ]
+        );
 
-        // // Log in this user
-        // auth()->login($user, true);
+        auth()->login($user, true);
+
+        return redirect('/agents');
+    }
+
+    public function githubCallback()
+    {
+        $githubUser = Socialite::driver('github')->user();
+
+        $user = User::updateOrCreate(
+            ['github_id' => $githubUser->id], // Check if GitHub ID exists
+            [
+                'name' => $githubUser->name,
+                'email' => $githubUser->email,
+                'github_nickname' => $githubUser->nickname,
+                'github_avatar' => $githubUser->avatar,
+            ]
+        );
+
+        // Log in this user
+        auth()->login($user, true);
 
         return redirect('/agents');
     }

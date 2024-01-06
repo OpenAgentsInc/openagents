@@ -37,6 +37,9 @@ class User extends Authenticatable
         'github_id',
         'github_nickname',
         'github_avatar',
+        'twitter_id',
+        'twitter_nickname',
+        'twitter_avatar'
     ];
 
     /**
@@ -88,7 +91,7 @@ class User extends Authenticatable
 
     public function getUsernameAttribute()
     {
-        return $this->github_nickname;
+        return $this->twitter_nickname ?? $this->github_nickname;
     }
 
     public function referrer()

@@ -18,6 +18,7 @@ interface HeaderProps {
 
 export const Navbar = ({ user }: HeaderProps) => {
   const name = user?.name || user?.github_nickname || 'Guest'
+  const avatar = user?.github_avatar || user?.twitter_avatar || 'https://placekitten.com/100/100'
 
   // If route is undefined (in storybook), set it to no-op, otherwise dont change it
   const route = (route?: any) => route || {
@@ -125,7 +126,7 @@ export const Navbar = ({ user }: HeaderProps) => {
                           />
                         </Menu.Button> */}
                         <Menu.Button className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none transition ease-in-out duration-150">
-                          <img src={user.github_avatar} alt={name} className="h-8 w-8 mr-3 rounded-full" />
+                          <img src={avatar} alt={name} className="h-8 w-8 mr-3 rounded-full" />
                           {name}
                           <svg
                             className="ms-2 -me-0.5 h-4 w-4"
