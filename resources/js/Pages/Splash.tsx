@@ -12,6 +12,7 @@ function Splash() {
     <>
       <div className="pointer-events-none absolute top-0 left-0 w-full h-full flex flex-col justify-center items-center" style={{ zIndex: 9999 }}>
         <h1 className="-mt-32 text-7xl font-medium">Make AI <span className="italic">cool</span> again.</h1>
+        <h3 className="mt-6 text-2xl font-light">OpenAgents is the community platform for building AI agents.</h3>
       </div>
       <div className="splashoverlay" />
       <Canvas flat shadows camera={{ position: [-15, 0, 10], fov: 25 }} style={{ position: 'fixed' }}>
