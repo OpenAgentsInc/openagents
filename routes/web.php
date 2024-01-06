@@ -19,13 +19,13 @@ use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
 
-// Route::get('/', function () {
-//     $streamer = new StreamController();
-//     $conversation = $streamer->fetchOrCreateConversation();
-//     return Inertia::render('Chat', [
-//         'conversationId' => $conversation->id,
-//     ]);
-// })->name('chat');
+Route::get('/chat', function () {
+    $streamer = new StreamController();
+    $conversation = $streamer->fetchOrCreateConversation();
+    return Inertia::render('Chat', [
+        'conversationId' => $conversation->id,
+    ]);
+})->name('chat');
 
 // New /chat endpoint just redirects to /
 // Route::get('/chat', function () {
