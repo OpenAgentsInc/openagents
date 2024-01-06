@@ -88,9 +88,35 @@ export const AgentShowcase = () => {
             </div>
 
             <div className="scroll-mt-28 last:h-[calc(100vh-8rem)]">
-              <div tabIndex={0} data-projection-id="11" style={{ opacity: 1, transform: 'none' }}><div className="text-xl font-medium md:text-2xl">Made by OpenAgents</div></div>
+              <div tabIndex={0} data-projection-id="11" style={{ opacity: 1, transform: 'none' }}>
+                <div className="text-xl font-medium md:text-2xl">Made by OpenAgents</div>
+              </div>
               <div className="mb-10 mt-4">
-                <div tabIndex={0} data-projection-id="12" style={{ opacity: 1, transform: 'none' }}><Link className="flex items-center px-2 py-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700" href="/agent/1"><div className="flex grow items-center overflow-hidden md:w-3/5 md:grow-0"><div className="h-[42px] w-[42px] flex-shrink-0"><div className="gizmo-shadow-stroke overflow-hidden rounded-full"><img src="https://files.oaiusercontent.com/file-SxYQO0Fq1ZkPagkFtg67DRVb?se=2123-10-12T23%3A57%3A32Z&amp;sp=r&amp;sv=2021-08-06&amp;sr=b&amp;rscc=max-age%3D31536000%2C%20immutable&amp;rscd=attachment%3B%20filename%3Dagent_3.webp&amp;sig=pLlQh8oUktqQzhM09SDDxn5aakqFuM2FAPptuA0mbqc%3D" className="h-full w-full bg-token-surface-secondary dark:bg-token-surface-tertiary" alt="GPT" width="80" height="80" /></div></div><div className="grow overflow-hidden pl-4 pr-9 leading-tight hover:cursor-pointer"><div className="flex items-center gap-1"><span className="font-medium">Concierge</span></div><div className="overflow-hidden text-ellipsis break-words text-sm line-clamp-2">Ask noob questions about OpenAgents</div><div className="text-ellipsis text-sm text-gray-500 md:hidden"><div className="text-sm text-token-text-tertiary">By OpenAgents</div></div></div></div><div className="hidden flex-1 text-ellipsis text-sm text-gray-500 md:block"><div className="text-sm text-token-text-tertiary">By OpenAgents</div></div><div className="flex h-9 shrink-0 justify-end gap-2 font-medium md:w-[100px]"></div></Link></div>
+                <div tabIndex={0} data-projection-id="12" style={{ opacity: 1, transform: 'none' }}>
+                  <Link className="flex items-center px-2 py-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700" href="/agent/1">
+                    <div className="flex grow items-center overflow-hidden md:w-3/5 md:grow-0">
+                      <div className="h-[42px] w-[42px] flex-shrink-0">
+                        <div className="gizmo-shadow-stroke overflow-hidden rounded-full">
+                          <img src="https://files.oaiusercontent.com/file-SxYQO0Fq1ZkPagkFtg67DRVb?se=2123-10-12T23%3A57%3A32Z&amp;sp=r&amp;sv=2021-08-06&amp;sr=b&amp;rscc=max-age%3D31536000%2C%20immutable&amp;rscd=attachment%3B%20filename%3Dagent_3.webp&amp;sig=pLlQh8oUktqQzhM09SDDxn5aakqFuM2FAPptuA0mbqc%3D" className="h-full w-full bg-token-surface-secondary dark:bg-token-surface-tertiary" alt="GPT" width="80" height="80" />
+                        </div>
+                      </div>
+                      <div className="grow overflow-hidden pl-4 pr-9 leading-tight hover:cursor-pointer">
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium">Concierge</span>
+                        </div>
+                        <div className="overflow-hidden text-ellipsis break-words text-sm line-clamp-2">Ask noob questions about OpenAgents</div>
+                        {/* <div className="text-ellipsis text-sm text-gray-500 md:hidden">
+                          <div className="text-sm text-token-text-tertiary">By OpenAgents</div>
+                        </div> */}
+                      </div>
+                    </div>
+                    {/* <div className="hidden flex-1 text-ellipsis text-sm text-gray-500 md:block">
+                      <div className="text-sm text-token-text-tertiary">By OpenAgents</div>
+                    </div> */}
+                    <div className="flex h-9 shrink-0 justify-end gap-2 font-medium md:w-[100px]"></div>
+                  </Link>
+                </div>
+
                 {/* <div tabIndex={0} data-projection-id="13 " style={{ opacity: 1, transform: 'none' }}><a className="flex items-center px-2 py-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700" href="/g/g-HMNcP6w7d-data-analyst"><div className="flex grow items-center overflow-hidden md:w-3/5 md:grow-0"><div className="h-[42px] w-[42px] flex-shrink-0"><div className="gizmo-shadow-stroke overflow-hidden rounded-full"><img src="https://files.oaiusercontent.com/file-id374Jq85g2WfDgpuOdAMTEk?se=2123-10-13T00%3A31%3A06Z&amp;sp=r&amp;sv=2021-08-06&amp;sr=b&amp;rscc=max-age%3D31536000%2C%20immutable&amp;rscd=attachment%3B%20filename%3Dagent_2.png&amp;sig=qFnFnFDVevdJL3xvtDE8vysDpTQmkSlF1zhYLAMiqmM%3D" className="h-full w-full bg-token-surface-secondary dark:bg-token-surface-tertiary" alt="GPT" width="80" height="80" /></div></div><div className="grow overflow-hidden pl-4 pr-9 leading-tight hover:cursor-pointer"><div className="flex items-center gap-1"><span className="font-medium">AutoDev</span></div><div className="overflow-hidden text-ellipsis break-words text-sm line-clamp-2">Drop in any files and I can help analyze and visualize your data.</div><div className="text-ellipsis text-sm text-gray-500 md:hidden"><div className="text-sm text-token-text-tertiary">By OpenAgents</div></div></div></div><div className="hidden flex-1 text-ellipsis text-sm text-gray-500 md:block"><div className="text-sm text-token-text-tertiary">By OpenAgents</div></div><div className="flex h-9 shrink-0 justify-end gap-2 font-medium md:w-[100px]"></div></a></div> */}
               </div>
             </div>
