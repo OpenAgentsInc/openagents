@@ -18,22 +18,28 @@ class AuthController extends Controller
         return Socialite::driver('github')->redirect();
     }
 
+    public function loginTwitter()
+    {
+        return Socialite::driver('twitter')->redirect();
+    }
+
     public function githubCallback()
     {
-        $githubUser = Socialite::driver('github')->user();
+        $twitterUser = Socialite::driver('twitter')->user();
+        dd($twitterUser);
 
-        $user = User::updateOrCreate(
-            ['github_id' => $githubUser->id], // Check if GitHub ID exists
-            [
-                'name' => $githubUser->name,
-                'email' => $githubUser->email,
-                'github_nickname' => $githubUser->nickname,
-                'github_avatar' => $githubUser->avatar,
-            ]
-        );
+        // $user = User::updateOrCreate(
+        //     ['github_id' => $githubUser->id], // Check if GitHub ID exists
+        //     [
+        //         'name' => $githubUser->name,
+        //         'email' => $githubUser->email,
+        //         'github_nickname' => $githubUser->nickname,
+        //         'github_avatar' => $githubUser->avatar,
+        //     ]
+        // );
 
-        // Log in this user
-        auth()->login($user, true);
+        // // Log in this user
+        // auth()->login($user, true);
 
         return redirect('/agents');
     }

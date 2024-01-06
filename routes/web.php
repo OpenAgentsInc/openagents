@@ -40,8 +40,14 @@ Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
 Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
 
 Route::get('/login', [AuthController::class, 'login'])->name('login');
+
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
+
+Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);
+Route::get('/twitter', [AuthController::class, 'twitterCallback']);
+
+
 
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
