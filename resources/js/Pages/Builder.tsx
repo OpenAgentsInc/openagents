@@ -1,8 +1,11 @@
 import { SimpleBuilder } from "@/Components/builder/SimpleBuilder";
 import { NavLayout } from "@/Layouts/NavLayout";
+import { usePage } from "@inertiajs/react";
 
 function Builder() {
-  return <SimpleBuilder />
+  const props = usePage().props as any
+  console.log(props)
+  return <SimpleBuilder errors={props.errors} />
 }
 
 Builder.layout = (page) => <NavLayout children={page} />

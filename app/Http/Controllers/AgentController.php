@@ -24,7 +24,6 @@ class AgentController extends Controller
         $instructions = request('instructions');
         $welcome_message = request('welcome_message');
 
-        // create agent in database
         $agent = Agent::create([
             'user_id' => auth()->user()->id,
             'name' => $name,
@@ -33,12 +32,7 @@ class AgentController extends Controller
             'welcome_message' => $welcome_message,
         ]);
 
-        return response()->json([
-            'name' => $name,
-            'description' => $description,
-            'instructions' => $instructions,
-            'welcome_message' => $welcome_message,
-        ], 201);
+        return to_route('agent', ['id' => $agent->id])->with('success', 'Agent created!');
     }
 
     public function chat($id)
