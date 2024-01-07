@@ -46,8 +46,6 @@ Route::get('/github', [AuthController::class, 'githubCallback']);
 Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);
 Route::get('/twitter', [AuthController::class, 'twitterCallback']);
 
-
-
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
 
@@ -62,13 +60,7 @@ Route::get('/nodes', function () {
 Route::post('/stream', [StreamController::class, 'chat']);
 
 Route::group(['middleware' => ['auth']], function () {
-    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/referrals', [DashboardController::class, 'referrals'])->name('referrals');
-
-    Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
-    Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
-    Route::get('/step/{id}', [InspectController::class, 'showStep'])->name('inspect-step');
-
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
 });
 
