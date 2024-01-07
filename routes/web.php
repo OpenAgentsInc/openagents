@@ -42,26 +42,21 @@ Route::group(['middleware' => ['auth']], function () {
     Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
     Route::get('/referrals', [ReferralsController::class, 'referrals'])->name('referrals');
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
+
+    // Route::post('/api/agents', [AgentController::class, 'store'])
+    //   ->middleware(['auth']);
+
+    // Route::post('/api/conversations', [ConversationController::class, 'store'])
+    //   ->middleware(['auth'])
+    //   ->name('conversations.store');
+
+    // Route::post('/api/messages', [MessageController::class, 'store'])
+    //   ->middleware(['auth'])
+    //   ->name('messages.store');
+
+    // Route::post('/api/files', [FileController::class, 'store'])
+    //   ->name('files.store');
 });
-
-if (env('APP_ENV') !== "production") {
-    Route::post('/api/agents', [AgentController::class, 'store'])
-      ->middleware(['auth']);
-
-    Route::post('/api/conversations', [ConversationController::class, 'store'])
-      ->middleware(['auth'])
-      ->name('conversations.store');
-
-    Route::post('/api/messages', [MessageController::class, 'store'])
-      ->middleware(['auth'])
-      ->name('messages.store');
-
-    Route::post('/api/files', [FileController::class, 'store'])
-      ->name('files.store');
-
-    Route::post('/faerie-run', [AgentController::class, 'run'])
-      ->middleware(['auth']);
-}
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {
