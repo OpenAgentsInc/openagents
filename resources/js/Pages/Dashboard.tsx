@@ -1,5 +1,4 @@
 import { UserRuns } from '@/Components/UserRuns'
-import { Auditor } from '@/Components/audit/Auditor'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout'
 import { PageProps } from '@/types'
 
@@ -12,7 +11,6 @@ export default function Dashboard({ auth, runs }: PageProps) {
             <UserRuns runs={runs} />
           </aside>
           <main className="flex-1">
-            <Auditor />
           </main>
           {/* <aside className="sticky top-8 hidden w-96 shrink-0 xl:block"></aside> */}
         </div>

@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\AgentController;
-use App\Http\Controllers\AuditController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuilderController;
 use App\Http\Controllers\ConversationController;
@@ -65,8 +64,6 @@ Route::post('/stream', [StreamController::class, 'chat']);
 Route::group(['middleware' => ['auth']], function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/referrals', [DashboardController::class, 'referrals'])->name('referrals');
-
-    Route::post('/audit', [AuditController::class, 'store']);
 
     Route::get('/run/{id}', [InspectController::class, 'showRun'])->name('inspect-run');
     Route::get('/task/{id}', [InspectController::class, 'showTask'])->name('inspect-task');
