@@ -35,20 +35,7 @@ class AgentController extends Controller
         return to_route('agent', ['id' => $agent->id])->with('success', 'Agent created!');
     }
 
-    public function chat($id)
-    {
-        $input = request('input');
-
-        $agent = Agent::findOrFail($id)->load('tasks.steps');
-        $agentResponse = $agent->run(["input" => $input]);
-
-        // Return standard JSON success response
-        return response()->json([
-            'ok' => true,
-            'output' => $agentResponse
-        ]);
-    }
-
+    // Show the agent page
     public function show($id)
     {
         try {
@@ -61,6 +48,20 @@ class AgentController extends Controller
             // redirect to homepage, inertia style
             return \to_route('chat');
         }
+    }
+
+    public function chat($id)
+    {
+        $input = request('input');
+
+        $agent = Agent::findOrFail($id)->load('tasks.steps');
+        $agentResponse = $agent->run(["input" => $input]);
+
+        // Return standard JSON success response
+        return response()->json([
+            'ok' => true,
+            'output' => $agentResponse
+        ]);
     }
 
     public function run()
