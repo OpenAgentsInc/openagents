@@ -26,11 +26,6 @@ Route::get('/chat', function () {
     ]);
 })->name('chat');
 
-// New /chat endpoint just redirects to /
-// Route::get('/chat', function () {
-//     return redirect('/');
-// });
-
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
 Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
 Route::get('/stats', [StatsController::class, 'index']);
@@ -48,10 +43,6 @@ Route::get('/twitter', [AuthController::class, 'twitterCallback']);
 
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
-
-Route::get('/graph', function () {
-    return Inertia::render('Graph');
-});
 
 Route::post('/stream', [StreamController::class, 'chat']);
 
