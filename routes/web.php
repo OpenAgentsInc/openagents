@@ -16,35 +16,30 @@ use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
 
-Route::get('/chat', function () {
-    $streamer = new StreamController();
-    $conversation = $streamer->fetchOrCreateConversation();
-    return Inertia::render('Chat', [
-        'conversationId' => $conversation->id,
-    ]);
-})->name('chat');
+// Concierge Chat
+Route::get('/chat', StreamController::class, 'chat')->name('chat');
+Route::post('/stream', [StreamController::class, 'stream']);
 
+// Agents
+Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
+Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
+
+// Static
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
 Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
 Route::get('/stats', [StatsController::class, 'index']);
 
-Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
-Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
-
+// Auth
 Route::get('/login', [AuthController::class, 'login'])->name('login');
-
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
-
 Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);
 Route::get('/twitter', [AuthController::class, 'twitterCallback']);
 
-Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
-Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
-
-Route::post('/stream', [StreamController::class, 'chat']);
-
+// Authed routes
 Route::group(['middleware' => ['auth']], function () {
+    Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
+    Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
     Route::get('/referrals', [DashboardController::class, 'referrals'])->name('referrals');
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
 });
