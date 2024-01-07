@@ -43,19 +43,7 @@ Route::group(['middleware' => ['auth']], function () {
     Route::get('/referrals', [ReferralsController::class, 'referrals'])->name('referrals');
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
 
-    // Route::post('/api/agents', [AgentController::class, 'store'])
-    //   ->middleware(['auth']);
-
-    // Route::post('/api/conversations', [ConversationController::class, 'store'])
-    //   ->middleware(['auth'])
-    //   ->name('conversations.store');
-
-    // Route::post('/api/messages', [MessageController::class, 'store'])
-    //   ->middleware(['auth'])
-    //   ->name('messages.store');
-
-    // Route::post('/api/files', [FileController::class, 'store'])
-    //   ->name('files.store');
+    Route::post('/api/agents', [AgentController::class, 'store']);
 });
 
 // Add a catch-all redirect to the homepage
