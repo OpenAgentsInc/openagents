@@ -9,6 +9,30 @@ use Inertia\Response;
 
 class AgentController extends Controller
 {
+    // Create a new agent
+    public function store()
+    {
+        request()->validate([
+            'name' => 'required',
+            'description' => 'required'
+        ]);
+
+        $name = request('name');
+        $description = request('description');
+
+        // create agent in database
+        $agent = Agent::create([
+            'user_id' => auth()->user()->id,
+            'name' => $name,
+            'description' => $description,
+        ]);
+
+        return response()->json([
+            'name' => $name,
+            'description' => $description,
+        ], 201);
+    }
+
     public function chat($id)
     {
         $input = request('input');
@@ -55,24 +79,5 @@ class AgentController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
-    }
-
-    public function store()
-    {
-        request()->validate([
-          'name' => 'required',
-        ]);
-
-        $name = request('name');
-
-        // create agent in database
-        $agent = Agent::create([
-          'user_id' => auth()->user()->id,
-          'name' => $name,
-        ]);
-
-        return response()->json([
-          'name' => $name,
-        ], 201);
     }
 }
