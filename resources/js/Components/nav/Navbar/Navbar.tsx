@@ -51,9 +51,9 @@ export const Navbar = ({ user }: HeaderProps) => {
                 </div>
                 <div className="hidden md:ml-6 md:flex md:space-x-8">
                   {/* Current: "border-indigo-500 text-gray-900", Default: "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700" */}
-                  <NavLink href={route('agents')} active={route().current('agents')}>
+                  {/* <NavLink href={route('agents')} active={route().current('agents')}>
                     Agents
-                  </NavLink>
+                  </NavLink> */}
                   {/* <NavLink href={route('referrals')} active={route().current('referrals')}>
                     Referrals
                   </NavLink> */}
@@ -78,20 +78,14 @@ export const Navbar = ({ user }: HeaderProps) => {
                 </div>
               </div>
               <div className="flex items-center">
-                <div className="flex-shrink-0">
+                {/* <div className="flex-shrink-0">
                   <Link href="/builder">
-                    <Button
-                      // outline
-                      className="cursor-pointer"
-                    // type="button"
-                    // className="relative inline-flex items-center gap-x-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                    >
+                    <Button>
                       <PlusIcon className="-ml-1 mr-2 h-4 w-4" aria-hidden="true" />
                       Create Agent
                     </Button>
                   </Link>
-
-                </div>
+                </div> */}
                 <div className="hidden md:ml-4 md:flex md:flex-shrink-0 md:items-center">
 
                   {!user && (
