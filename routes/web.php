@@ -53,10 +53,6 @@ Route::get('/graph', function () {
     return Inertia::render('Graph');
 });
 
-Route::get('/nodes', function () {
-    return Inertia::render('Nodes');
-});
-
 Route::post('/stream', [StreamController::class, 'chat']);
 
 Route::group(['middleware' => ['auth']], function () {
