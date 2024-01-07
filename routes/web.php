@@ -4,10 +4,10 @@ use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BuilderController;
 use App\Http\Controllers\ConversationController;
-use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReferralsController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\StreamController;
@@ -40,7 +40,7 @@ Route::get('/twitter', [AuthController::class, 'twitterCallback']);
 Route::group(['middleware' => ['auth']], function () {
     Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
     Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
-    Route::get('/referrals', [DashboardController::class, 'referrals'])->name('referrals');
+    Route::get('/referrals', [ReferralsController::class, 'referrals'])->name('referrals');
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
 });
 
