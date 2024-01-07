@@ -62,23 +62,5 @@ class AgentController extends Controller
         ]);
     }
 
-    public function run()
-    {
-        $user = auth()->user();
-        if ($user->github_nickname !== 'AtlantisPleb') {
-            return response()->json([
-                'message' => 'You are not AtlantisPleb',
-            ], 403);
-        }
 
-        try {
-            $faerie = new Faerie();
-            $run = $faerie->runJob();
-            return $run;
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
 }
