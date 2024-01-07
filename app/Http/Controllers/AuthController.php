@@ -18,6 +18,30 @@ class AuthController extends Controller
         return Socialite::driver('github')->redirect();
     }
 
+    public function loginTwitter()
+    {
+        return Socialite::driver('twitter')->redirect();
+    }
+
+    public function twitterCallback()
+    {
+        $twitterUser = Socialite::driver('twitter')->user();
+
+        $user = User::updateOrCreate(
+            ['twitter_id' => $twitterUser->id], // Check if Twitter ID exists
+            [
+                'name' => $twitterUser->name,
+                'email' => $twitterUser->email,
+                'twitter_nickname' => $twitterUser->nickname,
+                'twitter_avatar' => $twitterUser->avatar,
+            ]
+        );
+
+        auth()->login($user, true);
+
+        return redirect('/agents');
+    }
+
     public function githubCallback()
     {
         $githubUser = Socialite::driver('github')->user();
@@ -35,7 +59,7 @@ class AuthController extends Controller
         // Log in this user
         auth()->login($user, true);
 
-        return redirect('/dashboard');
+        return redirect('/agents');
     }
 
     public function logout()

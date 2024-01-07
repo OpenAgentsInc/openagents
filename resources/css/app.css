@@ -158,13 +158,15 @@
   * {
     @apply border-border;
   }
+  html {
+    @apply scroll-smooth;
+  }
   body {
-    @apply bg-neutral-50 text-foreground;
+    @apply scrollbar-none !important;
+    /* @apply bg-neutral-50 text-foreground; */
+    margin-right: calc(100vw - 100%);
   }
-  textarea {
-    @apply border-0 focus:ring-0;
-  }
-  textarea:focus {
+  .t-body-chat {
     @apply border-0 focus:ring-0;
   }
 }
@@ -202,4 +204,65 @@
   background-image: radial-gradient(circle, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
                     radial-gradient(circle, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
   background-size: 20px 20px;
+}
+
+
+
+
+:root {
+  --white: #fff;
+  --black: #000;
+  --gray-50: #f7f7f8;
+  --gray-100: #ececf1;
+  --gray-200: #d9d9e3;
+  --gray-300: #c5c5d2;
+  --gray-400: #acacbe;
+  --gray-500: #8e8ea0;
+  --gray-600: #565869;
+  --gray-700: #40414f;
+  --gray-800: #343541;
+  --gray-900: #202123;
+  --gray-950: #050509;
+  --gizmo-gray-500: #999;
+  --gizmo-gray-600: #666;
+  --gizmo-gray-950: #0f0f0f;
+  --brand-purple: #ab68ff
+}
+
+html {
+  --text-primary: var(--gizmo-gray-950);
+  --text-secondary: var(--gizmo-gray-600);
+  --text-tertiary: var(--gizmo-gray-500);
+  --surface-primary: var(--white);
+  --surface-secondary: var(--gray-50);
+  --surface-tertiary: var(--gray-100);
+  --border-light: rgba(0,0,0,.1);
+  --border-medium: rgba(0,0,0,.15);
+  --border-heavy: rgba(0,0,0,.2);
+  --border-xheavy: rgba(0,0,0,.25)
+}
+
+.dark {
+  --text-primary: var(--gray-100);
+  --text-secondary: var(--gray-300);
+  --text-tertiary: var(--gizmo-gray-500);
+  --surface-primary: var(--gray-900);
+  --surface-secondary: var(--gray-800);
+  --surface-tertiary: var(--gray-700);
+  --border-light: rgba(217,217,227,.1);
+  --border-medium: rgba(217,217,227,.15);
+  --border-heavy: rgba(217,217,227,.2);
+  --border-xheavy: rgba(217,217,227,.25)
+}
+
+
+.kamdooverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.65);
+  pointer-events: none;
+  z-index: 2;
 }

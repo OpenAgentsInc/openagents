@@ -1,5 +1,6 @@
 import forms from "@tailwindcss/forms"
 import defaultTheme from "tailwindcss/defaultTheme"
+import { scrollbarColor, scrollbarGutter, scrollbarWidth } from "tailwind-scrollbar-utilities"
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -108,5 +109,11 @@ export default {
     },
   },
 
-  plugins: [forms, require("tailwindcss-animate")],
+  plugins: [
+    forms,
+    require("tailwindcss-animate"),
+    scrollbarGutter(), // no options to configure
+    scrollbarWidth(), // no options to configure
+    scrollbarColor(), // no options to configure
+  ],
 }
