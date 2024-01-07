@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Events\ChatTokenReceived;
-use App\Http\StreamResponse;
 use App\Models\Conversation;
 use App\Models\Message;
 use GuzzleHttp\Client;
