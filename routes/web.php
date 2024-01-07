@@ -9,7 +9,6 @@ use App\Http\Controllers\FileController;
 use App\Http\Controllers\InspectController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\QueryController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\StreamController;
@@ -67,9 +66,6 @@ if (env('APP_ENV') !== "production") {
 
     Route::post('/api/files', [FileController::class, 'store'])
       ->name('files.store');
-
-    Route::post('/api/query', [QueryController::class, 'store'])
-      ->name('query.store');
 
     Route::post('/faerie-run', [AgentController::class, 'run'])
       ->middleware(['auth']);
