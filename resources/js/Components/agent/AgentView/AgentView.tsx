@@ -6,9 +6,10 @@ interface AgentViewProps {
 }
 
 export const AgentView = ({ agent }: AgentViewProps) => {
+  const initialMessages = [{ id: 0, role: "assistant", content: agent.welcome_message, tokens: [] }]
   return (
     <div className="h-full">
-      <ChatPane />
+      <ChatPane initialMessages={initialMessages} />
     </div>
   )
 }
