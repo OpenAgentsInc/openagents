@@ -83,40 +83,6 @@ export const SimpleBuilder = () => {
                     <div className="mb-6">
                       <div className="mb-1.5 flex items-center">
                         <span className="" data-state="closed">
-                          <label className="block font-medium text-token-text-primary">Conversation starters</label>
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center">
-                          <input
-                            className="w-full resize-none overflow-y-auto rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 border focus:ring-blue-400 border-token-border-medium h-9 dark:bg-gray-800 rounded-r-none"
-                            type="text"
-                            value=""
-                          />
-                          <button className="flex h-9 w-9 items-center justify-center rounded-lg rounded-l-none border border-l-0 border-token-border-medium">
-                            <svg
-                              width="24"
-                              height="24"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="icon-sm"
-                            >
-                              <path
-                                d="M6.34315 6.34338L17.6569 17.6571M17.6569 6.34338L6.34315 17.6571"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              ></path>
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mb-6">
-                      <div className="mb-1.5 flex items-center">
-                        <span className="" data-state="closed">
                           <label className="block font-medium text-token-text-primary">Knowledge</label>
                         </span>
                       </div>
