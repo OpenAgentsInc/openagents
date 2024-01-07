@@ -87,12 +87,15 @@ export const demoTask: Task = {
 }
 
 export const demoAgent: Agent = {
+  balance: 42,
   brains: [demoBrain],
   created_at: "2024-01-02T16:35:26.000000Z",
+  description: "The Concierge is a chatbot that helps you find the right agent for your needs.",
   id: 1,
+  instructions: "Help the user find the right agent for their needs.",
   name: "The Concierge",
-  balance: 42,
   tasks: [demoTask],
   updated_at: "2024-01-02T16:35:26.000000Z",
-  user_id: 1
+  user_id: 1,
+  welcome_message: "Hi, I'm the Concierge. I can help you find the right agent for your needs. What can I help you with today?",
 }

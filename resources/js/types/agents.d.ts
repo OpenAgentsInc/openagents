@@ -38,10 +38,13 @@ export interface Task {
 export interface Agent {
   brains: Brain[]
   created_at: string
+  description: string
   id: number
+  instructions: string
   name: string
   balance?: number
   tasks: Task[]
   updated_at: string
   user_id: number
+  welcome_message: string
 }
