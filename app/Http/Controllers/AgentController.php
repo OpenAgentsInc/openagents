@@ -53,7 +53,13 @@ class AgentController extends Controller
         $input = request('input');
 
         $agent = Agent::findOrFail($id)->load('tasks.steps');
-        $agentResponse = $agent->run(["input" => $input]);
+
+        // If Agent has no tasks or steps, use the default flow
+        if ($agent->tasks->count() == 0 || $agent->tasks->first()->steps->count() == 0) {
+            $agentResponse = $agent->chat($input, $agent);
+        } else {
+            $agentResponse = $agent->run(["input" => $input]);
+        }
 
         // Return standard JSON success response
         return response()->json([
@@ -61,6 +67,4 @@ class AgentController extends Controller
             'output' => $agentResponse
         ]);
     }
-
-
 }

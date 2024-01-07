@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Traits;
 
 use App\Events\ChatTokenReceived;
 use App\Http\Controllers\StreamController;
@@ -12,64 +12,32 @@ use GuzzleHttp\Psr7\Request;
 use Illuminate\Support\Facades\Http;
 use Inertia\Inertia;
 
-class StreamController extends Controller
+trait UsesChat
 {
-    public function chat()
+    // Send a chat message to an agent.
+    public function chat($input, $agent, $conversationId = null)
     {
-        $streamer = new StreamController();
-        $conversation = $streamer->fetchOrCreateConversation();
-        return Inertia::render('Chat', [
-            'conversationId' => $conversation->id,
-        ]);
-    }
-
-    public function stream()
-    {
-        request()->validate([
-            'input' => 'required',
-        ]);
-
-        $input = request('input');
-
-        $this->doChat($input);
-    }
-
-    public function fetchOrCreateConversation()
-    {
-        // Check session for conversation id
-        $conversationId = session('conversation_id');
-
-        $conversation = null;
-
-        if ($conversationId) {
-            $conversation = Conversation::find($conversationId);
-        }
-
-        if (!$conversation) {
+        if (!$conversationId) {
+            // If there's no given conversation ID, create a new conversation
             $conversation = Conversation::create([
-                'user_id' => auth()->user()->id ?? 1,
+                'agent_id' => $agent->id,
+                'user_id' => auth()->id(),
             ]);
 
-            // set the session
-            session(['conversation_id' => $conversation->id]);
+            $previousMessages = [];
+        } else {
+            // If there's a given conversation ID, fetch the conversation
+            $conversation = Conversation::findOrFail($conversationId);
+
+            // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
+            $previousMessages = Message::where('conversation_id', $conversationId)
+                ->orderBy('created_at', 'asc')
+                ->take(15)
+                ->get()
+                ->toArray();
         }
 
-        return $conversation;
-    }
-
-
-    public function doChat($input, $context = "")
-    {
-        $conversation = $this->fetchOrCreateConversation();
-
-        // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
-        $previousMessages = Message::where('conversation_id', $conversation->id)
-            ->orderBy('created_at', 'asc')
-            ->take(15)
-            ->get()
-            ->toArray();
-
-        $systemPrompt = "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context;
+        $systemPrompt = $agent->instructions;
 
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -92,7 +60,7 @@ class StreamController extends Controller
                 ],
                 [
                     "role" => "assistant",
-                    "content" => "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!"
+                    "content" => $agent->welcome_message
                 ]
             ];
 
@@ -151,43 +119,5 @@ class StreamController extends Controller
             // Handle exception or errors here
             echo $e->getMessage();
         }
-    }
-
-    public function readStream($stream)
-    {
-        while (!$stream->eof()) {
-            $line = $this->readLine($stream);
-
-            if (!str_starts_with($line, 'data:')) {
-                continue;
-            }
-
-            $data = trim(substr($line, strlen('data:')));
-
-            if ($data === '[DONE]') {
-                break;
-            }
-
-            $response = json_decode($data, true, JSON_THROW_ON_ERROR);
-
-            if (isset($response['error'])) {
-                throw new \Exception($response['error']);
-            }
-
-            yield $response;
-        }
-    }
-
-    public function readLine($stream)
-    {
-        $line = '';
-        while (!$stream->eof()) {
-            $char = $stream->read(1);
-            if ($char === "\n") {
-                break;
-            }
-            $line .= $char;
-        }
-        return $line;
     }
 }
