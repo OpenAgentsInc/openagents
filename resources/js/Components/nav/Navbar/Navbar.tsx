@@ -77,14 +77,16 @@ export const Navbar = ({ user }: HeaderProps) => {
                 </div>
               </div>
               <div className="flex items-center">
-                {/* <div className="flex-shrink-0">
-                  <Link href="/builder">
-                    <Button>
-                      <PlusIcon className="-ml-1 mr-2 h-4 w-4" aria-hidden="true" />
-                      Create Agent
-                    </Button>
-                  </Link>
-                </div> */}
+                <div className="flex-shrink-0">
+                  {!!user && (
+                    <Link href="/builder">
+                      <Button>
+                        <PlusIcon className="-ml-1 mr-2 h-4 w-4" aria-hidden="true" />
+                        Create Agent
+                      </Button>
+                    </Link>
+                  )}
+                </div>
                 <div className="hidden md:ml-4 md:flex md:flex-shrink-0 md:items-center">
 
                   {!user && (

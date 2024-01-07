@@ -8,7 +8,7 @@ import { easing } from 'maath'
 import { animated as a, useSpring } from '@react-spring/web'
 
 export const KamdoStage = () => {
-  const props = useSpring({ opacity: 0, from: { opacity: 1 }, delay: 750, config: { duration: 3000, easing: easing.easeOutQuad } })
+  const props = useSpring({ opacity: 0, from: { opacity: 1 }, config: { duration: 3000, easing: easing.easeOutQuad } })
   return (
     <>
       <a.div
