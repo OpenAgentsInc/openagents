@@ -44,9 +44,7 @@ class AgentController extends Controller
                 'agent' => $agent,
             ]);
         } catch (\Exception $e) {
-            // dd($e);
-            // redirect to homepage, inertia style
-            return \to_route('chat');
+            return redirect('/');
         }
     }
 
