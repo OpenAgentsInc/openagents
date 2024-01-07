@@ -120,4 +120,42 @@ trait UsesChat
             echo $e->getMessage();
         }
     }
+
+    public function readStream($stream)
+    {
+        while (!$stream->eof()) {
+            $line = $this->readLine($stream);
+
+            if (!str_starts_with($line, 'data:')) {
+                continue;
+            }
+
+            $data = trim(substr($line, strlen('data:')));
+
+            if ($data === '[DONE]') {
+                break;
+            }
+
+            $response = json_decode($data, true, JSON_THROW_ON_ERROR);
+
+            if (isset($response['error'])) {
+                throw new \Exception($response['error']);
+            }
+
+            yield $response;
+        }
+    }
+
+    public function readLine($stream)
+    {
+        $line = '';
+        while (!$stream->eof()) {
+            $char = $stream->read(1);
+            if ($char === "\n") {
+                break;
+            }
+            $line .= $char;
+        }
+        return $line;
+    }
 }
