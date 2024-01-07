@@ -20,4 +20,14 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-export const Primary: Story = {}
+export const Primary: Story = {
+  args: {
+    agentId: 1,
+    initialMessages: [
+      {
+        role: 'user',
+        content: 'Hello, I am interested in this property. Can you tell me more about it?',
+      },
+    ],
+  }
+}

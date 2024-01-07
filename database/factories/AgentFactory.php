@@ -22,6 +22,9 @@ class AgentFactory extends Factory
         return [
             'balance' => 0,
             'name' => $this->faker->name,
+            'description' => $this->faker->sentence,
+            'instructions' => $this->faker->sentence,
+            'welcome_message' => $this->faker->sentence,
             'user_id' => User::factory(),
         ];
     }

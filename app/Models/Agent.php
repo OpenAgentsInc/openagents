@@ -3,12 +3,13 @@
 namespace App\Models;
 
 use App\Services\OpenAIGateway;
+use App\Traits\UsesChat;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Agent extends Model
 {
-    use HasFactory;
+    use HasFactory, UsesChat;
 
     protected $guarded = [];
 
@@ -47,7 +48,6 @@ class Agent extends Model
 
         // Return the output of the final StepExecuted
         return $step_executed->fresh()->output;
-
     }
 
     public function brains()

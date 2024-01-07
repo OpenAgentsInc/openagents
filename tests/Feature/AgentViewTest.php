@@ -3,7 +3,7 @@
 use Database\Seeders\DatabaseSeeder;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('guest sees concierge nodes', function () {
+test('guest sees view agent page', function () {
     $this->seed(ConciergeSeeder::class);
 
     // Anyone visiting agent/{id} sees the agent's nodes
@@ -12,6 +12,6 @@ test('guest sees concierge nodes', function () {
     $response->assertStatus(200)
         ->assertInertia(
             fn (Assert $page) => $page
-            ->component('AgentNodes') // Replace with your actual component name
+            ->component('AgentView') // Replace with your actual component name
         );
 });
