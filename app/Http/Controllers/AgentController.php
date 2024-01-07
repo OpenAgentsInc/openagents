@@ -40,7 +40,7 @@ class AgentController extends Controller
     {
         try {
             $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
-            return Inertia::render('AgentNodes', [
+            return Inertia::render('AgentView', [
                 'agent' => $agent,
             ]);
         } catch (\Exception $e) {

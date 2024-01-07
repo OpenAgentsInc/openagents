@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from "@/Components/ui/button";
 import { router } from '@inertiajs/react'
 
 export const SimpleBuilder = ({ errors }) => {
-  // console.log("errors", errors)
   const [formValues, setFormValues] = useState({
     name: "",
     description: "",
@@ -13,7 +12,6 @@ export const SimpleBuilder = ({ errors }) => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    console.log(name, value)
     setFormValues({
       ...formValues,
       [name]: value,
@@ -25,8 +23,6 @@ export const SimpleBuilder = ({ errors }) => {
 
     // Omit the 'knowledge' field from the formValues object here.
     // const { knowledge, ...formData } = formValues;
-
-    console.log(formValues)
     router.post('/api/agents', formValues)
   };
 

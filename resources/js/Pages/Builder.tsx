@@ -4,7 +4,6 @@ import { usePage } from "@inertiajs/react";
 
 function Builder() {
   const props = usePage().props as any
-  console.log(props)
   return <SimpleBuilder errors={props.errors} />
 }
 
