@@ -1,8 +1,9 @@
 export const SimpleBuilder = () => {
   return (
-    <div className="flex items-center justify-center pt-16">
+    <div className="flex items-center justify-center pt-8">
       <div className="max-w-3xl w-full p-4">
         <div className="mb-6">
+          <div className="mb-8 text-xl font-medium md:text-2xl">Create an Agent</div>
           <div className="mb-1.5 flex items-center">
             <span className="" data-state="closed">
               <label className="block font-medium text-token-text-primary">Name</label>
@@ -40,23 +41,6 @@ export const SimpleBuilder = () => {
               rows={8}
               placeholder="What does this Agent do? How does it behave? What should it avoid doing?"
             ></textarea>
-            <button className="absolute bottom-3 right-2 text-token-text-tertiary">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="icon-sm"
-              >
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M13 5C13 4.44772 13.4477 4 14 4H19C19.5523 4 20 4.44772 20 5V10C20 10.5523 19.5523 11 19 11C18.4477 11 18 10.5523 18 10V7.41421L14.7071 10.7071C14.3166 11.0976 13.6834 11.0976 13.2929 10.7071C12.9024 10.3166 12.9024 9.68342 13.2929 9.29289L16.5858 6H14C13.4477 6 13 5.55228 13 5ZM5 13C5.55228 13 6 13.4477 6 14V16.5858L9.29289 13.2929C9.68342 12.9024 10.3166 12.9024 10.7071 13.2929C11.0976 13.6834 11.0976 14.3166 10.7071 14.7071L7.41421 18H10C10.5523 18 11 18.4477 11 19C11 19.5523 10.5523 20 10 20H5C4.44772 20 4 19.5523 4 19V14C4 13.4477 4.44772 13 5 13Z"
-                  fill="currentColor"
-                ></path>
-              </svg>
-            </button>
           </div>
         </div>
         <div className="mb-6">
@@ -70,24 +54,6 @@ export const SimpleBuilder = () => {
               className="w-full text-sm rounded-lg border px-3 py-2 focus:ring-2 focus:ring-blue-400 border-token-border-medium dark:bg-gray-800 bg-white h-16 resize-none"
               placeholder="How this Agent starts conversations."
             ></textarea>
-
-            <button className="absolute bottom-3 right-2 text-token-text-tertiary">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="icon-sm"
-              >
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M13 5C13 4.44772 13.4477 4 14 4H19C19.5523 4 20 4.44772 20 5V10C20 10.5523 19.5523 11 19 11C18.4477 11 18 10.5523 18 10V7.41421L14.7071 10.7071C14.3166 11.0976 13.6834 11.0976 13.2929 10.7071C12.9024 10.3166 12.9024 9.68342 13.2929 9.29289L16.5858 6H14C13.4477 6 13 5.55228 13 5ZM5 13C5.55228 13 6 13.4477 6 14V16.5858L9.29289 13.2929C9.68342 12.9024 10.3166 12.9024 10.7071 13.2929C11.0976 13.6834 11.0976 14.3166 10.7071 14.7071L7.41421 18H10C10.5523 18 11 18.4477 11 19C11 19.5523 10.5523 20 10 20H5C4.44772 20 4 19.5523 4 19V14C4 13.4477 4.44772 13 5 13Z"
-                  fill="currentColor"
-                ></path>
-              </svg>
-            </button>
           </div>
         </div>
         <div className="mb-6">
