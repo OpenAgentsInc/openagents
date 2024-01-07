@@ -1,11 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { AgentBuilder } from '.';
+import { SimpleBuilder } from '.';
 
 const meta = {
-  title: 'OpenAgents/AgentBuilder/Full',
-  component: AgentBuilder,
+  title: 'OpenAgents/AgentBuilder/SimpleBuilder',
+  component: SimpleBuilder,
   parameters: { layout: 'fullscreen' },
-  // tags: ['autodocs'],
   argTypes: {},
   decorators: [
     (Story) => (
@@ -14,7 +13,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof AgentBuilder>;
+} satisfies Meta<typeof SimpleBuilder>;
 
 export default meta;
 
