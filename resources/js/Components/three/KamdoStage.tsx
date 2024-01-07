@@ -5,10 +5,26 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { useGLTF, Stage, Grid, OrbitControls, Environment } from '@react-three/drei'
 import { EffectComposer, Bloom, ToneMapping } from '@react-three/postprocessing'
 import { easing } from 'maath'
+import { animated as a, useSpring } from '@react-spring/web'
 
 export const KamdoStage = () => {
+  const props = useSpring({ opacity: 0, from: { opacity: 1 }, delay: 1000, config: { duration: 3000, easing: easing.easeOutQuad } })
   return (
     <>
+      <a.div
+        {...props}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(255, 255, 255, 1)',
+          pointerEvents: 'none',
+          zIndex: 2,
+          opacity: props.opacity
+        }}
+      />
       <div className="kamdooverlay" />
       <Canvas flat shadows camera={{ position: [-15, 0, 10], fov: 25 }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>
         <fog attach="fog" args={['black', 15, 21.5]} />
