@@ -1,5 +1,7 @@
 <?php
 
-test('can visit builder page', function () {
-    $this->get('/builder')->assertStatus(200);
+test('authed user can visit builder page', function () {
+    $this->actingAs(\App\Models\User::factory()->create())
+        ->get('/builder')
+        ->assertStatus(200);
 });

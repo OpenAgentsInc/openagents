@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card'
-import InspectLayout from '@/Layouts/InspectLayout'
+import { NavLayout } from '@/Layouts/NavLayout'
 
 function Terms() {
   return (
@@ -47,6 +47,6 @@ function Terms() {
   )
 }
 
-Terms.layout = (page) => <InspectLayout children={page} title="Login" />
+Terms.layout = (page) => <NavLayout children={page} />
 
 export default Terms

@@ -1,7 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from '@/Components/ui/alert'
 import { Button } from '@/Components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card'
-import InspectLayout from '@/Layouts/InspectLayout'
+import { NavLayout } from '@/Layouts/NavLayout'
 import { XCircleIcon } from '@heroicons/react/24/outline'
 import { Link } from '@inertiajs/react'
 import { GitHubLogoIcon, TwitterLogoIcon } from '@radix-ui/react-icons'
@@ -43,6 +43,6 @@ function Login() {
   )
 }
 
-Login.layout = (page) => <InspectLayout children={page} title="Login" />
+Login.layout = (page) => <NavLayout children={page} title="Login" />
 
 export default Login

@@ -1,6 +1,5 @@
 import { usePage } from "@inertiajs/react"
 import { Canvas, Node } from 'agentgraph'
-import { SidebarLayout } from "@/Layouts/SidebarLayout"
 import { Agent, Step, Task } from "@/types/agents"
 import { NavLayout } from "@/Layouts/NavLayout"
 

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\ChatTokenReceived;
-use App\Http\StreamResponse;
+use App\Http\Controllers\StreamController;
 use App\Models\Conversation;
 use App\Models\Message;
 use GuzzleHttp\Client;
@@ -14,6 +14,15 @@ use Illuminate\Support\Facades\Http;
 class StreamController extends Controller
 {
     public function chat()
+    {
+        $streamer = new StreamController();
+        $conversation = $streamer->fetchOrCreateConversation();
+        return Inertia::render('Chat', [
+            'conversationId' => $conversation->id,
+        ]);
+    }
+
+    public function stream()
     {
         request()->validate([
             'input' => 'required',

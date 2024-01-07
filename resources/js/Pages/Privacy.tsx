@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Components/ui/card'
-import InspectLayout from '@/Layouts/InspectLayout'
+import { NavLayout } from '@/Layouts/NavLayout'
 
 function Privacy() {
   return (
@@ -51,6 +51,6 @@ function Privacy() {
   )
 }
 
-Privacy.layout = (page) => <InspectLayout children={page} title="Login" />
+Privacy.layout = (page) => <NavLayout children={page} title="Login" />
 
 export default Privacy
