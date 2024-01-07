@@ -6,7 +6,6 @@ use App\Http\Controllers\BuilderController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileController;
-use App\Http\Controllers\InspectController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StaticController;
@@ -51,8 +50,6 @@ Route::group(['middleware' => ['auth']], function () {
 });
 
 if (env('APP_ENV') !== "production") {
-    Route::get('/inspect', [InspectController::class, 'index'])->name('inspect');
-
     Route::post('/api/agents', [AgentController::class, 'store'])
       ->middleware(['auth']);
 
