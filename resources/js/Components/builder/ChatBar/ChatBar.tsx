@@ -3,14 +3,14 @@ import axios from 'axios'
 import { useCallback, useState } from 'react'
 import Textarea from 'react-textarea-autosize'
 
-export const ChatBar = ({ messages, setMessages }) => {
+export const ChatBar = ({ agentId, messages, setMessages }) => {
   const { formRef, onKeyDown } = useEnterSubmit()
   const [input, setInput] = useState('')
   const isLoading = false
   const onSubmit = useCallback(async (input: string) => {
     // axios.post('/stream', { input })
 
-    axios.post('/agent/1/chat', { input })
+    axios.post(`/agent/${agentId}/chat`, { input })
       // then console log the response
       .then(function (response) {
         // console.log(response);

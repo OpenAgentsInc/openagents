@@ -3,10 +3,11 @@ import { useState } from "react"
 import { MessagesList } from "../MessagesList";
 
 interface ChatPaneProps {
+  agentId: number
   initialMessages?: any[]
 }
 
-export const ChatPane = ({ initialMessages }: ChatPaneProps) => {
+export const ChatPane = ({ agentId, initialMessages }: ChatPaneProps) => {
   const firstMessages = initialMessages ?? { id: 0, role: "assistant", content: "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!", tokens: [] }
   const [messages, setMessages]: any = useState(firstMessages)
   const messagesArray = Object.values(messages) as any[];
@@ -34,7 +35,7 @@ export const ChatPane = ({ initialMessages }: ChatPaneProps) => {
         </div>
       </div>
       <div className="max-h-[40%] px-5 sm:px-0 z-15 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]">
-        <ChatBar messages={messagesArray} setMessages={setMessages} />
+        <ChatBar agentId={agentId} messages={messagesArray} setMessages={setMessages} />
       </div>
       <div className="px-5 py-2 md:py-5 w-full mx-auto max-w-1.5xl 2xl:max-w-[47rem]"></div>
     </div>

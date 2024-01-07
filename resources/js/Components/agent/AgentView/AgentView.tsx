@@ -17,7 +17,7 @@ export const AgentView = ({ agent }: AgentViewProps) => {
           <CardDescription>By [author]</CardDescription>
         </CardHeader>
       </Card>
-      <ChatPane initialMessages={initialMessages} />
+      <ChatPane agentId={agent.id} initialMessages={initialMessages} />
     </div>
   )
 }
