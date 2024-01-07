@@ -75,6 +75,6 @@ function Kamdo(props) {
 
 useGLTF.preload('/models/s2wt_kamdo_industrial_divinities-transformed.glb')
 
-Splash.layout = (page) => <NavLayout children={page} />
+Splash.layout = (page) => <NavLayout children={page} noPadding />
 
 export default Splash

@@ -26,7 +26,7 @@ export const Navbar = ({ user }: HeaderProps) => {
   }
 
   return (
-    <Disclosure as="nav" className="fixed w-full bg-white shadow" style={{ zIndex: 9990 }}>
+    <Disclosure as="nav" className="fixed w-full bg-white/25 backdrop-blur shadow" style={{ zIndex: 9990 }}>
       {({ open }) => (
         <>
           <div className="scrollbar-gutter-both-edges mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
