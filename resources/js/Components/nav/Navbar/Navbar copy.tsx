@@ -4,8 +4,8 @@ import { Link } from "@inertiajs/react"
 export const Navbar = () => {
 
   return (
-
-)
+    <></>
+  )
 
   // return (
   //   <header className="fixed w-full bg-background/80 shadow backdrop-blur" style={{ zIndex: 9000 }}>
