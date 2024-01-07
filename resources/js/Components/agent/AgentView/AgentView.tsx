@@ -1,3 +1,4 @@
+import { ChatPane } from "@/Components/builder/ChatPane"
 import { Agent } from "@/types/agents"
 
 interface AgentViewProps {
@@ -6,8 +7,8 @@ interface AgentViewProps {
 
 export const AgentView = ({ agent }: AgentViewProps) => {
   return (
-    <div>
-      <h1>AgentView</h1>
+    <div className="h-full">
+      <ChatPane />
     </div>
   )
 }

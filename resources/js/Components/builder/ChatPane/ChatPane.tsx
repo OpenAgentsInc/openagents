@@ -2,7 +2,7 @@ import { ChatBar } from "../ChatBar"
 import { useState } from "react"
 import { MessagesList } from "../MessagesList";
 
-export const ChatPane = ({ conversationId }) => {
+export const ChatPane = () => {
   const [messages, setMessages]: any = useState([{ id: 0, role: "assistant", content: "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!", tokens: [] }])
   const messagesArray = Object.values(messages) as any[];
   return (
