@@ -7,7 +7,12 @@ use Inertia\Inertia;
 
 class BuilderController extends Controller
 {
-    public function index()
+    public function showcase()
+    {
+        return Inertia::render('Showcase');
+    }
+
+    public function builder()
     {
         return Inertia::render('Builder');
     }

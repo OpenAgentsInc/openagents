@@ -18,15 +18,36 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
+
+Route::get('/chat', function () {
+    $streamer = new StreamController();
+    $conversation = $streamer->fetchOrCreateConversation();
+    return Inertia::render('Chat', [
+        'conversationId' => $conversation->id,
+    ]);
+})->name('chat');
+
+// New /chat endpoint just redirects to /
+// Route::get('/chat', function () {
+//     return redirect('/');
+// });
+
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
 Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
 Route::get('/stats', [StatsController::class, 'index']);
 
-Route::get('/builder', [BuilderController::class, 'index'])->name('build');
+Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
+Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
 
 Route::get('/login', [AuthController::class, 'login'])->name('login');
+
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
+
+Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);
+Route::get('/twitter', [AuthController::class, 'twitterCallback']);
+
+
 
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
@@ -38,14 +59,6 @@ Route::get('/graph', function () {
 Route::get('/nodes', function () {
     return Inertia::render('Nodes');
 });
-
-Route::get('/chat', function () {
-    $streamer = new StreamController();
-    $conversation = $streamer->fetchOrCreateConversation();
-    return Inertia::render('Chat', [
-        'conversationId' => $conversation->id,
-    ]);
-})->name('chat');
 
 Route::post('/stream', [StreamController::class, 'chat']);
 

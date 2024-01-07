@@ -1,5 +1,10 @@
 import { AgentBuilder } from "@/Components/builder/AgentBuilder";
+import { NavLayout } from "@/Layouts/NavLayout";
 
-export default function Builder() {
+function Builder() {
   return <AgentBuilder />
 }
+
+Builder.layout = (page) => <NavLayout children={page} />
+
+export default Builder

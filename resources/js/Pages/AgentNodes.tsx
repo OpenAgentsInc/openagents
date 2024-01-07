@@ -2,6 +2,7 @@ import { usePage } from "@inertiajs/react"
 import { Canvas, Node } from 'agentgraph'
 import { SidebarLayout } from "@/Layouts/SidebarLayout"
 import { Agent, Step, Task } from "@/types/agents"
+import { NavLayout } from "@/Layouts/NavLayout"
 
 // We show all relevant agent nodes, starting with steps.
 function AgentNodes() {
@@ -21,6 +22,6 @@ function AgentNodes() {
   )
 }
 
-AgentNodes.layout = (page) => <SidebarLayout children={page} />
+AgentNodes.layout = (page) => <NavLayout children={page} />
 
 export default AgentNodes
