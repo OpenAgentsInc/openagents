@@ -5,6 +5,7 @@ import '../css/app.css';
 import { createRoot } from 'react-dom/client';
 import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
+// import { KamdoStage } from './Components/three';
 
 createInertiaApp({
   title: (title) => `OpenAgents`,
@@ -13,7 +14,12 @@ createInertiaApp({
   setup({ el, App, props }) {
     const root = createRoot(el);
 
-    root.render(<App {...props} />);
+    root.render((
+      <>
+        <App {...props} />
+        {/* <KamdoStage /> */}
+      </>
+    ));
   },
   progress: {
     delay: 250,

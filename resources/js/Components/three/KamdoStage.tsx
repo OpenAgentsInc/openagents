@@ -10,7 +10,7 @@ export const KamdoStage = () => {
   return (
     <>
       <div className="kamdooverlay" />
-      <Canvas flat shadows camera={{ position: [-15, 0, 10], fov: 25 }} style={{ position: 'fixed' }}>
+      <Canvas flat shadows camera={{ position: [-15, 0, 10], fov: 25 }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>
         <fog attach="fog" args={['black', 15, 21.5]} />
         <Stage intensity={0.5} environment="city" shadows={{ type: 'accumulative', bias: -0.001, intensity: Math.PI }} adjustCamera={false}>
           <Kamdo rotation={[0, Math.PI, 0]} />
