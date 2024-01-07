@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react';
 import { AgentBuilder } from '.';
 
 const meta = {
-  title: 'OpenAgents/AgentBuilder/Page',
+  title: 'OpenAgents/AgentBuilder/Full',
   component: AgentBuilder,
   parameters: { layout: 'fullscreen' },
   // tags: ['autodocs'],

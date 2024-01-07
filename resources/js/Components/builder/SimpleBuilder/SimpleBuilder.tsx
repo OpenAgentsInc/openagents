@@ -1,6 +1,6 @@
 export const SimpleBuilder = () => {
   return (
-    <div className="flex items-center justify-center min-h-screen">
+    <div className="flex items-center justify-center pt-16">
       <div className="max-w-3xl w-full p-4">
         <div className="mb-6">
           <div className="mb-1.5 flex items-center">
