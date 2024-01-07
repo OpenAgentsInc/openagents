@@ -2,7 +2,6 @@
 import { MessagesList } from "@/Components/chat/MessagesList"
 import { PromptForm } from "@/Components/chat/PromptForm"
 import { NavLayout } from "@/Layouts/NavLayout";
-import { SidebarLayout } from "@/Layouts/SidebarLayout";
 import { usePage } from "@inertiajs/react";
 import { useEffect, useState } from "react"
 
