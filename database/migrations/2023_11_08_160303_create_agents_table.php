@@ -16,6 +16,7 @@ return new class extends Migration {
             $table->string('name');
             $table->string('description');
             $table->string('instructions');
+            $table->string('welcome_message');
             $table->timestamps();
         });
     }

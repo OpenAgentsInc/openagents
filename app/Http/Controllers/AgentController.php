@@ -15,22 +15,29 @@ class AgentController extends Controller
         request()->validate([
             'name' => 'required',
             'description' => 'required',
-            'instructions' => 'required'
+            'instructions' => 'required',
+            'welcome_message' => 'required'
         ]);
 
         $name = request('name');
         $description = request('description');
+        $instructions = request('instructions');
+        $welcome_message = request('welcome_message');
 
         // create agent in database
         $agent = Agent::create([
             'user_id' => auth()->user()->id,
             'name' => $name,
             'description' => $description,
+            'instructions' => $instructions,
+            'welcome_message' => $welcome_message,
         ]);
 
         return response()->json([
             'name' => $name,
             'description' => $description,
+            'instructions' => $instructions,
+            'welcome_message' => $welcome_message,
         ], 201);
     }
 

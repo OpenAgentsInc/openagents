@@ -62,6 +62,11 @@ it('has instructions', function () {
     expect($agent->instructions)->toBe('Do this and that');
 });
 
+it('has a welcome message', function () {
+    $agent = Agent::factory()->create(['welcome_message' => 'Hey welcome to the agent']);
+    expect($agent->welcome_message)->toBe('Hey welcome to the agent');
+});
+
 it('has many conversations', function () {
     $user = User::factory()->create();
     $agent = Agent::factory()->create(['user_id' => $user->id]);
