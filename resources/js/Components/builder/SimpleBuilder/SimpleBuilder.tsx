@@ -1,3 +1,5 @@
+import { Button } from "@/Components/ui/button";
+
 export const SimpleBuilder = () => {
   return (
     <div className="flex items-center justify-center pt-8">
@@ -75,6 +77,7 @@ export const SimpleBuilder = () => {
               </button>
             </div>
           </div>
+          <Button disabled className="mt-12">Create</Button>
         </div>
       </div>
     </div>
