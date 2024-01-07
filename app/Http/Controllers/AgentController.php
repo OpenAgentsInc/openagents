@@ -14,7 +14,8 @@ class AgentController extends Controller
     {
         request()->validate([
             'name' => 'required',
-            'description' => 'required'
+            'description' => 'required',
+            'instructions' => 'required'
         ]);
 
         $name = request('name');

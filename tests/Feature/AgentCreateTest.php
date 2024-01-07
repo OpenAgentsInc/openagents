@@ -6,6 +6,7 @@ use App\Models\User;
 $properPayload = [
     'name' => 'John Doe',
     'description' => 'This is a description',
+    'instructions' => 'This is a set of instructions',
 ];
 
 test('name is required to create an agent', function () use ($properPayload) {
@@ -37,6 +38,23 @@ test('description is required to create an agent', function () use ($properPaylo
     ])
       ->assertStatus(422)
       ->assertJsonValidationErrors('description');
+
+    // expect that there are 0 agents
+    $this->assertCount(0, Agent::all());
+});
+
+test('instructions is required to create an agent', function () use ($properPayload) {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $this->assertCount(0, Agent::all());
+
+    $this->postJson('/api/agents', [
+        ...$properPayload,
+        'instructions' => '',
+    ])
+      ->assertStatus(422)
+      ->assertJsonValidationErrors('instructions');
 
     // expect that there are 0 agents
     $this->assertCount(0, Agent::all());

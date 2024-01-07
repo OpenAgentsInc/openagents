@@ -52,6 +52,16 @@ it('has a name', function () {
     expect($agent->name)->toBe('My Agent');
 });
 
+it('has a description', function () {
+    $agent = Agent::factory()->create(['description' => 'An awesome agent']);
+    expect($agent->description)->toBe('An awesome agent');
+});
+
+it('has instructions', function () {
+    $agent = Agent::factory()->create(['instructions' => 'Do this and that']);
+    expect($agent->instructions)->toBe('Do this and that');
+});
+
 it('has many conversations', function () {
     $user = User::factory()->create();
     $agent = Agent::factory()->create(['user_id' => $user->id]);

@@ -29,6 +29,8 @@ class ConciergeSeeder extends Seeder
             'id' => 1,
             'user_id' => $user->id,
             'name' => 'The Concierge',
+            'description' => 'A chatbot that responds to user messages after consulting a knowledge base',
+            'instructions' => 'Respond to user chat message after consulting knowledge base'
         ]);
 
         // Create main chat task
