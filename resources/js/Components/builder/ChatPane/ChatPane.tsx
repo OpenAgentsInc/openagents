@@ -10,13 +10,16 @@ interface ChatPaneProps {
 
 export const ChatPane = ({ agentId, conversationId, initialMessages }: ChatPaneProps) => {
   const firstMessages = initialMessages ?? { id: 0, role: "assistant", content: "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!", tokens: [] }
+  console.log("conversationId", conversationId)
   const [messages, setMessages]: any = useState(firstMessages)
   useEffect(() => {
     if (import.meta.env.VITE_ENV === "local") return
     if (!conversationId) return
+    console.log("Subscribing")
     // @ts-ignore
     window.Echo.channel(`Conversation.${conversationId}`)
       .listen('ChatTokenReceived', (e) => {
+        console.log(e)
         setMessages(prevMessages => {
           // Clone the previous messages object
           const newMessages = { ...prevMessages };
