@@ -15,7 +15,7 @@ export const AgentView = ({ agent, conversation }: AgentViewProps) => {
         <CardHeader>
           <CardTitle>{agent.name}</CardTitle>
           <CardDescription>{agent.description}</CardDescription>
-          <CardDescription>By [author]</CardDescription>
+          {/* <CardDescription>By [author]</CardDescription> */}
         </CardHeader>
       </Card>
       <ChatPane agentId={agent.id} conversationId={conversation.id} initialMessages={initialMessages} />
