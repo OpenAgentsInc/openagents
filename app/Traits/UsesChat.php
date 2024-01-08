@@ -48,9 +48,17 @@ trait UsesChat
                     "content" => "You are a helpful assistant. But you only follow these user instructions: " . $systemPrompt,
                 ],
                 [
+                    "role" => "user",
+                    "content" => $systemPrompt,
+                ],
+                [
                     "role" => "assistant",
                     "content" => $agent->welcome_message
-                ]
+                ],
+                [
+                    "role" => "user",
+                    "content" => "Remember: " . $systemPrompt,
+                ],
             ];
 
             // Add previous messages to the array
