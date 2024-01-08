@@ -19,9 +19,6 @@ trait UsesChat
     {
         $conversation = $agent->getUserConversation();
 
-        // If there's a given conversation ID, fetch the conversation
-        $conversation = Conversation::findOrFail($conversationId);
-
         // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
         $previousMessages = Message::where('conversation_id', $conversationId)
             ->orderBy('created_at', 'asc')
