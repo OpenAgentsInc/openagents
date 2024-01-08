@@ -45,7 +45,7 @@ trait UsesChat
             $messages = [
                 [
                     "role" => "system",
-                    "content" => $systemPrompt,
+                    "content" => "You are a helpful assistant. But you only follow these user instructions: " . $systemPrompt,
                 ],
                 [
                     "role" => "assistant",
