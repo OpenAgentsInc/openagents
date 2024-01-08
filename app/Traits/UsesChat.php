@@ -45,7 +45,7 @@ trait UsesChat
             $messages = [
                 [
                     "role" => "system",
-                    "content" => "You are a helpful assistant. But you only follow these user instructions: " . $systemPrompt,
+                    "content" => "You are a helpful AI agent named " . $agent->name . ". Your description is " . $agent->description . "  And you follow these user instructions: " . $systemPrompt,
                 ],
                 [
                     "role" => "user",
