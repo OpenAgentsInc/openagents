@@ -1,15 +1,43 @@
 import { ChatBar } from "../ChatBar"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { MessagesList } from "../MessagesList";
 
 interface ChatPaneProps {
   agentId: number
+  conversationId: number
   initialMessages?: any[]
 }
 
-export const ChatPane = ({ agentId, initialMessages }: ChatPaneProps) => {
+export const ChatPane = ({ agentId, conversationId, initialMessages }: ChatPaneProps) => {
   const firstMessages = initialMessages ?? { id: 0, role: "assistant", content: "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!", tokens: [] }
   const [messages, setMessages]: any = useState(firstMessages)
+  useEffect(() => {
+    if (import.meta.env.VITE_ENV === "local") return
+    if (!conversationId) return
+    // @ts-ignore
+    window.Echo.channel(`Conversation.${conversationId}`)
+      .listen('ChatTokenReceived', (e) => {
+        setMessages(prevMessages => {
+          // Clone the previous messages object
+          const newMessages = { ...prevMessages };
+
+          // Find the message by ID or create a new one if it doesn't exist
+          let message = newMessages[e.messageId];
+          if (!message) {
+            message = { id: e.messageId, role: "assistant", content: "", tokens: [] };
+            newMessages[e.messageId] = message;
+          }
+
+          // Append the token to the message's content array
+          message.tokens.push({ token: e.token, tokenId: e.tokenId });
+
+          // Set message content to be the concatenation of all tokens sorted by tokenId
+          message.content = message.tokens.sort((a, b) => a.tokenId - b.tokenId).map((token) => token.token).join("");
+
+          return newMessages;
+        });
+      });
+  }, [conversationId]);
   const messagesArray = Object.values(messages) as any[];
   return (
     <div className="relative flex flex-col overflow-hidden sm:overflow-x-visible h-full grow">

@@ -23,6 +23,7 @@ type Story = StoryObj<typeof meta>;
 export const Primary: Story = {
   args: {
     agentId: 1,
+    conversationId: 1,
     initialMessages: [
       {
         role: 'user',
