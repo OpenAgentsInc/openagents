@@ -40,8 +40,10 @@ class AgentController extends Controller
     {
         try {
             $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
+            $conversation = $agent->getUserConversation();
             return Inertia::render('AgentView', [
                 'agent' => $agent,
+                'conversation' => $conversation,
             ]);
         } catch (\Exception $e) {
             return redirect('/');
