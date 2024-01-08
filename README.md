@@ -61,3 +61,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 42. [Agent Bitcoin Balance](https://twitter.com/OpenAgentsInc/status/1742952006166225330)
 43. [EpsteinGPT Postmortem](https://twitter.com/OpenAgentsInc/status/1742970915061731424)
 44. [Sleuth Agent Planning](https://twitter.com/OpenAgentsInc/status/1742992606785622272)
+45. [Agent Builder & Chat UI](https://twitter.com/OpenAgentsInc/status/1744471277207773191)
