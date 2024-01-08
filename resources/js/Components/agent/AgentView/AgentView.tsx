@@ -4,9 +4,10 @@ import { Agent } from "@/types/agents"
 
 interface AgentViewProps {
   agent: Agent
+  conversation: any
 }
 
-export const AgentView = ({ agent }: AgentViewProps) => {
+export const AgentView = ({ agent, conversation }: AgentViewProps) => {
   const initialMessages = [{ id: 0, role: "assistant", content: agent.welcome_message, tokens: [] }]
   return (
     <div className="h-full">
@@ -17,7 +18,7 @@ export const AgentView = ({ agent }: AgentViewProps) => {
           <CardDescription>By [author]</CardDescription>
         </CardHeader>
       </Card>
-      <ChatPane agentId={agent.id} initialMessages={initialMessages} />
+      <ChatPane agentId={agent.id} conversationId={conversation.id} initialMessages={initialMessages} />
     </div>
   )
 }

@@ -6,8 +6,9 @@ import { AgentView } from "@/Components/agent/AgentView"
 function AgentViewPage() {
   const props = usePage().props as any
   const agent = props.agent as Agent
+  const conversation = props.conversation as any
   return (
-    <AgentView agent={agent} />
+    <AgentView agent={agent} conversation={conversation} />
   )
 }
 
