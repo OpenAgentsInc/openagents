@@ -15,27 +15,19 @@ use Inertia\Inertia;
 trait UsesChat
 {
     // Send a chat message to an agent.
-    public function chat($input, $agent, $conversationId = null)
+    public function chat($input, $agent)
     {
-        if (!$conversationId) {
-            // If there's no given conversation ID, create a new conversation
-            $conversation = Conversation::create([
-                'agent_id' => $agent->id,
-                'user_id' => auth()->id(),
-            ]);
+        $conversation = $agent->getUserConversation();
 
-            $previousMessages = [];
-        } else {
-            // If there's a given conversation ID, fetch the conversation
-            $conversation = Conversation::findOrFail($conversationId);
+        // If there's a given conversation ID, fetch the conversation
+        $conversation = Conversation::findOrFail($conversationId);
 
-            // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
-            $previousMessages = Message::where('conversation_id', $conversationId)
-                ->orderBy('created_at', 'asc')
-                ->take(15)
-                ->get()
-                ->toArray();
-        }
+        // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
+        $previousMessages = Message::where('conversation_id', $conversationId)
+            ->orderBy('created_at', 'asc')
+            ->take(15)
+            ->get()
+            ->toArray();
 
         $systemPrompt = $agent->instructions;
 
