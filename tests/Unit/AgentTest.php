@@ -11,6 +11,17 @@ use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
 
+it('can get conversation with current user', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $agent = Agent::factory()->create(['user_id' => $user->id]);
+    $conversation = Conversation::factory()->create([
+        'agent_id' => $agent->id,
+        'user_id' => $user->id
+    ]);
+    expect($agent->getUserConversation()->id)->toBe($conversation->id);
+});
+
 it('has a balance', function () {
     $agent = Agent::factory()->create();
     expect($agent->balance)->toBe(0);

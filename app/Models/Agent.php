@@ -13,6 +13,12 @@ class Agent extends Model
 
     protected $guarded = [];
 
+    public function getUserConversation()
+    {
+        $convo = $this->conversations()->where('user_id', auth()->id())->first();
+        return $convo;
+    }
+
     public function run($input)
     {
         // Get the first task
