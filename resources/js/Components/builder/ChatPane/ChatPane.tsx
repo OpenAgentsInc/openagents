@@ -52,7 +52,7 @@ export const ChatPane = ({ agentId, conversationId, initialMessages }: ChatPaneP
 
                     <div className="break-anywhere relative py-1">
                       <div className="flex items-center">
-                        <MessagesList messages={messages} />
+                        <MessagesList messages={messagesArray} />
                       </div>
                     </div>
                   </div>
