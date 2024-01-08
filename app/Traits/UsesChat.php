@@ -20,7 +20,7 @@ trait UsesChat
         $conversation = $agent->getUserConversation();
 
         // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
-        $previousMessages = Message::where('conversation_id', $conversationId)
+        $previousMessages = Message::where('conversation_id', $conversation->id)
             ->orderBy('created_at', 'asc')
             ->take(15)
             ->get()
