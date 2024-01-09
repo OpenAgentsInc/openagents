@@ -39,11 +39,23 @@ class AgentController extends Controller
     public function show($id)
     {
         try {
-            $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
+            $agent = Agent::findOrFail($id)
+            ->load([
+                'tasks.steps',
+                'brains.datapoints',
+                'user' => function ($query) {
+                    $query->select('id', 'github_nickname', 'twitter_nickname')
+                        ->addSelect(\DB::raw('COALESCE(github_nickname, twitter_nickname) as username'));
+                },
+            ]);
+
+            $owner = $agent->user->username;
+
             $conversation = $agent->getUserConversation();
             return Inertia::render('AgentView', [
                 'agent' => $agent,
                 'conversation' => $conversation,
+                'owner' => $owner,
             ]);
         } catch (\Exception $e) {
             return redirect('/');

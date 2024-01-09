@@ -15,6 +15,23 @@ test('guest sees view agent page', function () {
     $response // ->assertStatus(200)
         ->assertInertia(
             fn (Assert $page) => $page
-            ->component('AgentView') // Replace with your actual component name
+            ->component('AgentView')
+        );
+});
+
+test('agent view knows its authors username', function () {
+    $this->seed(ConciergeSeeder::class);
+
+    $agent = Agent::first();
+
+    // Anyone visiting agent/{id} sees the agent's nodes
+    $response = $this->get('/agent/' . $agent->id);
+
+    $response
+        ->assertInertia(
+            fn (Assert $page) => $page
+            ->component('AgentView')
+            ->has('owner')
+            ->where('owner', $agent->user->username)
         );
 });
