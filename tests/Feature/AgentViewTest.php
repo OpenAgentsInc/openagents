@@ -10,10 +10,9 @@ test('guest sees view agent page', function () {
 
     $agentId = Agent::first()->id;
 
-    // Anyone visiting agent/{id} sees the agent's nodes
     $response = $this->get('/agent/' . $agentId);
 
-    $response // ->assertStatus(200)
+    $response
         ->assertInertia(
             fn (Assert $page) => $page
             ->component('AgentView')
