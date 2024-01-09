@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { AgentSidebar } from '.';
-import { demoAgent } from '../../../../../agentgraph/components/Node/Node.demodata';
 import { Navbar } from '@/Components/nav/Navbar';
+import { demoAgent } from '../../../../../agentgraph/components/Node/Node.demodata';
 
 const meta = {
   title: 'OpenAgents/AgentSidebar',
@@ -12,7 +12,7 @@ const meta = {
     (Story) => (
       <>
         <Navbar />
-        <div className="w-full mx-auto h-screen">
+        <div className="pt-16 w-full mx-auto h-screen">
           <Story />
         </div>
       </>
@@ -26,7 +26,6 @@ type Story = StoryObj<typeof meta>;
 
 export const Primary: Story = {
   args: {
-    agent: demoAgent,
-    owner: 'DemoMan'
+    agent: demoAgent
   }
 }

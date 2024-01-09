@@ -2,30 +2,26 @@ import { IconMessage } from "@/Components/ui/icons";
 import { HomeIcon } from "@heroicons/react/24/outline";
 import { Link } from "@inertiajs/react";
 
-export const AgentSidebar = () => {
+export const AgentSidebar = ({ agent, children }) => {
   return (
-    <div className="pt-16 h-full w-full md:h-screen">
+    <div className="h-full w-full md:h-screen">
       <div className="flex h-full bg-neutral-50">
         <div className="space-y-4 hidden w-22 flex-col items-center border-r border-neutral-300 p-3 pt-5 lg:flex">
-          <Link href="/" className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
-            <HomeIcon className="h-6 w-6" />
-            <div className="t-label mt-2">Home</div>
-          </Link>
-          <Link href="/chat" className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
+          <Link href={`/agent/${agent.id}`} className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
             <IconMessage className="h-6 w-6" />
             <div className="t-label mt-2">Chat</div>
           </Link>
-          <Link href="/agent/1" className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
+          <Link href={`/agent/${agent.id}`} className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
             <svg width="24" height="24" version="1.1" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
               <path d="m990 704.4c-31.199 0-60 12-80.398 32.398l-150-86.398c4.8008-15.602 8.3984-32.398 8.3984-49.199 0-18-3.6016-33.602-8.3984-49.199l150-86.398c21.602 19.199 49.199 32.398 80.398 32.398 66 0 120-54 120-120s-54-120-120-120-120 54-120 120c0 8.3984 1.1992 16.801 2.3984 25.199l-150 86.398c-22.801-24-52.801-42-86.398-50.398v-175.2c48-15.602 84-60 84-114 0-66-54-120-120-120s-120 54-120 120c0 54 34.801 98.398 84 114v172.8c-33.602 7.1992-63.602 25.199-85.199 49.199l-150-86.398c1.1992-8.3984 2.3984-16.801 2.3984-25.199 0-66-54-120-120-120s-120 54-120 120 54 120 120 120c31.199 0 60-12 80.398-32.398l150 86.398c-4.8008 15.602-8.3984 32.398-8.3984 49.199 0 18 3.6016 33.602 8.3984 49.199l-150 86.398c-21.602-19.199-49.199-32.398-80.398-32.398-66 0-120 54-120 120s54 120 120 120 120-54 120-120c0-8.3984-1.1992-16.801-2.3984-25.199l150-86.398c22.801 24 51.602 42 85.199 49.199v177.6c-48 15.602-84 60-84 114 0 66 54 120 120 120s120-54 120-120c0-54-34.801-98.398-84-114v-172.8c33.602-7.1992 63.602-25.199 86.398-50.398l150 86.398c-1.1992 8.3984-2.3984 16.801-2.3984 25.199 0 66 54 120 120 120s120-54 120-120-54-120-120-120zm0-376.8c26.398 0 46.801 21.602 46.801 46.801 0 25.199-21.602 46.801-46.801 46.801-26.398 0-46.801-21.602-46.801-46.801 0-25.203 20.402-46.801 46.801-46.801zm-780 94.797c-26.398 0-46.801-21.602-46.801-46.801 0-25.199 21.602-46.801 46.801-46.801 26.398 0 46.801 21.602 46.801 46.801 0 25.203-20.402 46.801-46.801 46.801zm0 450c-26.398 0-46.801-21.602-46.801-46.801 0-26.398 21.602-46.801 46.801-46.801 26.398 0 46.801 21.602 46.801 46.801 1.1992 25.203-20.402 46.801-46.801 46.801zm390-769.2c26.398 0 46.801 21.602 46.801 46.801s-21.602 46.801-46.801 46.801-46.801-21.602-46.801-46.801 20.402-46.801 46.801-46.801zm0 993.6c-26.398 0-46.801-21.602-46.801-46.801 0-26.398 21.602-46.801 46.801-46.801s46.801 21.602 46.801 46.801-20.402 46.801-46.801 46.801zm0-403.2c-51.602 0-93.602-42-93.602-93.602s42-93.602 93.602-93.602 93.602 42 93.602 93.602-42 93.602-93.602 93.602zm390 178.8c-26.398 0-46.801-21.602-46.801-46.801 0-26.398 21.602-46.801 46.801-46.801 26.398 0 46.801 21.602 46.801 46.801 0 25.203-21.602 46.801-46.801 46.801z" />
             </svg>
-            <div className="t-label mt-2">Agent</div>
+            <div className="t-label mt-2">Graph</div>
           </Link>
         </div>
         <div className="relative grow overflow-x-auto flex flex-col">
-
+          {children}
         </div>
       </div>
-    </div>
+    </div >
   )
 }
