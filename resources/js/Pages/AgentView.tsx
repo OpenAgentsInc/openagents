@@ -7,8 +7,9 @@ function AgentViewPage() {
   const props = usePage().props as any
   const agent = props.agent as Agent
   const conversation = props.conversation as any
+  const owner = props.owner as string
   return (
-    <AgentView agent={agent} conversation={conversation} />
+    <AgentView agent={agent} conversation={conversation} owner={owner} />
   )
 }
 

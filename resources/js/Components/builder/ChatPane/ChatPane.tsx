@@ -8,9 +8,10 @@ interface ChatPaneProps {
   agent: Agent
   conversationId: number
   initialMessages?: any[]
+  owner: string
 }
 
-export const ChatPane = ({ agent, conversationId, initialMessages }: ChatPaneProps) => {
+export const ChatPane = ({ agent, conversationId, initialMessages, owner }: ChatPaneProps) => {
   const firstMessages = initialMessages ?? { id: 0, role: "assistant", content: "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!", tokens: [] }
   const [messages, setMessages]: any = useState(firstMessages)
   useEffect(() => {
@@ -50,7 +51,7 @@ export const ChatPane = ({ agent, conversationId, initialMessages }: ChatPanePro
               <div className="relative h-8 shrink-0 2xl:h-12 z-30"></div>
               <div className="pb-6 lg:pb-8 min-h-[calc(100%-60px)] sm:min-h-[calc(100%-120px)]">
                 <div className="relative space-y-6">
-                  <AgentIntro agent={agent} />
+                  <AgentIntro agent={agent} owner={owner} />
                   <div className="space-y-6">
                     <div className="break-anywhere relative py-1">
                       <div className="flex items-center">

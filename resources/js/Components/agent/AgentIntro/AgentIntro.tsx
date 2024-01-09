@@ -3,15 +3,16 @@ import { Agent } from "@/types/agents"
 
 interface AgentViewProps {
   agent: Agent
+  owner: string // username of agent's owner
 }
 
-export const AgentIntro = ({ agent }: AgentViewProps) => {
+export const AgentIntro = ({ agent, owner }: AgentViewProps) => {
   return (
     <Card className="w-full mx-auto">
       <CardHeader>
         <CardTitle className="text-xl">{agent.name}</CardTitle>
-        <CardDescription>{agent.description}</CardDescription>
-        <CardDescription>By [author]</CardDescription>
+        <CardDescription className="text-base">{agent.description}</CardDescription>
+        <CardDescription>By {owner}</CardDescription>
       </CardHeader>
     </Card>
   )

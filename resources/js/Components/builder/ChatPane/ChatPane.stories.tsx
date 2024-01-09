@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { ChatPane } from '.';
+import { demoAgent } from '../../../../../agentgraph/components/Node/Node.demodata';
 
 const meta = {
   title: 'OpenAgents/AgentBuilder/ChatPane',
@@ -22,7 +23,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Primary: Story = {
   args: {
-    agentId: 1,
+    agent: demoAgent,
     conversationId: 1,
     initialMessages: [
       {
@@ -30,5 +31,6 @@ export const Primary: Story = {
         content: 'Hello, I am interested in this property. Can you tell me more about it?',
       },
     ],
+    owner: 'DemoMan',
   }
 }

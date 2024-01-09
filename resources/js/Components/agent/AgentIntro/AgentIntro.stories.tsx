@@ -25,8 +25,6 @@ type Story = StoryObj<typeof meta>;
 export const Primary: Story = {
   args: {
     agent: demoAgent,
-    conversation: {
-      id: 1
-    }
+    owner: 'DemoMan'
   }
 }

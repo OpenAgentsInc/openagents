@@ -7,13 +7,14 @@ interface AgentViewProps {
   conversation: {
     id: number
   }
+  owner: string // username of agent's owner
 }
 
-export const AgentView = ({ agent, conversation }: AgentViewProps) => {
+export const AgentView = ({ agent, conversation, owner }: AgentViewProps) => {
   const initialMessages = [{ id: 0, role: "assistant", content: agent.welcome_message, tokens: [] }]
   return (
     <div className="h-full">
-      <ChatPane agent={agent} conversationId={conversation.id} initialMessages={initialMessages} />
+      <ChatPane agent={agent} conversationId={conversation.id} initialMessages={initialMessages} owner={owner} />
     </div>
   )
 }

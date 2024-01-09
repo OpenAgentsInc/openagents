@@ -29,6 +29,7 @@ export const Primary: Story = {
     agent: demoAgent,
     conversation: {
       id: 1
-    }
+    },
+    owner: 'DemoMan'
   }
 }
