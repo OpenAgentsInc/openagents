@@ -17,6 +17,12 @@ class File extends Model
         return $this->hasMany(Embedding::class);
     }
 
+    // belongs to a user
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
     public function createEmbeddings()
     {
         if (is_file($this->path) === false) {

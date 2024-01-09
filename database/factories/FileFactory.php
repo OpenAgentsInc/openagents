@@ -23,7 +23,10 @@ class FileFactory extends Factory
         return [
             'user_id' => User::factory(),
             'status' => 'pending',
-            'path' => '/app/blah/yo.txt'
+            'name' => 'yo.txt',
+            'path' => '/app/blah/yo.txt',
+            'size' => 100,
+            'mime_type' => 'application/pdf',
         ];
     }
 

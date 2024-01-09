@@ -27,7 +27,10 @@ class FileController extends Controller
             // Create a new file record
             $file = File::create([
                 'user_id' => auth()->user()->id,
+                'name' => $thefile->getClientOriginalName(),
                 'path' => $path,
+                'size' => $thefile->getSize(),
+                'mime_type' => $thefile->getMimeType(),
                 'status' => 'processing'
             ]);
 

@@ -56,6 +56,7 @@ class AgentController extends Controller
                 'agent' => $agent,
                 'conversation' => $conversation,
                 'owner' => $owner,
+                'files' => $agent->files,
             ]);
         } catch (\Exception $e) {
             return redirect('/');
