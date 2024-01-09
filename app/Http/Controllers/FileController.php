@@ -35,9 +35,9 @@ class FileController extends Controller
             $res = $parser->parsePdf($path);
             Log::info('FileController:store: $res: ' . print_r($res, true));
 
-            return Redirect::route('start')
-              ->with('message', 'File uploaded.')
-              ->with('filename', $res["file_id"]);
+            return Redirect::back()
+                ->with('message', 'File uploaded.')
+                ->with('filename', $res["file_id"]);
             // ->with('filename', $file->getClientOriginalName());
         } catch (\Exception $e) {
             // Log just the error message
