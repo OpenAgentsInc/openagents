@@ -3,11 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Com
 import { Input } from '@/Components/ui/input'
 import { Label } from '@/Components/ui/label'
 import { useForm } from '@inertiajs/react'
-import { RocketIcon } from '@radix-ui/react-icons'
-import { Alert, AlertDescription, AlertTitle } from '@/Components/ui/alert'
+// import { RocketIcon } from '@radix-ui/react-icons'
+// import { Alert, AlertDescription, AlertTitle } from '@/Components/ui/alert'
 import { useDropzone } from 'react-dropzone'
+import { Agent } from '@/types/agents'
 
-export const KnowledgeUploader = () => {
+export const KnowledgeUploader = ({ agent }: { agent: Agent }) => {
   const [uploading, setUploading] = React.useState(false)
 
   const onDrop = React.useCallback((acceptedFiles) => {
@@ -16,10 +17,9 @@ export const KnowledgeUploader = () => {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop })
 
-  // const props = usePage().props
-  // console.log(props)
   const { data, setData, post, progress } = useForm({
-    file: null
+    file: null,
+    agent_id: agent.id
   })
 
   React.useEffect(() => {
@@ -27,6 +27,7 @@ export const KnowledgeUploader = () => {
     // Make API request
     setUploading(true)
     post('/api/files', {
+
       onSuccess: (res) => {
         setData('file', null)
         setUploading(false)

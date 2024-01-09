@@ -22,11 +22,18 @@ class FileController extends Controller
         try {
             // Store the file to Laravel storage
             $thefile = $request->file('file');
+            // Get the file's name
+            $filename = $thefile->getClientOriginalName();
+
             $path = Storage::putFile('uploads', $thefile);
+
+            \Log::info("AGENT_ID:" . request('agent_id'));
 
             // Create a new file record
             $file = File::create([
                 'user_id' => auth()->user()->id,
+                'agent_id' => request('agent_id'),
+                'conversation_id' => request('conversation_id'),
                 'name' => $thefile->getClientOriginalName(),
                 'path' => $path,
                 'size' => $thefile->getSize(),
@@ -39,7 +46,7 @@ class FileController extends Controller
 
             return Redirect::back()
                 ->with('message', 'File uploaded.')
-                ->with('filename', $res["file_id"]);
+                ->with('filename', $file->name);
 
         } catch (\Exception $e) {
             // Log just the error message

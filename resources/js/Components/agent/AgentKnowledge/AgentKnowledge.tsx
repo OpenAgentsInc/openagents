@@ -4,10 +4,11 @@ import { KnowledgeUploader } from "../KnowledgeUploader"
 
 interface AgentKnowledgeProps {
   agent: Agent
+  files?: any[]
   isOwner: boolean
 }
 
-const knowledge = [
+const dummyKnowledge = [
   {
     id: 1,
     name: "Deposition.pdf",
@@ -20,21 +21,22 @@ const knowledge = [
   },
 ]
 
-export const AgentKnowledge = ({ agent, isOwner }: AgentKnowledgeProps) => {
+export const AgentKnowledge = ({ agent, files, isOwner }: AgentKnowledgeProps) => {
+  const knowledge = files ?? dummyKnowledge
   return (
-    <div className="w-full p-5">
+    <div className="overflow-y-auto w-full p-5">
       <div className="mb-4">
         <h2 className="text-xl">Knowledge</h2>
         <p className="font-light">See the knowledge base of {agent.name}</p>
       </div>
 
-      {isOwner && <KnowledgeUploader />}
+      {isOwner && <KnowledgeUploader agent={agent} />}
 
       {knowledge.map((file) => (
         <Card key={file.id} className="w-full mx-auto my-3">
           <CardHeader className="px-4 py-3">
-            <CardTitle className="text-lg">{file.name}</CardTitle>
-            <CardDescription className="text-base">{file.size}</CardDescription>
+            <CardTitle className="text-lg truncate">{file.name}</CardTitle>
+            <CardDescription className="text-base">{file.size} bytes {file.mime_type === 'application/pdf' ? "PDF" : ""}</CardDescription>
           </CardHeader>
         </Card>
       ))}
