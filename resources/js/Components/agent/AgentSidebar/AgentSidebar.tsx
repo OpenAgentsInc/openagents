@@ -1,5 +1,5 @@
-import { IconMessage } from "@/Components/ui/icons";
 import { Link } from "@inertiajs/react";
+import { IconBrain } from "../AgentIcons";
 
 export const AgentSidebar = ({ agent, children }) => {
   return (
@@ -7,8 +7,8 @@ export const AgentSidebar = ({ agent, children }) => {
       <div className="flex h-full bg-neutral-50">
         <div className="space-y-4 hidden w-22 flex-col items-center border-r border-neutral-300 p-3 pt-5 lg:flex">
           <Link href={`/agent/${agent.id}`} className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
-            <IconMessage className="h-6 w-6" />
-            <div className="t-label mt-2">Knowledge</div>
+            <IconBrain className="h-12 w-12" />
+            <div className="t-label">Knowledge</div>
           </Link>
           <Link href={`/agent/${agent.id}`} className="cursor-pointer mb-1 flex h-16 w-16 flex-col items-center justify-center rounded-xl text-neutral-900 hover:bg-neutral-200 hover:text-neutral-900">
             <svg width="24" height="24" version="1.1" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg">
