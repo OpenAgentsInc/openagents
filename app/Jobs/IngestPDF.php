@@ -2,12 +2,14 @@
 
 namespace App\Jobs;
 
+use App\Models\Datapoint;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Str;
 use Spatie\PdfToText\Pdf;
 
 class IngestPDF implements ShouldQueue
@@ -35,6 +37,31 @@ class IngestPDF implements ShouldQueue
             config('services.pdftotext.path')
         );
 
-        print_r($fileText);
+        // Split into page chunks
+        $chunks = Str::of($fileText)
+            ->split("/\f/") // Splitting the text into pages based on the form feed character
+            ->transform(function ($page) {
+                return (string) Str::of($page)
+                    ->replace("\n", " ") // Replacing newline characters with spaces
+                    ->trim(); // Trimming leading and trailing whitespace
+            })
+            ->toArray();
+
+        // Skip embeddings for now
+
+        // For each chunk, create a Datapoint
+        foreach ($chunks as $chunk) {
+            // Skip empty chunks
+            if (strlen($chunk) === 0) {
+                continue;
+            }
+
+            // Create a new Datapoint
+            $datapoint = Datapoint::create([
+                'brain_id' => 1, //
+                'data' => $chunk,
+                'embedding' => array_fill(0, 768, 0),
+            ]);
+        }
     }
 }
