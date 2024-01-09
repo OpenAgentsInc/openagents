@@ -17,13 +17,15 @@ class IngestPDF implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public string $path;
+    public int $brain_id;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($path)
+    public function __construct($path, $brain_id)
     {
         $this->path = $path;
+        $this->brain_id = $brain_id;
     }
 
     /**
@@ -56,12 +58,14 @@ class IngestPDF implements ShouldQueue
                 continue;
             }
 
+            CreateDatapointEmbedding::dispatch($chunk, $this->brain_id);
+
             // Create a new Datapoint
-            $datapoint = Datapoint::create([
-                'brain_id' => 1, //
-                'data' => $chunk,
-                'embedding' => array_fill(0, 768, 0),
-            ]);
+            // $datapoint = Datapoint::create([
+            //     'brain_id' => 1, //
+            //     'data' => $chunk,
+            //     'embedding' => array_fill(0, 768, 0),
+            // ]);
         }
     }
 }
