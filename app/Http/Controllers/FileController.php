@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\IngestPDF;
+use App\Models\File;
 use App\Services\Parser;
-use App\Services\Vectara;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redirect;
@@ -13,36 +14,33 @@ class FileController extends Controller
 {
     public function store(Request $request)
     {
+        // Validate the file is a PDF
+        $request->validate([
+            'file' => 'required|mimetypes:application/pdf'
+        ]);
+
         try {
-            Log::info("Here we are.");
+            // Store the file to Laravel storage
+            $thefile = $request->file('file');
+            $path = Storage::putFile('uploads', $thefile);
 
-            // If we're not testing, validate the request
-            if (!app()->runningUnitTests()) {
-                $request->validate([
-                  'file' => 'required|mimetypes:application/pdf' // application/json,text/markdown,text/plain|max:1000240
-                ]);
+            // Create a new file record
+            $file = File::create([
+                'user_id' => auth()->user()->id,
+                'path' => $path,
+                'status' => 'processing'
+            ]);
 
-                Log::info('FileController:store: $request->file(): ' . print_r($request->file(), true));
-            }
-
-            // Store the file
-            $file = $request->file('file');
-            $path = Storage::putFile('uploads', $file);
-            Log::info('FileController:store: $path: ' . print_r($path, true));
-
-            // Parse the file
-            $parser = new Parser();
-            $res = $parser->parsePdf($path);
-            Log::info('FileController:store: $res: ' . print_r($res, true));
+            // Fire new IngestPDF job
+            IngestPDF::dispatch($file);
 
             return Redirect::back()
                 ->with('message', 'File uploaded.')
                 ->with('filename', $res["file_id"]);
-            // ->with('filename', $file->getClientOriginalName());
+
         } catch (\Exception $e) {
             // Log just the error message
-            Log::error('FileController:store: $e->getMessage(): ' . print_r($e->getMessage(), true));
-
+            Log::error('Error uploading file' . print_r($e->getMessage(), true));
             return Redirect::back()->with('error', 'Error uploading file.');
         }
     }
