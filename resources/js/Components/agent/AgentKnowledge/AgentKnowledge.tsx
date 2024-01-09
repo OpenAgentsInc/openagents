@@ -1,8 +1,10 @@
 import { Card, CardDescription, CardHeader, CardTitle } from "@/Components/ui/card"
 import { Agent } from "@/types/agents"
+import { KnowledgeUploader } from "../KnowledgeUploader"
 
 interface AgentKnowledgeProps {
   agent: Agent
+  isOwner: boolean
 }
 
 const knowledge = [
@@ -18,13 +20,15 @@ const knowledge = [
   },
 ]
 
-export const AgentKnowledge = ({ agent }: AgentKnowledgeProps) => {
+export const AgentKnowledge = ({ agent, isOwner }: AgentKnowledgeProps) => {
   return (
     <div className="w-full p-5">
       <div className="mb-4">
         <h2 className="text-xl">Knowledge</h2>
         <p className="font-light">See the knowledge base of {agent.name}</p>
       </div>
+
+      {isOwner && <KnowledgeUploader />}
 
       {knowledge.map((file) => (
         <Card key={file.id} className="w-full mx-auto my-3">

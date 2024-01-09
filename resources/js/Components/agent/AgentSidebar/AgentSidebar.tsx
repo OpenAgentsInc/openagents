@@ -21,7 +21,7 @@ export const AgentSidebar = ({ agent, children }) => {
         </div>
         {showKnowledge && (
           <div className="w-[375px] shrink-0 border-r border-neutral-300 flex flex-col">
-            <AgentKnowledge agent={agent} />
+            <AgentKnowledge agent={agent} isOwner />
           </div>
         )}
         <div className="relative grow overflow-x-auto flex flex-col">
