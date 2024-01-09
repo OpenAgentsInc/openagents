@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react';
 import { AgentView } from '.';
 import { Navbar } from '@/Components/nav/Navbar';
 import { demoAgent } from '../../../../../agentgraph/components/Node/Node.demodata';
+import { demoUser } from '@/lib/dummyData';
 
 const meta = {
   title: 'OpenAgents/AgentView',
@@ -11,7 +12,7 @@ const meta = {
   decorators: [
     (Story) => (
       <>
-        <Navbar />
+        <Navbar user={demoUser} />
         <div className="h-screen pt-16">
           <Story />
         </div>
