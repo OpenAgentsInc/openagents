@@ -7,7 +7,7 @@ use App\Models\Datapoint;
 // use App\Services\Parser;
 
 test('can ingest pdf to database as chunked embeddings', function () {
-    $path = 'uploads/0sYtEObUcMCnLo8zAwv7i0cJPfoWTPO4tW7ZblS0.pdf';
+    $path = 'uploads/Seq62Tot1gYvabkLhXOF34d9JCHd1FW9xJdNRIvg.pdf';
     $job = new IngestPDF($path);
     $job->handle();
 
