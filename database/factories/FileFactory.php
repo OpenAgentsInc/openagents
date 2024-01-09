@@ -22,6 +22,7 @@ class FileFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
+            'status' => 'pending',
             'path' => '/app/blah/yo.txt'
         ];
     }

@@ -8,6 +8,12 @@ it('has a path', function () {
     expect($file->path)->toBeString();
 });
 
+it('has a status', function () {
+    $file = File::factory()->create();
+
+    expect($file->status)->toBeString();
+});
+
 it('has many embeddings', function () {
     $file = File::factory()->create();
     $file->embeddings()->createMany([
