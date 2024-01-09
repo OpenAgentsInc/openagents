@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Brain;
 use App\Models\Datapoint;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -17,15 +18,15 @@ class IngestPDF implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public string $path;
-    public int $brain_id;
+    public Brain $brain;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($path, $brain_id)
+    public function __construct($path, $brain)
     {
         $this->path = $path;
-        $this->brain_id = $brain_id;
+        $this->brain = $brain;
     }
 
     /**
@@ -58,14 +59,7 @@ class IngestPDF implements ShouldQueue
                 continue;
             }
 
-            CreateDatapointEmbedding::dispatch($chunk, $this->brain_id);
-
-            // Create a new Datapoint
-            // $datapoint = Datapoint::create([
-            //     'brain_id' => 1, //
-            //     'data' => $chunk,
-            //     'embedding' => array_fill(0, 768, 0),
-            // ]);
+            CreateDatapointEmbedding::dispatch($chunk, $this->brain);
         }
     }
 }
