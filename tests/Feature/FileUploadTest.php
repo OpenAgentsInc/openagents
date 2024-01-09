@@ -1,9 +1,12 @@
 <?php
 
+use App\Jobs\IngestPDF;
 use App\Models\File;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 
 test('unauthed user cannot upload a file', function () {
     $this->postJson('/api/files', [
@@ -13,7 +16,7 @@ test('unauthed user cannot upload a file', function () {
 });
 
 test('authed user can upload a file', function () {
-    // fake storage
+    Queue::fake();
     Storage::fake('local');
 
     $user = User::factory()->create();
@@ -26,8 +29,6 @@ test('authed user can upload a file', function () {
     ])
         ->assertStatus(302);
 
-    // expect that there is 1 file
-    // $this->assertCount(1, File::all());
-
     $this->assertCount(1, File::all());
+    Queue::assertPushed(IngestPDF::class);
 });
