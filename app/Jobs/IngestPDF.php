@@ -26,6 +26,5 @@ class IngestPDF implements ShouldQueue
      */
     public function handle(): void
     {
-        //
     }
 }
