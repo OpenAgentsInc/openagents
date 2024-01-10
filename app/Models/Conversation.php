@@ -15,4 +15,10 @@ class Conversation extends Model
     {
         return $this->hasMany(Message::class);
     }
+
+    // belongs to an agent
+    public function agent()
+    {
+        return $this->belongsTo(Agent::class);
+    }
 }
