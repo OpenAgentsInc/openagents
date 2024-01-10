@@ -31,6 +31,7 @@ export const Primary: Story = {
     conversation: {
       id: 1
     },
+    files: [],
     owner: 'DemoMan'
   }
 }
