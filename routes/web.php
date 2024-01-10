@@ -44,7 +44,7 @@ Route::group(['middleware' => ['auth']], function () {
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
 
     Route::post('/agents', [AgentController::class, 'store'])->name('agents.store');
-    Route::post('/api/files', [FileController::class, 'store'])->name('files.store');
+    Route::post('/files', [FileController::class, 'store'])->name('files.store');
 });
 
 // Add a catch-all redirect to the homepage
