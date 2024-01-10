@@ -23,6 +23,7 @@ class Parser
         // First create a new File
         $file = File::query()->create([
           'path' => $path,
+          'status' => 'processing',
         ]);
 
         // Clean up and convert into chunks
