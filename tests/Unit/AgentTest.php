@@ -3,6 +3,7 @@
 use App\Models\Agent;
 use App\Models\Brain;
 use App\Models\Conversation;
+use App\Models\File;
 use App\Models\Step;
 use App\Models\StepExecuted;
 use App\Models\Task;
@@ -118,6 +119,14 @@ it('has many steps', function () {
 
     $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->steps);
     $this->assertInstanceOf(Step::class, $agent->steps->first());
+});
+
+it('has many files', function () {
+    $agent = Agent::factory()->create();
+    $file = File::factory()->create(['agent_id' => $agent->id]);
+
+    $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->files);
+    $this->assertInstanceOf(File::class, $agent->files->first());
 });
 
 it('has thoughts', function () {

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Agent;
 use App\Models\Run;
 use Illuminate\Support\Facades\Broadcast;
 
@@ -14,10 +15,6 @@ use Illuminate\Support\Facades\Broadcast;
 |
 */
 
-Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
-    return (int) $user->id === (int) $id;
-});
-
-Broadcast::channel('run.{run}', function ($user, Run $run) {
-    return $user->id === $run->agent->user_id;
-});
+// Broadcast::channel('Agent.{id}', function ($user, Agent $agent) {
+//     return (int) $agent->user->id === (int) $user->id;
+// });

@@ -79,6 +79,11 @@ class Agent extends Model
         return $this->hasMany(Conversation::class);
     }
 
+    public function files()
+    {
+        return $this->hasMany(File::class);
+    }
+
     public function steps()
     {
         return $this->hasMany(Step::class);

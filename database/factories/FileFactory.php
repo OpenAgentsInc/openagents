@@ -22,7 +22,11 @@ class FileFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
-            'path' => '/app/blah/yo.txt'
+            'status' => 'pending',
+            'name' => 'yo.txt',
+            'path' => '/app/blah/yo.txt',
+            'size' => 100,
+            'mime_type' => 'application/pdf',
         ];
     }
 

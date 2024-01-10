@@ -1,25 +1,22 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { AgentView } from '.';
-import { Navbar } from '@/Components/nav/Navbar';
 import { demoAgent } from '../../../../../agentgraph/components/Node/Node.demodata';
-import { demoUser } from '@/lib/dummyData';
+import { AgentKnowledge } from '.';
 
 const meta = {
-  title: 'OpenAgents/AgentView',
-  component: AgentView,
+  title: 'OpenAgents/AgentKnowledge',
+  component: AgentKnowledge,
   parameters: { layout: 'fullscreen' },
   argTypes: {},
   decorators: [
     (Story) => (
       <>
-        <Navbar user={demoUser} />
-        <div className="h-screen pt-16">
+        <div className="w-[375px] max-w-2xl mx-auto h-screen pt-16">
           <Story />
         </div>
       </>
     ),
   ],
-} satisfies Meta<typeof AgentView>;
+} satisfies Meta<typeof AgentKnowledge>;
 
 export default meta;
 
@@ -28,10 +25,6 @@ type Story = StoryObj<typeof meta>;
 export const Primary: Story = {
   args: {
     agent: demoAgent,
-    conversation: {
-      id: 1
-    },
-    files: [],
-    owner: 'DemoMan'
+    isOwner: true
   }
 }
