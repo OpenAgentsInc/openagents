@@ -10,13 +10,26 @@ $properPayload = [
     'welcome_message' => 'This is a welcome message'
 ];
 
+test('proper payload works', function () use ($properPayload) {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $this->assertCount(0, Agent::all());
+
+    $this->postJson(route('agents.store'), $properPayload)
+        ->assertStatus(201)
+        ->assertSessionHas('success', 'Agent created!');
+
+    $this->assertCount(1, Agent::all());
+});
+
 test('name is required to create an agent', function () use ($properPayload) {
     $user = User::factory()->create();
     $this->actingAs($user);
 
     $this->assertCount(0, Agent::all());
 
-    $this->postJson('/api/agents', [
+    $this->postJson(route('agents.store'), [
         ...$properPayload,
         'name' => '',
     ])
@@ -33,7 +46,7 @@ test('description is required to create an agent', function () use ($properPaylo
 
     $this->assertCount(0, Agent::all());
 
-    $this->postJson('/api/agents', [
+    $this->postJson(route('agents.store'), [
         ...$properPayload,
         'description' => '',
     ])
@@ -50,7 +63,7 @@ test('instructions is required to create an agent', function () use ($properPayl
 
     $this->assertCount(0, Agent::all());
 
-    $this->postJson('/api/agents', [
+    $this->postJson(route('agents.store'), [
         ...$properPayload,
         'instructions' => '',
     ])
@@ -67,7 +80,7 @@ test('welcome message is required to create an agent', function () use ($properP
 
     $this->assertCount(0, Agent::all());
 
-    $this->postJson('/api/agents', [
+    $this->postJson(route('agents.store'), [
         ...$properPayload,
         'welcome_message' => '',
     ])

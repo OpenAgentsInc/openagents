@@ -12,7 +12,7 @@ test('chat message sent to an agent executes its task', function () {
     $this->expect($agent->name)->toBe('The Concierge');
 
     // And I as guest message the agent
-    $response = $this->post('/agent/1/chat', ['input' => 'What is this?']);
+    $response = $this->post("/agent/{$agent->id}/chat", ['input' => 'What is this?']);
 
     // The response is successful
     $response->assertStatus(200);
@@ -21,12 +21,10 @@ test('chat message sent to an agent executes its task', function () {
     // Assert ok is true
     $response->assertJson(['ok' => true]);
 
-    dd($response->json('output'));
-
     // Assert the output is a string
     $this->expect($response->json('output'))->toBeString();
 
     // Assert we now have 1 TaskExecuted and 4 StepExecuted
     $this->expect(TaskExecuted::count())->toBe(1);
     $this->expect(StepExecuted::count())->toBe(4);
-})->group('integration');
+});

@@ -27,7 +27,7 @@ export function UploadDocForm() {
     if (!data.file) return
     // Make API request
     setUploading(true)
-    post('/api/files', {
+    post('/files', {
       onSuccess: (res) => {
         setData('file', null)
         setUploading(false)
