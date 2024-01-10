@@ -30,34 +30,11 @@ class StreamController extends Controller
         $this->doChat($input);
     }
 
-    public function fetchOrCreateConversation()
+    public function doChat($input, $conversation, $context = "")
     {
-        // Check session for conversation id
-        $conversationId = session('conversation_id');
-
-        $conversation = null;
-
-        if ($conversationId) {
-            $conversation = Conversation::find($conversationId);
-        }
-
         if (!$conversation) {
-            $conversation = Conversation::create([
-                'agent_id' => $agentId,
-                'user_id' => auth()->user()->id ?? null,
-            ]);
-
-            // set the session
-            session(['conversation_id' => $conversation->id]);
+            dd("No conversation");
         }
-
-        return $conversation;
-    }
-
-
-    public function doChat($input, $context = "")
-    {
-        $conversation = $this->fetchOrCreateConversation();
 
         // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
         $previousMessages = Message::where('conversation_id', $conversation->id)
@@ -66,7 +43,7 @@ class StreamController extends Controller
             ->get()
             ->toArray();
 
-        $systemPrompt = "You are the concierge chatbot welcoming users to OpenAgents.com, a platform for creating AI agents. Limit your responses to what's in the following context: " . $context;
+        $systemPrompt = "You are a helpful AI agent on OpenAgents.com. Answer the user question based on the following context: " . $context;
 
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -87,10 +64,10 @@ class StreamController extends Controller
                     "role" => "system",
                     "content" => $systemPrompt,
                 ],
-                [
-                    "role" => "assistant",
-                    "content" => "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!"
-                ]
+                // [
+                //     "role" => "assistant",
+                //     "content" => "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!"
+                // ]
             ];
 
             // Add previous messages to the array

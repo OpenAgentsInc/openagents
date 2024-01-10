@@ -149,7 +149,11 @@ trait StepActions
         } else {
             // Initiate new StreamController
             $streamer = new StreamController();
-            $last = $streamer->doChat($input["input"], $context);
+            if ($this->conversation) {
+                $last = $streamer->doChat($input["input"], null, $context);
+            } else {
+                $last = $streamer->doChat($input["input"], $this->conversation, $context);
+            }
         }
 
         // Save message to conversation
