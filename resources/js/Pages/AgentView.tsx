@@ -11,8 +11,6 @@ function AgentViewPage() {
   const files = props.files as any
   const owner = props.owner as string
 
-  console.log(conversation)
-
   useEffect(() => {
     if (import.meta.env.VITE_ENV === "local") return
     if (!agent) return
