@@ -12,7 +12,7 @@ test('chat message sent to an agent executes its task', function () {
     $this->expect($agent->name)->toBe('The Concierge');
 
     // And I as guest message the agent
-    $response = $this->post('/agent/1/chat', ['input' => 'What is this?']);
+    $response = $this->post("/agent/{$agent->id}/chat", ['input' => 'What is this?']);
 
     // The response is successful
     $response->assertStatus(200);
