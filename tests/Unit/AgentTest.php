@@ -12,6 +12,67 @@ use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
 
+it('can create default chat task', function () {
+    $agent = Agent::factory()->create();
+    $task = $agent->createChatTask();
+
+    expect($task->name)->toBe('Basic LLM Chat');
+    expect($task->description)->toBe('Send input to LLM and return response');
+    expect($task->agent_id)->toBe($agent->id);
+});
+
+
+it('can create knowledge retrieval task', function () {
+    $agent = Agent::factory()->create();
+    $task = $agent->createRetrievalTask();
+
+    expect($task->name)->toBe('LLM Chat With Knowledge Retrieval');
+    expect($task->description)->toBe('Chat with LLM using knowledge retrieval.');
+    expect($task->agent_id)->toBe($agent->id);
+});
+
+it('can fetch chat task, creating if not exists', function () {
+    $agent = Agent::factory()->create();
+    $task = $agent->getChatTask();
+    $firstTask = Task::first();
+
+    expect($task->id)->toBe($firstTask->id);
+    expect($task->steps->count())->toBe(2);
+});
+
+it('can fetch chat task, returning existing task', function () {
+    $agent = Agent::factory()->create();
+    $firstTask = Task::create([
+        'name' => 'Basic LLM Chat',
+        'description' => 'Send input to LLM and return response',
+        'agent_id' => $agent->id,
+    ]);
+    $task = $agent->getChatTask();
+    expect($task->id)->toBe($firstTask->id);
+});
+
+it('can fetch retrieval task, creating if not exists', function () {
+    $agent = Agent::factory()->create();
+    $task = $agent->getRetrievalTask();
+    $firstTask = Task::first();
+
+    expect($task->id)->toBe($firstTask->id);
+    expect($task->steps->count())->toBe(4);
+});
+
+it('can fetch retrieval task, returning existing task', function () {
+    $agent = Agent::factory()->create();
+    $firstTask = Task::create([
+        'name' => 'LLM Chat With Knowledge Retrieval',
+        'description' => 'Chat with LLM using knowledge retrieval.',
+        'agent_id' => $agent->id,
+    ]);
+    $task = $agent->getRetrievalTask();
+    expect($task->id)->toBe($firstTask->id);
+});
+
+
+
 it('can get conversation with current user - if it already exists', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

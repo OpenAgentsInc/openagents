@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 
 test('unauthed user cannot upload a file', function () {
-    $this->postJson('/api/files', [
+    $this->postJson(route('files.store'), [
         'file' => UploadedFile::fake()->image('avatar.jpg'),
     ])
         ->assertStatus(401);
@@ -28,7 +28,7 @@ test('authed user can upload a file', function () {
 
     $this->assertCount(0, File::all());
 
-    $this->postJson('/api/files', [
+    $this->postJson(route('files.store'), [
         'file' => UploadedFile::fake()->image('avatar.pdf'),
         'agent_id' => $agent->id,
     ])
@@ -42,7 +42,7 @@ test('user must include agent ID when uploading a file', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
-    $this->postJson('/api/files', [
+    $this->postJson(route('files.store'), [
         'file' => UploadedFile::fake()->image('avatar.pdf'),
     ])
         ->assertStatus(422);

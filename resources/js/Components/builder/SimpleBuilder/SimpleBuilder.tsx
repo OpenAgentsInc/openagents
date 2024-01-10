@@ -23,7 +23,7 @@ export const SimpleBuilder = ({ errors }) => {
 
     // Omit the 'knowledge' field from the formValues object here.
     // const { knowledge, ...formData } = formValues;
-    router.post('/api/agents', formValues)
+    router.post('/agents', formValues)
   };
 
   return (
@@ -97,27 +97,7 @@ export const SimpleBuilder = ({ errors }) => {
             {errors?.welcome_message && <div className="text-red-500 text-sm">{errors["welcome_message"]}</div>}
           </div>
         </div>
-        <div className="mb-6">
-          <div className="mb-1.5 flex items-center">
-            <span className="" data-state="closed">
-              <label className="block font-medium text-token-text-primary">Knowledge</label>
-            </span>
-          </div>
-          <div className="flex flex-col gap-4">
-            <div className="rounded-lg text-gray-500">
-              If you upload files under Knowledge, conversations with your Agent may include file contents.
-            </div>
-            <div>
-              <button className="btn relative btn-neutral h-8 rounded-lg border-token-border-light font-medium">
-                <div className="flex w-full gap-2 items-center justify-center">
-                  <input multiple={false} type="file" tabIndex={-1} style={{ display: 'none' }} />
-                  Upload files
-                </div>
-              </button>
-            </div>
-          </div>
-          <Button className="mt-8" onClick={handleSubmit}>Create</Button>
-        </div>
+        <Button className="my-6" onClick={handleSubmit}>Create</Button>
       </div>
     </div>
   );

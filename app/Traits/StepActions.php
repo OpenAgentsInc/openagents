@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Http\Controllers\StreamController;
 use App\Models\Datapoint;
 use App\Models\Embedding;
+use App\Services\Embedder;
 use App\Services\QueenbeeGateway;
 use App\Services\OpenAIGateway;
 use GuzzleHttp\Client;
@@ -60,6 +61,14 @@ trait StepActions
             dd($input);
         }
 
+        // If we're in a test environment, fake this
+        if (env('APP_ENV') == 'testing') {
+            return [
+                'input' => $input,
+                'embedding' => Embedder::createFakeEmbedding()
+            ];
+        }
+
         $gateway = new QueenbeeGateway();
         $result = $gateway->createEmbedding($input);
         $embedding = $result[0]['embedding'];
@@ -95,6 +104,11 @@ trait StepActions
 
     public function inference($input)
     {
+        // If $input["context"] does not exist, set it to an empty array
+        if (!array_key_exists("context", $input)) {
+            $input["context"] = [];
+        }
+
         // Expect input to be an array of strings with relevant context
 
         // Check if input is an array
@@ -120,6 +134,15 @@ trait StepActions
         $context .= '---';
 
         // $gateway = new OpenAIGateway();
+
+
+        // If we're in a test environment, fake this
+        if (env('APP_ENV') == 'testing') {
+            $last = "This is a test response.";
+            return [
+                "output" => $last
+            ];
+        }
 
         // Initiate new StreamController
         $streamer = new StreamController();

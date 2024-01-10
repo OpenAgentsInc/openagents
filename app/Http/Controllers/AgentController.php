@@ -32,7 +32,9 @@ class AgentController extends Controller
             'welcome_message' => $welcome_message,
         ]);
 
-        return to_route('agent', ['id' => $agent->id])->with('success', 'Agent created!');
+        $agent->createChatTask();
+
+        return to_route('agent', ['id' => $agent->id], 201)->with('success', 'Agent created!');
     }
 
     // Show the agent page
@@ -66,20 +68,19 @@ class AgentController extends Controller
     public function chat($id)
     {
         $input = request('input');
+        $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
 
-        $agent = Agent::findOrFail($id)->load('tasks.steps');
-
-        // If Agent has no tasks or steps, use the default flow
-        if ($agent->tasks->count() == 0 || $agent->tasks->first()->steps->count() == 0) {
-            $agentResponse = $agent->chat($input, $agent);
+        // If Agent has a brain, use retrieval. Otherwise use default chat task.
+        if ($agent->brains->count() > 0) {
+            $task = $agent->getRetrievalTask();
         } else {
-            $agentResponse = $agent->run(["input" => $input]);
+            $task = $agent->getChatTask();
         }
 
         // Return standard JSON success response
         return response()->json([
             'ok' => true,
-            'output' => $agentResponse
+            'output' => $task->run(["input" => $input])
         ]);
     }
 }
