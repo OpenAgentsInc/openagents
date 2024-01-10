@@ -32,7 +32,7 @@ class AgentController extends Controller
             'welcome_message' => $welcome_message,
         ]);
 
-        $agent->createDefaultTask();
+        $agent->createChatTask();
 
         return to_route('agent', ['id' => $agent->id], 201)->with('success', 'Agent created!');
     }

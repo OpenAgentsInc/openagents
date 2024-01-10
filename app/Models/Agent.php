@@ -20,11 +20,7 @@ class Agent extends Model
 
         // If not, create it
         if (!$task) {
-            $task = Task::create([
-                'name' => 'LLM Chat With Knowledge Retrieval',
-                'description' => 'Chat with LLM using knowledge retrieval.',
-                'agent_id' => $this->id,
-            ]);
+            $task = $this->createRetrievalTask();
         }
 
         return $task;
@@ -37,21 +33,17 @@ class Agent extends Model
 
         // If not, create it
         if (!$task) {
-            $task = Task::create([
-                'name' => 'Basic LLM Chat',
-                'description' => 'This is the default task for this agent.',
-                'agent_id' => $this->id,
-            ]);
+            $task = $this->createChatTask();
         }
 
         return $task;
     }
 
-    public function createDefaultTask()
+    public function createChatTask()
     {
         $task = Task::create([
-            'name' => 'Default Task',
-            'description' => 'This is the default task for this agent.',
+            'name' => 'Basic LLM Chat',
+            'description' => 'Send input to LLM and return response',
             'agent_id' => $this->id,
         ]);
 
@@ -75,6 +67,66 @@ class Agent extends Model
             'category' => 'inference',
             'error_message' => 'Sorry, inference failed',
             'success_action' => 'json_response'
+        ]);
+
+        return $task;
+    }
+
+    public function createRetrievalTask()
+    {
+        $task = Task::create([
+            'name' => 'LLM Chat With Knowledge Retrieval',
+            'description' => 'Chat with LLM using knowledge retrieval.',
+            'agent_id' => $this->id,
+        ]);
+
+        // Create the steps
+        $step1 = Step::create([
+            'agent_id' => $this->id,
+            'category' => 'validation',
+            'description' => 'Ensure input is a valid chat message',
+            'entry_type' => 'input',
+            'error_message' => 'Could not validate input',
+            'name' => 'Validate Input',
+            'order' => 1,
+            'success_action' => 'next_node',
+            'task_id' => $task->id,
+        ]);
+
+        $step2 = Step::create([
+            'agent_id' => $this->id,
+            'category' => 'embedding',
+            'description' => 'Convert input to vector embedding',
+            'entry_type' => 'node',
+            'error_message' => 'Could not generate embedding',
+            'name' => 'Embed Input',
+            'order' => 2,
+            'success_action' => 'next_node',
+            'task_id' => $task->id,
+        ]);
+
+        $step3 = Step::create([
+            'agent_id' => $this->id,
+            'category' => 'similarity_search',
+            'description' => 'Compare input to knowledge base',
+            'entry_type' => 'node',
+            'error_message' => 'Could not run similarity search',
+            'name' => 'Similarity Search',
+            'order' => 3,
+            'success_action' => 'next_node',
+            'task_id' => $task->id,
+        ]);
+
+        $step4 = Step::create([
+            'agent_id' => $this->id,
+            'category' => 'inference',
+            'description' => 'Call to LLM to generate response',
+            'entry_type' => 'node',
+            'error_message' => 'Could not call to LLM',
+            'name' => 'Call LLM',
+            'order' => 4,
+            'success_action' => 'json_response',
+            'task_id' => $task->id,
         ]);
 
         return $task;
