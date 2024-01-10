@@ -4,7 +4,7 @@ use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\File;
 use App\Models\Message;
-use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\ConciergeSeeder;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('guest sees view agent page', function () {
