@@ -71,12 +71,12 @@ class AgentController extends Controller
 
         $agent = Agent::findOrFail($id)->load('tasks.steps');
 
-        // If Agent has no tasks or steps, use the default flow
+        // If Agent has no tasks or steps, create the default task
         if ($agent->tasks->count() == 0 || $agent->tasks->first()->steps->count() == 0) {
-            $agentResponse = $agent->chat($input, $agent);
-        } else {
-            $agentResponse = $agent->run(["input" => $input]);
+            $agent->createDefaultTask();
         }
+
+        $agentResponse = $agent->run(["input" => $input]);
 
         // Return standard JSON success response
         return response()->json([

@@ -95,6 +95,11 @@ trait StepActions
 
     public function inference($input)
     {
+        // If $input["context"] does not exist, set it to an empty array
+        if (!array_key_exists("context", $input)) {
+            $input["context"] = [];
+        }
+
         // Expect input to be an array of strings with relevant context
 
         // Check if input is an array

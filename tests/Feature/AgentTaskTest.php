@@ -31,7 +31,6 @@ test('new agents are created with default task and step', function () {
 });
 
 test('chatting with an agent without task creates defaults', function () {
-
     // Given we have a user
     $user = User::factory()->create();
     $this->actingAs($user);
