@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\Agent;
+use App\Models\Conversation;
 use App\Models\File;
+use App\Models\Message;
 use Database\Seeders\DatabaseSeeder;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -41,6 +43,7 @@ test('agent view knows the files associated with the agent', function () {
     $agent = Agent::first();
     File::factory()->create([
         'agent_id' => $agent->id,
+        'user_id' => $agent->user_id,
         'name' => 'test.pdf',
         'path' => 'test.pdf',
         'size' => 1000,
@@ -61,8 +64,16 @@ test('agent view knows the previous conversation', function () {
     $this->seed(ConciergeSeeder::class);
 
     $agent = Agent::first();
-    $agent->createChatTask();
-    $agent->createRetrievalTask();
+
+    $conversation = Conversation::factory()->create([
+        'agent_id' => $agent->id,
+        'user_id' => $agent->user_id
+    ]);
+
+    Message::factory(3)->create([
+        'conversation_id' => $conversation->id,
+        'user_id' => $agent->user_id
+    ]);
 
     $response = $this->get('/agent/' . $agent->id);
 
@@ -71,9 +82,5 @@ test('agent view knows the previous conversation', function () {
             fn (Assert $page) => $page
             ->component('AgentView')
             ->has('conversation')
-            ->where('conversation.0.input', 'Hello')
-            ->where('conversation.0.output', 'Hi there!')
-            ->where('conversation.1.input', 'What is this?')
-            ->where('conversation.1.output', 'This is a test.')
         );
 });

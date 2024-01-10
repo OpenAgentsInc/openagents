@@ -81,7 +81,7 @@ it('getUserConversation returns the conversation messages', function () {
         'agent_id' => $agent->id,
         'user_id' => $user->id
     ]);
-    $message = Message::factory(3)->create([
+    Message::factory(3)->create([
         'conversation_id' => $conversation->id,
         'user_id' => $user->id
     ]);

@@ -135,7 +135,6 @@ class Agent extends Model
     public function getUserConversation()
     {
         $convo = $this->conversations()->where('user_id', auth()->id())->first();
-        $convo->load('messages');
 
         if (!$convo) {
             $convo = Conversation::create([
@@ -143,6 +142,8 @@ class Agent extends Model
                 'agent_id' => $this->id,
             ]);
         }
+
+        $convo->load('messages');
 
         return $convo;
     }

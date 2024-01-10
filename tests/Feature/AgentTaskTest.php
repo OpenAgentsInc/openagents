@@ -22,7 +22,7 @@ test('new agents are created with default task and step', function () {
         'instructions' => 'This is a set of instructions',
         'welcome_message' => 'This is a welcome message'
     ])
-        ->assertStatus(201);
+        ->assertStatus(302);
 
     // Then we have 1 agent
     $this->assertCount(1, Agent::all());

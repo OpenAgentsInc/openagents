@@ -34,7 +34,7 @@ class AgentController extends Controller
 
         $agent->createChatTask();
 
-        return redirect()->route('agent', ['id' => $agent->id], 201)->with('success', 'Agent created!');
+        return redirect()->route('agent', ['id' => $agent->id])->with('success', 'Agent created!');
     }
 
     // Show the agent page
