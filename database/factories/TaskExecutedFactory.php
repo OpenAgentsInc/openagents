@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Conversation;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -20,6 +21,7 @@ class TaskExecutedFactory extends Factory
     {
         return [
             'status' => 'pending',
+            'conversation_id' => Conversation::factory(),
             'task_id' => Task::factory(),
             'user_id' => User::factory(),
         ];
