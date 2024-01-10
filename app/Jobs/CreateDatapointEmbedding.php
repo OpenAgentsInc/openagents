@@ -6,6 +6,7 @@ use App\Events\EmbeddingCreated;
 use App\Models\Agent;
 use App\Models\Brain;
 use App\Models\Datapoint;
+use App\Models\File;
 use App\Services\QueenbeeGateway;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -21,15 +22,17 @@ class CreateDatapointEmbedding implements ShouldQueue
     public string $text;
     public Agent $agent;
     public Brain $brain;
+    public File $file;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($text, $agent, $brain)
+    public function __construct($text, $agent, $brain, $file)
     {
         $this->text = $text;
         $this->agent = $agent;
         $this->brain = $brain;
+        $this->file = $file;
     }
 
     /**
@@ -66,6 +69,6 @@ class CreateDatapointEmbedding implements ShouldQueue
 
     private function notifyAgent()
     {
-        broadcast(new EmbeddingCreated($this->agent->id));
+        broadcast(new EmbeddingCreated($this->agent->id, $this->file->id));
     }
 }

@@ -47,7 +47,7 @@ class FileController extends Controller
             $brain = $this->getBrain();
 
             // Fire new IngestPDF job
-            IngestPDF::dispatch($file, $agent, $brain);
+            IngestPDF::dispatch($path, $agent, $brain, $file);
 
             return Redirect::back()
                 ->with('message', 'File uploaded.')

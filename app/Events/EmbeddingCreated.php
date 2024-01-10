@@ -13,13 +13,15 @@ class EmbeddingCreated implements ShouldBroadcast
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public int $agent_id;
+    public int $file_id;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($agent_id)
+    public function __construct($agent_id, $file_id)
     {
         $this->agent_id = $agent_id;
+        $this->file_id = $file_id;
     }
 
     /**
