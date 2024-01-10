@@ -20,9 +20,16 @@ it('can fetch chat task, creating if not exists', function () {
     expect($task->id)->toBe($firstTask->id);
 });
 
-// it('can fetch chat task, returning existing task', function () {
-
-// });
+it('can fetch chat task, returning existing task', function () {
+    $agent = Agent::factory()->create();
+    $firstTask = Task::create([
+        'name' => 'Basic LLM Chat',
+        'description' => 'This is the default task for this agent.',
+        'agent_id' => $agent->id,
+    ]);
+    $task = $agent->getChatTask();
+    expect($task->id)->toBe($firstTask->id);
+});
 
 it('can get conversation with current user - if it already exists', function () {
     $user = User::factory()->create();
