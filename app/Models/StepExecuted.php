@@ -18,6 +18,12 @@ class StepExecuted extends Model
 
         // Based on the category, run the appropriate StepAction. [validation, embedding, similarity_search, inference]
         $category = $this->step->category;
+
+        // If category is inference, set the current conversation so inference StepAction can access it
+        if ($category === 'inference') {
+            $this->setConversation($this->task_executed->conversation);
+        }
+
         $output = $this->$category($input);
         // Update the StepExecuted with completed status and output
         $this->update([
