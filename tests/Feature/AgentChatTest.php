@@ -21,8 +21,6 @@ test('chat message sent to an agent executes its task', function () {
     // Assert ok is true
     $response->assertJson(['ok' => true]);
 
-    dd($response->json('output'));
-
     // Assert the output is a string
     $this->expect($response->json('output'))->toBeString();
 
