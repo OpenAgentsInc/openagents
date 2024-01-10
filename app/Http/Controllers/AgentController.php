@@ -70,6 +70,8 @@ class AgentController extends Controller
         $input = request('input');
         $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
 
+        $conversation = $agent->getUserConversation();
+
         // If Agent has a brain, use retrieval. Otherwise use default chat task.
         if ($agent->brains->count() > 0) {
             $task = $agent->getRetrievalTask();
