@@ -33,9 +33,7 @@ class CreateDatapointEmbedding implements ShouldQueue
      */
     public function handle(): void
     {
-        $gateway = new QueenbeeGateway();
-        $result = $gateway->createEmbedding($this->text);
-        $embedding = $result[0]['embedding'];
+        $embedding = $this->generateEmbedding();
 
         // Create a new Datapoint
         $datapoint = Datapoint::create([
@@ -43,5 +41,20 @@ class CreateDatapointEmbedding implements ShouldQueue
             'data' => $this->text,
             'embedding' => $embedding,
         ]);
+    }
+
+    private function generateEmbedding()
+    {
+        // If testing, don't actually call the Queenbee API
+        if (app()->environment('testing')) {
+            // Create a fake embedding of 768 dimension - array
+            $embedding = array_fill(0, 768, 0.5);
+        } else {
+            $gateway = new QueenbeeGateway();
+            $result = $gateway->createEmbedding($this->text);
+            $embedding = $result[0]['embedding'];
+        }
+
+        return $embedding;
     }
 }

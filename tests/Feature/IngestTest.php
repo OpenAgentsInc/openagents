@@ -25,4 +25,4 @@ test('embedding job creates datapoint', function () {
     $job->handle();
 
     $this->assertCount(1, Datapoint::all());
-})->group('integration');
+});
