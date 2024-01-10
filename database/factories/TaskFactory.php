@@ -10,17 +10,16 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class TaskFactory extends Factory
 {
-  /**
-   * Define the model's default state.
-   *
-   * @return array<string, mixed>
-   */
-  public function definition(): array
-  {
-    return [
-      'agent_id' => Agent::factory(),
-      'description' => $this->faker->sentence(),
-      'prompt' => $this->faker->sentence(),
-    ];
-  }
+    /**
+     * Define the model's default state.
+     *
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        return [
+          'agent_id' => Agent::factory(),
+          'description' => $this->faker->sentence(),
+        ];
+    }
 }

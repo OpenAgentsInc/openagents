@@ -13,6 +13,39 @@ class Agent extends Model
 
     protected $guarded = [];
 
+    public function createDefaultTask()
+    {
+        $task = Task::create([
+            'name' => 'Default Task',
+            'description' => 'This is the default task for this agent.',
+            'agent_id' => $this->id,
+        ]);
+
+        $task->steps()->create([
+            'name' => 'Default Step',
+            'order' => 1,
+            'task_id' => $task->id,
+            'agent_id' => $this->id,
+            'entry_type' => 'input',
+            'category' => 'validation',
+            'error_message' => 'Sorry, I didn\'t understand that.',
+            'success_action' => 'next_node'
+        ]);
+
+        $task->steps()->create([
+            'name' => 'Default Step',
+            'order' => 2,
+            'task_id' => $task->id,
+            'agent_id' => $this->id,
+            'entry_type' => 'node',
+            'category' => 'inference',
+            'error_message' => 'Sorry, inference failed',
+            'success_action' => 'json_response'
+        ]);
+
+        return $task;
+    }
+
     public function getUserConversation()
     {
         $convo = $this->conversations()->where('user_id', auth()->id())->first();

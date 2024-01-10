@@ -136,3 +136,13 @@ it('has thoughts', function () {
     $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->thoughts);
     $this->assertInstanceOf(Thought::class, $agent->thoughts->first());
 });
+
+it('can create default task', function () {
+    $agent = Agent::factory()->create();
+    $task = $agent->createDefaultTask();
+
+    expect($task->name)->toBe('Default Task');
+    expect($task->description)->toBe('This is the default task');
+    expect($task->agent_id)->toBe($agent->id);
+    expect($task->is_default)->toBe(true);
+});
