@@ -10,6 +10,20 @@ $properPayload = [
     'welcome_message' => 'This is a welcome message'
 ];
 
+test('proper payload works', function () use ($properPayload) {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $this->assertCount(0, Agent::all());
+
+    $this->postJson('/api/agents', $properPayload)
+        ->assertStatus(201)
+        ->assertSessionHas('success', 'Agent created!');
+
+    // expect that there are 0 agents
+    $this->assertCount(1, Agent::all());
+});
+
 test('name is required to create an agent', function () use ($properPayload) {
     $user = User::factory()->create();
     $this->actingAs($user);
