@@ -147,6 +147,11 @@ trait StepActions
         // If we're in a test environment, fake this
         if (env('APP_ENV') == 'testing') {
             $last = "This is a test response.";
+            $conversation->messages()->create([
+                'user_id' => auth()->id() ?? null,
+                'body' => $last,
+                'sender' => 'agent'
+            ]);
         } else {
             // Initiate new StreamController
             $streamer = new StreamController();
@@ -160,11 +165,7 @@ trait StepActions
 
         // Save message to conversation
 
-        $conversation->messages()->create([
-            'user_id' => auth()->id() ?? null,
-            'body' => $last,
-            'sender' => 'assistant'
-        ]);
+
 
 
         // $data = [

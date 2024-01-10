@@ -49,5 +49,5 @@ test('chat message sent to an agent creates a conversation & saves user+agent me
     expect($agent->conversations()->first()->messages()->count())->toBe(2);
     expect($agent->conversations()->first()->messages()->first()->body)->toBe('What is this?');
     expect($agent->conversations()->first()->messages()->first()->sender)->toBe('user');
-    expect($agent->conversations()->first()->messages()->get()[1]->sender)->toBe('assistant');
+    expect($agent->conversations()->first()->messages()->get()[1]->sender)->toBe('agent');
 });
