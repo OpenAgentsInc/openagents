@@ -23,14 +23,17 @@ class Task extends Model
 
     public function run($input)
     {
+        // try to get the conversation from $input
+        $conversationId = $input['conversation']->id ?? null;
+
         // Load the first step
         $step = $this->steps()->first();
 
         // Create from it a TaskExecuted
         $task_executed = TaskExecuted::create([
             'task_id' => $this->id,
-            // Current user ID if authed or null
-            'user_id' => auth()->id(),
+            'conversation_id' => $conversationId,
+            'user_id' => auth()->id(), // // Current user ID if authed or null
             'status' => 'pending'
         ]);
 

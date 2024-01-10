@@ -82,7 +82,7 @@ class AgentController extends Controller
         // Return standard JSON success response
         return response()->json([
             'ok' => true,
-            'output' => $task->run(["input" => $input])
+            'output' => $task->run(["input" => $input, "conversation" => $conversation])
         ]);
     }
 }
