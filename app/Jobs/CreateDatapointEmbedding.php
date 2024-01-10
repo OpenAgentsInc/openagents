@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Events\EmbeddingCreated;
+use App\Models\Agent;
 use App\Models\Brain;
 use App\Models\Datapoint;
 use App\Services\QueenbeeGateway;
@@ -17,14 +19,16 @@ class CreateDatapointEmbedding implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public string $text;
+    public Agent $agent;
     public Brain $brain;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($text, $brain)
+    public function __construct($text, $agent, $brain)
     {
         $this->text = $text;
+        $this->agent = $agent;
         $this->brain = $brain;
     }
 
@@ -41,6 +45,8 @@ class CreateDatapointEmbedding implements ShouldQueue
             'data' => $this->text,
             'embedding' => $embedding,
         ]);
+
+        $this->notifyAgent();
     }
 
     private function generateEmbedding()
@@ -56,5 +62,10 @@ class CreateDatapointEmbedding implements ShouldQueue
         }
 
         return $embedding;
+    }
+
+    private function notifyAgent()
+    {
+        broadcast(new EmbeddingCreated($this->agent->id));
     }
 }

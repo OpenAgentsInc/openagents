@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Agent;
 use App\Models\Brain;
 use App\Models\Datapoint;
 use Illuminate\Bus\Queueable;
@@ -18,19 +19,21 @@ class IngestPDF implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public string $path;
+    public Agent $agent;
     public Brain $brain;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($path, $brain)
+    public function __construct($path, $agent, $brain)
     {
         $this->path = $path;
+        $this->agent = $agent;
         $this->brain = $brain;
     }
 
     /**
-     * Execute the job.
+     * Execute the job.i
      */
     public function handle(): void
     {
@@ -59,7 +62,7 @@ class IngestPDF implements ShouldQueue
                 continue;
             }
 
-            CreateDatapointEmbedding::dispatch($chunk, $this->brain);
+            CreateDatapointEmbedding::dispatch($chunk, $this->agent, $this->brain);
         }
     }
 }

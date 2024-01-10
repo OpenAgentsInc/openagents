@@ -43,10 +43,11 @@ class FileController extends Controller
             ]);
 
             // If we have a brain, parse the file
+            $agent = Agent::findOrFail(request('agent_id'));
             $brain = $this->getBrain();
 
             // Fire new IngestPDF job
-            IngestPDF::dispatch($file, $brain);
+            IngestPDF::dispatch($file, $agent, $brain);
 
             return Redirect::back()
                 ->with('message', 'File uploaded.')
