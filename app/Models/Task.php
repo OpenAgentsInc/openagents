@@ -26,6 +26,16 @@ class Task extends Model
         // try to get the conversation from $input
         $conversationId = $input['conversation']->id ?? null;
 
+        // If there's a conversation, save the message to it
+        if ($conversationId) {
+            $conversation = Conversation::find($conversationId);
+            $conversation->messages()->create([
+                'user_id' => auth()->id() ?? null,
+                'body' => $input['input'],
+                'sender' => 'user'
+            ]);
+        }
+
         // Load the first step
         $step = $this->steps()->first();
 

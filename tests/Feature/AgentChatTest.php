@@ -47,7 +47,7 @@ test('chat message sent to an agent creates a conversation & saves message', fun
 
     // And a message should be created
     expect($agent->conversations()->first()->messages()->count())->toBe(1);
-    expect($agent->conversations()->first()->messages()->first()->text)->toBe('What is this?');
+    expect($agent->conversations()->first()->messages()->first()->body)->toBe('What is this?');
     expect($agent->conversations()->first()->messages()->first()->sender)->toBe('user');
 });
 
