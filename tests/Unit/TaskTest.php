@@ -3,6 +3,14 @@
 use App\Models\Agent;
 use App\Models\Step;
 use App\Models\Task;
+use App\Models\TaskExecuted;
+
+it('can run', function () {
+    $task = Task::factory()->create();
+    $task->run();
+
+    expect(TaskExecuted::count())->toBe(1);
+});
 
 it('may have a name', function () {
     $task = Task::factory()->create([
