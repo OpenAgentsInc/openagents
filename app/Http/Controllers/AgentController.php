@@ -68,20 +68,19 @@ class AgentController extends Controller
     public function chat($id)
     {
         $input = request('input');
+        $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
 
-        $agent = Agent::findOrFail($id)->load('tasks.steps');
-
-        // If Agent has no tasks or steps, create the default task
-        if ($agent->tasks->count() == 0 || $agent->tasks->first()->steps->count() == 0) {
-            $agent->createDefaultTask();
+        // If Agent has a brain, use retrieval. Otherwise use default chat task.
+        if ($agent->brains->count() > 0) {
+            $task = $agent->fetchRetrievalTask();
+        } else {
+            $task = $agent->fetchChatTask();
         }
-
-        $agentResponse = $agent->run(["input" => $input]);
 
         // Return standard JSON success response
         return response()->json([
             'ok' => true,
-            'output' => $agentResponse
+            'output' => $task->run(["input" => $input])
         ]);
     }
 }

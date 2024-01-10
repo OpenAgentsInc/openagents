@@ -36,7 +36,7 @@ test('change steps to use knowledge during chat if needed', function () {
     // ...and we chat again...
     $this->post("/agent/{$agent->id}/chat", ['input' => 'Now consult your knowledge base!'])->assertStatus(200);
 
-    // ...there should be 2 task and 6 steps
+    // ...there should be 2 tasks and 6 steps
     $this->expect(Task::count())->toBe(2);
     $this->expect(Step::count())->toBe(6);
     $this->expect(TaskExecuted::count())->toBe(2);
