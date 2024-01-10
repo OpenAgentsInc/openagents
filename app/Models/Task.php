@@ -23,6 +23,7 @@ class Task extends Model
 
     public function run($input)
     {
+        // dd($input);
         // try to get the conversation from $input
         $conversationId = $input['conversation']->id ?? null;
 
