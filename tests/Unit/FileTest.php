@@ -55,14 +55,6 @@ it('may belong to an agent', function () {
     expect($file->agent)->toBeNull();
 });
 
-it('may belong to a conversation', function () {
-    $file = File::factory()->create();
-    expect($file->conversation)->toBeNull();
-
-    $file = File::factory()->create(['conversation_id' => 1]);
-    expect($file->conversation)->toBeNull();
-});
-
 it('must belong to a user', function () {
     $file = File::factory()->create();
     expect($file->user)->toBeInstanceOf(User::class);

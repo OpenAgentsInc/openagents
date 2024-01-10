@@ -14,7 +14,6 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete()->cascadeOnUpdate();
             $table->foreignId('agent_id')->nullable();
-            $table->foreignId('conversation_id')->nullable();
             $table->string('name');
             $table->string('path');
             $table->integer('size');

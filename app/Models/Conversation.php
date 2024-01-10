@@ -13,11 +13,6 @@ class Conversation extends Model
 
     public function messages()
     {
-      return $this->hasMany(Message::class);
-    }
-
-    public function files()
-    {
-      return $this->hasMany(File::class);
+        return $this->hasMany(Message::class);
     }
 }
