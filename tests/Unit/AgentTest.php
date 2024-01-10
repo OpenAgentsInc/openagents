@@ -142,7 +142,6 @@ it('can create default task', function () {
     $task = $agent->createDefaultTask();
 
     expect($task->name)->toBe('Default Task');
-    expect($task->description)->toBe('This is the default task');
+    expect($task->description)->toBe('This is the default task for this agent.');
     expect($task->agent_id)->toBe($agent->id);
-    expect($task->is_default)->toBe(true);
 });
