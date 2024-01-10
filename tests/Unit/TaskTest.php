@@ -2,14 +2,26 @@
 
 use App\Models\Agent;
 use App\Models\Step;
+use App\Models\StepExecuted;
 use App\Models\Task;
 use App\Models\TaskExecuted;
 
 it('can run', function () {
     $task = Task::factory()->create();
-    $task->run();
+    $task->run("Hello");
 
     expect(TaskExecuted::count())->toBe(1);
+    expect(StepExecuted::count())->toBe(0);
+
+    $step = Step::factory()->create([
+        'agent_id' => $task->agent_id,
+        'task_id' => $task->id,
+    ]);
+
+    $task->run("Hello");
+
+    expect(TaskExecuted::count())->toBe(2);
+    expect(StepExecuted::count())->toBe(1);
 });
 
 it('may have a name', function () {

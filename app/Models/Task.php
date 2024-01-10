@@ -21,7 +21,7 @@ class Task extends Model
         return $this->hasMany(Step::class);
     }
 
-    public function run()
+    public function run($input)
     {
         // Load the first step
         $step = $this->steps()->first();
@@ -35,8 +35,9 @@ class Task extends Model
         ]);
 
         $step_executed = null;
+        $steps = $this->steps()->get();
         // Loop through all the task's steps, passing the output of each to the next
-        foreach ($this->steps() as $step) {
+        foreach ($steps as $step) {
             if ($step->order !== 1) {
                 $input = $prev_step_executed->output;
             }
