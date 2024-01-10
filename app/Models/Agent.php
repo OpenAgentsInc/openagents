@@ -13,6 +13,23 @@ class Agent extends Model
 
     protected $guarded = [];
 
+    public function getChatTask()
+    {
+        // First see if we have a task named "Basic LLM Chat"
+        $task = $this->tasks()->where('name', 'Basic LLM Chat')->first();
+
+        // If not, create it
+        if (!$task) {
+            $task = Task::create([
+                'name' => 'Basic LLM Chat',
+                'description' => 'This is the default task for this agent.',
+                'agent_id' => $this->id,
+            ]);
+        }
+
+        return $task;
+    }
+
     public function createDefaultTask()
     {
         $task = Task::create([

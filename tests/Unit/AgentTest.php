@@ -12,6 +12,18 @@ use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
 
+it('can fetch chat task, creating if not exists', function () {
+    $agent = Agent::factory()->create();
+    $task = $agent->getChatTask();
+    $firstTask = Task::first();
+
+    expect($task->id)->toBe($firstTask->id);
+});
+
+// it('can fetch chat task, returning existing task', function () {
+
+// });
+
 it('can get conversation with current user - if it already exists', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
