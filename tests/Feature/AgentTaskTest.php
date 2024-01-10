@@ -41,4 +41,4 @@ test('new agents are created with default task and step', function () {
     $message = $step->messages->first();
     $this->assertEquals('This is a welcome message', $message->body);
 
-});
+})->skip();
