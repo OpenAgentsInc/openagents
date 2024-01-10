@@ -43,7 +43,7 @@ Route::group(['middleware' => ['auth']], function () {
     Route::get('/referrals', [ReferralsController::class, 'referrals'])->name('referrals');
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
 
-    Route::post('/api/agents', [AgentController::class, 'store']);
+    Route::post('/agents', [AgentController::class, 'store'])->name('agents.store');
     Route::post('/api/files', [FileController::class, 'store'])->name('files.store');
 });
 

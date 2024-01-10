@@ -23,7 +23,7 @@ export const SimpleBuilder = ({ errors }) => {
 
     // Omit the 'knowledge' field from the formValues object here.
     // const { knowledge, ...formData } = formValues;
-    router.post('/api/agents', formValues)
+    router.post('/agents', formValues)
   };
 
   return (
