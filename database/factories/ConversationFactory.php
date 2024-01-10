@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Agent;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -20,6 +21,7 @@ class ConversationFactory extends Factory
     public function definition(): array
     {
         return [
+            'agent_id' => Agent::factory(),
             'user_id' => User::factory(),
         ];
     }
