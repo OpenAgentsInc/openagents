@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Agent;
+use App\Models\Conversation;
 use App\Models\StepExecuted;
 use App\Models\TaskExecuted;
 use Database\Seeders\ConciergeSeeder;
@@ -27,4 +28,20 @@ test('chat message sent to an agent executes its task', function () {
     // Assert we now have 1 TaskExecuted and 4 StepExecuted
     $this->expect(TaskExecuted::count())->toBe(1);
     $this->expect(StepExecuted::count())->toBe(4);
+});
+
+test('chat message sent to an agent creates a conversation', function () {
+    $this->seed(ConciergeSeeder::class);
+    $agent = Agent::findOrFail(1);
+
+    // First I expect there to be no conversations
+    expect(Conversation::count())->toBe(0);
+    expect($agent->conversations()->count())->toBe(0);
+
+    // And I as guest message the agent
+    $response = $this->post("/agent/{$agent->id}/chat", ['input' => 'What is this?'])->assertStatus(200);
+
+    // A conversation should be created
+    expect(Conversation::count())->toBe(1);
+    expect($agent->conversations()->count())->toBe(1);
 });

@@ -16,11 +16,7 @@ class StreamController extends Controller
 {
     public function chat()
     {
-        $streamer = new StreamController();
-        $conversation = $streamer->fetchOrCreateConversation();
-        return Inertia::render('Chat', [
-            'conversationId' => $conversation->id,
-        ]);
+        return redirect()->route('agent.chat', ['id' => 1]);
     }
 
     public function stream()
@@ -47,7 +43,8 @@ class StreamController extends Controller
 
         if (!$conversation) {
             $conversation = Conversation::create([
-                'user_id' => auth()->user()->id ?? 1,
+                'agent_id' => $agentId,
+                'user_id' => auth()->user()->id ?? null,
             ]);
 
             // set the session
