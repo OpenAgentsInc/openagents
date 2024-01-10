@@ -23,7 +23,6 @@ class Task extends Model
 
     public function run($input)
     {
-        // dd($input);
         // try to get the conversation from $input
         $conversationId = $input['conversation']->id ?? null;
 
@@ -50,6 +49,7 @@ class Task extends Model
 
         $step_executed = null;
         $steps = $this->steps()->get();
+
         // Loop through all the task's steps, passing the output of each to the next
         foreach ($steps as $step) {
             if ($step->order !== 1) {

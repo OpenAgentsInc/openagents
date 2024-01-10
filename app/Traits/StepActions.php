@@ -159,13 +159,13 @@ trait StepActions
         }
 
         // Save message to conversation
-        if ($this->conversation) {
-            $this->conversation->messages()->create([
-                'user_id' => auth()->id() ?? null,
-                'body' => $last,
-                'sender' => 'assistant'
-            ]);
-        }
+
+        $conversation->messages()->create([
+            'user_id' => auth()->id() ?? null,
+            'body' => $last,
+            'sender' => 'assistant'
+        ]);
+
 
         // $data = [
         //     "model" => $gateway->defaultModel(),
