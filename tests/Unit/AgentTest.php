@@ -31,6 +31,25 @@ it('can fetch chat task, returning existing task', function () {
     expect($task->id)->toBe($firstTask->id);
 });
 
+it('can fetch retrieval task, creating if not exists', function () {
+    $agent = Agent::factory()->create();
+    $task = $agent->getRetrievalTask();
+    $firstTask = Task::first();
+
+    expect($task->id)->toBe($firstTask->id);
+});
+
+it('can fetch retrieval task, returning existing task', function () {
+    $agent = Agent::factory()->create();
+    $firstTask = Task::create([
+        'name' => 'LLM Chat With Knowledge Retrieval',
+        'description' => 'Chat with LLM using knowledge retrieval.',
+        'agent_id' => $agent->id,
+    ]);
+    $task = $agent->getRetrievalTask();
+    expect($task->id)->toBe($firstTask->id);
+});
+
 it('can get conversation with current user - if it already exists', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

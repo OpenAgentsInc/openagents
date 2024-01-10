@@ -13,6 +13,23 @@ class Agent extends Model
 
     protected $guarded = [];
 
+    public function getRetrievalTask()
+    {
+        // First see if we have a task named "Basic LLM Retrieval"
+        $task = $this->tasks()->where('name', 'LLM Chat With Knowledge Retrieval')->first();
+
+        // If not, create it
+        if (!$task) {
+            $task = Task::create([
+                'name' => 'LLM Chat With Knowledge Retrieval',
+                'description' => 'Chat with LLM using knowledge retrieval.',
+                'agent_id' => $this->id,
+            ]);
+        }
+
+        return $task;
+    }
+
     public function getChatTask()
     {
         // First see if we have a task named "Basic LLM Chat"
