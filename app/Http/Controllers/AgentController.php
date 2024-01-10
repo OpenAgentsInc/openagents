@@ -32,7 +32,7 @@ class AgentController extends Controller
             'welcome_message' => $welcome_message,
         ]);
 
-        return to_route('agent', ['id' => $agent->id])->with('success', 'Agent created!');
+        return to_route('agent', ['id' => $agent->id], 201)->with('success', 'Agent created!');
     }
 
     // Show the agent page
