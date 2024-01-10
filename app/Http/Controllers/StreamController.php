@@ -19,22 +19,22 @@ class StreamController extends Controller
         return redirect()->route('agent.chat', ['id' => 1]);
     }
 
-    public function stream()
-    {
-        request()->validate([
-            'input' => 'required',
-        ]);
+    // public function stream()
+    // {
+    //     request()->validate([
+    //         'input' => 'required',
+    //     ]);
 
-        $input = request('input');
+    //     $input = request('input');
 
-        $this->doChat($input);
-    }
+    //     $this->doChat($input);
+    // }
 
     public function doChat($input, $conversation, $context = "")
     {
-        if (!$conversation) {
-            dd("No conversation");
-        }
+        // if (!$conversation) {
+        //     dd("No conversation");
+        // }
 
         // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
         $previousMessages = Message::where('conversation_id', $conversation->id)

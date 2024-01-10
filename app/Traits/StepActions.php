@@ -13,14 +13,15 @@ use Pgvector\Laravel\Vector;
 
 trait StepActions
 {
-    public $conversation;
+    // public $conversation;
 
-    public function setConversation($conversation)
-    {
-        $this->conversation = $conversation;
-    }
+    // public function setConversation($conversation)
+    // {
+    //     \Log::info('Setting conversation in StepActions trait');
+    //     $this->conversation = $conversation;
+    // }
 
-    public function validation($input)
+    public function validation($input, $conversation)
     {
         // dd($input);
 
@@ -59,7 +60,7 @@ trait StepActions
         return $input;
     }
 
-    public function embedding($input)
+    public function embedding($input, $conversation)
     {
         $input = $input['input'];
         // Check if input is a string
@@ -86,7 +87,7 @@ trait StepActions
         ];
     }
 
-    public function similarity_search($input, $take = 8)
+    public function similarity_search($input, $conversation, $take = 8)
     {
         $embedding = $input['embedding'];
         if (!is_array($embedding)) {
@@ -109,7 +110,7 @@ trait StepActions
         ];
     }
 
-    public function inference($input)
+    public function inference($input, $conversation)
     {
         // If $input["context"] does not exist, set it to an empty array
         if (!array_key_exists("context", $input)) {
@@ -149,11 +150,12 @@ trait StepActions
         } else {
             // Initiate new StreamController
             $streamer = new StreamController();
-            if ($this->conversation) {
-                $last = $streamer->doChat($input["input"], null, $context);
-            } else {
-                $last = $streamer->doChat($input["input"], $this->conversation, $context);
-            }
+            $last = $streamer->doChat($input["input"], $conversation, $context);
+            // if ($this->conversation) {
+            //     $last = $streamer->doChat($input["input"], null, $context);
+            // } else {
+            //     $last = $streamer->doChat($input["input"], $this->conversation, $context);
+            // }
         }
 
         // Save message to conversation

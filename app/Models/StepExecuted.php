@@ -20,11 +20,11 @@ class StepExecuted extends Model
         $category = $this->step->category;
 
         // If category is inference, set the current conversation so inference StepAction can access it
-        if ($category === 'inference') {
-            $this->setConversation($this->task_executed->conversation);
-        }
+        // if ($category === 'inference') {
+        //     $this->setConversation($this->task_executed->conversation);
+        // }
 
-        $output = $this->$category($input);
+        $output = $this->$category($input, $this->task_executed->conversation);
         // Update the StepExecuted with completed status and output
         $this->update([
             'status' => 'completed',
