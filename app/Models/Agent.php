@@ -143,6 +143,8 @@ class Agent extends Model
             ]);
         }
 
+        $convo->load('messages');
+
         return $convo;
     }
 

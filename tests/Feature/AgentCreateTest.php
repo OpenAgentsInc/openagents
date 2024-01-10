@@ -17,7 +17,7 @@ test('proper payload works', function () use ($properPayload) {
     $this->assertCount(0, Agent::all());
 
     $this->postJson(route('agents.store'), $properPayload)
-        ->assertStatus(201)
+        ->assertStatus(302)
         ->assertSessionHas('success', 'Agent created!');
 
     $this->assertCount(1, Agent::all());

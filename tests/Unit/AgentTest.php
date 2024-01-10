@@ -3,6 +3,7 @@
 use App\Models\Agent;
 use App\Models\Brain;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Models\File;
 use App\Models\Step;
 use App\Models\StepExecuted;
@@ -71,7 +72,24 @@ it('can fetch retrieval task, returning existing task', function () {
     expect($task->id)->toBe($firstTask->id);
 });
 
+it('getUserConversation returns the conversation messages', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
 
+    $agent = Agent::factory()->create(['user_id' => $user->id]);
+    $conversation = Conversation::factory()->create([
+        'agent_id' => $agent->id,
+        'user_id' => $user->id
+    ]);
+    Message::factory(3)->create([
+        'conversation_id' => $conversation->id,
+        'user_id' => $user->id
+    ]);
+
+    $conversation = $agent->getUserConversation();
+
+    expect($conversation->messages->count())->toBe(3);
+});
 
 it('can get conversation with current user - if it already exists', function () {
     $user = User::factory()->create();

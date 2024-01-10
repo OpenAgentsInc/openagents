@@ -29,7 +29,8 @@ export const Primary: Story = {
   args: {
     agent: demoAgent,
     conversation: {
-      id: 1
+      id: 1,
+      messages: []
     },
     files: [],
     owner: 'DemoMan'
