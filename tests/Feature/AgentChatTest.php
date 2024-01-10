@@ -30,7 +30,7 @@ test('chat message sent to an agent executes its task', function () {
     $this->expect(StepExecuted::count())->toBe(4);
 });
 
-test('chat message sent to an agent creates a conversation', function () {
+test('chat message sent to an agent creates a conversation & saves user+agent messages', function () {
     $this->seed(ConciergeSeeder::class);
     $agent = Agent::findOrFail(1);
 
@@ -44,4 +44,10 @@ test('chat message sent to an agent creates a conversation', function () {
     // A conversation should be created
     expect(Conversation::count())->toBe(1);
     expect($agent->conversations()->count())->toBe(1);
+
+    // And two messages should be created
+    expect($agent->conversations()->first()->messages()->count())->toBe(2);
+    expect($agent->conversations()->first()->messages()->first()->body)->toBe('What is this?');
+    expect($agent->conversations()->first()->messages()->first()->sender)->toBe('user');
+    expect($agent->conversations()->first()->messages()->get()[1]->sender)->toBe('assistant');
 });

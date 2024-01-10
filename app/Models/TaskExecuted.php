@@ -16,4 +16,9 @@ class TaskExecuted extends Model
     {
         return $this->belongsTo(Task::class);
     }
+
+    public function conversation()
+    {
+        return $this->belongsTo(Conversation::class);
+    }
 }

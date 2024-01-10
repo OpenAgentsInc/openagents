@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Conversation;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Database\Migrations\Migration;
@@ -14,6 +15,7 @@ return new class extends Migration {
     {
         Schema::create('task_executeds', function (Blueprint $table) {
             $table->id();
+            $table->foreignIdFor(Conversation::class)->nullable();
             $table->foreignIdFor(Task::class)->constrained()->cascadeOnDelete();
             $table->foreignIdFor(User::class)->nullable();
             $table->string('status');

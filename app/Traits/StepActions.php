@@ -13,6 +13,13 @@ use Pgvector\Laravel\Vector;
 
 trait StepActions
 {
+    public $conversation;
+
+    public function setConversation($conversation)
+    {
+        $this->conversation = $conversation;
+    }
+
     public function validation($input)
     {
         // dd($input);
@@ -139,15 +146,20 @@ trait StepActions
         // If we're in a test environment, fake this
         if (env('APP_ENV') == 'testing') {
             $last = "This is a test response.";
-            return [
-                "output" => $last
-            ];
+        } else {
+            // Initiate new StreamController
+            $streamer = new StreamController();
+            $last = $streamer->doChat($input["input"], $context);
         }
 
-        // Initiate new StreamController
-        $streamer = new StreamController();
-        $last = $streamer->doChat($input["input"], $context);
-
+        // Save message to conversation
+        if ($this->conversation) {
+            $this->conversation->messages()->create([
+                'user_id' => auth()->id() ?? null,
+                'body' => $last,
+                'sender' => 'assistant'
+            ]);
+        }
 
         // $data = [
         //     "model" => $gateway->defaultModel(),
