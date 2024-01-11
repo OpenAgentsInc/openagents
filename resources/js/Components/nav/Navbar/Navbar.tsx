@@ -91,11 +91,11 @@ export const Navbar = ({ user }: HeaderProps) => {
 
                   {!user && (
                     <span className="flex items-center">
-                      {/* <Link href="/login">
+                      <Link href="/login">
                         <Button className="text-sm leading-6" variant="outline">
                           Log in <span aria-hidden="true" className="pl-2">&rarr;</span>
                         </Button>
-                      </Link> */}
+                      </Link>
                     </span>
                   )}
                   {/* <button
