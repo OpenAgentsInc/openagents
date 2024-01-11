@@ -40,6 +40,14 @@ export const AgentKnowledge = ({ agent, files, isOwner }: AgentKnowledgeProps) =
           </CardHeader>
         </Card>
       ))}
+
+      {/* If no knowledge, show a message */}
+
+      {knowledge.length === 0 && (
+        <div className="text-center">
+          <p className="text-sm italic">No files uploaded</p>
+        </div>
+      )}
     </div>
   )
 }
