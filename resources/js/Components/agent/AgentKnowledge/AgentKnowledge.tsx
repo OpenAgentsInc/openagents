@@ -22,6 +22,7 @@ const dummyKnowledge = [
 ]
 
 export const AgentKnowledge = ({ agent, files, isOwner }: AgentKnowledgeProps) => {
+  console.log(isOwner)
   const knowledge = files ?? dummyKnowledge
   return (
     <div className="overflow-y-auto w-full p-5">
@@ -41,10 +42,8 @@ export const AgentKnowledge = ({ agent, files, isOwner }: AgentKnowledgeProps) =
         </Card>
       ))}
 
-      {/* If no knowledge, show a message */}
-
       {knowledge.length === 0 && (
-        <div className="text-center">
+        <div className="mt-6 text-center">
           <p className="text-sm italic">No files uploaded</p>
         </div>
       )}
