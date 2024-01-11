@@ -35,7 +35,7 @@ export const AgentView = ({ agent, conversation, files, owner }: AgentViewProps)
   ]
   return (
     <div className="h-full">
-      <AgentSidebar agent={agent} files={files} isOwner={!!user && (owner === user?.github_nickname || owner === user?.twitter.nickname)}>
+      <AgentSidebar agent={agent} files={files} isOwner={!!user && (owner === user?.github_nickname || owner === user?.twitter_nickname)}>
         <ChatPane agent={agent} conversationId={conversation.id} initialMessages={initialMessages} owner={owner} />
       </AgentSidebar>
     </div>
