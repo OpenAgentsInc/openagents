@@ -49,7 +49,7 @@ export const KnowledgeUploader = ({ agent }: { agent: Agent }) => {
     <Card className="w-full">
       <CardHeader className="space-y-0">
         <CardTitle className="-mt-1 text-lg">Add Knowledge</CardTitle>
-        <CardDescription>Upload any PDF here. These will be public!</CardDescription>
+        <CardDescription>Upload any PDF here, up to 10 MB. <strong>These will be public!</strong></CardDescription>
       </CardHeader>
 
       <CardContent>

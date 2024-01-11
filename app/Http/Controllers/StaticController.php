@@ -21,4 +21,9 @@ class StaticController extends Controller
     {
         return Inertia::render('Privacy');
     }
+
+    public function epstein()
+    {
+        return redirect('/agent/2');
+    }
 }

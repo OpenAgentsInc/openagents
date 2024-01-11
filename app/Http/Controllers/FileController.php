@@ -22,6 +22,12 @@ class FileController extends Controller
             'agent_id' => 'required',
         ]);
 
+        // Validate this user owns the agent
+        $agent = Agent::findOrFail(request('agent_id'));
+        if ($agent->user_id !== auth()->user()->id) {
+            abort(403);
+        }
+
         try {
             // Store the file to Laravel storage
             $thefile = $request->file('file');

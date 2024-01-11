@@ -19,7 +19,12 @@ Route::get('/', [StaticController::class, 'splash']);
 // Concierge Chat
 Route::get('/chat', [StreamController::class, 'chat'])->name('chat'); // OLD
 
+// Convenience redirects
+Route::get('/epstein', [StaticController::class, 'epstein']);
+Route::get('/agent/epstein', [StaticController::class, 'epstein']);
+
 // Agents
+Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
 
@@ -37,7 +42,6 @@ Route::get('/twitter', [AuthController::class, 'twitterCallback']);
 
 // Authed routes
 Route::group(['middleware' => ['auth']], function () {
-    Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
     Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
     Route::get('/referrals', [ReferralsController::class, 'referrals'])->name('referrals');
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');

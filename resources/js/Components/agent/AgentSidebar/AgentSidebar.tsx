@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IconBrain, IconGraph } from "../AgentIcons";
 import { AgentKnowledge } from "../AgentKnowledge";
 
-export const AgentSidebar = ({ agent, children, files }) => {
+export const AgentSidebar = ({ agent, children, files, isOwner }) => {
   const [showKnowledge, setShowKnowledge] = useState(false)
   return (
     <div className="h-full w-full md:h-screen">
@@ -21,7 +21,7 @@ export const AgentSidebar = ({ agent, children, files }) => {
         </div>
         {showKnowledge && (
           <div className="w-[375px] shrink-0 border-r border-neutral-300 flex flex-col">
-            <AgentKnowledge agent={agent} files={files} isOwner />
+            <AgentKnowledge agent={agent} files={files} isOwner={isOwner} />
           </div>
         )}
         <div className="relative grow overflow-x-auto flex flex-col">

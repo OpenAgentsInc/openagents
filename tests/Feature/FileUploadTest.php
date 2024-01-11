@@ -29,7 +29,7 @@ test('authed user can upload a file', function () {
     $this->assertCount(0, File::all());
 
     $this->postJson(route('files.store'), [
-        'file' => UploadedFile::fake()->image('avatar.pdf'),
+        'file' => UploadedFile::fake()->create('avatar.pdf'),
         'agent_id' => $agent->id,
     ])
         ->assertStatus(302);
@@ -43,7 +43,20 @@ test('user must include agent ID when uploading a file', function () {
     $this->actingAs($user);
 
     $this->postJson(route('files.store'), [
-        'file' => UploadedFile::fake()->image('avatar.pdf'),
+        'file' => UploadedFile::fake()->create('avatar.pdf'),
     ])
         ->assertStatus(422);
+});
+
+test('only agent owner can upload knowledge to an agent', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $agent = Agent::factory()->create();
+
+    $this->postJson(route('files.store'), [
+        'file' => UploadedFile::fake()->create('avatar.pdf'),
+        'agent_id' => $agent->id,
+    ])
+        ->assertStatus(403);
 });
