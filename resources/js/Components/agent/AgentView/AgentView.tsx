@@ -24,7 +24,6 @@ export const AgentView = ({ agent, conversation, files, owner }: AgentViewProps)
   // const user = usePage().props.auth.user
   const props = usePage().props as any
   const user = props.auth.user
-  console.log(user)
   const initialMessages = [
     { id: 0, role: "assistant", content: agent.welcome_message, tokens: [] },
     ...conversation.messages.map((m) => ({

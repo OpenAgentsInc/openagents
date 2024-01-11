@@ -8,7 +8,6 @@ function AgentViewPage() {
   const props = usePage().props as any
   const agent = props.agent as Agent
   const conversation = props.conversation as any
-  console.log(conversation)
   const files = props.files as any
   const owner = props.owner as string
 
