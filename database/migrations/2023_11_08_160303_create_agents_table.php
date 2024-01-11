@@ -13,6 +13,7 @@ return new class extends Migration {
         Schema::create('agents', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete()->cascadeOnUpdate();
+            $table->integer('balance')->default(0); // sats
             $table->string('name');
             $table->string('description');
             $table->string('instructions');

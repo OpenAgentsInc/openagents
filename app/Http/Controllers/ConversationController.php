@@ -9,16 +9,17 @@ use Inertia\Response;
 
 class ConversationController extends Controller
 {
-  public function store() {
-    request()->validate([
-      'agent_id' => 'required',
-    ]);
+    public function store()
+    {
+        request()->validate([
+          'agent_id' => 'required',
+        ]);
 
-    // Given we have an authenticated user
-    request()->user()->conversations()->create([
-      'agent_id' => request('agent_id'),
-    ]);
+        // Given we have an authenticated user
+        request()->user()->conversations()->create([
+          'agent_id' => request('agent_id'),
+        ]);
 
-    return response()->json([], 201);
-  }
+        return response()->json([], 201);
+    }
 }

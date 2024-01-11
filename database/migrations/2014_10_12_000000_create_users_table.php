@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
@@ -13,13 +12,18 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+            $table->foreignId('referrer_id')->nullable()->constrained('users');
+            $table->integer('balance')->default(0); // sats
+            $table->string('name')->nullable();
             $table->string('email')->unique()->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password')->nullable();
             $table->bigInteger('github_id')->unique()->nullable();
             $table->string('github_nickname')->nullable();
             $table->string('github_avatar')->nullable();
+            $table->bigInteger('twitter_id')->unique()->nullable();
+            $table->string('twitter_nickname')->nullable();
+            $table->string('twitter_avatar')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });

@@ -2,6 +2,9 @@
 
 namespace Database\Factories;
 
+use App\Models\Agent;
+use App\Models\Brain;
+use App\Services\Embedder;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -17,7 +20,10 @@ class ThoughtFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'agent_id' => Agent::factory(),
+            'brain_id' => Brain::factory(),
+            'body' => $this->faker->sentence,
+            'embedding' => Embedder::createFakeEmbedding()
         ];
     }
 }

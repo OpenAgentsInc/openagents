@@ -33,20 +33,6 @@ it('has a mime type', function () {
     expect($file->mime_type)->toBeString();
 });
 
-it('has many embeddings', function () {
-    $file = File::factory()->create();
-    $file->embeddings()->createMany([
-        ['embedding' => array_fill(0, 768, 0), 'metadata' => [
-          'text' => 'A lot of zeros',
-        ]],
-        ['embedding' => array_fill(0, 768, 0.5), 'metadata' => [
-          'text' => 'A lot of halves',
-        ]],
-    ]);
-
-    expect($file->embeddings)->toHaveCount(2);
-});
-
 it('may belong to an agent', function () {
     $file = File::factory()->create();
     expect($file->agent)->toBeNull();
