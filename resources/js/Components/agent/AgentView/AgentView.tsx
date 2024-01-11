@@ -1,6 +1,7 @@
 import { ChatPane } from "@/Components/builder/ChatPane"
 import { Agent } from "@/types/agents"
 import { AgentSidebar } from "../AgentSidebar"
+import { usePage } from "@inertiajs/react"
 
 interface Message {
   id: number
@@ -20,6 +21,9 @@ interface AgentViewProps {
 }
 
 export const AgentView = ({ agent, conversation, files, owner }: AgentViewProps) => {
+  // const user = usePage().props.auth.user
+  const props = usePage().props as any
+  const user = props.auth.user
   const initialMessages = [
     { id: 0, role: "assistant", content: agent.welcome_message, tokens: [] },
     ...conversation.messages.map((m) => ({
@@ -31,7 +35,7 @@ export const AgentView = ({ agent, conversation, files, owner }: AgentViewProps)
   ]
   return (
     <div className="h-full">
-      <AgentSidebar agent={agent} files={files}>
+      <AgentSidebar agent={agent} files={files} isOwner={!!user && owner === user?.username}>
         <ChatPane agent={agent} conversationId={conversation.id} initialMessages={initialMessages} owner={owner} />
       </AgentSidebar>
     </div>

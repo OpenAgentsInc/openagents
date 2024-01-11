@@ -7,9 +7,9 @@ export const AgentShowcase = () => {
         <div>
           <div className="mx-auto max-w-3xl px-4 py-12">
             <div className="scroll-mt-28 last:h-[calc(100vh-8rem)]">
-              <div tabIndex={0} data-projection-id="2" style={{ opacity: 1, transform: 'none' }}>
+              {/* <div tabIndex={0} data-projection-id="2" style={{ opacity: 1, transform: 'none' }}>
                 <div className="text-xl font-medium md:text-2xl">My Agents</div>
-              </div>
+              </div> */}
               <div className="mb-10 mt-4">
                 <div tabIndex={0} data-projection-id="3" style={{ opacity: 1, transform: 'none' }}>
                   <Link className="flex items-center px-2 py-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700" href="/builder">
@@ -97,14 +97,39 @@ export const AgentShowcase = () => {
                     <div className="flex grow items-center overflow-hidden md:w-3/5 md:grow-0">
                       <div className="h-[42px] w-[42px] flex-shrink-0">
                         <div className="gizmo-shadow-stroke overflow-hidden rounded-full">
-                          <img src="https://files.oaiusercontent.com/file-SxYQO0Fq1ZkPagkFtg67DRVb?se=2123-10-12T23%3A57%3A32Z&amp;sp=r&amp;sv=2021-08-06&amp;sr=b&amp;rscc=max-age%3D31536000%2C%20immutable&amp;rscd=attachment%3B%20filename%3Dagent_3.webp&amp;sig=pLlQh8oUktqQzhM09SDDxn5aakqFuM2FAPptuA0mbqc%3D" className="h-full w-full bg-token-surface-secondary dark:bg-token-surface-tertiary" alt="GPT" width="80" height="80" />
+                          <img src="/images/logo.png" className="h-full w-full bg-token-surface-secondary dark:bg-token-surface-tertiary" alt="GPT" width="80" height="80" />
                         </div>
                       </div>
                       <div className="grow overflow-hidden pl-4 pr-9 leading-tight hover:cursor-pointer">
                         <div className="flex items-center gap-1">
                           <span className="font-medium">Concierge</span>
                         </div>
-                        <div className="overflow-hidden text-ellipsis break-words text-sm line-clamp-2">Ask noob questions about OpenAgents</div>
+                        <div className="overflow-hidden text-ellipsis break-words text-sm line-clamp-2">Ask noob questions about OpenAgents.</div>
+                        {/* <div className="text-ellipsis text-sm text-gray-500 md:hidden">
+                          <div className="text-sm text-token-text-tertiary">By OpenAgents</div>
+                        </div> */}
+                      </div>
+                    </div>
+                    {/* <div className="hidden flex-1 text-ellipsis text-sm text-gray-500 md:block">
+                      <div className="text-sm text-token-text-tertiary">By OpenAgents</div>
+                    </div> */}
+                    <div className="flex h-9 shrink-0 justify-end gap-2 font-medium md:w-[100px]"></div>
+                  </Link>
+                </div>
+
+                <div tabIndex={0} data-projection-id="12" style={{ opacity: 1, transform: 'none' }}>
+                  <Link className="flex items-center px-2 py-4 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700" href="/agent/2">
+                    <div className="flex grow items-center overflow-hidden md:w-3/5 md:grow-0">
+                      <div className="h-[42px] w-[42px] flex-shrink-0">
+                        <div className="gizmo-shadow-stroke overflow-hidden rounded-full">
+                          <img src="/images/epstein.png" className="h-full w-full bg-token-surface-secondary dark:bg-token-surface-tertiary" alt="GPT" width="80" height="80" />
+                        </div>
+                      </div>
+                      <div className="grow overflow-hidden pl-4 pr-9 leading-tight hover:cursor-pointer">
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium">EpsteinSleuth</span>
+                        </div>
+                        <div className="overflow-hidden text-ellipsis break-words text-sm line-clamp-2">Answer questions about recently unsealed Epstein court documents.</div>
                         {/* <div className="text-ellipsis text-sm text-gray-500 md:hidden">
                           <div className="text-sm text-token-text-tertiary">By OpenAgents</div>
                         </div> */}
