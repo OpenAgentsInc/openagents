@@ -22,7 +22,6 @@ const dummyKnowledge = [
 ]
 
 export const AgentKnowledge = ({ agent, files, isOwner }: AgentKnowledgeProps) => {
-  console.log(isOwner)
   const knowledge = files ?? dummyKnowledge
   return (
     <div className="overflow-y-auto w-full p-5">
