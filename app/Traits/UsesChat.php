@@ -28,13 +28,6 @@ trait UsesChat
 
         $systemPrompt = $agent->instructions;
 
-        $message = Message::create([
-            'conversation_id' => $conversation->id,
-            'user_id' => $conversation->user_id,
-            'body' => $input,
-            'sender' => 'user',
-        ]);
-
         try {
             $client = new Client();
 
