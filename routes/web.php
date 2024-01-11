@@ -18,7 +18,6 @@ Route::get('/', [StaticController::class, 'splash']);
 
 // Concierge Chat
 Route::get('/chat', [StreamController::class, 'chat'])->name('chat'); // OLD
-// Route::post('/stream', [StreamController::class, 'stream']);
 
 // Agents
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');

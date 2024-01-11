@@ -12,34 +12,9 @@ class File extends Model
 
     protected $guarded = [];
 
-    public function embeddings()
-    {
-        return $this->hasMany(Embedding::class);
-    }
-
     // belongs to a user
     public function user()
     {
         return $this->belongsTo(User::class);
-    }
-
-    public function createEmbeddings()
-    {
-        if (is_file($this->path) === false) {
-            return;
-        }
-        // Open the file and read its text contents into a variable
-        $text = file_get_contents($this->path);
-
-        $gateway = new QueenbeeGateway();
-        $result = $gateway->createEmbedding($text);
-        $embedding = $result[0]['embedding'];
-
-        $this->embeddings()->create([
-            'embedding' => $embedding,
-            'metadata' => [
-                'path' => $this->path,
-            ],
-        ]);
     }
 }
