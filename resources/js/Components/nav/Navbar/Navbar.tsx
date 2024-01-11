@@ -21,9 +21,9 @@ export const Navbar = ({ user }: HeaderProps) => {
   const avatar = user?.github_avatar || user?.twitter_avatar || 'https://placekitten.com/100/100'
 
   // If route is undefined (in storybook), set it to no-op, otherwise dont change it
-  const route = (route?: any) => route || {
+  const route2 = route || ((route?: any) => {
     current: () => false
-  }
+  })
 
   return (
     <Disclosure as="nav" className="fixed w-full bg-white/50 backdrop-blur shadow" style={{ zIndex: 9990 }}>
@@ -50,10 +50,10 @@ export const Navbar = ({ user }: HeaderProps) => {
                 </div>
                 <div className="hidden md:ml-6 md:flex md:space-x-8">
                   {/* Current: "border-indigo-500 text-gray-900", Default: "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700" */}
-                  {/* <NavLink href={route('agents')} active={route().current('agents')}>
+                  <NavLink href={route('agents')} active={route2().current('agents')}>
                     Agents
-                  </NavLink> */}
-                  {/* <NavLink href={route('referrals')} active={route().current('referrals')}>
+                  </NavLink>
+                  {/* <NavLink href={route('referrals')} active={route2().current('referrals')}>
                     Referrals
                   </NavLink> */}
                   {/* <a

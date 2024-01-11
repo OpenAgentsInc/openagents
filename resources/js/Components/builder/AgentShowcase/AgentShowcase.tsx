@@ -104,7 +104,7 @@ export const AgentShowcase = () => {
                         <div className="flex items-center gap-1">
                           <span className="font-medium">Concierge</span>
                         </div>
-                        <div className="overflow-hidden text-ellipsis break-words text-sm line-clamp-2">Ask noob questions about OpenAgents</div>
+                        <div className="overflow-hidden text-ellipsis break-words text-sm line-clamp-2">Ask noob questions about OpenAgents.</div>
                         {/* <div className="text-ellipsis text-sm text-gray-500 md:hidden">
                           <div className="text-sm text-token-text-tertiary">By OpenAgents</div>
                         </div> */}
