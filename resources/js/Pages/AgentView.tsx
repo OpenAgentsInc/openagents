@@ -10,6 +10,7 @@ function AgentViewPage() {
   const conversation = props.conversation as any
   const files = props.files as any
   const owner = props.owner as string
+  const user = props.auth?.user as any
 
   useEffect(() => {
     if (import.meta.env.VITE_ENV === "local") return
@@ -22,7 +23,7 @@ function AgentViewPage() {
   }, [agent.id]);
 
   return (
-    <AgentView agent={agent} conversation={conversation} files={files} owner={owner} />
+    <AgentView agent={agent} conversation={conversation} files={files} owner={owner} user={user} />
   )
 }
 
