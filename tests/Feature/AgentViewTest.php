@@ -84,3 +84,11 @@ test('agent view knows the previous conversation', function () {
             ->has('conversation')
         );
 });
+
+test('redirect epstein/ to agent 2', function () {
+    Agent::factory(2)->create();
+
+    $response = $this->get('/agent/epstein');
+
+    $response->assertRedirect('/agent/2');
+});
