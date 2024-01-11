@@ -134,13 +134,21 @@ class Agent extends Model
 
     public function getUserConversation()
     {
-        $convo = $this->conversations()->where('user_id', auth()->id())->first();
-
-        if (!$convo) {
+        // if user_id is null, return a new conversation
+        if (!auth()->id()) {
             $convo = Conversation::create([
-                'user_id' => auth()->id(),
+                'user_id' => null,
                 'agent_id' => $this->id,
             ]);
+        } else {
+            $convo = $this->conversations()->where('user_id', auth()->id())->first();
+
+            if (!$convo) {
+                $convo = Conversation::create([
+                    'user_id' => auth()->id(),
+                    'agent_id' => $this->id,
+                ]);
+            }
         }
 
         $convo->load('messages');
