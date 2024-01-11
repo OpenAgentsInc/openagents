@@ -65,6 +65,9 @@ test('agent view knows the previous conversation', function () {
 
     $agent = Agent::first();
 
+    $user = $agent->user;
+    $this->actingAs($user);
+
     $conversation = Conversation::factory()->create([
         'agent_id' => $agent->id,
         'user_id' => $agent->user_id
@@ -82,6 +85,38 @@ test('agent view knows the previous conversation', function () {
             fn (Assert $page) => $page
             ->component('AgentView')
             ->has('conversation')
+            ->where('conversation.messages.0.body', $conversation->messages()->latest()->first()->body)
+        );
+});
+
+test('previous conversation does not include messages with no user_id', function () {
+    $this->seed(ConciergeSeeder::class);
+
+    $agent = Agent::first();
+
+    $conversation = Conversation::factory()->create([
+        'agent_id' => $agent->id,
+        'user_id' => $agent->user_id
+    ]);
+
+    Message::factory()->create([
+        'conversation_id' => $conversation->id,
+        'user_id' => $agent->user_id
+    ]);
+
+    $nullMessage = Message::factory()->create([
+        'conversation_id' => $conversation->id,
+        'user_id' => null
+    ]);
+
+    $response = $this->get('/agent/' . $agent->id);
+
+    $response
+        ->assertInertia(
+            fn (Assert $page) => $page
+            ->component('AgentView')
+            ->has('conversation')
+            ->whereNot('conversation.messages', $nullMessage->toArray()['body'])
         );
 });
 
