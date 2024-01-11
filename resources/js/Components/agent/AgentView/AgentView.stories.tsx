@@ -33,6 +33,7 @@ export const Primary: Story = {
       messages: []
     },
     files: [],
-    owner: 'DemoMan'
+    owner: 'DemoMan',
+    user: null
   }
 }

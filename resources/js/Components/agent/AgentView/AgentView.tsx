@@ -18,7 +18,7 @@ interface AgentViewProps {
   }
   files: any[]
   owner: string // username of agent's owner
-  user: User
+  user: User | null
 }
 
 export const AgentView = ({ agent, conversation, files, owner, user }: AgentViewProps) => {
