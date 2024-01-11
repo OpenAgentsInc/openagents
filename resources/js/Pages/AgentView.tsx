@@ -17,7 +17,7 @@ function AgentViewPage() {
     // @ts-ignore
     window.Echo.channel(`Agent.${agent.id}`)
       .listen('EmbeddingCreated', (e) => {
-        console.log(e)
+        // console.log("Received vector embedding from one page of a PDF")
       });
   }, [agent.id]);
 
