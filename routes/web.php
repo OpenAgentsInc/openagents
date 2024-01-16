@@ -42,6 +42,12 @@ Route::get('/twitter', [AuthController::class, 'twitterCallback']);
 
 // Authed routes
 Route::group(['middleware' => ['auth']], function () {
+    Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
+    Route::post('/update-profile', [ProfileController::class, 'update'])->name('update-profile');
+    Route::get('/sse', [ProfileController::class, 'stream'])->name('stream');
+    Route::get('/streamtest', [ProfileController::class, 'streamtest'])->name('streamtest');
+    Route::get('/update-handler', [ProfileController::class, 'handleUpdate']);
+
     Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
     Route::get('/referrals', [ReferralsController::class, 'referrals'])->name('referrals');
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
