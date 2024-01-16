@@ -3,10 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\Bitcoin;
 use Inertia\Inertia;
 
 class StaticController extends Controller
 {
+    public function bitcoin()
+    {
+        return view('bitcoin', [
+            'price' => Bitcoin::getUsdPrice(),
+        ]);
+    }
+
+    public function bitcoinPrice()
+    {
+        return view('bitcoin-price', [
+            'price' => Bitcoin::getUsdPrice(),
+        ]);
+    }
+
     public function splash()
     {
         return Inertia::render('Splash');
