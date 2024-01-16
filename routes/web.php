@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BitcoinController;
 use App\Http\Controllers\BuilderController;
 use App\Http\Controllers\ConversationController;
+use App\Http\Controllers\ExtismController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfileController;
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
+
+Route::get('/extism', [ExtismController::class, 'test']);
 
 // Bitcoin price
 Route::get('/bitcoin', [BitcoinController::class, 'bitcoin'])->name('bitcoin');
