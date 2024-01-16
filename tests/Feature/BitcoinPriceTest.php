@@ -1,5 +1,7 @@
 <?php
 
+use App\Services\Bitcoin;
+
 test('bitcoin page loads', function () {
     $this->get('/bitcoin')->assertOk()->assertViewIs('bitcoin');
 });
