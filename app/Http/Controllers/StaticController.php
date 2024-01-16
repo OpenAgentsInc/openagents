@@ -7,6 +7,13 @@ use Inertia\Inertia;
 
 class StaticController extends Controller
 {
+    public function bitcoin()
+    {
+        return view('bitcoin', [
+            'price' => 43000,
+        ]);
+    }
+
     public function splash()
     {
         return Inertia::render('Splash');
