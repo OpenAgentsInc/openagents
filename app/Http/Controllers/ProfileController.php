@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\View;
 
 class ProfileController extends Controller
 {
@@ -32,6 +33,7 @@ class ProfileController extends Controller
         $user->save();
 
         // Redirect back to the profile page with a success message
-        return redirect()->route('profile')->with('success', 'Profile updated successfully.');
+        // return redirect()->route('profile')->with('success', 'Profile updated successfully.');
+        return View::renderFragment('profile', 'edit-form');
     }
 }

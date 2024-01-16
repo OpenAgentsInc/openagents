@@ -13,26 +13,31 @@
 
 <body>
     <h1>Edit Profile</h1>
-    <form id="edit-profile-form" hx-post="/update-profile" hx-target="#edit-profile-form" hx-swap="outerHTML">
-        @csrf
-        <div>
-            <label for="name">Name:</label>
-            <input type="text" id="name" name="name" required>
-        </div>
-        <div>
-            <label for="email">Email:</label>
-            <input type="email" id="email" name="email" autocomplete="email" required>
-        </div>
-        <div>
-            <label for="password">New Password:</label>
-            <input type="password" id="password" name="password" autocomplete="new-password">
-        </div>
-        <div>
-            <label for="password_confirmation">Confirm Password:</label>
-            <input type="password" id="password_confirmation" name="password_confirmation" autocomplete="new-password">
-        </div>
-        <button type="submit">Update Profile</button>
-    </form>
+    <div hx-target="this">
+        @fragment("edit-form")
+            <form id="edit-profile-form" hx-post="/update-profile" hx-target="#edit-profile-form" hx-swap="outerHTML">
+                @csrf
+                <div>
+                    <label for="name">Name:</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+                <div>
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" autocomplete="email" required>
+                </div>
+                <div>
+                    <label for="password">New Password:</label>
+                    <input type="password" id="password" name="password" autocomplete="new-password">
+                </div>
+                <div>
+                    <label for="password_confirmation">Confirm Password:</label>
+                    <input type="password" id="password_confirmation" name="password_confirmation"
+                        autocomplete="new-password">
+                </div>
+                <button type="submit">Update Profile</button>
+            </form>
+        @endfragment
+    </div>
 </body>
 
 </html>
