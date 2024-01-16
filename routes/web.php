@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BitcoinController;
 use App\Http\Controllers\BuilderController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\FileController;
@@ -16,8 +17,10 @@ use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
 
-Route::get('/bitcoin', [StaticController::class, 'bitcoin'])->name('bitcoin');
-Route::get('/bitcoin-price', [StaticController::class, 'bitcoinPrice'])->name('bitcoin-price');
+// Bitcoin price
+Route::get('/bitcoin', [BitcoinController::class, 'bitcoin'])->name('bitcoin');
+Route::get('/bitcoin-price', [BitcoinController::class, 'bitcoinPrice'])->name('bitcoin-price');
+Route::get('/bitcoin-price-ticker', [BitcoinController::class, 'sse'])->name('bitcoin-price-ticker');
 
 // Concierge Chat
 Route::get('/chat', [StreamController::class, 'chat'])->name('chat'); // OLD
