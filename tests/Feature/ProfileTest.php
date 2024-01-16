@@ -18,7 +18,7 @@ test('profile page redirects to login if user is not logged in', function () {
         ->assertRedirect('/login');
 });
 
-test('authed user can update their profile', function () {
+test('authed user can update their profile and see success message', function () {
     $user = User::factory()->create();
 
     $response = $this->actingAs($user)->post('/update-profile', [
@@ -28,7 +28,6 @@ test('authed user can update their profile', function () {
         'password_confirmation' => 'password',
     ]);
 
-    $response->assertStatus(200);
-        // ->assertRedirect('/profile')
-        // ->assertSessionHas('success', 'Profile updated successfully.');
+    $response->assertStatus(200)
+        ->assertSee('Profile updated successfully.');
 });

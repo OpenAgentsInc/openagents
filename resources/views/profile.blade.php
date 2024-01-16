@@ -15,7 +15,8 @@
     <h1>Edit Profile</h1>
     <div hx-target="this">
         @fragment("edit-form")
-            <form id="edit-profile-form" hx-post="/update-profile" hx-target="#edit-profile-form" hx-swap="outerHTML">
+            <form id="edit-profile-form" hx-post="/update-profile" hx-target="#edit-profile-form" hx-swap="outerHTML"
+                hx-indicator="#indicator">
                 @csrf
                 <div>
                     <label for="name">Name:</label>
@@ -38,6 +39,7 @@
             </form>
         @endfragment
     </div>
+    <span class="htmx-indicator" id="indicator">Loading...</span>
 </body>
 
 </html>
