@@ -22,6 +22,18 @@ class BitcoinController extends Controller
 
     public function sse()
     {
-        return 'hi';
+        return response()->stream(function () {
+            while (true) {
+                $price = Bitcoin::getUsdPrice();
+                echo "data: BTCUSD \${$price}\n\n";
+                ob_flush();
+                flush();
+                sleep(5);
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'Connection' => 'keep-alive',
+        ]);
     }
 }
