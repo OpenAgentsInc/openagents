@@ -2,15 +2,36 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Agent;
-use App\Services\Faerie;
-use Inertia\Inertia;
-use Inertia\Response;
+use Illuminate\Http\Request;
 
 class ProfileController extends Controller
 {
     public function index()
     {
         return view('profile');
+    }
+
+    public function update(Request $request)
+    {
+        // Validate the request data
+        $validatedData = $request->validate([
+            'name' => 'required|max:255',
+            'email' => 'required|email|max:255',
+            'password' => 'nullable|min:8|confirmed',
+        ]);
+
+        // Get the authenticated user
+        $user = auth()->user();
+
+        // Update user's profile
+        $user->name = $validatedData['name'];
+        $user->email = $validatedData['email'];
+        if (!empty($validatedData['password'])) {
+            $user->password = bcrypt($validatedData['password']);
+        }
+        $user->save();
+
+        // Redirect back to the profile page with a success message
+        return redirect()->route('profile')->with('success', 'Profile updated successfully.');
     }
 }

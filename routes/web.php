@@ -16,8 +16,6 @@ use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
 
-
-
 // Concierge Chat
 Route::get('/chat', [StreamController::class, 'chat'])->name('chat'); // OLD
 
@@ -45,6 +43,8 @@ Route::get('/twitter', [AuthController::class, 'twitterCallback']);
 // Authed routes
 Route::group(['middleware' => ['auth']], function () {
     Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
+    Route::post('/update-profile', [ProfileController::class, 'update'])->name('update-profile');
+
     Route::get('/builder', [BuilderController::class, 'builder'])->name('build');
     Route::get('/referrals', [ReferralsController::class, 'referrals'])->name('referrals');
     Route::any('/logout', [AuthController::class, 'logout'])->name('logout');
