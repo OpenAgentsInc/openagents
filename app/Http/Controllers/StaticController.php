@@ -15,6 +15,13 @@ class StaticController extends Controller
         ]);
     }
 
+    public function bitcoinPrice()
+    {
+        return view('bitcoin-price', [
+            'price' => Bitcoin::getUsdPrice(),
+        ]);
+    }
+
     public function splash()
     {
         return Inertia::render('Splash');

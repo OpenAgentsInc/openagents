@@ -17,6 +17,7 @@ use Inertia\Inertia;
 Route::get('/', [StaticController::class, 'splash']);
 
 Route::get('/bitcoin', [StaticController::class, 'bitcoin'])->name('bitcoin');
+Route::get('/bitcoin-price', [StaticController::class, 'bitcoinPrice'])->name('bitcoin-price');
 
 // Concierge Chat
 Route::get('/chat', [StreamController::class, 'chat'])->name('chat'); // OLD

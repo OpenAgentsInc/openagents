@@ -12,7 +12,7 @@ class Bitcoin
             return 10000.00;
         }
 
-        $fmpKey = "W52QFnXt2v2xIDXFmlUHnQ3EWwlMncbl";
+        $fmpKey = env('FMP_API_KEY');
         $url = "https://financialmodelingprep.com/api/v3/quote/BTCUSD?apikey={$fmpKey}";
         $response = Http::get($url)->json();
         $price = $response[0]['price'];
