@@ -13,6 +13,7 @@
 
 <body>
     <h1>Edit Profile</h1>
+    <div id="message-container" style="display: none;"></div>
     <div hx-target="this">
         @fragment("edit-form")
             <form id="edit-profile-form" hx-post="/update-profile" hx-target="#edit-profile-form" hx-swap="outerHTML"
@@ -41,5 +42,17 @@
     </div>
     <span class="htmx-indicator" id="indicator">Loading...</span>
 </body>
+
+<script>
+    document.body.addEventListener('displaySuccessMessage', function () {
+        var messageContainer = document.getElementById('message-container');
+        var message = "{{ session('success') }}";
+        if (message) {
+            messageContainer.textContent = message;
+            messageContainer.style.display = 'block';
+        }
+    });
+
+</script>
 
 </html>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\View;
+use Mauricius\LaravelHtmx\Http\HtmxResponse;
 
 class ProfileController extends Controller
 {
@@ -32,8 +33,13 @@ class ProfileController extends Controller
         }
         $user->save();
 
+        session()->flash('success', 'Profile updated successfully.');
+
         // Redirect back to the profile page with a success message
         // return redirect()->route('profile')->with('success', 'Profile updated successfully.');
-        return View::renderFragment('profile', 'edit-form');
+        // return View::renderFragment('profile', 'edit-form');
+        return with(new HtmxResponse())
+            ->renderFragment('profile', 'edit-form')
+            ->addTrigger('displaySuccessMessage');
     }
 }
