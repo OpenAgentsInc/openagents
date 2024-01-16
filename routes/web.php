@@ -16,6 +16,8 @@ use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
 
+Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
+
 // Concierge Chat
 Route::get('/chat', [StreamController::class, 'chat'])->name('chat'); // OLD
 
