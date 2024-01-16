@@ -66,3 +66,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 47. [Reviewing the GPT "Store"](https://twitter.com/OpenAgentsInc/status/1745545948908962228)
 48. [Brainstorming a Plugin System](https://twitter.com/OpenAgentsInc/status/1745918872866173125)
 49. [Plugin Registry Setup](https://twitter.com/OpenAgentsInc/status/1746989980562464915)
+50. [Exploring HTMX in Laravel](https://twitter.com/OpenAgentsInc/status/1747325914650710363)
