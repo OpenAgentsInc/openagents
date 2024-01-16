@@ -33,13 +33,19 @@ class ProfileController extends Controller
         }
         $user->save();
 
-        session()->flash('success', 'Profile updated successfully.');
+        // session()->flash('success', 'Profile updated successfully.');
 
         // Redirect back to the profile page with a success message
         // return redirect()->route('profile')->with('success', 'Profile updated successfully.');
         // return View::renderFragment('profile', 'edit-form');
+        // return with(new HtmxResponse())
+        //     ->renderFragment('profile', 'edit-form')
+        //     ->addTrigger('displaySuccessMessage');
+        // Define the success message
+        $successMessage = 'Profile updated successfully.';
+
+        // Render only the 'edit-form' fragment of the 'profile' view, including the success message
         return with(new HtmxResponse())
-            ->renderFragment('profile', 'edit-form')
-            ->addTrigger('displaySuccessMessage');
+            ->renderFragment('profile', 'edit-form', compact('successMessage'));
     }
 }
