@@ -3,11 +3,7 @@
 </script>
 <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
 
-<div hx-get="{{ route('bitcoin-price') }}" hx-trigger="every 5s" id="bitcoin-price">
-    @include('bitcoin-price', ['price' => $price])
-</div>
 
-<div hx-ext="sse" sse-connect="/bitcoin-price-ticker" sse-swap="message">
-    Contents of this box will be updated in real time
-    with every SSE message received from the chatroom.
-</div>
+<h1 hx-ext="sse" sse-connect="/bitcoin-price-ticker" sse-swap="message">
+    Loading bitcoin price...
+</h1>
