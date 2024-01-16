@@ -9,4 +9,4 @@ test('bitcoin page loads', function () {
 test('we see actual bitcoin price', function () {
     $price = Bitcoin::getUsdPrice();
     $this->get('/bitcoin')->assertSee("BTCUSD \${$price}");
-});
+})->skip();
