@@ -47,4 +47,7 @@
     <span class="htmx-indicator" id="indicator">Loading...</span>
 </body>
 
+<div hx-sse="connect:/sse swap:message" hx-swap="beforeend">
+</div>
+
 </html>

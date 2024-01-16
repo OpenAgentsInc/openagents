@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\DummyEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\View;
 use Mauricius\LaravelHtmx\Http\HtmxResponse;
@@ -47,5 +48,31 @@ class ProfileController extends Controller
         // Render only the 'edit-form' fragment of the 'profile' view, including the success message
         return with(new HtmxResponse())
             ->renderFragment('profile', 'edit-form', compact('successMessage'));
+    }
+
+    public function stream () {
+        return response()->stream(function () {
+            while (true) {
+                echo "data: <div>" . htmlspecialchars(json_encode(['message' => 'Hi'])) . "</div>\n\n";
+                ob_flush();
+                flush();
+                sleep(1); // Sleep for a bit to simulate real-time updates
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'Connection' => 'keep-alive',
+        ]);
+    }
+
+
+    public function streamtest() {
+        // broadcast a test event
+        broadcast(new DummyEvent());
+    }
+
+    public function handleUpdate()
+    {
+        return response("Updated content at " . now()->toDateTimeString());
     }
 }
