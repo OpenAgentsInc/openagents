@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e82a876db2744a332947d8eba239df78",
+    "content-hash": "33498b13f7c0148da37ed9e1d46ec786",
     "packages": [
         {
             "name": "ankane/pgvector",
