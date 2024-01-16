@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\Bitcoin;
 use Inertia\Inertia;
 
 class StaticController extends Controller
@@ -10,7 +11,7 @@ class StaticController extends Controller
     public function bitcoin()
     {
         return view('bitcoin', [
-            'price' => 43000,
+            'price' => Bitcoin::getUsdPrice(),
         ]);
     }
 
