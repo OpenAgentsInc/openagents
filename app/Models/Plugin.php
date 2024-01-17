@@ -26,8 +26,12 @@ class Plugin extends Model
         $manifest = new Manifest($wasm);
         $plugin = new ExtismPlugin($manifest, true);
         $protobufData = $plugin->call("parse_module", $this->wasmBytes());
-        $module = new Module();
-        // $module = new Module($protobufData);
+        $sha256 = hash('sha256', $protobufData);
+
+        $module = new Module([
+            'hash' => $sha256,
+        ]);
+
         dd($module);
     }
 
