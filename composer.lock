@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6c7c4a856bd64e4810577877143660af",
+    "content-hash": "833c4f26da18af348fc4b2b5e6cf9f74",
     "packages": [
         {
             "name": "ankane/pgvector",
@@ -4226,6 +4226,74 @@
                 }
             ],
             "time": "2023-11-12T21:59:55+00:00"
+        },
+        {
+            "name": "protobuf-php/protobuf",
+            "version": "v0.1.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/protobuf-php/protobuf.git",
+                "reference": "c0da95f75ea418b39b02ff4528ca9926cc246a8c"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/protobuf-php/protobuf/zipball/c0da95f75ea418b39b02ff4528ca9926cc246a8c",
+                "reference": "c0da95f75ea418b39b02ff4528ca9926cc246a8c",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "php": ">=5.5.0"
+            },
+            "require-dev": {
+                "instaclick/coding-standard": "^1.1",
+                "instaclick/object-calisthenics-sniffs": "dev-master",
+                "instaclick/symfony2-coding-standard": "dev-remaster",
+                "php-mock/php-mock-phpunit": "^0.2",
+                "phpunit/phpunit": "^4",
+                "protobuf-php/protobuf-plugin": ">=0.1",
+                "satooshi/php-coveralls": "^0.6",
+                "squizlabs/php_codesniffer": "^1.5"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "0.1.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Protobuf\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Fabio B. Silva",
+                    "email": "fabio.bat.silva@gmail.com",
+                    "homepage": "https://github.com/FabioBatSilva"
+                },
+                {
+                    "name": "Iván -DrSlump- Montes",
+                    "email": "drslump@pollinimini.net",
+                    "homepage": "https://github.com/drslump"
+                }
+            ],
+            "description": "PHP implementation of Google's Protocol Buffers",
+            "homepage": "https://github.com/protobuf-php/protobuf",
+            "keywords": [
+                "protobuf",
+                "protocol buffer",
+                "serializing"
+            ],
+            "support": {
+                "issues": "https://github.com/protobuf-php/protobuf/issues",
+                "source": "https://github.com/protobuf-php/protobuf/tree/master"
+            },
+            "time": "2016-09-21T23:47:34+00:00"
         },
         {
             "name": "psr/cache",
