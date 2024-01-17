@@ -28,3 +28,8 @@ it('can read what functions a plugin has', function () {
     expect($functions)->toBeArray();
     expect($functions)->toContain('count_vowels');
 })->skip();
+
+it('can be parsed', function () {
+    $plugin = Plugin::factory()->create();
+    $plugin->parse();
+});
