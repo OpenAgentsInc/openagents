@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-option php_namespace = "App\Services\Extism\Proto";
+option php_namespace = "App\\Services\\Extism\\Proto";
 
 // Used to type the arguments and return types from wasm elements such as import
 // and export functions.
