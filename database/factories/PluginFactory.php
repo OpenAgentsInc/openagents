@@ -18,7 +18,7 @@ class PluginFactory extends Factory
     {
         return [
             'name' => $this->faker->name,
-            'wasm_url' => $this->faker->url,
+            'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm",
         ];
     }
 }
