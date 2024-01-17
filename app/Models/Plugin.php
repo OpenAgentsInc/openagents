@@ -2,9 +2,10 @@
 
 namespace App\Models;
 
-require_once __DIR__ . "/../Services/Extism/Proto/GPBMetadata/Api.php";
-require_once __DIR__ . "/../Services/Extism/Proto/Module.php";
+require_once __DIR__ . "/../Services/Extism/GPBMetadata/Api.php";
+// require_once __DIR__ . "/../Services/Extism/Proto/Module.php";
 
+use App\Services\Extism\Proto\Module;
 use Extism\Plugin as ExtismPlugin;
 use Extism\Manifest;
 use Extism\UrlWasmSource;
@@ -25,8 +26,8 @@ class Plugin extends Model
         $manifest = new Manifest($wasm);
         $plugin = new ExtismPlugin($manifest, true);
         $protobufData = $plugin->call("parse_module", $this->wasmBytes());
-        // $module = new \Module();
-        $module = new \Module($protobufData);
+        $module = new Module();
+        // $module = new Module($protobufData);
         dd($module);
     }
 
