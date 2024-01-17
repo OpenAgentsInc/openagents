@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "php.proto";
 import "google/protobuf/timestamp.proto";
-option (php.package) = "Extism.PHPSDK";
+option (php.package) = "Services.Extism.Proto";
 
 // Used to type the arguments and return types from wasm elements such as import
 // and export functions.
