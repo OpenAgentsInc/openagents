@@ -17,7 +17,8 @@ class PluginFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'name' => $this->faker->name,
+            'wasm_url' => $this->faker->url,
         ];
     }
 }

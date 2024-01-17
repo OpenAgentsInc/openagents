@@ -8,4 +8,9 @@ use Illuminate\Database\Eloquent\Model;
 class Plugin extends Model
 {
     use HasFactory;
+
+    public function functions(): array
+    {
+        return ['count_vowels'];
+    }
 }
