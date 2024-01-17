@@ -25,8 +25,8 @@ class Plugin extends Model
         $manifest = new Manifest($wasm);
         $plugin = new ExtismPlugin($manifest, true);
         $protobufData = $plugin->call("parse_module", $this->wasmBytes());
-        $module = new \Module();
-        // $module = new Module($protobufData);
+        // $module = new \Module();
+        $module = new \Module($protobufData);
         dd($module);
     }
 
