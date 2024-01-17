@@ -16,7 +16,8 @@ class Plugin extends Model
 {
     use HasFactory;
 
-    private function wasmBytes() {
+    private function wasmBytes()
+    {
         dd($this->wasm_url);
         return file_get_contents($this->wasm_url);
     }
@@ -27,10 +28,8 @@ class Plugin extends Model
         $manifest = new Manifest($wasm);
         $plugin = new ExtismPlugin($manifest, true);
         $protobufData = $plugin->call("parse_module", file_get_contents("https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm"));
-        $sha256 = hash('sha256', $protobufData);
-        $module = new Module([
-            'hash' => $sha256,
-        ]);
+        $module = new Module();
+        $module->mergeFromString($protobufData);
         $exports = $module->getExports();
         dd($exports);
     }
