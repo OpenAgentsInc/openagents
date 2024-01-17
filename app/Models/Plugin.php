@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+require_once __DIR__ . "/../Services/Extism/Proto/GPBMetadata/Api.php";
+require_once __DIR__ . "/../Services/Extism/Proto/Module.php";
+
 use Extism\Plugin as ExtismPlugin;
 use Extism\Manifest;
 use Extism\UrlWasmSource;
@@ -20,10 +23,11 @@ class Plugin extends Model
     {
         $wasm = new UrlWasmSource("https://cdn.modsurfer.dylibso.com/api/v1/module/0c20c61f67108ebccae1db0be6df7c7d14b2567d5606154278ee390f43e1f408.wasm");
         $manifest = new Manifest($wasm);
-
         $plugin = new ExtismPlugin($manifest, true);
         $protobufData = $plugin->call("parse_module", $this->wasmBytes());
-        dd($protobufData);
+        $module = new \Module();
+        // $module = new Module($protobufData);
+        dd($module);
     }
 
     public function call(string $function, string $input): mixed

@@ -513,4 +513,3 @@ class Module extends \Google\Protobuf\Internal\Message
     }
 
 }
-
