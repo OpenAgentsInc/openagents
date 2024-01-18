@@ -69,3 +69,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 50. [Exploring HTMX in Laravel](https://twitter.com/OpenAgentsInc/status/1747325914650710363)
 51. [HTMX Bitcoin Price Ticker](https://twitter.com/OpenAgentsInc/status/1747366650075025671)
 52. [HTMX Server Sent Events](https://twitter.com/OpenAgentsInc/status/1747430710212702706)
+53. [Loading WASM Plugins](https://twitter.com/OpenAgentsInc/status/1747791884414599350)
