@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('plugins', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->string('description');
             $table->string('wasm_url');
             $table->timestamps();
         });

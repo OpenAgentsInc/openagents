@@ -21,6 +21,7 @@ Route::get('/', [StaticController::class, 'splash']);
 
 // Plugin uploading
 Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');
+Route::post('/plugins', [PluginController::class, 'store']);
 
 // Plugin test
 Route::get('/extism', [ExtismController::class, 'test']);

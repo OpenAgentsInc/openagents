@@ -16,6 +16,8 @@ class Plugin extends Model
 {
     use HasFactory;
 
+    protected $guarded = [];
+
     private function wasmBytes()
     {
         return file_get_contents($this->wasm_url);
