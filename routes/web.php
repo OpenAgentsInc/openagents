@@ -8,6 +8,7 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\ExtismController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\PluginController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReferralsController;
 use App\Http\Controllers\StaticController;
@@ -18,6 +19,11 @@ use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
 
+// Plugin uploading
+Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');
+Route::post('/plugins', [PluginController::class, 'store']);
+
+// Plugin test
 Route::get('/extism', [ExtismController::class, 'test']);
 
 // Bitcoin price
