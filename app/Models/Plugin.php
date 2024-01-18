@@ -62,10 +62,7 @@ class Plugin extends Model
 
     public function functions(): array
     {
-        $wasm = new UrlWasmSource($this->wasm_url);
-        $manifest = new Manifest($wasm);
-
-        $plugin = new ExtismPlugin($manifest, true);
-        return $plugin->functions();
+        $parsed = $this->parse();
+        return $parsed['exports'];
     }
 }

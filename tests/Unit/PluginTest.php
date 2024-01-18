@@ -22,12 +22,15 @@ test('can execute plugin function', function () {
     expect($output)->toBe('{"count":3,"total":3,"vowels":"aeiouAEIOU"}');
 });
 
-it('can read what functions a plugin has', function () {
-    $plugin = Plugin::factory()->create();
+test('can return its module functions', function () {
+    $plugin = Plugin::factory()->create([
+        'name' => 'Count Vowels',
+        'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm',
+    ]);
     $functions = $plugin->functions();
     expect($functions)->toBeArray();
     expect($functions)->toContain('count_vowels');
-})->skip();
+});
 
 it('can be parsed', function () {
     $plugin = Plugin::factory()->create();
