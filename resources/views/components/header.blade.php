@@ -1,8 +1,8 @@
 <div class="relative max-w-8xl mx-auto lg:border-b lg:border-gray-500/5 dark:border-gray-50/[0.06]">
     <div class="py-5 lg:py-4 lg:px-12 border-b border-gray-500/10 lg:border-0 dark:border-gray-300/10 mx-4 lg:mx-0">
         <div class="relative flex items-center">
-            <div class="flex-1 flex items-center space-x-4"><a href="/"><span class="sr-only">OpenAgents
-                        <!-- --> home page</span><img class="w-auto h-7 relative block dark:hidden"
+            <div class="flex-1 flex items-center space-x-4"><a href="/"><span class="sr-only">OpenAgents home
+                        page</span><img class="w-auto h-7 relative block dark:hidden"
                         src="https://mintlify.s3-us-west-1.amazonaws.com/openagentsinc/logo/light.svg"
                         alt="light logo"><img class="w-auto h-7 relative hidden dark:block"
                         src="https://mintlify.s3-us-west-1.amazonaws.com/openagentsinc/logo/dark.svg"
@@ -12,9 +12,12 @@
                     <ul class="flex space-x-8 items-center"></ul>
                 </nav>
                 <div class="flex items-center">
+                    <!--
                     <div
                         class="border-l hidden lg:flex border-gray-100 ml-6 pl-6 dark:border-background-dark dark:brightness-200 h-6">
-                    </div><button
+                    </div>
+                    -->
+                    <button
                         class="relative inline-flex h-[24px] w-[34px] shrink-0 cursor-pointer border-2 border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
                         <div
                             class="bg-gray-200/60 dark:bg-white/10 rounded-full absolute left-0 right-0 h-[0.65rem] top-1/2 translate-y-[-50%]">
@@ -32,6 +35,7 @@
                     </button>
                 </div>
             </div>
+            <!--
             <div class="flex lg:hidden items-center"><button type="button"
                     class="ml-auto text-gray-500 w-8 h-8 -my-1 items-center justify-center hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"><span
                         class="sr-only">Search</span><svg
@@ -41,23 +45,7 @@
                         class="h-4 w-4 bg-gray-500 dark:bg-gray-400 hover:bg-gray-600 dark:hover:bg-gray-300"
                         style="-webkit-mask-image:url(https://mintlify.b-cdn.net/v6.4.0/solid/ellipsis-vertical.svg);-webkit-mask-repeat:no-repeat;-webkit-mask-position:center"></svg></button>
             </div>
-        </div>
-    </div>
-    <div class="flex items-center py-4 px-5 border-b border-gray-500/10 lg:hidden dark:border-gray-50/[0.06]"><button
-            type="button" class="text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"><span
-                class="sr-only">Navigation</span><svg class="h-4" fill="currentColor" xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 448 512">
-                <path
-                    d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z">
-                </path>
-            </svg></button>
-        <div class="ml-4 flex text-sm leading-6 whitespace-nowrap min-w-0 space-x-3">
-            <div class="flex items-center space-x-3"><span>Get Started</span><svg width="3" height="24"
-                    viewBox="0 -9 3 24" class="h-5 rotate-0 overflow-visible fill-gray-400">
-                    <path d="M0 0L3 3L0 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                    </path>
-                </svg></div>
-            <div class="font-semibold text-gray-900 truncate dark:text-gray-200">Introduction</div>
+            -->
         </div>
     </div>
 </div>
