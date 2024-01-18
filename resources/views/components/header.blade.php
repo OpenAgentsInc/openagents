@@ -3,10 +3,9 @@
         <div class="relative flex items-center">
             <div class="flex-1 flex items-center space-x-4"><a href="/"><span class="sr-only">OpenAgents home
                         page</span><img class="w-auto h-7 relative block dark:hidden"
-                        src="https://mintlify.s3-us-west-1.amazonaws.com/openagentsinc/logo/light.svg"
-                        alt="light logo"><img class="w-auto h-7 relative hidden dark:block"
-                        src="https://mintlify.s3-us-west-1.amazonaws.com/openagentsinc/logo/dark.svg"
-                        alt="dark logo"></a></div>
+                        src="{{ asset('images/light.svg') }}" alt="light logo"><img
+                        class="w-auto h-7 relative hidden dark:block"
+                        src="{{ asset('images/dark.svg') }}" alt="dark logo"></a></div>
             <div class="flex-1 relative hidden lg:flex items-center ml-auto justify-end">
                 <nav class="text-sm leading-6 font-semibold text-gray-700 dark:text-gray-200">
                     <ul class="flex space-x-8 items-center"></ul>
