@@ -12,6 +12,7 @@
 </head>
 
 <body class="bg-white dark:bg-black text-black dark:text-white">
+    <x-header />
     <div class="max-w-lg mx-auto my-10 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
         @yield('content')
     </div>
