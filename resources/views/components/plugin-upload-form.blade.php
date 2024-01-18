@@ -1,29 +1,29 @@
 <form id="upload-plugin" hx-post="/plugins" enctype="multipart/form-data" class="space-y-4">
     @csrf
     <div>
-        <label for="name" class="block text-lg font-medium">Name</label>
+        <label for="name" class="block text-md font-medium">Name</label>
         <input type="text"
             class="px-3 py-2 mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             id="name" name="name" placeholder="Plugin Name">
     </div>
     <div>
-        <label for="description" class="block text-lg font-medium">Description</label>
+        <label for="description" class="block text-md font-medium">Description</label>
         <textarea
             class="px-3 py-2 mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             id="description" name="description" placeholder="Plugin Description"></textarea>
     </div>
     <div>
-        <label for="wasm_url" class="block text-lg font-medium">Wasm URL</label>
+        <label for="wasm_url" class="block text-md font-medium">Wasm URL</label>
         <input type="text"
             class="px-3 py-2 mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-gray-100 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             id="wasm_url" name="wasm_url" placeholder="Plugin Wasm URL">
     </div>
 
     <div>
-        <label for="fee" class="block text-lg font-medium">Fee</label>
+        <label for="fee" class="block text-md font-medium">Fee</label>
         <input type="range" class="mt-1 w-full rounded-md focus:ring-indigo-200 focus:ring-opacity-50" id="fee"
             name="fee" min="0" max="100" value="0">
-        <span id="fee-value" class="text-lg font-medium">0</span> sats
+        <span id="fee-value" class="text-md font-medium">0</span> sats
     </div>
 
     <button type="submit"
