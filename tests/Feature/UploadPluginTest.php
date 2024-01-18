@@ -27,3 +27,48 @@ test("user can upload plugin", function () {
 
     $this->assertEquals(1, count(Plugin::all()));
 });
+
+test("upload requires plugin to have a name", function () {
+    $this->assertEquals(0, count(Plugin::all()));
+
+    $this->post('/plugins', [
+        'description' => 'Count the vowels in a string',
+        'wasm_url' => "http://theurl.com/count_vowels.wasm"
+    ])
+        ->assertStatus(200)
+        ->assertSee('The name field is required.');
+});
+
+test("upload requires plugin to have a description", function () {
+    $this->assertEquals(0, count(Plugin::all()));
+
+    $this->post('/plugins', [
+        'name' => 'Count Vowels',
+        'wasm_url' => "http://theurl.com/count_vowels.wasm"
+    ])
+        ->assertStatus(200)
+        ->assertSee('The description field is required.');
+});
+
+test('upload requires plugin to have a wasm_url', function () {
+    $this->assertEquals(0, count(Plugin::all()));
+
+    $this->post('/plugins', [
+        'name' => 'Count Vowels',
+        'description' => 'Count the vowels in a string',
+    ])
+        ->assertStatus(200)
+        ->assertSee('The wasm url field is required.');
+});
+
+test('wasm_url must be an actual url', function () {
+    $this->assertEquals(0, count(Plugin::all()));
+
+    $this->post('/plugins', [
+        'name' => 'Count Vowels',
+        'description' => 'Count the vowels in a string',
+        'wasm_url' => "not a url"
+    ])
+        ->assertStatus(200)
+        ->assertSee('The wasm url field must be a valid URL.');
+});
