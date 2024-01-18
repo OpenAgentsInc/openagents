@@ -31,5 +31,8 @@ it('can read what functions a plugin has', function () {
 
 it('can be parsed', function () {
     $plugin = Plugin::factory()->create();
-    $plugin->parse();
+    $parsed = $plugin->parse();
+    expect($parsed)->toBeArray();
+    expect($parsed["module_hash"])->toBeString();
+    expect($parsed["module_hash"])->toBe('93898457953d30d016f712ccf4336ce7e9971db5f7f3aff1edd252764f75d5d7');
 });
