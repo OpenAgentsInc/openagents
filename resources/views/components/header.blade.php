@@ -7,12 +7,6 @@
                         alt="light logo"><img class="w-auto h-7 relative hidden dark:block"
                         src="https://mintlify.s3-us-west-1.amazonaws.com/openagentsinc/logo/dark.svg"
                         alt="dark logo"></a></div>
-            <div class="relative flex-none bg-white lg:w-64 xl:w-96 dark:bg-gray-900 pointer-events-auto rounded-md">
-                <button type="button"
-                    class="hidden w-full lg:flex items-center text-sm leading-6 rounded-md py-1.5 pl-2 pr-3 shadow-sm text-gray-400 dark:text-white/50 dark:bg-background-dark dark:brightness-[1.1] dark:ring-1 dark:hover:brightness-[1.25] bg-white ring-1 ring-gray-400/20 hover:ring-gray-600/25 dark:ring-gray-600/30 dark:hover:ring-gray-500/30 focus:outline-primary"><svg
-                        class="h-4 w-4 ml-1 mr-3 flex-none bg-gray-500 hover:bg-gray-600 dark:bg-white/50 dark:hover:bg-white/70"
-                        style="-webkit-mask-image:url(https://mintlify.b-cdn.net/v6.4.0/solid/magnifying-glass.svg);-webkit-mask-repeat:no-repeat;-webkit-mask-position:center"></svg>Search...<span
-                        class="ml-auto flex-none text-xs font-semibold">⌘K</span></button></div>
             <div class="flex-1 relative hidden lg:flex items-center ml-auto justify-end">
                 <nav class="text-sm leading-6 font-semibold text-gray-700 dark:text-gray-200">
                     <ul class="flex space-x-8 items-center"></ul>
