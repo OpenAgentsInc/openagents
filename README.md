@@ -70,3 +70,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 51. [HTMX Bitcoin Price Ticker](https://twitter.com/OpenAgentsInc/status/1747366650075025671)
 52. [HTMX Server Sent Events](https://twitter.com/OpenAgentsInc/status/1747430710212702706)
 53. [Loading WASM Plugins](https://twitter.com/OpenAgentsInc/status/1747791884414599350)
+54. [Uploading a Plugin](https://twitter.com/OpenAgentsInc/status/1747994309549318228)

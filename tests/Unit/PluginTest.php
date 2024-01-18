@@ -7,14 +7,28 @@ it('has a name', function () {
         'name' => 'Count Vowels'
     ]);
     expect($plugin->name)->toBe('Count Vowels');
-})->group('integration');
+});
+
+it('has a description', function () {
+    $plugin = Plugin::factory()->create([
+        'description' => 'Count the vowels in a string'
+    ]);
+    expect($plugin->description)->toBe('Count the vowels in a string');
+});
+
+it('has a fee', function () {
+    $plugin = Plugin::factory()->create([
+        'fee' => 100
+    ]);
+    expect($plugin->fee)->toBe(100);
+});
 
 it('has a wasm_url', function () {
     $plugin = Plugin::factory()->create([
         'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm'
     ]);
     expect($plugin->wasm_url)->toBe('https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm');
-})->group('integration');
+});
 
 test('can execute plugin function', function () {
     $plugin = Plugin::factory()->create();
