@@ -64,7 +64,7 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["BeausiteClassic", ...defaultTheme.fontFamily.sans],
+        sans: ["Inter", "BeausiteClassic", ...defaultTheme.fontFamily.sans],
       },
       keyframes: {
         "accordion-down": {
