@@ -16,6 +16,13 @@ it('has a description', function () {
     expect($plugin->description)->toBe('Count the vowels in a string');
 });
 
+it('has a fee', function () {
+    $plugin = Plugin::factory()->create([
+        'fee' => 100
+    ]);
+    expect($plugin->fee)->toBe(100);
+});
+
 it('has a wasm_url', function () {
     $plugin = Plugin::factory()->create([
         'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm'

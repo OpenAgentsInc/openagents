@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('description');
             $table->string('wasm_url');
+            $table->integer('fee')->default(0);
             $table->timestamps();
         });
     }

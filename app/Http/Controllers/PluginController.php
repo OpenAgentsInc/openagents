@@ -18,6 +18,7 @@ class PluginController extends Controller
     {
         $validator = Validator::make(request()->all(), [
             'name' => 'required',
+            'fee' => 'required|numeric',
             'description' => 'required',
             'wasm_url' => 'required|url|active_url',
         ]);
@@ -28,8 +29,9 @@ class PluginController extends Controller
             ]);
         }
 
-        Plugin::create([
+        $plugin = Plugin::create([
             'name' => request('name'),
+            'fee' => request('fee'),
             'description' => request('description'),
             'wasm_url' => request('wasm_url'),
         ]);

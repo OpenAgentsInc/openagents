@@ -17,22 +17,39 @@
     <form id="upload-plugin" hx-post="/plugins" enctype="multipart/form-data">
         @csrf
         <div class="form-group">
-            <label for="name">Plugin Name</label>
+            <label for="name">Name</label>
             <input type="text" class="form-control" id="name" name="name" placeholder="Plugin Name">
         </div>
         <div class="form-group">
-            <label for="description">Plugin Description</label>
+            <label for="description">Description</label>
             <textarea class="form-control" id="description" name="description"
                 placeholder="Plugin Description"></textarea>
         </div>
         <div class="form-group">
-            <label for="wasm_url">Plugin Wasm URL</label>
+            <label for="wasm_url">Wasm URL</label>
             <input type="text" class="form-control" id="wasm_url" name="wasm_url" placeholder="Plugin Wasm URL">
+        </div>
+
+        <div class="form-group">
+            <label for="fee">Fee</label>
+            <input type="range" class="form-control" id="fee" name="fee" min="0" max="100" value="0">
+            <span id="fee-value">0</span> sats
         </div>
 
         <button type="submit" class="btn btn-primary">Upload Plugin</button>
     </form>
 
 </body>
+
+<script>
+    // add an event listener to the slider
+    document.getElementById("fee").addEventListener("input", function () {
+        // get the value of the slider
+        var fee = document.getElementById("fee").value;
+        // set the text of the span to the value of the slider
+        document.getElementById("fee-value").innerHTML = fee;
+    });
+
+</script>
 
 </html>

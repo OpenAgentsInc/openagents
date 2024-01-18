@@ -19,6 +19,7 @@ test("user can upload plugin", function () {
 
     $this->post('/plugins', [
         'name' => 'Count Vowels',
+        'fee' => '100',
         'description' => 'Count the vowels in a string',
         'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm"
     ])
@@ -32,6 +33,7 @@ test("upload requires plugin to have a name", function () {
     $this->assertEquals(0, count(Plugin::all()));
 
     $this->post('/plugins', [
+        'fee' => 0,
         'description' => 'Count the vowels in a string',
         'wasm_url' => "http://theurl.com/count_vowels.wasm"
     ])
@@ -43,6 +45,7 @@ test("upload requires plugin to have a description", function () {
     $this->assertEquals(0, count(Plugin::all()));
 
     $this->post('/plugins', [
+        'fee' => 0,
         'name' => 'Count Vowels',
         'wasm_url' => "http://theurl.com/count_vowels.wasm"
     ])
