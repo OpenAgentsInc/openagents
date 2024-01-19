@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', [StaticController::class, 'splash']);
+Route::get('/new', [StaticController::class, 'newsplash']);
 
 // Plugin uploading
 Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');
