@@ -38,6 +38,11 @@ class PluginController extends Controller
             'wasm_url' => request('wasm_url'),
         ]);
 
-        return "Plugin uploaded successfully.";
+        // Get the updated list of plugins
+        $plugins = Plugin::all();
+
+        // Return the updated plugin grid as an HTMX response
+        return with(new HtmxResponse())
+            ->renderFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
     }
 }
