@@ -4,7 +4,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
             <h2 class="text-lg font-semibold mb-2">{{ $plugin->name }}</h2>
             <p class="mb-2">{{ $plugin->description }}</p>
-            <p class="mb-2">Fee: {{ $plugin->fee }} sats</p>
+            <p class="mb-2">{{ $plugin->fee }} sats</p>
 
             <p class="text-sm text-gray-500 dark:text-gray-400">Created:
                 {{ $plugin->created_at->format('M d, Y') }}</p>
