@@ -1,4 +1,5 @@
-<form id="upload-plugin" hx-post="/plugins" enctype="multipart/form-data" class="space-y-4">
+<form id="upload-plugin" hx-post="/plugins" enctype="multipart/form-data" class="my-12 mx-auto max-w-xl space-y-4">
+    <h1 class="text-2xl font-bold mb-4 text-center">Upload Plugin</h1>
     @csrf
     <div>
         <label for="name" class="block text-md font-medium">Name</label>
