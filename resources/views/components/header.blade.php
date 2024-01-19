@@ -1,4 +1,4 @@
-<div class="relative max-w-8xl mx-auto lg:border-b lg:border-gray-500/5 dark:border-gray-50/[0.06]">
+<div class="relative max-w-8xl mx-auto">
     <div class="py-5 lg:py-4 lg:px-12 border-b border-gray-500/10 lg:border-0 dark:border-gray-300/10 mx-4 lg:mx-0">
         <div class="relative flex items-center">
             <div class="flex-1 flex items-center space-x-4"><a href="/"><span class="sr-only">OpenAgents home
