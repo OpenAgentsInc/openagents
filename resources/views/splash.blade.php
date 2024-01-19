@@ -1,7 +1,16 @@
-@extends('layouts.main')
+<!DOCTYPE html>
+<html>
 
-@section('content')
+<head>
+    <style>
+        body {
+            font-family: monospace;
+        }
+    </style>
+</head>
 
-Hi
+<body>
+    <h1>OpenAgents</h1>
+</body>
 
-@endsection
+</html>
