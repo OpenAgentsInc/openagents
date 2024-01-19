@@ -43,6 +43,10 @@ class PluginController extends Controller
 
         // Return the updated plugin grid as an HTMX response
         return with(new HtmxResponse())
-            ->renderFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
+            // ->renderFragment('components.plugin-grid', 'plugin-grid', compact('plugins'))
+            // ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'))
+            // ->addFragment('components.plugin-upload-form', 'plugin-upload-form', ['success' => 'Plugin uploaded successfully.']);
+            // ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
+            ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
     }
 }

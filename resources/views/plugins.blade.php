@@ -3,7 +3,11 @@
 @section('title', 'Plugins')
 
 @section('content')
-<x-plugin-grid :plugins="$plugins" />
+<div id="plugin-grid-wrapper">
+    <x-plugin-grid :plugins="$plugins" />
+</div>
 
-<x-plugin-upload-form />
+<div id="plugin-form-wrapper">
+    <x-plugin-upload-form />
+</div>
 @endsection
