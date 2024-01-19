@@ -11,7 +11,9 @@ class PluginController extends Controller
 {
     public function index()
     {
-        return view('plugins');
+        return view('plugins', [
+            'plugins' => Plugin::all(),
+        ]);
     }
 
     public function store()
@@ -36,6 +38,15 @@ class PluginController extends Controller
             'wasm_url' => request('wasm_url'),
         ]);
 
-        return "Plugin uploaded successfully.";
+        // Get the updated list of plugins
+        $plugins = Plugin::all();
+
+        // Return the updated plugin grid as an HTMX response
+        return with(new HtmxResponse())
+            // ->renderFragment('components.plugin-grid', 'plugin-grid', compact('plugins'))
+            // ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'))
+            // ->addFragment('components.plugin-upload-form', 'plugin-upload-form', ['success' => 'Plugin uploaded successfully.']);
+            // ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
+            ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
     }
 }
