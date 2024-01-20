@@ -12,6 +12,11 @@ class StaticController extends Controller
         return view('splash');
     }
 
+    public function thesis()
+    {
+        return view('thesis');
+    }
+
     public function splash()
     {
         return Inertia::render('Splash');
