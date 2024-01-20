@@ -2,7 +2,7 @@
 
 An open platform for AI agents, built in public from scratch.
 
-See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](https://github.com/OpenAgentsInc/openagents/wiki/Roadmap) for more.
+See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 
 ![plugin](https://github.com/OpenAgentsInc/openagents/assets/14167547/e2e72845-3c6b-45a1-a6af-abb8d1048986)
 
@@ -69,3 +69,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 53. [Loading WASM Plugins](https://twitter.com/OpenAgentsInc/status/1747791884414599350)
 54. [Uploading a Plugin](https://twitter.com/OpenAgentsInc/status/1747994309549318228)
 55. [Plugin Registry UI](https://twitter.com/OpenAgentsInc/status/1748445660146216995)
+56. [Deleting JavaScript](https://twitter.com/OpenAgentsInc/status/1748536252733739412)
