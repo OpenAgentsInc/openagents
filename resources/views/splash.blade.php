@@ -11,6 +11,14 @@
 <body class="antialiased font-mono dark:text-white bg-slate-50 dark:bg-haiti">
     <x-header />
 
+    <div class="relative max-w-5xl mx-auto pt-20 sm:pt-24 lg:pt-32">
+        <h1
+            class="text-slate-900 font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight text-center dark:text-white">
+            An open platform for AI agents</h1>
+        <p class="mt-6 text-xl text-slate-600 text-center max-w-3xl mx-auto dark:text-bluebell">Built in public
+            from scratch. Launching soon!</p>
+    </div>
+
     <!-- Episode 1 video -->
     <div class="mt-12 mx-auto w-[560px] max-w-full">
         <blockquote class="twitter-tweet" data-theme="dark" data-media-max-width="560">

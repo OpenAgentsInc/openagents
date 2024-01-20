@@ -5,6 +5,7 @@ use App\Http\Controllers\StaticController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StaticController::class, 'newsplash']);
+Route::get('/accelerate', [StaticController::class, 'accelerate']);
 
 // Plugin uploading
 Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');
