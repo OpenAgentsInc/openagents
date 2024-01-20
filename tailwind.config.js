@@ -6,9 +6,25 @@ export default {
   content: [
     // "./resources/views/**/*.blade.php",
     "./resources/views/splash.blade.php",
+    "./resources/views/components/header.blade.php",
     "./resources/views/components/theme-switcher.blade.php",
   ],
-  plugins: [
-    forms,
-  ],
+  theme: {
+    extend: {
+      colors: {
+        haiti: '#120B29',
+        purple: '#1C133A',
+        portgore: '#2D2252',
+        bluebell: '#9D98CB',
+        bluebellfaded: 'rgba(157, 152, 203, 0.6)',
+        minsk: '#46367C',
+        moonraker: '#EEECFB',
+        radicalRed: '#FC3A57',
+        pinkflamingo: '#F459F4',
+        electricviolet: '#AE30FF',
+        electricindigo: '#5B20F2',
+      }
+    },
+  },
+  plugins: [forms],
 }
