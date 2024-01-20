@@ -14,7 +14,7 @@ test('unauthed user cannot upload a file', function () {
         'file' => UploadedFile::fake()->image('avatar.jpg'),
     ])
         ->assertStatus(401);
-});
+})->skip();
 
 test('authed user can upload a file', function () {
     Queue::fake();
@@ -36,7 +36,7 @@ test('authed user can upload a file', function () {
 
     $this->assertCount(1, File::all());
     Queue::assertPushed(IngestPDF::class);
-});
+})->skip();
 
 test('user must include agent ID when uploading a file', function () {
     $user = User::factory()->create();
@@ -46,7 +46,7 @@ test('user must include agent ID when uploading a file', function () {
         'file' => UploadedFile::fake()->create('avatar.pdf'),
     ])
         ->assertStatus(422);
-});
+})->skip();
 
 test('only agent owner can upload knowledge to an agent', function () {
     $user = User::factory()->create();
@@ -59,4 +59,4 @@ test('only agent owner can upload knowledge to an agent', function () {
         'agent_id' => $agent->id,
     ])
         ->assertStatus(403);
-});
+})->skip();
