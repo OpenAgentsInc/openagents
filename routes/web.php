@@ -3,7 +3,6 @@
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BitcoinController;
-use App\Http\Controllers\BuilderController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\ExtismController;
 use App\Http\Controllers\FileController;
@@ -34,11 +33,6 @@ Route::get('/bitcoin-price-ticker', [BitcoinController::class, 'sse'])->name('bi
 
 // Concierge Chat
 Route::get('/chat', [StreamController::class, 'chat'])->name('chat'); // OLD
-
-// Agents
-Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
-Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
-Route::post('/agent/{id}/chat', [AgentController::class, 'chat'])->name('agent.chat');
 
 // Static
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
