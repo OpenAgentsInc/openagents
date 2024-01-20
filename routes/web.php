@@ -35,10 +35,6 @@ Route::get('/bitcoin-price-ticker', [BitcoinController::class, 'sse'])->name('bi
 // Concierge Chat
 Route::get('/chat', [StreamController::class, 'chat'])->name('chat'); // OLD
 
-// Convenience redirects
-Route::get('/epstein', [StaticController::class, 'epstein']);
-Route::get('/agent/epstein', [StaticController::class, 'epstein']);
-
 // Agents
 Route::get('/agents', [BuilderController::class, 'showcase'])->name('agents');
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
