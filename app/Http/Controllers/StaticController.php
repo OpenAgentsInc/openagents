@@ -12,9 +12,9 @@ class StaticController extends Controller
         return view('splash');
     }
 
-    public function accelerate()
+    public function thesis()
     {
-        return view('accelerate');
+        return view('thesis');
     }
 
     public function splash()
