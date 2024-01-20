@@ -1,13 +1,9 @@
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
-import react from '@vitejs/plugin-react';
 import path from 'path';
 
-export default defineConfig(({ command, mode }) => {
-  const alias = {
-    "agentgraph": path.resolve(__dirname, "agentgraph"),
-    "@": path.resolve(__dirname, "resources/js"),
-  }
+export default defineConfig(({ command }) => {
+  let alias = {}
 
   // dev environment
   if (command === 'serve') {
@@ -15,15 +11,11 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
-    resolve: {
-      alias
-    },
     plugins: [
       laravel({
-        input: ['resources/js/app.tsx', 'resources/css/app.css', 'resources/css/regards.css'],
+        input: ['resources/css/app.css'],
         refresh: true,
       }),
-      react(),
     ],
   }
 });

@@ -4,16 +4,13 @@ An open platform for AI agents, built in public from scratch.
 
 See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](https://github.com/OpenAgentsInc/openagents/wiki/Roadmap) for more.
 
-![kb](https://github.com/OpenAgentsInc/openagents/assets/14167547/945f8a6c-1c54-4322-90f1-a25a907fd128)
+![plugin](https://github.com/OpenAgentsInc/openagents/assets/14167547/e2e72845-3c6b-45a1-a6af-abb8d1048986)
 
 ## Tech Stack
 - Laravel
-- React
-- Inertia
+- HTMX
 - Tailwind CSS
-- shad-ui
 - PostgreSQL
-- [Storybook](https://storybook.openagents.com/)
 
 ## Video series
 
