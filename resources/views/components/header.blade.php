@@ -1,10 +1,5 @@
 <header class="relative">
     <div class="px-4 sm:px-6 md:px-8">
-        <div class="absolute inset-0 bottom-10 bg-bottom bg-no-repeat bg-slate-50 dark:bg-haiti">
-            <div class="absolute inset-0 bg-grid-slate-900/[0.04] bg-[bottom_1px_center] dark:bg-grid-slate-400/[0.05]"
-                style="mask-image:linear-gradient(to bottom, transparent, black);-webkit-mask-image:linear-gradient(to bottom, transparent, black)">
-            </div>
-        </div>
         <div
             class="relative pt-6 flex items-center justify-between text-slate-700 font-semibold text-sm leading-6 dark:text-slate-200">
             <div class="text-slate-900 dark:text-white w-44">
@@ -13,12 +8,9 @@
             <div class="flex items-center">
                 <nav>
                     <ul class="flex items-center gap-x-8">
-                        <li><a class="hover:text-purple-500 dark:hover:text-purple-400"
-                                href="/docs/installation">Docs</a></li>
-                        <li><a class="hover:text-purple-500 dark:hover:text-purple-400" href="/blog">Blog</a></li>
+                        <li><a class="hover:text-slate-500 dark:hover:text-slate-400" href="/blog">Blog</a></li>
                     </ul>
                 </nav>
-
                 <div class="flex items-center border-l border-slate-200 ml-6 pl-6 dark:border-portgore">
                     <x-theme-switcher />
                     <x-github-icon />
