@@ -16,7 +16,7 @@
             <h2>Four trends</h2>
             <ul>
                 <li>Bitcoin as money</li>
-                <li>Bitcoin-adjacent app layers (Nostr, Fedimint)</li>
+                <li>Bitcoin-adjacent app layers (Nostr, Fedimint, web5)</li>
                 <li>Web 4.0 (lol) - Web of 'no thx'?</li>
                 <ul class="pl-8">
                     <li>“Big JavaScript” → hypermedia (HTMX)</li>
