@@ -8,12 +8,9 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) and [roadmap](h
 
 ## Tech Stack
 - Laravel
-- React
-- Inertia
+- HTMX
 - Tailwind CSS
-- shad-ui
 - PostgreSQL
-- [Storybook](https://storybook.openagents.com/)
 
 ## Video series
 
