@@ -7,6 +7,11 @@ use Inertia\Inertia;
 
 class StaticController extends Controller
 {
+    public function newsplash()
+    {
+        return view('splash');
+    }
+
     public function splash()
     {
         return Inertia::render('Splash');
