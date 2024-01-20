@@ -14,6 +14,7 @@
                 <div class="flex items-center border-l border-slate-200 ml-6 pl-6 dark:border-portgore">
                     <x-theme-switcher />
                     <x-github-icon />
+                    <x-twitter-x-icon />
                 </div>
             </div>
         </div>
