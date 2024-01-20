@@ -1,35 +1,29 @@
-<div class="relative max-w-8xl mx-auto lg:border-b lg:border-gray-500/5 dark:border-gray-50/[0.06]">
-    <div class="py-5 lg:py-4 lg:px-12 border-b border-gray-500/10 lg:border-0 dark:border-gray-300/10 mx-4 lg:mx-0">
-        <div class="relative flex items-center">
-            <div class="flex-1 flex items-center space-x-4"><a href="/"><span class="sr-only">OpenAgents home
-                        page</span><img class="w-auto h-7 relative block dark:hidden"
-                        src="{{ asset('images/light.svg') }}" alt="light logo"><img
-                        class="w-auto h-7 relative hidden dark:block"
-                        src="{{ asset('images/dark.svg') }}" alt="dark logo"></a></div>
-            <div class="flex-1 relative hidden lg:flex items-center ml-auto justify-end">
-                <nav class="text-sm leading-6 font-semibold text-gray-700 dark:text-gray-200">
-                    <ul class="flex space-x-8 items-center"></ul>
+<header class="relative">
+    <div class="px-4 sm:px-6 md:px-8">
+        <div
+            class="relative pt-6 flex items-center justify-between text-slate-700 font-semibold text-sm leading-6 dark:text-slate-200">
+            <div class="text-slate-900 dark:text-white w-44">
+                @include('partials.logo')
+            </div>
+            <div class="flex items-center">
+                <nav>
+                    <ul class="flex items-center gap-x-8">
+                        <li><a class="hover:text-slate-500 dark:hover:text-slate-400" href="/blog">Blog</a></li>
+                    </ul>
                 </nav>
-                <div class="flex items-center">
-                    <!--
-                    <div
-                        class="border-l hidden lg:flex border-gray-100 ml-6 pl-6 dark:border-background-dark dark:brightness-200 h-6">
-                    </div>
-                    -->
+                <div class="flex items-center border-l border-slate-200 ml-6 pl-6 dark:border-portgore">
                     <x-theme-switcher />
+                    <x-github-icon />
+                    <x-twitter-x-icon />
                 </div>
             </div>
-            <!--
-            <div class="flex lg:hidden items-center"><button type="button"
-                    class="ml-auto text-gray-500 w-8 h-8 -my-1 items-center justify-center hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"><span
-                        class="sr-only">Search</span><svg
-                        class="h-4 w-4 bg-gray-500 dark:bg-gray-400 hover:bg-gray-600 dark:hover:bg-gray-300"
-                        style="-webkit-mask-image:url(https://mintlify.b-cdn.net/v6.4.0/solid/magnifying-glass.svg);-webkit-mask-repeat:no-repeat;-webkit-mask-position:center"></svg></button><button
-                    class="h-7 w-5 flex items-center justify-end"><svg
-                        class="h-4 w-4 bg-gray-500 dark:bg-gray-400 hover:bg-gray-600 dark:hover:bg-gray-300"
-                        style="-webkit-mask-image:url(https://mintlify.b-cdn.net/v6.4.0/solid/ellipsis-vertical.svg);-webkit-mask-repeat:no-repeat;-webkit-mask-position:center"></svg></button>
-            </div>
-            -->
+        </div>
+        <div class="relative max-w-5xl mx-auto pt-20 sm:pt-24 lg:pt-32">
+            <h1
+                class="text-slate-900 font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight text-center dark:text-white">
+                An open platform for AI agents</h1>
+            <p class="mt-6 text-xl text-slate-600 text-center max-w-3xl mx-auto dark:text-bluebell">Built in public
+                from scratch. Launching soon!</p>
         </div>
     </div>
-</div>
+</header>
