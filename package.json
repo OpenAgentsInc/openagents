@@ -3,20 +3,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build": "vite build"
   },
   "devDependencies": {
     "@headlessui/react": "^2.0.0-alpha.3",
     "@inertiajs/react": "^1.0.0",
-    "@storybook/addon-essentials": "^7.6.6",
-    "@storybook/addon-interactions": "^7.6.6",
-    "@storybook/addon-links": "^7.6.6",
-    "@storybook/blocks": "^7.6.6",
-    "@storybook/react": "^7.6.6",
-    "@storybook/react-vite": "^7.6.6",
-    "@storybook/test": "^7.6.6",
     "@tailwindcss/forms": "^0.5.3",
     "@types/node": "^18.13.0",
     "@types/react": "^18.0.28",
@@ -30,7 +21,6 @@
     "postcss": "^8.4.18",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "storybook": "^7.6.6",
     "tailwindcss": "^3.2.1",
     "typescript": "^5.0.2",
     "vite": "^4.0.0"
