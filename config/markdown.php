@@ -47,6 +47,8 @@ return [
     'extensions' => [
         League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension::class,
         League\CommonMark\Extension\Table\TableExtension::class,
+        // App\Markdown\DateParser::class,
+        App\Markdown\DateExtension::class,
     ],
 
     /*

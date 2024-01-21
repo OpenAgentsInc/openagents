@@ -1,4 +1,5 @@
 # Blog post number one
+{{ date: '2023-04-06T00:00Z' }}
 
 hey fools i gave a talk
 
