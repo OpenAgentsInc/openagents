@@ -10,6 +10,7 @@ Route::get('/thesis', [StaticController::class, 'thesis']);
 
 // Plugin uploading
 Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');
+Route::get('/plugins/create', [PluginController::class, 'create'])->name('plugins.create');
 Route::post('/plugins', [PluginController::class, 'store']);
 
 // Static

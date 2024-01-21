@@ -16,6 +16,11 @@ class PluginController extends Controller
         ]);
     }
 
+    public function create()
+    {
+        return view('plugin-create');
+    }
+
     public function store()
     {
         $validator = Validator::make(request()->all(), [

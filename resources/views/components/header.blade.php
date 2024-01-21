@@ -8,6 +8,7 @@
             <div class="flex items-center">
                 <nav>
                     <ul class="flex items-center gap-x-8">
+                        <li><a class="hover:text-slate-500 dark:hover:text-slate-400" href="/plugins">Plugins</a></li>
                         <li><a class="hover:text-slate-500 dark:hover:text-slate-400" href="/blog">Blog</a></li>
                     </ul>
                 </nav>
