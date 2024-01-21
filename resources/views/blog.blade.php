@@ -4,8 +4,8 @@
 
 @section('content')
 
-<div class="prose dark:prose-invert">
-    <h1>blog</h1>
+<div class="prose dark:prose-invert mx-auto">
+    {!! $htmlContent !!}
 </div>
 
 @endsection

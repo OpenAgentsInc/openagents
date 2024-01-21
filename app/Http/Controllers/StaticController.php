@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use GrahamCampbell\Markdown\Facades\Markdown;
 use Inertia\Inertia;
 
 class StaticController extends Controller
@@ -14,7 +15,10 @@ class StaticController extends Controller
 
     public function blog()
     {
-        return view('blog');
+        $markdownContent = file_get_contents(resource_path('blog/page.md'));
+        $htmlContent = Markdown::convert($markdownContent)->getContent();
+
+        return view('blog', ['htmlContent' => $htmlContent]);
     }
 
     public function thesis()
