@@ -10,27 +10,68 @@ class DateParser implements InlineParserInterface
 {
     public function getMatchDefinition(): InlineParserMatch
     {
-        // Define the pattern that this parser should match
-        return InlineParserMatch::regex('/{{\s*date:\s*\'[0-9\-T:Z]+\'\s*}}/');
+        // Define the starting delimiter
+        return InlineParserMatch::string('--date:');
     }
 
     public function parse(InlineParserContext $inlineContext): bool
     {
         $cursor = $inlineContext->getCursor();
 
-        // The cursor will already be positioned at the start of the match
-        $match = $cursor->match('/{{\s*date:\s*\'([0-9\-T:Z]+)\'\s*}}/');
+        // dd($cursor->getLine());
+        // $cursor->getLine() is "--date: '2023-04-06T00:00Z'--"
 
-        if ($match === null) {
-            return false;
-        }
+        // Extract the date string
+        $dateString = substr($cursor->getLine(), 8, 20);
 
-        // Extract the date
-        $date = $cursor->getPreviousMatch()[1];
+        // strip all dashes and single quotes
+        $dateString = str_replace(['-', '\''], '', $dateString);
 
-        // Create and add the inline element to the processor
-        $inlineContext->getContainer()->appendChild(new DateElement($date));
+        // Create and add the DateElement
+        $inlineContext->getContainer()->appendChild(new DateElement($dateString));
+
+        // Advance the cursor past the trailing '--'
+        // if ($cursor->peek(2) === '--') {
+        $cursor->advanceBy(29);
+        // }
 
         return true;
+
+        // // Advance the cursor past the initial delimiter '--date:'
+        // $cursor->advanceBy(8); // Length of '--date:'
+
+        // // Skip whitespace after '--date:'
+        // while ($cursor->peek() === ' ') {
+        //     $cursor->advance();
+        // }
+
+        // // Assume the date string is enclosed in single quotes
+        // if ($cursor->peek() === '\'') {
+        //     $cursor->advance(); // Skip the opening quote
+
+        //     $start = $cursor->getPosition();
+        //     while (!$cursor->isAtEnd() && $cursor->peek() !== '\'') {
+        //         $cursor->advance();
+        //     }
+        //     $end = $cursor->getPosition();
+
+        //     // Extract the date string
+        //     $dateString = substr($cursor->getLine(), $start, $end - $start);
+
+        //     // Create and add the DateElement
+        //     $inlineContext->getContainer()->appendChild(new DateElement($dateString));
+
+        //     // Advance the cursor past the closing quote
+        //     $cursor->advance();
+
+        //     // Advance the cursor past the trailing '--'
+        //     if ($cursor->peek(2) === '--') {
+        //         $cursor->advanceBy(2);
+        //     }
+
+        //     return true;
+        // }
+
+        // return false;
     }
 }
