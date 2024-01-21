@@ -1,6 +1,6 @@
 @fragment('plugin-upload-form')
     <form id="upload-plugin" method="POST" action="{{ route('plugins.store') }}"
-        enctype="multipart/form-data" class="my-8 mx-auto max-w-xl space-y-4">
+        enctype="multipart/form-data" class="my-8 mx-auto max-w-xl space-y-4 prose dark:prose-invert">
         <h1 class="text-2xl font-bold mb-4 text-center">Create Plugin</h1>
         @csrf
         <div>
