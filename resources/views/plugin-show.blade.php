@@ -17,20 +17,31 @@
     <p>{{ $plugin->description }}</p>
 </div>
 
-<div class="mt-8 p-6 bg-grey-100 rounded-lg shadow-lg">
-    <h3 class="text-xl font-semibold mb-4">Test Plugin</h3>
-    <form action="{{ route('plugins.test', $plugin->id) }}" method="POST">
-        @csrf
-        <div class="mb-4">
-            <label for="test-input" class="block text-md font-medium mb-2">Input for Testing</label>
-            <input type="text" id="test-input" name="test_input"
-                class="px-3 py-2 w-full rounded-md border-gray-300 shadow-sm focus:border-teal-vivid-300 focus:ring focus:ring-teal-vivid-200 focus:ring-opacity-50"
-                placeholder="Enter test data">
+<div class="mt-8 flex gap-6">
+    <div class="flex-1 flex flex-col">
+        <h3 class="text-xl font-semibold mb-4 px-6">Input</h3>
+        <div class="flex-1 p-6 bg-grey-100 rounded-lg shadow-lg">
+            <form action="{{ route('plugins.test', $plugin->id) }}" method="POST"
+                class="flex flex-col h-full">
+                @csrf
+                <input type="text" id="test-input" name="test_input"
+                    class="mb-4 px-3 py-2 w-full rounded-md border-gray-300 shadow-sm focus:border-teal-vivid-300 focus:ring focus:ring-teal-vivid-200 focus:ring-opacity-50"
+                    placeholder="Enter test data">
+                <x-button type="submit" class="mt-auto">
+                    Test
+                </x-button>
+            </form>
         </div>
-        <x-button type="submit">
-            Test Plugin
-        </x-button>
-    </form>
+    </div>
+
+    <div class="flex-1 flex flex-col">
+        <h3 class="text-xl font-semibold mb-4 px-6">Output</h3>
+        <div class="flex-1 p-6 bg-grey-200 rounded-lg shadow-lg">
+            <div id="plugin-output" class="h-full bg-white rounded-md p-4">
+                <!-- Plugin output will be displayed here -->
+            </div>
+        </div>
+    </div>
 </div>
 
 @endsection
