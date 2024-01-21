@@ -4,11 +4,27 @@ namespace App\Http\Controllers;
 
 use App\Models\Plugin;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Validator;
 use Mauricius\LaravelHtmx\Http\HtmxResponse;
 
 class PluginController extends Controller
 {
+    public function call()
+    {
+        $function = "count_vowels"; // or request('function')
+        $plugin = Plugin::find(request('plugin_id'));
+
+        if (!$plugin) {
+            return new Response('Plugin not found', 404);
+        }
+
+        $output = $plugin->call($function, request('input'));
+
+        return with(new HtmxResponse())
+            ->renderFragment('plugin-call-output', 'output', compact('output'));
+    }
+
     public function index()
     {
         return view('plugins', [
@@ -56,14 +72,6 @@ class PluginController extends Controller
             'wasm_url' => request('wasm_url'),
         ]);
 
-        // Get the updated list of plugins
-        // $plugins = Plugin::all();
-
-        // Return the updated plugin grid as an HTMX response
-        // return with(new HtmxResponse())
-            // ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
-
-        // Redirect to the plugin show page
         return redirect()->route('plugins.show', $plugin);
     }
 }
