@@ -1,7 +1,7 @@
 @fragment('plugin-upload-form')
-    <form id="upload-plugin" action="{{ route('plugins.store') }}" method="POST"
-        enctype="multipart/form-data" class="my-12 mx-auto max-w-xl space-y-4">
-        <h1 class="text-2xl font-bold mb-4 text-center">Upload Plugin</h1>
+    <form id="upload-plugin" method="POST" action="{{ route('plugins.store') }}"
+        enctype="multipart/form-data" class="my-8 mx-auto max-w-xl space-y-4">
+        <h1 class="text-2xl font-bold mb-4 text-center">Create Plugin</h1>
         @csrf
         <div>
             <label for="name" class="block text-md font-medium">Name</label>
@@ -24,14 +24,17 @@
 
         <div>
             <label for="fee" class="block text-md font-medium">Fee</label>
-            <input type="range" class="mt-1 w-full rounded-md focus:ring-indigo-200 focus:ring-opacity-50" id="fee"
-                name="fee" min="0" max="100" value="0">
+            <input type="range"
+                class="mt-1 w-full rounded-md focus:ring-teal-vivid-300 focus:ring-opacity-50 accent-teal-vivid-400"
+                id="fee" name="fee" min="0" max="100" value="0">
             <span id="fee-value" class="text-md font-medium">0</span> sats
         </div>
 
-        <button type="submit"
-            class="w-full px-4 py-2 bg-blue-500 text-white font-bold rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-opacity-50">Upload
-            Plugin</button>
+        <div class="flex justify-center">
+            <x-button variant="primary" type="submit">
+                Upload Plugin
+            </x-button>
+        </div>
     </form>
 
     <script>

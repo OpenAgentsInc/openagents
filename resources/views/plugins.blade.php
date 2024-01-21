@@ -4,10 +4,10 @@
 
 @section('content')
 <div class="prose dark:prose-invert">
-    <a href="/plugins/create">
-        <button class="bg-slate-500 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded">
+    <a href="/plugins/create" class="inline-block">
+        <x-button variant="primary">
             Create Plugin
-        </button>
+        </x-button>
     </a>
 
     <div id="plugin-grid-wrapper">
