@@ -11,15 +11,6 @@
         </h2>
         <x-bitcoin-amount :amount="$plugin->fee" class="text-lg" />
     </div>
-    <div class="mt-4 flex md:ml-4 md:mt-0">
-        <x-button variant="secondary" class="mr-2">
-            Edit
-        </x-button>
-
-        <x-button variant="primary">
-            Publish
-        </x-button>
-    </div>
 </div>
 
 <div class="prose dark:prose-invert">
