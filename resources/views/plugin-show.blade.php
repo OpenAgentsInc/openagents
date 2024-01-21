@@ -11,10 +11,13 @@
         </h2>
     </div>
     <div class="mt-4 flex md:ml-4 md:mt-0">
-        <button type="button"
-            class="inline-flex items-center rounded-md bg-indigo-400 dark:bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-white/20">Edit</button>
-        <button type="button"
-            class="ml-3 inline-flex items-center rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Publish</button>
+        <x-button variant="secondary" class="mr-2">
+            Edit
+        </x-button>
+
+        <x-button variant="primary">
+            Publish
+        </x-button>
     </div>
 </div>
 
