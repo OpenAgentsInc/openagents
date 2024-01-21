@@ -21,10 +21,13 @@
     <div class="flex-1 flex flex-col">
         <h3 class="text-xl font-semibold mb-4 px-6">Input</h3>
         <div class="flex-1 p-6 bg-grey-100 rounded-lg shadow-lg">
-            <form action="{{ route('plugins.test', $plugin->id) }}" method="POST"
+            <form action="{{ route('plugins.call', $plugin->id) }}" method="POST"
                 class="flex flex-col h-full">
                 @csrf
-                <input type="text" id="test-input" name="test_input"
+                <!-- create a hidden input with the plugin id -->
+                <input type="hidden" name="plugin_id" value="{{ $plugin->id }}" />
+
+                <input type="text" id="input" name="input"
                     class="mb-4 px-3 py-2 w-full rounded-md border-gray-300 shadow-sm focus:border-teal-vivid-300 focus:ring focus:ring-teal-vivid-200 focus:ring-opacity-50"
                     placeholder="Enter test data">
                 <x-button type="submit" class="mt-auto">

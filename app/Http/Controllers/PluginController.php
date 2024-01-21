@@ -4,13 +4,23 @@ namespace App\Http\Controllers;
 
 use App\Models\Plugin;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Validator;
 use Mauricius\LaravelHtmx\Http\HtmxResponse;
 
 class PluginController extends Controller
 {
-    public function test()
-    {}
+    public function call()
+    {
+        $function = "count_vowels"; // request('function')
+        $plugin = Plugin::find(request('plugin_id'));
+        if (!$plugin) {
+            return new Response('Plugin not found', 404);
+        }
+
+        $output = $plugin->call($function, request('input'));
+        return response()->view('plugin-call-output', ['output' => $output]);
+    }
 
     public function index()
     {
