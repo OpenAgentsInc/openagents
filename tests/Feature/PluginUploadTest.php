@@ -22,11 +22,20 @@ test("user can upload plugin", function () {
         'fee' => '100',
         'description' => 'Count the vowels in a string',
         'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm"
-    ])
-        ->assertOk();
-    // ->assertSee('Plugin uploaded successfully.'); -- javascript doh!
+    ]);
 
     $this->assertEquals(1, count(Plugin::all()));
+});
+
+test('after creating plugin, user is redirected to the plugin page', function () {
+    $response = $this->post('/plugins', [
+        'name' => 'Count Vowels',
+        'fee' => '100',
+        'description' => 'Count the vowels in a string',
+        'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm"
+    ]);
+
+    expect($response->getStatusCode())->toBe(302);
 });
 
 test("upload requires plugin to have a name", function () {

@@ -1,5 +1,5 @@
 @fragment('plugin-upload-form')
-    <form id="upload-plugin" hx-post="/plugins" hx-target="#plugin-grid-wrapper" hx-swap="outerHTML"
+    <form id="upload-plugin" action="{{ route('plugins.store') }}" method="POST"
         enctype="multipart/form-data" class="my-12 mx-auto max-w-xl space-y-4">
         <h1 class="text-2xl font-bold mb-4 text-center">Upload Plugin</h1>
         @csrf
@@ -41,41 +41,6 @@
             var fee = document.getElementById("fee").value;
             // set the text of the span to the value of the slider
             document.getElementById("fee-value").innerHTML = fee;
-        });
-
-        document.addEventListener('DOMContentLoaded', function () {
-            // Add the event listener only once
-            document.body.addEventListener('htmx:afterSwap', function (event) {
-                // Check if the triggering element is the form
-                if (event.detail.requestConfig.elt.id === 'upload-plugin') {
-                    // Find any existing success message and remove it
-                    const existingSuccessDiv = document.querySelector(
-                        '#upload-plugin .success-message');
-                    if (existingSuccessDiv) {
-                        existingSuccessDiv.remove();
-                    }
-
-                    // Create and display the new success message
-                    const successDiv = document.createElement('div');
-                    successDiv.className =
-                        'p-4 mb-4 text-sm text-green-700 bg-green-100 rounded-lg success-message';
-                    successDiv.textContent = 'Plugin uploaded successfully.';
-                    event.detail.requestConfig.elt.prepend(successDiv);
-
-                    // Remove the success message after a delay
-                    setTimeout(() => {
-                        successDiv.remove();
-                    }, 3000);
-
-                    // Manually clear each form field
-                    const form = event.detail.requestConfig.elt;
-                    form.querySelector('[name="name"]').value = '';
-                    form.querySelector('[name="description"]').value = '';
-                    form.querySelector('[name="wasm_url"]').value = '';
-                    form.querySelector('[name="fee"]').value = '0';
-                    document.getElementById('fee-value').textContent = '0';
-                }
-            });
         });
 
     </script>

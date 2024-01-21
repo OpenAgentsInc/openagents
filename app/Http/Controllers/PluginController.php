@@ -16,6 +16,19 @@ class PluginController extends Controller
         ]);
     }
 
+    public function show($pluginId)
+    {
+        $plugin = Plugin::find($pluginId);
+
+        if (!$plugin) {
+            return redirect('/');
+        }
+
+        return view('plugin-show', [
+            'plugin' => $plugin,
+        ]);
+    }
+
     public function create()
     {
         return view('plugin-create');
@@ -44,14 +57,13 @@ class PluginController extends Controller
         ]);
 
         // Get the updated list of plugins
-        $plugins = Plugin::all();
+        // $plugins = Plugin::all();
 
         // Return the updated plugin grid as an HTMX response
-        return with(new HtmxResponse())
-            // ->renderFragment('components.plugin-grid', 'plugin-grid', compact('plugins'))
-            // ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'))
-            // ->addFragment('components.plugin-upload-form', 'plugin-upload-form', ['success' => 'Plugin uploaded successfully.']);
+        // return with(new HtmxResponse())
             // ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
-            ->addFragment('components.plugin-grid', 'plugin-grid', compact('plugins'));
+
+        // Redirect to the plugin show page
+        return redirect()->route('plugins.show', $plugin);
     }
 }
