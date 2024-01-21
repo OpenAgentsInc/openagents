@@ -14,31 +14,38 @@ class PluginSeeder extends Seeder
     {
         // Seed demo plugins
         Plugin::create([
-            'name' => 'Check Bitcoin Price',
-            'description' => "Fetch the current Bitcoin price",
-            'fee' => 2, // example fee in sats
-            'wasm_url' => 'https://example.com/plugin1.wasm',
+            'name' => 'Count Vowels',
+            'description' => "Count vowels in a string",
+            'fee' => 0,
+            'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm",
         ]);
 
-        Plugin::create([
-            'name' => 'Create Embedding',
-            'description' => "Create vector embedding for a given text",
-            'fee' => 5, // example fee in sats
-            'wasm_url' => 'https://example.com/plugin2.wasm',
-        ]);
+        // Plugin::create([
+        //     'name' => 'Check Bitcoin Price',
+        //     'description' => "Fetch the current Bitcoin price",
+        //     'fee' => 2, // example fee in sats
+        //     'wasm_url' => 'https://example.com/plugin1.wasm',
+        // ]);
 
-        Plugin::create([
-            'name' => 'Get GitHub Repo Folder Hierarchy',
-            'description' => "Get the folder hierarchy of a GitHub repo",
-            'fee' => 400, // example fee in sats
-            'wasm_url' => 'https://example.com/plugin3.wasm',
-        ]);
+        // Plugin::create([
+        //     'name' => 'Create Embedding',
+        //     'description' => "Create vector embedding for a given text",
+        //     'fee' => 5, // example fee in sats
+        //     'wasm_url' => 'https://example.com/plugin2.wasm',
+        // ]);
 
-        Plugin::create([
-            'name' => 'Comment on GitHub Issue',
-            'description' => "Generate a comment for a GitHub issue via LLM",
-            'fee' => 700, // example fee in sats
-            'wasm_url' => 'https://example.com/plugin4.wasm',
-        ]);
+        // Plugin::create([
+        //     'name' => 'Get GitHub Repo Folder Hierarchy',
+        //     'description' => "Get the folder hierarchy of a GitHub repo",
+        //     'fee' => 400, // example fee in sats
+        //     'wasm_url' => 'https://example.com/plugin3.wasm',
+        // ]);
+
+        // Plugin::create([
+        //     'name' => 'Comment on GitHub Issue',
+        //     'description' => "Generate a comment for a GitHub issue via LLM",
+        //     'fee' => 700, // example fee in sats
+        //     'wasm_url' => 'https://example.com/plugin4.wasm',
+        // ]);
     }
 }
