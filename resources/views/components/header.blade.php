@@ -8,7 +8,7 @@
             <div class="flex items-center">
                 <nav>
                     <ul class="flex items-center gap-x-8">
-                        <!--<li><a class="hover:text-grey-500 dark:hover:text-grey-400" href="/plugins">Plugins</a></li>-->
+                        <li><a class="hover:text-grey-500 dark:hover:text-grey-400" href="/plugins">Plugins</a></li>
                         <li><a class="hover:text-grey-500 dark:hover:text-grey-400" href="/blog">Blog</a></li>
                     </ul>
                 </nav>
@@ -19,6 +19,5 @@
                 </div>
             </div>
         </div>
-
     </div>
 </header>
