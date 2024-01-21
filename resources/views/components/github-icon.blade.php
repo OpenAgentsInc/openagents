@@ -1,5 +1,5 @@
 <a href="https://github.com/OpenAgentsInc/openagents" target="_blank"
-    class="ml-6 block text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">
+    class="ml-6 block text-grey-400 hover:text-grey-500 dark:hover:text-grey-300">
     <span class="sr-only">OpenAgents on GitHub</span>
     <svg viewBox="0 0 16 16" class="w-5 h-5" fill="currentColor" aria-hidden="true">
         <path

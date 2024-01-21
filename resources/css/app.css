@@ -4,14 +4,14 @@
 
 @layer base {
   .prose img {
-      @apply relative mt-8 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-900 border-4 border-electricindigo dark:border-portgore;
+      @apply relative mt-8 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-900 border-2 border-gray-300 dark:border-gray-700;
   }
 
   .prose.dark\:prose-invert.mx-auto h1 {
       text-align: center;
   }
 
-  .prose.dark\:prose-invert.mx-auto p:has(> span.text-sm.text-gray-600.dark\:text-bluebell) {
+  .prose.dark\:prose-invert.mx-auto p:has(.date) {
       @apply -mt-4 text-center mb-8;
   }
 

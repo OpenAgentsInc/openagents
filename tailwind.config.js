@@ -10,20 +10,9 @@ export default {
   theme: {
     extend: {
       colors: {
-        haiti: '#120B29',
-        purple: '#1C133A',
-        portgore: '#2D2252',
-        bluebell: '#9D98CB',
-        bluebellfaded: 'rgba(157, 152, 203, 0.6)',
-        minsk: '#46367C',
-        moonraker: '#EEECFB',
-        radicalRed: '#FC3A57',
-        pinkflamingo: '#F459F4',
-        electricviolet: '#AE30FF',
-        electricindigo: '#5B20F2',
         // Primary
         'teal-vivid': {
-          '050': '#F0FCF9',
+          '50': '#F0FCF9',
           '100': '#C6F7E9',
           '200': '#8EEDD1',
           '300': '#5FE3C0',
@@ -36,7 +25,7 @@ export default {
         },
         // Neutrals
         'grey': {
-          '050': '#F7F7F7',
+          '50': '#F7F7F7',
           '100': '#E1E1E1',
           '200': '#CFCFCF',
           '300': '#B1B1B1',
@@ -49,7 +38,7 @@ export default {
         },
         // Supporting
         'yellow-vivid': {
-          '050': '#FFFBEA',
+          '50': '#FFFBEA',
           '100': '#FFF3C4',
           '200': '#FCE588',
           '300': '#FADB5F',
@@ -61,7 +50,7 @@ export default {
           '900': '#8D2B0B',
         },
         'red-vivid': {
-          '050': '#FFE3E3',
+          '50': '#FFE3E3',
           '100': '#FFBDBD',
           '200': '#FF9B9B',
           '300': '#F86A6A',

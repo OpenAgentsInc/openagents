@@ -16,7 +16,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap" rel="stylesheet">
 </head>
 
-<body class="bg-white dark:bg-black text-black dark:bg-haiti">
+<body class="bg-white dark:bg-black text-black dark:bg-black">
     <x-header />
     <div class="max-w-4xl mx-auto my-10 p-6">
         @yield('content')
