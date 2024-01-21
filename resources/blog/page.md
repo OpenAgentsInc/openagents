@@ -1,17 +1,17 @@
-# Blog post number one
-{{ date: '2023-04-06T00:00Z' }}
+# The convergence of Bitcoin & AI
+--date: '2024-01-20T04:00Z'--
 
-hey fools i gave a talk
+Slides, links and video from our presentation today at Pleb Lab in Austin:
 
 ![](/images/blog/001/slide1.png)
 
-## talked about shit
+![](/images/blog/001/slide2.png)
 
-asdfasdfasdfsadf
+### Resources
 
-### watch it here
-asdfasdf
-
-- asdf asd
-- a sdfas df
-- asdfasdf
+- [How (Actually) Open AI Wins](https://hivemind.vc/ai/)
+- [HTMX](https://htmx.org/)
+- [Extism](https://extism.org/)
+- [Nostr](https://github.com/nostr-protocol/nostr)
+- [L402](https://docs.lightning.engineering/the-lightning-network/l402)
+- [GPUtopia](https://gputopia.ai/)
