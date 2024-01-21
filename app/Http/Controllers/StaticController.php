@@ -12,6 +12,11 @@ class StaticController extends Controller
         return view('splash');
     }
 
+    public function blog()
+    {
+        return view('blog');
+    }
+
     public function thesis()
     {
         return view('thesis');
