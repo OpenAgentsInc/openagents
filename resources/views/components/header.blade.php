@@ -7,11 +7,9 @@
             </div>
             <div class="flex items-center">
                 <nav>
-                    <!--
                     <ul class="flex items-center gap-x-8">
                         <li><a class="hover:text-slate-500 dark:hover:text-slate-400" href="/blog">Blog</a></li>
                     </ul>
-                    -->
                 </nav>
                 <div class="flex items-center border-l border-slate-200 ml-6 pl-6 dark:border-portgore">
                     <x-theme-switcher />
