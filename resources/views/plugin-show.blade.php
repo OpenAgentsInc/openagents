@@ -17,6 +17,24 @@
     <p>{{ $plugin->description }}</p>
 </div>
 
+<x-card>
+    <x-card-header>
+        <x-card-title>
+            Card Title
+        </x-card-title>
+        <x-card-description>
+            Card Description
+        </x-card-description>
+    </x-card-header>
+    <x-card-content>
+        Card Content
+    </x-card-content>
+    <x-card-footer>
+        Card Footer
+    </x-card-footer>
+</x-card>
+
+
 <div class="mt-8 flex gap-6">
     <div class="flex-1 flex flex-col">
         <h3 class="text-xl font-semibold mb-4 px-6">Input</h3>
