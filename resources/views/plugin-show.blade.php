@@ -24,6 +24,22 @@
 
 <div class="prose dark:prose-invert">
     <p>{{ $plugin->description }}</p>
-    <!-- <p><a href="{{ $plugin->wasm_url }}" class="text-blue-500 hover:text-blue-700">{{ $plugin->wasm_url }}</a></p> -->
 </div>
+
+<div class="mt-8 p-6 bg-grey-100 rounded-lg shadow-lg">
+    <h3 class="text-xl font-semibold mb-4">Test Plugin</h3>
+    <form action="{{ route('plugins.test', $plugin->id) }}" method="POST">
+        @csrf
+        <div class="mb-4">
+            <label for="test-input" class="block text-md font-medium mb-2">Input for Testing</label>
+            <input type="text" id="test-input" name="test_input"
+                class="px-3 py-2 w-full rounded-md border-gray-300 shadow-sm focus:border-teal-vivid-300 focus:ring focus:ring-teal-vivid-200 focus:ring-opacity-50"
+                placeholder="Enter test data">
+        </div>
+        <x-button type="submit">
+            Test Plugin
+        </x-button>
+    </form>
+</div>
+
 @endsection

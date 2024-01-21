@@ -12,6 +12,7 @@ Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');
 Route::get('/plugin/{plugin}', [PluginController::class, 'show'])->name('plugins.show');
 Route::get('/plugins/create', [PluginController::class, 'create'])->name('plugins.create');
 Route::post('/plugins', [PluginController::class, 'store'])->name('plugins.store');
+Route::post('/plugins/test', [PluginController::class, 'test'])->name('plugins.test');
 
 // Static
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
