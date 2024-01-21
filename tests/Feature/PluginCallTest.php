@@ -11,4 +11,4 @@ test('can call a plugin', function () {
     ]);
     $response->assertStatus(200);
     $response->assertSee('6');
-});
+})->group('integration');
