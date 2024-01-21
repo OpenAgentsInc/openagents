@@ -21,7 +21,7 @@
     <div class="flex-1 flex flex-col">
         <h3 class="text-xl font-semibold mb-4 px-6">Input</h3>
         <div class="flex-1 p-6 bg-grey-100 rounded-lg shadow-lg">
-            <form action="{{ route('plugins.call', $plugin->id) }}" method="POST"
+            <form hx-post="{{ route('plugins.call') }}" hx-target="#plugin-output" hx-swap="outerHTML"
                 class="flex flex-col h-full">
                 @csrf
                 <!-- create a hidden input with the plugin id -->

@@ -12,14 +12,17 @@ class PluginController extends Controller
 {
     public function call()
     {
-        $function = "count_vowels"; // request('function')
+        $function = "count_vowels"; // or request('function')
         $plugin = Plugin::find(request('plugin_id'));
+
         if (!$plugin) {
             return new Response('Plugin not found', 404);
         }
 
         $output = $plugin->call($function, request('input'));
-        return response()->view('plugin-call-output', ['output' => $output]);
+
+        return with(new HtmxResponse())
+            ->renderFragment('plugin-call-output', 'output', compact('output'));
     }
 
     public function index()
