@@ -16,10 +16,10 @@
   }
 
   input[type="range"]::-webkit-slider-runnable-track {
-      @apply appearance-none bg-teal-vivid-100 rounded-full;
+      @apply appearance-none bg-teal-100 rounded-full;
   }
 
   input[type="range"]::-moz-range-track {
-      @apply appearance-none bg-teal-vivid-100 rounded-full;
+      @apply appearance-none bg-teal-100 rounded-full;
   }
 }

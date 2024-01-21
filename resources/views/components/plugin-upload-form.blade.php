@@ -24,8 +24,7 @@
 
         <div>
             <label for="fee" class="block text-md font-medium">Fee</label>
-            <input type="range"
-                class="mt-1 w-full rounded-md focus:ring-teal-vivid-300 focus:ring-opacity-50 accent-teal-vivid-400"
+            <input type="range" class="mt-1 w-full rounded-md focus:ring-teal-300 focus:ring-opacity-50 accent-teal-400"
                 id="fee" name="fee" min="0" max="100" value="0">
             <span id="fee-value" class="text-md font-medium">0</span> sats
         </div>

@@ -13,7 +13,7 @@ export default {
       white: '#fff',
       transparent: 'transparent',
       // Primary
-      'teal-vivid': {
+      'teal': {
         '50': '#F0FCF9',
         '100': '#C6F7E9',
         '200': '#8EEDD1',
@@ -39,7 +39,7 @@ export default {
         '900': '#222222',
       },
       // Supporting
-      'yellow-vivid': {
+      'yellow': {
         '50': '#FFFBEA',
         '100': '#FFF3C4',
         '200': '#FCE588',
@@ -51,7 +51,7 @@ export default {
         '800': '#B44D12',
         '900': '#8D2B0B',
       },
-      'red-vivid': {
+      'red': {
         '50': '#FFE3E3',
         '100': '#FFBDBD',
         '200': '#FF9B9B',
