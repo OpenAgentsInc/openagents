@@ -1,5 +1,16 @@
-## Blog post number one
+# Blog post number one
+
+hey fools i gave a talk
 
 ![](/images/blog/001/slide1.png)
 
-yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff yo heres the stuff
+## talked about shit
+
+asdfasdfasdfsadf
+
+### watch it here
+asdfasdf
+
+- asdf asd
+- a sdfas df
+- asdfasdf
