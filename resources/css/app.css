@@ -13,21 +13,6 @@
       @apply text-black dark:text-white;
   }
 
-
-  input[type="range"]::-webkit-slider-thumb {
-    /* -webkit-appearance: none;
-    appearance: none; */
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    cursor: pointer;
-    /* @apply bg-grey-200 dark:bg-grey-800; */
-  }
-
-  input[type="range"]::-webkit-slider-thumb:hover {
-    @apply bg-teal-400;
-  }
-
   output {
     display: block;
     text-align: center;
@@ -55,10 +40,11 @@
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none; /* Override default look */
   appearance: none;
-  width: 25px; /* Set a specific slider handle width */
-  height: 25px; /* Slider handle height */
-  @apply bg-teal-500;
+  width: 20px; /* Set a specific slider handle width */
+  height: 20px; /* Slider handle height */
+  @apply bg-teal-500 rounded-full;
   cursor: pointer; /* Cursor on hover */
+
 }
 
 .slider::-moz-range-thumb {
