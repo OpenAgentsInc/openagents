@@ -13,13 +13,9 @@ use Pgvector\Laravel\Vector;
 
 trait StepActions
 {
-    // public $conversation;
-
-    // public function setConversation($conversation)
-    // {
-    //     \Log::info('Setting conversation in StepActions trait');
-    //     $this->conversation = $conversation;
-    // }
+    public function plugin() {
+        return json_encode('{"count":3,"total":3,"vowels":"aeiouAEIOU"}');
+    }
 
     public function validation($input, $conversation)
     {

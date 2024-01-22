@@ -80,5 +80,5 @@ it('can process a plugin', function () {
 
     // run the step
     $output = $step_executed->run();
-    expect($output)->toBe('{"count":3,"total":3,"vowels":"aeiouAEIOU"}');
+    expect($output)->toBe(json_encode('{"count":3,"total":3,"vowels":"aeiouAEIOU"}'));
 });
