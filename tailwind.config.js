@@ -12,6 +12,7 @@ export default {
       black: '#000',
       white: '#fff',
       transparent: 'transparent',
+      bitcoin: '#FF9900',
       // Primary
       'teal': {
         '50': '#F0FCF9',
