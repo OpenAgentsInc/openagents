@@ -31,7 +31,7 @@
 
                 <div class="flex justify-center">
                     <x-button variant="default" type="submit">
-                        Upload Plugin
+                        Create Plugin
                     </x-button>
                 </div>
             </form>
