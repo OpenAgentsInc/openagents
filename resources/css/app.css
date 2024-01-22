@@ -13,6 +13,61 @@
       @apply text-black dark:text-white;
   }
 
+
+  input[type="range"]::-webkit-slider-thumb {
+    /* -webkit-appearance: none;
+    appearance: none; */
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    /* @apply bg-grey-200 dark:bg-grey-800; */
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    @apply bg-teal-400;
+  }
+
+  output {
+    display: block;
+    text-align: center;
+  }
+
+/* The slider itself */
+.slider {
+  -webkit-appearance: none;  /* Override default CSS styles */
+  appearance: none;
+  width: 100%; /* Full-width */
+  height: 25px; /* Specified height */
+  @apply bg-teal-100;
+  outline: none; /* Remove outline */
+  opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
+  -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+  transition: opacity .2s;
+}
+
+/* Mouse-over effects */
+.slider:hover {
+  opacity: 1; /* Fully shown on mouse-over */
+}
+
+/* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none; /* Override default look */
+  appearance: none;
+  width: 25px; /* Set a specific slider handle width */
+  height: 25px; /* Slider handle height */
+  @apply bg-teal-500;
+  cursor: pointer; /* Cursor on hover */
+}
+
+.slider::-moz-range-thumb {
+  width: 25px; /* Set a specific slider handle width */
+  height: 25px; /* Slider handle height */
+  @apply bg-teal-500;
+  cursor: pointer; /* Cursor on hover */
+}
+
   .prose img {
       @apply relative mt-8 overflow-hidden rounded-xl bg-grey-50 dark:bg-grey-900 border-2 border-grey-300 dark:border-grey-700;
   }
@@ -25,21 +80,13 @@
       @apply -mt-4 text-center mb-8;
   }
 
-  input[type="range"]::-webkit-slider-runnable-track {
-      @apply appearance-none bg-teal-100 rounded-full;
-  }
-
-  input[type="range"]::-moz-range-track {
-      @apply appearance-none bg-teal-100 rounded-full;
-  }
-
   [type='text']:focus, input:where(:not([type])):focus, [type='email']:focus, [type='url']:focus, [type='password']:focus, [type='number']:focus, [type='date']:focus, [type='datetime-local']:focus, [type='month']:focus, [type='search']:focus, [type='tel']:focus, [type='time']:focus, [type='week']:focus, [multiple]:focus, textarea:focus, select:focus {
     outline: 2px solid transparent;
     outline-offset: 2px;
     --tw-ring-inset: var(--tw-empty,/*!*/ /*!*/);
     --tw-ring-offset-width: 0px;
     --tw-ring-offset-color: #fff;
-    --tw-ring-color: #2563eb;
+    --tw-ring-color: #04AA6D;
     --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
     --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);
     box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);

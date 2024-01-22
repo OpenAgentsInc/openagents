@@ -5,7 +5,7 @@
         </x-card-header>
         <x-card-content>
             <form id="upload-plugin" method="POST" action="{{ route('plugins.store') }}"
-                enctype="multipart/form-data" class="space-y-4 prose dark:prose-invert">
+                enctype="multipart/form-data" class="space-y-4">
                 @csrf
                 <div>
                     <label for="name" class="block text-md font-medium">Name</label>
@@ -24,10 +24,9 @@
 
                 <div>
                     <label for="fee" class="block text-md font-medium">Fee</label>
-                    <input type="range"
-                        class="mt-1 w-full rounded-md focus:ring-teal-300 focus:ring-opacity-50 accent-teal-400"
-                        id="fee" name="fee" min="0" max="100" value="0">
-                    <span id="fee-value" class="text-md font-medium">0</span> sats
+                    <div class="w-full">
+                        <x-slider min="0" max="100" step="1" />
+                    </div>
                 </div>
 
                 <div class="flex justify-center">
@@ -39,14 +38,4 @@
         </x-card-content>
     </x-card>
 
-    <script>
-        // add an event listener to the slider
-        document.getElementById("fee").addEventListener("input", function () {
-            // get the value of the slider
-            var fee = document.getElementById("fee").value;
-            // set the text of the span to the value of the slider
-            document.getElementById("fee-value").innerHTML = fee;
-        });
-
-    </script>
 @endfragment

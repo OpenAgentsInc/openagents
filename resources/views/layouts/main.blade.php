@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"
         integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous">
     </script>
-    @include('partials.css')
+    @include('partials.vite')
     @include('analytics')
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
