@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"
         integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous">
     </script>
-    @include('partials.css')
+    @include('partials.vite')
     @include('analytics')
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,7 +18,7 @@
 
 <body class="bg-white dark:bg-black text-black dark:bg-black">
     <x-header />
-    <div class="max-w-7xl mx-auto my-10 p-6">
+    <div class="max-w-5xl mx-auto my-10 p-6">
         @yield('content')
     </div>
 </body>

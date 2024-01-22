@@ -4,7 +4,7 @@
 
 @section('content')
 <a href="/plugins/create" class="inline-block">
-    <x-button variant="primary">
+    <x-button>
         Create Plugin
     </x-button>
 </a>
