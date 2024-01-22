@@ -45,7 +45,7 @@ class ConciergeWithPluginSeeder extends Seeder
         // Create main chat task
         $task = Task::create([
             'agent_id' => $agent->id,
-            'description' => 'Respond to user chat message after consulting knowledge base'
+            'description' => 'Respond to user chat message after consulting knowledge base, but only count the vowels of what you would respond with'
         ]);
 
         // Create the steps
