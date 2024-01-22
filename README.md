@@ -71,3 +71,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 55. [Plugin Registry UI](https://twitter.com/OpenAgentsInc/status/1748445660146216995)
 56. [Deleting JavaScript](https://twitter.com/OpenAgentsInc/status/1748536252733739412)
 57. [Markdown Blog](https://twitter.com/OpenAgentsInc/status/1748909829500842046)
+58. [Agent Uses Plugin](https://twitter.com/OpenAgentsInc/status/1749490769151287318)
