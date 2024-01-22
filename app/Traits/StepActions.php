@@ -16,7 +16,7 @@ trait StepActions
 {
     public function plugin($input)
     {
-        $this->validatePlugin($input);
+        $input = $this->validatePlugin($input);
         $plugin_id = $input['plugin_id'];
         $plugin = Plugin::findOrFail($plugin_id);
         $pluginOutput = $plugin->call($input['function'], $input['input']);
@@ -149,11 +149,14 @@ trait StepActions
         // If we're in a test environment, fake this
         if (env('APP_ENV') == 'testing') {
             $last = "This is a test response.";
-            $conversation->messages()->create([
-                'user_id' => auth()->id() ?? null,
-                'body' => $last,
-                'sender' => 'agent'
-            ]);
+
+            if ($conversation) {
+                $conversation->messages()->create([
+                    'user_id' => auth()->id() ?? null,
+                    'body' => $last,
+                    'sender' => 'agent'
+                ]);
+            }
         } else {
             // Initiate new StreamController
             $streamer = new StreamController();
@@ -202,6 +205,16 @@ trait StepActions
             dd($input);
         }
 
+        // If the array has only one key and the key is "output", then we've come from a dumb inference step
+        // and we need to return the output as the input with the function set to "count_vowels" and the plugin_id set to 1
+        if (count($input) === 1 && array_key_exists('output', $input)) {
+            return [
+                'plugin_id' => 1,
+                'input' => $input['output'],
+                'function' => 'count_vowels'
+            ];
+        }
+
         if (count($input) !== 3) {
             echo "Input does not have three keys.\n";
             dd($input);
@@ -221,5 +234,7 @@ trait StepActions
             echo "Input does not have key function.\n";
             dd($input);
         }
+
+        return $input;
     }
 }
