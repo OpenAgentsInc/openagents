@@ -117,17 +117,16 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    max-width: 500px;
     margin: 0 auto;
     height: 4rem;
-    width: 80%;
+    width: 100%;
     background: #fff;
     padding: 0px 10px;
   }
 
   .value {
     font-size: 24px;
-    width: 40px;
+    width: 30px;
     text-align: center;
   }
 

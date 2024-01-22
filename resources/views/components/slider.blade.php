@@ -1,5 +1,5 @@
 <div class="range">
-    <input type="range" min="0" max="50" value="0" id="range" />
+    <input type="range" min="0" max="100" value="0" step="1" id="range" />
     <div
         class="relative bg-elevation3 p-2 rounded-md font-sans inline-flex items-center justify-center text-grey-500 dark:text-grey-300">
         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
