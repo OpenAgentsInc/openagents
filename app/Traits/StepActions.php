@@ -205,16 +205,6 @@ trait StepActions
             dd($input);
         }
 
-        // If the array has only one key and the key is "output", then we've come from a dumb inference step
-        // and we need to return the output as the input with the function set to "count_vowels" and the plugin_id set to 1
-        if (count($input) === 1 && array_key_exists('output', $input)) {
-            return [
-                'plugin_id' => 1,
-                'input' => $input['output'],
-                'function' => 'count_vowels'
-            ];
-        }
-
         if (count($input) !== 3) {
             echo "Input does not have three keys.\n";
             dd($input);
