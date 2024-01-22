@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Http\Controllers\StreamController;
 use App\Models\Datapoint;
 use App\Models\Embedding;
+use App\Models\Plugin;
 use App\Services\Embedder;
 use App\Services\QueenbeeGateway;
 use App\Services\OpenAIGateway;
@@ -13,8 +14,13 @@ use Pgvector\Laravel\Vector;
 
 trait StepActions
 {
-    public function plugin() {
-        return json_encode('{"count":3,"total":3,"vowels":"aeiouAEIOU"}');
+    public function plugin($input)
+    {
+        $this->validatePlugin($input);
+        $plugin_id = $input['plugin_id'];
+        $plugin = Plugin::findOrFail($plugin_id);
+        $pluginOutput = $plugin->call($input['function'], $input['input']);
+        return json_encode($pluginOutput);
     }
 
     public function validation($input, $conversation)
@@ -186,5 +192,34 @@ trait StepActions
         return [
             "output" => $last
         ];
+    }
+
+    // expect an array with plugin_id and input, throw error otherwise.
+    private function validatePlugin($input)
+    {
+        if (!is_array($input)) {
+            echo "Input is not an array.\n";
+            dd($input);
+        }
+
+        if (count($input) !== 3) {
+            echo "Input does not have three keys.\n";
+            dd($input);
+        }
+
+        if (!array_key_exists('plugin_id', $input)) {
+            echo "Input does not have key plugin_id.\n";
+            dd($input);
+        }
+
+        if (!array_key_exists('input', $input)) {
+            echo "Input does not have key input.\n";
+            dd($input);
+        }
+
+        if (!array_key_exists('function', $input)) {
+            echo "Input does not have key function.\n";
+            dd($input);
+        }
     }
 }

@@ -75,7 +75,11 @@ it('can process a plugin', function () {
     // create a new step_executed for this step
     $step_executed = StepExecuted::factory()->create([
         'step_id' => $step->id,
-        'input' => json_encode(['plugin_id' => $plugin->id, 'input' => 'Hello world!'])
+        'input' => json_encode([
+            'plugin_id' => $plugin->id,
+            'input' => 'Hello world!',
+            'function' => 'count_vowels'
+        ])
     ]);
 
     // run the step
