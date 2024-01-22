@@ -229,4 +229,4 @@ it('can use plugin', function () {
     expect(TaskExecuted::count())->toBe(1);
     expect(StepExecuted::count())->toBe($agent->steps->count());
     expect(StepExecuted::count())->toBe(5);
-});
+})->group('integration');
