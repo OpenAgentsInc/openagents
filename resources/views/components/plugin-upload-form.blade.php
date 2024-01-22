@@ -25,6 +25,7 @@
                 <div>
                     <x-label for="fee">Fee</x-label>
                     <div class="w-full">
+                        <input type="hidden" name="fee" id="slider-input" value="0" />
                         <x-slider min="0" max="100" step="1" />
                     </div>
                 </div>

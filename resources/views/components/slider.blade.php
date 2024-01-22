@@ -12,6 +12,7 @@
 <script>
     const sliderEl = document.querySelector("#range")
     const sliderValue = document.querySelector(".value")
+    const sliderInput = document.querySelector("#slider-input")
 
     sliderEl.addEventListener("input", (event) => {
         const tempSliderValue = event.target.value;
@@ -21,6 +22,8 @@
         const progress = (tempSliderValue / sliderEl.max) * 100;
 
         sliderEl.style.background = `linear-gradient(to right, #FF9900 ${progress}%, #ccc ${progress}%)`;
+
+        sliderInput.value = tempSliderValue;
     })
 
 </script>
