@@ -12,6 +12,7 @@ use App\Models\TaskExecuted;
 use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
+use Database\Seeders\ConciergeWithPluginSeeder;
 
 it('can create default chat task', function () {
     $agent = Agent::factory()->create();
@@ -143,7 +144,7 @@ it('can run', function () {
 
     expect(TaskExecuted::count())->toBe(1);
     expect(StepExecuted::count())->toBe($agent->steps->count());
-})->group('integration');
+});
 
 it('belongs to a user', function () {
     $user = User::factory()->create();
@@ -214,4 +215,18 @@ it('has thoughts', function () {
 
     $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->thoughts);
     $this->assertInstanceOf(Thought::class, $agent->thoughts->first());
+});
+
+it('can use plugin', function () {
+    $this->seed(ConciergeWithPluginSeeder::class);
+    // Assert 0 TaskExecuted and StepExecuted
+    expect(TaskExecuted::count())->toBe(0);
+    expect(StepExecuted::count())->toBe(0);
+
+    $agent = Agent::first();
+    $agent->run(["input" => "Does this work?"]);
+
+    expect(TaskExecuted::count())->toBe(1);
+    expect(StepExecuted::count())->toBe($agent->steps->count());
+    expect(StepExecuted::count())->toBe(5);
 });

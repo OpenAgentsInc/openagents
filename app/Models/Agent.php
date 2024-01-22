@@ -169,15 +169,27 @@ class Agent extends Model
             'status' => 'pending'
         ]);
 
-        // Loop through all the task's steps, passing the output of each to the next
         foreach ($task->steps as $step) {
             if ($step->order !== 1) {
                 $input = $prev_step_executed->output;
             }
+
+            // if step category is "plugin", augment the input with params
+            if ($step->category === 'plugin') {
+                $params = json_decode($step->params);
+                $input = json_encode([
+                    'input' => $prev_step_executed->output["output"], // Assign the output directly
+                    'plugin_id' => $params->plugin_id,
+                    'function' => $params->function,
+                ]);
+            } else {
+                $input = json_encode($input);
+            }
+
             // Create a new StepExecuted with this step and task_executed
             $step_executed = StepExecuted::create([
                 'step_id' => $step->id,
-                'input' => json_encode($input),
+                'input' => $input,
                 'order' => $step->order,
                 'task_executed_id' => $task_executed->id,
                 'user_id' => auth()->id(),
