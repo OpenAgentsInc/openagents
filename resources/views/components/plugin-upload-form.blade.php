@@ -5,21 +5,17 @@
         @csrf
         <div>
             <label for="name" class="block text-md font-medium">Name</label>
-            <input type="text"
-                class="px-3 py-2 mt-1 block w-full rounded-md border-grey-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-grey-100 dark:bg-grey-700 dark:border-grey-600 dark:text-white"
-                id="name" name="name" placeholder="Plugin Name">
+            <x-input id="name" name="name" placeholder="Plugin Name" class="mt-1 block w-full" />
         </div>
         <div>
             <label for="description" class="block text-md font-medium">Description</label>
-            <textarea
+            <textarea id="description" name="description"
                 class="px-3 py-2 mt-1 block w-full rounded-md border-grey-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-grey-100 dark:bg-grey-700 dark:border-grey-600 dark:text-white"
-                id="description" name="description" placeholder="Plugin Description"></textarea>
+                placeholder="Plugin Description"></textarea>
         </div>
         <div>
             <label for="wasm_url" class="block text-md font-medium">Wasm URL</label>
-            <input type="text"
-                class="px-3 py-2 mt-1 block w-full rounded-md border-grey-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-grey-100 dark:bg-grey-700 dark:border-grey-600 dark:text-white"
-                id="wasm_url" name="wasm_url" placeholder="Plugin Wasm URL">
+            <x-input id="wasm_url" name="wasm_url" placeholder="Plugin Wasm URL" class="mt-1 block w-full" />
         </div>
 
         <div>

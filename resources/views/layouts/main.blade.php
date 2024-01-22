@@ -18,7 +18,7 @@
 
 <body class="bg-white dark:bg-black text-black dark:bg-black">
     <x-header />
-    <div class="max-w-7xl mx-auto my-10 p-6">
+    <div class="max-w-5xl mx-auto my-10 p-6">
         @yield('content')
     </div>
 </body>
