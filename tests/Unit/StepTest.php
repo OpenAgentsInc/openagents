@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\Agent;
-use App\Models\Run;
+use App\Models\Plugin;
 use App\Models\Step;
+use App\Models\StepExecuted;
 use App\Models\Task;
+use Database\Seeders\PluginSeeder;
 
 it('has a category', function () {
     $step = Step::factory()->create(['category' => 'inference']);
@@ -59,3 +61,24 @@ it('belongs to a task', function () {
 });
 
 // TODO: has optional polymorphic ref
+
+it('can process a plugin', function () {
+    $this->seed(PluginSeeder::class);
+
+    $plugin = Plugin::first();
+    expect($plugin->wasm_url)->toBe("https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm");
+
+    $step = Step::factory()->create([
+        'category' => 'plugin'
+    ]);
+
+    // create a new step_executed for this step
+    $step_executed = StepExecuted::factory()->create([
+        'step_id' => $step->id,
+        'input' => json_encode(['plugin_id' => $plugin->id, 'input' => 'Hello world!'])
+    ]);
+
+    // run the step
+    $output = $step_executed->run();
+    expect($output)->toBe('{"count":3,"total":3,"vowels":"aeiouAEIOU"}');
+});
