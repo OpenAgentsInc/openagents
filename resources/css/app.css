@@ -24,7 +24,8 @@
   appearance: none;
   width: 100%; /* Full-width */
   height: 25px; /* Specified height */
-  @apply bg-teal-100;
+  /* @apply bg-teal-100; */
+  @apply relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20;
   outline: none; /* Remove outline */
   opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
   -webkit-transition: .2s; /* 0.2 seconds transition on hover */
@@ -42,9 +43,10 @@
   appearance: none;
   width: 20px; /* Set a specific slider handle width */
   height: 20px; /* Slider handle height */
-  @apply bg-teal-500 rounded-full;
+  /* @apply bg-teal-500 rounded-full; */
   cursor: pointer; /* Cursor on hover */
-
+  box-shadow: -407px 0 0 400px #f50;
+  @apply block h-4 w-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
 }
 
 .slider::-moz-range-thumb {
@@ -52,6 +54,13 @@
   height: 25px; /* Slider handle height */
   @apply bg-teal-500;
   cursor: pointer; /* Cursor on hover */
+}
+
+input[type="range"] {
+  /*  ...  */
+  /*  slider progress trick  */
+  overflow: hidden;
+  border-radius: 16px;
 }
 
   .prose img {
