@@ -9,7 +9,7 @@ use App\Models\Plugin;
 test("user can see upload plugin form", function () {
     $this->get('/plugins/create')
         ->assertOk()
-        ->assertSee('Upload Plugin')
+        ->assertSee('Create Plugin')
         ->assertViewIs('plugin-create')
         ->assertSee('upload-plugin');
 });

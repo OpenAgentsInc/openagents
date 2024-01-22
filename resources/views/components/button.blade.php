@@ -1,16 +1,24 @@
-@props(['variant' => 'primary'])
+@props(['variant' => 'default', 'size' => 'default'])
 
-    @php
-        $baseClasses = 'px-4 py-2 border rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2';
-        $variantClasses = match($variant) {
-        'primary' => 'bg-teal-500 hover:bg-teal-600 text-white border-teal-500
-        focus:ring-teal-500',
-        'secondary' => 'bg-grey-100 hover:bg-grey-200 text-grey-800 border-grey-200 focus:ring-grey-300',
+@php
+    $baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
+    $variantClasses = match($variant) {
+        'default' => 'bg-primary text-primary-foreground shadow hover:bg-primary/90',
+        'destructive' => 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
+        'outline' => 'border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground',
+        'secondary' => 'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80',
+        'ghost' => 'hover:bg-accent hover:text-accent-foreground',
+        'link' => 'text-primary underline-offset-4 hover:underline',
         default => ''
-        };
-    @endphp
+    };
+    $sizeClasses = match($size) {
+        'sm' => 'h-8 rounded-md px-3 text-xs',
+        'lg' => 'h-10 rounded-md px-8',
+        'icon' => 'h-9 w-9',
+        default => 'h-9 px-4 py-2'
+    };
+@endphp
 
-    <button
-        {{ $attributes->merge(['class' => "$baseClasses $variantClasses"]) }}>
-        {{ $slot }}
-    </button>
+<button {{ $attributes->merge(['class' => "$baseClasses $variantClasses $sizeClasses"]) }}>
+    {{ $slot }}
+</button>
