@@ -18,51 +18,6 @@
     text-align: center;
   }
 
-/* The slider itself */
-.slider {
-  -webkit-appearance: none;  /* Override default CSS styles */
-  appearance: none;
-  width: 100%; /* Full-width */
-  height: 25px; /* Specified height */
-  /* @apply bg-teal-100; */
-  @apply relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20;
-  outline: none; /* Remove outline */
-  opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
-  -webkit-transition: .2s; /* 0.2 seconds transition on hover */
-  transition: opacity .2s;
-}
-
-/* Mouse-over effects */
-.slider:hover {
-  opacity: 1; /* Fully shown on mouse-over */
-}
-
-/* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none; /* Override default look */
-  appearance: none;
-  width: 20px; /* Set a specific slider handle width */
-  height: 20px; /* Slider handle height */
-  /* @apply bg-teal-500 rounded-full; */
-  cursor: pointer; /* Cursor on hover */
-  box-shadow: -407px 0 0 400px #f50;
-  @apply block h-4 w-4 rounded-full border border-primary/50 bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
-}
-
-.slider::-moz-range-thumb {
-  width: 25px; /* Set a specific slider handle width */
-  height: 25px; /* Slider handle height */
-  @apply bg-teal-500;
-  cursor: pointer; /* Cursor on hover */
-}
-
-input[type="range"] {
-  /*  ...  */
-  /*  slider progress trick  */
-  overflow: hidden;
-  border-radius: 16px;
-}
-
   .prose img {
       @apply relative mt-8 overflow-hidden rounded-xl bg-grey-50 dark:bg-grey-900 border-2 border-grey-300 dark:border-grey-700;
   }
@@ -87,6 +42,97 @@ input[type="range"] {
     box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
     border-color: var(--ring);
   }
+
+
+
+  input[type="range"] {
+    /* removing default appearance */
+    -webkit-appearance: none;
+    appearance: none;
+    /* creating a custom design */
+    width: 100%;
+    cursor: pointer;
+    outline: none;
+    border-radius: 15px;
+    /*  overflow: hidden;  remove this line*/
+
+    /* New additions */
+    height: 6px;
+    background: #ccc;
+  }
+
+  /* Thumb: webkit */
+  input[type="range"]::-webkit-slider-thumb {
+    /* removing default appearance */
+    -webkit-appearance: none;
+    appearance: none;
+    /* creating a custom design */
+    height: 15px;
+    width: 15px;
+    background-color: #FF9900;
+    border-radius: 50%;
+    border: none;
+
+    /* box-shadow: -407px 0 0 400px #FF9900; emove this line */
+    transition: .2s ease-in-out;
+  }
+
+  /* Thumb: Firefox */
+  input[type="range"]::-moz-range-thumb {
+    height: 15px;
+    width: 15px;
+    background-color: #FF9900;
+    border-radius: 50%;
+    border: none;
+
+    /* box-shadow: -407px 0 0 400px #FF9900; emove this line */
+    transition: .2s ease-in-out;
+  }
+
+  /* Hover, active & focus Thumb: Webkit */
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 10px rgba(255,153,0, .1)
+  }
+  input[type="range"]:active::-webkit-slider-thumb {
+    box-shadow: 0 0 0 13px rgba(255,153,0, .2)
+  }
+  input[type="range"]:focus::-webkit-slider-thumb {
+    box-shadow: 0 0 0 13px rgba(255,153,0, .2)
+  }
+
+  /* Hover, active & focus Thumb: Firfox */
+
+  input[type="range"]::-moz-range-thumb:hover {
+    box-shadow: 0 0 0 10px rgba(255,153,0, .1)
+  }
+  input[type="range"]:active::-moz-range-thumb {
+    box-shadow: 0 0 0 13px rgba(255,153,0, .2)
+  }
+  input[type="range"]:focus::-moz-range-thumb {
+    box-shadow: 0 0 0 13px rgba(255,153,0, .2)
+  }
+
+  .range {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    max-width: 500px;
+    margin: 0 auto;
+    height: 4rem;
+    width: 80%;
+    background: #fff;
+    padding: 0px 10px;
+  }
+
+  .value {
+    font-size: 24px;
+    width: 40px;
+    text-align: center;
+  }
+
+
+
 
   :root {
     --background: 0 0% 100%;
