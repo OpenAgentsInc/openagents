@@ -25,7 +25,6 @@
     </div>
 
     <script>
-// Node constructor class
 function StepNode() {
     this.addInput("Prev", "Step");
     this.addOutput("Next", "Step");
@@ -40,16 +39,35 @@ function StepNode() {
         params: '{}'
     };
 
+    // Define widgets
     this.widgets_up = true; // Put widgets at the top of the node
-    this.addWidget("text", "Name", "", (v) => { this.properties.stepName = v; });
-    this.addWidget("text", "Entry Type", "", (v) => { this.properties.entryType = v; });
-    this.addWidget("text", "Category", "", (v) => { this.properties.category = v; });
-    this.addWidget("number", "Order", 0, (v) => { this.properties.order = v; });
-    this.addWidget("text", "Description", "", (v) => { this.properties.description = v; });
-    this.addWidget("text", "Error Message", "", (v) => { this.properties.errorMessage = v; });
-    this.addWidget("text", "Success Action", "", (v) => { this.properties.successAction = v; });
-    this.addWidget("text", "Params (JSON)", "{}", (v) => { this.properties.params = v; });
+    this.nameWidget = this.addWidget("text", "Name", "", (v) => { this.properties.stepName = v; });
+    this.entryTypeWidget = this.addWidget("text", "Entry Type", "", (v) => { this.properties.entryType = v; });
+    this.categoryWidget = this.addWidget("text", "Category", "", (v) => { this.properties.category = v; });
+    // this.orderWidget = this.addWidget("number", "Order", 0, (v) => { this.properties.order = v; });
+    this.descriptionWidget = this.addWidget("text", "Description", "", (v) => { this.properties.description = v; });
+    this.errorMessageWidget = this.addWidget("text", "Error Message", "", (v) => { this.properties.errorMessage = v; });
+    this.successActionWidget = this.addWidget("text", "Success Action", "", (v) => { this.properties.successAction = v; });
+    this.paramsWidget = this.addWidget("text", "Params (JSON)", "{}", (v) => { this.properties.params = v; });
+    this.orderWidget = this.addWidget("text", "Order", "0", (v) => { 
+        this.properties.order = parseInt(v, 10); 
+    }, { 
+        step: 1, min: 0, type: "number" 
+    });
 }
+
+// Update widgets with current property values
+StepNode.prototype.updateWidgets = function() {
+    this.nameWidget.value = this.properties.stepName;
+    this.entryTypeWidget.value = this.properties.entryType;
+    this.categoryWidget.value = this.properties.category;
+    this.orderWidget.value = this.properties.order.toString();
+    // this.orderWidget.value = this.properties.order;
+    this.descriptionWidget.value = this.properties.description;
+    this.errorMessageWidget.value = this.properties.errorMessage;
+    this.successActionWidget.value = this.properties.successAction;
+    this.paramsWidget.value = this.properties.params;
+};
 
 // Name to show
 StepNode.title = "Step";
@@ -57,7 +75,7 @@ StepNode.title = "Step";
 // Function to call when the node is executed
 StepNode.prototype.onExecute = function() {
     this.setOutputData(0, this.getInputData(0));
-}
+};
 
 // Function to draw additional information on the node
 // StepNode.prototype.onDrawForeground = function(ctx) {
@@ -97,6 +115,8 @@ var taskIndex = 0;
         stepNode.properties.params = JSON.stringify(@json($step->params));
         stepNode.pos = [xOffset + stepIndex * 280, yOffset + stepIndex * 20];
         graph.add(stepNode);
+
+        stepNode.updateWidgets();
 
         if(previousStepNode != null) {
             previousStepNode.connect(0, stepNode, 0);
