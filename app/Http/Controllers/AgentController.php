@@ -54,7 +54,7 @@ class AgentController extends Controller
             $owner = $agent->user->username;
 
             $conversation = $agent->getUserConversation();
-            return Inertia::render('AgentView', [
+            return view('agent-view', [
                 'agent' => $agent,
                 'conversation' => $conversation,
                 'owner' => $owner,
