@@ -18,19 +18,37 @@
             <p><strong>Balance:</strong> {{ $agent->balance }}</p>
         </div>
 
-        <div class="bg-white p-4 shadow rounded-lg mb-4">
+        <div class="bg-white p-4 shadow rounded-lg mb-4 w-screen">
             <h2 class="text-xl font-semibold mb-2">Tasks and Steps</h2>
-            <canvas id="mycanvas" width="1024" height="720" style="border: 1px solid"></canvas>
+            <canvas id="mycanvas" width="1600" height="800" style="border: 1px solid"></canvas>
         </div>
     </div>
 
     <script>
-
 // Node constructor class
 function StepNode() {
     this.addInput("Prev", "Step");
     this.addOutput("Next", "Step");
-    this.properties = { stepName: '' };
+    this.properties = {
+        stepName: '',
+        entryType: '',
+        category: '',
+        order: 0,
+        description: '',
+        errorMessage: '',
+        successAction: '',
+        params: '{}'
+    };
+
+    this.widgets_up = true; // Put widgets at the top of the node
+    this.addWidget("text", "Name", "", (v) => { this.properties.stepName = v; });
+    this.addWidget("text", "Entry Type", "", (v) => { this.properties.entryType = v; });
+    this.addWidget("text", "Category", "", (v) => { this.properties.category = v; });
+    this.addWidget("number", "Order", 0, (v) => { this.properties.order = v; });
+    this.addWidget("text", "Description", "", (v) => { this.properties.description = v; });
+    this.addWidget("text", "Error Message", "", (v) => { this.properties.errorMessage = v; });
+    this.addWidget("text", "Success Action", "", (v) => { this.properties.successAction = v; });
+    this.addWidget("text", "Params (JSON)", "{}", (v) => { this.properties.params = v; });
 }
 
 // Name to show
@@ -42,46 +60,56 @@ StepNode.prototype.onExecute = function() {
 }
 
 // Function to draw additional information on the node
-StepNode.prototype.onDrawForeground = function(ctx) {
-    if(this.flags.collapsed) return;
-    ctx.font = "20px Arial";
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#000";
-    ctx.fillText(this.properties.stepName, this.size[0] * 0.5, this.size[1] * 0.5);
-}
+// StepNode.prototype.onDrawForeground = function(ctx) {
+//     if(this.flags.collapsed) return;
+//     ctx.font = "20px Arial";
+//     ctx.textAlign = "center";
+//     ctx.fillStyle = "#000";
+//     ctx.fillText(this.properties.stepName, this.size[0] * 0.5, this.size[1] * 0.5);
+// }
 
 // Register in the system
 LiteGraph.registerNodeType("custom/step", StepNode);
 
 
+
 var graph = new LGraph();
-    var canvas = new LGraphCanvas("#mycanvas", graph);
+var canvas = new LGraphCanvas("#mycanvas", graph);
 
-    var taskIndex = 0;
-    @foreach($agent->tasks as $task)
-        var previousStepNode = null;
-        var xOffset = 100 + taskIndex * 300;
-        var yOffset = 100;
-        var stepIndex = 0;
+var taskIndex = 0;
+@foreach($agent->tasks as $task)
+    var previousStepNode = null;
+    var xOffset = 40;
+    var yOffset = 100 + taskIndex * 300;
+    var stepIndex = 0;
 
-        @foreach($task->steps->sortBy('order') as $step)
-            var stepNode = LiteGraph.createNode("custom/step");
-            stepNode.properties.stepName = "{{ $step->name }}";
-            stepNode.pos = [xOffset, yOffset + stepIndex * 100];
-            graph.add(stepNode);
+    @foreach($task->steps->sortBy('order') as $step)
+        console.log("{{ $step->name }}")        
+        var stepNode = LiteGraph.createNode("custom/step");
+        stepNode.title = "{{ $step->order }}. {{ $step->name }}";
+        stepNode.properties.stepName = "{{ $step->name }}";
+        stepNode.properties.entryType = "{{ $step->entry_type }}";
+        stepNode.properties.category = "{{ $step->category }}";
+        stepNode.properties.order = {{ $step->order }};
+        stepNode.properties.description = "{{ $step->description }}";
+        stepNode.properties.errorMessage = "{{ $step->error_message }}";
+        stepNode.properties.successAction = "{{ $step->success_action }}";
+        stepNode.properties.params = JSON.stringify(@json($step->params));
+        stepNode.pos = [xOffset + stepIndex * 280, yOffset + stepIndex * 20];
+        graph.add(stepNode);
 
-            if(previousStepNode != null) {
-                previousStepNode.connect(0, stepNode, 0);
-            }
+        if(previousStepNode != null) {
+            previousStepNode.connect(0, stepNode, 0);
+        }
 
-            previousStepNode = stepNode;
-            stepIndex++;
-        @endforeach
-
-        taskIndex++;
+        previousStepNode = stepNode;
+        stepIndex++;
     @endforeach
 
-    graph.start();
+    taskIndex++;
+@endforeach
+
+graph.start();
 </script>
 
 
