@@ -25,25 +25,65 @@
     </div>
 
     <script>
-        var graph = new LGraph();
-        var canvas = new LGraphCanvas("#mycanvas", graph);
 
-        @foreach($agent->tasks as $task)
-            var taskNode = LiteGraph.createNode("basic/const");
-            taskNode.title = "{{ $task->name }}";
-            taskNode.pos = [Math.random() * 1024, Math.random() * 720];
-            graph.add(taskNode);
+// Node constructor class
+function StepNode() {
+    this.addInput("Prev", "Step");
+    this.addOutput("Next", "Step");
+    this.properties = { stepName: '' };
+}
 
-            @foreach($task->steps as $step)
-                var stepNode = LiteGraph.createNode("basic/watch");
-                stepNode.title = "{{ $step->name }}";
-                stepNode.pos = [Math.random() * 1024, Math.random() * 720];
-                graph.add(stepNode);
-                taskNode.connect(0, stepNode, 0);
-            @endforeach
+// Name to show
+StepNode.title = "Step";
+
+// Function to call when the node is executed
+StepNode.prototype.onExecute = function() {
+    this.setOutputData(0, this.getInputData(0));
+}
+
+// Function to draw additional information on the node
+StepNode.prototype.onDrawForeground = function(ctx) {
+    if(this.flags.collapsed) return;
+    ctx.font = "20px Arial";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#000";
+    ctx.fillText(this.properties.stepName, this.size[0] * 0.5, this.size[1] * 0.5);
+}
+
+// Register in the system
+LiteGraph.registerNodeType("custom/step", StepNode);
+
+
+var graph = new LGraph();
+    var canvas = new LGraphCanvas("#mycanvas", graph);
+
+    var taskIndex = 0;
+    @foreach($agent->tasks as $task)
+        var previousStepNode = null;
+        var xOffset = 100 + taskIndex * 300;
+        var yOffset = 100;
+        var stepIndex = 0;
+
+        @foreach($task->steps->sortBy('order') as $step)
+            var stepNode = LiteGraph.createNode("custom/step");
+            stepNode.properties.stepName = "{{ $step->name }}";
+            stepNode.pos = [xOffset, yOffset + stepIndex * 100];
+            graph.add(stepNode);
+
+            if(previousStepNode != null) {
+                previousStepNode.connect(0, stepNode, 0);
+            }
+
+            previousStepNode = stepNode;
+            stepIndex++;
         @endforeach
 
-        graph.start();
-    </script>
+        taskIndex++;
+    @endforeach
+
+    graph.start();
+</script>
+
+
 </body>
 </html>
