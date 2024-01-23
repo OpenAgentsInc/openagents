@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StaticController::class, 'newsplash'])->name('home');
 Route::get('/blog', [StaticController::class, 'blog']);
+Route::get('/litegraph', function () {
+    return view('litegraph');
+})->name('litegraph');
 
 // Plugin uploading
 Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');
