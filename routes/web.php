@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AgentController;
 use App\Http\Controllers\PluginController;
 use App\Http\Controllers\StaticController;
 use Illuminate\Support\Facades\Route;
@@ -16,6 +17,9 @@ Route::get('/plugin/{plugin}', [PluginController::class, 'show'])->name('plugins
 Route::get('/plugins/create', [PluginController::class, 'create'])->name('plugins.create');
 Route::post('/plugins', [PluginController::class, 'store'])->name('plugins.store');
 Route::post('/plugins/call', [PluginController::class, 'call'])->name('plugins.call');
+
+// Agents
+Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 
 // Static
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
