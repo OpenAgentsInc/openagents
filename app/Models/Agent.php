@@ -156,10 +156,24 @@ class Agent extends Model
         return $convo;
     }
 
-    public function run($input)
+    /**
+     * Run a specific task on the agent.
+     *
+     * @param Task $task
+     * @return mixed
+     */
+    public function runTask(Task $task, $input)
     {
-        // Get the first task
-        $task = $this->tasks()->first()->load('steps');
+        // Call the existing run method with the input data
+        return $this->run($input, $task);
+    }
+
+    public function run($input, $task = null)
+    {
+        if (!$task) {
+            // If no provided task, get the first task
+            $task = $this->tasks()->first()->load('steps');
+        }
 
         // Create from it a TaskExecuted
         $task_executed = TaskExecuted::create([

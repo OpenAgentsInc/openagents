@@ -30,47 +30,36 @@ class StreamController extends Controller
     //     $this->doChat($input);
     // }
 
-    public function doChat($input, $conversation, $context = "")
+    public function doChat($input, $conversation = null, $context = "")
     {
-        // if (!$conversation) {
-        //     dd("No conversation");
-        // }
-
-        // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
-        $previousMessages = Message::where('conversation_id', $conversation->id)
-            ->orderBy('created_at', 'asc')
-            ->take(15)
-            ->get()
-            ->toArray();
-
+        // Define the system prompt for the assistant
         $systemPrompt = "You are a helpful AI agent on OpenAgents.com. Answer the user question based on the following context: " . $context;
 
-        $message = Message::create([
-            'conversation_id' => $conversation->id,
-            'user_id' => $conversation->user_id,
-            'body' => $input,
-            'sender' => 'user',
-        ]);
-
-        try {
-            $client = new Client();
-
-            $url = 'https://api.together.xyz/inference';
-            $model = 'DiscoResearch/DiscoLM-mixtral-8x7b-v2';
-
-            // Start with the system prompt
+        if (!$conversation) {
+            // If no conversation is provided, use a basic system prompt and perform inference
             $messages = [
                 [
                     "role" => "system",
                     "content" => $systemPrompt,
                 ],
-                // [
-                //     "role" => "assistant",
-                //     "content" => "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!"
-                // ]
+                ["role" => "user", "content" => $input],
+            ];
+        } else {
+            // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
+            $previousMessages = Message::where('conversation_id', $conversation->id)
+                ->orderBy('created_at', 'asc')
+                ->take(15)
+                ->get()
+                ->toArray();
+
+            // Initialize messages with the system prompt and previous messages
+            $messages = [
+                [
+                    "role" => "system",
+                    "content" => $systemPrompt,
+                ],
             ];
 
-            // Add previous messages to the array
             foreach ($previousMessages as $msg) {
                 $messages[] = [
                     "role" => $msg['sender'] === 'user' ? 'user' : 'assistant',
@@ -80,6 +69,26 @@ class StreamController extends Controller
 
             // Add the current user input as the last element
             $messages[] = ["role" => "user", "content" => $input];
+        }
+
+        // Perform inference with the messages
+        $output = $this->performInference($messages);
+
+        if ($conversation) {
+            // If there's a conversation, save the agent's response as a message
+            $this->saveAgentResponse($conversation, $output);
+        }
+
+        return $output;
+    }
+
+    private function performInference(array $messages)
+    {
+        try {
+            $client = new Client();
+
+            $url = 'https://api.together.xyz/inference';
+            $model = 'DiscoResearch/DiscoLM-mixtral-8x7b-v2';
 
             $data = [
                 "model" => $model,
@@ -100,31 +109,30 @@ class StreamController extends Controller
             // Reading the streamed response
             $stream = $response->getBody();
 
-            $message = Message::create([
-                'conversation_id' => $conversation->id,
-                'user_id' => $conversation->user_id,
-                'body' => "",
-                'sender' => 'agent',
-            ]);
-
             $content = "";
             $tokenId = 0;
 
             foreach ($this->readStream($stream) as $responseLine) {
                 $token = $responseLine["choices"][0]["text"];
                 $content .= $token;
-                broadcast(new ChatTokenReceived($token, $message->id, $tokenId++, $conversation->id));
             }
-
-            $message->update([
-                'body' => $content,
-            ]);
 
             return $content;
         } catch (RequestException $e) {
             // Handle exception or errors here
             echo $e->getMessage();
         }
+    }
+
+    private function saveAgentResponse($conversation, $content)
+    {
+        // Create a message to store the agent's response
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $conversation->user_id,
+            'body' => $content,
+            'sender' => 'agent',
+        ]);
     }
 
     public function readStream($stream)
