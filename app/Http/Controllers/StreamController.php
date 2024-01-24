@@ -32,9 +32,9 @@ class StreamController extends Controller
 
     public function doChat($input, $conversation, $context = "")
     {
-        // if (!$conversation) {
-        //     dd("No conversation");
-        // }
+        if (!$conversation) {
+            return "Placeholder response!";
+        }
 
         // Fetch the 15 most recent conversation messages sorted in chronological order oldest to newest
         $previousMessages = Message::where('conversation_id', $conversation->id)
@@ -64,10 +64,6 @@ class StreamController extends Controller
                     "role" => "system",
                     "content" => $systemPrompt,
                 ],
-                // [
-                //     "role" => "assistant",
-                //     "content" => "Welcome! I am Concierge, the first OpenAgent.\n\nYou can ask me basic questions about OpenAgents and I will try my best to answer.\n\nClick 'Agent' on the left to see what I know and how I act.\n\nI might lie or say something crazy. Oh well - thank you for testing!"
-                // ]
             ];
 
             // Add previous messages to the array
