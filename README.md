@@ -73,3 +73,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 57. [Markdown Blog](https://twitter.com/OpenAgentsInc/status/1748909829500842046)
 58. [Agent Uses Plugin](https://twitter.com/OpenAgentsInc/status/1749490769151287318)
 59. [Agent Node Graphs, Litegraph Edition](https://twitter.com/OpenAgentsInc/status/1749850948296380668)
+60. [Simpler Node Graph](https://twitter.com/OpenAgentsInc/status/1749990397714055567)
