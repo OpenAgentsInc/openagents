@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Agent;
+use App\Models\StepExecuted;
 use App\Models\Task;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -38,13 +39,22 @@ class AgentController extends Controller
         // ]);
 
         // Fetch the StepExecuted data for the task
-        $stepExecutedData = $task->stepsExecuted()->get();
+        // $stepExecutedData = $task->steps_executed()->get();
+        // Fetch the most recent executed step for the specific task
+        // Fetch the most recent executed step for the specific task
+        $stepExecutedData = StepExecuted::whereHas('task_executed', function ($query) use ($task) {
+            $query->where('task_id', $task->id);
+        })
+        ->orderBy('created_at', 'desc')
+        ->first();
+
+        // \dd($stepExecutedData);
 
         // Pass the task output and StepExecuted data to the Blade view
-        return view('task-runner', [
+        return view('components.task-runner', [
             'task' => $task,
             'output' => $output,
-            'stepExecutedData' => $stepExecutedData,
+            'stepExecutedData' => [$stepExecutedData],
         ]);
     }
 
