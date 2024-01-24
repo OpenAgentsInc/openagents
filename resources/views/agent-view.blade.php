@@ -17,8 +17,10 @@
     </x-card>
 
     @foreach($agent->tasks as $task)
-        <div class="p-4 mb-4">
-            <h2 class="text-xl font-semibold mb-2">{{ $task->name }}</h2>
+        <div class="py-4 mb-4">
+            <div class="mb-6">
+                <h2 class="py-2 text-xl font-bold rounded-t-lg">{{ $task->name }}</h2>
+            </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 @forelse($task->steps->sortBy('order') as $step)
                     <x-step-node :step="$step" />
