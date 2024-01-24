@@ -21,4 +21,9 @@ class Step extends Model
     {
         return $this->belongsTo(Task::class);
     }
+
+    public function steps_executed()
+    {
+        return $this->hasMany(StepExecuted::class, 'step_id');
+    }
 }

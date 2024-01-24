@@ -7,6 +7,14 @@ use App\Models\StepExecuted;
 use App\Models\Task;
 use Database\Seeders\PluginSeeder;
 
+it('has many steps_executed', function () {
+    $step = Step::factory()->create();
+    $step_executed = StepExecuted::factory()->create([
+        'step_id' => $step->id
+    ]);
+    expect($step->steps_executed->first()->id)->toBe($step_executed->id);
+});
+
 it('has a category', function () {
     $step = Step::factory()->create(['category' => 'inference']);
     expect($step->category)->toBe("inference");
