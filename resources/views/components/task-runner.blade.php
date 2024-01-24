@@ -1,6 +1,6 @@
 <!-- task-runner.blade.php -->
 
-@props(['task'])
+@props(['task', 'stepExecutedData' => null])
 
     <div class="flex gap-6">
         <div class="flex-1 flex flex-col">
@@ -36,5 +36,32 @@
                     </div>
                 </x-card-content>
             </x-card>
+        </div>
+
+        <!-- Display input and output for each StepExecuted -->
+        <div class="flex-1 flex flex-col">
+            @if($stepExecutedData)
+                @foreach($stepExecutedData as $stepExecuted)
+                    <x-card>
+                        <x-card-header>
+                            <x-card-title>Step {{ $stepExecuted->step->order }} -
+                                {{ $stepExecuted->step->name }}
+                            </x-card-title>
+                        </x-card-header>
+                        <x-card-content>
+                            <div class="mt-4">
+                                <strong>Input:</strong>
+                                <pre
+                                    class="bg-gray-100 rounded p-2 text-xs font-mono">{{ $stepExecuted->input }}</pre>
+                            </div>
+                            <div class="mt-4">
+                                <strong>Output:</strong>
+                                <pre
+                                    class="bg-gray-100 rounded p-2 text-xs font-mono">{{ $stepExecuted->output }}</pre>
+                            </div>
+                        </x-card-content>
+                    </x-card>
+                @endforeach
+            @endif
         </div>
     </div>

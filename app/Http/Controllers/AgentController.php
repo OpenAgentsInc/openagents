@@ -32,9 +32,19 @@ class AgentController extends Controller
         ]);
 
         // Return the output of the task execution
-        return response()->json([
-            'ok' => true,
+        // return response()->json([
+        //     'ok' => true,
+        //     'output' => $output,
+        // ]);
+
+        // Fetch the StepExecuted data for the task
+        $stepExecutedData = $task->stepsExecuted()->get();
+
+        // Pass the task output and StepExecuted data to the Blade view
+        return view('task-runner', [
+            'task' => $task,
             'output' => $output,
+            'stepExecutedData' => $stepExecutedData,
         ]);
     }
 
