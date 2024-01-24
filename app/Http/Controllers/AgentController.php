@@ -4,11 +4,33 @@ namespace App\Http\Controllers;
 
 use App\Models\Agent;
 use App\Services\Faerie;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class AgentController extends Controller
 {
+    public function run_task(Request $request, $id)
+    {
+        // Get the agent by ID
+        $agent = Agent::findOrFail($id);
+
+        // Get the task_id from the POST request params
+        $task_id = $request->input('task_id');
+
+        // Find the specified task by task_id
+        $task = $agent->tasks()->findOrFail($task_id);
+
+        // Run the task on the agent
+        $output = $agent->runTask($task, $request->input('input'));
+
+        // Return the output of the task execution
+        return response()->json([
+            'ok' => true,
+            'output' => $output,
+        ]);
+    }
+
     // Create a new agent
     public function store()
     {

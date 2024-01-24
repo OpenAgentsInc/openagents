@@ -17,6 +17,7 @@ Route::post('/plugins/call', [PluginController::class, 'call'])->name('plugins.c
 
 // Agents
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
+Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
 
 // Static
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');

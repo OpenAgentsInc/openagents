@@ -22,7 +22,8 @@
                 <span class="uppercase text-xs opacity-75 tracking-wider">Task</span>
                 <h2 class="-mt-2 py-2 text-lg font-bold rounded-t-lg">{{ $task->name }}</h2>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <x-task-runner :task="$task" />
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                 @forelse($task->steps->sortBy('order') as $step)
                     <x-step-node :step="$step" />
                 @empty
