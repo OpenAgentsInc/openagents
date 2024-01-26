@@ -53,6 +53,17 @@ RUN setcap "cap_net_bind_service=+ep" /usr/bin/php8.2
 RUN groupadd --force -g $WWWGROUP sail
 RUN useradd -ms /bin/bash --no-user-group -g $WWWGROUP -u 1337 sail
 
+# Download and install Extism CLI
+# USER root
+RUN curl -o get-extism.sh https://get.extism.org/cli
+# Modify the script to bypass sudo
+RUN sed -i 's/$_sudo//g' get-extism.sh
+RUN set -x && sh get-extism.sh -y
+
+# Install the Extism library
+RUN extism lib install latest
+# USER sail
+
 COPY start-container /usr/local/bin/start-container
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY php.ini /etc/php/8.2/cli/conf.d/99-sail.ini
