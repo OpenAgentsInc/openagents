@@ -75,3 +75,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 59. [Agent Node Graphs, Litegraph Edition](https://twitter.com/OpenAgentsInc/status/1749850948296380668)
 60. [Simpler Node Graph](https://twitter.com/OpenAgentsInc/status/1749990397714055567)
 61. [Task Runner UI](https://twitter.com/OpenAgentsInc/status/1750252532348211598)
+62. [Exploring L402](https://twitter.com/OpenAgentsInc/status/1750729304504213964)
