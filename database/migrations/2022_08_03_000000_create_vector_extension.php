@@ -22,6 +22,6 @@ return new class extends Migration
      */
     public function down()
     {
-        // DB::statement('DROP EXTENSION vector');
+        DB::statement('DROP EXTENSION vector');
     }
 };
