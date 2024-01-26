@@ -54,5 +54,3 @@ networks:
 volumes:
     sail-pgsql:
         driver: local
-    sail-mysql:
-        driver: local
