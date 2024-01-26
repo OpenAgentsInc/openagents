@@ -1,6 +1,6 @@
 # OpenAgents
 
-An open platform for AI agents, built in public from scratch. [wip]
+An open platform for AI agents, built in public from scratch.
 
 See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 
