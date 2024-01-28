@@ -121,6 +121,4 @@ it('can process an L402 step', function () {
     // Assert that the city and temperature are as expected
     expect($city)->toBe('London');
     expect($temperature)->toBeFloat(); // Update the expected temperature value if needed
-    //
-
 });

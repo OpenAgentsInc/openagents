@@ -14,7 +14,6 @@ trait StepActions
 {
     public function L402($input)
     {
-        $userinput = $input['input'];
         $url = $input['url'];
 
         // Create a new L402 service object
