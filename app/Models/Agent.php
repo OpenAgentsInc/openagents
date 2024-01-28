@@ -19,7 +19,7 @@ class Agent extends Model
         $task = $this->tasks()->where('name', 'LLM Chat With Knowledge Retrieval')->first();
 
         // If not, create it
-        if (!$task) {
+        if (! $task) {
             $task = $this->createRetrievalTask();
         }
 
@@ -32,7 +32,7 @@ class Agent extends Model
         $task = $this->tasks()->where('name', 'Basic LLM Chat')->first();
 
         // If not, create it
-        if (!$task) {
+        if (! $task) {
             $task = $this->createChatTask();
         }
 
@@ -55,7 +55,7 @@ class Agent extends Model
             'entry_type' => 'input',
             'category' => 'validation',
             'error_message' => 'Sorry, I didn\'t understand that.',
-            'success_action' => 'next_node'
+            'success_action' => 'next_node',
         ]);
 
         $task->steps()->create([
@@ -66,7 +66,7 @@ class Agent extends Model
             'entry_type' => 'node',
             'category' => 'inference',
             'error_message' => 'Sorry, inference failed',
-            'success_action' => 'json_response'
+            'success_action' => 'json_response',
         ]);
 
         return $task;
@@ -135,7 +135,7 @@ class Agent extends Model
     public function getUserConversation()
     {
         // if user_id is null, return a new conversation
-        if (!auth()->id()) {
+        if (! auth()->id()) {
             $convo = Conversation::create([
                 'user_id' => null,
                 'agent_id' => $this->id,
@@ -143,7 +143,7 @@ class Agent extends Model
         } else {
             $convo = $this->conversations()->where('user_id', auth()->id())->first();
 
-            if (!$convo) {
+            if (! $convo) {
                 $convo = Conversation::create([
                     'user_id' => auth()->id(),
                     'agent_id' => $this->id,
@@ -159,7 +159,6 @@ class Agent extends Model
     /**
      * Run a specific task on the agent.
      *
-     * @param Task $task
      * @return mixed
      */
     public function runTask(Task $task, $input)
@@ -170,7 +169,7 @@ class Agent extends Model
 
     public function run($input, $task = null)
     {
-        if (!$task) {
+        if (! $task) {
             // If no provided task, get the first task
             $task = $this->tasks()->first()->load('steps');
         }
@@ -180,7 +179,7 @@ class Agent extends Model
             'task_id' => $task->id,
             // Current user ID if authed or null
             'user_id' => auth()->id(),
-            'status' => 'pending'
+            'status' => 'pending',
         ]);
 
         foreach ($task->steps as $step) {
@@ -192,9 +191,15 @@ class Agent extends Model
             if ($step->category === 'plugin') {
                 $params = json_decode($step->params);
                 $input = json_encode([
-                    'input' => $prev_step_executed->output["output"], // Assign the output directly
+                    'input' => $prev_step_executed->output['output'], // Assign the output directly
                     'plugin_id' => $params->plugin_id,
                     'function' => $params->function,
+                ]);
+            } elseif ($step->category === 'L402') {
+                $params = json_decode($step->params);
+                $input = json_encode([
+                    // 'input' => $prev_step_executed->output, // Assign the output directly
+                    'url' => $params->url,
                 ]);
             } else {
                 $input = json_encode($input);
@@ -265,7 +270,7 @@ class Agent extends Model
             'sender' => 'agent',
             'conversation_id' => $conversationId,
             'user_id' => $this->user->id,
-            'body' => $body
+            'body' => $body,
         ]);
     }
 
@@ -280,11 +285,11 @@ class Agent extends Model
             // Loop through each step and create a Thought for each
             foreach ($steps as $step) {
                 $messages = [
-                    ['role' => 'system', 'content' => "You are an AI agent specializing in understanding unstructured data."],
-                    ['role' => 'user', 'content' => "What do you notice about this data?: " . json_encode($step)],
+                    ['role' => 'system', 'content' => 'You are an AI agent specializing in understanding unstructured data.'],
+                    ['role' => 'user', 'content' => 'What do you notice about this data?: '.json_encode($step)],
                 ];
                 $input = [
-                    'model' => "gpt-4",
+                    'model' => 'gpt-4',
                     'messages' => $messages,
                 ];
 
