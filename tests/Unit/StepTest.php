@@ -110,5 +110,17 @@ it('can process an L402 step', function () {
     ]);
     // run the step
     $output = $step_executed->run();
-    expect($output)->toBe(json_encode('{"city":"London","temperature":10.5}'));
+    // expect($output)->toBe(json_encode('{"city":"London","temperature":10.5}'));
+    // Decode the output JSON
+    $data = json_decode($output, true);
+
+    // Extract city name and temperature
+    $city = $data['location']['name'];
+    $temperature = $data['current']['temp_f'];
+
+    // Assert that the city and temperature are as expected
+    expect($city)->toBe('London');
+    expect($temperature)->toBeFloat(); // Update the expected temperature value if needed
+    //
+
 });

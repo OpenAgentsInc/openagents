@@ -6,6 +6,7 @@ use App\Http\Controllers\StreamController;
 use App\Models\Datapoint;
 use App\Models\Plugin;
 use App\Services\Embedder;
+use App\Services\L402 as L402Service;
 use App\Services\QueenbeeGateway;
 use Pgvector\Laravel\Vector;
 
@@ -15,17 +16,24 @@ trait StepActions
     {
         $userinput = $input['input'];
         $url = $input['url'];
-        $response = \Http::get($url);
-        $body = $response->body();
-        // expect the body to include the string "payment required". if not, throw error
-        if (! str_contains($body, 'payment required')) {
-            echo "Body does not contain 'payment required'.\n";
-            dd($body);
+
+        // Create a new L402 service object
+        $l402Service = new L402Service();
+
+        // Handle the L402 request
+        $response = $l402Service->handleL402Request($url);
+
+        // Process the response
+        if ($response->successful()) {
+            // Successful response processing
+            $body = $response->body();
+
+            // Process the response body as needed
+            return $body;
+        } else {
+            // Handle error scenarios
+            throw new \Exception('Error accessing the API: '.$response->status());
         }
-
-        // creat a new L402 service object
-        $l402 = new \App\Services\L402();
-
     }
 
     public function plugin($input)

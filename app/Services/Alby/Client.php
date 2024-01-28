@@ -108,6 +108,20 @@ class Client implements AlbyClient
         return $invoice;
     }
 
+    public function decodeInvoice($bolt11): array
+    {
+        $invoice = $this->request('GET', "/decode/bolt11/{$bolt11}");
+
+        return $invoice;
+    }
+
+    public function payInvoice($bolt11): array
+    {
+        $payment = $this->request('POST', '/payments/bolt11', ['invoice' => $bolt11]);
+
+        return $payment;
+    }
+
     public function isInvoicePaid($rHash): bool
     {
         $invoice = $this->getInvoice($rHash);
