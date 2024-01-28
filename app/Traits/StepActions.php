@@ -6,7 +6,6 @@ use App\Http\Controllers\StreamController;
 use App\Models\Datapoint;
 use App\Models\Plugin;
 use App\Services\Embedder;
-use App\Services\OpenAIGateway;
 use App\Services\QueenbeeGateway;
 use Pgvector\Laravel\Vector;
 
@@ -18,7 +17,15 @@ trait StepActions
         $url = $input['url'];
         $response = \Http::get($url);
         $body = $response->body();
-        dd($body);
+        // expect the body to include the string "payment required". if not, throw error
+        if (! str_contains($body, 'payment required')) {
+            echo "Body does not contain 'payment required'.\n";
+            dd($body);
+        }
+
+        // creat a new L402 service object
+        $l402 = new \App\Services\L402();
+
     }
 
     public function plugin($input)
