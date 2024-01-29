@@ -4,6 +4,7 @@ namespace App\Services\Alby;
 
 use App\Services\Alby\Contracts\AlbyClient;
 use GuzzleHttp;
+use Illuminate\Support\Facades\Http;
 
 class Client implements AlbyClient
 {
@@ -48,6 +49,7 @@ class Client implements AlbyClient
 
             return json_decode($responseBody, true);
         } catch (GuzzleHttp\Exception\ClientException $e) {
+            dd($e);
             $error = json_decode($e->getResponse()->getBody()->getContents(), true);
             throw new \Exception($error['error']);
         }
@@ -127,5 +129,17 @@ class Client implements AlbyClient
         $invoice = $this->getInvoice($rHash);
 
         return $invoice['settled'];
+    }
+
+    public function requestInvoiceForLightningAddress($data)
+    {
+        $lightningAddress = $data['lightning_address'];
+        $amount = $data['amount'];
+        $memo = $data['memo'] ?? 'OpenAgents Withdrawal';
+
+        $url = 'https://api.getalby.com/lnurl/generate-invoice?ln='.urlencode($lightningAddress).'&amount='.$amount.'&comment='.urlencode($memo);
+        $invoice = Http::get($url)->json();
+
+        return $invoice['invoice'];
     }
 }

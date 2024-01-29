@@ -3,14 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use Inertia\Inertia;
 use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
 {
     public function login()
     {
-        return Inertia::render('Login');
+        return 'not implemented';
     }
 
     public function loginGithub()
@@ -65,6 +64,7 @@ class AuthController extends Controller
     public function logout()
     {
         auth()->logout();
+
         return redirect('/');
     }
 }
