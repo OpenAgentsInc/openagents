@@ -77,3 +77,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 61. [Task Runner UI](https://twitter.com/OpenAgentsInc/status/1750252532348211598)
 62. [Exploring L402](https://twitter.com/OpenAgentsInc/status/1750729304504213964)
 63. [Agent Pays L402 Endpoint](https://twitter.com/OpenAgentsInc/status/1751700732963672411)
+64. [Lightning Withdrawals](https://twitter.com/OpenAgentsInc/status/1752049402359754789)
