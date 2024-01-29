@@ -26,7 +26,7 @@ class BitcoinController extends Controller
 
         // If no lightning_address, return an error message via HTMX
         if (! $address) {
-            $errorMessage = 'You must set a lightning address before withdrawing.';
+            $errorMessage = 'You must set a Lightning address before withdrawing.';
 
             return with(new HtmxResponse())
                 ->renderFragment('withdraw-message', 'withdraw-message', compact('errorMessage'));

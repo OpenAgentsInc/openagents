@@ -10,15 +10,15 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [StaticController::class, 'newsplash'])->name('home');
 Route::get('/blog', [StaticController::class, 'blog']);
 
-Route::get('/withdraw', [BitcoinController::class, 'withdraw'])->name('withdraw');
-Route::post('/withdraw', [BitcoinController::class, 'initiate_withdrawal'])->name('withdraw.initiate');
+// Route::get('/withdraw', [BitcoinController::class, 'withdraw'])->name('withdraw');
+// Route::post('/withdraw', [BitcoinController::class, 'initiate_withdrawal'])->name('withdraw.initiate');
 //
 // Auth
-Route::get('/login', [AuthController::class, 'login'])->name('login');
-Route::get('/login/github', [AuthController::class, 'loginGithub']);
-Route::get('/github', [AuthController::class, 'githubCallback']);
-Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);
-Route::get('/twitter', [AuthController::class, 'twitterCallback']);
+// Route::get('/login', [AuthController::class, 'login'])->name('login');
+// Route::get('/login/github', [AuthController::class, 'loginGithub']);
+// Route::get('/github', [AuthController::class, 'githubCallback']);
+// Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);
+// Route::get('/twitter', [AuthController::class, 'twitterCallback']);
 
 // Plugin uploading
 Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');

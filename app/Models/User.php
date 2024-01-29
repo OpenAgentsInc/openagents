@@ -34,6 +34,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'lightning_address',
         'github_id',
         'github_nickname',
         'github_avatar',
