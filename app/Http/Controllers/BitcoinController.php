@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Alby\Client as AlbyClient;
 use App\Services\Bitcoin;
+use Mauricius\LaravelHtmx\Http\HtmxResponse;
 
 class BitcoinController extends Controller
 {
@@ -25,7 +26,10 @@ class BitcoinController extends Controller
 
         // If no lightning_address, fail
         if (! $address) {
-            return redirect()->route('withdraw')->with('error', 'You must set a lightning address before withdrawing.');
+            $errorMessage = 'You must set a lightning address before withdrawing.';
+
+            return with(new HtmxResponse())
+                ->renderFragment('withdraw', 'withdraw-message', compact('errorMessage'));
         }
 
         $withdrawal = auth()->user()->withdrawals()->create([
@@ -46,22 +50,22 @@ class BitcoinController extends Controller
         $response = $albyClient->payInvoice($invoice['pr']);
 
         // If payment succeeds, mark withdrawal as completed
-        // We know it succeeds if $response["payment_preimage"] is a string
         if (is_string($response['payment_preimage'])) {
             $withdrawal->update([
                 'status' => 'completed',
-                // 'payment_preimage' => $response['payment_preimage'],
             ]);
 
-            return redirect()->route('withdraw')->with('success', 'Withdrawal initiated!');
+            $successMessage = 'Withdrawal initiated!';
+
+            return with(new HtmxResponse())
+                ->renderFragment('withdraw', 'withdraw-message', compact('successMessage'));
         }
 
-        return 'yo';
-        //        if ($response->status === 'ok') {
-        //return redirect()->route('withdraw')->with('success', 'Withdrawal initiated!');
-        //}
+        // Handle failure case
+        $errorMessage = 'Withdrawal failed. Please try again.';
 
-        //        return redirect()->route('withdraw')->with('error', $response->message);
+        return with(new HtmxResponse())
+            ->renderFragment('withdraw', 'withdraw-message', compact('errorMessage'));
     }
 
     public function bitcoin()
