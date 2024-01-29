@@ -1,10 +1,30 @@
 <?php
 
 use App\Models\Agent;
-use App\Models\File;
 use App\Models\Conversation;
+use App\Models\File;
 use App\Models\Message;
 use App\Models\User;
+use App\Models\Withdrawal;
+
+it('has an optional lightning_address', function () {
+    $user = User::factory()->create(['lightning_address' => null]);
+    $this->assertNull($user->lightning_address);
+
+    $user = User::factory()->create(['lightning_address' => 'test@test.com']);
+    $this->assertEquals('test@test.com', $user->lightning_address);
+});
+
+it('has withdrawals', function () {
+    $user = User::factory()->create();
+    $withdrawal = $user->withdrawals()->create([
+        'amount' => 1000,
+        'lightning_address' => $user->lightning_address,
+    ]);
+
+    $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->withdrawals);
+    $this->assertInstanceOf(Withdrawal::class, $user->withdrawals->first());
+});
 
 it('does not need a name', function () {
     $user = User::factory()->create(['name' => null]);

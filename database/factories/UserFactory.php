@@ -24,6 +24,7 @@ class UserFactory extends Factory
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
+            'lightning_address' => fake()->unique()->safeEmail(),
             'github_id' => fake()->unique()->randomNumber(),
             'github_nickname' => fake()->unique()->userName(),
             'github_avatar' => fake()->imageUrl(),
