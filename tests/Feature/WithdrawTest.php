@@ -30,10 +30,10 @@ test('user can complete withdrawal', function () {
     // expect database to have no Withdrawal records
     expect(Withdrawal::count())->toBe(0);
 
-    $user = User::factory()->create();
+    $user = User::factory()->create(['lightning_address' => 'atlantispleb@getalby.com']);
     $this->actingAs($user)
         ->post(route('withdraw'), [
-            'amount' => 100, // sats
+            'amount' => 10, // sats
         ]);
 
     expect(Withdrawal::count())->toBe(1);
