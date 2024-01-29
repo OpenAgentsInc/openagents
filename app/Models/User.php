@@ -39,7 +39,7 @@ class User extends Authenticatable
         'github_avatar',
         'twitter_id',
         'twitter_nickname',
-        'twitter_avatar'
+        'twitter_avatar',
     ];
 
     /**
@@ -62,6 +62,11 @@ class User extends Authenticatable
         'password' => 'hashed',
     ];
 
+    // user hasmany Withdrawals
+    public function withdrawals()
+    {
+        return $this->hasMany(Withdrawal::class);
+    }
 
     public function agents()
     {
