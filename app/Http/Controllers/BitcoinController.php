@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Alby\Client as AlbyClient;
 use App\Services\Bitcoin;
 
 class BitcoinController extends Controller
@@ -32,7 +33,28 @@ class BitcoinController extends Controller
             'lightning_address' => $address,
             'status' => 'pending',
         ]);
-        // $response = Bitcoin::withdraw($amount, $address);
+
+        // Generate an invoice
+        $invoice = Bitcoin::requestInvoiceForLightningAddress([
+            'lightning_address' => $address,
+            'amount' => $amount * 1000, // convert to msat
+            'memo' => 'OpenAgents Withdrawal',
+        ]);
+
+        //$payment = Bitcoin::payInvoice($invoice['pr']);
+        $albyClient = new AlbyClient(env('ALBY_ACCESS_TOKEN'));
+        $response = $albyClient->payInvoice($invoice['pr']);
+
+        // If payment succeeds, mark withdrawal as completed
+        // We know it succeeds if $response["payment_preimage"] is a string
+        if (is_string($response['payment_preimage'])) {
+            $withdrawal->update([
+                'status' => 'completed',
+                // 'payment_preimage' => $response['payment_preimage'],
+            ]);
+
+            return redirect()->route('withdraw')->with('success', 'Withdrawal initiated!');
+        }
 
         return 'yo';
         //        if ($response->status === 'ok') {

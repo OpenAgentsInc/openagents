@@ -21,13 +21,13 @@ test('user must have lightning_address to withdraw', function () {
     $user = User::factory()->create(['lightning_address' => null]);
     $this->actingAs($user)
         ->post(route('withdraw'), [
-            'amount' => 100, // sats
+            'amount' => 10, // sats
         ])
         ->assertRedirect(route('withdraw'))
         ->assertSessionHas('error', 'You must set a lightning address before withdrawing.');
 });
 
-test('user can initiate withdrawal', function () {
+test('user can complete withdrawal', function () {
     // expect database to have no Withdrawal records
     expect(Withdrawal::count())->toBe(0);
 
@@ -38,5 +38,5 @@ test('user can initiate withdrawal', function () {
         ]);
 
     expect(Withdrawal::count())->toBe(1);
-    expect(Withdrawal::first()->status)->toBe('pending');
+    expect(Withdrawal::first()->status)->toBe('completed');
 });
