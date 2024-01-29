@@ -20,7 +20,7 @@ class BitcoinController extends Controller
         ]);
 
         $amount = request('amount');
-        $address = auth()->user()->lightning_address;
+        $address = 'atlantispleb@getalby.com'; // auth()->user()->lightning_address;
 
         // If no lightning_address, fail
         if (! $address) {
