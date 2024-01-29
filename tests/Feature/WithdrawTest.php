@@ -23,8 +23,7 @@ test('user must have lightning_address to withdraw', function () {
         ->post(route('withdraw'), [
             'amount' => 10, // sats
         ])
-        ->assertRedirect(route('withdraw'))
-        ->assertSessionHas('error', 'You must set a lightning address before withdrawing.');
+        ->assertSee('You must set a lightning address before withdrawing.');
 });
 
 test('user can complete withdrawal', function () {
