@@ -38,4 +38,4 @@ test('user can complete withdrawal', function () {
 
     expect(Withdrawal::count())->toBe(1);
     expect(Withdrawal::first()->status)->toBe('completed');
-});
+})->group('integration');
