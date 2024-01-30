@@ -6,12 +6,34 @@ use App\Http\Controllers\StreamController;
 use App\Models\Datapoint;
 use App\Models\Plugin;
 use App\Services\Embedder;
+use App\Services\GitHub;
 use App\Services\L402 as L402Service;
 use App\Services\QueenbeeGateway;
 use Pgvector\Laravel\Vector;
 
 trait StepActions
 {
+    public function code_analysis($input)
+    {
+        // Extract the URL from the input
+        $url = $input['url'];
+
+        // Initialize the GitHub service with the provided URL
+        $github = new GitHub($url);
+
+        // Get the file and folder hierarchy of the repository
+        $repositoryHierarchy = $github->getRepositoryHierarchy();
+
+        // You can process the repository hierarchy here as needed
+        // ...
+
+        // For debugging, you can use dd() to dump the hierarchy
+        dd($repositoryHierarchy);
+
+        // Return the result or process it further as needed
+        return $repositoryHierarchy;
+    }
+
     public function L402($input)
     {
         $url = $input['url'];
