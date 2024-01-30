@@ -19,7 +19,34 @@ trait StepActions
         $url = $input['url'];
         $github = new GitHub($url);
 
-        $analysis = $github->getReadme();
+        //      $readme = explode('## Video series', $github->getReadme())[0];
+        $migrations = $github->fetchFileContents('database/migrations/');
+
+        // $migrations is an array of paths. Let's loop through and fetch the contents of the first two migrations.
+        $migration1 = $github->fetchFileContents($migrations[7]);
+        $migration2 = $github->fetchFileContents($migrations[8]);
+        $migration3 = $github->fetchFileContents($migrations[9]);
+        //      $migration4 = $github->fetchFileContents($migrations[3]);
+
+        $prompt = 'Analyze the given files, specifically whether there are any syntax mismatches in the migrations.';
+
+        // Compile one context string with all the information and a bit of explanation - from readme, routes, and composer:
+        $context = 'Use this context:'."\n---\n";
+        //        $context .= "This is the README.md file from the repository:\n".$url."\n---\n";
+        //       $context .= $readme."\n---\n";
+        $context .= "These are the migrations from the repository:\n".$url."\n---\n";
+        $context .= $migration1."\n---\n";
+        $context .= $migration2."\n---\n";
+        $context .= $migration3."\n---\n";
+        //       $context .= $migration4."\n---\n";
+        //        $context .= "This is the tailwind.config.js file from the repository:\n".$url."\n---\n";
+        //       $context .= $tailwind."\n---\n";
+        // $context .= "These are the routes from the repository:\n".$url."\n---\n";
+        // $context .= $routes."\n---\n";
+        // $context .= "This is the composer.json file from the repository:\n".$url."\n---\n";
+        // $context .= $composer."\n---\n";
+
+        $analysis = $this->analyze($context, $prompt);
 
         return [
             'input' => $url,
@@ -27,47 +54,51 @@ trait StepActions
         ];
     }
 
-    public function analyze($repositoryHierarchy)
+    public function analyze(string $context, string $prompt)
     {
         // Truncate or summarize the repositoryHierarchy to fit within the max context length of 2048 characters
-        $truncatedHierarchy = $this->truncateOrSummarize($repositoryHierarchy, 1800);
+        $truncatedHierarchy = $this->truncateOrSummarize($context, 1800);
 
         try {
             $url = 'https://api.together.xyz/inference';
+            // $model = 'codellama/CodeLlama-34b-Instruct-hf';
             $model = 'codellama/CodeLlama-70b-Instruct-hf';
+
+            dump($context);
+            dump("\n----\n");
 
             $data = [
                 'model' => $model,
                 'messages' => [
                     [
                         'role' => 'system',
-                        'content' => 'Analyze the following code repository structure:',
+                        'content' => $prompt,
                     ],
                     [
                         'role' => 'user',
-                        'content' => $truncatedHierarchy,
+                        'content' => $context,
                     ],
                 ],
-                'max_tokens' => 1024,
+                'max_tokens' => 824,
                 'temperature' => 0.7,
-                'stream_tokens' => false, // Set to false to not stream the response
             ];
 
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer '.env('TOGETHER_API_KEY'),
             ])->post($url, $data);
 
-            dd($response->json());
-
-            // Check if the response is successful
             if ($response->successful()) {
-                // Return the response body as a string
-                return $response->body();
+                $body = $response->json();
+                if ($body['status'] === 'finished') {
+                    $last = $body['output']['choices'][0]['text'];
+                } else {
+                    $last = 'Error: '.$body['status'];
+                }
             } else {
-                // Handle error scenarios
-                throw new \Exception('Error accessing the API: '.$response->status());
+                $last = 'Error: '.$response->status();
             }
 
+            return $last;
         } catch (\Exception $e) {
             // Handle exception or errors here
             echo $e->getMessage();

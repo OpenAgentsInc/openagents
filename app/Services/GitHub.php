@@ -23,10 +23,22 @@ class GitHub
 
     public function getReadme()
     {
-        // Read the README.md file from the repository
-        $response = $this->fetchFromGithub('README.md');
-        $base64 = $response['content'];
-        $decoded = base64_decode($base64);
+        return $this->fetchFileContents('README.md');
+    }
+
+    public function fetchFileContents($path)
+    {
+        dump($path);
+        $response = $this->fetchFromGithub($path);
+        // If response content exists...
+        if (isset($response['content'])) {
+            // Decode base64-encoded content
+            $base64 = $response['content'];
+            $decoded = base64_decode($base64);
+        } else {
+            // Else it is probably a directory -- return an array of only the path keys
+            $decoded = collect($response)->pluck('path')->toArray();
+        }
 
         return $decoded;
     }

@@ -134,5 +134,5 @@ it('can process a code_analysis step', function () {
         ]),
     ]);
     $output = $step_executed->run();
-    dd($output);
-});
+    dd($output['analysis']);
+})->skip();
