@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 class GitHub
@@ -12,7 +13,7 @@ class GitHub
 
     private $token;
 
-    private $maxDepth = 2;
+    private $maxDepth = 1;
 
     public function __construct($url)
     {
@@ -33,14 +34,15 @@ class GitHub
         }
     }
 
-    /**
-     * Get the file and folder hierarchy of the repository.
-     *
-     * @return string
-     */
     public function getRepositoryHierarchyMarkdown()
     {
-        return $this->fetchContentsRecursivelyMarkdown('/', 0);
+        dd(config('cache.default'));
+        $cacheKey = '1_repo_hierarchy_'.$this->owner.'_'.$this->repo;
+
+        return Cache::remember($cacheKey, now()->addMinutes(60), function () {
+            // Fetch the contents at the repository's root and convert to Markdown
+            return $this->fetchContentsRecursivelyMarkdown('/', 0);
+        });
     }
 
     /**

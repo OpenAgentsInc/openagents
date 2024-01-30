@@ -9,6 +9,7 @@ use App\Services\Embedder;
 use App\Services\GitHub;
 use App\Services\L402 as L402Service;
 use App\Services\QueenbeeGateway;
+use Illuminate\Support\Facades\Http;
 use Pgvector\Laravel\Vector;
 
 trait StepActions
@@ -24,14 +25,77 @@ trait StepActions
         // Get the file and folder hierarchy of the repository
         $repositoryHierarchy = $github->getRepositoryHierarchyMarkdown();
 
-        // You can process the repository hierarchy here as needed
-        // ...
+        $analysis = $this->analyze($repositoryHierarchy);
 
         // For debugging, you can use dd() to dump the hierarchy
-        dd($repositoryHierarchy);
+        dd($analysis);
 
         // Return the result or process it further as needed
-        return $repositoryHierarchy;
+        return $analysis;
+    }
+
+    public function analyze($repositoryHierarchy)
+    {
+        // Truncate or summarize the repositoryHierarchy to fit within the max context length of 2048 characters
+        $truncatedHierarchy = $this->truncateOrSummarize($repositoryHierarchy, 1800);
+
+        try {
+            $url = 'https://api.together.xyz/inference';
+            $model = 'codellama/CodeLlama-70b-Instruct-hf';
+
+            $data = [
+                'model' => $model,
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'Analyze the following code repository structure:',
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => $truncatedHierarchy,
+                    ],
+                ],
+                'max_tokens' => 1024,
+                'temperature' => 0.7,
+                'stream_tokens' => false, // Set to false to not stream the response
+            ];
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.env('TOGETHER_API_KEY'),
+            ])->post($url, $data);
+
+            dd($response->json());
+
+            // Check if the response is successful
+            if ($response->successful()) {
+                // Return the response body as a string
+                return $response->body();
+            } else {
+                // Handle error scenarios
+                throw new \Exception('Error accessing the API: '.$response->status());
+            }
+
+        } catch (\Exception $e) {
+            // Handle exception or errors here
+            echo $e->getMessage();
+        }
+    }
+
+    /**
+     * Truncate or summarize the input string to fit within a maximum character length.
+     *
+     * @param  string  $input
+     * @param  int  $maxLength
+     * @return string
+     */
+    private function truncateOrSummarize($input, $maxLength)
+    {
+        if (strlen($input) > $maxLength) {
+            // Truncate or implement a summarization method
+            return substr($input, 0, $maxLength); // Example: simple truncation
+        }
+
+        return $input;
     }
 
     public function L402($input)
