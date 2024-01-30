@@ -6,12 +6,122 @@ use App\Http\Controllers\StreamController;
 use App\Models\Datapoint;
 use App\Models\Plugin;
 use App\Services\Embedder;
+use App\Services\GitHub;
 use App\Services\L402 as L402Service;
 use App\Services\QueenbeeGateway;
+use Illuminate\Support\Facades\Http;
 use Pgvector\Laravel\Vector;
 
 trait StepActions
 {
+    public function code_analysis($input)
+    {
+        $url = $input['url'];
+        $github = new GitHub($url);
+
+        //      $readme = explode('## Video series', $github->getReadme())[0];
+        $migrations = $github->fetchFileContents('database/migrations/');
+
+        // $migrations is an array of paths. Let's loop through and fetch the contents of the first two migrations.
+        $migration1 = $github->fetchFileContents($migrations[7]);
+        $migration2 = $github->fetchFileContents($migrations[8]);
+        $migration3 = $github->fetchFileContents($migrations[9]);
+        //      $migration4 = $github->fetchFileContents($migrations[3]);
+
+        $prompt = 'Analyze the given files, specifically whether there are any syntax mismatches in the migrations.';
+
+        // Compile one context string with all the information and a bit of explanation - from readme, routes, and composer:
+        $context = 'Use this context:'."\n---\n";
+        //        $context .= "This is the README.md file from the repository:\n".$url."\n---\n";
+        //       $context .= $readme."\n---\n";
+        $context .= "These are the migrations from the repository:\n".$url."\n---\n";
+        $context .= $migration1."\n---\n";
+        $context .= $migration2."\n---\n";
+        $context .= $migration3."\n---\n";
+        //       $context .= $migration4."\n---\n";
+        //        $context .= "This is the tailwind.config.js file from the repository:\n".$url."\n---\n";
+        //       $context .= $tailwind."\n---\n";
+        // $context .= "These are the routes from the repository:\n".$url."\n---\n";
+        // $context .= $routes."\n---\n";
+        // $context .= "This is the composer.json file from the repository:\n".$url."\n---\n";
+        // $context .= $composer."\n---\n";
+
+        $analysis = $this->analyze($context, $prompt);
+
+        return [
+            'input' => $url,
+            'analysis' => $analysis,
+        ];
+    }
+
+    public function analyze(string $context, string $prompt)
+    {
+        // Truncate or summarize the repositoryHierarchy to fit within the max context length of 2048 characters
+        $truncatedHierarchy = $this->truncateOrSummarize($context, 1800);
+
+        try {
+            $url = 'https://api.together.xyz/inference';
+            // $model = 'codellama/CodeLlama-34b-Instruct-hf';
+            $model = 'codellama/CodeLlama-70b-Instruct-hf';
+
+            dump($context);
+            dump("\n----\n");
+
+            $data = [
+                'model' => $model,
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => $prompt,
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => $context,
+                    ],
+                ],
+                'max_tokens' => 824,
+                'temperature' => 0.7,
+            ];
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.env('TOGETHER_API_KEY'),
+            ])->post($url, $data);
+
+            if ($response->successful()) {
+                $body = $response->json();
+                if ($body['status'] === 'finished') {
+                    $last = $body['output']['choices'][0]['text'];
+                } else {
+                    $last = 'Error: '.$body['status'];
+                }
+            } else {
+                $last = 'Error: '.$response->status();
+            }
+
+            return $last;
+        } catch (\Exception $e) {
+            // Handle exception or errors here
+            echo $e->getMessage();
+        }
+    }
+
+    /**
+     * Truncate or summarize the input string to fit within a maximum character length.
+     *
+     * @param  string  $input
+     * @param  int  $maxLength
+     * @return string
+     */
+    private function truncateOrSummarize($input, $maxLength)
+    {
+        if (strlen($input) > $maxLength) {
+            // Truncate or implement a summarization method
+            return substr($input, 0, $maxLength); // Example: simple truncation
+        }
+
+        return $input;
+    }
+
     public function L402($input)
     {
         $url = $input['url'];
