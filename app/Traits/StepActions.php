@@ -16,22 +16,15 @@ trait StepActions
 {
     public function code_analysis($input)
     {
-        // Extract the URL from the input
         $url = $input['url'];
-
-        // Initialize the GitHub service with the provided URL
         $github = new GitHub($url);
 
-        // Get the file and folder hierarchy of the repository
-        $repositoryHierarchy = $github->getRepositoryHierarchyMarkdown();
+        $analysis = $github->getReadme();
 
-        $analysis = $this->analyze($repositoryHierarchy);
-
-        // For debugging, you can use dd() to dump the hierarchy
-        dd($analysis);
-
-        // Return the result or process it further as needed
-        return $analysis;
+        return [
+            'input' => $url,
+            'analysis' => $analysis,
+        ];
     }
 
     public function analyze($repositoryHierarchy)

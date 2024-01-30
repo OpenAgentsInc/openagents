@@ -21,6 +21,16 @@ class GitHub
         $this->token = env('GITHUB_TOKEN');
     }
 
+    public function getReadme()
+    {
+        // Read the README.md file from the repository
+        $response = $this->fetchFromGithub('README.md');
+        $base64 = $response['content'];
+        $decoded = base64_decode($base64);
+
+        return $decoded;
+    }
+
     private function parseGitHubUrl($url)
     {
         $path = parse_url($url, PHP_URL_PATH);
@@ -36,8 +46,7 @@ class GitHub
 
     public function getRepositoryHierarchyMarkdown()
     {
-        dd(config('cache.default'));
-        $cacheKey = '1_repo_hierarchy_'.$this->owner.'_'.$this->repo;
+        $cacheKey = 'repo_hierarchy_'.$this->owner.'_'.$this->repo;
 
         return Cache::remember($cacheKey, now()->addMinutes(60), function () {
             // Fetch the contents at the repository's root and convert to Markdown
