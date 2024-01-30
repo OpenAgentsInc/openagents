@@ -22,7 +22,7 @@ trait StepActions
         $github = new GitHub($url);
 
         // Get the file and folder hierarchy of the repository
-        $repositoryHierarchy = $github->getRepositoryHierarchy();
+        $repositoryHierarchy = $github->getRepositoryHierarchyMarkdown();
 
         // You can process the repository hierarchy here as needed
         // ...

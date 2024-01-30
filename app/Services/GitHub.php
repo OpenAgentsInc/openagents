@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use GrahamCampbell\GitHub\Facades\GitHub as GitHubClient;
+use Illuminate\Support\Facades\Http;
 
 class GitHub
 {
@@ -10,22 +10,16 @@ class GitHub
 
     private $repo;
 
-    /**
-     * Constructor that accepts a GitHub repository URL and initializes the class.
-     *
-     * @param  string  $url  The URL of the GitHub repository.
-     */
+    private $token;
+
+    private $maxDepth = 2;
+
     public function __construct($url)
     {
         $this->parseGitHubUrl($url);
-        // $this->repo = GitHubClient::repo()->show($this->owner, $this->repo);
+        $this->token = env('GITHUB_TOKEN');
     }
 
-    /**
-     * Parse the GitHub URL to extract the owner and repository names.
-     *
-     * @param  string  $url  The GitHub URL.
-     */
     private function parseGitHubUrl($url)
     {
         $path = parse_url($url, PHP_URL_PATH);
@@ -42,40 +36,83 @@ class GitHub
     /**
      * Get the file and folder hierarchy of the repository.
      *
-     * @return array
+     * @return string
      */
-    public function getRepositoryHierarchy()
+    public function getRepositoryHierarchyMarkdown()
     {
-        // Fetch the contents at the repository's root
-        $contents = GitHubClient::repo()->contents()->show($this->owner, $this->repo, '/');
-        dd($contents);
-
-        // Recursively fetch the contents of each directory
-        return $this->fetchContentsRecursively($contents, $this->owner, $this->repo);
+        return $this->fetchContentsRecursivelyMarkdown('/', 0);
     }
 
     /**
-     * Recursively fetch the contents of directories.
+     * Recursively fetch the contents of directories and format as Markdown.
      *
-     * @param  array  $contents
-     * @param  string  $owner
-     * @param  string  $repo
      * @param  string  $path
-     * @return array
+     * @param  int  $depth
+     * @return string
      */
-    private function fetchContentsRecursively($contents, $owner, $repo, $path = '')
+    private function fetchContentsRecursivelyMarkdown($path, $depth)
     {
+        if ($depth > $this->maxDepth) {
+            return ''; // Stop recursion if maximum depth is reached
+        }
+
+        $contents = $this->fetchFromGitHub($path);
+        $markdown = '';
+        $indent = str_repeat('  ', $depth); // Two spaces per depth level
+
+        foreach ($contents as $content) {
+            dump("Fetching: {$content['path']}");
+            if ($content['type'] === 'dir') {
+                $markdown .= "{$indent}- **{$content['name']}**\n";
+                $markdown .= $this->fetchContentsRecursivelyMarkdown($content['path'], $depth + 1);
+            } else {
+                $markdown .= "{$indent}- {$content['name']}\n";
+            }
+        }
+
+        return $markdown;
+    }
+
+    private function fetchFromGitHub($path)
+    {
+        $response = Http::withHeaders([
+            'Accept' => 'application/vnd.github+json',
+            'Authorization' => 'Bearer '.$this->token,
+            'X-GitHub-Api-Version' => '2022-11-28',
+        ])->get("https://api.github.com/repos/{$this->owner}/{$this->repo}/contents/{$path}");
+
+        if ($response->successful()) {
+            return $response->json();
+        } else {
+            throw new \Exception('GitHub API request failed: '.$response->body());
+        }
+    }
+
+    public function getRepositoryHierarchy()
+    {
+        $contents = $this->fetchFromGitHub('/');
+
+        return $this->fetchContentsRecursively($contents, 0);
+    }
+
+    private function fetchContentsRecursively($contents, $currentDepth, $path = '')
+    {
+        dump($path);
         $result = [];
+        $maxDepth = 2;
+
+        if ($currentDepth >= $maxDepth) {
+            return [];
+        }
 
         foreach ($contents as $content) {
             if ($content['type'] === 'dir') {
-                // Fetch contents of the directory
-                $subContents = GitHubClient::repo()->contents()->show($owner, $repo, $content['path']);
+                $subContents = $this->fetchFromGitHub($content['path']);
                 $result[] = [
                     'type' => 'dir',
                     'name' => $content['name'],
                     'path' => $content['path'],
-                    'contents' => $this->fetchContentsRecursively($subContents, $owner, $repo, $content['path']),
+                    'contents' => $this->fetchContentsRecursively($subContents, $currentDepth + 1, $content['path']),
                 ];
             } else {
                 $result[] = [
