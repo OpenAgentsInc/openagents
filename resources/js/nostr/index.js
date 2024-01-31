@@ -1,4 +1,4 @@
-import NDK, { NDKEvent } from "@nostr-dev-kit/ndk";
+import NDK, { NDKEvent, NDKNip07Signer } from "@nostr-dev-kit/ndk";
 import NDKCacheAdapterDexie from "@nostr-dev-kit/ndk-cache-dexie";
 import Alpine from "alpinejs";
 import { getPlugin, getPlugins } from "./nostr.js";
@@ -55,6 +55,7 @@ export const ndk = new NDK({
 
       try {
 
+        console.log("ndk?", ndk)
         if (!ndk.signer) {
           ndk.signer = new NDKNip07Signer()
         }
@@ -142,5 +143,7 @@ setTimeout(() => {
   }
 }, 100)
 
+console.log("connecting to ndk")
 await ndk.connect();
+console.log('connected')
 
