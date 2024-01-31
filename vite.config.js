@@ -13,7 +13,7 @@ export default defineConfig(({ command }) => {
   return {
     plugins: [
       laravel({
-        input: ['resources/js/app.js', 'resources/css/app.css'],
+        input: ['resources/js/app.js', 'resources/css/app.css', 'resources/js/nostr/index.js'],
         refresh: true,
       }),
     ],
