@@ -2,7 +2,7 @@
 
 An open platform for AI agents, built in public from scratch. (wip)
 
-See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
+See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more. Now building our [MVP Spec](https://github.com/OpenAgentsInc/openagents/wiki/MVP-Spec).
 
 ![agent flow](https://github.com/OpenAgentsInc/openagents/assets/14167547/7374a9d2-026d-4ff5-a1c0-f1b308e33b3c)
 
