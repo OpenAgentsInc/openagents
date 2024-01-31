@@ -209,14 +209,6 @@ it('has many files', function () {
     $this->assertInstanceOf(File::class, $agent->files->first());
 });
 
-it('has thoughts', function () {
-    $agent = Agent::factory()->create();
-    $thought = Thought::factory()->create(['agent_id' => $agent->id]);
-
-    $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->thoughts);
-    $this->assertInstanceOf(Thought::class, $agent->thoughts->first());
-});
-
 it('can use plugin', function () {
     $this->seed(ConciergeWithPluginSeeder::class);
     // Assert 0 TaskExecuted and StepExecuted
