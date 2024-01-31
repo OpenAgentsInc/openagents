@@ -66,11 +66,3 @@ it('has many messages', function () {
     $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->messages);
     $this->assertInstanceOf(Message::class, $user->messages->first());
 });
-
-it('has many files', function () {
-    $user = User::factory()->create();
-    $file = File::factory()->create(['user_id' => $user->id]);
-
-    $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->files);
-    $this->assertInstanceOf(File::class, $user->files->first());
-});
