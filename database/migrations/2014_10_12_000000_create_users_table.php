@@ -12,9 +12,9 @@ return new class extends Migration {
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('referrer_id')->nullable()->constrained('users');
             $table->integer('balance')->default(0); // sats
             $table->string('name')->nullable();
+            $table->string('lightning_address')->nullable();
             $table->string('email')->unique()->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password')->nullable();

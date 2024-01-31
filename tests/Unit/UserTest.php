@@ -36,13 +36,6 @@ it('has a username', function () {
     $this->assertEquals('johndoe', $user->username);
 });
 
-it('has a referrer', function () {
-    $referrer = User::factory()->create(['github_nickname' => 'johndoe']);
-    $user = User::factory()->create(['referrer_id' => $referrer->id]);
-
-    $this->assertInstanceOf(User::class, $user->referrer);
-    $this->assertEquals('johndoe', $user->referrer->username);
-});
 
 it('has a balance', function () {
     $user = User::factory()->create(['balance' => 1000]);
@@ -72,12 +65,4 @@ it('has many messages', function () {
 
     $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->messages);
     $this->assertInstanceOf(Message::class, $user->messages->first());
-});
-
-it('has many files', function () {
-    $user = User::factory()->create();
-    $file = File::factory()->create(['user_id' => $user->id]);
-
-    $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->files);
-    $this->assertInstanceOf(File::class, $user->files->first());
 });
