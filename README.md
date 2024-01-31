@@ -79,3 +79,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 63. [Agent Pays L402 Endpoint](https://twitter.com/OpenAgentsInc/status/1751700732963672411)
 64. [Lightning Withdrawals](https://twitter.com/OpenAgentsInc/status/1752049402359754789)
 65. [Exploring Code Llama 70B](https://twitter.com/OpenAgentsInc/status/1752464706365755475)
+66. [Nostr Plugin Registry](https://twitter.com/OpenAgentsInc/status/1752537446003118431)
