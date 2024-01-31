@@ -15,6 +15,8 @@
     "postcss": "^8.4.18",
     "tailwindcss": "^3.2.1",
     "typescript": "^5.0.2",
-    "vite": "^4.0.0"
+    "vite": "^4.0.0",
+    "@nostr-dev-kit/ndk": "^1.4.2",
+    "@nostr-dev-kit/ndk-cache-dexie": "^1.4.2"
   }
 }
