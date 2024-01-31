@@ -143,7 +143,5 @@ setTimeout(() => {
   }
 }, 100)
 
-console.log("connecting to ndk")
-await ndk.connect();
-console.log('connected')
+ndk.connect();
 
