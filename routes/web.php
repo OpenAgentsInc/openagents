@@ -4,17 +4,11 @@ use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BitcoinController;
 use App\Http\Controllers\PluginController;
-use App\Http\Controllers\NostrController;
 use App\Http\Controllers\StaticController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StaticController::class, 'newsplash'])->name('home');
 Route::get('/blog', [StaticController::class, 'blog']);
-
-Route::get('/nostr/plugins/create', [NostrController::class, 'plugincreate'])->name('nostr.plugincreate');
-Route::get('/nostr/plugins', [NostrController::class, 'plugins'])->name('nostr.plugins');
-Route::get('/nostr/settings', [NostrController::class, 'settings'])->name('nostr.settings');
-Route::get('/nostr/plugin/{pubkey}/{title}', [NostrController::class, 'plugin'])->name('nostr.plugin');
 
 // Route::get('/withdraw', [BitcoinController::class, 'withdraw'])->name('withdraw');
 // Route::post('/withdraw', [BitcoinController::class, 'initiate_withdrawal'])->name('withdraw.initiate');
