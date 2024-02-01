@@ -12,10 +12,10 @@ class PluginController extends Controller
 {
     public function call()
     {
-        $function = "count_vowels"; // or request('function')
+        $function = 'extract_urls'; // or request('function')
         $plugin = Plugin::find(request('plugin_id'));
 
-        if (!$plugin) {
+        if (! $plugin) {
             return new Response('Plugin not found', 404);
         }
 
@@ -36,7 +36,7 @@ class PluginController extends Controller
     {
         $plugin = Plugin::find($pluginId);
 
-        if (!$plugin) {
+        if (! $plugin) {
             return redirect('/');
         }
 
