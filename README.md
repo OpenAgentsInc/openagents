@@ -81,3 +81,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more. Now b
 65. [Exploring Code Llama 70B](https://twitter.com/OpenAgentsInc/status/1752464706365755475)
 66. [Nostr Plugin Registry](https://twitter.com/OpenAgentsInc/status/1752537446003118431)
 67. [Replacing ChatGPT](https://twitter.com/OpenAgentsInc/status/1752830191213150334)
+68. [URL Extractor Plugin](https://twitter.com/OpenAgentsInc/status/1753092771206885743)
