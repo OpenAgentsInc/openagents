@@ -105,7 +105,8 @@ it('can process an L402 step', function () {
         'step_id' => $step->id,
         'input' => json_encode([
             'input' => 'Hello world!',
-            'url' => 'https://weatherman.ln.sulu.sh/current?city=London',
+            'url' => 'https://l402-plugin-endpoint.fly.dev/fetch-url-content?url=https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/routes/web.php',
+            // 'url' => 'https://weatherman.ln.sulu.sh/current?city=London',
         ]),
     ]);
     // run the step
@@ -114,13 +115,18 @@ it('can process an L402 step', function () {
     // Decode the output JSON
     $data = json_decode($output, true);
 
-    // Extract city name and temperature
-    $city = $data['location']['name'];
-    $temperature = $data['current']['temp_f'];
+    // expect an array with key output with a string that starts with <?php
+    expect($data)->toBeArray();
+    expect($data['output'])->toBeString();
+    expect(str_starts_with($data['output'], '<?php'))->toBeTrue();
 
-    // Assert that the city and temperature are as expected
-    expect($city)->toBe('London');
-    expect($temperature)->toBeFloat(); // Update the expected temperature value if needed
+    // Extract city name and temperature
+    // $city = $data['location']['name'];
+    // $temperature = $data['current']['temp_f'];
+
+    // // Assert that the city and temperature are as expected
+    // expect($city)->toBe('London');
+    // expect($temperature)->toBeFloat(); // Update the expected temperature value if needed
 })->group('integration');
 
 it('can process a code_analysis step', function () {

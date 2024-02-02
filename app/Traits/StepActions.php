@@ -137,8 +137,17 @@ trait StepActions
             // Successful response processing
             $body = $response->body();
 
-            // Process the response body as needed
-            return $body;
+            // Attempt to decode the response body as JSON
+            $decodedBody = json_decode($body, true);
+
+            // Check if json_decode was successful (i.e., the body was valid JSON)
+            if (json_last_error() === JSON_ERROR_NONE) {
+                // The body was valid JSON, process the decoded array as needed
+                return $decodedBody;
+            } else {
+                // The body was not valid JSON (e.g., plain text), process the string as needed
+                return json_encode(['output' => $body]);
+            }
         } else {
             // Handle error scenarios
             throw new \Exception('Error accessing the API: '.$response->status());

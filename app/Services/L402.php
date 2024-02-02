@@ -19,9 +19,12 @@ class L402
         $response = $this->sendRequest($url);
 
         if ($response->status() == 402) {
+
             $authHeader = $response->header('WWW-Authenticate');
             [$macaroon, $invoiceString] = $this->parseAuthHeader($authHeader);
 
+            // strip doublequotes off the invoice string
+            $invoiceString = str_replace('"', '', $invoiceString);
             $payment = $this->albyClient->payInvoice($invoiceString);
             $preimage = $payment['payment_preimage'];
 
@@ -52,9 +55,10 @@ class L402
             $authHeader = substr($authHeader, 5); // Remove 'L402 ' prefix
         }
 
-        $pattern = '/macaroon="([^"]+)", invoice="([^"]+)"/';
+        // Adjusted pattern to match the structure of your provided header
+        $pattern = '/(?:token|macaroon)=([^,]+), invoice=([^,]+)/';
         if (preg_match($pattern, $authHeader, $matches) && count($matches) === 3) {
-            return [$matches[1], $matches[2]]; // Extracted macaroon and invoice
+            return [$matches[1], $matches[2]]; // Extracted token and invoice
         }
 
         throw new \Exception("Invalid 'WWW-Authenticate' header format");
