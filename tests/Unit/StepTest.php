@@ -127,7 +127,7 @@ it('can process an L402 step', function () {
     // // Assert that the city and temperature are as expected
     // expect($city)->toBe('London');
     // expect($temperature)->toBeFloat(); // Update the expected temperature value if needed
-});
+})->group('integration');
 
 it('can process a code_analysis step', function () {
     $step = Step::factory()->create([
