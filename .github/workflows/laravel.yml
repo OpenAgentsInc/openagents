@@ -36,16 +36,6 @@ jobs:
       run: php -r "file_exists('.env') || copy('.env.example', '.env');"
     - name: Install Dependencies
       run: composer install --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
-    # Download and install Extism CLI
-    - name: Download Extism CLI
-      run: |
-        curl -o get-extism.sh https://get.extism.org/cli
-        sed -i 's/$_sudo//g' get-extism.sh # Modify the script to bypass sudo if necessary
-        sh get-extism.sh -y
-
-    # Install the Extism library
-    - name: Install Extism Library
-      run: extism lib install latest
     - name: Generate key
       run: php artisan key:generate
     - name: Directory Permissions
