@@ -39,8 +39,8 @@ test('can execute plugin function', function () {
 });
 
 test('can create a host function', function () {
-    $hf = new HostFunction('test', [ExtismValType::I32, ExtismValType::I32], [ExtismValType::I32], function (int $a, int $b) {
-        return $a + $b;
+    $hf = new HostFunction('test', [ExtismValType::I64], [ExtismValType::I64], function (string $a) {
+        return $a;
     });
     expect($hf)->toBeInstanceOf(HostFunction::class);
 });
@@ -59,38 +59,32 @@ test('PHP host functions work with the plugin', function () {
 
     // Define the kv_read host function
     $kvRead = new HostFunction('kv_read', [ExtismValType::I64], [ExtismValType::I64], function (string $key) use (&$kvstore) {
-        dd($kvstore);
         $value = $kvstore[$key] ?? "\0\0\0\0";
-
-        echo 'Read '.bytesToInt($value)." from key=$key".PHP_EOL;
 
         return $value;
     });
-    dd($kvRead);
 
     // Define the kv_write host function
     $kvWrite = new HostFunction('kv_write', [ExtismValType::I64, ExtismValType::I64], [], function (string $key, string $value) use (&$kvstore) {
-        echo 'Writing value='.bytesToInt($value)." to key=$key".PHP_EOL;
         $kvstore[$key] = $value;
     });
 
-    // Assume Plugin::factory()->create() sets up an instance similar to the provided examples
+    // TODO: see if this is bad practice - model w constructor params instead of create
+    // $plugin = new Plugin('https://github.com/extism/plugins/releases/latest/download/count_vowels_kvstore.wasm', [$kvRead, $kvWrite]);
     $plugin = Plugin::factory()->create([
-        'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels_kvstore.wasm', // Ensure this points to the kvstore version
+        'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels_kvstore.wasm',
     ]);
-
-    // Assuming a modified Plugin class that can accept host functions
-    $plugin->addHostFunction($kvRead);
-    $plugin->addHostFunction($kvWrite);
+    $plugin->initializePlugin([$kvRead, $kvWrite]);
 
     // Call the plugin's function with the host functions in place
+    $output = $plugin->call('count_vowels', 'Helloooo, World!');
     $output = $plugin->call('count_vowels', 'Hello, World!');
 
     // Assertions can vary based on the expected behavior; here's a basic check
     expect($output)->toBeJson();
     $decoded = json_decode($output, true);
     expect($decoded)->toHaveKey('total');
-    expect($decoded['total'])->toBeGreaterThan(0); // Assuming the kvstore increments
+    expect($decoded['total'])->toEqual(9); // Assuming the kvstore increments
 });
 
 test('can return its module functions', function () {
