@@ -43,7 +43,7 @@ test('can create a host function', function () {
         return $a;
     });
     expect($hf)->toBeInstanceOf(HostFunction::class);
-});
+})->group('integration');
 
 test('PHP host functions work with the plugin', function () {
     // Set up a mock key-value store
@@ -85,7 +85,7 @@ test('PHP host functions work with the plugin', function () {
     $decoded = json_decode($output, true);
     expect($decoded)->toHaveKey('total');
     expect($decoded['total'])->toEqual(9); // Assuming the kvstore increments
-});
+})->group('integration');
 
 test('can return its module functions', function () {
     $plugin = Plugin::factory()->create([
