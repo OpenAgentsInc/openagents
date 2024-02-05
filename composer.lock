@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "042cdd749b8f2dfc1251558cf5cafa34",
+    "content-hash": "81a85a75fbb1d3f9eeefc26d6177a165",
     "packages": [
         {
             "name": "ankane/pgvector",
@@ -487,30 +487,30 @@
         },
         {
             "name": "extism/extism",
-            "version": "dev-main",
+            "version": "v1.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/extism/php-sdk.git",
-                "reference": "bc63e3fae1ca86722f40e6718f76f8aafe3a1f50"
+                "reference": "0a522ebeec0628f85b49acd079c96ee3d77692dc"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/extism/php-sdk/zipball/bc63e3fae1ca86722f40e6718f76f8aafe3a1f50",
-                "reference": "bc63e3fae1ca86722f40e6718f76f8aafe3a1f50",
+                "url": "https://api.github.com/repos/extism/php-sdk/zipball/0a522ebeec0628f85b49acd079c96ee3d77692dc",
+                "reference": "0a522ebeec0628f85b49acd079c96ee3d77692dc",
                 "shasum": ""
             },
             "require": {
                 "php": "^7.4 || ^8"
             },
             "require-dev": {
-                "phpunit/phpunit": "^10.4"
+                "phpunit/phpunit": "^10"
             },
-            "default-branch": true,
             "type": "library",
             "autoload": {
                 "files": [
                     "src/Manifest.php",
-                    "src/Plugin.php"
+                    "src/Plugin.php",
+                    "src/CurrentPlugin.php"
                 ],
                 "psr-4": {
                     "Extism\\": "src/"
@@ -543,9 +543,9 @@
             ],
             "support": {
                 "issues": "https://github.com/extism/php-sdk/issues",
-                "source": "https://github.com/extism/php-sdk/tree/v1.0.0-rc4"
+                "source": "https://github.com/extism/php-sdk/tree/v1.0.0"
             },
-            "time": "2024-01-05T17:36:39+00:00"
+            "time": "2024-01-29T14:12:42+00:00"
         },
         {
             "name": "fruitcake/php-cors",
@@ -10142,9 +10142,7 @@
     ],
     "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {
-        "extism/extism": 20
-    },
+    "stability-flags": [],
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
