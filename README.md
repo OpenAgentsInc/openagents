@@ -84,3 +84,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more. Now b
 68. [URL Extractor Plugin](https://twitter.com/OpenAgentsInc/status/1753092771206885743)
 69. [URL Scraper Plugin](https://twitter.com/OpenAgentsInc/status/1753237589945905373)
 70. [L402 Plugin Deployment](https://twitter.com/OpenAgentsInc/status/1753527990506721416)
+71. [PHP Host Functions](https://twitter.com/OpenAgentsInc/status/1754643881172328732)
