@@ -38,6 +38,22 @@ test('can execute plugin function', function () {
     expect($output)->toBe('{"count":3,"total":3,"vowels":"aeiouAEIOU"}');
 })->group('integration');
 
+test('can execute llm inferencer plugin', function () {
+    $plugin = Plugin::factory()->create([
+        'wasm_url' => 'https://github.com/OpenAgentsInc/plugin-llm-inferencer/releases/download/v0.0.1/plugin_llm_inferencer.wasm',
+    ]);
+    // we need to pass a JSON encoded string of these fields -     model_name: String,    input_content: String,    api_key: String,
+    $data = [
+        'model_name' => 'gpt-4',
+        'input_content' => 'Hello, World!',
+        'api_key' => env('OPENAI_API_KEY'),
+    ];
+    $output = $plugin->call('inference', json_encode($data));
+    expect($output)->toBeJson();
+    $decodedOutput = json_decode($output, true);
+    expect($decodedOutput['object'])->toBe('chat.completion');
+})->group('integration');
+
 test('can create a host function', function () {
     $hf = new HostFunction('test', [ExtismValType::I64], [ExtismValType::I64], function (string $a) {
         return $a;

@@ -35,6 +35,7 @@ class Plugin extends Model
 
         $wasm = new UrlWasmSource($this->wasm_url);
         $manifest = new Manifest($wasm);
+        $manifest->allowed_hosts = ['*'];
         $this->plugin = new ExtismPlugin($manifest, true, $functions);
     }
 
