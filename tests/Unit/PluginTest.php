@@ -38,6 +38,14 @@ test('can execute plugin function', function () {
     expect($output)->toBe('{"count":3,"total":3,"vowels":"aeiouAEIOU"}');
 })->group('integration');
 
+test('can execute function from JS plugin', function () {
+    $plugin = Plugin::factory()->create([
+        'wasm_url' => 'https://github.com/OpenAgentsInc/plugin-llm-inferencer/raw/main/plugin.wasm',
+    ]);
+    $output = $plugin->call('greet', 'Chris');
+    expect($output)->toBe('Hello, Chris');
+});
+
 test('can create a host function', function () {
     $hf = new HostFunction('test', [ExtismValType::I64], [ExtismValType::I64], function (string $a) {
         return $a;
