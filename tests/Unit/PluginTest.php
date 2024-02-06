@@ -38,12 +38,76 @@ test('can execute plugin function', function () {
     expect($output)->toBe('{"count":3,"total":3,"vowels":"aeiouAEIOU"}');
 })->group('integration');
 
-test('can execute function from JS plugin', function () {
+test('can consume LLM inferencer JS plugin', function () {
     $plugin = Plugin::factory()->create([
-        'wasm_url' => 'https://github.com/OpenAgentsInc/plugin-llm-inferencer/raw/main/plugin.wasm',
+        // 'wasm_url' => '/home/atlantispleb/code/plugin-llm-inferencer/plugin.wasm',
+        'wasm_url' => 'https://github.com/OpenAgentsInc/plugin-llm-inferencer/releases/download/v0.0.0-alpha6/plugin.wasm',
     ]);
-    $output = $plugin->call('greet', 'Chris');
-    expect($output)->toBe('Hello, Chris');
+
+    // Define the HTTP fetch host function that returns a string
+    $httpFetch = new HostFunction('httpFetch', [ExtismValType::I64], [ExtismValType::I64], function (string $requestJson) {
+        // Decode the request JSON string
+        //echo 'yo im here';
+
+        return $requestJson;
+
+        $request = json_decode($requestJson, true);
+
+        // Initialize HTTP client
+        $client = new \GuzzleHttp\Client();
+        try {
+            $response = $client->request($request['method'], $request['url'], [
+                'headers' => $request['headers'],
+                'body' => json_encode($request['body']),
+                'http_errors' => false, // To ensure that the client returns a response object even on HTTP errors
+            ]);
+
+            // Prepare the response data
+            $responseData = [
+                'status' => $response->getStatusCode(),
+                'headers' => $response->getHeaders(),
+                'body' => (string) $response->getBody(),
+            ];
+        } catch (\Exception $e) {
+            // Prepare error response data in case of an exception
+            $responseData = [
+                'status' => 500,
+                'body' => $e->getMessage(),
+            ];
+        }
+
+        // Convert the response data to a JSON string and return it
+        return json_encode($responseData);
+    });
+
+    $plugin->initializePlugin([$httpFetch]);
+    // $plugin->initializePlugin();
+
+    // die and dump the length of the API key
+    $input = json_encode([
+        'apiKey' => env('OPENAI_API_KEY'),
+        'hostUrl' => 'https://api.openai.com',
+        // 'model' => 'gpt-3.5-turbo', // Or 'gpt-4', depending on the test case
+        // 'messages' => [
+        //     ['role' => 'system', 'content' => 'You are a helpful assistant.'],
+        //     ['role' => 'user', 'content' => 'Hello!'],
+        // ],
+    ]);
+
+    // escape the characters of input
+    $escaped = addslashes($input);
+
+    $output = $plugin->call('callOpenAI', 'what');
+    dd($output);
+
+    // Decode the JSON output to verify the expected structure and content
+    $outputData = json_decode($output, true);
+    dd($outputData);
+    expect($outputData)->toHaveKey('choices');
+
+    // You may adjust the validation of response content according to your requirements
+    // For instance, to check for specific content in the assistant's response:
+    // expect($outputData['choices'][0]['message']['content'])->toContain('expected response content');
 });
 
 test('can create a host function', function () {
