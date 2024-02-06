@@ -52,7 +52,7 @@ test('can execute llm inferencer plugin', function () {
     expect($output)->toBeJson();
     $decodedOutput = json_decode($output, true);
     expect($decodedOutput['object'])->toBe('chat.completion');
-});
+})->group('integration');
 
 test('can create a host function', function () {
     $hf = new HostFunction('test', [ExtismValType::I64], [ExtismValType::I64], function (string $a) {
