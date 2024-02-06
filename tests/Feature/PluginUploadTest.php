@@ -6,7 +6,7 @@
 
 use App\Models\Plugin;
 
-test("user can see upload plugin form", function () {
+test('user can see upload plugin form', function () {
     $this->get('/plugins/create')
         ->assertOk()
         ->assertSee('Create Plugin')
@@ -14,49 +14,49 @@ test("user can see upload plugin form", function () {
         ->assertSee('upload-plugin');
 });
 
-test("user can upload plugin", function () {
+test('user can upload plugin', function () {
     $this->assertEquals(0, count(Plugin::all()));
 
     $this->post('/plugins', [
         'name' => 'Count Vowels',
         'fee' => '100',
         'description' => 'Count the vowels in a string',
-        'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm"
+        'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm',
     ]);
 
     $this->assertEquals(1, count(Plugin::all()));
-});
+})->group('integration');
 
 test('after creating plugin, user is redirected to the plugin page', function () {
     $response = $this->post('/plugins', [
         'name' => 'Count Vowels',
         'fee' => '100',
         'description' => 'Count the vowels in a string',
-        'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm"
+        'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm',
     ]);
 
     expect($response->getStatusCode())->toBe(302);
 });
 
-test("upload requires plugin to have a name", function () {
+test('upload requires plugin to have a name', function () {
     $this->assertEquals(0, count(Plugin::all()));
 
     $this->post('/plugins', [
         'fee' => 0,
         'description' => 'Count the vowels in a string',
-        'wasm_url' => "http://theurl.com/count_vowels.wasm"
+        'wasm_url' => 'http://theurl.com/count_vowels.wasm',
     ])
         ->assertStatus(200)
         ->assertSee('The name field is required.');
 });
 
-test("upload requires plugin to have a description", function () {
+test('upload requires plugin to have a description', function () {
     $this->assertEquals(0, count(Plugin::all()));
 
     $this->post('/plugins', [
         'fee' => 0,
         'name' => 'Count Vowels',
-        'wasm_url' => "http://theurl.com/count_vowels.wasm"
+        'wasm_url' => 'http://theurl.com/count_vowels.wasm',
     ])
         ->assertStatus(200)
         ->assertSee('The description field is required.');
@@ -79,7 +79,7 @@ test('wasm_url must be an actual url', function () {
     $this->post('/plugins', [
         'name' => 'Count Vowels',
         'description' => 'Count the vowels in a string',
-        'wasm_url' => "not a url"
+        'wasm_url' => 'not a url',
     ])
         ->assertStatus(200)
         ->assertSee('The wasm url field must be a valid URL.');
