@@ -85,3 +85,4 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more. Now b
 69. [URL Scraper Plugin](https://twitter.com/OpenAgentsInc/status/1753237589945905373)
 70. [L402 Plugin Deployment](https://twitter.com/OpenAgentsInc/status/1753527990506721416)
 71. [PHP Host Functions](https://twitter.com/OpenAgentsInc/status/1754643881172328732)
+72. [LLM Inference Plugin](https://twitter.com/OpenAgentsInc/status/1755001183784075769)
