@@ -18,6 +18,7 @@ Route::post('/plugins', [PluginController::class, 'store'])->name('plugins.store
 Route::post('/plugins/call', [PluginController::class, 'call'])->name('plugins.call');
 
 // Agents
+Route::get('/agent/coder', [AgentController::class, 'coder'])->name('agent.coder');
 Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
 
