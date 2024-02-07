@@ -1,10 +1,9 @@
 <?php
 
 use App\Models\Agent;
-use App\Models\Brain;
+
 use App\Models\Conversation;
 use App\Models\Message;
-use App\Models\File;
 use App\Models\Step;
 use App\Models\StepExecuted;
 use App\Models\Task;
@@ -123,13 +122,6 @@ it('has a balance', function () {
 
     $agent = Agent::factory()->create(['balance' => 1000]);
     expect($agent->balance)->toBe(1000);
-});
-
-it('hasmany brains', function () {
-    $agent = Agent::factory()->create();
-    $brain = Brain::factory()->create(['agent_id' => $agent->id]);
-    $brain2 = Brain::factory()->create(['agent_id' => $agent->id]);
-    expect($agent->brains->count())->toBe(2);
 });
 
 it('can run', function () {
