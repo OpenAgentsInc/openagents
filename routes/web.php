@@ -36,9 +36,9 @@ if (!app()->environment('production')) {
         Route::get('/withdraw', [BitcoinController::class, 'withdraw'])->name('withdraw');
         Route::post('/withdraw', [BitcoinController::class, 'initiate_withdrawal'])->name('withdraw.initiate');
     });
-}
 
-require __DIR__.'/auth.php';
+    require __DIR__.'/auth.php';
+}
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {
