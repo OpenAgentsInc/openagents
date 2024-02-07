@@ -217,7 +217,7 @@ trait StepActions
         if (env('APP_ENV') == 'testing') {
             return [
                 'input' => $input,
-                'embedding' => Embedder::createFakeEmbedding(),
+                'embedding' => [] // Embedder::createFakeEmbedding(),
             ];
         }
 
