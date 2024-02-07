@@ -1,4 +1,4 @@
-@extends('layouts.simple')
+@extends('layouts.main')
 
 @section('title', 'OpenAgents')
 
