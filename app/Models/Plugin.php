@@ -22,9 +22,9 @@ class Plugin extends Model
 
     protected static function booted()
     {
-        static::retrieved(function ($plugin) {
-            $plugin->initializePlugin();
-        });
+        // static::retrieved(function ($plugin) {
+        //     $plugin->initializePlugin();
+        // });
     }
 
     public function initializePlugin($functions = [])

@@ -128,17 +128,3 @@ it('can process an L402 step', function () {
     // expect($city)->toBe('London');
     // expect($temperature)->toBeFloat(); // Update the expected temperature value if needed
 })->group('integration');
-
-it('can process a code_analysis step', function () {
-    $step = Step::factory()->create([
-        'category' => 'code_analysis',
-    ]);
-    $step_executed = StepExecuted::factory()->create([
-        'step_id' => $step->id,
-        'input' => json_encode([
-            'url' => 'https://github.com/OpenAgentsInc/openagents',
-        ]),
-    ]);
-    $output = $step_executed->run();
-    dd($output['analysis']);
-})->skip();
