@@ -18,8 +18,7 @@
             @yield('content')
         </div>
     </div>
-    <!-- Footer -->
-    <footer class="px-6 py-4">
+    <footer class="px-6 py-4 fixed bottom-0 w-full">
         Footer content here
     </footer>
 </body>
