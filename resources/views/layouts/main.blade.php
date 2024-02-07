@@ -17,7 +17,6 @@
             @yield('content')
         </div>
     </div>
-    <!-- Footer -->
     <footer class="text-sm px-6 sm:px-8 py-4 fixed bottom-0 w-full bg-white dark:bg-black">
         <div class="mx-auto flex justify-end space-x-4">
             <a href="https://twitter.com/OpenAgentsInc" target="_blank"
