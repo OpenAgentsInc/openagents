@@ -24,7 +24,7 @@ if (!app()->environment('production')) {
     Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
 
     // Auth
-    Route::get('/login', [AuthController::class, 'login'])->name('login');
+    Route::get('/login', [AuthController::class, 'login']);
     Route::get('/login/github', [AuthController::class, 'loginGithub']);
     Route::get('/github', [AuthController::class, 'githubCallback']);
     Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);
@@ -37,6 +37,8 @@ if (!app()->environment('production')) {
         Route::post('/withdraw', [BitcoinController::class, 'initiate_withdrawal'])->name('withdraw.initiate');
     });
 }
+
+require __DIR__.'/auth.php';
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {
