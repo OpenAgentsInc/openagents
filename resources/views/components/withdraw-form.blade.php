@@ -1,26 +1,27 @@
 @fragment('withdrawal-form')
-    <x-card class="my-8 mx-auto max-w-xl">
-        <x-card-header>
-            <x-card-title>Withdraw Funds</x-card-title>
-            <x-card-description>Enter the amount you wish to withdraw</x-card-description>
-        </x-card-header>
-        <x-card-content>
+    <div class="my-8 mx-auto max-w-xl">
+        <div>
+            <h2>Withdraw Funds</h2>
+            <p>Enter the amount you wish to withdraw</p>
+        </div>
+        <div>
             <div id="withdraw-message"></div>
-            <form id="withdraw-funds" hx-post="{{ route('withdraw') }}" hx-target="#withdraw-message" hx-swap="outerHTML" class="space-y-4">
+            <form id="withdraw-funds" hx-post="{{ route('withdraw') }}" hx-target="#withdraw-message"
+                hx-swap="outerHTML" class="space-y-4">
                 @csrf
                 <div>
-                    <x-label for="amount">Amount</x-label>
+                    <label for="amount">Amount</label>
                     <div class="w-full">
                         <input type="hidden" name="amount" id="slider-input" value="0" />
                         <x-slider min="0" max="100" step="1" />
                     </div>
                 </div>
                 <div class="flex justify-center">
-                    <x-button variant="outline" size="lg" type="submit">
+                    <button variant="outline" size="lg" type="submit" class="mt-4">
                         Withdraw
-                    </x-button>
+                    </button>
                 </div>
             </form>
-        </x-card-content>
-    </x-card>
+        </div>
+    </div>
 @endfragment

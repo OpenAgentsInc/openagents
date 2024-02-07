@@ -1,10 +1,10 @@
 @fragment('plugin-upload-form')
-    <x-card class="my-8 mx-auto max-w-xl">
-        <x-card-header>
-            <x-card-title>Create Plugin</x-card-title>
-            <x-card-description>Make a new agent plugin from an Extism .wasm file</x-card-description>
-        </x-card-header>
-        <x-card-content>
+    <div class="my-8 mx-auto max-w-xl">
+        <div>
+            <div class="font-bold text-xl">Create Plugin</div>
+            <div class="mt-1 text-sm text-gray">Make a new agent plugin from an Extism .wasm file</div>
+        </div>
+        <div class="card-content">
             <form id="upload-plugin" method="POST" action="{{ route('plugins.store') }}"
                 enctype="multipart/form-data" class="space-y-4">
                 @csrf
@@ -35,7 +35,6 @@
                     </x-button>
                 </div>
             </form>
-        </x-card-content>
-    </x-card>
-
+        </div>
+    </div>
 @endfragment
