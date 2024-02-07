@@ -121,12 +121,7 @@ class AgentController extends Controller
 
         $conversation = $agent->getUserConversation();
 
-        // If Agent has a brain, use retrieval. Otherwise use default chat task.
-        if ($agent->brains->count() > 0) {
-            $task = $agent->getRetrievalTask();
-        } else {
-            $task = $agent->getChatTask();
-        }
+        $task = $agent->getChatTask();
 
         // Return standard JSON success response
         return response()->json([
