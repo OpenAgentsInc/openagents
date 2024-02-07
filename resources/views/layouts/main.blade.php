@@ -17,9 +17,16 @@
             @yield('content')
         </div>
     </div>
-    <footer class="px-6 py-4 fixed bottom-0 w-full">
-        Footer content here
+    <!-- Footer -->
+    <footer class="px-6 sm:px-12 py-4 fixed bottom-0 w-full bg-white dark:bg-black">
+        <div class="mx-auto flex justify-end space-x-4">
+            <a href="https://twitter.com/OpenAgentsInc" target="_blank"
+                class="text-gray hover:text-black dark:hover:text-white mx-2">Twitter</a>
+            <a href="https://github.com/OpenAgentsInc/openagents" target="_blank"
+                class="text-gray hover:text-black dark:hover:text-white mx-2">GitHub</a>
+        </div>
     </footer>
+
 </body>
 
 </html>
