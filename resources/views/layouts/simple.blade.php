@@ -10,10 +10,8 @@
     @include('analytics')
 </head>
 
-<body class="bg-white dark:bg-black text-black dark:bg-black">
-    <div class="fixed right-[20px] top-[20px]">
-        <x-theme-switcher />
-    </div>
+<body class="bg-white dark:bg-black text-black dark:text-white">
+    <x-theme-switcher />
     <div class="max-w-5xl mx-auto my-10 p-6">
         @yield('content')
     </div>
