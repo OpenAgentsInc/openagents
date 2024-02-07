@@ -12,7 +12,6 @@
 
 <body class="flex flex-col min-h-screen bg-white dark:bg-black text-black dark:text-white font-mono">
     <x-theme-switcher />
-    <!-- Main content container -->
     <div class="flex flex-grow items-center justify-center">
         <div class="w-full max-w-5xl mx-auto p-6">
             @yield('content')
