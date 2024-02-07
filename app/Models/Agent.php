@@ -224,16 +224,6 @@ class Agent extends Model
         return $step_executed->fresh()->output;
     }
 
-    public function brains()
-    {
-        return $this->hasMany(Brain::class);
-    }
-
-    public function brain()
-    {
-        return $this->brains()->first();
-    }
-
     public function conversations()
     {
         return $this->hasMany(Conversation::class);

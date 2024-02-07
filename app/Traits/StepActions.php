@@ -3,7 +3,7 @@
 namespace App\Traits;
 
 use App\Http\Controllers\StreamController;
-use App\Models\Datapoint;
+
 use App\Models\Plugin;
 use App\Services\Embedder;
 use App\Services\GitHub;
@@ -217,7 +217,7 @@ trait StepActions
         if (env('APP_ENV') == 'testing') {
             return [
                 'input' => $input,
-                'embedding' => Embedder::createFakeEmbedding(),
+                'embedding' => [] // Embedder::createFakeEmbedding(),
             ];
         }
 
@@ -233,24 +233,11 @@ trait StepActions
 
     public function similarity_search($input, $conversation, $take = 8)
     {
-        $embedding = $input['embedding'];
-        if (! is_array($embedding)) {
-            echo "Similarity search input is not an array.\n";
-            dd($embedding);
-        }
-
-        $vector = new Vector($embedding);
-
-        $searchResults = Datapoint::query()
-            // ->where('brain_id', 1) -- For now using ALL DATAPOINTS
-            ->orderByRaw('embedding <-> ?', [$vector])
-            ->take($take)
-            ->pluck('data');
-
-        // dd($searchResults->toArray());
         return [
-            'input' => $input['input'],
-            'context' => $searchResults->toArray(),
+            'input' => [0, 0],
+            'context' => [
+                'do this via a plugin'
+            ],
         ];
     }
 
