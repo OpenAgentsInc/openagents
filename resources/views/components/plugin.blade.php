@@ -1,6 +1,6 @@
 @props(['plugin'])
 
-    <a href="/plugin/{{ $plugin->id }}" class="no-underline text-black dark:text-white">
+    <a href="/plugin/{{ $plugin->id }}">
         <x-card class="relative">
             <div class="absolute top-0 right-0 mt-2 mr-2">
                 <x-bitcoin-amount :amount="$plugin->fee" class="text-lg" />
