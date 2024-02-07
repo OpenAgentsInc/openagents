@@ -4,18 +4,13 @@
 
 @section('content')
 
-<h1 class="mt-12 text-grey-900 font-extrabold text-3xl sm:text-4xl lg:text-5xl text-center dark:text-white">
-    An open platform for AI agents</h1>
-<p class="mt-6 text-xl text-grey-600 text-center max-w-3xl tracking-wide mx-auto dark:text-teal-300">Built in
-    public
-    from scratch. Launching soon!</p>
-
-<!-- Episode 1 video -->
-<div class="mt-12 mx-auto w-[560px] max-w-full">
-    <blockquote class="twitter-tweet" data-theme="dark" data-media-max-width="560">
-        <a href="https://twitter.com/OpenAgentsInc/status/1721942435125715086?ref_src=twsrc%5Etfw"></a>
-    </blockquote>
+<div class="pointer-events-none h-full flex flex-col justify-center items-center font-mono">
+    <div class="fixed text-center">
+        <div class="border py-4 px-5 mx-auto">
+            <h1 class="text-2xl">OpenAgents</h1>
+        </div>
+        <p class="text-gray mt-6">Coming soon</p>
+    </div>
 </div>
-<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
 @endsection

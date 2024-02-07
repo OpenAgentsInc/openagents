@@ -10,12 +10,12 @@ test('authed user can visit withdraw page', function () {
     $this->actingAs($user)
         ->get(route('withdraw'))
         ->assertStatus(200);
-})->skip();
+});
 
 test('unauthed user is redirected to login page', function () {
     $this->get(route('withdraw'))
         ->assertRedirect(route('login'));
-})->skip();
+});
 
 test('user must have lightning_address to withdraw', function () {
     $user = User::factory()->create(['lightning_address' => null]);
@@ -24,7 +24,7 @@ test('user must have lightning_address to withdraw', function () {
             'amount' => 10, // sats
         ])
         ->assertSee('You must set a Lightning address before withdrawing.');
-})->skip();
+});
 
 test('user can complete withdrawal', function () {
     // expect database to have no Withdrawal records

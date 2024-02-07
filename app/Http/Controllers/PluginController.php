@@ -28,7 +28,7 @@ class PluginController extends Controller
     public function index()
     {
         return view('plugins', [
-            'plugins' => Plugin::all(),
+            'plugins' =>  Plugin::all(),
         ]);
     }
 
