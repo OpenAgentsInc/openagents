@@ -4,6 +4,8 @@
 
 // Alpine.start();
 
+document.documentElement.classList.add('dark');
+
 // Initialize theme based on localStorage or system preference
 function initializeTheme() {
   // Check for saved theme in localStorage
@@ -12,7 +14,7 @@ function initializeTheme() {
 
   // Apply the dark class based on saved theme or system preference
   if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-    document.documentElement.classList.add('dark');
+    // document.documentElement.classList.add('dark');
   } else {
     document.documentElement.classList.remove('dark');
   }
