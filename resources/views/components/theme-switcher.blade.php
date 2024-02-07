@@ -1,3 +1,4 @@
+<!--
 <label class="sr-only">Theme</label>
 <button id="theme-switcher" class="text-grey-400 hover:text-grey-500 dark:hover:text-grey-300">
     <span class="dark:hidden">
@@ -23,20 +24,21 @@
         </svg>
     </span>
 </button>
+-->
 
 
 <script>
     // Function to toggle the dark theme
-    function toggleDarkTheme() {
-        // Check if the dark class is already on the HTML element
-        const isDarkMode = document.documentElement.classList.contains('dark');
+    // function toggleDarkTheme() {
+    //     // Check if the dark class is already on the HTML element
+    //     const isDarkMode = document.documentElement.classList.contains('dark');
 
-        // Toggle the dark class
-        document.documentElement.classList.toggle('dark', !isDarkMode);
+    //     // Toggle the dark class
+    //     document.documentElement.classList.toggle('dark', !isDarkMode);
 
-        // Update localStorage with the new theme state
-        localStorage.setItem('theme', isDarkMode ? 'light' : 'dark');
-    }
+    //     // Update localStorage with the new theme state
+    //     localStorage.setItem('theme', isDarkMode ? 'light' : 'dark');
+    // }
 
     // Initialize theme based on localStorage or system preference
     function initializeTheme() {
@@ -53,7 +55,7 @@
     }
 
     // Add event listener to the theme switcher button
-    document.getElementById('theme-switcher').addEventListener('click', toggleDarkTheme);
+    // document.getElementById('theme-switcher').addEventListener('click', toggleDarkTheme);
 
     // Initialize the theme when the script loads
     initializeTheme();
