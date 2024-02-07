@@ -4,8 +4,8 @@
 
 @section('content')
 
-<div class="pointer-events-none h-[80vh] flex flex-col justify-center items-center font-mono">
-    <div class="fixed text-center">
+<div class="pointer-events-none h-full flex flex-col justify-center items-center font-mono">
+    <div class="text-center">
         <div class="border py-4 px-5 mx-auto">
             <h1 class="text-2xl">OpenAgents</h1>
         </div>

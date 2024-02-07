@@ -10,11 +10,18 @@
     @include('analytics')
 </head>
 
-<body class="bg-white dark:bg-black text-black dark:text-white">
+<body class="flex flex-col min-h-screen bg-white dark:bg-black text-black dark:text-white font-mono">
     <x-theme-switcher />
-    <div class="max-w-5xl mx-auto my-10 p-6">
-        @yield('content')
+    <!-- Main content container -->
+    <div class="flex flex-grow items-center justify-center">
+        <div class="w-full max-w-5xl mx-auto p-6">
+            @yield('content')
+        </div>
     </div>
+    <!-- Footer -->
+    <footer class="px-6 py-4">
+        Footer content here
+    </footer>
 </body>
 
 </html>
