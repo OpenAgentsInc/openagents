@@ -4,7 +4,7 @@
             <div class="font-bold text-xl">Create Plugin</div>
             <div class="mt-1 text-sm text-gray">Make a new agent plugin from an Extism .wasm file</div>
         </div>
-        <div class="card-content">
+        <div>
             <form id="upload-plugin" method="POST" action="{{ route('plugins.store') }}"
                 enctype="multipart/form-data" class="space-y-4">
                 @csrf
