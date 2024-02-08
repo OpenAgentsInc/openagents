@@ -9,7 +9,7 @@
     @include('analytics')
 </head>
 
-<body class="flex flex-col min-h-screen bg-white dark:bg-black text-black dark:text-white font-mono">
+<body class="flex flex-col min-h-screen bg-black text-white font-mono antialiased">
     <div class="flex flex-grow items-center justify-center">
         <div class="w-full max-w-5xl mx-auto p-6">
             @yield('content')
