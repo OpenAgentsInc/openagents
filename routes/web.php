@@ -19,6 +19,7 @@ if (!app()->environment('production')) {
     Route::post('/plugins/call', [PluginController::class, 'call'])->name('plugins.call');
 
     // Agents
+    Route::get('/agents/create', [AgentController::class, 'create'])->name('agents.create');
     Route::get('/agent/connie', [AgentController::class, 'coder'])->name('agent.coder');
     Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
     Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
