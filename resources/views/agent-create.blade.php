@@ -4,6 +4,9 @@
 
 @section('content')
 
-<h1>Create Agent</h1>
+<div class="my-8 mx-auto max-w-xl">
+    <div class="font-bold text-xl">Create Agent</div>
+    <div class="mt-1 text-sm text-gray">Let's fucking go</div>
+</div>
 
 @endsection
