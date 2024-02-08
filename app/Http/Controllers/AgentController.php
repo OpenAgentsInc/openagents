@@ -11,6 +11,11 @@ use Inertia\Response;
 
 class AgentController extends Controller
 {
+    public function create()
+    {
+        return view('agent-create');
+    }
+
     public function run_task(Request $request, $task_id)
     {
         // Find the specified task by task_id

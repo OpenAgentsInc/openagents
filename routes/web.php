@@ -18,10 +18,9 @@ if (!app()->environment('production')) {
     Route::post('/plugins', [PluginController::class, 'store'])->name('plugins.store');
     Route::post('/plugins/call', [PluginController::class, 'call'])->name('plugins.call');
 
-    // Agents
+    // Agents (public)
     Route::get('/agent/connie', [AgentController::class, 'coder'])->name('agent.coder');
     Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
-    Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
 
     // Auth
     Route::get('/login', [AuthController::class, 'login']);
@@ -32,6 +31,11 @@ if (!app()->environment('production')) {
 
     // Authed routes
     Route::middleware(['auth'])->group(function () {
+        // Agents (authed)
+        Route::get('/agents/create', [AgentController::class, 'create'])->name('agents.create');
+        Route::post('/agents', [AgentController::class, 'store'])->name('agents.store');
+        Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
+
         // Withdrawals
         Route::get('/withdraw', [BitcoinController::class, 'withdraw'])->name('withdraw');
         Route::post('/withdraw', [BitcoinController::class, 'initiate_withdrawal'])->name('withdraw.initiate');
