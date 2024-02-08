@@ -36,6 +36,9 @@ if (!app()->environment('production')) {
         Route::post('/agents', [AgentController::class, 'store'])->name('agents.store');
         Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
 
+        // Agent builder
+        Route::get('/agent/{id}/build', [AgentController::class, 'build'])->name('agent.build');
+
         // Withdrawals
         Route::get('/withdraw', [BitcoinController::class, 'withdraw'])->name('withdraw');
         Route::post('/withdraw', [BitcoinController::class, 'initiate_withdrawal'])->name('withdraw.initiate');

@@ -11,6 +11,14 @@ use Inertia\Response;
 
 class AgentController extends Controller
 {
+    public function build($id)
+    {
+        $agent = Agent::findOrFail($id);
+        return view('agent-builder', [
+            'agent' => $agent,
+        ]);
+    }
+
     public function create()
     {
         return view('agent-create');

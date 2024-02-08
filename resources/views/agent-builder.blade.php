@@ -1,0 +1,2 @@
+{{ $agent->name }}
+{{ $agent->description }}
