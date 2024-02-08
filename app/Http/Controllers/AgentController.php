@@ -77,14 +77,14 @@ class AgentController extends Controller
         request()->validate([
             'name' => 'required',
             'description' => 'required',
-            'instructions' => 'required',
-            'welcome_message' => 'required'
+            // 'instructions' => 'required',
+            // 'welcome_message' => 'required'
         ]);
 
         $name = request('name');
         $description = request('description');
-        $instructions = request('instructions');
-        $welcome_message = request('welcome_message');
+        $instructions = request('instructions') ?? "You are a helpful assistant.";
+        $welcome_message = request('welcome_message') ?? "How can I help?";
 
         $agent = Agent::create([
             'user_id' => auth()->user()->id,
