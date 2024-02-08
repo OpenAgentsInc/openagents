@@ -23,6 +23,8 @@
                 class="text-gray hover:text-black dark:hover:text-white mx-2">GitHub</a>
         </div>
     </footer>
+
+    @stack('scripts')
 </body>
 
 </html>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Agent;
+use App\Models\Plugin;
 use App\Models\StepExecuted;
 use App\Models\Task;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ class AgentController extends Controller
         $agent = Agent::findOrFail($id);
         return view('agent-builder', [
             'agent' => $agent,
+            'plugins' => Plugin::all(),
         ]);
     }
 
