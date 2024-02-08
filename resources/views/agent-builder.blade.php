@@ -1,6 +1,6 @@
 @extends('layouts.main')
 
-@section('title', 'Create Agent')
+@section('title', 'Build Agent')
 
 @section('content')
 
