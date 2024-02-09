@@ -3,6 +3,7 @@
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BitcoinController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PluginController;
 use App\Http\Controllers\StaticController;
 use Illuminate\Support\Facades\Route;
