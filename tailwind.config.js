@@ -5,6 +5,9 @@ export default {
     "./resources/views/**/*.blade.php",
   ],
   theme: {
+    fontFamily: {
+      mono: ['"JetBrains Mono"', 'monospace'],
+    },
     colors: {
       black: '#000',
       offblack: '#2C2C2D',
