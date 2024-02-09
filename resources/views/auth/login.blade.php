@@ -17,23 +17,33 @@
                 Continue
             </x-button>
         </div>
+    </form>
 
-        <div class="my-[32px] text-center text-sm/[14px] text-lightgray">
-            or
+    <div class="my-[32px] text-center text-sm/[14px] text-lightgray">
+        or
+    </div>
+
+    <div class="space-y-4">
+        <div>
+            <a href="/login/github">
+                <x-button variant="outline" class="w-full h-[48px]">
+                    Continue with GitHub
+                </x-button>
+            </a>
         </div>
 
-        <div class="space-y-4">
-            <x-button variant="outline" class="w-full h-[48px]">
-                Continue with GitHub
-            </x-button>
+        <div>
+            <a href="/login/twitter">
+                <x-button variant="outline" class="w-full h-[48px]">
+                    Continue with X
+                </x-button>
+            </a>
+        </div>
 
-            <x-button variant="outline" class="w-full h-[48px]">
-                Continue with X
-            </x-button>
-
+        <div>
             <x-button variant="outline" class="w-full h-[48px]">
                 Continue with Nostr
             </x-button>
         </div>
-    </form>
+    </div>
 </x-guest-layout>
