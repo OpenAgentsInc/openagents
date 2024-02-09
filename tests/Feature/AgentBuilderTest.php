@@ -14,7 +14,6 @@ test('user can see agent builder', function () {
         'description' => 'Agent Description',
     ]);
 
-
     $this->get('/agent/1/build')
         ->assertOk()
         ->assertSee('Demo Agent')

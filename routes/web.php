@@ -12,13 +12,14 @@ Route::get('/', [StaticController::class, 'splash'])->name('home');
 // Disable all these routes in production
 if (!app()->environment('production')) {
     // Plugin uploading
-    Route::get('/plugins', [PluginController::class, 'index'])->name('plugins');
+    Route::get('/plugins', [PluginController::class, 'index'])->name('plugins.index');
     Route::get('/plugin/{plugin}', [PluginController::class, 'show'])->name('plugins.show');
     Route::get('/plugins/create', [PluginController::class, 'create'])->name('plugins.create');
     Route::post('/plugins', [PluginController::class, 'store'])->name('plugins.store');
     Route::post('/plugins/call', [PluginController::class, 'call'])->name('plugins.call');
 
     // Agents (public)
+    Route::get('/agents', [AgentController::class, 'index'])->name('agents.index');
     Route::get('/agent/connie', [AgentController::class, 'coder'])->name('agent.coder');
     Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 
