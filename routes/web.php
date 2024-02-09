@@ -11,6 +11,11 @@ Route::get('/', [StaticController::class, 'splash'])->name('home');
 
 // Disable all these routes in production
 if (!app()->environment('production')) {
+    // Dashboard placeholder
+    Route::get('/dashboard', function () {
+        return view('dashboard');
+    })->name('dashboard');
+
     // Plugin uploading
     Route::get('/plugins', [PluginController::class, 'index'])->name('plugins.index');
     Route::get('/plugin/{plugin}', [PluginController::class, 'show'])->name('plugins.show');
