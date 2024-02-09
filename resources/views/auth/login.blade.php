@@ -6,7 +6,7 @@
     <form method="POST" action="{{ route('login') }}">
         @csrf
         <div>
-            <x-input-label for="email" :value="__('Email')" />
+            <x-input-label for="email" :value="__('Email')" class="pl-[8px]" />
             <x-input id="email" type="email" name="email" :value="old('email')" required autofocus
                 autocomplete="username" class="h-[48px]" placeholder="satoshi@vistomail.com" />
             <x-input-error :messages="$errors->get('email')" class="mt-2" />
