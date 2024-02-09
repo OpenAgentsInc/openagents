@@ -7,8 +7,6 @@ use App\Models\Plugin;
 use App\Models\StepExecuted;
 use App\Models\Task;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
 
 class AgentController extends Controller
 {
