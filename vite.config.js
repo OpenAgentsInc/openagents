@@ -20,5 +20,8 @@ export default defineConfig(({ command }) => {
         refresh: true,
       }),
     ],
+    resolve: {
+      alias,
+    },
   }
 });
