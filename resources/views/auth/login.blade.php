@@ -14,7 +14,25 @@
 
         <div class="flex items-center justify-end mt-[16px]">
             <x-button variant="default" class="w-full h-[48px]">
-                Log in
+                Continue
+            </x-button>
+        </div>
+
+        <div class="my-[32px] text-center text-sm/[14px] text-lightgray">
+            or
+        </div>
+
+        <div class="space-y-4">
+            <x-button variant="outline" class="w-full h-[48px]">
+                Continue with GitHub
+            </x-button>
+
+            <x-button variant="outline" class="w-full h-[48px]">
+                Continue with X
+            </x-button>
+
+            <x-button variant="outline" class="w-full h-[48px]">
+                Continue with Nostr
             </x-button>
         </div>
     </form>
