@@ -10,11 +10,14 @@
 </head>
 
 <body class="flex flex-col min-h-screen bg-black text-white font-mono antialiased">
+    <x-header />
+
     <div class="flex flex-grow items-center justify-center">
         <div class="w-full max-w-5xl mx-auto p-6">
             @yield('content')
         </div>
     </div>
+
     <footer class="text-sm px-6 sm:px-8 py-4 fixed bottom-0 w-full">
         <div class="mx-auto flex justify-end space-x-4">
             <a href="https://twitter.com/OpenAgentsInc" target="_blank"
