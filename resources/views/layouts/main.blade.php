@@ -10,7 +10,9 @@
 </head>
 
 <body class="flex flex-col min-h-screen bg-black text-white font-mono antialiased">
-    <x-header />
+    @if(config('app.env') !== 'production')
+        <x-header />
+    @endif
 
     <div class="flex flex-grow items-center justify-center">
         <div class="w-full max-w-5xl mx-auto p-6">
