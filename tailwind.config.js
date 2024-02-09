@@ -7,6 +7,7 @@ export default {
   theme: {
     colors: {
       black: '#000',
+      offblack: '#2C2C2D',
       white: '#fff',
       transparent: 'transparent',
       bitcoin: '#FF9900',
