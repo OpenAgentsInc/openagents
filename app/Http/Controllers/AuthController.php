@@ -7,11 +7,6 @@ use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
 {
-    public function login()
-    {
-        return 'not implemented';
-    }
-
     public function loginGithub()
     {
         return Socialite::driver('github')->redirect();
@@ -38,7 +33,7 @@ class AuthController extends Controller
 
         auth()->login($user, true);
 
-        return redirect('/agents');
+        return redirect('/dashboard');
     }
 
     public function githubCallback()
@@ -58,7 +53,7 @@ class AuthController extends Controller
         // Log in this user
         auth()->login($user, true);
 
-        return redirect('/agents');
+        return redirect('/dashboard');
     }
 
     public function logout()
