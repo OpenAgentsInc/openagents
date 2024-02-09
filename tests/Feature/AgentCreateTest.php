@@ -37,3 +37,20 @@ test('user can create agent', function () {
 
     expect(Agent::all())->toHaveCount(1);
 });
+
+
+test('after creating agent, user is redirected to the agent builder page', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $response = $this->post('/agents', [
+        'name' => 'Count Vowels',
+        'description' => 'Count the vowels in a string',
+        'instructions' => 'Count the vowels in a string',
+        'welcome_message' => 'Welcome to the Count Vowels agent!',
+    ]);
+
+    $agent = Agent::where('user_id', $user->id)->first();
+
+    $response->assertRedirect('/agent/' . $agent->id . '/build');
+});

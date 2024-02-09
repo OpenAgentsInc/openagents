@@ -3,14 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Models\Agent;
+use App\Models\Plugin;
 use App\Models\StepExecuted;
 use App\Models\Task;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
 
 class AgentController extends Controller
 {
+    public function build($id)
+    {
+        $agent = Agent::findOrFail($id);
+        return view('agent-builder', [
+            'agent' => $agent,
+            'plugins' => Plugin::all(),
+        ]);
+    }
+
     public function create()
     {
         return view('agent-create');
@@ -69,14 +77,14 @@ class AgentController extends Controller
         request()->validate([
             'name' => 'required',
             'description' => 'required',
-            'instructions' => 'required',
-            'welcome_message' => 'required'
+            // 'instructions' => 'required',
+            // 'welcome_message' => 'required'
         ]);
 
         $name = request('name');
         $description = request('description');
-        $instructions = request('instructions');
-        $welcome_message = request('welcome_message');
+        $instructions = request('instructions') ?? "You are a helpful assistant.";
+        $welcome_message = request('welcome_message') ?? "How can I help?";
 
         $agent = Agent::create([
             'user_id' => auth()->user()->id,
@@ -88,7 +96,7 @@ class AgentController extends Controller
 
         $agent->createChatTask();
 
-        return redirect()->route('agent', ['id' => $agent->id])->with('success', 'Agent created!');
+        return redirect()->route('agent.build', ['id' => $agent->id])->with('success', 'Agent created!');
     }
 
     // Show the agent page

@@ -4,8 +4,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Agent;
-use Inertia\Inertia;
-use Inertia\Response;
 
 class ConversationController extends Controller
 {
