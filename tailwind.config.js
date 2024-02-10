@@ -17,6 +17,7 @@ export default {
       white: '#fff',
       transparent: 'transparent',
       bitcoin: '#FF9900',
+      green: '#00CC00'
     }
   },
 }
