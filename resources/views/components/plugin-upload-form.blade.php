@@ -1,5 +1,5 @@
 @fragment('plugin-upload-form')
-    <div class="my-8 mx-auto max-w-xl">
+    <div class="my-8 mx-auto w-[480px] p-[32px] border-2 border-offblack rounded-[16px]">
         <div>
             <div class="font-bold text-xl">Create Plugin</div>
             <div class="mt-1 text-sm text-gray">Make a new agent plugin from an Extism .wasm file</div>
@@ -30,7 +30,7 @@
                     </div>
                 </div>
                 <div class="flex justify-center">
-                    <x-button variant="outline" size="lg" type="submit">
+                    <x-button variant="default" size="lg" type="submit" class="w-full">
                         Create
                     </x-button>
                 </div>
