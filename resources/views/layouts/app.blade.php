@@ -10,6 +10,7 @@
 
     @include('partials.vite')
     @include('analytics')
+    @stack('scripts')
 </head>
 
 <body class="bg-black text-white font-mono antialiased">
@@ -28,6 +29,8 @@
             {{ $slot }}
         </main>
     </div>
+
+
 </body>
 
 </html>
