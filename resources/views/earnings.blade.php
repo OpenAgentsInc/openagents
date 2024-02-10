@@ -24,7 +24,7 @@
             <div class="flex space-x-2">
                 <x-tab-link
                     href="{{ route('dashboard', ['period' => '1w']) }}"
-                    :active="request('period') === '1w'">1W</x-tab-link>
+                    :active="true">1W</x-tab-link>
                 <x-tab-link
                     href="{{ route('dashboard', ['period' => '1m']) }}"
                     :active="request('period') === '1m'">1M</x-tab-link>
