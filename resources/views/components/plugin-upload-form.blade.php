@@ -1,8 +1,8 @@
 @fragment('plugin-upload-form')
     <div class="my-8 mx-auto w-[480px] p-[32px] border-2 border-offblack rounded-[16px]">
-        <div>
-            <div class="font-bold text-xl">Create Plugin</div>
-            <div class="mt-1 text-sm text-gray">Make a new agent plugin from an Extism .wasm file</div>
+        <div class="mb-[32px]">
+            <div class="font-bold text-[24px]">Create Plugin</div>
+            <div class="mt-1 text-[14px] text-gray">Make a new agent plugin from an Extism .wasm file</div>
         </div>
         <div>
             <form id="upload-plugin" method="POST" action="{{ route('plugins.store') }}"
@@ -33,7 +33,7 @@
                     </div>
                 </div>
                 <div class="flex justify-center">
-                    <x-button variant="default" size="lg" type="submit" class="w-full">
+                    <x-button variant="default" size="lg" type="submit" class="w-full mt-[22px]">
                         Create
                     </x-button>
                 </div>
