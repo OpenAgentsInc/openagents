@@ -1,7 +1,7 @@
 @props(['variant' => 'default', 'size' => 'default'])
 
 @php
-    $baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
+    $baseClasses = 'inline-flex items-center justify-center rounded-md text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
     $variantClasses = match($variant) {
         'default' => 'bg-white text-black shadow hover:bg-white/90',
         'destructive' => 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
