@@ -12,8 +12,8 @@
             </nav>
 
             <div class="grid grid-cols-3 gap-4 mb-4">
-                <x-stat-card title="Monthly earnings" value="$5,000.00" change="+10%" />
-                <x-stat-card title="Plugin uses" value="3,000" change="+5%" />
+                <x-stat-card title="Monthly earnings" value="₿3911234" change="+12%" />
+                <x-stat-card title="Plugin uses" value="3000" change="+5%" />
                 <x-stat-card title="Average rating" value="4.5" change="+0.5" />
             </div>
 
