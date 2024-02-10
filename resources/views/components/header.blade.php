@@ -10,7 +10,7 @@
                     </div>
                     <div class="hidden md:block">
                         <div class="ml-10 flex items-baseline space-x-4">
-                            <a href="{{ route('agents.index') }}"
+                            <a href="{{ route('agents.create') }}"
                                 class="text-white px-3 py-2 rounded-md text-sm font-medium">Agents</a>
                             <a href="{{ route('plugins.index') }}"
                                 class="text-white px-3 py-2 rounded-md text-sm font-medium">Plugins</a>
