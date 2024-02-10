@@ -1,34 +1,46 @@
 <div id="chart-container" class="h-64 w-full">
-    chart goes here
-    <canvas id="chart"></canvas>
+    <div x-data="{
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+        values: [200, 150, 350, 225, 125],
+        init() {
+            let chart = new Chart(this.$refs.canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: this.labels,
+                    datasets: [{
+                        data: this.values,
+                        backgroundColor: 'white',
+                        borderColor: 'white',
+                    }],
+                },
+                options: {
+                    interaction: { intersect: false },
+                    scales: { y: { beginAtZero: true }},
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            displayColors: false,
+                            callbacks: {
+                                label(point) {
+                                    return 'Sales: $'+point.raw
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+
+            this.$watch('values', () => {
+                chart.data.labels = this.labels
+                chart.data.datasets[0].data = this.values
+                chart.update()
+            })
+        }
+    }" class="w-full">
+        <canvas x-ref="canvas" class="rounded-lg p-8"></canvas>
+    </div>
 </div>
 
 @push('scripts')
-
-    <script>
-        // document.addEventListener('DOMContentLoaded', function () {
-        //     const ctx = document.getElementById('chart').getContext('2d');
-        //     const myChart = new Chart(ctx, {
-        //         type: 'line',
-        //         data: {
-        //             labels: ['January', 'February', 'March', 'April', 'May', 'June', 'July'],
-        //             datasets: [{
-        //                 label: 'Dataset 1',
-        //                 data: [65, 59, 80, 81, 56, 55, 40],
-        //                 fill: false,
-        //                 borderColor: 'rgb(75, 192, 192)',
-        //                 tension: 0.1
-        //             }]
-        //         },
-        //         options: {
-        //             scales: {
-        //                 y: {
-        //                     beginAtZero: true
-        //                 }
-        //             }
-        //         }
-        //     });
-        // });
-
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.5.1/dist/chart.min.js"></script>
 @endpush
