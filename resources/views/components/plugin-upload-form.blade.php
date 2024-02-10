@@ -9,21 +9,21 @@
                 enctype="multipart/form-data" class="space-y-4">
                 @csrf
                 <div>
-                    <x-label for="name">Name</x-label>
-                    <x-input id="name" name="name" placeholder="Plugin Name" class="mt-1 block w-full" />
+                    <x-input-label for="name">Name</x-input-label>
+                    <x-input id="name" name="name" placeholder="Plugin Name" class="mt-1 block w-full" autofocus />
                 </div>
                 <div>
-                    <x-label for="description">Description</x-label>
+                    <x-input-label for="description">Description</x-input-label>
                     <x-textarea id="description" name="description" class="!outline-none mt-1"
                         placeholder="Plugin Description">
                     </x-textarea>
                 </div>
                 <div>
-                    <x-label for="wasm_url">Wasm URL</x-label>
+                    <x-input-label for="wasm_url">Wasm URL</x-input-label>
                     <x-input id="wasm_url" name="wasm_url" placeholder="Plugin Wasm URL" class="mt-1 block w-full" />
                 </div>
                 <div>
-                    <x-label for="fee">Fee</x-label>
+                    <x-input-label for="fee">Fee</x-input-label>
                     <div class="w-full">
                         <input type="hidden" name="fee" id="slider-input" value="0" />
                         <x-slider min="0" max="100" step="1" />
