@@ -1,7 +1,7 @@
-<div id="chart-container" class="h-64 w-full">
+<div id="chart-container" class="h-[60vh] w-full">
     <div x-data="{
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
-        values: [200, 150, 350, 225, 125],
+        labels: ['', '', '', '', '', '', ''],
+        values: [2100, 1500, 1254, 3500, 2250, 4250, 5019],
         init() {
             let chart = new Chart(this.$refs.canvas.getContext('2d'), {
                 type: 'line',
@@ -14,8 +14,10 @@
                     }],
                 },
                 options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
                     interaction: { intersect: false },
-                    scales: { y: { beginAtZero: true }},
+
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -36,8 +38,8 @@
                 chart.update()
             })
         }
-    }" class="w-full">
-        <canvas x-ref="canvas" class="rounded-lg p-8"></canvas>
+    }" class="w-full h-full">
+        <canvas x-ref="canvas" class="w-full h-full rounded-lg p-8"></canvas>
     </div>
 </div>
 
