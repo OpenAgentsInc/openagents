@@ -8,6 +8,8 @@
     <div class="font-bold text-xl">{{ $agent->name }}</div>
     <div class="mt-1 text-sm text-gray">{{ $agent->description }}</div>
 
+    <x-plugin-grid :plugins="$plugins" />
+
     <!-- button to add a plugin -->
     <x-button id="toggleButton" variant="outline" size="lg" class="mt-8">
         Add Plugin
@@ -16,7 +18,7 @@
     <!-- Element to show/hide -->
     <div id="toggleElement" class="mt-4 hidden">
         <p>Select plugin</p>
-        <x-plugin-grid :plugins="$plugins" />
+
     </div>
 </div>
 
