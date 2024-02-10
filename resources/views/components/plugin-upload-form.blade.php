@@ -23,10 +23,13 @@
                     <x-input id="wasm_url" name="wasm_url" placeholder="Plugin Wasm URL" class="mt-1 block w-full" />
                 </div>
                 <div>
-                    <x-input-label for="fee">Fee</x-input-label>
-                    <div class="w-full">
-                        <input type="hidden" name="fee" id="slider-input" value="0" />
-                        <x-slider min="0" max="100" step="1" />
+                    <x-input-label for="fee">Fee (satoshis)</x-input-label>
+                    <div class="relative mt-1">
+                        <x-input id="fee" name="fee" type="number" placeholder="Plugin Fee"
+                            class="block w-full pl-3 pr-10" />
+                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center text-[20px] text-lightgray">
+                            ₿
+                        </div>
                     </div>
                 </div>
                 <div class="flex justify-center">

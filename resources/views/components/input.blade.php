@@ -4,5 +4,5 @@
 autocomplete="off"
 spellcheck="false"
 type="{{ $type }}" {{ $attributes->merge([
-    'class' => "mt-1 flex h-10 w-full rounded-md border border-offblack bg-transparent p-3 text-sm placeholder:text-darkgray focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-50 $className"
+    'class' => "mt-1 flex h-[48px] w-full rounded-md border border-offblack bg-transparent p-3 text-sm placeholder:text-darkgray focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-50 $className"
 ]) }} />
