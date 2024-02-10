@@ -4,7 +4,6 @@
         <nav class="mt-8">
             <ul role="list" class="flex flex-col items-center space-y-1">
                 <li>
-                    <!-- Current: "bg-gray-800 text-white", Default: "text-gray-400 hover:text-white hover:bg-gray-800" -->
                     <a href="#"
                         class="bg-gray-800 text-white group flex gap-x-3 rounded-md p-3 text-sm leading-6 font-semibold">
                         <svg class="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
@@ -94,20 +93,24 @@
     </div>
 
     <main class="lg:pl-20">
-        <div class="xl:pl-96">
-            <div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-6">
-
-
-                <p>yoooooo</p>
-
-            </div>
+        <div class="xl:pl-96 m-12">
+            <div class="font-bold text-xl">{{ $agent->name }}</div>
+            <div class="mt-1 text-sm text-gray">{{ $agent->description }}</div>
         </div>
     </main>
 
     <aside
-        class="fixed inset-y-[64px] left-20 hidden w-96 overflow-y-auto border-r border-offblack px-4 py-6 sm:px-6 lg:px-8 xl:block">
+        class="fixed inset-y-0 mt-[64px] left-20 hidden w-96 overflow-y-auto border-r border-offblack px-4 py-6 sm:px-6 lg:px-8 xl:block">
         <!-- Secondary column (hidden on smaller screens) -->
-        <p>yoooooo</p>
+        <div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-2">
+            <div class="grid grid-cols-1 gap-4 mb-6">
+                @forelse($plugins as $plugin)
+                    <x-plugin :plugin="$plugin" />
+                @empty
+                    <p class="col-span-full">No plugins available.</p>
+                @endforelse
+            </div>
+        </div>
     </aside>
     </div>
 
