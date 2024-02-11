@@ -17,6 +17,8 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more. Now b
   - Or most anything compatible with flow-based programming
 - Nodes may have an associated fee which is paid to the node creator when the node is used in a workflow
 - Agents can be used in our UI and via API
+- Users can comment/rate/share Nodes
+- Leaderboards show what's popular
 
 ## Tech Stack
 - Laravel
