@@ -119,7 +119,7 @@
             <div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-2">
                 <h1 class="font-bold">Agent Blocks</h1>
                 <p class="pb-6 text-gray">Click a block to add it to your agent</p>
-                <div class=" grid grid-cols-1 gap-6 mb-6">
+                <div class="grid grid-cols-1 gap-6 mb-6">
                     @forelse($plugins as $plugin)
                         <x-plugin :plugin="$plugin" />
                     @empty
