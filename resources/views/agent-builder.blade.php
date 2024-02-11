@@ -153,7 +153,7 @@
 
                 removeBlock(index) {
                     // For debugging
-                    console.log('Removing block at index:', index);
+                    // console.log('Removing block at index:', index);
                     this.selectedBlocks.splice(index, 1);
                 },
             }
