@@ -102,7 +102,7 @@
                 <!-- Agent Flow Area -->
                 <div class="mt-4">
                     <!-- Use template and ensure it contains only one root element -->
-                    <template x-for="(block, index) in selectedBlocks" :key="block.id">
+                    <template x-for="(block, index) in selectedBlocks" :key="block.uniqueKey">
                         <div class="p-4 mb-2 bg-gray-700 rounded">
                             <h3 x-text="block.name" class="text-xl font-semibold"></h3>
                             <p x-text="block.description" class="mt-1 text-sm text-gray-500"></p>
@@ -139,14 +139,18 @@
                     // Fetch available blocks from server and populate availableBlocks
                     // You might use this.availableBlocks = {{ $plugins->toJson() }} if $plugins is a collection of blocks
                     // For debugging
-                    console.log('Initialized agentBuilder');
                 },
                 addBlock(block) {
-                    // For debugging
-                    console.log('Adding block:', block);
-                    this.selectedBlocks.push(block);
-                    console.log(this.selectedBlocks)
+                    // Clone the block object to prevent direct reference issues
+                    let newBlock = JSON.parse(JSON.stringify(block));
+
+                    // Append a unique identifier to the block
+                    newBlock.uniqueKey = Date.now() + Math.random();
+
+                    // Add the new block with a unique key to the selected blocks array
+                    this.selectedBlocks.push(newBlock);
                 },
+
                 removeBlock(index) {
                     // For debugging
                     console.log('Removing block at index:', index);
