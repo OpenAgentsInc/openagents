@@ -96,20 +96,25 @@
 
         <main class="lg:pl-20">
             <div class="xl:pl-96 m-12">
-                <div class="font-bold text-xl">{{ $agent->name }}</div>
+                <div class="font-bold text-lg">{{ $agent->name }}</div>
                 <div class="mt-1 text-sm text-gray">{{ $agent->description }}</div>
 
                 <!-- Agent Flow Area -->
-                <div class="mt-4">
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <!-- Use template and ensure it contains only one root element -->
                     <template x-for="(block, index) in selectedBlocks" :key="block.uniqueKey">
-                        <div class="p-4 mb-2 bg-gray-700 rounded">
-                            <h3 x-text="block.name" class="text-xl font-semibold"></h3>
-                            <p x-text="block.description" class="mt-1 text-sm text-gray-500"></p>
-                            <button @click="removeBlock(index)" class="mt-2 text-red-500">Remove</button>
+                        <div class="p-4 mb-2 border border-offblack rounded max-w-xs">
+                            <!-- Include the order number before the plugin name -->
+                            <h3 class="text-normal font-semibold">
+                                <span x-text="`${index + 1}. ${block.name}`"></span>
+                            </h3>
+                            <p x-text="block.description" class="mt-1 text-sm text-gray"></p>
+                            <button @click="removeBlock(index)" class="mt-2 text-gray text-xs">Remove</button>
                         </div>
                     </template>
                 </div>
+
+
             </div>
         </main>
 
@@ -118,7 +123,7 @@
             <!-- Secondary column (hidden on smaller screens) -->
             <div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-2">
                 <h1 class="font-bold">Agent Blocks</h1>
-                <p class="pb-6 text-gray">Click a block to add it to your agent</p>
+                <p class="pb-6 text-gray text-sm mt-1">Click a block to add it to your agent</p>
                 <div class="grid grid-cols-1 gap-6 mb-6">
                     @forelse($plugins as $plugin)
                         <x-plugin :plugin="$plugin" />
