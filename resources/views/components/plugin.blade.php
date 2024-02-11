@@ -1,6 +1,7 @@
 @props(['plugin'])
 
-    <a href="/plugin/{{ $plugin->id }}" class="font-mono border border-black dark:border-white p-4">
-        <p class="font-bold text-lg">{{ $plugin->name }}</p>
-        <p class="mt-2 text-sm">{{ $plugin->description }}</p>
-    </a>
+    <div x-data="{ plugin: @js($plugin) }" class="cursor-pointer font-mono border border-offblack rounded-lg p-4"
+        @click="$dispatch('add-block', plugin)">
+        <p class="font-bold text-normal">{{ $plugin->name }}</p>
+        <p class="mt-2 text-sm text-gray">{{ $plugin->description }}</p>
+    </div>

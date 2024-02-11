@@ -19,6 +19,14 @@ class AgentController extends Controller
         ]);
     }
 
+    public function index()
+    {
+        $agents = Agent::all();
+        return view('agent-list', [
+            'agents' => $agents,
+        ]);
+    }
+
     public function create()
     {
         return view('agent-create');

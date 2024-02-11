@@ -47,8 +47,8 @@
         </div>
     </div>
 
-    <p class="my-[32px] text-center text-[10px] text-lightgray leading-normal">
-        By continuing, you agree to the OpenAgents <a href="/terms" target="_blank" class="text-white underline">terms
+    <p class="my-[32px] text-center text-xs text-lightgray leading-normal">
+        By continuing you agree to the OpenAgents <a href="/terms" target="_blank" class="text-white underline">terms
             of
             service</a> and
         <a href="/privacy" target="_blank" class="text-white underline">privacy policy</a>.
