@@ -113,8 +113,6 @@
                         </div>
                     </template>
                 </div>
-
-
             </div>
         </main>
 
@@ -122,8 +120,14 @@
             class="fixed inset-y-0 mt-[64px] left-20 hidden w-96 overflow-y-auto border-r border-offblack px-4 py-6 sm:px-6 lg:px-8 xl:block">
             <!-- Secondary column (hidden on smaller screens) -->
             <div class="px-4 py-10 sm:px-6 lg:px-8 lg:py-2">
-                <h1 class="font-bold">Agent Blocks</h1>
+                <h1 class="font-bold">Blocks</h1>
                 <p class="pb-6 text-gray text-sm mt-1">Click a block to add it to your agent</p>
+
+                <!-- add a search input box here to search thru blocks -->
+                <x-input type="text" class="mb-6 w-full" placeholder="Search blocks..." />
+
+                <h2 class="mb-4 font-medium">Plugins</h2>
+
                 <div class="grid grid-cols-1 gap-6 mb-6">
                     @forelse($plugins as $plugin)
                         <x-plugin :plugin="$plugin" />
@@ -131,6 +135,8 @@
                         <p class="col-span-full">No plugins available.</p>
                     @endforelse
                 </div>
+
+                <h2 class="mb-4 font-medium">Parse Blocks</h2>
             </div>
         </aside>
     </div>

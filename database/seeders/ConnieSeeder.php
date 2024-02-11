@@ -41,8 +41,16 @@ class ConnieSeeder extends Seeder
             'wasm_url' => "https://github.com/OpenAgentsInc/plugin-url-extractor/releases/download/v0.0.1/plugin_url_extractor.wasm"
         ]);
 
-        // Create LLM Inferencer plugin
+        // Create URL Scraper plugin
         $plugin2 = Plugin::create([
+            'name' => 'URL Scraper',
+            'description' => "Scrape URLs for metadata",
+            'fee' => 3,
+            'wasm_url' => "https://github.com/OpenAgentsInc/plugin-url-scraper-go/raw/main/host-functions.wasm"
+        ]);
+
+        // Create LLM Inferencer plugin
+        $plugin3 = Plugin::create([
             'name' => 'LLM Inferencer',
             'description' => "Do the LLM thingie",
             'fee' => 5,
@@ -74,19 +82,19 @@ class ConnieSeeder extends Seeder
 
         $step2 = Step::create([
             'agent_id' => $agent->id,
-            'category' => 'L402',
-            'description' => 'Check the weather in a specified city',
-            'entry_type' => 'node',
-            'error_message' => 'Could not fetch content',
-            'name' => 'Check Weather',
+            'category' => 'plugin',
+            'description' => 'Call URL scraper plugin',
+            'entry_type' => 'input',
+            'error_message' => 'Could not scrape URLs',
+            'name' => 'Scrape URLs',
             'order' => 2,
-            'success_action' => 'json_response',
+            'success_action' => 'next_node',
             'params' => json_encode([
-                'input' => 'Hello world!',
-                'url' => 'https://l402-plugin-endpoint.fly.dev/fetch-url-content?url=https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/routes/web.php',
+                'plugin_id' => $plugin2->id,
+                'function' => 'fetch_url_content',
             ]),
             'task_id' => $task->id,
-         ]);
+        ]);
 
         $step3 = Step::create([
            'agent_id' => $agent->id,
