@@ -136,7 +136,12 @@
                     @endforelse
                 </div>
 
-                <h2 class="mb-4 font-medium">Parse Blocks</h2>
+                <h2 class="my-4 font-medium">Parse Blocks</h2>
+
+                <div class="cursor-pointer font-mono border border-offblack rounded-lg p-4">
+                    <p class="font-bold text-normal">Array String Loop</p>
+                    <p class="mt-2 text-sm text-gray">Loop through an array of strings</p>
+                </div>
             </div>
         </aside>
     </div>
