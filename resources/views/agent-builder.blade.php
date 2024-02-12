@@ -109,6 +109,8 @@
                                 <span x-text="`${index + 1}. ${block.name}`"></span>
                             </h3>
                             <p x-text="block.description" class="mt-1 text-sm text-gray"></p>
+                            <!-- include a button that will send a POST requires to route('plugins.call') -->
+                            <button @click="testBlock(block)" class="mt-2 text-gray text-xs">Test</button>
                             <button @click="removeBlock(index)" class="mt-2 text-gray text-xs">Remove</button>
                         </div>
                     </template>
@@ -172,6 +174,37 @@
                     // console.log('Removing block at index:', index);
                     this.selectedBlocks.splice(index, 1);
                 },
+
+                testBlock(block) {
+                    // For debugging
+                    console.log('Testing block:', block);
+                    const pluginId = block.id;
+                    console.log('Plugin ID:', pluginId);
+
+                    // Send a POST request to route('plugins.call') with the block id
+                    // use fetch
+                    fetch("/plugins/call", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRF-TOKEN": "{{ csrf_token() }}"
+                        },
+                        body: JSON.stringify({
+                            plugin_id: pluginId,
+                            input: "Test data with two URLs, https://github.com and https://google.com"
+                        })
+                    })
+                        // just give me the raw response body
+                        .then(response => response.text())
+                        .then(data => {
+                            console.log(data);
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                        });
+                    // You can use the fetch API or axios to send the request
+                    // The response will be displayed in the output area
+                }
             }
         }
 
