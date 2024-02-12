@@ -8,9 +8,9 @@
 
     <title>{{ config('app.name', 'OpenAgents') }}</title>
 
+    @stack('scripts')
     @include('partials.vite')
     @include('analytics')
-    @stack('scripts')
 </head>
 
 <body class="bg-black text-white font-mono antialiased">
