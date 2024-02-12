@@ -109,9 +109,13 @@
                                 <span x-text="`${index + 1}. ${block.name}`"></span>
                             </h3>
                             <p x-text="block.description" class="mt-1 text-sm text-gray"></p>
+<x-input x-model="block.userInput" type="text" placeholder="Enter input here" class="mt-2 mb-2 text-gray-700 text-xs p-1 rounded" />
                             <!-- include a button that will send a POST requires to route('plugins.call') -->
                             <button @click="testBlock(block)" class="mt-2 text-gray text-xs">Test</button>
                             <button @click="removeBlock(index)" class="mt-2 text-gray text-xs">Remove</button>
+                            <!-- Include a div to display the output of the plugin -->
+<div :data-output-id="`output-${block.uniqueKey}`" class="mt-4"></div>
+
                         </div>
                     </template>
                 </div>
@@ -180,6 +184,7 @@
                     console.log('Testing block:', block);
                     const pluginId = block.id;
                     console.log('Plugin ID:', pluginId);
+                     const userInput = block.userInput || 'Default input if empty'; // Use block.userInput or a default value
 
                     // Send a POST request to route('plugins.call') with the block id
                     // use fetch
@@ -191,13 +196,25 @@
                         },
                         body: JSON.stringify({
                             plugin_id: pluginId,
-                            input: "Test data with two URLs, https://github.com and https://google.com"
+                            input: userInput
                         })
                     })
-                        // just give me the raw response body
-                        .then(response => response.text())
+                        .then(response => response.json())
                         .then(data => {
                             console.log(data);
+                                    // Assuming each block has a uniqueKey property that can be used to identify a specific block's output container
+        // Update or append a new element to display the output inside the plugin box
+                            const outputContainer = document.querySelector(`[data-output-id='output-${block.uniqueKey}']`);
+
+        if (outputContainer) {
+            outputContainer.innerHTML = data.output; // Display the output
+        } else {
+            // If the output container doesn't exist, create it and append it to the block
+            const newOutputContainer = document.createElement('div');
+            newOutputContainer.setAttribute('id', `output-${block.uniqueKey}`);
+            newOutputContainer.innerHTML = data.output; // Set the output content
+            document.querySelector(`[data-block-id="${block.uniqueKey}"]`).appendChild(newOutputContainer); // Append the new container to the block
+        }
                         })
                         .catch(error => {
                             console.error('Error:', error);
