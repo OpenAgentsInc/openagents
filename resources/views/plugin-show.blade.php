@@ -9,7 +9,7 @@
         <h2 class="text-2xl font-bold leading-7 dark:text-white sm:truncate sm:text-3xl sm:tracking-tight mr-4">
             {{ $plugin->name }}
         </h2>
-        <x-bitcoin-amount :amount="$plugin->fee" class="text-lg" />
+        <p>{{ $plugin->fee }} sats</p>
     </div>
 </div>
 

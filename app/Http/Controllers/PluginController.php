@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Plugin;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Validator;
 use Mauricius\LaravelHtmx\Http\HtmxResponse;
@@ -12,23 +11,47 @@ class PluginController extends Controller
 {
     public function call()
     {
-        $function = 'extract_urls'; // or request('function')
         $plugin = Plugin::find(request('plugin_id'));
+
+        switch ($plugin->name) {
+            case 'URL Extractor':
+                $function = 'extract_urls';
+                $input = request('input');
+                break;
+            case 'URL Scraper':
+                $function = 'fetch_url_content';
+                $input = request('input');
+                break;
+            case 'LLM Inferencer':
+                $function = 'inference';
+                $input = json_encode([
+                    'model_name' => 'gpt-4',
+                    'input_content' => request('input'),
+                    'api_key' => env('OPENAI_API_KEY'),
+                ]);
+                break;
+            default:
+                dd("Unknown plugin: {$plugin->name}");
+        }
 
         if (! $plugin) {
             return new Response('Plugin not found', 404);
         }
 
-        $output = $plugin->call($function, request('input'));
+        $output = $plugin->call($function, $input);
 
-        return with(new HtmxResponse())
-            ->renderFragment('plugin-call-output', 'output', compact('output'));
+        return response()->json([
+            'output' => $output,
+        ]);
+
+        // return with(new HtmxResponse())
+        //     ->renderFragment('plugin-call-output', 'output', compact('output'));
     }
 
     public function index()
     {
         return view('plugins', [
-            'plugins' =>  Plugin::all(),
+            'plugins' => Plugin::all(),
         ]);
     }
 
