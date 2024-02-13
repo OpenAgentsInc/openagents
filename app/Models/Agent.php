@@ -190,11 +190,51 @@ class Agent extends Model
             // if step category is "plugin", augment the input with params
             if ($step->category === 'plugin') {
                 $params = json_decode($step->params);
-                $input = json_encode([
-                    'input' => $prev_step_executed->output['output'], // Assign the output directly
-                    'plugin_id' => $params->plugin_id,
-                    'function' => $params->function,
-                ]);
+
+                // If the previous step executed is the first step, use the input directly
+                // Otherwise, use the output of the previous step executed
+                if ($step->order === 1) {
+                    $input = json_encode([
+                        'input' => $input,
+                        'plugin_id' => $params->plugin_id,
+                        'function' => $params->function,
+                    ]);
+                } elseif ($step->order === 2) {
+
+                    // the previous step output will either be an array with a key of output or just a string, so handle both cases
+                    if (is_array($prev_step_executed->output)) {
+                        $input = json_encode([
+                            'input' => $prev_step_executed->output['output'], // Assign the output directly
+                            'plugin_id' => $params->plugin_id,
+                            'function' => $params->function,
+                        ]);
+                    } else {
+                        // temporarily take this array of strings - and json decode and grab the first element and pass that to the input array as ['url' => {first element}]
+                        $temp = json_decode($prev_step_executed->output);
+                        // dd($temp); // "["https://raw.githubusercontent.com/OpenAgentsInc/plugin-url-scraper/main/src/lib.rs"]"
+                        $temp = json_decode($temp);
+
+                        $input = json_encode([
+                            'input' => [
+                                'url' => $temp[0], // Assign the output directly
+                            ],
+                            'plugin_id' => $params->plugin_id,
+                            'function' => $params->function,
+                        ]);
+
+                        // $input = json_encode([
+                        //     'input' => $prev_step_executed->output, // Assign the output directly
+                        //     'plugin_id' => $params->plugin_id,
+                        //     'function' => $params->function,
+                        // ]);
+                    }
+
+                    // $input = json_encode([
+                    //     'input' => $prev_step_executed->output['output'], // Assign the output directly
+                    //     'plugin_id' => $params->plugin_id,
+                    //     'function' => $params->function,
+                    // ]);
+                }
             } elseif ($step->category === 'L402') {
                 $params = json_decode($step->params);
                 $input = json_encode([
