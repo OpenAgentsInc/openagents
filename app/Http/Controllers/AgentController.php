@@ -16,7 +16,7 @@ class AgentController extends Controller
 
         return view('agent-builder', [
             'agent' => $agent,
-            'tasks' => $agent->tasks,
+            'tasks' => $agent->tasks->load('steps'),
             'plugins' => Plugin::all(),
         ]);
     }

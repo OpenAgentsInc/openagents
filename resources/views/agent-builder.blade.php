@@ -7,39 +7,39 @@
 
                 <button class="float-right text-white px-4 py-2 rounded-lg -mt-12">Run Flow</button>
 
-                @foreach($agent->tasks as $task)
-                    <div class="py-4 mb-4">
-                        <div class="mb-4">
-                            <span class="uppercase text-xs opacity-75 tracking-wider">Task</span>
-                            <h2 class="-mt-2 py-2 text-lg font-bold rounded-t-lg">{{ $task->name }}</h2>
-                        </div>
-                        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                            @forelse($task->steps->sortBy('order') as $step)
-                                <div class="p-4 border border-offblack rounded">
-                                    <h3 class="text-normal font-semibold">
-                                        <span>{{ $step->name }}</span>
-                                    </h3>
-                                    <p>{{ $step->description }}</p>
-                                </div>
-                            @empty
-                                <p class="col-span-full">No steps available for this task.</p>
-                            @endforelse
-                        </div>
-                    </div>
-                @endforeach
+                <div class="mt-4">
+    <template x-for="task in selectedBlocks" :key="task.uniqueKey">
+        <div>
+            <!-- Task Name and Description -->
+            <div class="py-4 mb-4">
+                <div class="mb-4">
+                    <span class="uppercase text-xs opacity-75 tracking-wider">Task</span>
+                    <h2 class="-mt-2 py-2 text-lg font-bold rounded-t-lg" x-text="task.name"></h2>
+                    <p x-text="task.description"></p>
+                </div>
 
-                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <template x-for="(block, index) in selectedBlocks" :key="block.uniqueKey">
-                        <div class="p-4 mb-2 border border-offblack rounded max-w-xs">
-                            <h3 class="text-normal font-semibold">
-                                <span x-text="`${index + 1}. ${block.name}`"></span>
-                            </h3>
-                            <p x-text="block.description" class="mt-1 text-sm text-gray"></p>
-                            <x-input x-model="block.userInput" type="text" placeholder="Enter input here" class="mt-2 mb-2 text-gray-700 text-xs p-1 rounded" />
-                            <button @click="testBlock(block)" class="mt-2 text-gray text-xs">Test</button>
-                            <button @click="removeBlock(index)" class="mt-2 text-gray text-xs">Remove</button>
-                            <div :data-output-id="`output-${block.uniqueKey}`" class="mt-4"></div>
-                        </div>
+                <!-- Steps for the Task -->
+                <div class="w-full mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+<template x-for="step in task.steps" :key="step.id">
+    <div class="p-4 mb-2 border border-offblack rounded max-w-xs">
+        <!-- Step Name -->
+        <h3 class="text-normal font-semibold" x-text="`${step.name}`"></h3>
+        <!-- Step Description -->
+        <p x-text="step.description" class="mt-1 text-sm text-gray"></p>
+        <!-- Input for User to Enter Data -->
+        <x-input x-model="step.userInput" type="text" placeholder="Enter input here" class="mt-2 mb-2 text-gray-700 text-xs p-1 rounded w-full" />
+        <!-- Test Button -->
+        <button @click="testBlock(step)" class="mt-2 text-white bg-blue-500 hover:bg-blue-700 text-xs font-bold py-2 px-4 rounded">Test</button>
+        <!-- Remove Button -->
+        <button @click="removeStep(task, step)" class="mt-2 text-white bg-red-500 hover:bg-red-700 text-xs font-bold py-2 px-4 rounded">Remove</button>
+        <!-- Placeholder for Output -->
+        <div :id="`output-${step.id}`" class="mt-4 text-sm text-gray-700"></div>
+    </div>
+</template>
+                </div>
+            </div>
+        </div>
+    </template>
                     </template>
                 </div>
             </div>
@@ -72,12 +72,28 @@
         </aside>
     </div>
 
+<script type="application/json" id="tasksData">
+    {!! $tasks->toJson() !!}
+</script>
+
+
     <script>
         function agentBuilder() {
             return {
                 availableBlocks: [],
                 selectedBlocks: [],
-                init() {},
+                init() {
+                            const tasksDataElement = document.getElementById('tasksData');
+            if (tasksDataElement) {
+                const tasksData = JSON.parse(tasksDataElement.textContent);
+                console.log('Tasks data:', tasksData);
+                this.selectedBlocks = tasksData.map(task => ({
+                    ...task,
+                    steps: task.steps.sort((a, b) => a.order - b.order),
+                    uniqueKey: Date.now() + Math.random() // Ensure each task has a unique key
+                }));
+            }
+        },
                 addBlock(block) {
                     let newBlock = JSON.parse(JSON.stringify(block));
                     newBlock.uniqueKey = Date.now() + Math.random();
@@ -104,16 +120,18 @@
                     })
                         .then(response => response.json())
                         .then(data => {
-                            console.log(data);
-                            const outputContainer = document.querySelector(`[data-output-id='output-${block.uniqueKey}']`);
-                            if (outputContainer) {
-                                outputContainer.innerHTML = data.output;
-                            } else {
-                                const newOutputContainer = document.createElement('div');
-                                newOutputContainer.setAttribute('id', `output-${block.uniqueKey}`);
-                                newOutputContainer.innerHTML = data.output;
-                                document.querySelector(`[data-block-id="${block.uniqueKey}"]`).appendChild(newOutputContainer);
-                            }
+                                console.log(data);
+        // Use the correct ID to select the output container
+        const outputContainer = document.querySelector(`#output-${block.id}`);
+        if (outputContainer) {
+            outputContainer.innerHTML = data.output;
+        }
+                             // else {
+                             //    const newOutputContainer = document.createElement('div');
+                             //    newOutputContainer.setAttribute('id', `output-${block.uniqueKey}`);
+                             //    newOutputContainer.innerHTML = data.output;
+                             //    document.querySelector(`[data-block-id="${block.uniqueKey}"]`).appendChild(newOutputContainer);
+                            // }
                         })
                         .catch(error => {
                             console.error('Error:', error);
