@@ -3,14 +3,12 @@
 namespace App\Traits;
 
 use App\Http\Controllers\StreamController;
-
 use App\Models\Plugin;
 use App\Services\Embedder;
 use App\Services\GitHub;
 use App\Services\L402 as L402Service;
 use App\Services\QueenbeeGateway;
 use Illuminate\Support\Facades\Http;
-use Pgvector\Laravel\Vector;
 
 trait StepActions
 {
@@ -159,7 +157,51 @@ trait StepActions
         $input = $this->validatePlugin($input);
         $plugin_id = $input['plugin_id'];
         $plugin = Plugin::findOrFail($plugin_id);
-        $pluginOutput = $plugin->call($input['function'], $input['input']);
+
+        // if $input["input"] is not an array, convert it to an array
+        // if (! is_array($input['input'])) {
+        //     $input['input'] = (array) $input['input'];
+        // }
+        //
+
+        $actualInput = $input;
+
+        // if input['input'] is a stdclass, convert it to an array
+        if (is_object($input['input'])) {
+            $input['input'] = (array) $input['input'];
+        }
+
+        // if $input['input'] is an array with key url, then that is the input
+        if (array_key_exists('url', (array) $input['input'])) {
+            $actualInput = $input['input'];
+        // dd($actualInput);
+        } elseif (! is_string($input['input'])) {         // if $input["input"] is not a string, convert it to a string
+            // dd($input['input']);
+            // $input['input'] = $input['input']->input;
+            $actualInput = $input['input']['input'];
+        }
+
+        // if $actualInput is not a string, dd it
+        if (! is_string($actualInput)) {
+            $actualInput = json_encode($actualInput);
+        }
+
+        // dd([
+        //     'plugin_id' => $plugin_id,
+        //     'input' => $actualInput,
+        //     'function' => $input['function'],
+        // ]);
+        //
+        if ($input['function'] == 'inference') {
+            // dd($input);
+            // $actualInput = json_encode([
+            //     'model_name' => 'gpt-4',
+            //     'input_content' => 'Speculate about this:'.$input,
+            //     'api_key' => env('OPENAI_API_KEY'),
+            // ]);
+            $actualInput = $input['input'];
+        }
+        $pluginOutput = $plugin->call($input['function'], $actualInput);
 
         return json_encode($pluginOutput);
     }
@@ -217,7 +259,7 @@ trait StepActions
         if (env('APP_ENV') == 'testing') {
             return [
                 'input' => $input,
-                'embedding' => [] // Embedder::createFakeEmbedding(),
+                'embedding' => [], // Embedder::createFakeEmbedding(),
             ];
         }
 
@@ -236,7 +278,7 @@ trait StepActions
         return [
             'input' => [0, 0],
             'context' => [
-                'do this via a plugin'
+                'do this via a plugin',
             ],
         ];
     }
@@ -331,8 +373,20 @@ trait StepActions
         }
 
         if (count($input) !== 3) {
-            echo "Input does not have three keys.\n";
-            dd($input);
+            // echo "Input does not have three keys. hardcoding ...\n";
+
+            $theput = json_encode([
+                'model_name' => 'gpt-4',
+                'input_content' => 'Speculate about this:'.$input[0],
+                'api_key' => env('OPENAI_API_KEY'),
+            ]);
+
+            return [
+                'plugin_id' => 3,
+                'input' => $theput,
+                'function' => 'inference',
+            ];
+
         }
 
         if (! array_key_exists('plugin_id', $input)) {

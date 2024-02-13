@@ -20,7 +20,9 @@ class PluginController extends Controller
                 break;
             case 'URL Scraper':
                 $function = 'fetch_url_content';
-                $input = request('input');
+                $input = json_encode([
+                    'url' => request('input'),
+                ]);
                 break;
             case 'LLM Inferencer':
                 $function = 'inference';
