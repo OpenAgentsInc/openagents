@@ -75,11 +75,17 @@ class AgentController extends Controller
         // \dd($stepExecutedData);
 
         // Pass the task output and StepExecuted data to the Blade view
-        return view('components.task-runner', [
-            'task' => $task,
+        //
+        return response()->json([
+            'ok' => true,
             'output' => $output,
             'stepExecutedData' => [$stepExecutedData],
         ]);
+        // return view('components.task-runner', [
+        //     'task' => $task,
+        //     'output' => $output,
+        //     'stepExecutedData' => [$stepExecutedData],
+        // ]);
     }
 
     // Create a new agent

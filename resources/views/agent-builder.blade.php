@@ -5,11 +5,13 @@
                 <div class="font-bold text-lg">{{ $agent->name }}</div>
                 <div class="mt-1 text-sm text-gray">{{ $agent->description }}</div>
 
-                <button class="float-right text-white px-4 py-2 rounded-lg -mt-12">Run Flow</button>
 
                 <div class="mt-4">
     <template x-for="task in selectedBlocks" :key="task.uniqueKey">
         <div>
+<button
+@click="runTask(task)"
+class="float-right text-white px-4 py-2 rounded-lg mt-2 mr-20">Run Task</button>
             <!-- Task Name and Description -->
             <div class="py-4 mb-4">
                 <div class="mb-4">
@@ -33,7 +35,7 @@
         <!-- Remove Button -->
         <button @click="removeStep(task, step)" class="mt-2 text-white bg-red-500 hover:bg-red-700 text-xs font-bold py-2 px-4 rounded">Remove</button>
         <!-- Placeholder for Output -->
-        <div :id="`output-${step.id}`" class="mt-4 text-sm text-gray-700"></div>
+        <div :id="`output-${step.id}`" class="mt-4 text-sm text-gray"></div>
     </div>
 </template>
                 </div>
@@ -102,6 +104,32 @@
                 removeBlock(index) {
                     this.selectedBlocks.splice(index, 1);
                 },
+ runTask(task) {
+            console.log('Running task:', task);
+            fetch(`/agent/${task.id}/run`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').getAttribute('content') // Ensure CSRF token is sent
+                },
+                body: JSON.stringify({
+                    input: "Does this work? https://raw.githubusercontent.com/OpenAgentsInc/plugin-url-scraper/main/src/lib.rs"
+                    // include any necessary data here
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Task run response:', data);
+                // Update the DOM or component state as necessary
+                const outputContainer = document.querySelector(`#output-${task.id}`);
+                if (outputContainer) {
+                    outputContainer.innerHTML = data.output; // Assuming 'data.message' contains the response you want to display
+                }
+            })
+            .catch(error => {
+                console.error('Error running task:', error);
+            });
+                    },
                 testBlock(block) {
                     console.log('Testing block:', block);
                     const pluginId = block.id;
@@ -126,12 +154,6 @@
         if (outputContainer) {
             outputContainer.innerHTML = data.output;
         }
-                             // else {
-                             //    const newOutputContainer = document.createElement('div');
-                             //    newOutputContainer.setAttribute('id', `output-${block.uniqueKey}`);
-                             //    newOutputContainer.innerHTML = data.output;
-                             //    document.querySelector(`[data-block-id="${block.uniqueKey}"]`).appendChild(newOutputContainer);
-                            // }
                         })
                         .catch(error => {
                             console.error('Error:', error);
