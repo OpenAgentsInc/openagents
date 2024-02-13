@@ -13,8 +13,10 @@ class AgentController extends Controller
     public function build($id)
     {
         $agent = Agent::findOrFail($id);
+
         return view('agent-builder', [
             'agent' => $agent,
+            'tasks' => $agent->tasks,
             'plugins' => Plugin::all(),
         ]);
     }
@@ -22,6 +24,7 @@ class AgentController extends Controller
     public function index()
     {
         $agents = Agent::all();
+
         return view('agent-list', [
             'agents' => $agents,
         ]);
@@ -40,7 +43,7 @@ class AgentController extends Controller
         // Get the agent associated with the task
         $agent = $task->agent;
 
-        if (!$agent) {
+        if (! $agent) {
             // Handle the case where no agent is associated with the task
             return response()->json([
                 'ok' => false,
@@ -50,7 +53,7 @@ class AgentController extends Controller
 
         // Run the task on the agent
         $output = $agent->runTask($task, [
-            "input" => $request->input('input')
+            'input' => $request->input('input'),
         ]);
 
         // Return the output of the task execution
@@ -66,8 +69,8 @@ class AgentController extends Controller
         $stepExecutedData = StepExecuted::whereHas('task_executed', function ($query) use ($task) {
             $query->where('task_id', $task->id);
         })
-        ->orderBy('created_at', 'desc')
-        ->first();
+            ->orderBy('created_at', 'desc')
+            ->first();
 
         // \dd($stepExecutedData);
 
@@ -91,8 +94,8 @@ class AgentController extends Controller
 
         $name = request('name');
         $description = request('description');
-        $instructions = request('instructions') ?? "You are a helpful assistant.";
-        $welcome_message = request('welcome_message') ?? "How can I help?";
+        $instructions = request('instructions') ?? 'You are a helpful assistant.';
+        $welcome_message = request('welcome_message') ?? 'How can I help?';
 
         $agent = Agent::create([
             'user_id' => auth()->user()->id,
@@ -112,18 +115,19 @@ class AgentController extends Controller
     {
         try {
             $agent = Agent::findOrFail($id)
-            ->load([
-                'tasks.steps',
-                'brains.datapoints',
-                'user' => function ($query) {
-                    $query->select('id', 'github_nickname', 'twitter_nickname')
-                        ->addSelect(\DB::raw('COALESCE(github_nickname, twitter_nickname) as username'));
-                },
-            ]);
+                ->load([
+                    'tasks.steps',
+                    'brains.datapoints',
+                    'user' => function ($query) {
+                        $query->select('id', 'github_nickname', 'twitter_nickname')
+                            ->addSelect(\DB::raw('COALESCE(github_nickname, twitter_nickname) as username'));
+                    },
+                ]);
 
             $owner = $agent->user->username;
 
             $conversation = $agent->getUserConversation();
+
             return view('agent-view', [
                 'agent' => $agent,
                 'conversation' => $conversation,
@@ -147,7 +151,7 @@ class AgentController extends Controller
         // Return standard JSON success response
         return response()->json([
             'ok' => true,
-            'output' => $task->run(["input" => $input, "conversation" => $conversation])
+            'output' => $task->run(['input' => $input, 'conversation' => $conversation]),
         ]);
     }
 }
