@@ -81,6 +81,8 @@ class Plugin extends Model
             $this->initializePlugin();
         }
 
+        dd($this->parse());
+
         return $this->plugin->call($function, $input);
     }
 
