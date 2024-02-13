@@ -7,6 +7,27 @@
 
                 <button class="float-right text-white px-4 py-2 rounded-lg -mt-12">Run Flow</button>
 
+                @foreach($agent->tasks as $task)
+                    <div class="py-4 mb-4">
+                        <div class="mb-4">
+                            <span class="uppercase text-xs opacity-75 tracking-wider">Task</span>
+                            <h2 class="-mt-2 py-2 text-lg font-bold rounded-t-lg">{{ $task->name }}</h2>
+                        </div>
+                        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                            @forelse($task->steps->sortBy('order') as $step)
+                                <div class="p-4 border border-offblack rounded">
+                                    <h3 class="text-normal font-semibold">
+                                        <span>{{ $step->name }}</span>
+                                    </h3>
+                                    <p>{{ $step->description }}</p>
+                                </div>
+                            @empty
+                                <p class="col-span-full">No steps available for this task.</p>
+                            @endforelse
+                        </div>
+                    </div>
+                @endforeach
+
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <template x-for="(block, index) in selectedBlocks" :key="block.uniqueKey">
                         <div class="p-4 mb-2 border border-offblack rounded max-w-xs">
