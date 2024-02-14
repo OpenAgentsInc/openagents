@@ -47,6 +47,74 @@ class AgentController extends Controller
 
     public function run_task(Request $request, $task_id)
     {
+        $task = Task::findOrFail($task_id);
+        $agent = $task->agent;
+
+        if (! $agent) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'No agent associated with this task.',
+            ], 404);
+        }
+
+        $output = $agent->runTask($task, [
+            'input' => $request->input('input'),
+        ]);
+
+        // Assuming $output is a JSON string, decode it to access the response text
+        $outputData = json_decode($output, true);
+        // It was encoded twice, lets decode again
+        if (is_string($outputData)) {
+            $outputData = json_decode($outputData, true);
+        }
+        $jsonError = json_last_error();
+
+        if ($jsonError !== JSON_ERROR_NONE) {
+            dd('JSON decoding error: '.json_last_error_msg());
+        }
+        if (isset($outputData['choices']) && is_array($outputData['choices'])) {
+            if (isset($outputData['choices'][0]) && is_array($outputData['choices'][0])) {
+                if (isset($outputData['choices'][0]['message']) && is_array($outputData['choices'][0]['message'])) {
+                    if (isset($outputData['choices'][0]['message']['content'])) {
+                        $textResponse = $outputData['choices'][0]['message']['content'];
+                    } else {
+                        dd('Content not set', $outputData['choices'][0]['message']);
+                    }
+                } else {
+                    dd('Message not set or not an array', $outputData['choices'][0]);
+                }
+            } else {
+                dd('First choice not set or not an array', $outputData['choices']);
+            }
+        } else {
+            dd('Choices not set or not an array', $outputData);
+        }
+
+        // Extract the text response
+        $textResponse = '';
+        if (isset($outputData['choices'][0]['message']['content'])) {
+            $textResponse = $outputData['choices'][0]['message']['content'];
+        } else {
+            dump($outputData);
+            dd('WASNT SET');
+        }
+
+        if ($request->wantsJson()) {
+            // If client expects JSON, you might still want to simplify the output here
+            return response()->json([
+                'ok' => true,
+                'textResponse' => $textResponse,
+            ]);
+        } else {
+            // For HTML response, pass only the extracted text response
+            return response(view('components.task-response', [
+                'textResponse' => $textResponse,
+            ]));
+        }
+    }
+
+    public function old_run_task(Request $request, $task_id)
+    {
         // Find the specified task by task_id
         $task = Task::findOrFail($task_id);
 

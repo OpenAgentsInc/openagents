@@ -374,10 +374,9 @@ trait StepActions
 
         if (count($input) !== 3) {
             // echo "Input does not have three keys. hardcoding ...\n";
-
             $theput = json_encode([
                 'model_name' => 'gpt-4',
-                'input_content' => 'Speculate about this:'.$input[0],
+                'input_content' => $input['input'],
                 'api_key' => env('OPENAI_API_KEY'),
             ]);
 
