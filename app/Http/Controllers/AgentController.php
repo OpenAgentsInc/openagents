@@ -10,6 +10,11 @@ use Illuminate\Http\Request;
 
 class AgentController extends Controller
 {
+    public function coder()
+    {
+        return view('agent-connie');
+    }
+
     public function build($id)
     {
         $agent = Agent::findOrFail($id);
