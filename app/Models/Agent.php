@@ -169,6 +169,7 @@ class Agent extends Model
 
     public function run($input, $task = null)
     {
+        $userInput = $input;
         if (! $task) {
             // If no provided task, get the first task
             $task = $this->tasks()->first()->load('steps');
@@ -185,6 +186,12 @@ class Agent extends Model
         foreach ($task->steps as $step) {
             if ($step->order !== 1) {
                 $input = $prev_step_executed->output;
+            }
+
+            if ($step->name === 'LLM Inference') {
+                $input = json_encode([
+                    'input' => "Respond to this user input with the following context: \n User Input: {$userInput['input']} \n\n Context: {$input}",
+                ]);
             }
 
             // if step category is "plugin", augment the input with params
@@ -221,19 +228,7 @@ class Agent extends Model
                             'plugin_id' => $params->plugin_id,
                             'function' => $params->function,
                         ]);
-
-                        // $input = json_encode([
-                        //     'input' => $prev_step_executed->output, // Assign the output directly
-                        //     'plugin_id' => $params->plugin_id,
-                        //     'function' => $params->function,
-                        // ]);
                     }
-
-                    // $input = json_encode([
-                    //     'input' => $prev_step_executed->output['output'], // Assign the output directly
-                    //     'plugin_id' => $params->plugin_id,
-                    //     'function' => $params->function,
-                    // ]);
                 }
             } elseif ($step->category === 'L402') {
                 $params = json_decode($step->params);
