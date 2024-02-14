@@ -12,7 +12,12 @@ class AgentController extends Controller
 {
     public function coder()
     {
-        return view('agent-connie');
+        // Grab the first task with the name "Inference with web context"
+        $task = Task::where('name', 'Inference with web context')->firstOrFail();
+
+        return view('agent-connie', [
+            'task' => $task,
+        ]);
     }
 
     public function build($id)
@@ -55,6 +60,8 @@ class AgentController extends Controller
                 'error' => 'No agent associated with this task.',
             ], 404);
         }
+
+        // check to see if we have input
 
         // Run the task on the agent
         $output = $agent->runTask($task, [

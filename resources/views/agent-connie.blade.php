@@ -22,15 +22,22 @@
             </div>
 
             <!-- Message Input Area -->
-            <div class="px-4 py-2 bg-black">
-                <form id="messageForm" action="#" method="POST" class="flex space-x-2">
-                    @csrf
-                    <x-input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 bg-darkgray text-white p-2 rounded-lg focus:outline-none" autocomplete="off" />
-                    <button type="submit" class="bg-gray text-white px-4 py-2 rounded-lg hover:bg-lightgray focus:outline-none">
-                        Send
-                    </button>
-                </form>
-            </div>
+<div class="px-4 py-2 bg-black fixed w-screen bottom-0 right-0">
+    <form id="messageForm" hx-post="/agent/{{$task->id}}/run" hx-headers='{"X-CSRF-TOKEN": "{{ csrf_token() }}"}' hx-trigger="submit">
+        @csrf
+        <x-input type="text" id="messageInput" name="input" placeholder="Type a message..." class="flex-1 bg-darkgray text-white p-2 rounded-lg focus:outline-none" autocomplete="off" />
+        <button type="submit" hx-disable="true" class="bg-gray text-white px-4 py-2 rounded-lg hover:bg-lightgray focus:outline-none">
+            Send
+        </button>
+    </form>
+</div>
         </div>
     </div>
+
+<!-- push vendor/htmx.min.js to the scripts stack -->
+@push('scripts')
+<script src="{{ asset('vendor/htmx.min.js') }}"></script>
+@endpush
+
+
 </x-app-layout>
