@@ -14,6 +14,9 @@ trim_trailing_whitespace = false
 [*.php]
 indent_size = 4
 
+[*.blade.php]
+indent_size = 4
+
 [*.{yml,yaml}]
 indent_size = 2
 
