@@ -12,7 +12,10 @@ class AgentController extends Controller
 {
     public function chat()
     {
-        return view('agent-chat');
+        $task = Task::where('name', 'Inference with web context')->firstOrFail();
+        return view('agent-chat', [
+            'task' => $task,
+        ]);
     }
 
     public function coder()
