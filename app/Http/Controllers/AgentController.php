@@ -10,6 +10,11 @@ use Illuminate\Http\Request;
 
 class AgentController extends Controller
 {
+    public function chat()
+    {
+        return view('agent-chat');
+    }
+
     public function coder()
     {
         // Grab the first task with the name "Inference with web context"
@@ -225,7 +230,7 @@ class AgentController extends Controller
         }
     }
 
-    public function chat($id)
+    public function old_chat($id)
     {
         $input = request('input');
         $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');

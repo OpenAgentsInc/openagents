@@ -20,4 +20,7 @@ export default {
       green: '#00CC00'
     }
   },
+  plugins: [
+    require('tailwind-scrollbar')({ nocompatible: true }),
+  ]
 }
