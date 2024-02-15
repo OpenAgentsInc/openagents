@@ -37,6 +37,7 @@ if (!app()->environment('production')) {
     // Agents (public)
     Route::get('/agents', [AgentController::class, 'index'])->name('agents.index');
     Route::get('/agent/connie', [AgentController::class, 'coder'])->name('agent.coder');
+    Route::get('/agent/chat', [AgentController::class, 'chat'])->name('agent.chat');
     Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 
     // Auth
