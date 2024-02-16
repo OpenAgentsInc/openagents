@@ -30,22 +30,16 @@ class Chat extends Component
 
     public function runTask()
     {
-        // Assuming your task is divided into 3 stages
-        for ($stage = 1; $stage <= 3; $stage++) {
-            // Simulate each stage work...
-            sleep(1); // Remove sleep in a real application, it's just for demonstration.
-
-            $message = "Stage $stage Completed \n";
+        $logFunction = function($message) {
             $this->stream(
                 to: 'taskProgress',
-                content: $message,
+                content: "Executing step: $message <br />"
             );
-        }
-
+        };
         $task = Task::where('name', 'Inference with web context')->firstOrFail();
         $output = $task->agent->runTask($task, [
             'input' => $this->input,
-        ]);
+        ], $logFunction);
         // Decode the JSON response to extract the message content
          $decodedOutput = json_decode($output, true);
         // decode again

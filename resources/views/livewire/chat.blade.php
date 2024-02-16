@@ -16,7 +16,7 @@
                     </div>
                 </div>
             @endforeach
-<div wire:stream="taskProgress" class="task-progress-messages"></div>
+<div wire:stream="taskProgress" class="text-sm text-gray"></div>
         </div>
         <div>
             <form wire:submit.prevent="sendMessage">
