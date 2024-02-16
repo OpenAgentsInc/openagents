@@ -4,7 +4,18 @@
     </div>
     <div class="w-4/5 flex flex-col px-2">
         <div id="chatbox-container" class="grow nice-scrollbar weird-height">
-            <!-- Chatbox container content will be appended here -->
+            <!-- render chat messages based on $messages -->
+            @foreach($messages as $message)
+                <div class="flex flex-row items-center mb-4">
+                    <div class="flex-shrink-0">
+                        <img class="w-10 h-10 rounded-full" src="https://via.placeholder.com/150" alt="Avatar">
+                    </div>
+                    <div class="ml-4">
+                        <div class="text-sm font-semibold">{{ $message['from'] }}</div>
+                        <div class="text-md">{{ $message['body'] }}</div>
+                    </div>
+                </div>
+            @endforeach
         </div>
         <div>
             <form wire:submit.prevent="sendMessage">
