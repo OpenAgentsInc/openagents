@@ -161,13 +161,13 @@ class Agent extends Model
      *
      * @return mixed
      */
-    public function runTask(Task $task, $input)
+    public function runTask(Task $task, $input, callable $logFunction = null)
     {
         // Call the existing run method with the input data
-        return $this->run($input, $task);
+        return $this->run($input, $task, $logFunction);
     }
 
-    public function run($input, $task = null)
+    public function run($input, $task = null, $logFunction = null)
     {
         $userInput = $input;
         if (! $task) {
@@ -184,6 +184,10 @@ class Agent extends Model
         ]);
 
         foreach ($task->steps as $step) {
+            // Log the step name using the provided logging function
+            if ($logFunction) {
+                $logFunction($step->name);
+            }
             if ($step->order !== 1) {
                 $input = $prev_step_executed->output;
             }
