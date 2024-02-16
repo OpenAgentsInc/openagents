@@ -6,9 +6,11 @@ use App\Http\Controllers\BitcoinController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PluginController;
 use App\Http\Controllers\StaticController;
+use App\Livewire\Counter;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StaticController::class, 'splash'])->name('home');
+Route::get('/counter', Counter::class);
 
 // Disable all these routes in production
 if (!app()->environment('production')) {
