@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\Task;
 use Livewire\Component;
+use Livewire\Attributes\On;
 
 class Chat extends Component
 {
@@ -29,6 +30,18 @@ class Chat extends Component
 
     public function runTask()
     {
+        // Assuming your task is divided into 3 stages
+        for ($stage = 1; $stage <= 3; $stage++) {
+            // Simulate each stage work...
+            sleep(1); // Remove sleep in a real application, it's just for demonstration.
+
+            $message = "Stage $stage Completed \n";
+            $this->stream(
+                to: 'taskProgress',
+                content: $message,
+            );
+        }
+
         $task = Task::where('name', 'Inference with web context')->firstOrFail();
         $output = $task->agent->runTask($task, [
             'input' => $this->input,

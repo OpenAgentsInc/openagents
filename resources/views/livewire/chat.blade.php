@@ -16,6 +16,7 @@
                     </div>
                 </div>
             @endforeach
+<div wire:stream="taskProgress" class="task-progress-messages"></div>
         </div>
         <div>
             <form wire:submit.prevent="sendMessage">
@@ -47,4 +48,19 @@
             </form>
         </div>
     </div>
+<div>
+    <div id="taskProgress"></div>
+
+    @push('scripts')
+<script>
+    document.addEventListener('livewire:init', () => {
+       Livewire.on('task-progress', (event) => {
+       console.log(event)
+       // const message = event.detail.message;
+       // document.getElementById('taskProgress').textContent = message;
+       });
+    });
+    </script>
+    @endpush
+</div>
 </div>
