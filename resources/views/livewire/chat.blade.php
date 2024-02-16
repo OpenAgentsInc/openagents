@@ -6,9 +6,9 @@
         <div id="chatbox-container" class="grow nice-scrollbar weird-height">
             <!-- render chat messages based on $messages -->
             @foreach($messages as $message)
-                <div class="flex flex-row items-center mb-4">
+                <div class="flex flex-row items-start my-4">
                     <div class="flex-shrink-0">
-                        <img class="w-10 h-10 rounded-full" src="https://via.placeholder.com/150" alt="Avatar">
+                        <img class="w-10 h-10 rounded-full" src="https://placekitten.com/200/200" alt="Avatar">
                     </div>
                     <div class="ml-4">
                         <div class="text-sm font-semibold">{{ $message['from'] }}</div>

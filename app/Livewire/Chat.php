@@ -28,9 +28,15 @@ class Chat extends Component
             'input' => $input,
         ]);
 
+        // Decode the JSON response to extract the message content
+         $decodedOutput = json_decode($output, true);
+        // decode again
+        $decodedOutput = json_decode($decodedOutput, true);
+         $messageContent = $decodedOutput['choices'][0]['message']['content'] ?? 'Response not available';
+
         // Append the response to the chat
         $this->messages[] = [
-            'body' => $output,
+            'body' => $messageContent,
             'from' => $task->agent->name,
         ];
     }
