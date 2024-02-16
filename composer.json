@@ -18,7 +18,8 @@
         "mauricius/laravel-htmx": "^0.5.0",
         "nyholm/psr7": "^1.8",
         "socialiteproviders/twitter": "^4.1",
-        "spatie/pdf-to-text": "^1.52"
+        "spatie/pdf-to-text": "^1.52",
+        "swentel/nostr-php": "dev-main"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
@@ -31,6 +32,12 @@
         "pestphp/pest-plugin-laravel": "^2.0",
         "spatie/laravel-ignition": "^2.0"
     },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url":  "https://github.com/github-tijlxyz/nostr-php.git"
+        }
+    ],
     "autoload": {
         "psr-4": {
             "App\\": "app/",

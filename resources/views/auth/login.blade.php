@@ -41,9 +41,11 @@
         </div>
 
         <div>
-            <x-button variant="outline" class="w-full h-[48px]">
-                Continue with Nostr
-            </x-button>
+            <a href="/login/nostr">
+                <x-button variant="outline" class="w-full h-[48px]">
+                    Continue with Nostr
+                </x-button>
+            </a>
         </div>
     </div>
 
