@@ -6,11 +6,11 @@ use App\Http\Controllers\BitcoinController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PluginController;
 use App\Http\Controllers\StaticController;
-use App\Livewire\Counter;
+use App\Livewire\Chat;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StaticController::class, 'splash'])->name('home');
-Route::get('/counter', Counter::class);
+Route::get('/agent/chat', Chat::class)->name('agent.chat');
 
 // Disable all these routes in production
 if (!app()->environment('production')) {
@@ -39,7 +39,6 @@ if (!app()->environment('production')) {
     // Agents (public)
     Route::get('/agents', [AgentController::class, 'index'])->name('agents.index');
     Route::get('/agent/connie', [AgentController::class, 'coder'])->name('agent.coder');
-    Route::get('/agent/chat', [AgentController::class, 'chat'])->name('agent.chat');
     Route::get('/agent/{id}', [AgentController::class, 'show'])->name('agent');
 
     // Auth
