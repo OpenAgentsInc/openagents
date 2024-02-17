@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use App\Livewire\Navbar;
 use Livewire\Livewire;
 
@@ -14,15 +15,32 @@ it('shows at the home route /', function () {
         ->assertSeeLivewire('navbar');
 });
 
-it('shows a chat button', function () {
-    $this->get('/')
-        ->assertStatus(200)
-        ->assertSee('Chat');
-});
-
 it('shows login & register buttons if unauthed', function () {
     $this->get('/')
         ->assertStatus(200)
         ->assertSee('Login')
         ->assertSee('Register');
+});
+
+it('does not show login & register buttons if authed', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user)
+        ->get('/')
+        ->assertStatus(200)
+        ->assertDontSee('Login')
+        ->assertDontSee('Register');
+});
+
+it('shows a chat button if authed', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user)
+        ->get('/')
+        ->assertStatus(200)
+        ->assertSee('Chat');
+});
+
+it('does not show a chat button if unauthed', function () {
+    $this->get('/')
+        ->assertStatus(200)
+        ->assertDontSee('Chat');
 });
