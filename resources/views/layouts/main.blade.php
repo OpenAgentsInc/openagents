@@ -14,7 +14,7 @@
         <x-header />
     @endif
 
-    <div class="flex flex-grow items-center justify-center">
+    <div class="flex flex-grow mt-16">
         <div class="w-full max-w-5xl mx-auto p-6">
             @yield('content')
         </div>

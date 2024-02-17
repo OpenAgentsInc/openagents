@@ -3,15 +3,13 @@
 @section('title', 'Plugins')
 
 @section('content')
-<!--
-<a href="/plugins/create" class="inline-block">
+
+<a href="/plugins/create" class="mb-6 inline-block">
     <x-button>
         Create Plugin
     </x-button>
 </a>
--->
 
-<div id="plugin-grid-wrapper">
-    <x-plugin-grid :plugins="$plugins" />
-</div>
+<x-plugin-grid :plugins="$plugins" />
+
 @endsection
