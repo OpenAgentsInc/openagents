@@ -7,6 +7,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PluginController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
+use App\Livewire\PluginList;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StaticController::class, 'splash'])->name('home');
@@ -33,7 +34,7 @@ if (!app()->environment('production')) {
     });
 
     // Plugin uploading
-    Route::get('/plugins', [PluginController::class, 'index'])->name('plugins.index');
+    Route::get('/plugins', PluginList::class)->name('plugins.index');
     Route::get('/plugin/{plugin}', [PluginController::class, 'show'])->name('plugins.show');
     Route::get('/plugins/create', [PluginController::class, 'create'])->name('plugins.create');
     Route::post('/plugins', [PluginController::class, 'store'])->name('plugins.store');
