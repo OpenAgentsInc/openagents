@@ -21,9 +21,11 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more. Now b
 - Leaderboards show what's popular
 
 ## Tech Stack
-- Laravel
-- Livewire
-- Tailwind CSS
+- [TALL](https://tallstack.dev/)
+  - Tailwind
+  - Alpine
+  - Laravel
+  - Livewire
 
 ## Video series
 We've chronicled most of the development of this platform over multiple months and 70+ videos on X.
