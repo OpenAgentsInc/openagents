@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 @layer base {
-  h1 {
-    @apply text-[40px] font-bold;
-  }
-
   h1.title {
     @apply text-[64px] font-bold;
+  }
+
+  h1 {
+    @apply text-[40px] font-bold;
   }
 
   h2 {
