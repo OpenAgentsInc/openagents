@@ -10,6 +10,9 @@ Route::get('/', [StaticController::class, 'splash'])->name('home');
 Route::get('/terms', [StaticController::class, 'terms'])->name('terms');
 Route::get('/privacy', [StaticController::class, 'privacy'])->name('privacy');
 
+// Design
+Route::get('/design', [StaticController::class, 'design'])->name('design');
+
 // Auth routes
 require __DIR__.'/auth.php';
 
