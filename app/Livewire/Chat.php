@@ -36,10 +36,17 @@ class Chat extends Component
                 content: "Executing step: $message <br />"
             );
         };
+        $streamFunction = function($response) {
+            // dd($response->choices[0]->toArray());
+            $this->stream(
+                to: 'streamtext',
+                content: $response['choices'][0]['delta']['content']
+            );
+        };
         $task = Task::where('name', 'Inference with web context')->firstOrFail();
         $output = $task->agent->runTask($task, [
             'input' => $this->input,
-        ], $logFunction);
+        ], $logFunction, $streamFunction);
         // Decode the JSON response to extract the message content
          $decodedOutput = json_decode($output, true);
         // decode again
