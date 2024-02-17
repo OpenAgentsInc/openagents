@@ -10,10 +10,11 @@ use App\Livewire\Chat;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [StaticController::class, 'splash'])->name('home');
-Route::get('/agent/chat', Chat::class)->name('agent.chat');
 
 // Disable all these routes in production
 if (!app()->environment('production')) {
+    Route::get('/agent/chat', Chat::class)->name('agent.chat');
+
     // Dashboard placeholder
     Route::get('/dashboard', function () {
         return view('dashboard');
