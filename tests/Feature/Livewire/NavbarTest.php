@@ -19,3 +19,10 @@ it('shows a chat button', function () {
         ->assertStatus(200)
         ->assertSee('Chat');
 });
+
+it('shows login & register buttons if unauthed', function () {
+    $this->get('/')
+        ->assertStatus(200)
+        ->assertSee('Login')
+        ->assertSee('Register');
+});

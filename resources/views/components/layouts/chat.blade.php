@@ -14,7 +14,7 @@
 <body>
     <div class="flex flex-col h-full">
         <livewire:navbar />
-        <main class="flex-1 overflow-hidden">
+        <main class="flex-1 overflow-hidden mt-12">
             {{ $slot }}
         </main>
     </div>
