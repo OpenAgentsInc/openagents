@@ -30,6 +30,10 @@
   h6 {
     @apply text-[14px] font-bold;
   }
+
+  body {
+    @apply bg-black text-white h-screen font-mono;
+  }
 }
 
 @layer components {
