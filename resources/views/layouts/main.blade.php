@@ -11,10 +11,10 @@
 
 <body class="flex flex-col min-h-screen bg-black text-white font-mono antialiased">
     @if(config('app.env') !== 'production')
-        <x-header />
+        <livewire:header />
     @endif
 
-    <div class="flex flex-grow items-center justify-center">
+    <div class="flex flex-grow mt-16">
         <div class="w-full max-w-5xl mx-auto p-6">
             @yield('content')
         </div>

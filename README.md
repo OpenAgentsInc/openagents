@@ -28,6 +28,6 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more. Now b
   - Livewire
 
 ## Video series
-We've chronicled most of the development of this platform over multiple months and 70+ videos on X.
+We've chronicled most of the development of this platform over multiple months and 80+ videos on X.
 
 See [episode one](https://twitter.com/OpenAgentsInc/status/1721942435125715086) or the [full episode list](https://github.com/OpenAgentsInc/openagents/wiki/Video-Series).
