@@ -4,12 +4,14 @@
         <a href="/" wire:navigate>
             <x-logomark size="4" />
         </a>
-    </div>
-    <div class="flex flex-row items-center">
         @auth
             <x-button variant="link" class="ml-8 text-gray hover:text-white">
                 <a href="/chat" wire:navigate>Chat</a>
             </x-button>
+        @endauth
+    </div>
+    <div class="flex flex-row items-center">
+        @auth
         @else
             <x-button variant="link" class="text-gray hover:text-white">
                 <a href="/login" wire:navigate>Login</a>
