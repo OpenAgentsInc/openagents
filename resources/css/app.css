@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  h1.title {
+    @apply text-[64px] font-bold;
+  }
+
+  h1 {
+    @apply text-[40px] font-bold;
+  }
+
+  h2 {
+    @apply text-[32px] font-bold;
+  }
+
+  h3 {
+    @apply text-[24px] font-bold;
+  }
+
+  h4 {
+    @apply text-[20px] font-bold;
+  }
+
+  h5 {
+    @apply text-[16px] font-bold;
+  }
+
+  h6 {
+    @apply text-[14px] font-bold;
+  }
+}
+
 @layer components {
   .nice-scrollbar {
     @apply scrollbar scrollbar-track-white scrollbar-thumb-bitcoin scrollbar-thumb-rounded scrollbar-w-2;
