@@ -1,4 +1,4 @@
-@props(['size' => 3]) {{-- Default size is 3 --}}
+@props(['size' => 1])
 
     @php
         // Map size numbers to exact SVG dimensions and corresponding font sizes

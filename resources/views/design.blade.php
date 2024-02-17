@@ -1,5 +1,5 @@
 <x-blank-layout>
-    <x-logo />
+    <x-logomark />
     <h1 class="title">Design system</h1>
     <div class="mt-12">
         <h1>Brand</h1>
