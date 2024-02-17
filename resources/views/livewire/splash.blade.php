@@ -1,8 +1,7 @@
-<div class="pointer-events-none h-full flex flex-col justify-center items-center font-mono">
-    <div class="-mt-16 fixed text-center">
-        <div class="border py-4 px-5 mx-auto">
-            <x-logomark size="3" />
-        </div>
-        <p class="text-gray mt-6">Coming soon</p>
+<div class="h-full flex flex-col justify-center items-center">
+    <div class="fixed text-center">
+        <h1>Build your own AI workforce</h1>
+        <h4 class="text-gray mt-4 mb-8">Multiply productivity and get paid</h4>
+        <x-button variant="outline" size="lg">Get started</x-button>
     </div>
 </div>

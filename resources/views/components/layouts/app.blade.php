@@ -11,6 +11,7 @@
 </head>
 
 <body>
+    <livewire:navbar />
     {{ $slot }}
 </body>
 

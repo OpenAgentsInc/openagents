@@ -1,3 +1,3 @@
-<div>
-    {{-- Because she competes with no one, no one can compete with her. --}}
+<div class="fixed px-4 py-2">
+    <x-logomark size="4" />
 </div>
