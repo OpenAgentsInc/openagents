@@ -16,7 +16,19 @@
   }
 
   h3 {
-    @apply text-[24px] font-bold text-gray;
+    @apply text-[24px] font-bold;
+  }
+
+  h4 {
+    @apply text-[20px] font-bold;
+  }
+
+  h5 {
+    @apply text-[16px] font-bold;
+  }
+
+  h6 {
+    @apply text-[14px] font-bold;
   }
 }
 
