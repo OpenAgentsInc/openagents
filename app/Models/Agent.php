@@ -161,13 +161,13 @@ class Agent extends Model
      *
      * @return mixed
      */
-    public function runTask(Task $task, $input, callable $logFunction = null)
+    public function runTask(Task $task, $input, callable $logFunction = null, callable $streamFunction = null)
     {
         // Call the existing run method with the input data
-        return $this->run($input, $task, $logFunction);
+        return $this->run($input, $task, $logFunction, $streamFunction);
     }
 
-    public function run($input, $task = null, $logFunction = null)
+    public function run($input, $task = null, $logFunction = null, $streamFunction = null)
     {
         $userInput = $input;
         if (! $task) {
@@ -253,7 +253,7 @@ class Agent extends Model
                 'user_id' => auth()->id(),
                 'status' => 'pending',
             ]);
-            $step_executed->output = $step_executed->run();
+            $step_executed->output = $step_executed->run($streamFunction);
             $step_executed->save();
 
             $prev_step_executed = $step_executed;

@@ -3,8 +3,12 @@
 namespace App\Models;
 
 use App\Traits\StepActions;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Psr7\Request;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use OpenAI;
 
 class StepExecuted extends Model
 {
@@ -12,9 +16,91 @@ class StepExecuted extends Model
 
     protected $guarded = [];
 
-    public function run()
+    public function llmInference($input, $streamFunction) {
+        $client = OpenAI::client(env("OPENAI_API_KEY"));
+        $stream = $client->chat()->createStreamed([
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'user', 'content' => $input['input']],
+            ],
+            'max_tokens' => 6024,
+        ]);
+
+foreach($stream as $response){
+    // $response->choices[0]->toArray();
+    $streamFunction($response);
+}
+    }
+
+    public function old_llmInference($input)
+    {
+        $inputString = $input['input'];
+        $client = new Client();
+
+        $url = 'https://api.openai.com/v1/chat/completions';
+        // $url = 'https://api.together.xyz/inference';
+        $model = 'gpt-4';
+        // $model = 'DiscoResearch/DiscoLM-mixtral-8x7b-v2';
+        $messages = [
+                [
+                    "role" => "system",
+                    "content" => "You are a helpful agent on OpenAgents.com. Respond to the user concisely.",
+                ],
+                [
+                    "role" => "user",
+                    "content" => $inputString,
+                ]
+            ];
+            $data = [
+                "model" => $model,
+                "messages" => $messages,
+                "max_tokens" => 1024,
+                "temperature" => 0.7,
+                // "stream" => true
+                // "stream_tokens" => true
+            ];
+            try {
+            $response = $client->post($url, [
+                'json' => $data,
+                'stream' => true,
+                'headers' => [
+                    // 'Authorization' => 'Bearer ' . env('TOGETHER_API_KEY'),
+                    'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+                ],
+            ]);
+            $content = '';
+            $stream = $response->getBody();
+                    while (!$stream->eof()) {
+            $line = $stream->readLine();
+            if ($line) {
+                $responseLine = json_decode($line, true);
+                // Process each line as needed
+                // For example, you might want to concatenate the content from each "delta" in choices
+                if (isset($responseLine["choices"][0]["delta"]["content"])) {
+                    $content .= $responseLine["choices"][0]["delta"]["content"];
+                }
+            }
+        }
+            // foreach ($this->readStream($stream) as $responseLine) {
+            //     dd($responseLine);
+            //     $token = $responseLine["choices"][0]["text"];
+            //     $content .= $token;
+            //     dd($token);
+            // }
+            } catch (RequestException $e) {
+                $content = $e->getMessage();
+                dd($content);
+            }
+    }
+
+    public function run(callable $streamFunction = null)
     {
         $input = (array) json_decode($this->input);
+
+        // If the StepExecuted's step name is LLM Inference, override with our own streaming one
+        if ($this->step->name === 'LLM Inference') {
+            return $this->llmInference($input, $streamFunction);
+        }
 
         // Based on the category, run the appropriate StepAction. [validation, embedding, similarity_search, inference]
         $category = $this->step->category;
