@@ -11,7 +11,7 @@
 
 <body class="flex flex-col min-h-screen bg-black text-white font-mono antialiased">
     @if(config('app.env') !== 'production')
-        <x-header />
+        <livewire:header />
     @endif
 
     <div class="flex flex-grow mt-16">
