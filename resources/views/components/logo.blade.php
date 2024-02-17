@@ -1,6 +1,6 @@
 @php
     // Define a default class string
-    $defaultClass = 'h-16 w-16';
+    $defaultClass = 'h-[32px] w-[32px]';
 
     // Merge with provided classes, ensuring default classes are used if none provided
     $classes = $attributes->get('class', $defaultClass);

@@ -4,7 +4,19 @@
 
 @layer base {
   h1 {
+    @apply text-[40px] font-bold;
+  }
+
+  h1.title {
     @apply text-[64px] font-bold;
+  }
+
+  h2 {
+    @apply text-[32px] font-bold;
+  }
+
+  h3 {
+    @apply text-[24px] font-bold text-gray;
   }
 }
 
