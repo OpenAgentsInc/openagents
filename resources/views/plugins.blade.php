@@ -4,7 +4,7 @@
 
 @section('content')
 
-<a href="/plugins/create" class="mb-6 inline-block">
+<a wire:navigate href="/plugins/create" class="mb-6 inline-block">
     <x-button>
         Create Plugin
     </x-button>
