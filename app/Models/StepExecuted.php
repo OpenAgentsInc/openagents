@@ -21,8 +21,9 @@ class StepExecuted extends Model
         $stream = $client->chat()->createStreamed([
             'model' => 'gpt-4',
             'messages' => [
-                ['role' => 'user', 'content' => "Hello"],
+                ['role' => 'user', 'content' => $input['input']],
             ],
+            'max_tokens' => 6024,
         ]);
 
 foreach($stream as $response){
