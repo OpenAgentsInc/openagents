@@ -49,5 +49,18 @@
             <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt
                 ut labore et dolore magna aliqua.</p>
         </div>
+
+        <!-- Colors Section -->
+        <div class="my-2 p-8 rounded-[8px] bg-offblack">
+            <h3 class="mb-4 text-gray">Primary</h3>
+            <div class="flex space-x-4">
+                <div class="w-12 h-12 bg-black rounded-[8px]"></div>
+                <div class="w-12 h-12 bg-offblack border border-black rounded-[8px]"></div>
+                <div class="w-12 h-12 bg-darkgray rounded-[8px]"></div>
+                <div class="w-12 h-12 bg-gray rounded-[8px]"></div>
+                <div class="w-12 h-12 bg-lightgray rounded-[8px]"></div>
+                <div class="w-12 h-12 bg-white rounded-[8px]"></div>
+            </div>
+        </div>
     </div>
 </x-blank-layout>
