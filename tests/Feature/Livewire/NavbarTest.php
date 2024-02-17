@@ -13,3 +13,9 @@ it('shows at the home route /', function () {
         ->assertStatus(200)
         ->assertSeeLivewire('navbar');
 });
+
+it('shows a chat button', function () {
+    $this->get('/')
+        ->assertStatus(200)
+        ->assertSee('Chat');
+});
