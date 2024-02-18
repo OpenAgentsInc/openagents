@@ -16,7 +16,7 @@
   }
 
   h3 {
-    @apply text-[24px];
+    @apply text-[24px] font-bold;
   }
 
   h4 {
