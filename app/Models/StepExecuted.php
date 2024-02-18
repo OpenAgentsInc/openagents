@@ -16,20 +16,54 @@ class StepExecuted extends Model
 
     protected $guarded = [];
 
-    public function llmInference($input, $streamFunction) {
+    public function llmInference($input, Conversation $conversation, $streamFunction)
+    {
+        $messages = [
+            [
+                "role" => "system",
+                "content" => "You are a helpful AI agent named " . $conversation->agent->name . ". Your description is " . $conversation->agent->description
+            ],
+        ];
+
+        $previousMessages = Message::where('conversation_id', $conversation->id)
+            ->orderBy('created_at', 'asc')
+            ->take(15)
+            ->get()
+            ->toArray();
+
+        // Add previous messages to the array
+        foreach ($previousMessages as $msg) {
+            $messages[] = [
+                "role" => $msg['sender'] === 'user' ? 'user' : 'assistant',
+                "content" => $msg['body']
+            ];
+        }
+
+        // But shave off the most recent message
+        // array_pop($messages);
+
+        // Add the current user input as the last element
+        $messages[] = ["role" => "user", "content" => $input['input']];
+
+        // \dd($messages);
+
         $client = OpenAI::client(env("OPENAI_API_KEY"));
         $stream = $client->chat()->createStreamed([
             'model' => 'gpt-4',
-            'messages' => [
-                ['role' => 'user', 'content' => $input['input']],
-            ],
+            'messages' => $messages,
             'max_tokens' => 6024,
         ]);
 
-foreach($stream as $response){
-    // $response->choices[0]->toArray();
-    $streamFunction($response);
-}
+        $content = "";
+        foreach($stream as $response) {
+            // $response->choices[0]->toArray();
+            $token = $response['choices'][0]['delta']['content'] ?? "";
+            $streamFunction($response);
+            $content .= $token;
+        }
+        return [
+            'output' => $content
+        ];
     }
 
     public function old_llmInference($input)
@@ -51,15 +85,15 @@ foreach($stream as $response){
                     "content" => $inputString,
                 ]
             ];
-            $data = [
-                "model" => $model,
-                "messages" => $messages,
-                "max_tokens" => 1024,
-                "temperature" => 0.7,
-                // "stream" => true
-                // "stream_tokens" => true
-            ];
-            try {
+        $data = [
+            "model" => $model,
+            "messages" => $messages,
+            "max_tokens" => 1024,
+            "temperature" => 0.7,
+            // "stream" => true
+            // "stream_tokens" => true
+        ];
+        try {
             $response = $client->post($url, [
                 'json' => $data,
                 'stream' => true,
@@ -70,36 +104,36 @@ foreach($stream as $response){
             ]);
             $content = '';
             $stream = $response->getBody();
-                    while (!$stream->eof()) {
-            $line = $stream->readLine();
-            if ($line) {
-                $responseLine = json_decode($line, true);
-                // Process each line as needed
-                // For example, you might want to concatenate the content from each "delta" in choices
-                if (isset($responseLine["choices"][0]["delta"]["content"])) {
-                    $content .= $responseLine["choices"][0]["delta"]["content"];
+            while (!$stream->eof()) {
+                $line = $stream->readLine();
+                if ($line) {
+                    $responseLine = json_decode($line, true);
+                    // Process each line as needed
+                    // For example, you might want to concatenate the content from each "delta" in choices
+                    if (isset($responseLine["choices"][0]["delta"]["content"])) {
+                        $content .= $responseLine["choices"][0]["delta"]["content"];
+                    }
                 }
             }
-        }
             // foreach ($this->readStream($stream) as $responseLine) {
             //     dd($responseLine);
             //     $token = $responseLine["choices"][0]["text"];
             //     $content .= $token;
             //     dd($token);
             // }
-            } catch (RequestException $e) {
-                $content = $e->getMessage();
-                dd($content);
-            }
+        } catch (RequestException $e) {
+            $content = $e->getMessage();
+            dd($content);
+        }
     }
 
-    public function run(callable $streamFunction = null)
+    public function run(Conversation $conversation, callable $streamFunction = null)
     {
         $input = (array) json_decode($this->input);
 
         // If the StepExecuted's step name is LLM Inference, override with our own streaming one
         if ($this->step->name === 'LLM Inference') {
-            return $this->llmInference($input, $streamFunction);
+            return $this->llmInference($input, $conversation, $streamFunction);
         }
 
         // Based on the category, run the appropriate StepAction. [validation, embedding, similarity_search, inference]

@@ -30,28 +30,26 @@ class Chat extends Component
 
     public function runTask()
     {
+        $messageContent = "";
         $logFunction = function($message) {
             $this->stream(
                 to: 'taskProgress',
                 content: "Executing step: $message <br />"
             );
         };
-        $streamFunction = function($response) {
-            // dd($response->choices[0]->toArray());
+        $streamFunction = function($response) use (&$messageContent) {
+            $token = $response['choices'][0]['delta']['content'] ?? "";
             $this->stream(
                 to: 'streamtext',
-                content: $response['choices'][0]['delta']['content']
+                content: $token
             );
+            $messageContent .= $token;
         };
         $task = Task::where('name', 'Inference with web context')->firstOrFail();
+
         $output = $task->agent->runTask($task, [
             'input' => $this->input,
         ], $logFunction, $streamFunction);
-        // Decode the JSON response to extract the message content
-         $decodedOutput = json_decode($output, true);
-        // decode again
-        $decodedOutput = json_decode($decodedOutput, true);
-        $messageContent = $decodedOutput['choices'][0]['message']['content'] ?? 'Response not available';
 
         // Append the response to the chat
         $this->messages[] = [
