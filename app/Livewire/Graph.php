@@ -25,6 +25,15 @@ class Graph extends Component
         ];
     }
 
+    public function updateNodePosition($nodeId, $newX, $newY)
+    {
+        // Update the position of the node
+        $this->nodes[$nodeId]['x'] = $newX;
+        $this->nodes[$nodeId]['y'] = $newY;
+
+        // If necessary, persist changes to the database
+    }
+
     public function render()
     {
         return view('livewire.graph');
