@@ -1,5 +1,14 @@
 <x-blank-layout>
 
+    <svg width="400" height="250" xmlns="http://www.w3.org/2000/svg">
+        <rect x="7" y="1" width="386" height="248" fill="none" stroke="white" stroke-width="1" />
+        <!-- Hollow circle with white stroke on the left edge -->
+        <circle cx="7" cy="125" r="5" fill="black" stroke="white" stroke-width="2" />
+
+        <!-- Hollow circle with white stroke on the right edge -->
+        <circle cx="393" cy="125" r="5" fill="black" stroke="white" stroke-width="2" />
+    </svg>
+
 
 
     <svg width="668" height="419" xmlns="http://www.w3.org/2000/svg">
