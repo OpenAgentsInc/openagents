@@ -5,4 +5,8 @@
 
     <livewire:graph />
 
+    <div id="drag" class="touch-none cursor-grab">
+        test
+    </div>
+
 </x-blank-layout>
