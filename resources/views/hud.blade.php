@@ -24,7 +24,15 @@
             <rect x="250" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
             <rect x="290" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
             <rect x="330" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="650" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="690" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
         </g>
+
+        <!-- Text element added here -->
+        <text x="472" y="105" fill="white" font-family="JetBrains Mono" font-size="34" text-anchor="middle"
+            dominant-baseline="middle">
+            ATLANTISPLEB
+        </text>
     </svg>
 
 
