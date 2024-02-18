@@ -14,6 +14,7 @@ Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agen
 
 // Dev only
 Route::get('/design', [StaticController::class, 'design'])->name('design');
+Route::get('/hud', [StaticController::class, 'hud'])->name('hud');
 
 // Include breeze auth routes
 require __DIR__.'/auth.php';
