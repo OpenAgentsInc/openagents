@@ -1,5 +1,21 @@
 <x-blank-layout>
 
+
+    <svg width="500" height="100" xmlns="http://www.w3.org/2000/svg">
+        <rect x="50" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+        <rect x="90" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+        <rect x="130" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+        <rect x="170" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+        <rect x="210" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+        <rect x="250" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+        <rect x="290" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+        <rect x="330" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+    </svg>
+
+
+
+
+
     <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
         <!-- Line 1 -->
         <line x1="10" y1="50" x2="190" y2="50" stroke="white" stroke-width="2" />
