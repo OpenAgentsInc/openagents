@@ -1,4 +1,15 @@
 <div class="my-12 w-full h-[500px] border border-offblack bg-black relative">
+
+    <!-- Background grid of dots -->
+    <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+        <defs>
+            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                <circle cx="10" cy="10" r="0.5" fill="#2C2C2D" />
+            </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)" />
+    </svg>
+
     @foreach($nodes as $node)
         <x-node :width="$node['width']" :height="$node['height']" :id="$node['id']" :x="$node['x']" :y="$node['y']"
             :title="$node['title']" />
