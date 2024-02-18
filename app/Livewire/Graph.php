@@ -14,7 +14,7 @@ class Graph extends Component
         // Initialize your nodes and edges here
         $this->nodes = [
             ['id' => 1, 'x' => 100, 'y' => 50, 'width' => 400, 'height' => 250, 'title' => 'Start'],
-            ['id' => 2, 'x' => 600, 'y' => 100, 'width' => 400, 'height' => 250, 'title' => 'End']
+            ['id' => 2, 'x' => 600, 'y' => 100, 'width' => 400, 'height' => 250, 'title' => 'End'] // Notice y is now 350
         ];
 
         // Assuming each edge connects the centers of the right side of one node to the left side of the next node
