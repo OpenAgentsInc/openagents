@@ -16,14 +16,36 @@ class StepExecuted extends Model
 
     protected $guarded = [];
 
-    public function llmInference($input, $streamFunction)
+    public function llmInference($input, Conversation $conversation, $streamFunction)
     {
+        $messages = [
+            [
+                "role" => "system",
+                "content" => "You are a helpful AI agent named " . $conversation->agent->name . ". Your description is " . $conversation->agent->description
+            ],
+        ];
+
+        $previousMessages = Message::where('conversation_id', $conversation->id)
+            ->orderBy('created_at', 'asc')
+            ->take(15)
+            ->get()
+            ->toArray();
+
+        // Add previous messages to the array
+        foreach ($previousMessages as $msg) {
+            $messages[] = [
+                "role" => $msg['sender'] === 'user' ? 'user' : 'assistant',
+                "content" => $msg['body']
+            ];
+        }
+
+        // Add the current user input as the last element
+        $messages[] = ["role" => "user", "content" => $input['input']];
+
         $client = OpenAI::client(env("OPENAI_API_KEY"));
         $stream = $client->chat()->createStreamed([
             'model' => 'gpt-4',
-            'messages' => [
-                ['role' => 'user', 'content' => $input['input']],
-            ],
+            'messages' => $messages,
             'max_tokens' => 6024,
         ]);
 
@@ -94,13 +116,13 @@ class StepExecuted extends Model
         }
     }
 
-    public function run(callable $streamFunction = null)
+    public function run(Conversation $conversation, callable $streamFunction = null)
     {
         $input = (array) json_decode($this->input);
 
         // If the StepExecuted's step name is LLM Inference, override with our own streaming one
         if ($this->step->name === 'LLM Inference') {
-            return $this->llmInference($input, $streamFunction);
+            return $this->llmInference($input, $conversation, $streamFunction);
         }
 
         // Based on the category, run the appropriate StepAction. [validation, embedding, similarity_search, inference]

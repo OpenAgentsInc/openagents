@@ -169,6 +169,7 @@ class Agent extends Model
 
     public function run($input, $task = null, $logFunction = null, $streamFunction = null)
     {
+        $conversation = $this->getUserConversation();
         $userInput = $input;
         if (! $task) {
             // If no provided task, get the first task
@@ -253,7 +254,7 @@ class Agent extends Model
                 'user_id' => auth()->id(),
                 'status' => 'pending',
             ]);
-            $step_executed->output = $step_executed->run($streamFunction);
+            $step_executed->output = $step_executed->run($conversation, $streamFunction);
             $step_executed->save();
 
             $prev_step_executed = $step_executed;
