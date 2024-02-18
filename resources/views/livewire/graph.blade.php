@@ -11,8 +11,8 @@
     </svg>
 
     @foreach($nodes as $node)
-        <x-node :width="$node['width']" :height="$node['height']" :id="$node['id']" :x="$node['x']" :y="$node['y']"
-            :title="$node['title']" />
+        <livewire:node :id="$node['id']" :x="$node['x']" :y="$node['y']" :title="$node['title']" :width="$node['width']"
+            :height="$node['height']" :key="'node-'.$node['id']">
     @endforeach
 
     @foreach($edges as $edge)
