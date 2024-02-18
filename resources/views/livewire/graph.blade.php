@@ -1,4 +1,4 @@
-<div class="my-12 w-full h-[500px] border border-offblack bg-black relative">
+<div class="my-12 w-full h-[500px] border border-2 border-offblack bg-black relative rounded-xl">
 
     <!-- Background grid of dots -->
     <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
