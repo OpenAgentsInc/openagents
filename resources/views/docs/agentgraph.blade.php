@@ -9,5 +9,4 @@
         <x-edge :from="['x' => 100, 'y' => 100]" :to="['x' => 600, 'y' => 100]" />
     </x-graph>
 
-
 </x-blank-layout>
