@@ -2,6 +2,7 @@
 
 
     <svg width="500" height="100" xmlns="http://www.w3.org/2000/svg">
+        <rect x="10" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
         <rect x="50" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
         <rect x="90" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
         <rect x="130" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
@@ -12,6 +13,41 @@
         <rect x="330" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
     </svg>
 
+
+    <svg width="500" height="100" xmlns="http://www.w3.org/2000/svg">
+        <!-- Parallelogram 1 -->
+        <rect x="50" y="30" width="26" height="50" fill="white" transform="skewX(-30)">
+            <animate attributeName="fill" values="white;black;white" begin="0s" dur="0.3s" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 2 -->
+        <rect x="90" y="30" width="26" height="50" fill="white" transform="skewX(-30)">
+            <animate attributeName="fill" values="white;black;white" begin="0.3s" dur="0.3s" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 3 -->
+        <rect x="130" y="30" width="26" height="50" fill="white" transform="skewX(-30)">
+            <animate attributeName="fill" values="white;black;white" begin="0.6s" dur="0.3s" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 4 -->
+        <rect x="170" y="30" width="26" height="50" fill="white" transform="skewX(-30)">
+            <animate attributeName="fill" values="white;black;white" begin="0.9s" dur="0.3s" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 5 -->
+        <rect x="210" y="30" width="26" height="50" fill="white" transform="skewX(-30)">
+            <animate attributeName="fill" values="white;black;white" begin="1.2s" dur="0.3s" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 6 -->
+        <rect x="250" y="30" width="26" height="50" fill="white" transform="skewX(-30)">
+            <animate attributeName="fill" values="white;black;white" begin="1.5s" dur="0.3s" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 7 -->
+        <rect x="290" y="30" width="26" height="50" fill="white" transform="skewX(-30)">
+            <animate attributeName="fill" values="white;black;white" begin="1.8s" dur="0.3s" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 8 -->
+        <rect x="330" y="30" width="26" height="50" fill="white" transform="skewX(-30)">
+            <animate attributeName="fill" values="white;black;white" begin="2.1s" dur="0.3s" repeatCount="indefinite" />
+        </rect>
+    </svg>
 
 
 
