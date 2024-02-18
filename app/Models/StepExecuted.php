@@ -16,7 +16,8 @@ class StepExecuted extends Model
 
     protected $guarded = [];
 
-    public function llmInference($input, $streamFunction) {
+    public function llmInference($input, $streamFunction)
+    {
         $client = OpenAI::client(env("OPENAI_API_KEY"));
         $stream = $client->chat()->createStreamed([
             'model' => 'gpt-4',
@@ -26,10 +27,10 @@ class StepExecuted extends Model
             'max_tokens' => 6024,
         ]);
 
-foreach($stream as $response){
-    // $response->choices[0]->toArray();
-    $streamFunction($response);
-}
+        foreach($stream as $response) {
+            // $response->choices[0]->toArray();
+            $streamFunction($response);
+        }
     }
 
     public function old_llmInference($input)
@@ -51,15 +52,15 @@ foreach($stream as $response){
                     "content" => $inputString,
                 ]
             ];
-            $data = [
-                "model" => $model,
-                "messages" => $messages,
-                "max_tokens" => 1024,
-                "temperature" => 0.7,
-                // "stream" => true
-                // "stream_tokens" => true
-            ];
-            try {
+        $data = [
+            "model" => $model,
+            "messages" => $messages,
+            "max_tokens" => 1024,
+            "temperature" => 0.7,
+            // "stream" => true
+            // "stream_tokens" => true
+        ];
+        try {
             $response = $client->post($url, [
                 'json' => $data,
                 'stream' => true,
@@ -70,27 +71,27 @@ foreach($stream as $response){
             ]);
             $content = '';
             $stream = $response->getBody();
-                    while (!$stream->eof()) {
-            $line = $stream->readLine();
-            if ($line) {
-                $responseLine = json_decode($line, true);
-                // Process each line as needed
-                // For example, you might want to concatenate the content from each "delta" in choices
-                if (isset($responseLine["choices"][0]["delta"]["content"])) {
-                    $content .= $responseLine["choices"][0]["delta"]["content"];
+            while (!$stream->eof()) {
+                $line = $stream->readLine();
+                if ($line) {
+                    $responseLine = json_decode($line, true);
+                    // Process each line as needed
+                    // For example, you might want to concatenate the content from each "delta" in choices
+                    if (isset($responseLine["choices"][0]["delta"]["content"])) {
+                        $content .= $responseLine["choices"][0]["delta"]["content"];
+                    }
                 }
             }
-        }
             // foreach ($this->readStream($stream) as $responseLine) {
             //     dd($responseLine);
             //     $token = $responseLine["choices"][0]["text"];
             //     $content .= $token;
             //     dd($token);
             // }
-            } catch (RequestException $e) {
-                $content = $e->getMessage();
-                dd($content);
-            }
+        } catch (RequestException $e) {
+            $content = $e->getMessage();
+            dd($content);
+        }
     }
 
     public function run(callable $streamFunction = null)
