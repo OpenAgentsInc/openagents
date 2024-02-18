@@ -7,11 +7,16 @@
         @php
             $fromNode = collect($nodes)->firstWhere('id', $edge['from']);
             $toNode = collect($nodes)->firstWhere('id', $edge['to']);
-            // Assuming the edge connects the right-middle of 'from' node to the left-middle of 'to' node
-            $fromX = $fromNode['x'] + $fromNode['width'];
-            $fromY = $fromNode['y'] + $fromNode['height'] / 2;
-            $toX = $toNode['x'];
-            $toY = $toNode['y'] + $toNode['height'] / 2;
+
+            // Adjust the x position of the 'from' node to the right edge of the node plus half the stroke width
+            $fromX = $fromNode['x'] + $fromNode['width'] - 2; // Added 1 for the stroke width
+            // Adjust the y position to the vertical center of the node plus half the stroke width
+            $fromY = $fromNode['y'] + ($fromNode['height'] / 2);
+
+            // Adjust the x position of the 'to' node to the left edge minus half the stroke width
+            $toX = $toNode['x'] + 2; // Subtract 1 for the stroke width
+            // Adjust the y position to the vertical center of the node plus half the stroke width
+            $toY = $toNode['y'] + ($toNode['height'] / 2);
         @endphp
         <!-- Edge is a line drawn with SVG -->
         <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
