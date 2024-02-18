@@ -1,6 +1,7 @@
 <div class="my-12 w-full h-[500px] border border-offblack bg-black relative">
     @foreach($nodes as $node)
-        <x-node :id="$node['id']" :x="$node['x']" :y="$node['y']" :title="$node['title']" />
+        <x-node :width="$node['width']" :height="$node['height']" :id="$node['id']" :x="$node['x']" :y="$node['y']"
+            :title="$node['title']" />
     @endforeach
 
     @foreach($edges as $edge)
