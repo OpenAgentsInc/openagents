@@ -57,6 +57,58 @@
     </svg>
 
 
+    <svg width="500" height="100" xmlns="http://www.w3.org/2000/svg">
+        <style>
+            .parallelogram {
+                fill: white;
+                stroke: white;
+                /* White border */
+                stroke-width: 2;
+                /* Border width */
+            }
+
+        </style>
+
+        <!-- Adjusting animations to run in sequence -->
+
+        <rect class="parallelogram" x="50" y="30" width="26" height="50" transform="skewX(-30)">
+            <animate attributeName="fill" begin="0s" dur="0.6s" values="white;black;black;white" keyTimes="0;0.2;0.8;1"
+                repeatCount="indefinite" />
+        </rect>
+        <rect class="parallelogram" x="90" y="30" width="26" height="50" transform="skewX(-30)">
+            <animate attributeName="fill" begin="0.6s" dur="0.6s" values="white;black;black;white"
+                keyTimes="0;0.2;0.8;1" repeatCount="indefinite" />
+        </rect>
+        <rect class="parallelogram" x="130" y="30" width="26" height="50" transform="skewX(-30)">
+            <animate attributeName="fill" begin="1.2s" dur="0.6s" values="white;black;black;white"
+                keyTimes="0;0.2;0.8;1" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 4 -->
+        <rect class="parallelogram" x="170" y="30" width="26" height="50" transform="skewX(-30)">
+            <animate attributeName="fill" begin="1.8s" dur="0.6s" values="white;black;black;white"
+                keyTimes="0;0.2;0.8;1" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 5 -->
+        <rect class="parallelogram" x="210" y="30" width="26" height="50" transform="skewX(-30)">
+            <animate attributeName="fill" begin="2.4s" dur="0.6s" values="white;black;black;white"
+                keyTimes="0;0.2;0.8;1" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 6 -->
+        <rect class="parallelogram" x="250" y="30" width="26" height="50" transform="skewX(-30)">
+            <animate attributeName="fill" begin="3.0s" dur="0.6s" values="white;black;black;white"
+                keyTimes="0;0.2;0.8;1" repeatCount="indefinite" />
+        </rect>
+        <!-- Parallelogram 7 -->
+        <rect class="parallelogram" x="290" y="30" width="26" height="50" transform="skewX(-30)">
+            <animate attributeName="fill" begin="3.6s" dur="0.6s" values="white;black;black;white"
+                keyTimes="0;0.2;0.8;1" repeatCount="indefinite" />
+        </rect>
+        <rect class="parallelogram" x="330" y="30" width="26" height="50" transform="skewX(-30)">
+            <animate attributeName="fill" begin="4.2s" dur="0.6s" values="white;black;black;white"
+                keyTimes="0;0.2;0.8;1" repeatCount="indefinite" />
+        </rect>
+    </svg>
+
 
 
 
