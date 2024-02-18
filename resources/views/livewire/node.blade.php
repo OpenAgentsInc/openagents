@@ -1,4 +1,5 @@
-<div id="node-{{ $id }}" class="node" style="position: absolute; left: {{ $x }}px; top: {{ $y }}px;">
+<div id="node-{{ $id }}" class="node z-[9999] touch-none"
+    style="position: absolute; left: {{ $x }}px; top: {{ $y }}px;">
     <svg width="{{ $width }}" height="{{ $height }}" xmlns="http://www.w3.org/2000/svg">
         <!-- White rectangle with 1px white border -->
         <rect x="{{ $strokeWidth + $circleOffset }}" y="{{ $strokeWidth }}"
