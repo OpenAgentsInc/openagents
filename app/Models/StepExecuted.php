@@ -39,8 +39,13 @@ class StepExecuted extends Model
             ];
         }
 
+        // But shave off the most recent message
+        // array_pop($messages);
+
         // Add the current user input as the last element
         $messages[] = ["role" => "user", "content" => $input['input']];
+
+        // \dd($messages);
 
         $client = OpenAI::client(env("OPENAI_API_KEY"));
         $stream = $client->chat()->createStreamed([
@@ -49,10 +54,16 @@ class StepExecuted extends Model
             'max_tokens' => 6024,
         ]);
 
+        $content = "";
         foreach($stream as $response) {
             // $response->choices[0]->toArray();
+            $token = $response['choices'][0]['delta']['content'] ?? "";
             $streamFunction($response);
+            $content .= $token;
         }
+        return [
+            'output' => $content
+        ];
     }
 
     public function old_llmInference($input)

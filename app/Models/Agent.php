@@ -170,6 +170,14 @@ class Agent extends Model
     public function run($input, $task = null, $logFunction = null, $streamFunction = null)
     {
         $conversation = $this->getUserConversation();
+
+        // Append the input to the conversation
+        $conversation->messages()->create([
+            'user_id' => auth()->id(),
+            'body' => $input['input'],
+            'sender' => 'user',
+        ]);
+
         $userInput = $input;
         if (! $task) {
             // If no provided task, get the first task
@@ -259,6 +267,18 @@ class Agent extends Model
 
             $prev_step_executed = $step_executed;
         }
+
+        $lastoutput = $step_executed->fresh()->output;
+
+        // We get output as json - convert to array
+        $output = json_decode($lastoutput, true);
+
+        // Append the input to the conversation
+        $conversation->messages()->create([
+            'user_id' => auth()->id(),
+            'body' => $output['output'],
+            'sender' => 'agent',
+        ]);
 
         // Return the output of the final StepExecuted
         return $step_executed->fresh()->output;
