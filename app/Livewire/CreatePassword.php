@@ -2,7 +2,10 @@
 
 namespace App\Livewire;
 
+use App\Models\User;
+use App\Providers\RouteServiceProvider;
 use Livewire\Component;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -41,16 +44,17 @@ class CreatePassword extends Component
             ]);
         }
 
-        dd("valid");
-        // Assuming you have a way to get the current user, such as auth()->user()
-        // Update the user's password
-        // auth()->user()->update([
-        //     'password' => Hash::make($this->password),
-        // ]);
+        // Forget the email from the session
+        session()->forget('email_for_password_creation');
 
-        // Redirect the user or show a success message
-        // session()->flash('status', 'password-updated');
-        // return redirect()->to('/home'); // Adjust the redirect as needed
+        $user = User::create([
+            'email' => $this->email,
+            'password' => Hash::make($this->password),
+        ]);
+
+        Auth::login($user);
+
+        return redirect(RouteServiceProvider::HOME);
     }
 
     public function render()
