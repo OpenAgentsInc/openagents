@@ -4,6 +4,7 @@ use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
+use App\Livewire\Login;
 use App\Livewire\Splash;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +21,13 @@ Route::get('/agentgraph', [StaticController::class, 'agentgraph'])->name('agentg
 Route::get('/design', [StaticController::class, 'design'])->name('design');
 Route::get('/hud', [StaticController::class, 'hud'])->name('hud');
 
+// Auth - frontend
+Route::get('/login', Login::class)->name('login');
+
+// Auth - backend
+Route::any('/logout', [AuthController::class, 'logout']);
+
+// Auth - social
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
 Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);
