@@ -13,3 +13,9 @@ it('shows at the login route /login', function () {
         ->assertStatus(200)
         ->assertSeeLivewire('login');
 });
+
+it('shows login form', function () {
+    $this->get('/login')
+        ->assertStatus(200)
+        ->assertSee('Email');
+});
