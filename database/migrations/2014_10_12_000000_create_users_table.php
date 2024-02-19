@@ -15,6 +15,7 @@ return new class extends Migration {
             $table->integer('balance')->default(0); // sats
             $table->string('name')->nullable();
             $table->string('lightning_address')->nullable();
+            $table->string('nostr_pubkey')->unique()->nullable();
             $table->string('email')->unique()->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password')->nullable();
