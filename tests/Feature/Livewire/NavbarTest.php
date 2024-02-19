@@ -15,11 +15,10 @@ it('shows at the home route /', function () {
         ->assertSeeLivewire('navbar');
 });
 
-it('shows login & register buttons if unauthed', function () {
+it('shows login button if unauthed', function () {
     $this->get('/')
         ->assertStatus(200)
-        ->assertSee('Login')
-        ->assertSee('Register');
+        ->assertSee('Login');
 });
 
 it('does not show login & register buttons if authed', function () {
