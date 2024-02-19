@@ -40,6 +40,7 @@ class Graph extends Component
 
         // Optionally, you might want to emit an event to refresh the view or handle additional logic
         // $this->emitSelf('nodeUpdated');
+        $this->dispatch('refreshEdge');
     }
 
     public function render()
