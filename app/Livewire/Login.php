@@ -3,17 +3,18 @@
 namespace App\Livewire;
 
 use App\Models\User;
+use Livewire\Attributes\Validate;
 use Livewire\Component;
 
 class Login extends Component
 {
+
+    #[Validate('email')]
     public $email = '';
 
     public function submit()
     {
-        $this->validate([
-            'email' => 'required|email',
-        ]);
+        $this->validate();
 
         sleep(1);
 

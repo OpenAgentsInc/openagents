@@ -12,6 +12,7 @@
                     <x-input-label for="email" :value="__('Email')" />
                     <x-input wire:model="email" id="email" type="email" name="email" required autofocus
                         autocomplete="username" class="h-[48px] border-offblack" placeholder="satoshi@vistomail.com" />
+                    <x-input-error :messages="$errors->get('email')" class="mt-2" />
                 </div>
 
                 <div class="flex items-center justify-end mt-[32px]">
