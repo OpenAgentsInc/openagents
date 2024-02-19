@@ -12,7 +12,7 @@
                     <x-input-label for="password" :value="__('Password')" />
 
                     <x-input wire:model="password" id="password" type="password" name="password" autofocus required
-                        autocomplete="new-password" />
+                        autocomplete="new-password" :hasError="$errors->has('password')" />
 
                     <x-input-error :messages="$errors->get('password')" class="mt-2" />
                 </div>
@@ -22,7 +22,8 @@
                     <x-input-label for="password_confirmation" :value="__('Confirm Password')" />
 
                     <x-input wire:model="password_confirmation" id="password_confirmation" type="password"
-                        name="password_confirmation" required autocomplete="new-password" />
+                        name="password_confirmation" required autocomplete="new-password"
+                        :hasError="$errors->has('password_confirmation')" />
 
                     <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
                 </div>
