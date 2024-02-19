@@ -8,7 +8,6 @@ use Livewire\Component;
 
 class Login extends Component
 {
-
     #[Validate('email|required')]
     public $email = '';
 
