@@ -19,3 +19,18 @@ it('shows login form', function () {
         ->assertStatus(200)
         ->assertSee('Email');
 });
+
+it('can be submitted', function () {
+    Livewire::test(Login::class)
+        ->set('email', 'blam@blam.com')
+        ->call('submit')
+        ->assertHasNoErrors();
+});
+
+it('redirects to create password if user does not exist', function () {
+    Livewire::test(Login::class)
+        ->set('email', 'blam@blam.com')
+        ->call('submit')
+        ->assertHasNoErrors()
+        ->assertRedirect('/create-password');
+});

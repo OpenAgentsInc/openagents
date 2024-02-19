@@ -16,10 +16,13 @@ class Login extends Component
     {
         $this->validate();
 
-        sleep(1);
-
         // Check if there's a user with this email
         $user = User::where('email', $this->email)->first();
+
+        // If no user exists, show the create password component
+        if (! $user) {
+            return $this->redirect('/create-password', navigate: true);
+        }
     }
 
     public function render()

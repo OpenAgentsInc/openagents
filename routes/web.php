@@ -4,6 +4,7 @@ use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
+use App\Livewire\CreatePassword;
 use App\Livewire\Login;
 use App\Livewire\Splash;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,7 @@ Route::get('/hud', [StaticController::class, 'hud'])->name('hud');
 
 // Auth - frontend
 Route::get('/login', Login::class)->name('login');
+Route::get('/create-password', CreatePassword::class)->name('create-password');
 
 // Auth - backend
 Route::any('/logout', [AuthController::class, 'logout']);
