@@ -9,7 +9,7 @@ use Livewire\Component;
 class Login extends Component
 {
 
-    #[Validate('email')]
+    #[Validate('email|required')]
     public $email = '';
 
     public function submit()
