@@ -41,6 +41,7 @@ class User extends Authenticatable
         'twitter_id',
         'twitter_nickname',
         'twitter_avatar',
+        'nostr_pubkey',
     ];
 
     /**

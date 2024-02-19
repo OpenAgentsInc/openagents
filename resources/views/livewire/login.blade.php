@@ -31,6 +31,20 @@
                 </div>
             </form>
 
+<div class="my-[32px] text-center text-[14px] text-lightgray">
+    or
+</div>
+
+<div class="space-y-4">
+    <div>
+        <a href="/login/nostr">
+            <x-button variant="outline" class="w-full h-[48px]">
+                Login with Nostr
+            </x-button>
+        </a>
+</div>
+</div>
+
             <p class="my-[32px] text-center text-sm text-lightgray leading-normal">
                 By continuing you agree to the OpenAgents <br /> <a href="/terms" target="_blank"
                     class="text-white underline">terms
