@@ -15,11 +15,10 @@ class CreatePassword extends Component
 
     public function mount()
     {
-        // Retrieve email from session and clear it immediately
-        $this->email = session()->pull('email_for_password_creation', 'default@email.com');
+        $this->email = session()->get('email_for_password_creation');
 
         // Optionally handle the case where no email was found in the session
-        if ($this->email === 'default@email.com') {
+        if (!$this->email) {
             // Redirect back or show an error
             return redirect()->to('/login'); // Adjust as needed
         }

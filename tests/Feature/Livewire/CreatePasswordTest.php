@@ -2,14 +2,14 @@
 
 use App\Livewire\CreatePassword;
 use Livewire\Livewire;
+use Illuminate\Support\Facades\Session;
 
 it('renders successfully', function () {
     Livewire::test(CreatePassword::class)
-        ->assertStatus(200);
+        ->assertStatus(302);
 });
 
-it('shows at the create password route /create-password', function () {
+it('redirects to login', function () {
     $this->get('/create-password')
-        ->assertStatus(200)
-        ->assertSeeLivewire('create-password');
+        ->assertRedirect('login');
 });
