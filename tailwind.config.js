@@ -17,7 +17,8 @@ export default {
       white: '#fff',
       transparent: 'transparent',
       bitcoin: '#FF9900',
-      green: '#00CC00'
+      green: '#00CC00',
+      red: '#FF3B00'
     }
   },
   plugins: [

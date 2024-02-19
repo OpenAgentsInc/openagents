@@ -161,14 +161,23 @@ class Agent extends Model
      *
      * @return mixed
      */
-    public function runTask(Task $task, $input)
+    public function runTask(Task $task, $input, callable $logFunction = null, callable $streamFunction = null)
     {
         // Call the existing run method with the input data
-        return $this->run($input, $task);
+        return $this->run($input, $task, $logFunction, $streamFunction);
     }
 
-    public function run($input, $task = null)
+    public function run($input, $task = null, $logFunction = null, $streamFunction = null)
     {
+        $conversation = $this->getUserConversation();
+
+        // Append the input to the conversation
+        $conversation->messages()->create([
+            'user_id' => auth()->id(),
+            'body' => $input['input'],
+            'sender' => 'user',
+        ]);
+
         $userInput = $input;
         if (! $task) {
             // If no provided task, get the first task
@@ -184,6 +193,10 @@ class Agent extends Model
         ]);
 
         foreach ($task->steps as $step) {
+            // Log the step name using the provided logging function
+            if ($logFunction) {
+                $logFunction($step->name);
+            }
             if ($step->order !== 1) {
                 $input = $prev_step_executed->output;
             }
@@ -249,11 +262,23 @@ class Agent extends Model
                 'user_id' => auth()->id(),
                 'status' => 'pending',
             ]);
-            $step_executed->output = $step_executed->run();
+            $step_executed->output = $step_executed->run($conversation, $streamFunction);
             $step_executed->save();
 
             $prev_step_executed = $step_executed;
         }
+
+        $lastoutput = $step_executed->fresh()->output;
+
+        // We get output as json - convert to array
+        $output = json_decode($lastoutput, true);
+
+        // Append the input to the conversation
+        $conversation->messages()->create([
+            'user_id' => auth()->id(),
+            'body' => $output['output'],
+            'sender' => 'agent',
+        ]);
 
         // Return the output of the final StepExecuted
         return $step_executed->fresh()->output;

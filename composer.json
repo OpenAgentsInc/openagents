@@ -18,6 +18,7 @@
         "livewire/livewire": "^3.4",
         "mauricius/laravel-htmx": "^0.5.0",
         "nyholm/psr7": "^1.8",
+        "openai-php/client": "^0.8.4",
         "socialiteproviders/twitter": "^4.1",
         "spatie/pdf-to-text": "^1.52",
         "swentel/nostr-php": "dev-main"
