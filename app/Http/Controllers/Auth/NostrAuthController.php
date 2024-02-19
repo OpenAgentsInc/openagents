@@ -38,7 +38,8 @@ class NostrAuthController extends Controller
         $user = User::updateOrCreate(
             ['nostr_pubkey' => $event->pubkey],
             [
-                'name' => $event->pubkey,
+                'name' => "Nostr User",
+                'nostr_pubkey' => $event->pubkey,
             ]
         );
 
@@ -55,4 +56,3 @@ class NostrAuthController extends Controller
     }
 
 }
-
