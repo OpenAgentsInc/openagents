@@ -4,7 +4,10 @@ use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
+use App\Livewire\CreatePassword;
+use App\Livewire\Login;
 use App\Livewire\Splash;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', Splash::class)->name('home');
 
@@ -19,9 +22,14 @@ Route::get('/agentgraph', [StaticController::class, 'agentgraph'])->name('agentg
 Route::get('/design', [StaticController::class, 'design'])->name('design');
 Route::get('/hud', [StaticController::class, 'hud'])->name('hud');
 
-// Include breeze auth routes
-require __DIR__.'/auth.php';
+// Auth - frontend
+Route::get('/login', Login::class)->name('login');
+Route::get('/create-password', CreatePassword::class)->name('create-password');
 
+// Auth - backend
+Route::any('/logout', [AuthController::class, 'logout']);
+
+// Auth - social
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
 Route::get('/login/twitter', [AuthController::class, 'loginTwitter']);

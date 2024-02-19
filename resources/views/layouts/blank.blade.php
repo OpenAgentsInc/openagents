@@ -11,11 +11,7 @@
 </head>
 
 <body class="bg-black text-white font-mono antialiased">
-    <div class="min-h-screen p-12">
-        <main>
-            {{ $slot }}
-        </main>
-    </div>
+    {{ $slot }}
 </body>
 
 </html>
