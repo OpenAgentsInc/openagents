@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
 use App\Livewire\Splash;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', Splash::class)->name('home');
 
@@ -18,9 +19,6 @@ Route::get('/agentgraph', [StaticController::class, 'agentgraph'])->name('agentg
 // Dev only
 Route::get('/design', [StaticController::class, 'design'])->name('design');
 Route::get('/hud', [StaticController::class, 'hud'])->name('hud');
-
-// Include breeze auth routes
-require __DIR__.'/auth.php';
 
 Route::get('/login/github', [AuthController::class, 'loginGithub']);
 Route::get('/github', [AuthController::class, 'githubCallback']);
