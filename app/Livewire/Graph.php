@@ -9,6 +9,8 @@ class Graph extends Component
     public $nodes = [];
     public $edges = [];
 
+    protected $listeners = ['updateNodePosition'];
+
     public function mount()
     {
         // Initialize your nodes and edges here
@@ -25,13 +27,19 @@ class Graph extends Component
         ];
     }
 
-    public function updateNodePosition($nodeId, $newX, $newY)
+    public function updateNodePosition($nodeId, $x, $y)
     {
-        // Update the position of the node
-        $this->nodes[$nodeId]['x'] = $newX;
-        $this->nodes[$nodeId]['y'] = $newY;
+        foreach ($this->nodes as $key => $node) {
+            if ($node['id'] == $nodeId) {
+                // Found the matching node, now update its position
+                $this->nodes[$key]['x'] = $x;
+                $this->nodes[$key]['y'] = $y;
+                break; // Stop the loop once the node is found and updated
+            }
+        }
 
-        // If necessary, persist changes to the database
+        // Optionally, you might want to emit an event to refresh the view or handle additional logic
+        // $this->emitSelf('nodeUpdated');
     }
 
     public function render()

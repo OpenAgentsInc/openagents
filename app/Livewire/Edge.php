@@ -10,10 +10,31 @@ class Edge extends Component
     public $to;
     public $nodes;
 
+    protected $listeners = ['refreshEdge'];
+
     public function mount($from, $to, $nodes)
     {
         $fromNode = collect($nodes)->firstWhere('id', $from);
         $toNode = collect($nodes)->firstWhere('id', $to);
+
+        // Logic to calculate edge positions based on node dimensions
+        $this->from = [
+            'x' => $fromNode['x'] + $fromNode['width'] - 2, // Right edge of 'from' node
+            'y' => $fromNode['y'] + ($fromNode['height'] / 2), // Vertical center of 'from' node
+        ];
+
+        $this->to = [
+            'x' => $toNode['x'] + 2, // Left edge of 'to' node
+            'y' => $toNode['y'] + ($toNode['height'] / 2), // Vertical center of 'to' node
+        ];
+    }
+
+    public function refreshEdge()
+    {
+        dd('what');
+        $nodes = $this->nodes;
+        $fromNode = $this->findNodeById($this->from, $nodes);
+        $toNode = $this->findNodeById($this->to, $nodes);
 
         // Logic to calculate edge positions based on node dimensions
         $this->from = [
