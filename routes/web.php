@@ -12,6 +12,9 @@ Route::get('/', Splash::class)->name('home');
 Route::get('/chat', Chat::class)->name('chat'); // todo - put behind auth middleware
 Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
 
+// Docs
+Route::get('/agentgraph', [StaticController::class, 'agentgraph'])->name('agentgraph');
+
 // Dev only
 Route::get('/design', [StaticController::class, 'design'])->name('design');
 Route::get('/hud', [StaticController::class, 'hud'])->name('hud');

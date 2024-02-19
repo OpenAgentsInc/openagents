@@ -1,5 +1,49 @@
 <x-blank-layout>
 
+    <svg width="400" height="250" xmlns="http://www.w3.org/2000/svg">
+        <rect x="7" y="1" width="386" height="248" fill="none" stroke="white" stroke-width="1" />
+        <!-- Hollow circle with white stroke on the left edge -->
+        <circle cx="7" cy="125" r="5" fill="black" stroke="white" stroke-width="2" />
+
+        <!-- Hollow circle with white stroke on the right edge -->
+        <circle cx="393" cy="125" r="5" fill="black" stroke="white" stroke-width="2" />
+    </svg>
+
+
+
+    <svg width="668" height="419" xmlns="http://www.w3.org/2000/svg">
+        <!-- Outer rectangle with rounded corners -->
+        <rect width="100%" height="100%" rx="30" fill="black" />
+
+        <!-- Inner cutout paths -->
+        <path
+            d="M30,30 h608 a30,30 0 0 1 30,30 v329 a30,30 0 0 1 -30,30 h-608 a30,30 0 0 1 -30,-30 v-329 a30,30 0 0 1 30,-30 z"
+            fill="none" stroke="white" stroke-width="2" />
+
+        <!-- Additional details can be added here -->
+
+        <!-- put all these rects in a group with 50 px down from the top -->
+        <g transform="translate(0, 50)">
+            <rect x="10" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="50" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="90" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="130" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="170" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="210" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="250" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="290" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="330" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="650" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+            <rect x="690" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
+        </g>
+
+        <!-- Text element added here -->
+        <text x="472" y="105" fill="white" font-family="JetBrains Mono" font-size="34" text-anchor="middle"
+            dominant-baseline="middle">
+            ATLANTISPLEB
+        </text>
+    </svg>
+
 
     <svg width="500" height="100" xmlns="http://www.w3.org/2000/svg">
         <rect x="10" y="30" width="26" height="50" fill="white" transform="skewX(-30)" />
@@ -176,6 +220,16 @@
         <circle cx="90" cy="10" r="2" fill="white" />
     </svg>
 
+    <svg width="300" height="300" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+            <radialGradient id="cornerGradient" cx="100%" cy="0%" r="100%" fx="100%" fy="0%">
+                <stop offset="0%" style="stop-color:#AAAAAA;stop-opacity:1" />
+                <stop offset="0%" style="stop-color:#555555;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#000000;stop-opacity:1" />
+            </radialGradient>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#cornerGradient)" />
+    </svg>
 
 
 </x-blank-layout>
