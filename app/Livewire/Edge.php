@@ -13,7 +13,7 @@ class Edge extends Component
     public $fromId;
     public $toId;
 
-    protected $listeners = ['refreshEdge'];
+    protected $listeners = ['refreshEdge', 'updateNodePosition'];
 
     public function mount($from, $to, $nodes)
     {
