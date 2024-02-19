@@ -20,6 +20,7 @@ class Login extends Component
 
         // If no user exists, show the create password component
         if (! $user) {
+            session(['email_for_password_creation' => $this->email]);
             return $this->redirect('/create-password', navigate: true);
         }
     }

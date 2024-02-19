@@ -9,8 +9,21 @@ use Illuminate\Validation\ValidationException;
 
 class CreatePassword extends Component
 {
+    public $email;
     public $password;
     public $password_confirmation;
+
+    public function mount()
+    {
+        // Retrieve email from session and clear it immediately
+        $this->email = session()->pull('email_for_password_creation', 'default@email.com');
+
+        // Optionally handle the case where no email was found in the session
+        if ($this->email === 'default@email.com') {
+            // Redirect back or show an error
+            return redirect()->to('/login'); // Adjust as needed
+        }
+    }
 
     public function submit()
     {

@@ -32,5 +32,6 @@ it('redirects to create password if user does not exist', function () {
         ->set('email', 'blam@blam.com')
         ->call('submit')
         ->assertHasNoErrors()
-        ->assertRedirect('/create-password');
+        ->assertRedirect('/create-password')
+        ->assertSessionHas('email_for_password_creation', 'blam@blam.com');
 });
