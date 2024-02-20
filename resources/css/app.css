@@ -31,6 +31,10 @@
     @apply text-[14px] font-bold;
   }
 
+  p {
+    @apply text-[16px] my-4;
+  }
+
   body {
     @apply bg-black text-white h-screen font-mono;
   }
