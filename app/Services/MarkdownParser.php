@@ -29,17 +29,22 @@ class MarkdownParser implements ContentParser
 
         // Postprocess: Replace placeholders with original Livewire tags
         $htmlContentsWithComponents = $this->postprocessContent($htmlContents);
-        $contents = Blade::render($htmlContentsWithComponents);
+
+        // Further process to add wire:navigate to links
+        $htmlContentsWithModifiedLinks = $this->modifyLinks($htmlContentsWithComponents);
+
+        // Use Blade to render the content, ensuring Livewire components are processed
+        $contents = Blade::render($htmlContentsWithModifiedLinks);
 
         return array_merge(
             $document->matter(),
-            ['contents' => $contents]
+            ['contents' => new HtmlString($contents)]
         );
     }
 
     protected function preprocessContent(string $content): string
     {
-        // Example placeholder replacement
+        // Example placeholder replacement for Livewire components
         $content = preg_replace('/<livewire:([^>]+)\/>/', 'LIVEWIREPLACEHOLDERSTART$1LIVEWIREPLACEHOLDEREND', $content);
         return $content;
     }
@@ -49,5 +54,11 @@ class MarkdownParser implements ContentParser
         // Replace placeholders back to Livewire tags
         $content = preg_replace('/LIVEWIREPLACEHOLDERSTART([^L]+)LIVEWIREPLACEHOLDEREND/', '<livewire:$1/>', $content);
         return $content;
+    }
+
+    protected function modifyLinks(string $content): string
+    {
+        // Add wire:navigate attribute to all <a href="..."> tags
+        return preg_replace('/<a (.*?)href="/i', '<a $1wire:navigate href="', $content);
     }
 }
