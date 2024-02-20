@@ -4,6 +4,7 @@ return [
     'default_collection' => null,
 
     'collections' => [
+        'docs'
 
         /* An example collection. All keys are optional.
 

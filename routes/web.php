@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DocsController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Auth\NostrAuthController;
 use App\Livewire\Chat;
@@ -18,6 +19,7 @@ Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agen
 
 // Docs
 Route::get('/agentgraph', [StaticController::class, 'agentgraph'])->name('agentgraph');
+Route::get('/docs/{page}', [DocsController::class, 'show'])->name('docs.show');
 
 // Dev only
 Route::get('/design', [StaticController::class, 'design'])->name('design');
