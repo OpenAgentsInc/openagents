@@ -21,6 +21,7 @@
         "openai-php/client": "^0.8.4",
         "socialiteproviders/twitter": "^4.1",
         "spatie/pdf-to-text": "^1.52",
+        "spatie/sheets": "^1.11",
         "swentel/nostr-php": "dev-main"
     },
     "require-dev": {
