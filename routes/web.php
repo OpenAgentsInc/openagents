@@ -18,7 +18,6 @@ Route::get('/chat', Chat::class)->name('chat'); // todo - put behind auth middle
 Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
 
 // Docs
-Route::get('/agentgraph', [StaticController::class, 'agentgraph'])->name('agentgraph');
 Route::get('/docs/{page}', [DocsController::class, 'show'])->name('docs.show');
 // redirect /docs to /docs/introduction
 Route::get('/docs', function () {

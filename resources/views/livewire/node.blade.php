@@ -13,7 +13,7 @@
             stroke="white" stroke-width="{{ $circleStrokeWidth }}" />
 
         <!-- Node title text, centered -->
-        <text x="{{ $width / 2 }}" y="{{ $height / 2 }}" font-family="JetBrains Mono" font-size="20"
+        <text x="{{ $width / 2 }}" y="{{ $height / 2 }}" font-family="JetBrains Mono" font-size="18"
             fill="white" text-anchor="middle" dominant-baseline="middle">{{ $title }}</text>
     </svg>
 </div>

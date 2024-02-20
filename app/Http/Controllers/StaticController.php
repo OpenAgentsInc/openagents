@@ -6,11 +6,6 @@ use App\Models\User;
 
 class StaticController extends Controller
 {
-    public function agentgraph()
-    {
-        return view('docs.agentgraph');
-    }
-
     public function splash()
     {
         return view('splash');

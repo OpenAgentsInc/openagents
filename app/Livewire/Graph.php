@@ -15,9 +15,9 @@ class Graph extends Component
     {
         // Initialize your nodes and edges here
         $this->nodes = [
-            ['id' => 1, 'x' => 150, 'y' => 100, 'width' => 220, 'height' => 150, 'title' => 'Start'],
-            ['id' => 2, 'x' => 450, 'y' => 125, 'width' => 220, 'height' => 150, 'title' => 'Middle'],
-            ['id' => 3, 'x' => 750, 'y' => 150, 'width' => 220, 'height' => 150, 'title' => 'End'],
+            ['id' => 1, 'x' => 50, 'y' => 125, 'width' => 220, 'height' => 150, 'title' => 'URL Extractor'],
+            ['id' => 2, 'x' => 350, 'y' => 150, 'width' => 220, 'height' => 150, 'title' => 'URL Scraper'],
+            ['id' => 3, 'x' => 650, 'y' => 175, 'width' => 220, 'height' => 150, 'title' => 'LLM Inference'],
         ];
 
         // Assuming each edge connects the centers of the right side of one node to the left side of the next node
