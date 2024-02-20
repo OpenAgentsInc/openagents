@@ -12,7 +12,7 @@
   }
 
   h2 {
-    @apply text-[32px] font-bold;
+    @apply text-[32px] font-bold mt-12;
   }
 
   h3 {
@@ -29,6 +29,30 @@
 
   h6 {
     @apply text-[14px] font-bold;
+  }
+
+  p {
+    @apply text-[16px] my-4;
+  }
+
+  .docs h1 {
+    @apply mt-6 text-[32px];
+  }
+
+  .docs h2 {
+    @apply mt-12 text-[24px];
+  }
+
+  .docs p {
+    @apply text-lightgray leading-normal my-5;
+  }
+
+  .docs strong {
+    @apply text-white;
+  }
+
+  .docs a {
+    @apply text-white underline;
   }
 
   body {
