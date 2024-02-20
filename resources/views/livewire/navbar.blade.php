@@ -9,6 +9,7 @@
                 <a href="/chat" wire:navigate>Chat</a>
             </x-button>
         @endauth
+        <a href="/docs" wire:navigate class="ml-8 text-gray hover:text-white">Docs</a>
     </div>
     <div class="flex flex-row items-center">
         @auth
