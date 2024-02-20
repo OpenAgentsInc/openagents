@@ -1,12 +1,31 @@
 # Introduction
 
-OpenAgents is a web platform for building, selling, and using AI agents.
+OpenAgents is a community platform for building, using, and selling AI agents.
 
-## Definitions
+## Building Agents
 
 Agents are built from modular components called **Nodes**.
 
-Nodes may come from community developers.
+Example nodes include: API endpoints, conditional logic, data parsing, and third-party integrations. 
 
-Components include API endpoints, WASM plugins, conditional logic, data parsing, and third-party integrations, allowing users to build AI agents tailored to specific use cases. Each component may have an optional associated fee, payable to its creator upon use. The platform is accessible through both a web interface and API, including community tools for commenting, rating, and sharing components. 
+Nodes can be created by community developers by uploading plugins. _[Learn about Plugins](/docs/plugins)_
 
+Each node may have an associated fee, payable to its creator upon use. _[Learn about Payments](/docs/payments)_
+
+Nodes are assembled in a drag-and-drop editor using AgentGraph, our visual scripting language for AI agent workflows. _[Learn about AgentGraph](/docs/agentgraph)_
+
+## Using Agents
+
+Agents may be used via OpenAgents.com or our developer API. _[Visit API documentation](/docs/api)_
+
+## Selling Agents
+
+Agents will be listed in our **Agent Store**.
+
+Buyers can purchase agents as-is, or fork the agent template to customize their own version. 
+
+Agents may have fees associated with:
+
+* Nodes
+* Data
+* Model
