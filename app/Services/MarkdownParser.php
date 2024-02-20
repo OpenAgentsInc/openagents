@@ -21,11 +21,20 @@ class MarkdownParser implements ContentParser
     {
         $document = YamlFrontMatter::parse($contents);
 
+        // Convert Markdown to HTML
         $htmlContents = $this->commonMarkConverter->convertToHtml($document->body());
+
+        // Replace all <a href="..." with <a wire:navigate href="..."
+        $updatedHtmlContents = $this->replaceAnchorTags($htmlContents);
 
         return array_merge(
             $document->matter(),
-            ['contents' => new HtmlString($htmlContents)]
+            ['contents' => new HtmlString($updatedHtmlContents)]
         );
+    }
+
+    protected function replaceAnchorTags(string $htmlContents): string
+    {
+        return preg_replace('/<a (.*?)href="/i', '<a $1wire:navigate href="', $htmlContents);
     }
 }
