@@ -2,18 +2,41 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use Spatie\Sheets\Sheets;
 
 class DocsController extends Controller
 {
-    public function show($page, Sheets $sheets)
-    {
-        $content = $sheets->collection('docs')->get($page);
+    protected $docsInOrder = [
+        'introduction.md',
+        'plugins.md',
+        'agentgraph.md',
+        'payments.md',
+        'api.md',
+    ];
 
-        if (! $content) {
+    public function __construct(private Sheets $sheets)
+    {
+    }
+
+    public function show($page)
+    {
+        $content = $this->sheets->collection('docs')->get($page);
+
+        if (!$content) {
             abort(404);
         }
 
-        return view('docs.show', ['content' => $content]);
+        $documentsList = collect($this->docsInOrder)->mapWithKeys(function ($slug) {
+            $doc = $this->sheets->collection('docs')->get($slug);
+            return [$slug => $doc ? $doc->title : 'Untitled'];
+        });
+
+        return view('docs.show', [
+            'content' => $content,
+            'documentsList' => $documentsList,
+            'activePage' => $page,
+        ]);
     }
 }
