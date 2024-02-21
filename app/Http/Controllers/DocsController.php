@@ -22,21 +22,26 @@ class DocsController extends Controller
 
     public function show($page)
     {
-        $content = $this->sheets->collection('docs')->get($page);
+        // Trim .md from page slug for fetching content
+        $contentSlug = Str::before($page, '.md');
+        $content = $this->sheets->collection('docs')->get($contentSlug);
 
         if (!$content) {
             abort(404);
         }
 
-        $documentsList = collect($this->docsInOrder)->mapWithKeys(function ($slug) {
+        $documentsList = collect($this->docsInOrder)->mapWithKeys(function ($filePath) {
+            $slug = Str::before($filePath, '.md'); // Remove .md extension
             $doc = $this->sheets->collection('docs')->get($slug);
             return [$slug => $doc ? $doc->title : 'Untitled'];
         });
 
+        $activePage = $contentSlug;
+
         return view('docs.show', [
             'content' => $content,
             'documentsList' => $documentsList,
-            'activePage' => $page,
+            'activePage' => $activePage,
         ]);
     }
 }

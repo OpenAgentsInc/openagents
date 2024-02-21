@@ -4,8 +4,8 @@
     <aside class="fixed px-6 pt-28 w-[300px]">
     <ul>
         @foreach ($documentsList as $slug => $title)
-            <li class="text-white {{ $activePage === $slug ? 'active' : '' }}">
-                <a href="{{ route('docs.show', $slug) }}">{{ $title }}</a>
+            <li class="my-2 text-white {{ $activePage === $slug ? 'active' : '' }}">
+                <a wire:navigate href="{{ route('docs.show', $slug) }}">{{ $title }}</a>
             </li>
         @endforeach
     </ul>
