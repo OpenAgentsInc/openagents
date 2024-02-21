@@ -5,25 +5,24 @@
         toY: {{ $to['y'] }},
         svg: null
     }"
-    x-init="svg = $refs.svg"
+    x-init="$nextTick(() => { svg = $refs.svg })"
     @node-moved.window="
         function(event) {
+            if (!svg) return; // Ensure svg is not null
+
+            let svgPoint = svg.createSVGPoint();
+            svgPoint.x = event.detail.x;
+            svgPoint.y = event.detail.y;
+            let transformedPoint = svgPoint.matrixTransform(svg.getScreenCTM().inverse());
+
             if (event.detail.nodeId === {{ $from['id'] }}) {
-                let svgPoint = svg.createSVGPoint();
-                svgPoint.x = event.detail.startX + event.detail.deltaX;
-                svgPoint.y = event.detail.startY + event.detail.deltaY;
-                svgPoint = svgPoint.matrixTransform(svg.getScreenCTM().inverse());
-                fromX = svgPoint.x;
-                fromY = svgPoint.y;
+                fromX = transformedPoint.x + event.detail.width; // Adjust for the right side
+                fromY = transformedPoint.y + event.detail.height / 2; // Center vertically
             } else if (event.detail.nodeId === {{ $to['id'] }}) {
-                let svgPoint = svg.createSVGPoint();
-                svgPoint.x = event.detail.startX + event.detail.deltaX;
-                svgPoint.y = event.detail.startY + event.detail.deltaY;
-                svgPoint = svgPoint.matrixTransform(svg.getScreenCTM().inverse());
-                toX = svgPoint.x;
-                toY = svgPoint.y;
+                toX = transformedPoint.x; // Adjust for the left side
+                toY = transformedPoint.y + event.detail.height / 2; // Center vertically
             }
-            console.log('Edge updated for node ' + event.detail.nodeId + ': from (' + fromX + ', ' + fromY + ') to (' + toX + ', ' + toY + ')');
+            console.log(`Edge updated for node ${event.detail.nodeId}: from (${fromX}, ${fromY}) to (${toX}, ${toY})`);
         }">
     <svg x-ref="svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
         <line :x1="fromX" :y1="fromY" :x2="toX" :y2="toY" stroke="white" stroke-width="2" />
