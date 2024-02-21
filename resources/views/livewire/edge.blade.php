@@ -13,14 +13,16 @@
             let svgPoint = svg.createSVGPoint();
             svgPoint.x = event.detail.x;
             svgPoint.y = event.detail.y;
+            console.log(`SVG point: (${svgPoint.x}, ${svgPoint.y})`)
             let transformedPoint = svgPoint.matrixTransform(svg.getScreenCTM().inverse());
+            console.log(`Transformed point: (${transformedPoint.x}, ${transformedPoint.y})`)
 
             if (event.detail.nodeId === {{ $from['id'] }}) {
-                fromX = transformedPoint.x + event.detail.width; // Adjust for the right side
-                fromY = transformedPoint.y + event.detail.height / 2; // Center vertically
+                fromX = svgPoint.x + event.detail.width; // Adjust for the right side
+                fromY = svgPoint.y + event.detail.height / 2; // Center vertically
             } else if (event.detail.nodeId === {{ $to['id'] }}) {
-                toX = transformedPoint.x; // Adjust for the left side
-                toY = transformedPoint.y + event.detail.height / 2; // Center vertically
+                toX = svgPoint.x; // Adjust for the left side
+                toY = svgPoint.y + event.detail.height / 2; // Center vertically
             }
             console.log(`Edge updated for node ${event.detail.nodeId}: from (${fromX}, ${fromY}) to (${toX}, ${toY})`);
         }">
