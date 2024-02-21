@@ -1,9 +1,37 @@
-<div id="node-{{ $id }}" class="node z-[9999] touch-none" style="position: absolute; left: {{ $x }}px; top: {{ $y }}px;"
-    data-node-id="{{ $id }}"
-    x-data="{ dragging: false, x: {{ $x }}, y: {{ $y }} }"
-    @mousedown="dragging = true"
-    @mousemove.window="if (dragging) { $dispatch('node-moved', { nodeId: {{ $id }}, newX: x, newY: y }); x = event.clientX; y = event.clientY; console.log('Firing node-moved event with x: ' + x + ', y: ' + y);}"
-    @mouseup.window="dragging = false"
+<div id="node-{{ $id }}" class="node z-[9999] touch-none"
+     style="position: absolute; left: {{ $x }}px; top: {{ $y }}px;"
+     data-node-id="{{ $id }}"
+     x-data="{
+         dragging: false,
+         x: {{ $x }},
+         y: {{ $y }},
+         startX: null,
+         startY: null,
+         deltaX: null,
+         deltaY: null
+     }"
+     @mousedown="function(event) {
+         dragging = true;
+         startX = x;
+         startY = y;
+         deltaX = 0;
+         deltaY = 0;
+     }"
+@mousemove.window="function(event) {
+    if (dragging) {
+        x = event.clientX - offsetX;
+        y = event.clientY - offsetY;
+        $dispatch('node-moved', {
+            nodeId: {{ $id }},
+            x: x, y: y,
+            width: {{ $width }},
+            height: {{ $height }}
+        });
+        console.log('Firing node-moved event with x: ' + x + ', y: ' + y);
+    }
+}"
+
+     @mouseup.window="dragging = false"
 >
     <svg width="{{ $width }}" height="{{ $height }}" xmlns="http://www.w3.org/2000/svg">
         <!-- White rectangle with 1px white border -->
