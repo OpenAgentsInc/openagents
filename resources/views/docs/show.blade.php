@@ -8,7 +8,7 @@
                 <ul>
                     @foreach($documentsList as $slug => $title)
                         <li
-                            class="my-2 {{ $activePage === $slug ? 'text-white' : 'text-gray' }}">
+                            class="font-bold my-2 {{ $activePage === $slug ? 'text-white' : 'text-gray' }}">
                             <a wire:navigate
                                 href="{{ route('docs.show', $slug) }}">{{ $title }}</a>
                         </li>
