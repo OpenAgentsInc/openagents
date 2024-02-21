@@ -26,7 +26,6 @@
                  width: {{ $width }},
                  height: {{ $height }}
              });
-             console.log('Firing node-moved event with x: ' + newX + ', y: ' + newY);
          }
      }"
      @mouseup.window="dragging = false"
