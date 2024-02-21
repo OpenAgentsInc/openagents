@@ -26,11 +26,17 @@ class Edge extends Component
 
         // Logic to calculate edge positions based on node dimensions
         $this->from = [
+            'id' => $from,
+            'width' => $fromNode['width'],
+            'height' => $fromNode['height'],
             'x' => $fromNode['x'] + $fromNode['width'] - 2, // Right edge of 'from' node
             'y' => $fromNode['y'] + ($fromNode['height'] / 2), // Vertical center of 'from' node
         ];
 
         $this->to = [
+            'id' => $to,
+            'width' => $toNode['width'],
+            'height' => $toNode['height'],
             'x' => $toNode['x'] + 2, // Left edge of 'to' node
             'y' => $toNode['y'] + ($toNode['height'] / 2), // Vertical center of 'to' node
         ];
