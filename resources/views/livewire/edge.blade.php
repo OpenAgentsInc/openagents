@@ -13,9 +13,6 @@
             let svgPoint = svg.createSVGPoint();
             svgPoint.x = event.detail.x;
             svgPoint.y = event.detail.y;
-            console.log(`SVG point: (${svgPoint.x}, ${svgPoint.y})`)
-            let transformedPoint = svgPoint.matrixTransform(svg.getScreenCTM().inverse());
-            console.log(`Transformed point: (${transformedPoint.x}, ${transformedPoint.y})`)
 
             if (event.detail.nodeId === {{ $from['id'] }}) {
                 fromX = svgPoint.x + event.detail.width; // Adjust for the right side
