@@ -14,6 +14,8 @@ class DocsController extends Controller
         'agentgraph.md',
         'payments.md',
         'api.md',
+        'screencasts.md',
+        'bounties.md'
     ];
 
     public function __construct(private Sheets $sheets)
