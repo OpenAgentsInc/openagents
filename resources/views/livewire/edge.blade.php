@@ -15,10 +15,10 @@
             svgPoint.y = event.detail.y;
 
             if (event.detail.nodeId === {{ $from['id'] }}) {
-                fromX = svgPoint.x + event.detail.width; // Adjust for the right side
+                fromX = svgPoint.x + event.detail.width - 2; // minus the circle offset but we can hardcode it for now
                 fromY = svgPoint.y + event.detail.height / 2; // Center vertically
             } else if (event.detail.nodeId === {{ $to['id'] }}) {
-                toX = svgPoint.x; // Adjust for the left side
+                toX = svgPoint.x + 2; // Adjust for the left side
                 toY = svgPoint.y + event.detail.height / 2; // Center vertically
             }
             console.log(`Edge updated for node ${event.detail.nodeId}: from (${fromX}, ${fromY}) to (${toX}, ${toY})`);
