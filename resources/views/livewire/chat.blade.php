@@ -7,18 +7,18 @@
             </button>
             <div class="flex flex-col flex-grow overflow-y-auto px-3 pb-3.5">
                 <div class="mt-2 text-md">
-                    <p class="text-gray text-xs uppercase tracking-wider">Recent</p>
-                    <ul class="mt-2">
-                        <li class="text-gray-300 py-1 hover:bg-darkgray rounded">
+                    <p class="text-gray px-3 tracking-wider">Recent</p>
+                    <ul class="mt-2 cursor-pointer">
+                        <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
                             New session
                         </li>
-                        <li class="text-gray-300 py-1 hover:bg-darkgray rounded">
+                        <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
                             Component system
                         </li>
-                        <li class="text-gray-300 py-1 hover:bg-darkgray rounded">
+                        <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
                             Google tag manager
                         </li>
-                        <li class="text-gray-300 py-1 hover:bg-darkgray rounded">
+                        <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
                             Backend testing
                         </li>
                     </ul>
