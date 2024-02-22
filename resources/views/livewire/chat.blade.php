@@ -1,5 +1,5 @@
-<div class="relative z-0 h-screen w-full overflow-hidden bg-gray-900">
-    <div class="fixed top-0 left-0 h-screen w-[300px] overflow-hidden bg-offblack">
+<div class="flex h-screen w-full overflow-hidden bg-gray-900">
+    <div class="fixed top-0 left-0 h-screen w-[300px] bg-offblack z-10">
         <div class="flex flex-col h-full">
             <button
                 class="text-white hover:bg-lightgray px-4 py-2 mt-4 mb-2 ml-4 mr-4 rounded-lg transition-colors duration-300">
@@ -37,6 +37,25 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="pl-[300px] w-full h-screen flex flex-col">
+        <div class="fixed top-0 left-[300px] right-0 h-[60px] bg-black border-b border-offblack z-10">
+            top bar
+        </div>
+
+        <div class="pt-[60px] flex-1 overflow-auto">
+            main content
+        </div>
+
+        <div class="fixed bottom-0 left-[300px] right-0 h-[60px] bg-black px-4 py-3 flex items-center z-10">
+            <input type="text" placeholder="Write a message to Junior Developer..."
+                class="flex-1 rounded-lg px-4 py-2 bg-darkgray text-white placeholder-lightgray focus:outline-none focus:ring focus:border-blue-300" />
+            <button
+                class="ml-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
+                Send
+            </button>
         </div>
     </div>
 </div>
