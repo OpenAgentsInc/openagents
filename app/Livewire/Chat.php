@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Task;
 use Livewire\Component;
@@ -33,6 +34,15 @@ class Chat extends Component
     {
         $this->input = $this->body;
 
+        // If the current conversation is null, create a new one
+        if (!$this->conversation) {
+            $this->conversation = Conversation::create([
+                'title' => 'New Conversation',
+                'agent_id' => Agent::first()->id,
+            ]);
+            $this->conversations = Conversation::all();
+        }
+
         // Append the message to the chat
         $this->messages[] = [
             'body' => $this->input,
@@ -48,13 +58,13 @@ class Chat extends Component
     public function runTask()
     {
         $messageContent = "";
-        $logFunction = function($message) {
+        $logFunction = function ($message) {
             $this->stream(
                 to: 'taskProgress',
                 content: "Executing step: $message <br />"
             );
         };
-        $streamFunction = function($response) use (&$messageContent) {
+        $streamFunction = function ($response) use (&$messageContent) {
             $token = $response['choices'][0]['delta']['content'] ?? "";
             $this->stream(
                 to: 'streamtext',

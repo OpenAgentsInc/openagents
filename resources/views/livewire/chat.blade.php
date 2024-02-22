@@ -71,7 +71,7 @@
         <div class="fixed bottom-0 left-[300px] right-0 h-[80px] bg-black px-4 py-3 flex items-center z-10">
             <div
                 class="w-full pt-2 md:pt-0 dark:border-white/20 md:border-transparent md:dark:border-transparent md:w-[calc(100%-.5rem)]">
-                <form
+                <form wire:submit.prevent="sendMessage"
                     class="stretch mx-2 flex flex-row gap-3 last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl">
                     <div class="relative flex h-full flex-1 items-stretch md:flex-col">
                         <div class="flex w-full items-center text-white">
@@ -97,9 +97,8 @@
                                             style="display: none;">
                                     </div>
                                 </div>
-                                <button disabled=""
-                                    class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5 text-white transition-colors enabled:bg-black disabled:text-gray-400 disabled:opacity-25 dark:border-white dark:bg-white dark:hover:bg-white md:bottom-3 md:right-3"
-                                    data-testid="send-button">
+                                <button
+                                    class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5 text-white transition-colors enabled:bg-black disabled:text-gray-400 disabled:opacity-25 dark:border-white dark:bg-white dark:hover:bg-white md:bottom-3 md:right-3">
                                     <span class="" data-state="closed">
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="text-gray">
                                             <path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor" stroke-width="2"

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Agent;
 use App\Models\Conversation;
 use App\Livewire\Chat;
 use Livewire\Livewire;
@@ -37,4 +38,15 @@ it('shows conversations on sidebar', function () {
     Livewire::test(Chat::class)
         ->assertSee('John Doe')
         ->assertSee('Jane Doe');
+});
+
+it('creates and sets conversation on message in new chat', function () {
+    Agent::factory()->create();
+
+    Livewire::test(Chat::class)
+        ->set('body', 'Hello')
+        ->call('sendMessage')
+        ->assertSet('conversation.id', Conversation::first()->id);
+
+    expect(Conversation::count())->toBe(1);
 });
