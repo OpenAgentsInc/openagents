@@ -45,10 +45,12 @@ class Chat extends Component
 
         // If the current conversation is null, create a new one
         if (!$this->conversation) {
+            $this->agent = Agent::first();
             $this->conversation = Conversation::create([
                 'title' => 'New Conversation',
-                'agent_id' => Agent::first()->id,
+                'agent_id' => $this->agent->id,
             ]);
+
             $this->conversations = Conversation::all();
         }
 
