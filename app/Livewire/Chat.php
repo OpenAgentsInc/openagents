@@ -13,16 +13,16 @@ class Chat extends Component
 {
     public $body = '';
     public $input = '';
+    public Agent $agent;
     public $conversation;
     public $conversations = [];
-    public $agent;
     public $messages = [];
-    // Add a converter property
     private $commonMarkConverter;
 
     public function mount($id = null)
     {
         $this->commonMarkConverter = new CommonMarkConverter();
+
         // If we're in a chat, load the messages
         if ($id) {
             $this->conversation = Conversation::findOrFail($id);
@@ -67,12 +67,14 @@ class Chat extends Component
     public function runTask()
     {
         $messageContent = "";
+
         $logFunction = function ($message) {
             $this->stream(
                 to: 'taskProgress',
                 content: "Executing step: $message <br />"
             );
         };
+
         $streamFunction = function ($response) use (&$messageContent) {
             $token = $response['choices'][0]['delta']['content'] ?? "";
             $this->stream(
@@ -81,17 +83,40 @@ class Chat extends Component
             );
             $messageContent .= $token;
         };
-        $task = Task::where('name', 'Inference with web context')->firstOrFail();
 
-        $output = $task->agent->runTask($task, [
-            'input' => $this->input,
-        ], $logFunction, $streamFunction);
+        $output = $this->routeInput($this->input, $logFunction, $streamFunction);
+
+        // $task = Task::where('name', 'Inference with web context')->firstOrFail();
+
+        // $output = $task->agent->runTask($task, [
+        //     'input' => $this->input,
+        // ], $logFunction, $streamFunction);
 
         // Append the response to the chat
         $this->messages[] = [
             'body' => $messageContent,
             'sender' => 'agent'
         ];
+    }
+
+    private function routeInput($input, $logFunction, $streamFunction)
+    {
+        // Does input contain a URL anywhere inside it?
+        $containsUrl = preg_match('/\b(?:https?|ftp):\/\/\S+\b/', $input);
+
+        // If yes, run the "Inference with web context" task
+        if ($containsUrl) {
+            $task = Task::where('name', 'Inference with web context')->firstOrFail();
+
+            $output = $task->agent->runTask([
+                'input' => $input,
+            ], $task, $this->conversation, $logFunction, $streamFunction);
+
+        } else {
+            $output = "A placeholder response until we implement non-URL input!";
+        }
+
+        return $output;
     }
 
     public function render()

@@ -15,14 +15,16 @@ class Agent extends Model
 
     public function runTask($input, Task $task, Conversation $conversation, $logFunction, $streamFunction)
     {
-
+        return $this->run($input, $conversation, $task, $logFunction, $streamFunction);
     }
 
-
-    public function run($input, $task = null, $logFunction = null, $streamFunction = null)
+    public function run($input, $conversation = null, $task = null, $logFunction = null, $streamFunction = null)
     {
-
-        $conversation = $this->getUserConversation();
+        if (! $conversation) {
+            // If no provided conversation, get the user's conversation
+            dd("No conversation provided");
+            $conversation = $this->getUserConversation();
+        }
 
         // Append the input to the conversation
         $conversation->messages()->create([
