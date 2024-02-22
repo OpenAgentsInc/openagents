@@ -59,7 +59,7 @@
         </div>
 
 
-        <div class="pt-[60px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
+        <div class="py-[90px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
                 @php
                     $message['sender'] = $message['sender'] === 'user' ? 'You' : $agent->name ?? 'Agent';

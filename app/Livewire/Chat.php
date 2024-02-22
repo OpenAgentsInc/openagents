@@ -26,7 +26,7 @@ class Chat extends Component
         // If we're in a chat, load the messages
         if ($id) {
             $this->conversation = Conversation::findOrFail($id);
-            $this->messages = $this->conversation->messages->toArray();
+            $this->messages = $this->conversation->messages->sortBy('created_at')->toArray();
             $this->agent = $this->conversation->agent;
         }
 
