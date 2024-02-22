@@ -1,10 +1,11 @@
 <div class="flex h-screen w-full overflow-hidden bg-gray-900">
     <div class="fixed top-0 left-0 h-screen w-[300px] bg-offblack z-10">
         <div class="flex flex-col h-full">
-            <button
-                class="text-white hover:bg-lightgray px-4 py-2 mt-4 mb-2 ml-4 mr-4 rounded-lg transition-colors duration-300">
-                New session
-            </button>
+            <a wire:navigate href="{{ route('chat') }}">
+                <x-button variant="ghost" size="lg" icon="create">
+                    New session
+                </x-button>
+            </a>
             <div class="flex flex-col flex-grow overflow-y-auto px-3 pb-3.5">
                 <div class="mt-2 text-md">
                     <p class="text-gray px-3 tracking-wider">Recent</p>
@@ -59,6 +60,10 @@
 
         <div class="pt-[60px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
+                @php
+                    $message['sender'] = $message['sender'] === 'user' ? 'You' : $agent->name;
+                @endphp
+
                 <x-message :author="$message['sender']" :message="$message['body']" />
             @endforeach
         </div>

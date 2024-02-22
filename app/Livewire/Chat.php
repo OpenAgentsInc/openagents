@@ -13,6 +13,7 @@ class Chat extends Component
     public $input = '';
     public $conversation;
     public $conversations = [];
+    public $agent;
     public $messages = [];
 
     public function mount($id = null)
@@ -21,6 +22,7 @@ class Chat extends Component
         if ($id) {
             $this->conversation = Conversation::findOrFail($id);
             $this->messages = $this->conversation->messages->toArray();
+            $this->agent = $this->conversation->agent;
         }
 
         // Load this user's conversations from database
