@@ -10,6 +10,7 @@ class Chat extends Component
 {
     public $body = '';
     public $input = '';
+    public $conversations = [];
     public $messages = [];
 
     public function sendMessage()

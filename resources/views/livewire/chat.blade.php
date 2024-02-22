@@ -9,18 +9,11 @@
                 <div class="mt-2 text-md">
                     <p class="text-gray px-3 tracking-wider">Recent</p>
                     <ul class="mt-2 cursor-pointer">
-                        <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
-                            New session
-                        </li>
-                        <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
-                            Component system
-                        </li>
-                        <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
-                            Google tag manager
-                        </li>
-                        <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
-                            Backend testing
-                        </li>
+                        @foreach($conversations as $conversation)
+                            <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
+                                {{ $conversation['title'] ?? 'New chat' }}
+                            </li>
+                        @endforeach
                     </ul>
                 </div>
                 <div class="mt-auto">

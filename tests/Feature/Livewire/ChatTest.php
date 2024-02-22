@@ -28,3 +28,13 @@ it('shows messages', function () {
         ->assertSee('Hello')
         ->assertSee('Hi');
 });
+
+it('shows conversations on sidebar', function () {
+    Livewire::test(Chat::class)
+        ->set('conversations', [
+            ['id' => 1, 'title' => 'John Doe'],
+            ['id' => 2, 'title' => 'Jane Doe'],
+        ])
+        ->assertSee('John Doe')
+        ->assertSee('Jane Doe');
+});
