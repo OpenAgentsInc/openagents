@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 .shiki {
-  @apply p-4 rounded-lg !important;
+  @apply p-4 rounded-lg text-sm;
 }
 
 @layer base {

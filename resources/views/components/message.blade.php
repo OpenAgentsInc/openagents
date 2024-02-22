@@ -3,8 +3,14 @@
         <div
             class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[1068px]">
             <div class="flex-shrink-0 flex flex-col relative items-end">
-                <div class="m-[2px] h-[36px] w-[36px] items-center justify-center bg-darkgray rounded-full">
-                </div>
+                @if ($author === 'You')
+                    <div class="m-[2px] h-[36px] w-[36px] items-center justify-center bg-darkgray rounded-full">
+                    </div>
+                @else
+                    <div class="m-[2px] w-[36px] p-2 border border-darkgray rounded">
+                        <x-icon name="code" class="" />
+                    </div>
+                @endif
             </div>
             <div class="relative flex w-full flex-col">
                 <span class="mb-1 font-semibold select-none text-white">{{ $author }}</span>
