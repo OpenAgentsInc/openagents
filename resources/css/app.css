@@ -2,7 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+
 @layer base {
+  :root {
+    --livewire-progress-bar-color: white;
+  }
+
   h1.title {
     @apply text-[64px] font-bold;
   }
