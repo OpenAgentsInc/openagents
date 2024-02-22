@@ -68,8 +68,6 @@
                 <x-message :author="$message['sender']" :message="$message['body']" />
             @endforeach
 
-            <div wire:stream="taskProgress" class="text-sm text-gray"></div>
-
             @if ($pending)
                 <x-messagestreaming :author="$agent->name ?? 'Agent'"  />
             @endif
