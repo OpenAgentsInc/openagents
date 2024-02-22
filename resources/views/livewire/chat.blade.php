@@ -47,22 +47,11 @@
 
         <div class="pt-[60px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
             @for($i = 0; $i < 8; $i++)
-                <div class="flex flex-row justify-start px-4 py-2">
-                    <div class="bg-gray-800 rounded-lg px-4 py-2 max-w-xs">
-                        <p class="text-sm">You</p>
-                        <p class="text-sm">Pellentesque nec nam aliquam sem et tortor consequat. Id porta nibh venenatis
-                            cras sed felis eget velit.</p>
-                    </div>
-                </div>
+                <x-message :author="'You'"
+                    :message="'Pellentesque nec nam aliquam sem et tortor consequat. Id porta nibh venenatis cras sed felis eget velit.'" />
 
-                <div class="flex flex-row justify-start px-4 py-2">
-                    <div class="bg-gray-700 rounded-lg px-4 py-2 max-w-xs">
-                        <p class="text-sm">Junior Developer</p>
-                        <p class="text-sm">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
-                            tempor
-                            incididunt ut labore.</p>
-                    </div>
-                </div>
+                <x-message :author="'Junior Developer'"
+                    :message="'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.'" />
             @endfor
         </div>
 
