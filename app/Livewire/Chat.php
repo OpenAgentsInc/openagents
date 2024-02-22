@@ -18,6 +18,7 @@ class Chat extends Component
     public $conversation;
     public $conversations = [];
     public $messages = [];
+    public $pending = false;
     private $commonMarkConverter;
 
     public function mount($id = null)
@@ -63,6 +64,7 @@ class Chat extends Component
 
         // Clear the input
         $this->body = '';
+        $this->pending = true;
 
         $this->js('$wire.runTask()');
     }
@@ -100,6 +102,8 @@ class Chat extends Component
             'body' => $messageContent,
             'sender' => 'agent'
         ];
+
+        $this->pending = false;
     }
 
     private function routeInput($input, $logFunction, $streamFunction)

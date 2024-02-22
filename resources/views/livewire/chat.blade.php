@@ -69,7 +69,10 @@
             @endforeach
 
             <div wire:stream="taskProgress" class="text-sm text-gray"></div>
-            <div wire:stream="streamtext" class="text-lg text-white"></div>
+
+            @if ($pending)
+                <x-messagestreaming :author="$agent->name ?? 'Agent'"  />
+            @endif
         </div>
 
         <div class="fixed bottom-0 left-[300px] right-0 h-[80px] px-4 py-3 flex items-center z-10">

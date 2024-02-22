@@ -4,10 +4,6 @@ namespace App\Services;
 
 use App\Models\Conversation;
 use App\Models\Message;
-use App\Traits\StepActions;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\RequestException;
-use GuzzleHttp\Psr7\Request;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use OpenAI;
