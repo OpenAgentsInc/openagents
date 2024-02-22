@@ -42,18 +42,27 @@
 
     <div class="pl-[300px] w-full h-screen flex flex-col">
         <div class="fixed top-0 left-[300px] right-0 h-[60px] z-10">
-            <div class="bg-transparent text-white flex items-center p-2">
-                <svg class="h-6 w-6 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                    stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M16 12H8m8-8H8m8 16H8m8 0H8" />
-                </svg>
-                <div class="flex flex-col justify-start bg-black">
-                    <span class="text-lg font-bold">Junior Developer</span>
-                    <span class="text-xs text-gray">Created by OpenAgents</span>
+            <div class="text-white flex items-center justify-between p-2">
+                <!-- Left side - logo and text -->
+                <div class="flex items-center">
+                    <svg class="h-6 w-6 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M16 12H8m8-8H8m8 16H8m8 0H8" />
+                    </svg>
+                    <div class="flex flex-col">
+                        <span class="text-lg font-bold">Junior Developer</span>
+                        <span class="text-xs text-gray">Created by OpenAgents</span>
+                    </div>
                 </div>
+
+                <!-- Right side - button -->
+                <x-button variant="outline">
+                    Share
+                </x-button>
             </div>
         </div>
+
 
         <div class="pt-[60px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
             @for($i = 0; $i < 8; $i++)
