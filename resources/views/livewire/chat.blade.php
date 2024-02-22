@@ -61,7 +61,7 @@
         <div class="pt-[60px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
                 @php
-                    $message['sender'] = $message['sender'] === 'user' ? 'You' : $agent->name;
+                    $message['sender'] = $message['sender'] === 'user' ? 'You' : $agent->name ?? 'Agent';
                 @endphp
 
                 <x-message :author="$message['sender']" :message="$message['body']" />
