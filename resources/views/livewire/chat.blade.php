@@ -47,7 +47,7 @@
                     </div>
                     <div class="ml-4 flex flex-col">
                         <span class="text-lg font-bold">Junior Developer</span>
-                        <span class="text-xs text-gray">Created by OpenAgents</span>
+                        <span class="text-sm text-gray">Created by OpenAgents</span>
                     </div>
                 </div>
                 <div class="mr-4">

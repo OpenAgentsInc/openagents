@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Task;
+use App\Services\Inferencer;
 use Livewire\Component;
 use Livewire\Attributes\On;
 use League\CommonMark\CommonMarkConverter;
@@ -115,7 +116,7 @@ class Chat extends Component
             ], $task, $this->conversation, $logFunction, $streamFunction);
 
         } else {
-            $output = "A placeholder response until we implement non-URL input!";
+            $output = Inferencer::llmInference(['input' => $input], $this->conversation, $streamFunction);
         }
 
         return $output;
