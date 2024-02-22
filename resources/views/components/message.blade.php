@@ -9,9 +9,9 @@
             <div class="relative flex w-full flex-col">
                 <span class="mb-1 font-semibold select-none text-white">{{ $author }}</span>
                 <div class="flex-col gap-1 md:gap-3">
-                    <div class="flex flex-grow flex-col max-w-[936px]">
+                    <div class="-mt-4 flex flex-grow flex-col max-w-[936px]">
                         @if($author !== 'You')
-                            <x-markdown class="-mt-4 text-md">{!! $message !!}</x-markdown>
+                            <x-markdown class="text-md">{!! $message !!}</x-markdown>
                         @else
                             <x-markdown class="text-md">{{ $message }}</x-markdown>
                         @endif
