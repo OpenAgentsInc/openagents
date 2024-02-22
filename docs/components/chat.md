@@ -9,46 +9,22 @@ Chat is a Livewire component with subcomponents:
   - app/livewire/ChatSidebar.php
   - resources/views/livewire/chat-sidebar.php
   - Subcomponents:
-    - SessionItem
-      - app/livewire/SessionItem.php
-      - resources/views/livewire/session-item.php
+    - SessionItem - List item representing an individual chat session.
 - ChatHeader
   - app/livewire/ChatHeader.php
   - resources/views/livewire/chat-header.php
   - Subcomponents:
-    - SessionDetails
-      - app/livewire/SessionDetails.php
-      - resources/views/livewire/session-details.php
-    - StatusIndicator
-      - app/livewire/StatusIndicator.php
-      - resources/views/livewire/status-indicator.php
-    - ActionButton
-      - app/livewire/ActionButton.php
-      - resources/views/livewire/action-button.php
+    - SessionDetails - Displays the current session's title and other meta information.
+    - StatusIndicator - Shows the online/offline status of the user or session.
 - ChatMessages
   - app/livewire/ChatMessages.php
   - resources/views/livewire/chat-messages.php
   - Subcomponents:
-    - MessageBubble
-      - app/livewire/MessageBubble.php
-      - resources/views/livewire/message-bubble.php
-    - Timestamp
-      - app/livewire/Timestamp.php
-      - resources/views/livewire/timestamp.php
-    - StatusIndicator (Same as in ChatHeader, if applicable)
+    - MessageBubble - Individual message container with text and background.
+    - Timestamp - Time indicator for each message.
 - ChatInput
   - app/livewire/ChatInput.php
   - resources/views/livewire/chat-input.php
   - Subcomponents:
-    - TextInputField
-      - app/livewire/TextInputField.php
-      - resources/views/livewire/text-input-field.php
-    - SendButton
-      - app/livewire/SendButton.php
-      - resources/views/livewire/send-button.php
-    - AttachmentIcon (if present)
-      - app/livewire/AttachmentIcon.php
-      - resources/views/livewire/attachment-icon.php
-    - EmojiPicker (if present)
-      - app/livewire/EmojiPicker.php
-      - resources/views/livewire/emoji-picker.php
+    - TextInputField - Field where the user types their message.
+    - SendButton - Button to submit the typed message.
