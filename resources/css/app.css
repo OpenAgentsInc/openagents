@@ -2,7 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+.shiki {
+  @apply p-4 rounded-lg text-sm;
+}
+
 @layer base {
+  :root {
+    --livewire-progress-bar-color: white !important;
+  }
+
   h1.title {
     @apply text-[64px] font-bold;
   }

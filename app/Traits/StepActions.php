@@ -7,7 +7,6 @@ use App\Models\Plugin;
 use App\Services\Embedder;
 use App\Services\GitHub;
 use App\Services\L402 as L402Service;
-use App\Services\QueenbeeGateway;
 use Illuminate\Support\Facades\Http;
 
 trait StepActions
@@ -174,7 +173,7 @@ trait StepActions
         // if $input['input'] is an array with key url, then that is the input
         if (array_key_exists('url', (array) $input['input'])) {
             $actualInput = $input['input'];
-        // dd($actualInput);
+            // dd($actualInput);
         } elseif (! is_string($input['input'])) {         // if $input["input"] is not a string, convert it to a string
             // dd($input['input']);
             // $input['input'] = $input['input']->input;
@@ -262,6 +261,8 @@ trait StepActions
                 'embedding' => [], // Embedder::createFakeEmbedding(),
             ];
         }
+
+        dd('not implemented');
 
         $gateway = new QueenbeeGateway();
         $result = $gateway->createEmbedding($input);

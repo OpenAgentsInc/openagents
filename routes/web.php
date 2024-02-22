@@ -15,6 +15,8 @@ Route::get('/', Splash::class)->name('home');
 
 // Agent chat
 Route::get('/chat', Chat::class)->name('chat'); // todo - put behind auth middleware
+Route::get('/chat/{id}', Chat::class)->name('chat.show');
+
 Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
 
 // Docs

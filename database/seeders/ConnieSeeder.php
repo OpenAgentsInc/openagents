@@ -26,7 +26,7 @@ class ConnieSeeder extends Seeder
         $agent = Agent::create([
             'id' => 1,
             'user_id' => $user->id,
-            'name' => 'Connie Codemonger',
+            'name' => 'Junior Developer',
             'description' => 'The best contextual inference agent you ever knew',
             'instructions' => 'Do the thing',
             'welcome_message' => 'Do it',
