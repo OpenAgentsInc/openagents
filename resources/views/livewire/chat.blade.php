@@ -66,6 +66,9 @@
 
                 <x-message :author="$message['sender']" :message="$message['body']" />
             @endforeach
+
+            <div wire:stream="taskProgress" class="text-sm text-gray"></div>
+            <div wire:stream="streamtext" class="text-lg text-white"></div>
         </div>
 
         <div class="fixed bottom-0 left-[300px] right-0 h-[80px] bg-black px-4 py-3 flex items-center z-10">
@@ -77,13 +80,16 @@
                         <div class="flex w-full items-center text-white">
                             <div
                                 class="overflow-hidden [&amp;:has(textarea:focus)]:border-gray [&amp;:has(textarea:focus)]:shadow-[0_2px_6px_rgba(0,0,0,.05)] flex flex-col w-full dark:border-gray flex-grow relative border border-gray dark:text-white rounded-[6px]">
-                                <textarea id="prompt-textarea" tabindex="0" rows="1"
+                                <textarea
+                                    id="message-input" name="input" wire:model="body" autofocus
+                                    onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
+                                    tabindex="0" rows="1"
                                     placeholder="Message Junior Developer…"
                                     class="outline-none m-0 w-full resize-none border-0 bg-transparent focus:ring-0 focus-visible:ring-0 dark:bg-transparent max-h-25 py-[10px] pr-10 md:py-3.5 md:pr-12 placeholder-white/50 pl-10 md:pl-[55px]"
                                     style="height: 52px; overflow-y: hidden;"></textarea>
                                 <div class="absolute bottom-2 md:bottom-3 left-2 md:left-4">
                                     <div class="flex">
-                                        <button class="btn relative p-0 text-gray" aria-label="Attach files">
+                                        <button id="send-message" class="btn relative p-0 text-gray" aria-label="Attach files">
                                             <div class="flex w-full gap-2 items-center justify-center">
                                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
                                                     xmlns="http://www.w3.org/2000/svg">
@@ -98,6 +104,7 @@
                                     </div>
                                 </div>
                                 <button
+                                    @if(!auth()->check()) disabled @endif
                                     class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5 text-white transition-colors enabled:bg-black disabled:text-gray-400 disabled:opacity-25 dark:border-white dark:bg-white dark:hover:bg-white md:bottom-3 md:right-3">
                                     <span class="" data-state="closed">
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="text-gray">

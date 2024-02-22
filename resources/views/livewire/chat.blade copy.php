@@ -24,7 +24,8 @@
                 <div class="flex flex-row items-center h-auto rounded-xl w-full px-4">
                     <div class="flex-grow ml-4">
                         <div class="relative w-full">
-                            <x-textarea id="message-input" name="input" wire:model="body" autofocus
+                            <x-textarea
+                                id="message-input" name="input" wire:model="body" autofocus
                                 onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
                                 class="text-md w-full rounded-lg border focus:outline-none disabled:opacity-50 dark:text-white focus:ring-0"
                                 rows="3" placeholder="Type a message..."></x-textarea>

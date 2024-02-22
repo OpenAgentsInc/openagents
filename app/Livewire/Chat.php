@@ -51,7 +51,7 @@ class Chat extends Component
         // Append the message to the chat
         $this->messages[] = [
             'body' => $this->input,
-            'sender' => 'You',
+            'sender' => 'user',
         ];
 
         // Clear the input
@@ -86,7 +86,7 @@ class Chat extends Component
         // Append the response to the chat
         $this->messages[] = [
             'body' => $messageContent,
-            'from' => $task->agent->name,
+            'sender' => 'agent'
         ];
     }
 
