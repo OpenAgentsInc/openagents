@@ -6,6 +6,49 @@ openagents.com/chat loads the Chat component:
 
 Chat is a Livewire component with subcomponents:
 - ChatSidebar
+  - app/livewire/ChatSidebar.php
+  - resources/views/livewire/chat-sidebar.php
+  - Subcomponents:
+    - SessionItem
+      - app/livewire/SessionItem.php
+      - resources/views/livewire/session-item.php
 - ChatHeader
-- ChatInput
+  - app/livewire/ChatHeader.php
+  - resources/views/livewire/chat-header.php
+  - Subcomponents:
+    - SessionDetails
+      - app/livewire/SessionDetails.php
+      - resources/views/livewire/session-details.php
+    - StatusIndicator
+      - app/livewire/StatusIndicator.php
+      - resources/views/livewire/status-indicator.php
+    - ActionButton
+      - app/livewire/ActionButton.php
+      - resources/views/livewire/action-button.php
 - ChatMessages
+  - app/livewire/ChatMessages.php
+  - resources/views/livewire/chat-messages.php
+  - Subcomponents:
+    - MessageBubble
+      - app/livewire/MessageBubble.php
+      - resources/views/livewire/message-bubble.php
+    - Timestamp
+      - app/livewire/Timestamp.php
+      - resources/views/livewire/timestamp.php
+    - StatusIndicator (Same as in ChatHeader, if applicable)
+- ChatInput
+  - app/livewire/ChatInput.php
+  - resources/views/livewire/chat-input.php
+  - Subcomponents:
+    - TextInputField
+      - app/livewire/TextInputField.php
+      - resources/views/livewire/text-input-field.php
+    - SendButton
+      - app/livewire/SendButton.php
+      - resources/views/livewire/send-button.php
+    - AttachmentIcon (if present)
+      - app/livewire/AttachmentIcon.php
+      - resources/views/livewire/attachment-icon.php
+    - EmojiPicker (if present)
+      - app/livewire/EmojiPicker.php
+      - resources/views/livewire/emoji-picker.php
