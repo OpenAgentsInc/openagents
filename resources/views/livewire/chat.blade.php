@@ -10,9 +10,12 @@
                     <p class="text-gray px-3 tracking-wider">Recent</p>
                     <ul class="mt-2 cursor-pointer">
                         @foreach($conversations as $conversation)
-                            <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
-                                {{ $conversation['title'] ?? 'New chat' }}
-                            </li>
+                            <a wire:navigate
+                                href="{{ route('chat.show', $conversation['id']) }}">
+                                <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
+                                    {{ $conversation['title'] ?? 'New chat' }}
+                                </li>
+                            </a>
                         @endforeach
                     </ul>
                 </div>
@@ -56,7 +59,7 @@
 
         <div class="pt-[60px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
-                <x-message :author="$message['from']" :message="$message['body']" />
+                <x-message :author="$message['sender']" :message="$message['body']" />
             @endforeach
         </div>
 

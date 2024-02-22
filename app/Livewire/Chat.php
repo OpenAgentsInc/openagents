@@ -11,11 +11,18 @@ class Chat extends Component
 {
     public $body = '';
     public $input = '';
+    public $conversation;
     public $conversations = [];
     public $messages = [];
 
-    public function mount()
+    public function mount($id = null)
     {
+        // If we're in a chat, load the messages
+        if ($id) {
+            $this->conversation = Conversation::findOrFail($id);
+            $this->messages = $this->conversation->messages->toArray();
+        }
+
         // Load this user's conversations from database
         $this->conversations = Conversation::all();
     }
@@ -27,7 +34,7 @@ class Chat extends Component
         // Append the message to the chat
         $this->messages[] = [
             'body' => $this->input,
-            'from' => 'You',
+            'sender' => 'You',
         ];
 
         // Clear the input

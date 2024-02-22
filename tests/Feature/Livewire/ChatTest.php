@@ -23,8 +23,8 @@ it('loads messages', function () {
 it('shows messages', function () {
     Livewire::test(Chat::class)
         ->set('messages', [
-            ['body' => 'Hello', 'from' => 'You'],
-            ['body' => 'Hi', 'from' => 'Agent'],
+            ['body' => 'Hello', 'sender' => 'You'],
+            ['body' => 'Hi', 'sender' => 'Agent'],
         ])
         ->assertSee('Hello')
         ->assertSee('Hi');
