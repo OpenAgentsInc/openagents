@@ -46,21 +46,24 @@
         </div>
 
         <div class="pt-[60px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
-            <div class="flex flex-row justify-start px-4 py-2">
-                <div class="bg-gray-800 rounded-lg px-4 py-2 max-w-xs">
-                    <p class="text-sm">You</p>
-                    <p class="text-sm">Pellentesque nec nam aliquam sem et tortor consequat. Id porta nibh venenatis
-                        cras sed felis eget velit.</p>
+            @for($i = 0; $i < 8; $i++)
+                <div class="flex flex-row justify-start px-4 py-2">
+                    <div class="bg-gray-800 rounded-lg px-4 py-2 max-w-xs">
+                        <p class="text-sm">You</p>
+                        <p class="text-sm">Pellentesque nec nam aliquam sem et tortor consequat. Id porta nibh venenatis
+                            cras sed felis eget velit.</p>
+                    </div>
                 </div>
-            </div>
 
-            <div class="flex flex-row justify-start px-4 py-2">
-                <div class="bg-gray-700 rounded-lg px-4 py-2 max-w-xs">
-                    <p class="text-sm">Junior Developer</p>
-                    <p class="text-sm">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
-                        incididunt ut labore.</p>
+                <div class="flex flex-row justify-start px-4 py-2">
+                    <div class="bg-gray-700 rounded-lg px-4 py-2 max-w-xs">
+                        <p class="text-sm">Junior Developer</p>
+                        <p class="text-sm">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+                            tempor
+                            incididunt ut labore.</p>
+                    </div>
                 </div>
-            </div>
+            @endfor
         </div>
 
         <div class="fixed bottom-0 left-[300px] right-0 h-[60px] bg-black px-4 py-3 flex items-center z-10">
