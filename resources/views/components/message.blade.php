@@ -7,14 +7,14 @@
                 </div>
             </div>
             <div class="relative flex w-full flex-col">
-                <span class="font-semibold select-none text-white">{{ $author }}</span>
+                <span class="mb-1 font-semibold select-none text-white">{{ $author }}</span>
                 <div class="flex-col gap-1 md:gap-3">
                     <div class="flex flex-grow flex-col max-w-full">
-                        <span class="text-sm">{{ $message }}</span>
+                        <span class="text-md">{{ $message }}</span>
                     </div>
                     <div class="flex justify-start gap-3 empty:hidden">
                         <div
-                            class="text-gray-400 flex self-end lg:self-center justify-center lg:justify-start mt-0 -ml-1 h-7 visible">
+                            class="text-gray flex self-end lg:self-center justify-center lg:justify-start mt-0 -ml-1 h-7 visible">
                         </div>
                     </div>
                 </div>
@@ -23,12 +23,3 @@
         </div>
     </div>
 </div>
-
-<!--
-<div class="flex flex-row justify-start px-4 py-2">
-    <div class="bg-black rounded-lg px-4 py-2 max-w-xs">
-        <p class="text-sm">{{ $author }}</p>
-        <p class="text-sm">{{ $message }}</p>
-    </div>
-</div>
--->
