@@ -9,7 +9,7 @@
     };
     $sizeClasses = match($size) {
         'sm' => 'h-8 px-3 text-xs',
-        'lg' => 'h-[48px] px-8 w-full text-lg',
+        'lg' => 'h-[48px] px-6 w-full text-lg',
         'icon' => 'h-9 w-9',
         default => 'h-9 px-4'
     };
@@ -21,7 +21,7 @@
     </span>
     @if($icon)
         <span class="ml-2">
-            <x-icon :name="$icon" />
+            <x-icon :name="$icon" class="w-6 h-6" />
         </span>
     @endif
 </button>
