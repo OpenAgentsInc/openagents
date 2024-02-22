@@ -5,6 +5,7 @@
             <div class="flex-shrink-0 flex flex-col relative items-end">
                 @if ($author === 'You')
                     <div class="m-[2px] h-[36px] w-[36px] items-center justify-center bg-darkgray rounded-full">
+                        <img src="https://pbs.twimg.com/profile_images/1607882836740120576/3Tg1mTYJ_400x400.jpg" alt="{{ $author }}" class="h-[36px] w-[36px] rounded-full" />
                     </div>
                 @else
                     <div class="m-[2px] w-[36px] p-2 border border-darkgray rounded">
