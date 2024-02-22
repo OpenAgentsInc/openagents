@@ -11,7 +11,7 @@
     @include('analytics')
 </head>
 
-<body>
+<body class="antialiased">
     {{ $slot }}
 </body>
 
