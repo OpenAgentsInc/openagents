@@ -43,7 +43,6 @@
     <div class="pl-[300px] w-full h-screen flex flex-col">
         <div class="fixed top-0 left-[300px] right-0 h-[60px] z-10">
             <div class="text-white flex items-center justify-between p-2">
-                <!-- Left side - logo and text -->
                 <div class="flex items-center">
                     <svg class="h-6 w-6 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none"
                         viewBox="0 0 24 24" stroke="currentColor">
@@ -55,8 +54,6 @@
                         <span class="text-xs text-gray">Created by OpenAgents</span>
                     </div>
                 </div>
-
-                <!-- Right side - button -->
                 <x-button variant="outline">
                     Share
                 </x-button>
@@ -68,14 +65,6 @@
             @foreach($messages as $message)
                 <x-message :author="$message['from']" :message="$message['body']" />
             @endforeach
-
-            @for($i = 0; $i < 8; $i++)
-                <x-message :author="'You'"
-                    :message="'Pellentesque nec nam aliquam sem et tortor consequat. Id porta nibh venenatis cras sed felis eget velit.'" />
-
-                <x-message :author="'Junior Developer'"
-                    :message="'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.'" />
-            @endfor
         </div>
 
         <div class="fixed bottom-0 left-[300px] right-0 h-[80px] bg-black px-4 py-3 flex items-center z-10">
@@ -123,6 +112,5 @@
                 </form>
             </div>
         </div>
-
     </div>
 </div>
