@@ -32,6 +32,11 @@ class Chat extends Component
 
     public function sendMessage()
     {
+        // Check if the user is authenticated
+        if (!auth()->check()) {
+            abort(403, 'Unauthorized action.');
+        }
+
         $this->input = $this->body;
 
         // If the current conversation is null, create a new one

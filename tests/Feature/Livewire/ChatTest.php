@@ -2,12 +2,20 @@
 
 use App\Models\Agent;
 use App\Models\Conversation;
+use App\Models\User;
 use App\Livewire\Chat;
 use Livewire\Livewire;
 
 it('renders successfully', function () {
     Livewire::test(Chat::class)
         ->assertStatus(200);
+});
+
+test('sending message requires an authed user', function () {
+    Livewire::test(Chat::class)
+        ->set('body', 'Hello')
+        ->call('sendMessage')
+        ->assertForbidden();
 });
 
 it('shows at the chat route /chat', function () {
@@ -41,7 +49,9 @@ it('shows conversations on sidebar', function () {
 });
 
 it('creates and sets conversation on message in new chat', function () {
-    Agent::factory()->create();
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Agent::factory()->create(['user_id' => $user->id]);
 
     Livewire::test(Chat::class)
         ->set('body', 'Hello')
