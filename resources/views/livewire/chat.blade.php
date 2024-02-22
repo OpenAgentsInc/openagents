@@ -65,6 +65,10 @@
 
 
         <div class="pt-[60px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
+            @foreach($messages as $message)
+                <x-message :author="$message['from']" :message="$message['body']" />
+            @endforeach
+
             @for($i = 0; $i < 8; $i++)
                 <x-message :author="'You'"
                     :message="'Pellentesque nec nam aliquam sem et tortor consequat. Id porta nibh venenatis cras sed felis eget velit.'" />
