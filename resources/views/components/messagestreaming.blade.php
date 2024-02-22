@@ -10,9 +10,9 @@
                 <span class="mb-1 font-semibold select-none text-white">{{ $author }}</span>
                 <div class="flex-col gap-1 md:gap-3">
                     <div class="flex flex-grow flex-col max-w-[936px]">
-                        <span wire:stream="streamtext" class="text-md">
+                        <x-markdown wire:stream="streamtext" class="text-md">
                             <div wire:stream="taskProgress" class="text-sm text-gray"></div>
-                        </span>
+                        </x-markdown>
                     </div>
                     <div class="flex justify-start gap-3 empty:hidden">
                         <div

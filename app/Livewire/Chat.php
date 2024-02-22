@@ -120,7 +120,17 @@ class Chat extends Component
             ], $task, $this->conversation, $logFunction, $streamFunction);
 
         } else {
+            $this->conversation->messages()->create([
+                'user_id' => auth()->id(),
+                'body' => $input,
+                'sender' => 'user',
+            ]);
             $output = Inferencer::llmInference(['input' => $input], $this->conversation, $streamFunction);
+            $this->conversation->messages()->create([
+                'user_id' => auth()->id(),
+                'body' => $output['output'],
+                'sender' => 'agent',
+            ]);
         }
 
         return $output;
@@ -128,16 +138,16 @@ class Chat extends Component
 
     public function render()
     {
-        if (!$this->commonMarkConverter) {
-            $this->commonMarkConverter = new CommonMarkConverter();
-        }
+        // if (!$this->commonMarkConverter) {
+        //     $this->commonMarkConverter = new CommonMarkConverter();
+        // }
 
-        // Convert each message body from Markdown to HTML before rendering
-        foreach ($this->messages as &$message) {
-            if ($message['sender'] === 'agent') {
-                $message['body'] = $this->commonMarkConverter->convertToHtml($message['body'])->getContent();
-            }
-        }
+        // // Convert each message body from Markdown to HTML before rendering
+        // foreach ($this->messages as &$message) {
+        //     if ($message['sender'] === 'agent') {
+        //         $message['body'] = $this->commonMarkConverter->convertToHtml($message['body'])->getContent();
+        //     }
+        // }
 
         return view('livewire.chat')->layout('components.layouts.chat');
     }

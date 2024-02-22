@@ -11,9 +11,9 @@
                 <div class="flex-col gap-1 md:gap-3">
                     <div class="flex flex-grow flex-col max-w-[936px]">
                         @if($author !== 'You')
-                            <span class="-mt-4 text-md">{!! $message !!}</span>
+                            <x-markdown class="-mt-4 text-md">{!! $message !!}</x-markdown>
                         @else
-                            <span class="text-md">{{ $message }}</span>
+                            <x-markdown class="text-md">{{ $message }}</x-markdown>
                         @endif
                     </div>
                     <div class="flex justify-start gap-3 empty:hidden">

@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+.shiki {
+  @apply p-4 rounded-lg !important;
+}
 
 @layer base {
   :root {
