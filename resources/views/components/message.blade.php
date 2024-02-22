@@ -3,7 +3,7 @@
         <div
             class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
             <div class="flex-shrink-0 flex flex-col relative items-end">
-                <div class="mt-1 h-6 w-6 items-center justify-center bg-darkgray rounded-full">
+                <div class="m-[2px] h-[36px] w-[36px] items-center justify-center bg-darkgray rounded-full">
                 </div>
             </div>
             <div class="relative flex w-full flex-col">
