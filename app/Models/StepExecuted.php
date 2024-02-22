@@ -51,7 +51,7 @@ class StepExecuted extends Model
         $stream = $client->chat()->createStreamed([
             'model' => 'gpt-4',
             'messages' => $messages,
-            'max_tokens' => 6024,
+            'max_tokens' => 3024,
         ]);
 
         $content = "";

@@ -10,7 +10,11 @@
                 <span class="mb-1 font-semibold select-none text-white">{{ $author }}</span>
                 <div class="flex-col gap-1 md:gap-3">
                     <div class="flex flex-grow flex-col max-w-full">
-                        <span class="text-md">{{ $message }}</span>
+                        @if($author !== 'You')
+                            <span class="-mt-4 text-md">{!! $message !!}</span>
+                        @else
+                            <span class="text-md">{{ $message }}</span>
+                        @endif
                     </div>
                     <div class="flex justify-start gap-3 empty:hidden">
                         <div
@@ -19,7 +23,6 @@
                     </div>
                 </div>
             </div>
-
         </div>
     </div>
 </div>

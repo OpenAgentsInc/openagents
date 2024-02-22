@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\Task;
 use Livewire\Component;
 use Livewire\Attributes\On;
+use League\CommonMark\CommonMarkConverter;
 
 class Chat extends Component
 {
@@ -16,9 +17,12 @@ class Chat extends Component
     public $conversations = [];
     public $agent;
     public $messages = [];
+    // Add a converter property
+    private $commonMarkConverter;
 
     public function mount($id = null)
     {
+        $this->commonMarkConverter = new CommonMarkConverter();
         // If we're in a chat, load the messages
         if ($id) {
             $this->conversation = Conversation::findOrFail($id);
@@ -92,6 +96,17 @@ class Chat extends Component
 
     public function render()
     {
+        if (!$this->commonMarkConverter) {
+            $this->commonMarkConverter = new CommonMarkConverter();
+        }
+
+        // Convert each message body from Markdown to HTML before rendering
+        foreach ($this->messages as &$message) {
+            if ($message['sender'] === 'agent') {
+                $message['body'] = $this->commonMarkConverter->convertToHtml($message['body'])->getContent();
+            }
+        }
+
         return view('livewire.chat')->layout('components.layouts.chat');
     }
 }
