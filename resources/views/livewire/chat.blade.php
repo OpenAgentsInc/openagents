@@ -71,7 +71,9 @@
             <div wire:stream="streamtext" class="text-lg text-white"></div>
         </div>
 
-        <div class="fixed bottom-0 left-[300px] right-0 h-[80px] bg-black px-4 py-3 flex items-center z-10">
+        <div class="fixed bottom-0 left-[300px] right-0 h-[80px] px-4 py-3 flex items-center z-10">
+            <div class="fixed bottom-0 w-screen left-[300px] right-0 h-[70px] bg-black z-5"></div>
+            <div class="fixed bottom-[70px] w-screen left-[300px] right-0 h-[40px] bg-gradient-to-t from-black to-transparent z-5"></div>
             <div
                 class="w-full pt-2 md:pt-0 dark:border-white/20 md:border-transparent md:dark:border-transparent md:w-[calc(100%-.5rem)]">
                 <form wire:submit.prevent="sendMessage"
