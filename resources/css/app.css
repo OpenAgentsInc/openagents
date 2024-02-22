@@ -5,7 +5,7 @@
 
 @layer base {
   :root {
-    --livewire-progress-bar-color: white;
+    --livewire-progress-bar-color: white !important;
   }
 
   h1.title {
