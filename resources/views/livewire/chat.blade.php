@@ -42,16 +42,18 @@
             <div class="text-white flex items-center justify-between p-2">
                 <div class="mt-1 cursor-pointer flex items-center">
                     <div class="ml-2 p-2 border border-darkgray rounded">
-                        <x-icon name="code" />
+                        <x-icon name="code" class="w-10 h-10" />
                     </div>
                     <div class="ml-4 flex flex-col">
                         <span class="text-lg font-bold">Junior Developer</span>
                         <span class="text-xs text-gray">Created by OpenAgents</span>
                     </div>
                 </div>
-                <x-button variant="outline">
-                    Share
-                </x-button>
+                <div class="-mt-2 mr-4">
+                    <x-button variant="outline" icon="share">
+                        Share
+                    </x-button>
+                </div>
             </div>
         </div>
 

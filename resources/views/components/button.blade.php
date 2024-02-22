@@ -13,6 +13,12 @@
         'icon' => 'h-9 w-9',
         default => 'h-9 px-4'
     };
+    $iconClasses = match($size) {
+        'sm' => 'h-4 w-4',
+        'lg' => 'h-8 w-8',
+        'icon' => 'h-5 w-5',
+        default => 'h-4 w-4'
+    };
 @endphp
 
 <button {{ $attributes->merge(['class' => "$baseClasses $variantClasses $sizeClasses"]) }}>
@@ -21,7 +27,7 @@
     </span>
     @if($icon)
         <span class="ml-2">
-            <x-icon :name="$icon" />
+            <x-icon :name="$icon" :class="$iconClasses" />
         </span>
     @endif
 </button>
