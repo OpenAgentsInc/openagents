@@ -21,7 +21,7 @@
     </span>
     @if($icon)
         <span class="ml-2">
-            <x-icon :name="$icon" class="w-6 h-6" />
+            <x-icon :name="$icon" />
         </span>
     @endif
 </button>

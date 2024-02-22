@@ -40,13 +40,11 @@
     <div class="pl-[300px] w-full h-screen flex flex-col">
         <div class="fixed top-0 left-[300px] right-0 h-[60px] z-10">
             <div class="text-white flex items-center justify-between p-2">
-                <div class="flex items-center">
-                    <svg class="h-6 w-6 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M16 12H8m8-8H8m8 16H8m8 0H8" />
-                    </svg>
-                    <div class="flex flex-col">
+                <div class="mt-1 cursor-pointer flex items-center">
+                    <div class="ml-2 p-2 border border-darkgray rounded">
+                        <x-icon name="code" />
+                    </div>
+                    <div class="ml-4 flex flex-col">
                         <span class="text-lg font-bold">Junior Developer</span>
                         <span class="text-xs text-gray">Created by OpenAgents</span>
                     </div>
