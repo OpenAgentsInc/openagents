@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\Conversation;
 use App\Models\Task;
 use Livewire\Component;
 use Livewire\Attributes\On;
@@ -12,6 +13,12 @@ class Chat extends Component
     public $input = '';
     public $conversations = [];
     public $messages = [];
+
+    public function mount()
+    {
+        // Load this user's conversations from database
+        $this->conversations = Conversation::all();
+    }
 
     public function sendMessage()
     {

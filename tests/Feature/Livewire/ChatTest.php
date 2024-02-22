@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Conversation;
 use App\Livewire\Chat;
 use Livewire\Livewire;
 
@@ -30,11 +31,10 @@ it('shows messages', function () {
 });
 
 it('shows conversations on sidebar', function () {
+    Conversation::factory()->create(['title' => 'John Doe']);
+    Conversation::factory()->create(['title' => 'Jane Doe']);
+
     Livewire::test(Chat::class)
-        ->set('conversations', [
-            ['id' => 1, 'title' => 'John Doe'],
-            ['id' => 2, 'title' => 'Jane Doe'],
-        ])
         ->assertSee('John Doe')
         ->assertSee('Jane Doe');
 });
