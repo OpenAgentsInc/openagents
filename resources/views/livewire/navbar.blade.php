@@ -12,9 +12,7 @@
     <div class="flex flex-row items-center">
         @auth
         @else
-            <x-button variant="link" class="text-gray hover:text-white">
-                <a href="/login" wire:navigate>Login</a>
-            </x-button>
+            <a href="/login" wire:navigate class="ml-8 text-gray hover:text-white">Login</a>
         @endauth
     </div>
 </div>
