@@ -41,9 +41,6 @@ class Chat extends Component
             $this->conversation = Conversation::findOrFail($id);
             $this->messages = $this->conversation->messages->sortBy('created_at')->toArray();
             $this->agent = $this->conversation->agent;
-        } else {
-            // If we're not in a chat, load the first agent (temporary)
-            $this->agent = Agent::first();
         }
 
         // Load this user's conversations from database
