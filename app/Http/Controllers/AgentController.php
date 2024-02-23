@@ -205,33 +205,33 @@ class AgentController extends Controller
     }
 
     // Show the agent page
-    public function show($id)
-    {
-        try {
-            $agent = Agent::findOrFail($id)
-                ->load([
-                    'tasks.steps',
-                    'brains.datapoints',
-                    'user' => function ($query) {
-                        $query->select('id', 'github_nickname', 'twitter_nickname')
-                            ->addSelect(\DB::raw('COALESCE(github_nickname, twitter_nickname) as username'));
-                    },
-                ]);
+    // public function show($id)
+    // {
+    //     try {
+    //         $agent = Agent::findOrFail($id)
+    //             ->load([
+    //                 'tasks.steps',
+    //                 'brains.datapoints',
+    //                 'user' => function ($query) {
+    //                     $query->select('id', 'github_nickname', 'twitter_nickname')
+    //                         ->addSelect(\DB::raw('COALESCE(github_nickname, twitter_nickname) as username'));
+    //                 },
+    //             ]);
 
-            $owner = $agent->user->username;
+    //         $owner = $agent->user->username;
 
-            $conversation = $agent->getUserConversation();
+    //         $conversation = $agent->getUserConversation();
 
-            return view('agent-view', [
-                'agent' => $agent,
-                'conversation' => $conversation,
-                'owner' => $owner,
-                'files' => $agent->files,
-            ]);
-        } catch (\Exception $e) {
-            return redirect('/');
-        }
-    }
+    //         return view('agent-view', [
+    //             'agent' => $agent,
+    //             'conversation' => $conversation,
+    //             'owner' => $owner,
+    //             'files' => $agent->files,
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return redirect('/');
+    //     }
+    // }
 
     public function old_chat($id)
     {

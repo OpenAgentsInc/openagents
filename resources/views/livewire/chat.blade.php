@@ -1,4 +1,4 @@
-<div class="flex h-screen w-full overflow-hidden bg-gray-900">
+<div class="flex h-screen w-full overflow-hidden">
     <div class="fixed top-0 left-0 h-screen w-[300px] bg-[#1e1e1e] z-10">
         <div class="flex flex-col h-full mt-4">
             <a wire:navigate href="{{ route('chat') }}" class="w-full px-4">
@@ -41,17 +41,20 @@
         <div
             class="fixed top-[60px] w-screen left-[300px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]">
         </div>
+        @if ($agent)
         <div class="fixed top-0 left-[300px] right-0 h-[60px] z-10">
             <div class="text-white flex items-center justify-between p-2 bg-black">
-                <div class="mt-1 cursor-pointer flex items-center">
+                <a href="{{ route('agent.show', ['id' => $agent->id ] )  }}" wire:navigate class="mt-1 cursor-pointer flex items-center">
                     <div class="ml-2 p-2 border border-darkgray rounded">
                         <x-icon name="code" class="w-6 h-6" />
                     </div>
+
                     <div class="ml-4 flex flex-col">
                         <span class="text-lg font-bold">{{ $agent->name }}</span>
                         <span class="text-sm text-gray">Created by OpenAgents</span>
                     </div>
-                </div>
+
+                </a>
                 <div class="mr-4">
                     <x-button variant="secondary" icon="share">
                         Share
@@ -59,7 +62,7 @@
                 </div>
             </div>
         </div>
-
+        @endif
 
         <div class="mt-[70px] mb-[5px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
