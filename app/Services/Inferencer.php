@@ -13,10 +13,9 @@ class Inferencer
         $input = [
             'input' => [
                 'text' => $input['input'],
-                'image_url' => 'https://private-user-images.githubusercontent.com/14167547/307157769-a949dbcb-afa7-4e0b-b341-3e9625f304fb.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MDg3MDMzNTEsIm5iZiI6MTcwODcwMzA1MSwicGF0aCI6Ii8xNDE2NzU0Ny8zMDcxNTc3NjktYTk0OWRiY2ItYWZhNy00ZTBiLWIzNDEtM2U5NjI1ZjMwNGZiLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNDAyMjMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjQwMjIzVDE1NDQxMVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTA3YzBiM2E5ZDVhMGNhNmY2ZjYzNzRiZTZkMDMxZGUwYWU1YTkzZDViMjkzNWI2MTU1NWFjYTgyOGFlODg4MzcmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JmFjdG9yX2lkPTAma2V5X2lkPTAmcmVwb19pZD0wIn0.fdl_fDZCP3cBnqMwkyUGKzH9tlNlrWmzkFyP5yTDouQ',
+                'image_url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg',
             ],
         ];
-        dd($input);
         $client = OpenAI::client(env('OPENAI_API_KEY'));
 
         if (gettype($input['input']) === 'string') {
@@ -77,26 +76,31 @@ class Inferencer
 
     private static function prepareMultiModalInference($input, Conversation $conversation)
     {
-        return [
-            ['role' => 'system',
+        $messages = [
+            [
+                'role' => 'system',
                 'content' => [
-                    'type' => 'text',
-                    'text' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
-                ]],
-            ['role' => 'user',
-                'content' => [
-                    'type' => 'text',
-                    'text' => $input['input']['text'],
+                    [
+                        'type' => 'text',
+                        'text' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
+                    ],
                 ],
             ],
-            ['role' => 'user',
+            [
+                'role' => 'user',
                 'content' => [
-                    'type' => 'image_url',
-                    'image_url' => [
-                        'url' => $input['input']['image_url'],
+                    [
+                        'type' => 'text',
+                        'text' => $input['input']['text'],
+                    ],
+                    [
+                        'type' => 'image_url',
+                        'image_url' => $input['input']['image_url'], // Directly use the provided image URL
                     ],
                 ],
             ],
         ];
+
+        return $messages;
     }
 }
