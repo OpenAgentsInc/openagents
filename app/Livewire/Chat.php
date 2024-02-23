@@ -49,13 +49,38 @@ class Chat extends Component
 
     public function sendMessage()
     {
-        dd($this->images);
         // Check if the user is authenticated
         if (! auth()->check()) {
             abort(403, 'Unauthorized action.');
         }
 
         $this->input = $this->body;
+
+        $imageDataArray = [];
+
+        // Handle file upload
+        if (! empty($this->images)) {
+            foreach ($this->images as $image) {
+                // Read the image file contents
+                $imageContents = $image->get();
+
+                // Encode the image contents to base64
+                $imageBase64 = base64_encode($imageContents);
+
+                // Collect the base64-encoded images
+                $imageDataArray[] = $imageBase64;
+            }
+        }
+
+        // If there are images, adjust the input for inference
+        if (! empty($imageDataArray)) {
+            // Assuming your Inferencer can handle JSON strings,
+            // encode the message and images together.
+            $this->input = json_encode([
+                'text' => $this->body,
+                'images' => $imageDataArray, // Pass an array of base64-encoded images
+            ]);
+        }
 
         // If the current conversation is null, create a new one
         if (! $this->conversation) {

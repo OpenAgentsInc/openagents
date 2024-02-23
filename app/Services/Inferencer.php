@@ -10,12 +10,25 @@ class Inferencer
 {
     public static function llmInference($input, Conversation $conversation, $streamFunction)
     {
-        $input = [
-            'input' => [
-                'text' => $input['input'],
-                'image_url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg',
-            ],
-        ];
+        $decodedInput = json_decode($input['input'], true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            // It's JSON, adjust handling for text and images
+            $text = $decodedInput['text'] ?? '';
+            $images = $decodedInput['images'] ?? [];
+            // Modify how you construct the input for the model here
+            // Possibly include both text and images
+        } else {
+            // It's plain text, proceed as before
+            $text = $input['input'];
+            $images = []; // No images
+        }
+
+        // $input = [
+        //     'input' => [
+        //         'text' => $input['input'],
+        //         'image_url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg',
+        //     ],
+        // ];
         $client = OpenAI::client(env('OPENAI_API_KEY'));
 
         if (gettype($input['input']) === 'string') {
