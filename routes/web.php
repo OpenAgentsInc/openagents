@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Auth\NostrAuthController;
+use App\Livewire\AgentShow;
 use App\Livewire\Chat;
 use App\Livewire\CreatePassword;
 use App\Livewire\Login;
@@ -17,7 +18,8 @@ Route::get('/', Splash::class)->name('home');
 Route::get('/chat', Chat::class)->name('chat'); // todo - put behind auth middleware
 Route::get('/chat/{id}', Chat::class)->name('chat.show');
 
-Route::post('/agent/{id}/run', [AgentController::class, 'run_task'])->name('agent.run_task');
+// Agent view
+Route::get('/agent/{id}', AgentShow::class)->name('agent.show');
 
 // Docs
 Route::get('/docs/{page}', [DocsController::class, 'show'])->name('docs.show');
