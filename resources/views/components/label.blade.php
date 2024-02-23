@@ -12,6 +12,6 @@ $sizeClasses = match($size) {
 };
 @endphp
 
-<label {{ $attributes->merge(['class' => "$sizeClasses font-medium leading-none cursor-pointer"]) }}>
+<label {{ $attributes->merge(['class' => "$sizeClasses font-bold leading-none cursor-pointer"]) }}>
     {{ $slot }}
 </label>
