@@ -10,7 +10,8 @@ export default {
     },
     colors: {
       black: '#000',
-      offblack: '#2C2C2D',
+      offblack: '#1e1e1e',
+      // offblack: '#2C2C2D',
       darkgray: '#3D3D40',
       gray: '#8B8585',
       lightgray: '#A7A7A7',
