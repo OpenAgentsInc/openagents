@@ -1,5 +1,5 @@
 <div class="flex h-screen w-full overflow-hidden bg-gray-900">
-    <div class="fixed top-0 left-0 h-screen w-[300px] bg-offblack z-10">
+    <div class="fixed top-0 left-0 h-screen w-[300px] bg-[#1e1e1e] z-10">
         <div class="flex flex-col h-full mt-4">
             <a wire:navigate href="{{ route('chat') }}" class="w-full px-4">
                 <x-button variant="primary" size="lg" icon="create" class="w-full">
