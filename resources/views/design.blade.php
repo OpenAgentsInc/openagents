@@ -10,9 +10,23 @@
             <div class="my-2 p-8 rounded-[8px] bg-offblack">
                 <h3 class="mb-4 text-gray">Buttons</h3>
 
-                <x-button variant="primary">Primary</x-button>
-                <x-button variant="secondary">Secondary</x-button>
-                <x-button variant="ghost">Ghost</x-button>
+                <div class="flex flex-row space-x-6">
+                    <x-button variant="primary" size="lg">Primary</x-button>
+                    <x-button variant="secondary" size="lg">Secondary</x-button>
+                    <x-button variant="ghost" size="lg">Ghost</x-button>
+                </div>
+
+                <div class="my-8 flex flex-row space-x-6">
+                    <x-button variant="primary" size="md">Primary</x-button>
+                    <x-button variant="secondary" size="md">Secondary</x-button>
+                    <x-button variant="ghost" size="md">Ghost</x-button>
+                </div>
+
+                <div class="flex flex-row space-x-6">
+                    <x-button variant="primary" size="sm">Primary</x-button>
+                    <x-button variant="secondary" size="sm">Secondary</x-button>
+                    <x-button variant="ghost" size="sm">Ghost</x-button>
+                </div>
             </div>
 
 

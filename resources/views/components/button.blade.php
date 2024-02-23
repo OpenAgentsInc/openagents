@@ -9,21 +9,21 @@
         default => 'bg-white text-black shadow hover:bg-white/90'
     };
     $sizeClasses = match($size) {
-        'sm' => 'h-8 px-3 text-xs',
-        'lg' => 'h-[48px] px-6 w-full text-lg',
-        'icon' => 'h-9 w-9',
-        default => 'h-9 px-4'
+        'sm' => '',
+        'md' => '',
+        'lg' => 'h-[48px]',
+        default => ''
     };
     $iconClasses = match($size) {
-        'sm' => 'h-4 w-4',
-        'lg' => 'h-8 w-8',
-        'icon' => 'h-5 w-5',
-        default => 'h-4 w-4'
+        'sm' => '',
+        'md' => '',
+        'lg' => '',
+        default => ''
     };
 @endphp
 
 <button {{ $attributes->merge(['class' => "$baseClasses $variantClasses $sizeClasses"]) }}>
-    <span class="flex-1 text-left">
+    <span class="flex-1">
         {{ $slot }}
     </span>
     @if($icon)
