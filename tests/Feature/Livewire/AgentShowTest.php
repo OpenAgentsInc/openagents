@@ -4,6 +4,7 @@ use App\Livewire\AgentShow;
 use Livewire\Livewire;
 
 it('renders successfully', function () {
-    Livewire::test(AgentShow::class)
+    $agent = \App\Models\Agent::factory()->create();
+    Livewire::test(AgentShow::class, ['id' => $agent->id])
         ->assertStatus(200);
 });
