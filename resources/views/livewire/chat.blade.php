@@ -1,5 +1,5 @@
 <div class="flex h-screen w-full overflow-hidden">
-    <div class="fixed top-0 left-0 h-screen w-[300px] bg-[#1e1e1e] z-10">
+    <div class="fixed top-0 left-0 h-screen w-[300px] bg-offblack z-10">
         <div class="flex flex-col h-full mt-4">
             <a wire:navigate href="{{ route('chat') }}" class="w-full px-4">
                 <x-button variant="primary" size="lg" icon="create" class="w-full">
@@ -41,40 +41,108 @@
         <div
             class="fixed top-[60px] w-screen left-[300px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]">
         </div>
-        @if ($agent)
-        <div class="fixed top-0 left-[300px] right-0 h-[60px] z-10">
-            <div class="text-white flex items-center justify-between p-2 bg-black">
-                <a href="{{ route('agent.show', ['id' => $agent->id ] )  }}" wire:navigate class="mt-1 cursor-pointer flex items-center">
-                    <div class="ml-2 p-2 border border-darkgray rounded">
-                        <x-icon name="code" class="w-6 h-6" />
-                    </div>
+        @if($agent)
+            <div class="fixed top-0 left-[300px] right-0 h-[60px] z-10">
+                <div class="text-white flex items-center justify-between p-2 bg-black">
+                    <a href="{{ route('agent.show', ['id' => $agent->id ] ) }}"
+                        wire:navigate class="mt-1 cursor-pointer flex items-center">
+                        <div class="ml-2 p-2 border border-darkgray rounded">
+                            <x-icon name="code" class="w-6 h-6" />
+                        </div>
 
-                    <div class="ml-4 flex flex-col">
-                        <span class="text-lg font-bold">{{ $agent->name }}</span>
-                        <span class="text-sm text-gray">Created by OpenAgents</span>
-                    </div>
+                        <div class="ml-4 flex flex-col">
+                            <span class="text-lg font-bold">{{ $agent->name }}</span>
+                            <span class="text-sm text-gray">Created by OpenAgents</span>
+                        </div>
 
-                </a>
-                <div class="mr-4">
-                    <x-button variant="secondary" icon="share">
-                        Share
-                    </x-button>
+                    </a>
+                    <div class="mr-4">
+                        <x-button variant="secondary" icon="share">
+                            Share
+                        </x-button>
+                    </div>
                 </div>
             </div>
-        </div>
         @endif
 
-        @if (!$agent)
-        <!-- big thing in the center -->
-        <div class="flex items-center justify-center h-full">
-            <div class="flex flex-col items-center">
-                <x-application-logo class="w-24 h-24" />
-                <div class="mt-4 text-white text-center">
-                    <h1>OpenAgents Chat</h1>
-                    <p class="text-gray">Select an agent to start a chat</p>
+        @if(!$agent)
+            <!-- big thing in the center -->
+            <div class="-mt-8 flex items-center justify-center h-full">
+                <div class="flex flex-col items-center">
+                    <x-application-logo class="w-24 h-24" />
+                    <div class="mt-4 text-white text-center">
+                        <h1>OpenAgents Chat</h1>
+                        <p class="text-gray">Select an agent to start a chat</p>
+                    </div>
+
+
+                    <div class="mt-3 flex justify-center">
+                        <div x-data="{
+                                open: false,
+                                toggle() {
+                                    if (this.open) {
+                                        return this.close()
+                                    }
+
+                                    this.$refs.button.focus()
+
+                                    this.open = true
+                                },
+                                close(focusAfter) {
+                                    if (! this.open) return
+
+                                    this.open = false
+
+                                    focusAfter && focusAfter.focus()
+                                }
+                            }"
+                            x-on:keydown.escape.prevent.stop="close($refs.button)"
+                            x-on:focusin.window="! $refs.panel.contains($event.target) && close()"
+                            x-id="['dropdown-button']" class="relative">
+                            <!-- Button -->
+                            <button x-ref="button" x-on:click="toggle()" :aria-expanded="open"
+                                :aria-controls="$id('dropdown-button')" type="button"
+                                class="flex items-center gap-2 bg-offblack px-5 py-2.5 rounded-md shadow">
+                                Junior Developer
+
+                                <!-- Heroicon: chevron-down -->
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400"
+                                    viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd"
+                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                        clip-rule="evenodd" />
+                                </svg>
+                            </button>
+
+                            <!-- Panel -->
+                            <div x-ref="panel" x-show="open" x-transition.origin.top.left
+                                x-on:click.outside="close($refs.button)" :id="$id('dropdown-button')"
+                                style="display: none;" class="absolute left-0 mt-2 w-44 rounded-md bg-offblack shadow-md">
+                                <a href="#"
+                                    class="flex items-center gap-2 w-full first-of-type:rounded-t-md last-of-type:rounded-b-md px-4 py-2.5 text-left text-sm hover:bg-darkgray disabled:text-gray-500">
+                                    Junior Developer
+                                </a>
+
+
+                                <a href="#"
+                                    class="flex items-center gap-2 w-full first-of-type:rounded-t-md last-of-type:rounded-b-md px-4 py-2.5 text-left text-sm hover:bg-darkgray disabled:text-gray-500">
+                                    Bitcoin 101 Instructor
+                                </a>
+
+                                <a href="#"
+                                    class="flex items-center gap-2 w-full first-of-type:rounded-t-md last-of-type:rounded-b-md px-4 py-2.5 text-left text-sm hover:bg-darkgray disabled:text-gray-500">
+                                    VC Associate
+                                </a>
+
+                                <a href="#"
+                                    class="flex items-center gap-2 w-full first-of-type:rounded-t-md last-of-type:rounded-b-md px-4 py-2.5 text-left text-sm hover:bg-darkgray disabled:text-gray-500">
+                                    Your Waifu
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
         @endif
 
         <div class="mt-[70px] mb-[5px] flex-1 overflow-auto bg-gray-900 text-white">
@@ -135,12 +203,10 @@
                                             class="hidden">
                                     </div>
                                 </div>
-                                <button id="send-message"
-                                    class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5
+                                <button id="send-message" class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5
                                     text-white transition-colors enabled:bg-black disabled:text-gray-400
                                     disabled:opacity-25 dark:border-white dark:bg-white dark:hover:bg-white md:bottom-3
                                     md:right-3"
-                                    @if(!auth()->check()) disabled @endif
                                     >
                                     <span class="" data-state="closed">
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="text-gray">
