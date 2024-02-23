@@ -10,6 +10,35 @@ class Inferencer
 {
     public static function llmInference($input, Conversation $conversation, $streamFunction)
     {
+        $client = OpenAI::client(env('OPENAI_API_KEY'));
+
+        if (gettype($input['input']) === 'string') {
+            $model = 'gpt-4';
+            $messages = self::prepareTextInference($input, $conversation);
+        } else {
+            //Handle multimodal input
+            $model = 'gpt-4-vision-preview';
+            $messages = self::prepareMultiModalInference($input, $conversation);
+        }
+
+        $stream = $client->chat()->createStreamed([
+            'model' => $model,
+            'messages' => $messages,
+            'max_tokens' => 3024,
+        ]);
+
+        $content = '';
+        foreach ($stream as $response) {
+            $token = $response['choices'][0]['delta']['content'] ?? '';
+            $streamFunction($response);
+            $content .= $token;
+        }
+
+        return ['output' => $content];
+    }
+
+    private static function prepareTextInference($input, Conversation $conversation)
+    {
         $messages = [
             [
                 'role' => 'system',
@@ -36,22 +65,31 @@ class Inferencer
         // Add the current user input as the last element
         $messages[] = ['role' => 'user', 'content' => $input['input']];
 
-        $client = OpenAI::client(env('OPENAI_API_KEY'));
-        $stream = $client->chat()->createStreamed([
-            'model' => 'gpt-4',
-            'messages' => $messages,
-            'max_tokens' => 3024,
-        ]);
+        return $messages;
+    }
 
-        $content = '';
-        foreach ($stream as $response) {
-            $token = $response['choices'][0]['delta']['content'] ?? '';
-            $streamFunction($response);
-            $content .= $token;
-        }
-
+    private static function prepareMultiModalInference($input, Conversation $conversation)
+    {
         return [
-            'output' => $content,
+            ['role' => 'system',
+                'content' => [
+                    'type' => 'text',
+                    'text' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
+                ]],
+            ['role' => 'user',
+                'content' => [
+                    'type' => 'text',
+                    'text' => $input['input']['text'],
+                ],
+            ],
+            ['role' => 'user',
+                'content' => [
+                    'type' => 'image_url',
+                    'image_url' => [
+                        'url' => $input['input']['image_url'],
+                    ],
+                ],
+            ],
         ];
     }
 }
