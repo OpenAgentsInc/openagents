@@ -10,6 +10,13 @@ class Inferencer
 {
     public static function llmInference($input, Conversation $conversation, $streamFunction)
     {
+        $input = [
+            'input' => [
+                'text' => $input['input'],
+                'image_url' => 'https://private-user-images.githubusercontent.com/14167547/307157769-a949dbcb-afa7-4e0b-b341-3e9625f304fb.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MDg3MDMzNTEsIm5iZiI6MTcwODcwMzA1MSwicGF0aCI6Ii8xNDE2NzU0Ny8zMDcxNTc3NjktYTk0OWRiY2ItYWZhNy00ZTBiLWIzNDEtM2U5NjI1ZjMwNGZiLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNDAyMjMlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjQwMjIzVDE1NDQxMVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTA3YzBiM2E5ZDVhMGNhNmY2ZjYzNzRiZTZkMDMxZGUwYWU1YTkzZDViMjkzNWI2MTU1NWFjYTgyOGFlODg4MzcmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JmFjdG9yX2lkPTAma2V5X2lkPTAmcmVwb19pZD0wIn0.fdl_fDZCP3cBnqMwkyUGKzH9tlNlrWmzkFyP5yTDouQ',
+            ],
+        ];
+        dd($input);
         $client = OpenAI::client(env('OPENAI_API_KEY'));
 
         if (gettype($input['input']) === 'string') {
