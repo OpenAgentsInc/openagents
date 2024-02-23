@@ -12,13 +12,13 @@
         'sm' => 'h-[24px] px-[6px]',
         'md' => 'h-[32px] px-[8px]',
         'lg' => 'h-[48px] px-[12px]',
-        default => ''
+        default => 'h-[32px] px-[8px]'
     };
     $iconClasses = match($size) {
-        'sm' => '',
-        'md' => '',
-        'lg' => '',
-        default => ''
+        'sm' => 'w-[12px] h-[12px]',
+        'md' => 'w-[16px] h-[16px]',
+        'lg' => 'w-[24px] h-[24px]',
+        default => 'w-[16px] h-[16px]'
     };
 @endphp
 
