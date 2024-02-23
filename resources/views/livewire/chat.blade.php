@@ -73,11 +73,13 @@
             @endif
         </div>
 
+<div class="h-16 w-full">
 @if($images)
     @foreach($images as $image)
-        <img src="{{ $image->temporaryUrl() }}">
+        <img src="{{ $image->temporaryUrl() }}" />
     @endforeach
 @endif
+</div>
 
         <div class="fixed bottom-0 left-[300px] right-0 h-[80px] px-4 py-3 flex items-center z-10">
             <div class="fixed bottom-0 w-screen left-[300px] right-0 h-[70px] bg-black z-5"></div>

@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Conversation;
-use App\Models\Message;
 use OpenAI;
 
 class Inferencer
@@ -11,35 +10,31 @@ class Inferencer
     public static function llmInference($input, Conversation $conversation, $streamFunction)
     {
         $decodedInput = json_decode($input['input'], true);
-        if (json_last_error() === JSON_ERROR_NONE) {
-            // It's JSON, adjust handling for text and images
+
+        // Determine if input is multimodal (text + images)
+        if (json_last_error() === JSON_ERROR_NONE && isset($decodedInput['images'])) {
+            // It's JSON and has images, adjust handling for text and images
             $text = $decodedInput['text'] ?? '';
             $images = $decodedInput['images'] ?? [];
-            // Modify how you construct the input for the model here
-            // Possibly include both text and images
-        } else {
-            // It's plain text, proceed as before
-            $text = $input['input'];
-            $images = []; // No images
-        }
 
-        // $input = [
-        //     'input' => [
-        //         'text' => $input['input'],
-        //         'image_url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg',
-        //     ],
-        // ];
-        $client = OpenAI::client(env('OPENAI_API_KEY'));
+            // Assuming images are base64, we need to adjust how we pass this to OpenAI
+            // For demonstration, let's assume a simplified scenario where we just pass the text and first image
+            $inputForModel = [
+                'text' => $text,
+                // Assuming 'images' is an array of base64-encoded strings
+                'image_url' => $images[0] ?? null, // Example: Taking the first image for simplicity
+            ];
 
-        if (gettype($input['input']) === 'string') {
-            $model = 'gpt-4';
-            $messages = self::prepareTextInference($input, $conversation);
-        } else {
-            //Handle multimodal input
             $model = 'gpt-4-vision-preview';
-            $messages = self::prepareMultiModalInference($input, $conversation);
+            $messages = self::prepareMultiModalInference($inputForModel, $conversation);
+        } else {
+            // It's plain text or not properly decoded, proceed as before
+            $text = $input['input'];
+            $model = 'gpt-4';
+            $messages = self::prepareTextInference($text, $conversation);
         }
 
+        $client = OpenAI::client(env('OPENAI_API_KEY'));
         $stream = $client->chat()->createStreamed([
             'model' => $model,
             'messages' => $messages,
@@ -56,60 +51,80 @@ class Inferencer
         return ['output' => $content];
     }
 
-    private static function prepareTextInference($input, Conversation $conversation)
+    private static function prepareTextInference($text, Conversation $conversation)
     {
         $messages = [
+            // System message
             [
                 'role' => 'system',
                 'content' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
             ],
+            // User message
+            ['role' => 'user', 'content' => $text],
         ];
-
-        $previousMessages = Message::where('conversation_id', $conversation->id)
-            ->orderBy('created_at', 'asc')
-            ->take(15)
-            ->get()
-            ->toArray();
-
-        foreach ($previousMessages as $msg) {
-            $messages[] = [
-                'role' => $msg['sender'] === 'user' ? 'user' : 'assistant',
-                'content' => $msg['body'],
-            ];
-        }
-
-        // But shave off the most recent message (since we added it to DB already)
-        array_pop($messages);
-
-        // Add the current user input as the last element
-        $messages[] = ['role' => 'user', 'content' => $input['input']];
 
         return $messages;
     }
 
     private static function prepareMultiModalInference($input, Conversation $conversation)
     {
+        // Initial text message from the system
+        $systemMessage = [
+            'role' => 'system',
+            'content' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
+        ];
+
+        // User message containing both text and image(s)
+        $userMessageContent = [];
+
+        // Add text part
+        if (! empty($input['text'])) {
+            $userMessageContent[] = [
+                'type' => 'text',
+                'text' => $input['text'],
+            ];
+        }
+
+        // Add image part(s)
+        if (! empty($input['image_url'])) {
+            $base64prefixedPng = 'data:image/png;base64,'.$input['image_url'];
+            // foreach ($input['input']['images'] as $imageUrl) {
+            $userMessageContent[] = [
+                'type' => 'image_url',
+                // 'image_url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg', // $input['image_url'],
+                'image_url' => $base64prefixedPng,
+                // 'image_url' => $input['image_url'], // Ensure this is a string URL, not an array
+            ];
+
+        }
+
+        $userMessage = [
+            'role' => 'user',
+            'content' => $userMessageContent, // This now directly matches the expected structure
+        ];
+
+        return [$systemMessage, $userMessage];
+    }
+
+    private static function old_prepareMultiModalInference($input, Conversation $conversation)
+    {
         $messages = [
+            // System message
             [
                 'role' => 'system',
                 'content' => [
-                    [
-                        'type' => 'text',
-                        'text' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
-                    ],
+                    'type' => 'text',
+                    'text' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
                 ],
             ],
+            // User message including both text and an image
             [
                 'role' => 'user',
                 'content' => [
-                    [
-                        'type' => 'text',
-                        'text' => $input['input']['text'],
-                    ],
-                    [
-                        'type' => 'image_url',
-                        'image_url' => $input['input']['image_url'], // Directly use the provided image URL
-                    ],
+                    ['type' => 'text', 'text' => $input['text']],
+                    ['type' => 'image_url', 'image_url' => [
+                        'url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg', // $input['image_url'],
+                    ]],
                 ],
             ],
         ];
