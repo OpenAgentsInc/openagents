@@ -6,19 +6,30 @@ use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Task;
 use App\Services\Inferencer;
-use Livewire\Component;
-use Livewire\Attributes\On;
 use League\CommonMark\CommonMarkConverter;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
+    use WithFileUploads;
+
+    public $images = [];
+
     public $body = '';
+
     public $input = '';
+
     public Agent $agent;
+
     public $conversation;
+
     public $conversations = [];
+
     public $messages = [];
+
     public $pending = false;
+
     private $commonMarkConverter;
 
     public function mount($id = null)
@@ -38,15 +49,16 @@ class Chat extends Component
 
     public function sendMessage()
     {
+        dd($this->images);
         // Check if the user is authenticated
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403, 'Unauthorized action.');
         }
 
         $this->input = $this->body;
 
         // If the current conversation is null, create a new one
-        if (!$this->conversation) {
+        if (! $this->conversation) {
             $this->agent = Agent::first();
             $this->conversation = Conversation::create([
                 'title' => 'New Conversation',
@@ -71,7 +83,7 @@ class Chat extends Component
 
     public function runTask()
     {
-        $messageContent = "";
+        $messageContent = '';
 
         $logFunction = function ($message) {
             $this->stream(
@@ -81,7 +93,7 @@ class Chat extends Component
         };
 
         $streamFunction = function ($response) use (&$messageContent) {
-            $token = $response['choices'][0]['delta']['content'] ?? "";
+            $token = $response['choices'][0]['delta']['content'] ?? '';
             $this->stream(
                 to: 'streamtext',
                 content: $token
@@ -100,7 +112,7 @@ class Chat extends Component
         // Append the response to the chat
         $this->messages[] = [
             'body' => $messageContent,
-            'sender' => 'agent'
+            'sender' => 'agent',
         ];
 
         $this->pending = false;
