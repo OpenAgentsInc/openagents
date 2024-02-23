@@ -48,7 +48,7 @@
                         <x-icon name="code" class="w-6 h-6" />
                     </div>
                     <div class="ml-4 flex flex-col">
-                        <span class="text-lg font-bold">Junior Developer</span>
+                        <span class="text-lg font-bold">{{ $agent->name }}</span>
                         <span class="text-sm text-gray">Created by OpenAgents</span>
                     </div>
                 </div>
