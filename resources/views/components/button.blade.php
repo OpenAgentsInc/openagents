@@ -1,17 +1,17 @@
 @props(['variant' => 'primary', 'size' => 'default', 'icon' => null])
 
 @php
-    $baseClasses = 'inline-flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
+    $baseClasses = 'rounded-[6px] font-bold inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
     $variantClasses = match($variant) {
-        'primary' => 'bg-white text-black shadow hover:bg-white/90',
-        'secondary' => 'border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground',
-        'ghost' => 'hover:bg-accent hover:text-accent-foreground',
-        default => 'bg-white text-black shadow hover:bg-white/90'
+        'primary' => 'bg-white text-black',
+        'secondary' => 'border border-2 bg-transparent',
+        'ghost' => '',
+        default => 'bg-white text-black'
     };
     $sizeClasses = match($size) {
-        'sm' => '',
-        'md' => '',
-        'lg' => 'h-[48px]',
+        'sm' => 'h-[24px] px-[6px]',
+        'md' => 'h-[32px] px-[8px]',
+        'lg' => 'h-[48px] px-[12px]',
         default => ''
     };
     $iconClasses = match($size) {
