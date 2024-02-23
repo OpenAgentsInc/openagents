@@ -6,19 +6,30 @@ use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Task;
 use App\Services\Inferencer;
-use Livewire\Component;
-use Livewire\Attributes\On;
 use League\CommonMark\CommonMarkConverter;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
+    use WithFileUploads;
+
+    public $images = [];
+
     public $body = '';
+
     public $input = '';
+
     public Agent $agent;
+
     public $conversation;
+
     public $conversations = [];
+
     public $messages = [];
+
     public $pending = false;
+
     private $commonMarkConverter;
 
     public function mount($id = null)
@@ -39,14 +50,40 @@ class Chat extends Component
     public function sendMessage()
     {
         // Check if the user is authenticated
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403, 'Unauthorized action.');
         }
 
         $this->input = $this->body;
 
+        $imageDataArray = [];
+
+        // Handle file upload
+        if (! empty($this->images)) {
+            foreach ($this->images as $image) {
+                // Read the image file contents
+                $imageContents = $image->get();
+
+                // Encode the image contents to base64
+                $imageBase64 = base64_encode($imageContents);
+
+                // Collect the base64-encoded images
+                $imageDataArray[] = $imageBase64;
+            }
+        }
+
+        // If there are images, adjust the input for inference
+        if (! empty($imageDataArray)) {
+            // Assuming your Inferencer can handle JSON strings,
+            // encode the message and images together.
+            $this->input = json_encode([
+                'text' => $this->body,
+                'images' => $imageDataArray, // Pass an array of base64-encoded images
+            ]);
+        }
+
         // If the current conversation is null, create a new one
-        if (!$this->conversation) {
+        if (! $this->conversation) {
             $this->agent = Agent::first();
             $this->conversation = Conversation::create([
                 'title' => 'New Conversation',
@@ -71,7 +108,7 @@ class Chat extends Component
 
     public function runTask()
     {
-        $messageContent = "";
+        $messageContent = '';
 
         $logFunction = function ($message) {
             $this->stream(
@@ -81,7 +118,7 @@ class Chat extends Component
         };
 
         $streamFunction = function ($response) use (&$messageContent) {
-            $token = $response['choices'][0]['delta']['content'] ?? "";
+            $token = $response['choices'][0]['delta']['content'] ?? '';
             $this->stream(
                 to: 'streamtext',
                 content: $token
@@ -100,7 +137,7 @@ class Chat extends Component
         // Append the response to the chat
         $this->messages[] = [
             'body' => $messageContent,
-            'sender' => 'agent'
+            'sender' => 'agent',
         ];
 
         $this->pending = false;
