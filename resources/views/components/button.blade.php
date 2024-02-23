@@ -23,8 +23,9 @@
 @endphp
 
 <button {{ $attributes->merge(['class' => "$baseClasses $variantClasses $sizeClasses"]) }}>
-    <span class="flex-1">
+    <x-label :size="$size">
         {{ $slot }}
+    </x-label>
     </span>
     @if($icon)
         <span class="ml-2">

@@ -1,4 +1,17 @@
-<label
-    {{ $attributes->merge(['class' => 'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70']) }}>
+@props(['size' => 'default'])
+
+@php
+// Define classes based on the size
+$sizeClasses = match($size) {
+    'xs' => 'text-[12px]',
+    'sm' => 'text-[14px]',
+    'md' => 'text-[16px]',
+    'lg' => 'text-[20px]',
+    'xl' => 'text-[24px]',
+    default => 'text-[16px]'
+};
+@endphp
+
+<label {{ $attributes->merge(['class' => "$sizeClasses font-medium leading-none cursor-pointer"]) }}>
     {{ $slot }}
 </label>
