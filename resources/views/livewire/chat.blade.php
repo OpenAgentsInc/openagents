@@ -64,6 +64,30 @@
         </div>
         @endif
 
+        @if (!$agent)
+        <div class="fixed top-0 left-[300px] right-0 h-[60px] z-10">
+            <div class="text-white">
+                <div class="flex items-center justify-between p-2 bg-black">
+                    <div class="ml-4 flex flex-col">
+                        <span class="text-lg font-bold">Agent Chat</span>
+                        <span class="text-sm text-gray">Pick your agent</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- big thing in the center -->
+        <div class="flex items-center justify-center h-full">
+            <div class="flex flex-col items-center">
+                <x-application-logo class="w-24 h-24" />
+                <div class="mt-4 text-white text-center">
+                    <p class="text-lg font-bold">Welcome to Agent Chat</p>
+                    <p class="text-sm text-gray">Select an agent to start a chat</p>
+                </div>
+            </div>
+        </div>
+        @endif
+
         <div class="mt-[70px] mb-[5px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
                 @php
