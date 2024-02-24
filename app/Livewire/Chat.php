@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Jobs\SummarizeConversation;
 use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Task;
@@ -41,6 +42,10 @@ class Chat extends Component
             $this->conversation = Conversation::findOrFail($id);
             $this->messages = $this->conversation->messages->sortBy('created_at')->toArray();
             $this->agent = $this->conversation->agent;
+
+            if($this->conversation->title === "New Conversation") {
+                SummarizeConversation::dispatch($this->conversation);
+            }
         }
 
         // Load this user's conversations from database - TODO: Limit

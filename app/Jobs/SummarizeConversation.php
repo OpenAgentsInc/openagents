@@ -37,7 +37,7 @@ class SummarizeConversation implements ShouldQueue
             $summary = $this->summarizeWithGateway(new GPUtopiaGateway(), $this->conversation);
         } catch (Exception $e) {
             // If GPUtopia fails, fall back to OpenAI
-            report($e); // Optional: Report or log the exception
+            // report($e); // Optional: Report or log the exception
             $summary = $this->summarizeWithGateway(new OpenAIGateway(), $this->conversation);
         }
 
