@@ -15,10 +15,9 @@ test('user can view a published agent listing', function () {
 });
 
 test('user cannot view an unpublished agent listing', function () {
-    $agent = Agent::factory()->create([
+    $agent = Agent::factory()->unpublished()->create([
         'name' => 'Test Agent',
         'description' => 'This is a test agent',
-        'published_at' => null,
     ]);
 
     $this->get('/agent/' . $agent->id)

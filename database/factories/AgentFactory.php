@@ -29,11 +29,17 @@ class AgentFactory extends Factory
         ];
     }
 
-    // add published state
     public function published(): self
     {
         return $this->state(fn (array $attributes) => [
             'published_at' => now(),
+        ]);
+    }
+
+    public function unpublished(): self
+    {
+        return $this->state(fn (array $attributes) => [
+            'published_at' => null,
         ]);
     }
 }
