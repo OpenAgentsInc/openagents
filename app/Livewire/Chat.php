@@ -43,7 +43,7 @@ class Chat extends Component
             $this->agent = $this->conversation->agent;
         }
 
-        // Load this user's conversations from database
+        // Load this user's conversations from database - TODO: Limit
         $this->conversations = Conversation::all();
     }
 
