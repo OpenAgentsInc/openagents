@@ -18,6 +18,7 @@ return new class extends Migration {
             $table->string('description');
             $table->string('instructions');
             $table->string('welcome_message');
+            $table->timestamp('published_at')->nullable();
             $table->timestamps();
         });
     }

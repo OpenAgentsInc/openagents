@@ -28,4 +28,12 @@ class AgentFactory extends Factory
             'user_id' => User::factory(),
         ];
     }
+
+    // add published state
+    public function published(): self
+    {
+        return $this->state(fn (array $attributes) => [
+            'published_at' => now(),
+        ]);
+    }
 }
