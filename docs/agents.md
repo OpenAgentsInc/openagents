@@ -52,6 +52,69 @@ curl https://openagents.com/api/v1/agents \
 ```
 </x-markdown>
 
+## List agents
+
+GET `https://openagents.com/api/v1/agents`
+
+Returns a list of agents.
+
+### Request parameters
+
+- `limit` (integer, optional): Defaults to 20. A limit on the number of objects to be returned, can range between 1 and 100.
+- `order` (string, optional): Defaults to `desc`. Sort order by the `created_at` timestamp of the objects. Use `asc` for ascending order and `desc` for descending order.
+- `after` (string, optional): A cursor for use in pagination. `after` is an agent ID that defines your place in the list. For instance, if you make a list request and receive 100 objects, ending with `agent_xyz`, your subsequent call can include `after=agent_xyz` in order to fetch the next page of the list.
+- `before` (string, optional): A cursor for use in pagination. `before` is an agent ID that defines your place in the list. For instance, if you make a list request and receive 100 objects, ending with `agent_xyz`, your subsequent call can include `before=agent_xyz` in order to fetch the previous page of the list.
+
+### Request example
+
+<x-markdown class="mt-6">
+```shell
+curl "https://openagents.com/api/v1/agents?order=desc&limit=20" \
+  -H "Authorization: Bearer $OPENAGENTS_API_KEY" \
+  -H 'Content-Type: application/json'
+```
+</x-markdown>
+
+### Response example
+
+<x-markdown class="mt-6">
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": 1,
+      "name": "Data Visualizer",
+      "description": "Analyzes .csv files and creates data visualizations.",
+      "instructions": "Upload a .csv file to begin.",
+      "welcome_message": "Welcome to Data Visualizer! Please upload a .csv file.",
+      "created_at": "2024-02-25T12:00:00Z"
+    },
+    {
+      "id": 2,
+      "name": "Financial Advisor",
+      "description": "Provides financial advice based on your spending habits.",
+      "instructions": "Link your bank account to begin.",
+      "welcome_message": "Welcome to Financial Advisor! Let's optimize your finances.",
+      "created_at": "2024-02-24T11:00:00Z"
+    },
+    {
+      "id": 3,
+      "name": "Fitness Coach",
+      "description": "Designs personalized workout plans.",
+      "instructions": "Enter your fitness goals to start.",
+      "welcome_message": "Welcome to Fitness Coach! Your journey to fitness begins now.",
+      "created_at": "2024-02-23T10:00:00Z"
+    }
+  ],
+  "first_id": 1,
+  "last_id": 3,
+  "has_more": false
+}
+```
+</x-markdown>
+
+
 ## Add file to agent
 POST https://openagents.com/api/v1/agents/{agent_id}/files
 
