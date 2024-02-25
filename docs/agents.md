@@ -114,6 +114,42 @@ curl "https://openagents.com/api/v1/agents?order=desc&limit=20" \
 ```
 </x-markdown>
 
+## Retrieve an agent
+
+GET `https://openagents.com/api/v1/agents/{agent_id}`
+
+Retrieves a single agent.
+
+### Path parameters
+
+- `agent_id` (string, required): The ID of the agent to retrieve.
+
+### Request example
+
+<x-markdown class="mt-6">
+```shell
+curl https://openagents.com/api/v1/agents/{agent_id} \
+  -H "Authorization: Bearer $OPENAGENTS_API_KEY" \
+  -H 'Content-Type: application/json'
+```
+</x-markdown>
+
+### Response example
+<x-markdown class="mt-6">
+```json
+{
+  "id": 42,
+  "name": "Data Visualizer",
+  "description": "Analyzes .csv files and creates data visualizations.",
+  "instructions": "Upload a .csv file to begin.",
+  "welcome_message": "Welcome to Data Visualizer! Please upload a .csv file.",
+  "created_at": "2024-02-25T12:00:00Z",
+  "balance": 0,
+  "user_id": 123,
+  "published_at": null
+}
+```
+</x-markdown>
 
 ## Add file to agent
 POST https://openagents.com/api/v1/agents/{agent_id}/files
