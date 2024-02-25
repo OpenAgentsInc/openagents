@@ -43,6 +43,14 @@
     @apply text-[16px] my-4;
   }
 
+  .docs ul {
+    @apply list-disc pl-6 my-2;
+  }
+
+  .docs li {
+    @apply text-[16px] text-lightgray leading-loose pl-2;
+  }
+
   .docs h1 {
     @apply mt-6 text-[32px];
   }
@@ -53,10 +61,6 @@
 
   .docs p {
     @apply text-lightgray leading-normal my-5;
-  }
-
-  .docs strong {
-    @apply text-white;
   }
 
   .docs a {

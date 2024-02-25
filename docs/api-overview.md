@@ -6,13 +6,13 @@ title: Overview
 
 The OpenAgents API helps developers define and interact with agents programmatically.
 
-## Concepts
+## Taxonomy
 
-* Agent - An AI assistant or long-running process
-* Thread - A sequence of Messages
-* Message - A chat message
-* File - Agents can have one or more files
-* Run - An execution of a flow
-* Flow - A directed set of agent nodes
-* Node - An agent action
-* Plugin - A special Node type with logic encapsulated in a WASM binary
+* **Agent** - An AI entity executing defined tasks
+* **Thread** - A message chain between user and agent
+* **Message** - A single communication in a thread
+* **File** - Documents processed or created by agents
+* **Run** - The active execution of an agent flow
+* **Flow** - A sequence of nodes
+* **Node** - An individual task within a flow
+* **Plugin** - A WebAssembly binary extending agent functionality
