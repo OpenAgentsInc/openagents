@@ -4,7 +4,7 @@ title: Agents
 
 # Agents API
 
-Developers can use the Agents API to interact with agents.
+Interact with agents.
 
 ## Create agent
 
@@ -22,16 +22,5 @@ curl https://openagents.com/api/v1/agents \
 ```
 </x-markdown>
 
-## Uploading files
-
-POST https://openagents.com/api/v1/files
-
-
-## Adding files to agents
+## Add file to agent
 POST https://openagents.com/api/v1/agents/{agent_id}/files
-
-## Creating threads
-POST https://openagents.com/api/v1/threads
-
-## Adding a message to a thread
-POST https://openagents.com/api/v1/threads/{thread_id}/messages
