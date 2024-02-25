@@ -25,7 +25,7 @@ Example Nodes include: API endpoints, conditional logic, data parsing, and third
 
 Nodes can be created by community developers by uploading WASM plugins.
 
-Plugins are special type of Node that allow for bespoke operations and enhanced capabilities.
+Plugins are a special type of Node that allows for bespoke operations and enhanced capabilities.
 
 Each Node may have an associated fee, payable to its creator upon use.
 
