@@ -17,6 +17,7 @@ class DocsController extends Controller
     ];
 
     protected $apiDocsInOrder = [
+        'api-overview.md',
         'agents.md',
         'threads.md',
         'messages.md',
