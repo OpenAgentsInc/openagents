@@ -2,7 +2,11 @@
 title: Plugins
 ---
 
-# Plugins
+# Plugins API
+
+Interact with WASM plugins.
+
+## misc
 
 Build agents from plugins
 

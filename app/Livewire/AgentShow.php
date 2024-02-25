@@ -11,7 +11,8 @@ class AgentShow extends Component
 
     public function mount($id = null)
     {
-        $this->agent = Agent::findOrFail($id);
+        // find Agent only where published
+        $this->agent = Agent::where('id', $id)->whereNotNull('published_at')->firstOrFail();
     }
 
     public function render()

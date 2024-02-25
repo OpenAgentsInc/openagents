@@ -10,12 +10,22 @@ class DocsController extends Controller
 {
     protected $docsInOrder = [
         'introduction.md',
-        'plugins.md',
         'agentgraph.md',
         'payments.md',
-        'api.md',
+        'bounties.md',
         'screencasts.md',
-        'bounties.md'
+    ];
+
+    protected $apiDocsInOrder = [
+        'api-overview.md',
+        'agents.md',
+        'threads.md',
+        'messages.md',
+        'files.md',
+        'runs.md',
+        'flows.md',
+        'nodes.md',
+        'plugins.md',
     ];
 
     public function __construct(private Sheets $sheets)
@@ -38,11 +48,18 @@ class DocsController extends Controller
             return [$slug => $doc ? $doc->title : 'Untitled'];
         });
 
+        $apiDocumentsList = collect($this->apiDocsInOrder)->mapWithKeys(function ($filePath) {
+            $slug = Str::before($filePath, '.md'); // Remove .md extension
+            $doc = $this->sheets->collection('docs')->get($slug);
+            return [$slug => $doc ? $doc->title : 'Untitled'];
+        });
+
         $activePage = $contentSlug;
 
         return view('docs.show', [
             'content' => $content,
             'documentsList' => $documentsList,
+            'apiDocumentsList' => $apiDocumentsList,
             'activePage' => $activePage,
         ]);
     }
