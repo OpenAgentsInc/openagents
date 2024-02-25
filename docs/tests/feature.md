@@ -8,8 +8,8 @@
 
 ## 2. Account Funding (Customer)
 - customer can navigate to funding page
-- customer can fund their account
-- customer cannot fund with invalid payment details
+- customer can fund their account with credit card
+- customer can fund their account with bitcoin lightning
 - customer receives confirmation after funding
 
 ## 3. Account Management
