@@ -44,7 +44,7 @@
   }
 
   .docs ul {
-    @apply list-disc pl-6 my-2;
+    @apply list-disc pl-6;
   }
 
   .docs li {
@@ -56,7 +56,15 @@
   }
 
   .docs h2 {
-    @apply mt-12 text-[24px];
+    @apply mt-[70px] text-[24px];
+  }
+
+  .docs h3 {
+    @apply mt-8 mb-4 text-[20px];
+  }
+
+  .docs h4 {
+    @apply mt-8 mb-4 text-[16px];
   }
 
   .docs p {

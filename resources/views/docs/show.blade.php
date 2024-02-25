@@ -30,7 +30,7 @@
         </div>
 
         <div class="flex justify-center min-h-screen pt-[62px]">
-            <div class="docs w-full max-w-5xl px-12 pb-16">
+            <div class="docs w-full max-w-5xl px-12 pb-20">
                 {!! $content->contents !!}
             </div>
         </div>
