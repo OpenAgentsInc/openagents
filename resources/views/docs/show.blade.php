@@ -14,6 +14,18 @@
                         </li>
                     @endforeach
                 </ul>
+
+                <h4 class="mt-12 text-darkgray">API</h4>
+
+                <ul>
+                    @foreach($apiDocumentsList as $slug => $title)
+                        <li
+                            class="text-lg font-bold my-4 {{ $activePage === $slug ? 'text-white' : 'text-gray' }}">
+                            <a wire:navigate
+                                href="{{ route('docs.show', $slug) }}">{{ $title }}</a>
+                        </li>
+                    @endforeach
+                </ul>
             </div>
         </div>
 
