@@ -44,6 +44,8 @@
 - user can send message in chat
 - user can receive message in chat
 - user cannot send message to unauthorized agent chat
+- user sees list of chats
+- user cannot see chats owned by other users
 
 ## 7. Financial Transactions (Builder)
 - builder can view earnings
