@@ -138,18 +138,22 @@ curl https://openagents.com/api/v1/agents/{agent_id} \
 <x-markdown class="mt-6">
 ```json
 {
-  "id": 42,
-  "name": "Data Visualizer",
-  "description": "Analyzes .csv files and creates data visualizations.",
-  "instructions": "Upload a .csv file to begin.",
-  "welcome_message": "Welcome to Data Visualizer! Please upload a .csv file.",
-  "created_at": "2024-02-25T12:00:00Z",
-  "balance": 0,
-  "user_id": 123,
-  "published_at": null
+  "success": true,
+  "data": {
+    "id": 42,
+    "name": "Data Visualizer",
+    "description": "Analyzes .csv files and creates data visualizations.",
+    "instructions": "Upload a .csv file to begin.",
+    "welcome_message": "Welcome to Data Visualizer! Please upload a .csv file.",
+    "created_at": "2024-02-25T12:00:00Z",
+    "balance": 0,
+    "user_id": 123,
+    "published_at": null
+  }
 }
 ```
 </x-markdown>
+
 
 ## Add file to agent
 POST https://openagents.com/api/v1/agents/{agent_id}/files
