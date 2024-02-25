@@ -10,11 +10,10 @@ class DocsController extends Controller
 {
     protected $docsInOrder = [
         'introduction.md',
-        'plugins.md',
         'agentgraph.md',
         'payments.md',
+        'bounties.md',
         'screencasts.md',
-        'bounties.md'
     ];
 
     protected $apiDocsInOrder = [
@@ -22,7 +21,10 @@ class DocsController extends Controller
         'threads.md',
         'messages.md',
         'files.md',
-        'runs.md'
+        'runs.md',
+        'flows.md',
+        'nodes.md',
+        'plugins.md',
     ];
 
     public function __construct(private Sheets $sheets)
