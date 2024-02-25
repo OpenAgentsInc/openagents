@@ -14,6 +14,15 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
-    return $request->user();
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::post('/agents', function (Request $request) {
+        return response()->json([
+            'name' => $request->name,
+            'description' => $request->description,
+        ], 201);
+    })->name('api.agents.store');
+
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    });
 });
