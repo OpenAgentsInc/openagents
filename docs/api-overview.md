@@ -11,7 +11,7 @@ The OpenAgents API helps developers define and interact with agents programmatic
 * **Agent** - An AI entity executing defined tasks
 * **Thread** - A message chain between user and agent
 * **Message** - A single communication in a thread
-* **File** - Documents processed or created by agents
+* **File** - Document processed or created by agents
 * **Run** - The active execution of an agent flow
 * **Flow** - A sequence of nodes
 * **Node** - An individual task within a flow
