@@ -19,9 +19,10 @@ class DocsController extends Controller
 
     protected $apiDocsInOrder = [
         'agents.md',
-        'conversations.md',
+        'threads.md',
         'messages.md',
         'files.md',
+        'runs.md'
     ];
 
     public function __construct(private Sheets $sheets)

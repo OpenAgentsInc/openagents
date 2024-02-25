@@ -4,8 +4,8 @@ title: Messages
 
 # Messages API
 
-Manage conversation messages.
+Manage messages in threads.
 
 ## Create message
 
-POST https://openagents.com/api/v1/conversations/{conversation_id}/messages
+POST https://openagents.com/api/v1/threads/{thread_id}/messages

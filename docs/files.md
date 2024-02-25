@@ -4,7 +4,7 @@ title: Files
 
 # Files API
 
-Interact with files.
+Manage files.
 
 ## Upload file
 
