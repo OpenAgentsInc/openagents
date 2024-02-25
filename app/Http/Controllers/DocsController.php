@@ -32,6 +32,11 @@ class DocsController extends Controller
     {
     }
 
+    public function apidoc()
+    {
+        return view('apidoc');
+    }
+
     public function show($page)
     {
         // Trim .md from page slug for fetching content
