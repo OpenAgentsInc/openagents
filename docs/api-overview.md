@@ -19,7 +19,7 @@ The OpenAgents API helps developers define and interact with agents programmatic
 
 ## Concepts
 
-Agents are built from modular components called Nodes and arranged into Flows.
+Agents are built from interchangeable building blocks called Nodes, which are organized into Flows to specify behavior.
 
 Example Nodes include: API endpoints, conditional logic, data parsing, and third-party integrations.
 
@@ -29,7 +29,7 @@ Each Node may have an associated fee, payable to its creator upon use.
 
 Nodes can reference an agent's Files.
 
-Nodes can execute Plugins.
+Plugins are special type of Node that allow for bespoke operations and enhanced capabilities.
 
 Users converse with Agents in conversations that are Threads of Messages.
 
