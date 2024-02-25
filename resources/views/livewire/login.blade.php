@@ -16,7 +16,7 @@
                 </div>
 
                 <div class="flex items-center justify-end mt-[32px]">
-                    <x-button variant="default"
+                    <x-button variant="primary"
                         class="w-full h-[48px] text-[20px] disabled:cursor-not-allowed disabled:opacity-75">
                         Get started
                         <svg wire:loading class="absolute right-0 animate-spin -ml-1 mr-3 h-5 w-5 text-black"
