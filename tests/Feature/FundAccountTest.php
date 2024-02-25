@@ -13,7 +13,7 @@ beforeEach(function () {
 });
 
 test('user can fund their account', function () {
-    $this->post('/fund-account', [
+    $this->post('/fund', [
         'payment_token' => $this->paymentGateway->getValidTestToken(),
         'amount' => 1000,
     ]);
