@@ -133,6 +133,13 @@ class Chat extends Component
 
         $output = $this->routeInput($this->input, $logFunction, $streamFunction);
 
+        // \dd($output);
+
+        // At this point if $messageContent is still empty, we haven't streamed, set $messageContent to $output['output]
+        if (empty($messageContent)) {
+            $messageContent = $output['output'];
+        }
+
         // $task = Task::where('name', 'Inference with web context')->firstOrFail();
 
         // $output = $task->agent->runTask($task, [

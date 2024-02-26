@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\AI\MistralAIGateway;
 use App\Models\Conversation;
 use OpenAI;
 
@@ -34,7 +35,8 @@ class Inferencer
             $model = 'gpt-4';
             $messages = self::prepareTextInference($text, $conversation);
             $client = new MistralAIGateway();
-            $inference = $client->inference();
+            $inference = $client->inference($messages);
+            $content = $inference['choices'][0]['message']['content'];
             return ['output' => $content];
         }
 
