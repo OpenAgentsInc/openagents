@@ -51,56 +51,13 @@ class Inferencer
             $model = 'mistral-large-latest';
             $messages = self::prepareTextInference($text, $conversation);
             $client = new MistralAIGateway();
+            dd($messages);
             $content = $client->chat()->createStreamed([
                 'model' => $model,
                 'messages' => $messages,
                 'max_tokens' => 3024,
                 'stream_function' => $streamFunction
             ]);
-        }
-
-        return ['output' => $content];
-    }
-
-    public static function llmInference_old($input, Conversation $conversation, $streamFunction)
-    {
-        $decodedInput = json_decode($input['input'], true);
-
-        // Determine if input is multimodal (text + images)
-        if (json_last_error() === JSON_ERROR_NONE && isset($decodedInput['images'])) {
-            // It's JSON and has images, adjust handling for text and images
-            $text = $decodedInput['text'] ?? '';
-            $images = $decodedInput['images'] ?? [];
-
-            // Assuming images are base64, we need to adjust how we pass this to OpenAI
-            // For demonstration, let's assume a simplified scenario where we just pass the text and first image
-            $inputForModel = [
-                'text' => $text,
-                // Assuming 'images' is an array of base64-encoded strings
-                'image_url' => $images[0] ?? null, // Example: Taking the first image for simplicity
-            ];
-
-            $model = 'gpt-4-vision-preview';
-            $messages = self::prepareMultiModalInference($inputForModel, $conversation);
-        } else {
-            // It's plain text or not properly decoded, proceed as before
-            $text = $input['input'];
-            $model = 'gpt-4';
-            $messages = self::prepareTextInference($text, $conversation);
-        }
-
-        $client = OpenAI::client(env('OPENAI_API_KEY'));
-        $stream = $client->chat()->createStreamed([
-            'model' => $model,
-            'messages' => $messages,
-            'max_tokens' => 3024,
-        ]);
-
-        $content = '';
-        foreach ($stream as $response) {
-            $token = $response['choices'][0]['delta']['content'] ?? '';
-            $streamFunction($response);
-            $content .= $token;
         }
 
         return ['output' => $content];
