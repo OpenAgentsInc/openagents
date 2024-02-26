@@ -43,14 +43,16 @@ class DocsController extends Controller
             theme: 'tokyo-night',
         );
 
+        $responseContent = $content->responses["200"]['content']['application/json']['schema'];
         $response = Shiki::highlight(
-            code: $content->responses[0]["200"],
+            code: json_encode($responseContent, JSON_PRETTY_PRINT),
             language: 'json',
             theme: 'tokyo-night',
         );
 
+        $responseContent2 = $content->responses["400"]['content']['application/json']['schema'];
         $response2 = Shiki::highlight(
-            code: $content->responses[1]["400"],
+            code: json_encode($responseContent2, JSON_PRETTY_PRINT),
             language: 'json',
             theme: 'tokyo-night',
         );
