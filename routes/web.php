@@ -23,6 +23,8 @@ Route::get('/agent/{id}', AgentShow::class)->name('agent.show');
 
 // Docs
 Route::get('/docs/{page}', [DocsController::class, 'show'])->name('docs.show');
+Route::get('/docs/api/{apipage}', [DocsController::class, 'apidoc']);
+
 // redirect /docs to /docs/introduction
 Route::get('/docs', function () {
     return redirect('/docs/introduction');
