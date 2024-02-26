@@ -4,7 +4,11 @@ namespace App\Services;
 
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\Blade;
+use League\CommonMark\MarkdownConverter;
 use League\CommonMark\CommonMarkConverter;
+use League\CommonMark\Environment\Environment;
+use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use Spatie\CommonMarkShikiHighlighter\HighlightCodeExtension;
 use Spatie\Sheets\ContentParser;
 use Spatie\YamlFrontMatter\YamlFrontMatter;
 
@@ -12,9 +16,18 @@ class MarkdownParser implements ContentParser
 {
     protected $commonMarkConverter;
 
-    public function __construct(CommonMarkConverter $commonMarkConverter)
+    public function __construct(string $theme = 'tokyo-night')
     {
-        $this->commonMarkConverter = $commonMarkConverter;
+        // Create the CommonMark environment with the default configuration
+        $config = [];
+        $environment = new Environment($config);
+
+        // Add the CommonMark core extension and Shiki syntax highlighting extension
+        $environment->addExtension(new CommonMarkCoreExtension());
+        $environment->addExtension(new HighlightCodeExtension($theme));
+
+        // Create a Markdown converter with the configured environment
+        $this->commonMarkConverter = new MarkdownConverter($environment);
     }
 
     public function parse(string $contents): array
