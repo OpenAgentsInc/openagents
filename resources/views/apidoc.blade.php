@@ -2,9 +2,16 @@
     <livewire:navbar />
 
     <div class="pt-24" />
-    <p>CURL: {{ $content->curl }}</p>
-    <p>Response 200: {{ $content->responses[0]["200"] }}</p>
-    <p>Response 400: {{ $content->responses[1]["400"] }}</p>
+
+    <h3>Curl:</h3>
+    {!! $curl !!}
+
+    <h3>Responses:</h3>
+    <p>Response 200:</p>
+    {!! $responseSuccessHtml !!}
+
+    <p>Response 400:</p>
+    {!! $responseErrorHtml !!}
 
     <div class="docs w-full max-w-5xl px-12 py-20">
         {!! $content->contents !!}
