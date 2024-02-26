@@ -29,29 +29,34 @@ class Inferencer
             $model = 'gpt-4-vision-preview';
             $messages = self::prepareMultiModalInference($inputForModel, $conversation);
             $client = OpenAI::client(env('OPENAI_API_KEY'));
+
+            $stream = $client->chat()->createStreamed([
+                'model' => $model,
+                'messages' => $messages,
+                'max_tokens' => 3024,
+                'stream_function' => $streamFunction
+            ]);
+
+            $content = '';
+            foreach ($stream as $response) {
+                $token = $response['choices'][0]['delta']['content'] ?? '';
+                $streamFunction($response);
+                $content .= $token;
+            }
+
         } else {
             // It's plain text or not properly decoded, proceed as before
             $text = $input['input'];
-            $model = 'gpt-4';
+            // $model = 'gpt-4';
+            $model = 'mistral-large-latest';
             $messages = self::prepareTextInference($text, $conversation);
             $client = new MistralAIGateway();
-            // $inference = $client->inference($messages);
-            // $content = $inference['choices'][0]['message']['content'];
-            // return ['output' => $content];
-        }
-
-        $stream = $client->chat()->createStreamed([
-            'model' => $model,
-            'messages' => $messages,
-            'max_tokens' => 3024,
-        ]);
-
-        $content = '';
-        foreach ($stream as $response) {
-            dd($response);
-            $token = $response['choices'][0]['delta']['content'] ?? '';
-            $streamFunction($response);
-            $content .= $token;
+            $content = $client->chat()->createStreamed([
+                'model' => $model,
+                'messages' => $messages,
+                'max_tokens' => 3024,
+                'stream_function' => $streamFunction
+            ]);
         }
 
         return ['output' => $content];
