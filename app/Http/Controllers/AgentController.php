@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Agent;
 use App\Models\Plugin;
 use App\Models\Task;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class AgentController extends Controller
@@ -47,17 +48,12 @@ class AgentController extends Controller
         ]);
     }
 
-    public function create()
-    {
-        return view('agent-create');
-    }
-
     public function run_task(Request $request, $task_id)
     {
         $task = Task::findOrFail($task_id);
         $agent = $task->agent;
 
-        if (! $agent) {
+        if (!$agent) {
             return response()->json([
                 'ok' => false,
                 'error' => 'No agent associated with this task.',
@@ -120,8 +116,11 @@ class AgentController extends Controller
         }
     }
 
-
-    // Create a new agent
+    /**
+     * Do a thing with stuff.
+     *
+     * @return RedirectResponse
+     */
     public function store()
     {
         request()->validate([
@@ -149,48 +148,9 @@ class AgentController extends Controller
         return redirect()->route('agent.build', ['id' => $agent->id])->with('success', 'Agent created!');
     }
 
-    // Show the agent page
-    // public function show($id)
-    // {
-    //     try {
-    //         $agent = Agent::findOrFail($id)
-    //             ->load([
-    //                 'tasks.steps',
-    //                 'brains.datapoints',
-    //                 'user' => function ($query) {
-    //                     $query->select('id', 'github_nickname', 'twitter_nickname')
-    //                         ->addSelect(\DB::raw('COALESCE(github_nickname, twitter_nickname) as username'));
-    //                 },
-    //             ]);
-
-    //         $owner = $agent->user->username;
-
-    //         $conversation = $agent->getUserConversation();
-
-    //         return view('agent-view', [
-    //             'agent' => $agent,
-    //             'conversation' => $conversation,
-    //             'owner' => $owner,
-    //             'files' => $agent->files,
-    //         ]);
-    //     } catch (\Exception $e) {
-    //         return redirect('/');
-    //     }
-    // }
-
-    public function old_chat($id)
+    // Create a new agent
+    public function create()
     {
-        $input = request('input');
-        $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
-
-        $conversation = $agent->getUserConversation();
-
-        $task = $agent->getChatTask();
-
-        // Return standard JSON success response
-        return response()->json([
-            'ok' => true,
-            'output' => $task->run(['input' => $input, 'conversation' => $conversation]),
-        ]);
+        return view('agent-create');
     }
 }

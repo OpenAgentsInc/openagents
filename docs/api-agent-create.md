@@ -11,7 +11,6 @@ curl: >
     "welcome_message": "Welcome to Data Visualizer! Please upload a .csv file."
   }'
 responses:
-responses:
   '200':
     description: Successful response
     content:
