@@ -32,7 +32,7 @@ class DocsController extends Controller
     {
     }
 
-    public function show($page)
+    public function show($piage)
     {
         // Trim .md from page slug for fetching content
         $contentSlug = Str::before($page, '.md');
