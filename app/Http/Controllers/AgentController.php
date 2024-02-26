@@ -121,60 +121,6 @@ class AgentController extends Controller
         }
     }
 
-    public function old_run_task(Request $request, $task_id)
-    {
-        // Find the specified task by task_id
-        $task = Task::findOrFail($task_id);
-
-        // Get the agent associated with the task
-        $agent = $task->agent;
-
-        if (! $agent) {
-            // Handle the case where no agent is associated with the task
-            return response()->json([
-                'ok' => false,
-                'error' => 'No agent associated with this task.',
-            ], 404);
-        }
-
-        // check to see if we have input
-
-        // Run the task on the agent
-        $output = $agent->runTask($task, [
-            'input' => $request->input('input'),
-        ]);
-
-        // Return the output of the task execution
-        // return response()->json([
-        //     'ok' => true,
-        //     'output' => $output,
-        // ]);
-
-        // Fetch the StepExecuted data for the task
-        // $stepExecutedData = $task->steps_executed()->get();
-        // Fetch the most recent executed step for the specific task
-        // Fetch the most recent executed step for the specific task
-        $stepExecutedData = StepExecuted::whereHas('task_executed', function ($query) use ($task) {
-            $query->where('task_id', $task->id);
-        })
-            ->orderBy('created_at', 'desc')
-            ->first();
-
-        // \dd($stepExecutedData);
-
-        // Pass the task output and StepExecuted data to the Blade view
-        //
-        return response()->json([
-            'ok' => true,
-            'output' => $output,
-            'stepExecutedData' => [$stepExecutedData],
-        ]);
-        // return view('components.task-runner', [
-        //     'task' => $task,
-        //     'output' => $output,
-        //     'stepExecutedData' => [$stepExecutedData],
-        // ]);
-    }
 
     // Create a new agent
     public function store()
