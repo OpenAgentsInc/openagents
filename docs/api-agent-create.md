@@ -1,9 +1,18 @@
 ---
 title: Create Agent
-curl: curl blah blah!!!
+curl: >
+  curl https://openagents.com/api/v1/agents \
+  -H "Authorization: Bearer $OPENAGENTS_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Data Visualizer",
+    "description": "Analyzes .csv files and creates data visualizations.",
+    "instructions": "Upload a .csv file to begin.",
+    "welcome_message": "Welcome to Data Visualizer! Please upload a .csv file."
+  }'
 responses:
-  - 200: '{"successful response!!!"}'
-  - 400: '{"asdfsadfsd!!!"}'
+  - '200': '{"success": true, "message": "successful response!!!"}'
+  - '400': '{"error": "asdfsadfsd!!!"}'
 ---
 
 # Create agent
