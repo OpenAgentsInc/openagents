@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Spatie\Sheets\Sheets;
+use Spatie\ShikiPhp\Shiki;
 
 class DocsController extends Controller
 {
@@ -32,11 +33,47 @@ class DocsController extends Controller
     {
     }
 
+<<<<<<< HEAD
     public function show($piage)
+=======
+    public function apidoc()
+    {
+        $content = $this->sheets->collection('docs')->get('agents');
+
+        $curl = Shiki::highlight(
+            code: $content->curl,
+            language: 'shell',
+            theme: 'tokyo-night',
+        );
+
+        $response = Shiki::highlight(
+            code: $content->responses[0]["200"],
+            language: 'json',
+            theme: 'tokyo-night',
+        );
+
+        $response2 = Shiki::highlight(
+            code: $content->responses[1]["400"],
+            language: 'json',
+            theme: 'tokyo-night',
+        );
+
+        return view('apidoc', [
+            'content' => $content,
+            'curl' => $curl,
+            'responseSuccessHtml' => $response,
+            'responseErrorHtml' => $response2,
+        ]);
+    }
+
+    public function show($page)
+>>>>>>> 0648a2afb25c57cd1bfdd08f6e01376a313be58b
     {
         // Trim .md from page slug for fetching content
         $contentSlug = Str::before($page, '.md');
         $content = $this->sheets->collection('docs')->get($contentSlug);
+
+        dd($content);
 
         if (!$content) {
             abort(404);

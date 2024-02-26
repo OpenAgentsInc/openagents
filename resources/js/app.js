@@ -1,4 +1,3 @@
-import 'shiki'
 import { DragGesture } from '@use-gesture/vanilla';
 
 document.addEventListener('livewire:navigated', () => {
