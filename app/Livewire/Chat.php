@@ -133,11 +133,24 @@ class Chat extends Component
 
         $output = $this->routeInput($this->input, $logFunction, $streamFunction);
 
-        // \dd($output);
 
-        // At this point if $messageContent is still empty, we haven't streamed, set $messageContent to $output['output]
+        // worst code in the world
         if (empty($messageContent)) {
-            $messageContent = $output['output'];
+            try {
+                // If output is a json blob, decode it
+                if (is_string($output) && json_decode($output)) {
+                    $output = json_decode($output);
+                    // $output = json_decode($output);
+                    $messageContent = $output->output;
+                } else {
+                    $messageContent = $output['output'];
+                }
+
+            } catch (\Exception $e) {
+                dd($output);
+                dd($e->getMessage());
+            }
+
         }
 
         // $task = Task::where('name', 'Inference with web context')->firstOrFail();
