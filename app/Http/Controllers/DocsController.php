@@ -33,9 +33,6 @@ class DocsController extends Controller
     {
     }
 
-<<<<<<< HEAD
-    public function show($piage)
-=======
     public function apidoc()
     {
         $content = $this->sheets->collection('docs')->get('agents');
@@ -67,7 +64,6 @@ class DocsController extends Controller
     }
 
     public function show($page)
->>>>>>> 0648a2afb25c57cd1bfdd08f6e01376a313be58b
     {
         // Trim .md from page slug for fetching content
         $contentSlug = Str::before($page, '.md');
