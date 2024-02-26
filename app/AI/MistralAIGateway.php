@@ -5,6 +5,8 @@ namespace App\AI;
 use Illuminate\Support\Facades\Http;
 
 class MistralAIGateway {
+
+
     public function inference($messages) {
         // Your API endpoint
         $url = 'https://api.mistral.ai/v1/chat/completions';

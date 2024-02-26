@@ -35,9 +35,9 @@ class Inferencer
             $model = 'gpt-4';
             $messages = self::prepareTextInference($text, $conversation);
             $client = new MistralAIGateway();
-            $inference = $client->inference($messages);
-            $content = $inference['choices'][0]['message']['content'];
-            return ['output' => $content];
+            // $inference = $client->inference($messages);
+            // $content = $inference['choices'][0]['message']['content'];
+            // return ['output' => $content];
         }
 
         $stream = $client->chat()->createStreamed([
@@ -48,6 +48,7 @@ class Inferencer
 
         $content = '';
         foreach ($stream as $response) {
+            dd($response);
             $token = $response['choices'][0]['delta']['content'] ?? '';
             $streamFunction($response);
             $content .= $token;
