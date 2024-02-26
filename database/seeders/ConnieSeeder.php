@@ -27,7 +27,7 @@ class ConnieSeeder extends Seeder
             'id' => 1,
             'user_id' => $user->id,
             'name' => 'Junior Developer',
-            'description' => 'The best contextual inference agent you ever knew',
+            'description' => 'A helpful assistant for coding and software architecture.',
             'instructions' => 'Do the thing',
             'welcome_message' => 'Do it',
         ]);
