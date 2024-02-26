@@ -1,5 +1,9 @@
 ---
 title: Agents
+curl: curl blah blah
+responses:
+  - 200: '{"successful response"}'
+  - 400: '{"asdfsadfsd"}'
 ---
 
 # Agents API

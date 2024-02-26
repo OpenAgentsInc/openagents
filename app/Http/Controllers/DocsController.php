@@ -34,7 +34,11 @@ class DocsController extends Controller
 
     public function apidoc()
     {
-        return view('apidoc');
+        $content = $this->sheets->collection('docs')->get('agents');
+
+        return view('apidoc', [
+            'content' => $content,
+        ]);
     }
 
     public function show($page)
