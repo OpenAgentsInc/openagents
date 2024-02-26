@@ -22,7 +22,6 @@ POST https://openagents.com/api/v1/agents
 
 ### Request example
 
-<x-markdown class="mt-6">
 ```shell
 curl https://openagents.com/api/v1/agents \
   -H "Authorization: Bearer $OPENAGENTS_API_KEY" \
@@ -34,7 +33,6 @@ curl https://openagents.com/api/v1/agents \
     "welcome_message": "Welcome to Data Visualizer! Please upload a .csv file."
   }'
 ```
-</x-markdown>
 
 ### Response parameters
 * success: A boolean indicating whether the operation was successful.
@@ -44,7 +42,6 @@ curl https://openagents.com/api/v1/agents \
 
 ### Response example
 
-<x-markdown class="mt-6">
 ```shell
 {
   "success": true,
@@ -54,7 +51,6 @@ curl https://openagents.com/api/v1/agents \
   }
 }
 ```
-</x-markdown>
 
 ## List agents
 
@@ -71,17 +67,14 @@ Returns a list of agents.
 
 ### Request example
 
-<x-markdown class="mt-6">
 ```shell
 curl "https://openagents.com/api/v1/agents?order=desc&limit=20" \
   -H "Authorization: Bearer $OPENAGENTS_API_KEY" \
   -H 'Content-Type: application/json'
 ```
-</x-markdown>
 
 ### Response example
 
-<x-markdown class="mt-6">
 ```json
 {
   "object": "list",
@@ -116,7 +109,6 @@ curl "https://openagents.com/api/v1/agents?order=desc&limit=20" \
   "has_more": false
 }
 ```
-</x-markdown>
 
 ## Retrieve an agent
 
@@ -130,16 +122,13 @@ Retrieves a single agent.
 
 ### Request example
 
-<x-markdown class="mt-6">
 ```shell
 curl https://openagents.com/api/v1/agents/{agent_id} \
   -H "Authorization: Bearer $OPENAGENTS_API_KEY" \
   -H 'Content-Type: application/json'
 ```
-</x-markdown>
 
 ### Response example
-<x-markdown class="mt-6">
 ```json
 {
   "success": true,
@@ -156,7 +145,6 @@ curl https://openagents.com/api/v1/agents/{agent_id} \
   }
 }
 ```
-</x-markdown>
 
 
 ## Add file to agent
@@ -169,7 +157,6 @@ POST https://openagents.com/api/v1/agents/{agent_id}/files
 
 ### Request example
 
-<x-markdown class="mt-6">
 ```shell
 curl https://openagents.com/api/v1/agents/{agent_id}/files \
   -H "Authorization: Bearer $OPENAGENTS_API_KEY" \
@@ -177,7 +164,6 @@ curl https://openagents.com/api/v1/agents/{agent_id}/files \
   -F 'file=@/path/to/yourfile.csv;type=text/csv' \
   -F 'description=CSV data file for visualization'
 ```
-</x-markdown>
 
 ### Response parameters
 
@@ -189,7 +175,6 @@ curl https://openagents.com/api/v1/agents/{agent_id}/files \
 
 ### Response example
 
-<x-markdown class="mt-6">
 ```json
 {
   "success": true,
@@ -200,4 +185,3 @@ curl https://openagents.com/api/v1/agents/{agent_id}/files \
   }
 }
 ```
-</x-markdown>
