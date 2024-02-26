@@ -75,6 +75,10 @@
     @apply text-white underline;
   }
 
+  .docs pre {
+    @apply overflow-x-scroll;
+  }
+
   body {
     @apply bg-black text-white h-screen font-mono;
   }
