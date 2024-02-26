@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Agent;
 use App\Models\Plugin;
-use App\Models\StepExecuted;
 use App\Models\Task;
 use Illuminate\Http\Request;
 

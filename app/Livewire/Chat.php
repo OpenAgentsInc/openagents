@@ -2,7 +2,6 @@
 
 namespace App\Livewire;
 
-use App\Jobs\SummarizeConversation;
 use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Task;
