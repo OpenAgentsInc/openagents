@@ -14,7 +14,9 @@
 
         <div class="w-full lg:w-1/4 px-4">
             <h3>Curl:</h3>
-            {!! $curl !!}
+            <div class="verysmall">
+                {!! $curl !!}
+            </div>
 
             <h3 class="mt-8">Responses:</h3>
             <p>Response 200:</p>

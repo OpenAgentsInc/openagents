@@ -79,6 +79,11 @@
     @apply overflow-x-scroll;
   }
 
+  .docs .verysmall pre {
+    font-size: 0.75rem;
+    line-height: 0.9rem;
+  }
+
   body {
     @apply bg-black text-white h-screen font-mono;
   }
