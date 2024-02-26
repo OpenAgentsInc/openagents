@@ -131,7 +131,7 @@ class Chat extends Component
             $messageContent .= $token;
         };
 
-        $output = $this->routeInput($this->input, $logFunction, $streamFunctiion);
+        $output = $this->routeInput($this->input, $logFunction, $streamFunction);
 
 
         // worst code in the world
