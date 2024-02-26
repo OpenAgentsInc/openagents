@@ -133,6 +133,26 @@ class Chat extends Component
 
         $output = $this->routeInput($this->input, $logFunction, $streamFunction);
 
+
+        // worst code in the world
+        if (empty($messageContent)) {
+            try {
+                // If output is a json blob, decode it
+                if (is_string($output) && json_decode($output)) {
+                    $output = json_decode($output);
+                    // $output = json_decode($output);
+                    $messageContent = $output->output;
+                } else {
+                    $messageContent = $output['output'];
+                }
+
+            } catch (\Exception $e) {
+                dd($output);
+                dd($e->getMessage());
+            }
+
+        }
+
         // $task = Task::where('name', 'Inference with web context')->firstOrFail();
 
         // $output = $task->agent->runTask($task, [
