@@ -67,7 +67,7 @@
 
         @if(!$agent)
             <!-- big thing in the center -->
-            <div class="-mt-8 flex items-center justify-center h-full">
+            <div class="flex items-center justify-center h-full">
                 <div class="flex flex-col items-center">
                     <x-application-logo class="w-24 h-24" />
                     <div class="mt-4 text-white text-center">
@@ -95,8 +95,7 @@
 
                                     focusAfter && focusAfter.focus()
                                 }
-                            }"
-                            x-on:keydown.escape.prevent.stop="close($refs.button)"
+                            }" x-on:keydown.escape.prevent.stop="close($refs.button)"
                             x-on:focusin.window="! $refs.panel.contains($event.target) && close()"
                             x-id="['dropdown-button']" class="relative">
                             <!-- Button -->
@@ -117,7 +116,8 @@
                             <!-- Panel -->
                             <div x-ref="panel" x-show="open" x-transition.origin.top.left
                                 x-on:click.outside="close($refs.button)" :id="$id('dropdown-button')"
-                                style="display: none;" class="absolute left-0 mt-2 w-44 rounded-md bg-offblack shadow-md">
+                                style="display: none;"
+                                class="absolute left-0 mt-2 w-44 rounded-md bg-offblack shadow-md">
                                 <a href="#"
                                     class="flex items-center gap-2 w-full first-of-type:rounded-t-md last-of-type:rounded-b-md px-4 py-2.5 text-left text-sm hover:bg-darkgray disabled:text-gray-500">
                                     Junior Developer
@@ -206,8 +206,7 @@
                                 <button id="send-message" class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5
                                     text-white transition-colors enabled:bg-black disabled:text-gray-400
                                     disabled:opacity-25 dark:border-white dark:bg-white dark:hover:bg-white md:bottom-3
-                                    md:right-3"
-                                    >
+                                    md:right-3">
                                     <span class="" data-state="closed">
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="text-gray">
                                             <path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor" stroke-width="2"
