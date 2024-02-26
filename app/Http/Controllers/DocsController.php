@@ -33,9 +33,9 @@ class DocsController extends Controller
     {
     }
 
-    public function apidoc()
+    public function apidoc($page)
     {
-        $content = $this->sheets->collection('docs')->get('agents');
+        $content = $this->sheets->collection('docs')->get('api-' . $page);
 
         $curl = Shiki::highlight(
             code: $content->curl,
