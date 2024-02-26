@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\AI\MistralAIGateway;
 use App\Models\Conversation;
 use OpenAI;
 
@@ -27,25 +28,35 @@ class Inferencer
 
             $model = 'gpt-4-vision-preview';
             $messages = self::prepareMultiModalInference($inputForModel, $conversation);
+            $client = OpenAI::client(env('OPENAI_API_KEY'));
+
+            $stream = $client->chat()->createStreamed([
+                'model' => $model,
+                'messages' => $messages,
+                'max_tokens' => 3024,
+                'stream_function' => $streamFunction
+            ]);
+
+            $content = '';
+            foreach ($stream as $response) {
+                $token = $response['choices'][0]['delta']['content'] ?? '';
+                $streamFunction($response);
+                $content .= $token;
+            }
+
         } else {
             // It's plain text or not properly decoded, proceed as before
             $text = $input['input'];
-            $model = 'gpt-4';
+            // $model = 'gpt-4';
+            $model = 'mistral-large-latest';
             $messages = self::prepareTextInference($text, $conversation);
-        }
-
-        $client = OpenAI::client(env('OPENAI_API_KEY'));
-        $stream = $client->chat()->createStreamed([
-            'model' => $model,
-            'messages' => $messages,
-            'max_tokens' => 3024,
-        ]);
-
-        $content = '';
-        foreach ($stream as $response) {
-            $token = $response['choices'][0]['delta']['content'] ?? '';
-            $streamFunction($response);
-            $content .= $token;
+            $client = new MistralAIGateway();
+            $content = $client->chat()->createStreamed([
+                'model' => $model,
+                'messages' => $messages,
+                'max_tokens' => 3024,
+                'stream_function' => $streamFunction
+            ]);
         }
 
         return ['output' => $content];
@@ -53,18 +64,32 @@ class Inferencer
 
     private static function prepareTextInference($text, Conversation $conversation)
     {
-        $messages = [
-            // System message
-            [
-                'role' => 'system',
-                'content' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
-            ],
-            // User message
-            ['role' => 'user', 'content' => $text],
-        ];
+        // Fetch previous messages
+        $previousMessages = $conversation->messages()
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(function ($message) {
+                // Map 'user' and 'agent' to 'user' and 'assistant' respectively
+                $role = $message->sender === 'agent' ? 'assistant' : 'user';
+                return [
+                    'role' => $role,
+                    'content' => $message->body,
+                ];
+            })
+            ->toArray();
 
-        return $messages;
+        // Add the current user message to the array of previous messages
+        // $previousMessages[] = ['role' => 'user', 'content' => $text];
+
+        // Prepend system message
+        array_unshift($previousMessages, [
+            'role' => 'system',
+            'content' => 'You are a helpful AI agent named ' . $conversation->agent->name . '. Your description is ' . $conversation->agent->description,
+        ]);
+
+        return $previousMessages;
     }
+
 
     private static function prepareMultiModalInference($input, Conversation $conversation)
     {
