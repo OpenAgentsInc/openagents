@@ -69,8 +69,6 @@ class DocsController extends Controller
         $contentSlug = Str::before($page, '.md');
         $content = $this->sheets->collection('docs')->get($contentSlug);
 
-        dd($content);
-
         if (!$content) {
             abort(404);
         }
