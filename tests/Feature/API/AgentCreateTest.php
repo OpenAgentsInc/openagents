@@ -68,6 +68,42 @@ foreach ($requiredFields as $field) {
     });
 }
 
+test('agent creation allows optional welcome_message', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+
+    $data = [
+        'name' => 'Test Agent',
+        'description' => 'This is a test agent',
+        'instructions' => 'This is a test instruction',
+        'welcome_message' => 'Welcome to the test agent', // Optional field
+    ];
+
+    post(route('api.agents.store'), $data, ['Accept' => 'application/json'])
+        ->assertStatus(201)
+        ->assertJson([
+            'success' => true,
+            'message' => 'Agent created successfully.',
+            'data' => [
+                // Validation for the presence of 'agent_id' to ensure creation
+                // You may want to validate the presence of 'welcome_message' in the response if your API returns it
+            ],
+        ])
+        ->assertJsonStructure([
+            'success',
+            'message',
+            'data' => ['agent_id'],
+        ]);
+
+    // Optionally, assert that the agent with the welcome_message was created in the database
+    $this->assertDatabaseHas('agents', [
+        'name' => 'Test Agent',
+        'description' => 'This is a test agent',
+        'instructions' => 'This is a test instruction',
+        'welcome_message' => 'Welcome to the test agent', // Check for the welcome_message
+    ]);
+});
+
 test('unauthenticated user cannot create agent', function () {
     // Attempt to create an agent without authenticating
     post(route('api.agents.store'), [
