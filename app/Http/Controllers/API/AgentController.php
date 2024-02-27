@@ -5,7 +5,6 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Services\AgentService;
 use Exception;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -20,9 +19,25 @@ class AgentController extends Controller
     }
 
     /**
-     * Display a listing of the resource.
+     * @OA\Get(
+     *     path="/agents",
+     *     tags={"Agent"},
+     *     summary="List all agents",
+     *     description="Returns a list of all agents associated with the user.",
+     *     operationId="listAgents",
      *
-     * @return JsonResponse
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *
+     *         @OA\JsonContent(
+     *             type="array",
+     *
+     *             @OA\Items(ref="#/components/schemas/Agent")
+     *         )
+     *     ),
+     *     security={{"bearerAuth":{}}}
+     * )
      */
     public function index()
     {
@@ -42,14 +57,43 @@ class AgentController extends Controller
     }
 
     /**
-     * Store a newly created agent in storage.
+     * @OA\Post(
+     *     path="/agents",
+     *     tags={"Agent"},
+     *     summary="Create a new agent",
+     *     operationId="createAgent",
      *
-     * This method handles the creation of a new agent based on the provided
-     * name, description, and instructions. It validates the request data
-     * and returns a JSON response indicating the success or failure of
-     * the agent creation process.
+     *     @OA\RequestBody(
+     *         required=true,
+     *         description="Agent information",
      *
-     * @return JsonResponse
+     *         @OA\JsonContent(
+     *             required={"name","description","instructions"},
+     *
+     *             @OA\Property(property="name", type="string"),
+     *             @OA\Property(property="description", type="string"),
+     *             @OA\Property(property="instructions", type="string"),
+     *             @OA\Property(property="welcome_message", type="string")
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=201,
+     *         description="Agent created",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="object",
+     *                 @OA\Property(property="agent_id", type="integer")
+     *             )
+     *         )
+     *     ),
+     *     security={{"bearerAuth":{}}}
+     * )
      */
     public function store(Request $request)
     {
@@ -89,10 +133,32 @@ class AgentController extends Controller
     }
 
     /**
-     * Display the specified agent.
+     * @OA\Get(
+     *     path="/agents/{id}",
+     *     tags={"Agent"},
+     *     summary="Get agent by ID",
+     *     description="Returns a single agent.",
+     *     operationId="getAgentById",
      *
-     * @param  int  $id
-     * @return JsonResponse
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         description="ID of agent to return",
+     *         required=true,
+     *
+     *         @OA\Schema(
+     *             type="integer"
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *
+     *         @OA\JsonContent(ref="#/components/schemas/Agent")
+     *     ),
+     *     security={{"bearerAuth":{}}}
+     * )
      */
     public function show($id)
     {
@@ -110,10 +176,53 @@ class AgentController extends Controller
     }
 
     /**
-     * Update the specified agent in storage.
+     * @OA\Put(
+     *     path="/agents/{id}",
+     *     tags={"Agent"},
+     *     summary="Update an existing agent",
+     *     operationId="updateAgent",
      *
-     * @param  int  $id
-     * @return JsonResponse
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         description="ID of agent that needs to be updated",
+     *         required=true,
+     *
+     *         @OA\Schema(
+     *             type="integer"
+     *         )
+     *     ),
+     *
+     *     @OA\RequestBody(
+     *         required=true,
+     *         description="Agent data to update",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="name", type="string"),
+     *             @OA\Property(property="description", type="string"),
+     *             @OA\Property(property="instructions", type="string"),
+     *             @OA\Property(property="welcome_message", type="string")
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=200,
+     *         description="Agent updated",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="object",
+     *                 ref="#/components/schemas/Agent"
+     *             )
+     *         )
+     *     ),
+     *     security={{"bearerAuth":{}}}
+     * )
      */
     public function update(Request $request, $id)
     {
@@ -143,10 +252,35 @@ class AgentController extends Controller
     }
 
     /**
-     * Remove the specified agent from storage.
+     * @OA\Delete(
+     *     path="/agents/{id}",
+     *     tags={"Agent"},
+     *     summary="Deletes an agent",
+     *     operationId="deleteAgent",
      *
-     * @param  int  $id
-     * @return JsonResponse
+     *     @OA\Parameter(
+     *         name="id",
+     *         in="path",
+     *         description="Agent id to delete",
+     *         required=true,
+     *
+     *         @OA\Schema(
+     *             type="integer"
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=200,
+     *         description="Agent deleted",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string")
+     *         )
+     *     ),
+     *     security={{"bearerAuth":{}}}
+     * )
      */
     public function destroy($id)
     {
