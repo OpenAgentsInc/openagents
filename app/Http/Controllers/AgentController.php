@@ -13,6 +13,7 @@ class AgentController extends Controller
     public function chat()
     {
         $task = Task::where('name', 'Inference with web context')->firstOrFail();
+
         return view('agent-chat', [
             'task' => $task,
         ]);
@@ -53,7 +54,7 @@ class AgentController extends Controller
         $task = Task::findOrFail($task_id);
         $agent = $task->agent;
 
-        if (!$agent) {
+        if (! $agent) {
             return response()->json([
                 'ok' => false,
                 'error' => 'No agent associated with this task.',

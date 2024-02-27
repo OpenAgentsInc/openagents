@@ -4,16 +4,17 @@ namespace App\Livewire;
 
 use App\Models\User;
 use App\Providers\RouteServiceProvider;
-use Livewire\Component;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
+use Livewire\Component;
 
 class CreatePassword extends Component
 {
     public $email;
+
     public $password;
+
     public $password_confirmation;
 
     public function mount()
@@ -21,7 +22,7 @@ class CreatePassword extends Component
         $this->email = session()->get('email_for_password_creation');
 
         // Optionally handle the case where no email was found in the session
-        if (!$this->email) {
+        if (! $this->email) {
             // Redirect back or show an error
             return redirect()->to('/login'); // Adjust as needed
         }

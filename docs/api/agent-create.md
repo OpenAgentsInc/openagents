@@ -6,15 +6,12 @@ responses:
   - 400: '{"asdfsadfsd!!!"}'
 ---
 
-# Agents API
-
-Interact with agents.
-
-## Create agent
+# Create agent
 
 POST https://openagents.com/api/v1/agents
 
 ### Request parameters
+
 * name (string, required): The name of the agent.
 * description (string, required): A brief description of the agent's purpose.
 * instructions (string, required): Detailed instructions on how the agent operates.
@@ -35,10 +32,11 @@ curl https://openagents.com/api/v1/agents \
 ```
 
 ### Response parameters
+
 * success: A boolean indicating whether the operation was successful.
 * message: A human-readable message indicating the result of the operation.
 * data: An object containing:
-  * agent_id: The newly created agent's ID
+    * agent_id: The newly created agent's ID
 
 ### Response example
 

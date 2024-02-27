@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Spatie\Sheets\Sheets;
 use Spatie\ShikiPhp\Shiki;
@@ -35,7 +34,7 @@ class DocsController extends Controller
 
     public function apidoc($page)
     {
-        $content = $this->sheets->collection('docs')->get('api-' . $page);
+        $content = $this->sheets->collection('docs')->get('api-'.$page);
 
         $curl = Shiki::highlight(
             code: $content->curl,
@@ -43,14 +42,14 @@ class DocsController extends Controller
             theme: 'tokyo-night',
         );
 
-        $responseContent = $content->responses["200"]['content']['application/json']['schema'];
+        $responseContent = $content->responses['200']['content']['application/json']['schema'];
         $response = Shiki::highlight(
             code: json_encode($responseContent, JSON_PRETTY_PRINT),
             language: 'json',
             theme: 'tokyo-night',
         );
 
-        $responseContent2 = $content->responses["400"]['content']['application/json']['schema'];
+        $responseContent2 = $content->responses['400']['content']['application/json']['schema'];
         $response2 = Shiki::highlight(
             code: json_encode($responseContent2, JSON_PRETTY_PRINT),
             language: 'json',
@@ -71,19 +70,21 @@ class DocsController extends Controller
         $contentSlug = Str::before($page, '.md');
         $content = $this->sheets->collection('docs')->get($contentSlug);
 
-        if (!$content) {
+        if (! $content) {
             abort(404);
         }
 
         $documentsList = collect($this->docsInOrder)->mapWithKeys(function ($filePath) {
             $slug = Str::before($filePath, '.md'); // Remove .md extension
             $doc = $this->sheets->collection('docs')->get($slug);
+
             return [$slug => $doc ? $doc->title : 'Untitled'];
         });
 
         $apiDocumentsList = collect($this->apiDocsInOrder)->mapWithKeys(function ($filePath) {
             $slug = Str::before($filePath, '.md'); // Remove .md extension
             $doc = $this->sheets->collection('docs')->get($slug);
+
             return [$slug => $doc ? $doc->title : 'Untitled'];
         });
 
