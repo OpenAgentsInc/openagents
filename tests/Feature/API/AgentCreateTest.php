@@ -10,7 +10,7 @@ test('can create agent via api', function () {
 
     Sanctum::actingAs($user);
 
-    post(route('api.agents.store'), [
+    post('/api/v1/agents', [
         'name' => 'Test Agent',
         'description' => 'This is a test agent',
         'instructions' => 'This is a test instruction',
