@@ -4,7 +4,9 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Agent;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class AgentController extends Controller
 {
@@ -17,28 +19,41 @@ class AgentController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly created agent in storage.
+     *
+     * This method handles the creation of a new agent based on the provided
+     * name, description, and instructions. It validates the request data
+     * and returns a JSON response indicating the success or failure of
+     * the agent creation process.
+     *
+     * @return JsonResponse
      */
     public function store(Request $request)
     {
-        // Validate request has name and description
-        $request->validate([
-            'name' => 'required',
-            'description' => 'required',
-            'instructions' => 'required',
-            'welcome_message' => 'required',
+        // Validate the request input
+        $validatedData = $request->validate([
+            'name' => 'required|string',
+            'description' => 'required|string',
+            'instructions' => 'required|string',
         ]);
 
-        // Create agent
+        // Create a new agent with the validated data
         $agent = Agent::create([
-            'name' => $request->name,
-            'description' => $request->description,
-            'instructions' => $request->instructions,
-            'welcome_message' => $request->welcome_message,
+            'name' => $validatedData['name'],
+            'description' => $validatedData['description'],
+            'instructions' => $validatedData['instructions'],
+            // Assuming 'user_id' is required for ownership linking
             'user_id' => $request->user()->id,
         ]);
 
-        return response()->json($agent, 201);
+        // Return a JSON response with the created agent and a 201 status code for successful creation
+        return response()->json([
+            'success' => true,
+            'message' => 'Agent created successfully.',
+            'data' => [
+                'agent_id' => $agent->id,
+            ],
+        ], Response::HTTP_CREATED); // 201 status code
     }
 
     /**
