@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\API\AgentController;
+use App\Http\Controllers\API\AgentFileController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum'])->group(function () {
@@ -18,4 +19,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Delete a specific agent
     Route::delete('/agents/{agent}', [AgentController::class, 'destroy'])->name('api.agents.destroy');
+
+    // Add file to an agent
+    Route::post('/agents/{agent}/files', [AgentFileController::class, 'store'])->name('api.agents.files.store');
 });
