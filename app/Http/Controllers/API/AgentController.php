@@ -75,26 +75,77 @@ class AgentController extends Controller
     }
 
     /**
-     * Display the specified resource.
+     * Display the specified agent.
+     *
+     * @param  int  $id
+     * @return JsonResponse
      */
-    public function show(string $id)
+    public function show($id)
     {
-        //
+        try {
+            $agent = $this->agentService->findAgentById($id);
+
+            if (! $agent) {
+                return response()->json(['success' => false, 'message' => 'Agent not found'], 404);
+            }
+
+            return response()->json(['success' => true, 'data' => $agent], 200);
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified agent in storage.
+     *
+     * @param  int  $id
+     * @return JsonResponse
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, $id)
     {
-        //
+        // Similar validation as in the store method
+        $validator = Validator::make($request->all(), [
+            'name' => 'sometimes|string',
+            'description' => 'sometimes|string',
+            'instructions' => 'sometimes|string',
+            'welcome_message' => 'sometimes|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => 'Validation errors', 'errors' => $validator->errors()], 400);
+        }
+
+        try {
+            $agent = $this->agentService->updateAgent($id, $request->all());
+
+            if (! $agent) {
+                return response()->json(['success' => false, 'message' => 'Agent not found'], 404);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Agent updated successfully.', 'data' => $agent], 200);
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified agent from storage.
+     *
+     * @param  int  $id
+     * @return JsonResponse
      */
-    public function destroy(string $id)
+    public function destroy($id)
     {
-        //
+        try {
+            $success = $this->agentService->deleteAgent($id);
+
+            if (! $success) {
+                return response()->json(['success' => false, 'message' => 'Agent not found'], 404);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Agent deleted successfully'], 200);
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 }

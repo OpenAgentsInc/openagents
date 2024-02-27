@@ -21,6 +21,7 @@ return new class extends Migration
             $table->string('welcome_message')->nullable();
             $table->timestamp('published_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 

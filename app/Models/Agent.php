@@ -2,14 +2,14 @@
 
 namespace App\Models;
 
-use App\Services\OpenAIGateway;
 use App\Traits\UsesChat;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Agent extends Model
 {
-    use HasFactory, UsesChat;
+    use HasFactory, SoftDeletes, UsesChat;
 
     protected $guarded = [];
 
@@ -22,7 +22,7 @@ class Agent extends Model
     {
         if (! $conversation) {
             // If no provided conversation, get the user's conversation
-            dd("No conversation provided");
+            dd('No conversation provided');
             $conversation = $this->getUserConversation();
         }
 
@@ -139,6 +139,11 @@ class Agent extends Model
         return $step_executed->fresh()->output;
     }
 
+    public function tasks()
+    {
+        return $this->hasMany(Task::class);
+    }
+
     public function conversations()
     {
         return $this->hasMany(Conversation::class);
@@ -152,11 +157,6 @@ class Agent extends Model
     public function steps()
     {
         return $this->hasMany(Step::class);
-    }
-
-    public function tasks()
-    {
-        return $this->hasMany(Task::class);
     }
 
     public function thoughts()

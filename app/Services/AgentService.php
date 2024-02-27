@@ -36,4 +36,50 @@ class AgentService
             'user_id' => Auth::id(), // Or another way to obtain the current user's ID, depending on your auth system
         ]);
     }
+
+    /**
+     * Finds an agent by its ID.
+     *
+     * @param  int|string  $id  The ID of the agent to find.
+     * @return Agent|null The found agent or null if not found.
+     */
+    public function findAgentById($id): ?Agent
+    {
+        return Agent::find($id);
+    }
+
+    /**
+     * Updates an agent with the given details.
+     *
+     * @param  int|string  $id  The ID of the agent to update.
+     * @param  array  $data  The data to update the agent with.
+     * @return Agent|null The updated agent object or null if the update failed.
+     */
+    public function updateAgent($id, array $data): ?Agent
+    {
+        $agent = Agent::find($id);
+        if (! $agent) {
+            return null;
+        }
+
+        $agent->update($data);
+
+        return $agent;
+    }
+
+    /**
+     * Deletes an agent by its ID.
+     *
+     * @param  int|string  $id  The ID of the agent to delete.
+     * @return bool True if the agent was deleted successfully, false otherwise.
+     */
+    public function deleteAgent($id): bool
+    {
+        $agent = Agent::find($id);
+        if (! $agent) {
+            return false;
+        }
+
+        return $agent->delete();
+    }
 }
