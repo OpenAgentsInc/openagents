@@ -151,7 +151,7 @@ class Agent extends Model
 
     public function files()
     {
-        return $this->hasMany(File::class);
+        return $this->belongsToMany(File::class, 'agent_file');
     }
 
     public function steps()

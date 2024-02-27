@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('agent_file', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('agent_id')->constrained()->onDelete('cascade');
+            $table->foreignId('file_id')->constrained()->onDelete('cascade');
             $table->timestamps();
         });
     }
