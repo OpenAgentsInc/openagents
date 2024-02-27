@@ -1,10 +1,9 @@
 <?php
 
-use App\Http\Controllers\AgentController;
+use App\Http\Controllers\Auth\NostrAuthController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\StaticController;
-use App\Http\Controllers\Auth\NostrAuthController;
 use App\Livewire\AgentShow;
 use App\Livewire\Chat;
 use App\Livewire\CreatePassword;
