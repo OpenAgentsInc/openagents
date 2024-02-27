@@ -6,6 +6,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "doctrine/annotations": "^2.0",
         "extism/extism": "^1.0.0",
         "google/protobuf": "^3.25",
         "guzzlehttp/guzzle": "^7.2",
