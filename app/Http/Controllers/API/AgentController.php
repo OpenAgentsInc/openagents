@@ -3,13 +3,22 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Models\Agent;
+use App\Services\AgentService;
+use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Validator;
 
 class AgentController extends Controller
 {
+    protected $agentService;
+
+    // Inject AgentService into the controller
+    public function __construct(AgentService $agentService)
+    {
+        $this->agentService = $agentService;
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -30,30 +39,39 @@ class AgentController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate the request input
-        $validatedData = $request->validate([
+        // Validate request input
+        $validator = Validator::make($request->all(), [
             'name' => 'required|string',
             'description' => 'required|string',
             'instructions' => 'required|string',
+            'welcome_message' => 'sometimes|string',
         ]);
 
-        // Create a new agent with the validated data
-        $agent = Agent::create([
-            'name' => $validatedData['name'],
-            'description' => $validatedData['description'],
-            'instructions' => $validatedData['instructions'],
-            // Assuming 'user_id' is required for ownership linking
-            'user_id' => $request->user()->id,
-        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => 'Validation errors', 'errors' => $validator->errors()], 400);
+        }
 
-        // Return a JSON response with the created agent and a 201 status code for successful creation
-        return response()->json([
-            'success' => true,
-            'message' => 'Agent created successfully.',
-            'data' => [
-                'agent_id' => $agent->id,
-            ],
-        ], Response::HTTP_CREATED); // 201 status code
+        try {
+            // Use the agent service to create a new agent
+            $agent = $this->agentService->createAgent(
+                $request->name,
+                $request->description,
+                $request->instructions,
+                $request->welcome_message // This can be null, the service handles it
+            );
+
+            // Return the response structured as expected by the test
+            return response()->json([
+                'success' => true,
+                'message' => 'Agent created successfully.',
+                'data' => [
+                    'agent_id' => $agent->id,
+                ],
+            ], 201);
+        } catch (Exception $e) {
+            // Handle any exceptions, such as authentication failures
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 403);
+        }
     }
 
     /**
