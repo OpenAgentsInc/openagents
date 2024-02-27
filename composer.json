@@ -23,7 +23,8 @@
         "spatie/laravel-markdown": "^2.4",
         "spatie/pdf-to-text": "^1.52",
         "spatie/sheets": "^1.11",
-        "swentel/nostr-php": "dev-main"
+        "swentel/nostr-php": "dev-main",
+        "zircote/swagger-php": "^4.8"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
