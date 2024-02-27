@@ -4,10 +4,26 @@ namespace App\Services;
 
 use App\Models\Agent;
 use Exception;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 
 class AgentService
 {
+    /**
+     * Retrieves all agents owned by the currently authenticated user.
+     *
+     * This method can be expanded to include pagination or filtering
+     * based on application requirements.
+     *
+     * @return Collection|static[]
+     */
+    public function getAllAgentsByUser()
+    {
+        $userId = Auth::id(); // Get the currently authenticated user's ID
+
+        return Agent::where('user_id', $userId)->get();
+    }
+
     /**
      * Creates an agent with the given details.
      *

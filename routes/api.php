@@ -7,6 +7,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Create an agent
     Route::post('/agents', [AgentController::class, 'store'])->name('api.agents.store');
 
+    // Retrieve a list of all agents
+    Route::get('/agents', [AgentController::class, 'index'])->name('api.agents.index');
+
     // Retrieve a specific agent
     Route::get('/agents/{agent}', [AgentController::class, 'show'])->name('api.agents.show');
 

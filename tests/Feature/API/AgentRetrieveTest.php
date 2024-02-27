@@ -11,7 +11,7 @@ use function Pest\Laravel\put;
 // Test retrieving an agent
 test('can retrieve an agent via api', function () {
     $user = User::factory()->create();
-    $agent = Agent::factory()->create(); // Assuming you have a factory for Agents
+    $agent = Agent::factory()->create();
 
     Sanctum::actingAs($user);
 
@@ -22,7 +22,6 @@ test('can retrieve an agent via api', function () {
             'data' => [
                 'id' => $agent->id,
                 'name' => $agent->name,
-                // Add other fields as necessary
             ],
         ]);
 });
@@ -80,18 +79,15 @@ test('unauthenticated user cannot perform CRUD operations on agent', function ()
     $agent = Agent::factory()->create();
 
     // Attempt to retrieve an agent without authenticating
-    $this->withHeaders(['Accept' => 'application/json'])
-        ->get("/api/v1/agents/{$agent->id}")
+    get("/api/v1/agents/{$agent->id}", apiHeaders())
         ->assertStatus(401); // Expect a 401 Unauthorized response
 
     // Attempt to update an agent without authenticating
-    $this->withHeaders(['Accept' => 'application/json'])
-        ->put("/api/v1/agents/{$agent->id}", [
-            'name' => 'Unauthorized Update Attempt',
-        ])->assertStatus(401); // Expect a 401 Unauthorized response
+    put("/api/v1/agents/{$agent->id}", [
+        'name' => 'Unauthorized Update Attempt',
+    ], apiHeaders())->assertStatus(401); // Expect a 401 Unauthorized response
 
     // Attempt to delete an agent without authenticating
-    $this->withHeaders(['Accept' => 'application/json'])
-        ->delete("/api/v1/agents/{$agent->id}")
+    delete("/api/v1/agents/{$agent->id}", [], apiHeaders())
         ->assertStatus(401); // Expect a 401 Unauthorized response
 });

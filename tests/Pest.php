@@ -46,3 +46,8 @@ function something()
 {
     // ..
 }
+
+function apiHeaders()
+{
+    return ['Accept' => 'application/json'];
+}

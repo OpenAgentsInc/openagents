@@ -54,7 +54,7 @@ foreach ($requiredFields as $field) {
         // Remove the required field to test validation
         unset($data[$field]);
 
-        post(route('api.agents.store'), $data, ['Accept' => 'application/json'])
+        post('/api/v1/agents', $data, apiHeaders())
             ->assertStatus(400) // Expect a 400 Bad Request response for validation errors
             ->assertJson([
                 'success' => false,
@@ -79,7 +79,7 @@ test('agent creation allows optional welcome_message', function () {
         'welcome_message' => 'Welcome to the test agent', // Optional field
     ];
 
-    post(route('api.agents.store'), $data, ['Accept' => 'application/json'])
+    post('/api/v1/agents', $data, apiHeaders())
         ->assertStatus(201)
         ->assertJson([
             'success' => true,
@@ -106,10 +106,10 @@ test('agent creation allows optional welcome_message', function () {
 
 test('unauthenticated user cannot create agent', function () {
     // Attempt to create an agent without authenticating
-    post(route('api.agents.store'), [
+    post('/api/v1/agents', [
         'name' => 'Test Agent',
         'description' => 'This is a test agent',
         'instructions' => 'This is a test instruction',
-    ], ['Accept' => 'application/json']) // Include the Accept header
+    ], apiHeaders()) // Include the Accept header
         ->assertStatus(401); // Expect a 401 Unauthorized response
 });

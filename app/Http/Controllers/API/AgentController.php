@@ -21,10 +21,24 @@ class AgentController extends Controller
 
     /**
      * Display a listing of the resource.
+     *
+     * @return JsonResponse
      */
     public function index()
     {
-        //
+        try {
+            // Fetch all agents using the agent service
+            $agents = $this->agentService->getAllAgentsByUser();
+
+            // Return the list of agents with a success message
+            return response()->json([
+                'success' => true,
+                'data' => $agents,
+            ], 200);
+        } catch (Exception $e) {
+            // Handle any exceptions, such as database errors
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
