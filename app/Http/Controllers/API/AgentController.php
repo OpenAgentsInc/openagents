@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Validator;
 
 class AgentController extends Controller
 {
-    protected $agentService;
+    protected AgentService $agentService;
 
     // Inject AgentService into the controller
     public function __construct(AgentService $agentService)
