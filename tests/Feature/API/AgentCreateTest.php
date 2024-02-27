@@ -1,13 +1,14 @@
 <?php
 
 use App\Models\User;
+use Laravel\Sanctum\Sanctum;
 
 use function Pest\Laravel\post;
 
 test('can create agent via api', function () {
     $user = User::factory()->create();
 
-    $this->actingAs($user);
+    Sanctum::actingAs($user);
 
     post(route('api.agents.store'), [
         'name' => 'Test Agent',
@@ -34,4 +35,45 @@ test('can create agent via api', function () {
         'description' => 'This is a test agent',
         'instructions' => 'This is a test instruction',
     ]);
+});
+
+// Test validation for each required field
+$requiredFields = ['name', 'description', 'instructions'];
+
+foreach ($requiredFields as $field) {
+    test("agent creation fails without {$field}", function () use ($field) {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $data = [
+            'name' => 'Test Agent',
+            'description' => 'This is a test agent',
+            'instructions' => 'This is a test instruction',
+        ];
+
+        // Remove the required field to test validation
+        unset($data[$field]);
+
+        post(route('api.agents.store'), $data, ['Accept' => 'application/json'])
+            ->assertStatus(400) // Expect a 400 Bad Request response for validation errors
+            ->assertJson([
+                'success' => false,
+                'message' => 'Validation errors',
+                'errors' => [
+                    $field => [
+                        "The {$field} field is required.",
+                    ],
+                ],
+            ]);
+    });
+}
+
+test('unauthenticated user cannot create agent', function () {
+    // Attempt to create an agent without authenticating
+    post(route('api.agents.store'), [
+        'name' => 'Test Agent',
+        'description' => 'This is a test agent',
+        'instructions' => 'This is a test instruction',
+    ], ['Accept' => 'application/json']) // Include the Accept header
+        ->assertStatus(401); // Expect a 401 Unauthorized response
 });
