@@ -11,8 +11,39 @@ curl: >
     "welcome_message": "Welcome to Data Visualizer! Please upload a .csv file."
   }'
 responses:
-  - '200': '{"success": true, "message": "successful response!!!"}'
-  - '400': '{"error": "asdfsadfsd!!!"}'
+  '200':
+    description: Successful response
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              description: Indicates if the request was successful
+              example: true
+            message:
+              type: string
+              description: A message describing the result of the operation
+              example: Agent created successfully
+            data:
+              type: object
+              properties:
+                agent_id:
+                  type: integer
+                  description: The ID of the newly created agent
+                  example: 42
+  '400':
+    description: Bad request
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              description: A message describing the error
+              example: Invalid request parameters
 ---
 
 # Create agent

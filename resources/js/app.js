@@ -20,8 +20,4 @@ document.addEventListener('livewire:navigated', () => {
       }
     });
   });
-
-  // Livewire.on('updateNodePosition', (hmm) => {
-  //   console.log(hmm)
-  // });
 });

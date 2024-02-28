@@ -7,6 +7,7 @@ use Livewire\Component;
 class Graph extends Component
 {
     public $nodes = [];
+
     public $edges = [];
 
     protected $listeners = ['updateNodePosition'];

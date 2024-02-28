@@ -6,6 +6,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "doctrine/annotations": "^2.0",
         "extism/extism": "^1.0.0",
         "google/protobuf": "^3.25",
         "guzzlehttp/guzzle": "^7.2",
@@ -23,12 +24,13 @@
         "spatie/laravel-markdown": "^2.4",
         "spatie/pdf-to-text": "^1.52",
         "spatie/sheets": "^1.11",
-        "swentel/nostr-php": "dev-main"
+        "swentel/nostr-php": "dev-main",
+        "zircote/swagger-php": "^4.8"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
         "laravel/breeze": "^1.26",
-        "laravel/pint": "^1.0",
+        "laravel/pint": "^1.14",
         "laravel/sail": "^1.18",
         "mockery/mockery": "^1.4.4",
         "nunomaduro/collision": "^7.0",
