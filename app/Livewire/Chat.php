@@ -2,11 +2,14 @@
 
 namespace App\Livewire;
 
-use App\Jobs\SummarizeConversation;
 use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Task;
 use App\Services\Inferencer;
+use Exception;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\View\View;
 use League\CommonMark\CommonMarkConverter;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -33,7 +36,7 @@ class Chat extends Component
 
     private $commonMarkConverter;
 
-    public function mount($id = null)
+    public function mount($id = null): void
     {
         $this->commonMarkConverter = new CommonMarkConverter();
 
@@ -43,7 +46,7 @@ class Chat extends Component
             $this->messages = $this->conversation->messages->sortBy('created_at')->toArray();
             $this->agent = $this->conversation->agent;
 
-            if($this->conversation->title === "New Conversation") {
+            if ($this->conversation->title === 'New Conversation') {
                 SummarizeConversation::dispatch($this->conversation);
             }
         }
@@ -52,7 +55,7 @@ class Chat extends Component
         $this->conversations = Conversation::all();
     }
 
-    public function sendMessage()
+    public function sendMessage(): void
     {
         // Check if the user is authenticated
         if (! auth()->check()) {
@@ -111,7 +114,7 @@ class Chat extends Component
         $this->js('$wire.runTask()');
     }
 
-    public function runTask()
+    public function runTask(): void
     {
         $messageContent = '';
 
@@ -133,7 +136,6 @@ class Chat extends Component
 
         $output = $this->routeInput($this->input, $logFunction, $streamFunction);
 
-
         // worst code in the world
         if (empty($messageContent)) {
             try {
@@ -146,7 +148,7 @@ class Chat extends Component
                     $messageContent = $output['output'];
                 }
 
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 dd($output);
                 dd($e->getMessage());
             }
@@ -198,7 +200,7 @@ class Chat extends Component
         return $output;
     }
 
-    public function render()
+    public function render(): \Illuminate\Contracts\View\View|\Illuminate\Foundation\Application|Factory|View|Application
     {
         // if (!$this->commonMarkConverter) {
         //     $this->commonMarkConverter = new CommonMarkConverter();

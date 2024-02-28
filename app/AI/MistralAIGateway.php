@@ -6,12 +6,15 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Http;
 
-class MistralAIGateway {
-    public function chat() {
+class MistralAIGateway
+{
+    public function chat()
+    {
         return new MistralAIChat();
     }
 
-    public function inference($messages) {
+    public function inference($messages)
+    {
         // Your API endpoint
         $url = 'https://api.mistral.ai/v1/chat/completions';
 
@@ -27,7 +30,7 @@ class MistralAIGateway {
         // Make the HTTP POST request
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer ' . env('MISTRAL_API_KEY'),
+            'Authorization' => 'Bearer '.env('MISTRAL_API_KEY'),
         ])->post($url, $data);
 
         // Check if the request was successful
@@ -42,11 +45,12 @@ class MistralAIGateway {
             ];
         }
     }
-
 }
 
-class MistralAIChat {
-    public function createStreamed($params) {
+class MistralAIChat
+{
+    public function createStreamed($params)
+    {
         $url = 'https://api.mistral.ai/v1/chat/completions';
         $apiKey = env('MISTRAL_API_KEY');
         $model = $params['model'];
@@ -72,12 +76,12 @@ class MistralAIChat {
                 'json' => $data,
                 'stream' => true, // Important for streaming
                 'headers' => [
-                    'Authorization' => 'Bearer ' . $apiKey,
+                    'Authorization' => 'Bearer '.$apiKey,
                 ],
             ]);
 
             $stream = $response->getBody();
-            $content = "";
+            $content = '';
             foreach ($this->readStream($stream) as $responseLine) {
                 if (isset($responseLine['choices'][0]['delta']['content'])) {
                     $content .= $responseLine['choices'][0]['delta']['content'];
@@ -90,14 +94,16 @@ class MistralAIChat {
         } catch (RequestException $e) {
             // Handle exception or error
             dd('error', $e->getMessage());
-            return "Error: " . $e->getMessage();
+
+            return 'Error: '.$e->getMessage();
         }
     }
 
-    private function readStream($stream) {
-        while (!$stream->eof()) {
+    private function readStream($stream)
+    {
+        while (! $stream->eof()) {
             $line = $this->readLine($stream);
-            if (!str_starts_with($line, 'data:')) {
+            if (! str_starts_with($line, 'data:')) {
                 continue;
             }
 
@@ -113,15 +119,17 @@ class MistralAIChat {
         }
     }
 
-    private function readLine($stream) {
+    private function readLine($stream)
+    {
         $line = '';
-        while (!$stream->eof()) {
+        while (! $stream->eof()) {
             $char = $stream->read(1);
             if ($char === "\n") {
                 break;
             }
             $line .= $char;
         }
+
         return $line;
     }
 }

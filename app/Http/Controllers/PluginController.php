@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Plugin;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Validator;
-use Mauricius\LaravelHtmx\Http\HtmxResponse;
 
 class PluginController extends Controller
 {
@@ -70,11 +69,6 @@ class PluginController extends Controller
         ]);
     }
 
-    public function create()
-    {
-        return view('plugin-create');
-    }
-
     public function store()
     {
         $validator = Validator::make(request()->all(), [
@@ -98,5 +92,10 @@ class PluginController extends Controller
         ]);
 
         return redirect()->route('plugins.show', $plugin);
+    }
+
+    public function create()
+    {
+        return view('plugin-create');
     }
 }

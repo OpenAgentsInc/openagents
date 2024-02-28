@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Agent;
 use App\Models\Plugin;
-use App\Models\StepExecuted;
 use App\Models\Task;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class AgentController extends Controller
@@ -13,6 +13,7 @@ class AgentController extends Controller
     public function chat()
     {
         $task = Task::where('name', 'Inference with web context')->firstOrFail();
+
         return view('agent-chat', [
             'task' => $task,
         ]);
@@ -46,11 +47,6 @@ class AgentController extends Controller
         return view('agent-list', [
             'agents' => $agents,
         ]);
-    }
-
-    public function create()
-    {
-        return view('agent-create');
     }
 
     public function run_task(Request $request, $task_id)
@@ -121,62 +117,11 @@ class AgentController extends Controller
         }
     }
 
-    public function old_run_task(Request $request, $task_id)
-    {
-        // Find the specified task by task_id
-        $task = Task::findOrFail($task_id);
-
-        // Get the agent associated with the task
-        $agent = $task->agent;
-
-        if (! $agent) {
-            // Handle the case where no agent is associated with the task
-            return response()->json([
-                'ok' => false,
-                'error' => 'No agent associated with this task.',
-            ], 404);
-        }
-
-        // check to see if we have input
-
-        // Run the task on the agent
-        $output = $agent->runTask($task, [
-            'input' => $request->input('input'),
-        ]);
-
-        // Return the output of the task execution
-        // return response()->json([
-        //     'ok' => true,
-        //     'output' => $output,
-        // ]);
-
-        // Fetch the StepExecuted data for the task
-        // $stepExecutedData = $task->steps_executed()->get();
-        // Fetch the most recent executed step for the specific task
-        // Fetch the most recent executed step for the specific task
-        $stepExecutedData = StepExecuted::whereHas('task_executed', function ($query) use ($task) {
-            $query->where('task_id', $task->id);
-        })
-            ->orderBy('created_at', 'desc')
-            ->first();
-
-        // \dd($stepExecutedData);
-
-        // Pass the task output and StepExecuted data to the Blade view
-        //
-        return response()->json([
-            'ok' => true,
-            'output' => $output,
-            'stepExecutedData' => [$stepExecutedData],
-        ]);
-        // return view('components.task-runner', [
-        //     'task' => $task,
-        //     'output' => $output,
-        //     'stepExecutedData' => [$stepExecutedData],
-        // ]);
-    }
-
-    // Create a new agent
+    /**
+     * Do a thing with stuff.
+     *
+     * @return RedirectResponse
+     */
     public function store()
     {
         request()->validate([
@@ -204,48 +149,9 @@ class AgentController extends Controller
         return redirect()->route('agent.build', ['id' => $agent->id])->with('success', 'Agent created!');
     }
 
-    // Show the agent page
-    // public function show($id)
-    // {
-    //     try {
-    //         $agent = Agent::findOrFail($id)
-    //             ->load([
-    //                 'tasks.steps',
-    //                 'brains.datapoints',
-    //                 'user' => function ($query) {
-    //                     $query->select('id', 'github_nickname', 'twitter_nickname')
-    //                         ->addSelect(\DB::raw('COALESCE(github_nickname, twitter_nickname) as username'));
-    //                 },
-    //             ]);
-
-    //         $owner = $agent->user->username;
-
-    //         $conversation = $agent->getUserConversation();
-
-    //         return view('agent-view', [
-    //             'agent' => $agent,
-    //             'conversation' => $conversation,
-    //             'owner' => $owner,
-    //             'files' => $agent->files,
-    //         ]);
-    //     } catch (\Exception $e) {
-    //         return redirect('/');
-    //     }
-    // }
-
-    public function old_chat($id)
+    // Create a new agent
+    public function create()
     {
-        $input = request('input');
-        $agent = Agent::findOrFail($id)->load('tasks.steps')->load('brains.datapoints');
-
-        $conversation = $agent->getUserConversation();
-
-        $task = $agent->getChatTask();
-
-        // Return standard JSON success response
-        return response()->json([
-            'ok' => true,
-            'output' => $task->run(['input' => $input, 'conversation' => $conversation]),
-        ]);
+        return view('agent-create');
     }
 }

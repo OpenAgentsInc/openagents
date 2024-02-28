@@ -1,0 +1,421 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "OpenAgents API",
+        "description": "The OpenAgents API",
+        "contact": {
+            "name": "OpenAgents",
+            "url": "https://x.com/OpenAgentsInc"
+        },
+        "version": "1.0"
+    },
+    "servers": [
+        {
+            "url": "https://openagents.com/api/v1/",
+            "description": "OpenAgents API server"
+        }
+    ],
+    "paths": {
+        "/agents": {
+            "get": {
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "List all agents",
+                "description": "Returns a list of all agents associated with the user.",
+                "operationId": "listAgents",
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Agent"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "Create a new agent",
+                "operationId": "createAgent",
+                "requestBody": {
+                    "description": "Agent information",
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "description",
+                                    "instructions"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "instructions": {
+                                        "type": "string"
+                                    },
+                                    "welcome_message": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Agent created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "agent_id": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/agents/{id}": {
+            "get": {
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "Get agent by ID",
+                "description": "Returns a single agent.",
+                "operationId": "getAgentById",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID of agent to return",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Agent"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "Update an existing agent",
+                "operationId": "updateAgent",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID of agent that needs to be updated",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "description": "Agent data to update",
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "instructions": {
+                                        "type": "string"
+                                    },
+                                    "welcome_message": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Agent updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/Agent"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "Deletes an agent",
+                "operationId": "deleteAgent",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Agent id to delete",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Agent deleted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/agents/{agentId}/files": {
+            "post": {
+                "tags": [
+                    "AgentFile"
+                ],
+                "summary": "Store a new file for an agent",
+                "operationId": "storeAgentFile",
+                "parameters": [
+                    {
+                        "name": "agentId",
+                        "in": "path",
+                        "description": "ID of the agent to add file for",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "description": "Upload new file for agent",
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "properties": {
+                                    "file": {
+                                        "description": "File to upload",
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "File added successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "file_id": {
+                                                    "type": "integer"
+                                                },
+                                                "agent_id": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Unauthorized to add file",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "error": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Agent": {
+                "properties": {
+                    "id": {
+                        "description": "Agent ID",
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "name": {
+                        "description": "Agent name",
+                        "type": "string"
+                    },
+                    "description": {
+                        "description": "Agent description",
+                        "type": "string"
+                    },
+                    "instructions": {
+                        "description": "Agent instructions",
+                        "type": "string"
+                    },
+                    "welcome_message": {
+                        "description": "Agent welcome message",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "AgentList": {
+                "type": "array",
+                "items": {
+                    "$ref": "#/components/schemas/Agent"
+                }
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "AgentFile",
+            "description": "Operations about agent files"
+        }
+    ]
+}
