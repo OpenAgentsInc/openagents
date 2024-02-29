@@ -27,7 +27,6 @@ class FileService
     /**
      * Creates a new file with the given details.
      *
-     * @param  string  $name  The name of the file.
      * @param  string  $description  A brief description of the file.
      * @param  string  $path  The file path.
      * @param  int  $agentId  The ID of the associated agent.
@@ -35,7 +34,7 @@ class FileService
      *
      * @throws Exception
      */
-    public function createFile(string $name, string $description, string $path, int $agentId): File
+    public function createFile(string $description, string $path, int $agentId): File
     {
         // Assuming 'user_id' is required to associate a file with a user.
         // Ensure the user is authenticated before creating a file.
@@ -45,7 +44,6 @@ class FileService
 
         // Create and return the new file.
         return File::create([
-            'name' => $name,
             'description' => $description,
             'path' => $path,
             'agent_id' => $agentId,

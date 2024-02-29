@@ -94,18 +94,16 @@ class FileController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate the incoming request
+        // Validate the incoming request without 'name'
         $validated = $request->validate([
-            'name' => 'required|string',
             'description' => 'required|string',
             'path' => 'required|string',
             'agent_id' => 'required|integer',
         ]);
 
         try {
-            // Create a new file using the file service
+            // Create a new file using the file service without 'name'
             $file = $this->fileService->createFile(
-                $validated['name'],
                 $validated['description'],
                 $validated['path'],
                 $validated['agent_id']
@@ -222,15 +220,15 @@ class FileController extends Controller
      */
     public function update(Request $request, $id)
     {
+        // Validate the incoming request without 'name'
         $validated = $request->validate([
-            'name' => 'sometimes|required|string',
             'description' => 'sometimes|required|string',
             'path' => 'sometimes|required|string',
             'agent_id' => 'sometimes|required|integer',
         ]);
 
         try {
-            // Update the file using the file service
+            // Update the file using the file service without 'name'
             $file = $this->fileService->updateFile($id, $validated);
 
             // Return the updated file with a success message
