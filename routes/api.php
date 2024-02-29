@@ -22,4 +22,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Add file to an agent
     Route::post('/agents/{agent}/files', [AgentFileController::class, 'store'])->name('api.agents.files.store');
+
+    //    Route::apiResource('agents', AgentController::class);
+    //    Route::apiResource('files', FileController::class);
+    //    Route::apiResource('flows', FlowController::class);
+    //    Route::apiResource('messages', MessageController::class);
+    //    Route::apiResource('nodes', NodeController::class);
+    //    Route::apiResource('plugins', PluginController::class);
+    //    Route::apiResource('runs', RunController::class);
+    //    Route::apiResource('threads', NodeController::class);
 });
