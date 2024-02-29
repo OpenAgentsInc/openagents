@@ -22,7 +22,8 @@ Route::get('/agent/{id}', AgentShow::class)->name('agent.show');
 
 // Docs
 Route::get('/docs/{page}', [DocsController::class, 'show'])->name('docs.show');
-Route::get('/docs/api/{apipage}', [DocsController::class, 'apidoc']);
+Route::get('/docs/api/{path?}', [DocsController::class, 'new'])
+    ->where('path', '.*'); // Allows "path" parameter to include slashes
 
 // redirect /docs to /docs/introduction
 Route::get('/docs', function () {
