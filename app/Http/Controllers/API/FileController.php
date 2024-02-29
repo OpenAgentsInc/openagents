@@ -38,15 +38,28 @@ class FileController extends Controller
      */
     public function index()
     {
-        // ...
+        try {
+            // Fetch all files using the file service
+            $files = $this->fileService->getAllFilesByUser();
+
+            // Return the list of files with a success message
+            return response()->json([
+                'success' => true,
+                'data' => $files,
+            ], 200);
+        } catch (Exception $e) {
+            // Handle any exceptions, such as database errors
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
      * @OA\Post(
      *     path="/files",
      *     tags={"File"},
-     *     summary="Create a new file",
-     *     operationId="createFile",
+     *     summary="Store a new file",
+     *     description="Store a new file.",
+     *     operationId="storeFile",
      *
      *     @OA\RequestBody(
      *         required=true,
@@ -81,7 +94,35 @@ class FileController extends Controller
      */
     public function store(Request $request)
     {
-        // ...
+        // Validate the incoming request
+        $validated = $request->validate([
+            'name' => 'required|string',
+            'description' => 'required|string',
+            'path' => 'required|string',
+            'agent_id' => 'required|integer',
+        ]);
+
+        try {
+            // Create a new file using the file service
+            $file = $this->fileService->createFile(
+                $validated['name'],
+                $validated['description'],
+                $validated['path'],
+                $validated['agent_id']
+            );
+
+            // Return the created file with a success message
+            return response()->json([
+                'success' => true,
+                'message' => 'File created successfully.',
+                'data' => [
+                    'file_id' => $file->id,
+                ],
+            ], 201);
+        } catch (Exception $e) {
+            // Handle any exceptions, such as database errors
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -114,20 +155,33 @@ class FileController extends Controller
      */
     public function show($id)
     {
-        // ...
+        try {
+            // Find the file by ID using the file service
+            $file = $this->fileService->findFileById($id);
+
+            // Return the found file with a success message
+            return response()->json([
+                'success' => true,
+                'data' => $file,
+            ], 200);
+        } catch (Exception $e) {
+            // Handle any exceptions, such as database errors
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
      * @OA\Put(
      *     path="/files/{id}",
      *     tags={"File"},
-     *     summary="Update an existing file",
+     *     summary="Update a file",
+     *     description="Updates a file.",
      *     operationId="updateFile",
      *
      *     @OA\Parameter(
      *         name="id",
      *         in="path",
-     *         description="ID of file that needs to be updated",
+     *         description="ID of the file to update",
      *         required=true,
      *
      *         @OA\Schema(
@@ -137,7 +191,7 @@ class FileController extends Controller
      *
      *     @OA\RequestBody(
      *         required=true,
-     *         description="File data to update",
+     *         description="File information",
      *
      *         @OA\JsonContent(
      *
@@ -168,20 +222,41 @@ class FileController extends Controller
      */
     public function update(Request $request, $id)
     {
-        // ...
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string',
+            'description' => 'sometimes|required|string',
+            'path' => 'sometimes|required|string',
+            'agent_id' => 'sometimes|required|integer',
+        ]);
+
+        try {
+            // Update the file using the file service
+            $file = $this->fileService->updateFile($id, $validated);
+
+            // Return the updated file with a success message
+            return response()->json([
+                'success' => true,
+                'message' => 'File updated successfully.',
+                'data' => $file,
+            ], 200);
+        } catch (Exception $e) {
+            // Handle any exceptions, such as database errors
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     /**
      * @OA\Delete(
      *     path="/files/{id}",
      *     tags={"File"},
-     *     summary="Deletes a file",
+     *     summary="Delete a file",
+     *     description="Deletes a file.",
      *     operationId="deleteFile",
      *
      *     @OA\Parameter(
      *         name="id",
      *         in="path",
-     *         description="File id to delete",
+     *         description="ID of the file to delete",
      *         required=true,
      *
      *         @OA\Schema(
@@ -204,6 +279,18 @@ class FileController extends Controller
      */
     public function destroy($id)
     {
-        // ...
+        try {
+            // Delete the file using the file service
+            $this->fileService->deleteFile($id);
+
+            // Return a success message
+            return response()->json([
+                'success' => true,
+                'message' => 'File deleted successfully.',
+            ], 200);
+        } catch (Exception $e) {
+            // Handle any exceptions, such as database errors
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 }
