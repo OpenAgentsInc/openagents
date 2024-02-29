@@ -70,7 +70,7 @@ test('can update a file via api', function () {
 })->skip();
 
 test('can delete a file via api', function () {
-    withoutExceptionHandling();
+    // withoutExceptionHandling(); // Uncomment if you want to see exceptions
 
     $user = User::factory()->create();
     $agent = Agent::factory()->create(['user_id' => $user->id]);
@@ -78,10 +78,16 @@ test('can delete a file via api', function () {
     Sanctum::actingAs($user);
 
     $file = UploadedFile::fake()->create('document.pdf', 1000, 'application/pdf');
-    $createdFile = storeFile($agent, $file);
-    dd($createdFile);
+    $response = $this->postJson('/api/v1/agents/'.$agent->id.'/files', [
+        'file' => $file,
+        'description' => 'Test file description',
+    ]);
 
-    $response = deleteFile($createdFile['id']);
+    $createdFile = $response->json('data');
+
+    // Now let's delete the file
+    $response = $this->deleteJson('/api/v1/files/'.$createdFile['file_id']);
+
     $response->assertStatus(200);
 
     $responseData = $response->json();
@@ -92,6 +98,6 @@ test('can delete a file via api', function () {
     $this->assertEquals('File deleted successfully.', $responseData['message']);
 
     $this->assertDatabaseMissing('files', [
-        'id' => $createdFile['id'],
+        'id' => $createdFile['file_id'],
     ]);
-})->skip();
+});
