@@ -42,8 +42,6 @@ class AgentController extends Controller
      *             @OA\Property(property="success", type="boolean"),
      *         )
      *     ),
-     *
-     *     security={{"bearerAuth":{}}}
      * )
      */
     public function index()
