@@ -24,5 +24,8 @@ class SuperSeeder extends Seeder
         // user adds a file to the thread
         // user triggers a run of flow on the thread
         // run is updated with node results
+        // user adds user2 to conversation
+        // user2 adds messages
+        // user1 triggers run
     }
 }
