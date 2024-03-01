@@ -10,9 +10,15 @@ class Thread extends Model
 {
     use HasFactory;
 
-    // has many messages
+    protected $guarded = [];
+
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function agents()
+    {
+        return $this->belongsToMany(Agent::class);
     }
 }

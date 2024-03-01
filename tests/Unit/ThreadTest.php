@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Agent;
 use App\Models\Message;
 use App\Models\Thread;
 
@@ -9,6 +10,16 @@ it('has many messages', function () {
 
     $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $thread->messages);
     $this->assertInstanceOf(Message::class, $thread->messages->first());
+});
+
+it('has many agents', function () {
+    $thread = Thread::factory()->create();
+    $agent = Agent::factory()->create();
+
+    $thread->agents()->attach($agent->id);
+
+    $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $thread->agents);
+    $this->assertInstanceOf(Agent::class, $thread->agents->first());
 });
 
 //it('must belong to an agent', function () {

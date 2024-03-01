@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Services\ThreadService;
+use Exception;
 use Illuminate\Http\Request;
 
 class ThreadController extends Controller
@@ -35,6 +36,8 @@ class ThreadController extends Controller
 
             return response()->json(['success' => true, 'data' => $thread]);
         } catch (Exception $e) {
+            dd($e->getMessage());
+
             return response()->json(['message' => $e->getMessage()], 500);
         }
     }
