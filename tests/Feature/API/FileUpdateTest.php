@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Agent;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Laravel\Sanctum\Sanctum;
@@ -11,15 +10,14 @@ test('can update a file via api', function () {
     withoutExceptionHandling(); // Uncomment if you encounter an exception
 
     $user = User::factory()->create();
-    $agent = Agent::factory()->create(['user_id' => $user->id]);
     $file = UploadedFile::fake()->create('document.pdf', 1000, 'application/pdf');
 
     Sanctum::actingAs($user);
 
     // Store a file first
-    $createdFileResponse = $this->postJson("/api/v1/agents/{$agent->id}/files", [
-        'file' => $file,
+    $createdFileResponse = $this->postJson('/api/v1/files', [
         'description' => 'Test file description',
+        'path' => $file->store('files'),
     ]);
 
     $createdFileData = $createdFileResponse->json('data');

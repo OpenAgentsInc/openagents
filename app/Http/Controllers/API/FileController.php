@@ -67,7 +67,6 @@ class FileController extends Controller
      *
      *         @OA\JsonContent(
      *
-     *             @OA\Property(property="name", type="string"),
      *             @OA\Property(property="description", type="string"),
      *             @OA\Property(property="path", type="string"),
      *             @OA\Property(property="agent_id", type="integer")
@@ -98,7 +97,6 @@ class FileController extends Controller
         $validated = $request->validate([
             'description' => 'required|string',
             'path' => 'required|string',
-            'agent_id' => 'required|integer',
         ]);
 
         try {
@@ -106,7 +104,6 @@ class FileController extends Controller
             $file = $this->fileService->createFile(
                 $validated['description'],
                 $validated['path'],
-                $validated['agent_id']
             );
 
             // Return the created file with a success message

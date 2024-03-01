@@ -29,12 +29,12 @@ class FileService
      *
      * @param  string  $description  A brief description of the file.
      * @param  string  $path  The file path.
-     * @param  int  $agentId  The ID of the associated agent.
+     * @param  int|null  $agentId  The ID of the associated agent.
      * @return File The created File object.
      *
      * @throws Exception
      */
-    public function createFile(string $description, string $path, int $agentId): File
+    public function createFile(string $description, string $path, ?int $agentId = null): File
     {
         // Assuming 'user_id' is required to associate a file with a user.
         // Ensure the user is authenticated before creating a file.
@@ -43,12 +43,18 @@ class FileService
         }
 
         // Create and return the new file.
-        return File::create([
+        $file = File::create([
             'description' => $description,
             'path' => $path,
-            'agent_id' => $agentId,
             'user_id' => Auth::id(), // Or another way to obtain the current user's ID, depending on your auth system
         ]);
+
+        if ($agentId !== null) {
+            // Associate the file with the given agent
+            $file->agents()->attach($agentId);
+        }
+
+        return $file;
     }
 
     /**
