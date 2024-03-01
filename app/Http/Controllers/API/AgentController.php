@@ -43,18 +43,6 @@ class AgentController extends Controller
      *         )
      *     ),
      *
-     *     @OA\Response(
-     *         response=500,
-     *         description="Internal Server Error",
-     *
-     *         @OA\JsonContent(
-     *             type="object",
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
-     *         )
-     *     ),
-     *
      *     security={{"bearerAuth":{}}}
      * )
      */
@@ -106,29 +94,6 @@ class AgentController extends Controller
      *                 type="object",
      *                 @OA\Property(property="agent_id", type="integer")
      *             )
-     *         )
-     *     ),
-     *
-     *     @OA\Response(
-     *         response=400,
-     *         description="Bad Request",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
-     *             @OA\Property(property="errors", type="object")
-     *         )
-     *     ),
-     *
-     *     @OA\Response(
-     *         response=500,
-     *         description="Internal Server Error",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
      *         )
      *     ),
      *
@@ -196,28 +161,6 @@ class AgentController extends Controller
      *                 ref="#/components/schemas/Agent"
      *             ),
      *             @OA\Property(property="success", type="boolean")
-     *         )
-     *     ),
-     *
-     *     @OA\Response(
-     *         response=404,
-     *         description="Agent not found",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
-     *         )
-     *     ),
-     *
-     *     @OA\Response(
-     *         response=500,
-     *         description="Internal Server Error",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
      *         )
      *     ),
      *
@@ -298,40 +241,6 @@ class AgentController extends Controller
      *         )
      *     ),
      *
-     *     @OA\Response(
-     *         response=400,
-     *         description="Bad Request",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
-     *             @OA\Property(property="errors", type="object")
-     *         )
-     *     ),
-     *
-     *     @OA\Response(
-     *         response=404,
-     *         description="Agent not found",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
-     *         )
-     *     ),
-     *
-     *     @OA\Response(
-     *         response=500,
-     *         description="Internal Server Error",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
-     *         )
-     *     ),
-     *
      *     security={{"bearerAuth":{}}}
      * )
      */
@@ -390,29 +299,6 @@ class AgentController extends Controller
      *             @OA\Property(property="message", type="string")
      *         )
      *     ),
-     *
-     *     @OA\Response(
-     *         response=404,
-     *         description="Agent not found",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string")
-     *         )
-     *     ),
-     *
-     *     @OA\Response(
-     *         response=500,
-     *         description="Internal Server Error",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string")
-     *         )
-     *     ),
-     *
      *     security={{"bearerAuth":{}}}
      * )
      */

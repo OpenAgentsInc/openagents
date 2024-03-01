@@ -1,4 +1,4 @@
-i<?php
+<?php
 
 use App\Livewire\Chat;
 use App\Models\Agent;
