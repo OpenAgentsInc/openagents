@@ -19,7 +19,7 @@ class FileController extends Controller
      * @OA\Get(
      *     path="/files",
      *     tags={"File"},
-     *     summary="List all files",
+     *     summary="List files",
      *     description="Returns a list of all files.",
      *     operationId="listFiles",
      *
@@ -57,7 +57,7 @@ class FileController extends Controller
      * @OA\Post(
      *     path="/files",
      *     tags={"File"},
-     *     summary="Store a new file",
+     *     summary="Upload file",
      *     description="Store a new file.",
      *     operationId="storeFile",
      *
@@ -124,7 +124,7 @@ class FileController extends Controller
      * @OA\Get(
      *     path="/files/{id}",
      *     tags={"File"},
-     *     summary="Get file by ID",
+     *     summary="Retrieve file",
      *     description="Returns a single file.",
      *     operationId="getFileById",
      *
@@ -169,7 +169,7 @@ class FileController extends Controller
      * @OA\Put(
      *     path="/files/{id}",
      *     tags={"File"},
-     *     summary="Update a file",
+     *     summary="Update file",
      *     description="Updates a file.",
      *     operationId="updateFile",
      *
@@ -244,7 +244,7 @@ class FileController extends Controller
      * @OA\Delete(
      *     path="/files/{id}",
      *     tags={"File"},
-     *     summary="Delete a file",
+     *     summary="Delete file",
      *     description="Deletes a file.",
      *     operationId="deleteFile",
      *
