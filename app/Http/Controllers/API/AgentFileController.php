@@ -138,7 +138,7 @@ class AgentFileController extends Controller
         $uploadedFile = $agent->files()->create([
             'path' => $filePath,
             'description' => $request->description,
-            // Add other necessary fields here
+            'user_id' => Auth::id(), // Assuming the file is associated with the authenticated user
         ]);
 
         return response()->json([
