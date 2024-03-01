@@ -27,7 +27,7 @@ class AgentController extends Controller
      *
      *     @OA\Response(
      *         response=200,
-     *         description="Successful operation",
+     *         description="Success",
      *
      *         @OA\JsonContent(
      *             type="object",
@@ -39,9 +39,10 @@ class AgentController extends Controller
      *                 @OA\Items(ref="#/components/schemas/Agent")
      *             ),
      *
-     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="success", type="boolean")
      *         )
      *     ),
+     *     security={{"bearerAuth":{}}}
      * )
      */
     public function index()
