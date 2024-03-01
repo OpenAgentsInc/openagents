@@ -12,7 +12,6 @@ class AgentController extends Controller
 {
     protected AgentService $agentService;
 
-    // Inject AgentService into the controller
     public function __construct(AgentService $agentService)
     {
         $this->agentService = $agentService;
@@ -36,6 +35,18 @@ class AgentController extends Controller
      *             @OA\Items(ref="#/components/schemas/Agent")
      *         )
      *     ),
+     *
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *
+     *         @OA\JsonContent(
+     *             type="object",
+     *
+     *             @OA\Property(property="message", type="string", example="An unexpected error occurred")
+     *         )
+     *     ),
+     *
      *     security={{"bearerAuth":{}}}
      * )
      */
@@ -45,14 +56,11 @@ class AgentController extends Controller
             // Fetch all agents using the agent service
             $agents = $this->agentService->getAllAgentsByUser();
 
-            // Return the list of agents with a success message
-            return response()->json([
-                'success' => true,
-                'data' => $agents,
-            ], 200);
+            // Return the list of agents
+            return response()->json($agents, 200);
         } catch (Exception $e) {
-            // Handle any exceptions, such as database errors
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            // Handle any exceptions by returning a 500 Internal Server Error
+            return response()->json(['message' => 'An unexpected error occurred'], 500);
         }
     }
 
@@ -128,7 +136,7 @@ class AgentController extends Controller
             ], 201);
         } catch (Exception $e) {
             // Handle any exceptions, such as authentication failures
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 403);
+            return response()->json(['success' => true, 'message' => $e->getMessage()], 500);
         }
     }
 
