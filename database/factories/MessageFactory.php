@@ -2,14 +2,13 @@
 
 namespace Database\Factories;
 
-use App\Models\Conversation;
+use App\Models\Message;
+use App\Models\Thread;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Message>
+ * @extends Factory<Message>
  */
 class MessageFactory extends Factory
 {
@@ -21,7 +20,7 @@ class MessageFactory extends Factory
     public function definition(): array
     {
         return [
-            'conversation_id' => Conversation::factory(),
+            'thread_id' => Thread::factory(),
             'user_id' => User::factory(),
             'body' => $this->faker->paragraph,
             'sender' => $this->faker->randomElement(['user', 'agent']),

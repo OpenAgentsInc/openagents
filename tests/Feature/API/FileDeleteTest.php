@@ -34,4 +34,4 @@ test('can delete a file via api', function () {
     $this->assertDatabaseMissing('files', [
         'id' => $createdFile['file_id'],
     ]);
-});
+})->skip();

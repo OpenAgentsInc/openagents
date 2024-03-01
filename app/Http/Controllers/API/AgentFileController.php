@@ -16,6 +16,14 @@ use Illuminate\Support\Facades\Auth;
 class AgentFileController extends Controller
 {
     /**
+     * Display a listing of the resource.
+     */
+    public function index()
+    {
+        //
+    }
+
+    /**
      * @OA\Post(
      *     path="/agents/{agentId}/files",
      *     tags={"AgentFile"},
@@ -85,31 +93,6 @@ class AgentFileController extends Controller
      *         )
      *     ),
      *
-     *     @OA\Response(
-     *         response=403,
-     *         description="Unauthorized to add file",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(
-     *                 property="message",
-     *                 type="string"
-     *             )
-     *         )
-     *     ),
-     *
-     *     @OA\Response(
-     *         response=422,
-     *         description="Validation error",
-     *
-     *         @OA\JsonContent(
-     *
-     *             @OA\Property(
-     *                 property="error",
-     *                 type="string"
-     *             )
-     *         )
-     *     ),
      *     security={{"bearerAuth":{}}}
      * )
      */
@@ -149,5 +132,29 @@ class AgentFileController extends Controller
                 'agent_id' => $agent->id,
             ],
         ]);
+    }
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(string $id)
+    {
+        //
+    }
+
+    /**
+     * Update the specified resource in storage.
+     */
+    public function update(Request $request, string $id)
+    {
+        //
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    public function destroy(string $id)
+    {
+        //
     }
 }
