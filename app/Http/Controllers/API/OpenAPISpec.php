@@ -21,6 +21,52 @@ namespace App\Http\Controllers\API;
  *
  * @OA\Components(
  *
+ *      @OA\Schema(
+ *          schema="File",
+ *          type="object",
+ *
+ *          @OA\Property(
+ *              property="id",
+ *              type="integer",
+ *              format="int64",
+ *              description="File ID"
+ *          ),
+ *          @OA\Property(
+ *              property="path",
+ *              type="string",
+ *              description="File path"
+ *          ),
+ *          @OA\Property(
+ *              property="description",
+ *              type="string",
+ *              description="File description"
+ *          ),
+ *          @OA\Property(
+ *              property="created_at",
+ *              type="string",
+ *              format="date-time",
+ *              description="File creation date and time"
+ *          ),
+ *          @OA\Property(
+ *              property="updated_at",
+ *              type="string",
+ *              format="date-time",
+ *              description="File update date and time"
+ *          ),
+ *          @OA\Property(
+ *              property="user_id",
+ *              type="integer",
+ *              format="int64",
+ *              description="User ID"
+ *          ),
+ *          @OA\Property(
+ *              property="agent_id",
+ *              type="integer",
+ *              format="int64",
+ *              description="Agent ID"
+ *          )
+ *      ),
+ *
  *     @OA\Schema(
  *         schema="Agent",
  *         type="object",

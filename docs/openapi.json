@@ -11,7 +11,7 @@
     },
     "servers": [
         {
-            "url": "https://openagents.com/api/v1",
+            "url": "https://openagents.com/api/v1/",
             "description": "OpenAgents API server"
         }
     ],
@@ -374,10 +374,295 @@
                     }
                 ]
             }
+        },
+        "/files": {
+            "get": {
+                "tags": [
+                    "File"
+                ],
+                "summary": "List all files",
+                "description": "Returns a list of all files.",
+                "operationId": "listFiles",
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/File"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "File"
+                ],
+                "summary": "Store a new file",
+                "description": "Store a new file.",
+                "operationId": "storeFile",
+                "requestBody": {
+                    "description": "File information",
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "path": {
+                                        "type": "string"
+                                    },
+                                    "agent_id": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "File created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "file_id": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/files/{id}": {
+            "get": {
+                "tags": [
+                    "File"
+                ],
+                "summary": "Get file by ID",
+                "description": "Returns a single file.",
+                "operationId": "getFileById",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID of file to return",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/File"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "File"
+                ],
+                "summary": "Update a file",
+                "description": "Updates a file.",
+                "operationId": "updateFile",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID of the file to update",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "description": "File information",
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "path": {
+                                        "type": "string"
+                                    },
+                                    "agent_id": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "File updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/File"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "File"
+                ],
+                "summary": "Delete a file",
+                "description": "Deletes a file.",
+                "operationId": "deleteFile",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID of the file to delete",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File deleted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
         }
     },
     "components": {
         "schemas": {
+            "File": {
+                "properties": {
+                    "id": {
+                        "description": "File ID",
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "path": {
+                        "description": "File path",
+                        "type": "string"
+                    },
+                    "description": {
+                        "description": "File description",
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "description": "File creation date and time",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "description": "File update date and time",
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "user_id": {
+                        "description": "User ID",
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "agent_id": {
+                        "description": "Agent ID",
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "type": "object"
+            },
             "Agent": {
                 "properties": {
                     "id": {
