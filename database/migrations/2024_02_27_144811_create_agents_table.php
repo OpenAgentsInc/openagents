@@ -17,9 +17,6 @@ return new class extends Migration
             // All agents belong to a user.
             $table->foreignId('user_id')->constrained()->cascadeOnDelete()->cascadeOnUpdate();
 
-            // Agents have a bitcoin balance denominated in satoshis.
-            $table->integer('balance')->default(0); // sats
-
             // Agents have a user-facing name and description.
             $table->string('name');
             $table->string('description');
@@ -29,6 +26,9 @@ return new class extends Migration
 
             // Agents optionally have a welcome message they'll send to users on new chats.
             $table->string('welcome_message')->nullable();
+
+            // Agents have a bitcoin balance denominated in satoshis.
+            $table->integer('balance')->default(0); // sats
 
             // Agents may be published (public) or not.
             $table->timestamp('published_at')->nullable();
