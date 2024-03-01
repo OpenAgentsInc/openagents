@@ -15,7 +15,7 @@ namespace App\Http\Controllers\API;
  * )
  *
  * @OA\Server(
- *     url="https://openagents.com/api/v1/",
+ *     url="https://openagents.com/api/v1",
  *     description="OpenAgents API server"
  * )
  *
