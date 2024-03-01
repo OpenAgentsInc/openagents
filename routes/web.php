@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Auth\NostrAuthController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\StaticController;
@@ -33,10 +32,6 @@ Route::get('/docs', function () {
 // Dev only
 Route::get('/design', [StaticController::class, 'design'])->name('design');
 Route::get('/hud', [StaticController::class, 'hud'])->name('hud');
-
-// Auth - nostr
-Route::get('login/nostr', [NostrAuthController::class, 'client'])->name('loginnostrclient');
-Route::post('login/nostr', [NostrAuthController::class, 'create'])->name('loginnostr');
 
 // Auth - frontend
 Route::get('/login', Login::class)->name('login');
