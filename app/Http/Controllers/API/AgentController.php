@@ -22,8 +22,8 @@ class AgentController extends Controller
      * @OA\Get(
      *     path="/agents",
      *     tags={"Agent"},
-     *     summary="List all agents",
-     *     description="Returns a list of all agents associated with the user.",
+     *     summary="List agents",
+     *     description="Returns a list of agents owned by the user.",
      *     operationId="listAgents",
      *
      *     @OA\Response(
@@ -60,7 +60,7 @@ class AgentController extends Controller
      * @OA\Post(
      *     path="/agents",
      *     tags={"Agent"},
-     *     summary="Create a new agent",
+     *     summary="Create agent",
      *     operationId="createAgent",
      *
      *     @OA\RequestBody(
@@ -136,8 +136,8 @@ class AgentController extends Controller
      * @OA\Get(
      *     path="/agents/{id}",
      *     tags={"Agent"},
-     *     summary="Get agent by ID",
-     *     description="Returns a single agent.",
+     *     summary="Retrieve agent",
+     *     description="Retrieves an agent.",
      *     operationId="getAgentById",
      *
      *     @OA\Parameter(
@@ -179,7 +179,7 @@ class AgentController extends Controller
      * @OA\Put(
      *     path="/agents/{id}",
      *     tags={"Agent"},
-     *     summary="Update an existing agent",
+     *     summary="Modify agent",
      *     operationId="updateAgent",
      *
      *     @OA\Parameter(
@@ -255,7 +255,7 @@ class AgentController extends Controller
      * @OA\Delete(
      *     path="/agents/{id}",
      *     tags={"Agent"},
-     *     summary="Deletes an agent",
+     *     summary="Delete agent",
      *     operationId="deleteAgent",
      *
      *     @OA\Parameter(
