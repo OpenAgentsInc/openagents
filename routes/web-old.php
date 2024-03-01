@@ -1,10 +1,10 @@
 <?php
 
 use App\Http\Controllers\AgentController;
+use App\Http\Controllers\API\PluginController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BitcoinController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\PluginController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
 use App\Livewire\PluginList;
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [StaticController::class, 'splash'])->name('home');
 
 // Disable all these routes in production
-if (!app()->environment('production')) {
+if (! app()->environment('production')) {
     Route::get('/design', [StaticController::class, 'design'])->name('design');
 
     Route::get('/agent/chat', Chat::class)->name('agent.chat');

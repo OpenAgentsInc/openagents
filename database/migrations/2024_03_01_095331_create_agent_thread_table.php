@@ -4,17 +4,17 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
     public function up(): void
     {
-        Schema::create('tasks', function (Blueprint $table) {
+        Schema::create('agent_thread', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('agent_id')->constrained()->cascadeOnDelete()->cascadeOnUpdate();
-            $table->string('name')->nullable();
-            $table->string('description')->nullable();
+            $table->foreignId('agent_id')->constrained();
+            $table->foreignId('thread_id')->constrained();
             $table->timestamps();
         });
     }
@@ -24,6 +24,8 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::dropIfExists('tasks');
+        Schema::table('agent_thread', function (Blueprint $table) {
+            //
+        });
     }
 };
