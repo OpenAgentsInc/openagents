@@ -146,7 +146,7 @@ class AgentController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['success' => false, 'message' => 'Validation errors', 'errors' => $validator->errors()], 400);
+            return response()->json(['success' => false, 'message' => 'Validation errors', 'errors' => $validator->errors()], 422);
         }
 
         try {
