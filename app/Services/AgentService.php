@@ -17,7 +17,7 @@ class AgentService
      *
      * @return Collection|static[]
      */
-    public function getAllAgentsByUser()
+    public function getAllAgentsByUser(): Collection|static
     {
         $userId = Auth::id(); // Get the currently authenticated user's ID
 
