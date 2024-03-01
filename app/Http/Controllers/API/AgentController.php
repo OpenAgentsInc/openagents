@@ -30,9 +30,16 @@ class AgentController extends Controller
      *         description="Successful operation",
      *
      *         @OA\JsonContent(
-     *             type="array",
+     *             type="object",
      *
-     *             @OA\Items(ref="#/components/schemas/Agent")
+     *             @OA\Property(
+     *                 property="data",
+     *                 type="array",
+     *
+     *                 @OA\Items(ref="#/components/schemas/Agent")
+     *             ),
+     *
+     *             @OA\Property(property="success", type="boolean"),
      *         )
      *     ),
      *
@@ -87,7 +94,7 @@ class AgentController extends Controller
      *     ),
      *
      *     @OA\Response(
-     *         response=201,
+     *         response=200,
      *         description="Agent created",
      *
      *         @OA\JsonContent(
@@ -129,7 +136,7 @@ class AgentController extends Controller
             );
 
             // Return the response structured as expected by the test
-            return response()->json(['success' => true, 'message' => 'Agent created successfully', 'data' => ['agent_id' => $agent->id]], 201);
+            return response()->json(['success' => true, 'message' => 'Agent created successfully', 'data' => ['agent_id' => $agent->id]]);
         } catch (Exception $e) {
             // Handle any exceptions, such as authentication failures
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -159,8 +166,29 @@ class AgentController extends Controller
      *         response=200,
      *         description="Successful operation",
      *
-     *         @OA\JsonContent(ref="#/components/schemas/Agent")
+     *         @OA\JsonContent(
+     *             type="object",
+     *
+     *             @OA\Property(
+     *                 property="data",
+     *                 ref="#/components/schemas/Agent"
+     *             ),
+     *             @OA\Property(property="success", type="boolean")
+     *         )
      *     ),
+     *
+     *     @OA\Response(
+     *         response=404,
+     *         description="Agent not found",
+     *
+     *         @OA\JsonContent(
+     *             type="object",
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string"),
+     *         )
+     *     ),
+     *
      *     security={{"bearerAuth":{}}}
      * )
      */
@@ -203,10 +231,22 @@ class AgentController extends Controller
      *
      *         @OA\JsonContent(
      *
-     *             @OA\Property(property="name", type="string"),
-     *             @OA\Property(property="description", type="string"),
-     *             @OA\Property(property="instructions", type="string"),
-     *             @OA\Property(property="welcome_message", type="string")
+     *             @OA\Property(
+     *                 property="name",
+     *                 type="string"
+     *             ),
+     *             @OA\Property(
+     *                 property="description",
+     *                 type="string"
+     *             ),
+     *             @OA\Property(
+     *                 property="instructions",
+     *                 type="string"
+     *             ),
+     *             @OA\Property(
+     *                 property="welcome_message",
+     *                 type="string"
+     *             )
      *         )
      *     ),
      *
@@ -216,15 +256,16 @@ class AgentController extends Controller
      *
      *         @OA\JsonContent(
      *
-     *             @OA\Property(property="success", type="boolean"),
-     *             @OA\Property(property="message", type="string"),
      *             @OA\Property(
      *                 property="data",
      *                 type="object",
      *                 ref="#/components/schemas/Agent"
-     *             )
+     *             ),
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string")
      *         )
      *     ),
+     *
      *     security={{"bearerAuth":{}}}
      * )
      */
@@ -283,6 +324,18 @@ class AgentController extends Controller
      *             @OA\Property(property="message", type="string")
      *         )
      *     ),
+     *
+     *     @OA\Response(
+     *         response=404,
+     *         description="Agent not found",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string")
+     *         )
+     *     ),
+     *
      *     security={{"bearerAuth":{}}}
      * )
      */

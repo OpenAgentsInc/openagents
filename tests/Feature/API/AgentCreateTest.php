@@ -15,7 +15,7 @@ test('can create agent via api', function () {
         'description' => 'This is a test agent',
         'instructions' => 'This is a test instruction',
     ])
-        ->assertStatus(201)
+        ->assertStatus(200)
         ->assertJson([
             'success' => true,
             'message' => 'Agent created successfully',
@@ -80,7 +80,7 @@ test('agent creation allows optional welcome_message', function () {
     ];
 
     post('/api/v1/agents', $data, apiHeaders())
-        ->assertStatus(201)
+        ->assertStatus(200)
         ->assertJson([
             'success' => true,
             'message' => 'Agent created successfully',
