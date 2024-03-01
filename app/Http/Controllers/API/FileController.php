@@ -169,8 +169,8 @@ class FileController extends Controller
      * @OA\Put(
      *     path="/files/{id}",
      *     tags={"File"},
-     *     summary="Update file",
-     *     description="Updates a file.",
+     *     summary="Modify file",
+     *     description="Modifies a file.",
      *     operationId="updateFile",
      *
      *     @OA\Parameter(
