@@ -19,7 +19,7 @@ class AgentFileController extends Controller
      * @OA\Post(
      *     path="/agents/{agentId}/files",
      *     tags={"AgentFile"},
-     *     summary="Store a new file for an agent",
+     *     summary="Create agent file",
      *     operationId="storeAgentFile",
      *
      *     @OA\Parameter(
