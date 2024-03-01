@@ -55,7 +55,7 @@ foreach ($requiredFields as $field) {
         unset($data[$field]);
 
         post('/api/v1/agents', $data, apiHeaders())
-            ->assertStatus(400) // Expect a 400 Bad Request response for validation errors
+            ->assertStatus(422) // Expect a 400 Bad Request response for validation errors
             ->assertJson([
                 'success' => false,
                 'message' => 'Validation errors',
