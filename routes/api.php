@@ -12,9 +12,8 @@ use App\Http\Controllers\API\ThreadController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum'])->group(function () {
+    // Core API routes
     Route::apiResource('agents', AgentController::class);
-    Route::post('/agents/{agent}/files', [AgentFileController::class, 'store']);
-
     Route::apiResource('files', FileController::class);
     Route::apiResource('flows', FlowController::class);
     Route::apiResource('messages', MessageController::class);
@@ -22,4 +21,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('plugins', PluginController::class);
     Route::apiResource('runs', RunController::class);
     Route::apiResource('threads', ThreadController::class);
+
+    Route::apiResource('agents.files', AgentFileController::class)->shallow();
+
+    // Add file to agent
+    //    Route::post('/agents/{agent}/files', [AgentFileControllerPrev::class, 'store']);
 });
