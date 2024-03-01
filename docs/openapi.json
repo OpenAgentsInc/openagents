@@ -273,7 +273,7 @@
                 "tags": [
                     "AgentFile"
                 ],
-                "summary": "Store a new file for an agent",
+                "summary": "Create agent file",
                 "operationId": "storeAgentFile",
                 "parameters": [
                     {
@@ -380,7 +380,7 @@
                 "tags": [
                     "File"
                 ],
-                "summary": "List all files",
+                "summary": "List files",
                 "description": "Returns a list of all files.",
                 "operationId": "listFiles",
                 "responses": {
@@ -408,7 +408,7 @@
                 "tags": [
                     "File"
                 ],
-                "summary": "Store a new file",
+                "summary": "Upload file",
                 "description": "Store a new file.",
                 "operationId": "storeFile",
                 "requestBody": {
@@ -473,7 +473,7 @@
                 "tags": [
                     "File"
                 ],
-                "summary": "Get file by ID",
+                "summary": "Retrieve file",
                 "description": "Returns a single file.",
                 "operationId": "getFileById",
                 "parameters": [
@@ -509,7 +509,7 @@
                 "tags": [
                     "File"
                 ],
-                "summary": "Update a file",
+                "summary": "Update file",
                 "description": "Updates a file.",
                 "operationId": "updateFile",
                 "parameters": [
@@ -581,7 +581,7 @@
                 "tags": [
                     "File"
                 ],
-                "summary": "Delete a file",
+                "summary": "Delete file",
                 "description": "Deletes a file.",
                 "operationId": "deleteFile",
                 "parameters": [
