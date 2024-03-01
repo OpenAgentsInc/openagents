@@ -19,48 +19,10 @@ class AgentController extends Controller
     }
 
     /**
-     * @OA\Get(
-     *     path="/agents",
-     *     tags={"Agent"},
-     *     summary="List all agents",
-     *     description="Returns a list of all agents associated with the user.",
-     *     operationId="listAgents",
-     *
-     *     @OA\Response(
-     *         response=200,
-     *         description="Successful operation",
-     *
-     *         @OA\JsonContent(
-     *             type="array",
-     *
-     *             @OA\Items(ref="#/components/schemas/Agent")
-     *         )
-     *     ),
-     *     security={{"bearerAuth":{}}}
-     * )
-     */
-    public function index()
-    {
-        try {
-            // Fetch all agents using the agent service
-            $agents = $this->agentService->getAllAgentsByUser();
-
-            // Return the list of agents with a success message
-            return response()->json([
-                'success' => true,
-                'data' => $agents,
-            ], 200);
-        } catch (Exception $e) {
-            // Handle any exceptions, such as database errors
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
      * @OA\Post(
      *     path="/agents",
      *     tags={"Agent"},
-     *     summary="Create a new agent",
+     *     summary="Create agent",
      *     operationId="createAgent",
      *
      *     @OA\RequestBody(
@@ -134,10 +96,48 @@ class AgentController extends Controller
 
     /**
      * @OA\Get(
+     *     path="/agents",
+     *     tags={"Agent"},
+     *     summary="List agents",
+     *     description="Returns a list of agents owned by the user.",
+     *     operationId="listAgents",
+     *
+     *     @OA\Response(
+     *         response=200,
+     *         description="Successful operation",
+     *
+     *         @OA\JsonContent(
+     *             type="array",
+     *
+     *             @OA\Items(ref="#/components/schemas/Agent")
+     *         )
+     *     ),
+     *     security={{"bearerAuth":{}}}
+     * )
+     */
+    public function index()
+    {
+        try {
+            // Fetch all agents using the agent service
+            $agents = $this->agentService->getAllAgentsByUser();
+
+            // Return the list of agents with a success message
+            return response()->json([
+                'success' => true,
+                'data' => $agents,
+            ], 200);
+        } catch (Exception $e) {
+            // Handle any exceptions, such as database errors
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * @OA\Get(
      *     path="/agents/{id}",
      *     tags={"Agent"},
-     *     summary="Get agent by ID",
-     *     description="Returns a single agent.",
+     *     summary="Retrieve agent",
+     *     description="Retrieves an agent.",
      *     operationId="getAgentById",
      *
      *     @OA\Parameter(
@@ -179,7 +179,7 @@ class AgentController extends Controller
      * @OA\Put(
      *     path="/agents/{id}",
      *     tags={"Agent"},
-     *     summary="Update an existing agent",
+     *     summary="Modify agent",
      *     operationId="updateAgent",
      *
      *     @OA\Parameter(
@@ -255,7 +255,7 @@ class AgentController extends Controller
      * @OA\Delete(
      *     path="/agents/{id}",
      *     tags={"Agent"},
-     *     summary="Deletes an agent",
+     *     summary="Delete agent",
      *     operationId="deleteAgent",
      *
      *     @OA\Parameter(
