@@ -15,17 +15,21 @@ test('authenticated user can retrieve list of agents', function () {
 
     get('/api/v1/agents')
         ->assertStatus(200)
-        ->assertJsonCount(5) // Directly assert the count of agents in the root of the JSON response
         ->assertJsonStructure([
-            '*' => [
-                'id',
-                'name',
-                'description',
-                'instructions',
-                'welcome_message',
-                'user_id',
+            'success',
+            'data' => [
+                '*' => [
+                    'id',
+                    'name',
+                    'description',
+                    'instructions',
+                    'welcome_message',
+                    'user_id',
+                ],
             ],
-        ]);
+        ])
+        ->assertJsonPath('success', true)
+        ->assertJsonCount(5, 'data');
 });
 
 test('unauthenticated user cannot retrieve list of agents', function () {

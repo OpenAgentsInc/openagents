@@ -43,7 +43,8 @@ class AgentController extends Controller
      *         @OA\JsonContent(
      *             type="object",
      *
-     *             @OA\Property(property="message", type="string", example="An unexpected error occurred")
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string"),
      *         )
      *     ),
      *
@@ -57,10 +58,10 @@ class AgentController extends Controller
             $agents = $this->agentService->getAllAgentsByUser();
 
             // Return the list of agents
-            return response()->json($agents, 200);
+            return response()->json(['success' => true, 'data' => $agents], 200);
         } catch (Exception $e) {
             // Handle any exceptions by returning a 500 Internal Server Error
-            return response()->json(['message' => 'An unexpected error occurred'], 500);
+            return response()->json(['success' => false, 'message' => 'An unexpected error occurred'], 500);
         }
     }
 
@@ -100,6 +101,7 @@ class AgentController extends Controller
      *             )
      *         )
      *     ),
+     *
      *     security={{"bearerAuth":{}}}
      * )
      */
@@ -127,16 +129,10 @@ class AgentController extends Controller
             );
 
             // Return the response structured as expected by the test
-            return response()->json([
-                'success' => true,
-                'message' => 'Agent created successfully.',
-                'data' => [
-                    'agent_id' => $agent->id,
-                ],
-            ], 201);
+            return response()->json(['success' => true, 'message' => 'Agent created successfully', 'data' => ['agent_id' => $agent->id]], 201);
         } catch (Exception $e) {
             // Handle any exceptions, such as authentication failures
-            return response()->json(['success' => true, 'message' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
