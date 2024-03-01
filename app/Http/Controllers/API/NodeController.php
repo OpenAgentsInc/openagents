@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\Node;
 use Illuminate\Http\Request;
 
 class NodeController extends Controller
@@ -20,7 +21,16 @@ class NodeController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        // require node name and type
+
+        $name = $request->input('name');
+        $type = $request->input('type');
+
+        Node::create([
+            'name' => $name,
+            'type' => $type,
+        ]);
+
     }
 
     /**
