@@ -167,7 +167,6 @@ class AgentController extends Controller
      *         description="Successful operation",
      *
      *         @OA\JsonContent(
-     *             type="object",
      *
      *             @OA\Property(
      *                 property="data",
@@ -182,7 +181,17 @@ class AgentController extends Controller
      *         description="Agent not found",
      *
      *         @OA\JsonContent(
-     *             type="object",
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string"),
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *
+     *         @OA\JsonContent(
      *
      *             @OA\Property(property="success", type="boolean"),
      *             @OA\Property(property="message", type="string"),
@@ -201,7 +210,7 @@ class AgentController extends Controller
                 return response()->json(['success' => false, 'message' => 'Agent not found'], 404);
             }
 
-            return response()->json(['success' => true, 'data' => $agent], 200);
+            return response()->json(['success' => true, 'data' => $agent]);
         } catch (Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -263,6 +272,40 @@ class AgentController extends Controller
      *             ),
      *             @OA\Property(property="success", type="boolean"),
      *             @OA\Property(property="message", type="string")
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=400,
+     *         description="Bad Request",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string"),
+     *             @OA\Property(property="errors", type="object")
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=404,
+     *         description="Agent not found",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string"),
+     *         )
+     *     ),
+     *
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string"),
      *         )
      *     ),
      *
@@ -336,6 +379,17 @@ class AgentController extends Controller
      *         )
      *     ),
      *
+     *     @OA\Response(
+     *         response=500,
+     *         description="Internal Server Error",
+     *
+     *         @OA\JsonContent(
+     *
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="message", type="string")
+     *         )
+     *     ),
+     *
      *     security={{"bearerAuth":{}}}
      * )
      */
@@ -348,7 +402,7 @@ class AgentController extends Controller
                 return response()->json(['success' => false, 'message' => 'Agent not found'], 404);
             }
 
-            return response()->json(['success' => true, 'message' => 'Agent deleted successfully'], 200);
+            return response()->json(['success' => true, 'message' => 'Agent deleted successfully']);
         } catch (Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
