@@ -24,10 +24,12 @@ class NodeController extends Controller
         // require node name and type
 
         $name = $request->input('name');
+        $description = $request->input('description');
         $type = $request->input('type');
 
         Node::create([
             'name' => $name,
+            'description' => $description,
             'type' => $type,
         ]);
 

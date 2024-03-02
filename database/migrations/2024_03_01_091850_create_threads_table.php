@@ -13,7 +13,11 @@ return new class extends Migration
     {
         Schema::create('threads', function (Blueprint $table) {
             $table->id();
+
+            // Threads may have a title, usually assigned asynchronously after creation (via LLM summarization),
+            // but may be manually renamed by user
             $table->string('title')->nullable();
+
             $table->timestamps();
         });
     }

@@ -13,8 +13,15 @@ return new class extends Migration
     {
         Schema::create('nodes', function (Blueprint $table) {
             $table->id();
+            // Nodes have an optional name, e.g. "Extract URL"
             $table->string('name');
+
+            // Nodes have an optional description, e.g. "Plugin node for extracting URLs from string"
+            $table->string('description')->nullable();
+
+            // Nodes must have a type
             $table->string('type');
+
             $table->timestamps();
         });
     }
