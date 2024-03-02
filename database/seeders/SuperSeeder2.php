@@ -24,10 +24,7 @@ class SuperSeeder2 extends Seeder
         $agent = Agent::factory()->create(['user_id' => $user->id]);
 
         // Make a bunch of threads
-        $threads = Thread::factory()->count(5)->create([
-            'user_id' => $user->id,
-            'agent_id' => $agent->id,
-        ]);
+        $threads = Thread::factory()->count(5)->create();
 
         // Join the user to those threads
         // Join the agent to those threads

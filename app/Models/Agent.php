@@ -144,11 +144,6 @@ class Agent extends Model
         return $this->hasMany(Task::class);
     }
 
-    public function threads()
-    {
-        return $this->belongsToMany(Thread::class);
-    }
-
     public function conversations()
     {
         return $this->hasMany(Conversation::class);
@@ -164,9 +159,9 @@ class Agent extends Model
         return $this->hasMany(Step::class);
     }
 
-    public function thoughts()
+    public function threads()
     {
-        return $this->hasMany(Thought::class);
+        return $this->belongsToMany(Thread::class);
     }
 
     public function user()

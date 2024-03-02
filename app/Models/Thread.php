@@ -22,4 +22,9 @@ class Thread extends Model
     {
         return $this->belongsToMany(Agent::class);
     }
+
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class);
+    }
 }
