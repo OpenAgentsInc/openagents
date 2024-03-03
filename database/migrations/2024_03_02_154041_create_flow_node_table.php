@@ -11,10 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('thread_user', function (Blueprint $table) {
+        Schema::create('flow_node', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('thread_id')->constrained();
-            $table->foreignId('user_id')->constrained();
+            $table->foreignId('flow_id')->constrained();
+            $table->foreignId('node_id')->constrained();
             $table->timestamps();
         });
     }
@@ -24,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('thread_user');
+        Schema::dropIfExists('flow_node');
     }
 };
