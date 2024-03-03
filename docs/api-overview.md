@@ -15,6 +15,7 @@ The OpenAgents API helps developers define and interact with agents programmatic
 * **Run** - The active execution of an agent flow
 * **Flow** - A sequence of nodes
 * **Node** - An individual task within a flow
+* **Port** - A connection point between nodes
 * **Plugin** - A WebAssembly binary extending agent functionality
 
 ## Concepts
