@@ -1,7 +1,5 @@
 ## Core concepts
 
-## Core concepts
-
 - **Information Packet (IP)**: A discrete data unit managed via abstract references, enabling modular data manipulation
   across concurrent application components. IPs vary in size but are uniformly handled, promoting efficiency and
   modularity in data flow.
