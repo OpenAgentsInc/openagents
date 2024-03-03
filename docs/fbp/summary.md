@@ -12,3 +12,17 @@
   data (IPs), facilitating structured interaction between processes and data flow.
 * **Service Requests** - Actions by processes to manage IPs, including "receive", "send", and "drop". These requests
   control data flow, reception, transmission, and disposal of data.
+* **Back-Pressure** - A flow control mechanism that regulates the rate of data transmission between processes to prevent
+  overload. When a receiving process is unable to process incoming Information Packets (IPs) as quickly as they are
+  sent, back-pressure signals the sending process to slow down, ensuring that the system operates within its capacity
+  limits. This mechanism helps maintain stability and efficiency in the system by avoiding data congestion and potential
+  loss.
+* **Graph** - Represents the network of processes interconnected through ports and FIFO queues, defining the flow of IPs
+  within the system. The graph visualizes the application's architecture, making it easier to design, understand, and
+  modify the data flow.
+* **Black Box** - A process or a subgraph within the system that is encapsulated and only exposes its inputs and
+  outputs, hiding its internal complexity. This promotes modularity and reusability by allowing developers to integrate
+  black boxes without knowing their internal workings.
+* **Non-Deterministic Processor (NDP)** - A type of process that can produce different outputs given the same set of
+  inputs in different executions. NDPs introduce variability and adaptability into the system, allowing for more
+  flexible and dynamic data processing.
