@@ -19,6 +19,18 @@ graph LR
 ```mermaid
 %%{init: {'themeVariables': { 'primaryColor': '#A7A7A7', 'lineColor': '#8B8585', 'mainBkg': '#1e1e1e', 'nodeBkg': '#2C2C2D', 'nodeBorder': '#A7A7A7', 'clusterBkg': '#3D3D40', 'clusterBorder': '#8B8585', 'textColor': '#A7A7A7', 'edgeLabelBackground':'#1e1e1e', 'fontSize': '16px', 'fontFamily': '"JetBrains Mono", monospace'}}}%%
 graph TD
+    style Agent fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Run fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Flow fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Node fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Port fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Plugin fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style File fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Thread fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Message fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Fee fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+    style Creator fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7
+
     Agent((Agent)) -->|executes| Run((Run))
     Run -->|instance of| Flow((Flow))
     Flow -->|sequence of| Node((Node))
@@ -31,8 +43,5 @@ graph TD
     Agent -->|uses| Node
     Node -->|may have| Fee((Fee))
     Fee -->|payable to| Creator((Creator))
-
-classDef classDefault fill:#2C2C2D,stroke:#A7A7A7,stroke-width:2px,color:#A7A7A7;
-class Agent,Thread,Message,File,Run,Flow,Node,Port,Plugin,Fee,Creator classDefault;
 
 ```
