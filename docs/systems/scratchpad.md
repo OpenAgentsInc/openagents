@@ -7,16 +7,6 @@ graph LR
 ```
 
 ```mermaid
-graph LR
-    A[Data Source] -->|Data| B((Processor 1))
-    B --> C((Processor 2))
-    C --> D((Processor 3))
-    D --> E{Decision}
-    E -->|True| F[Result 1]
-    E -->|False| G[Result 2]
-```
-
-```mermaid
 %%{init: {'themeVariables': { 'primaryColor': '#A7A7A7', 'lineColor': '#8B8585', 'mainBkg': '#1e1e1e', 'nodeBkg': '#2C2C2D', 'nodeBorder': '#A7A7A7', 'clusterBkg': '#3D3D40', 'clusterBorder': '#8B8585', 'textColor': '#A7A7A7', 'edgeLabelBackground':'#1e1e1e', 'fontSize': '16px', 'fontFamily': '"JetBrains Mono", monospace'}}}%%
 graph TD
     Agent((Agent)) -->|executes| Run((Run))
