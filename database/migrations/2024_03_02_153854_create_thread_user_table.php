@@ -11,13 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('threads', function (Blueprint $table) {
+        Schema::create('thread_user', function (Blueprint $table) {
             $table->id();
-
-            // Threads may have a title, usually assigned asynchronously after creation (via LLM summarization),
-            // but may be manually renamed by user
-            $table->string('title')->nullable();
-
+            $table->foreignId('thread_id')->constrained();
+            $table->foreignId('user_id')->constrained();
             $table->timestamps();
         });
     }
@@ -27,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('threads');
+        Schema::dropIfExists('thread_user');
     }
 };

@@ -13,9 +13,16 @@ return new class extends Migration
     {
         Schema::create('files', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained();
+
+            // Files belong to a user.
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete()->cascadeOnUpdate();
+
+            // Where the file is stored. (Relative; local storage)
             $table->string('path');
-            $table->string('description');
+
+            // A description of the file, optional
+            $table->string('description')->nullable();
+
             $table->timestamps();
         });
     }

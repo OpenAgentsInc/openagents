@@ -13,10 +13,16 @@ return new class extends Migration
     {
         Schema::create('messages', function (Blueprint $table) {
             $table->id();
+
+            // Messages must belong to one thread.
             $table->foreignId('thread_id')->constrained();
-            $table->foreignId('user_id')->constrained();
+
+            // Messages may be sent by a user, or null if agent
+            $table->foreignId('user_id')->nullable();
+
+            // Message content
             $table->text('body');
-            $table->text('sender');
+
             $table->timestamps();
         });
     }
