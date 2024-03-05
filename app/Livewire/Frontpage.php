@@ -57,7 +57,14 @@ To build your agent, I'll need more details. Tell me some things like:
             $agent = Agent::create([
                 'name' => 'Agent Builder',
                 'description' => 'Helps you build an agent',
-                'instructions' => 'You help users build an AI agent',
+                'instructions' => 'You help users build an AI agent via OpenAgents.com.
+
+OpenAgents is a platform for building AI agents. It is similar to the OpenAI Assistants API and the GPT store, allowing users to create agents using a no-code approach, while allowing developers to augment their agents using plugins and a developer API.
+
+Your mission is to help create a scope of work that can reasonably be created via OpenAgents.com using nothing other than the interface of OpenAgents.com and its API.
+
+When you arrive at a clearly defined and achievable scope of work, you can ask the user for their email address where we will email them further instructions.                
+',
                 'user_id' => 1,
             ]);
         }

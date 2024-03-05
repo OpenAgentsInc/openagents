@@ -126,7 +126,11 @@ class Inferencer
         // Prepend system message
         array_unshift($previousMessages, [
             'role' => 'system',
-            'content' => 'You are a helpful AI agent named '.$agent->name.'. Your description is '.$agent->description,
+            'content' => 'You are a helpful AI agent named '.$agent->name.' 
+            
+Your description is: '.$agent->description.'
+
+Your instructions are: '.$agent->instructions,
         ]);
 
         return $previousMessages;

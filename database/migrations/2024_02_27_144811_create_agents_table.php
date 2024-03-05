@@ -22,7 +22,7 @@ return new class extends Migration
             $table->string('description');
 
             // Agents have instructions.
-            $table->string('instructions');
+            $table->longText('instructions');
 
             // Agents optionally have a welcome message they'll send to users on new chats.
             $table->string('welcome_message')->nullable();

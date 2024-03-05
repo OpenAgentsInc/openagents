@@ -39,3 +39,14 @@
 - **Synchronization**: The coordination mechanism that ensures processes operate in harmony, particularly in systems
   where timing and order of operations are critical. Synchronization techniques manage dependencies and sequence flows,
   ensuring coherent system behavior.
+
+## Laravel Implementation Details
+
+- Processes will be represented on agent graphs by the Node model, one node per process
+- Nodes can have multiple Ports
+- Graphs or Subgraphs will be represented as Flows consisting of multiple Nodes
+- Information Packet is the data passed to Nodes; initially just a mutable array of data
+- Initial information packet can just be config data passed to a Port, maybe as a JSON field on the Port, maybe as
+  something more complex
+- FIFO Queues can be implemented as one or more Laravel queues that process jobs across the entire application; people
+  can pay for priority/custom queues

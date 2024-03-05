@@ -181,8 +181,10 @@
                                  class="overflow-hidden [&amp;:has(textarea:focus)]:border-gray [&amp;:has(textarea:focus)]:shadow-[0_2px_6px_rgba(0,0,0,.05)] flex flex-col w-full dark:border-gray flex-grow relative border border-gray dark:text-white rounded-[6px]">
                                 <textarea x-ref="answer" id="message-input" name="input" wire:model="body" autofocus
                                           onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
-                                          tabindex="0" rows="1" placeholder="Message Junior Developer…"
-                                          class="outline-none m-0 w-full resize-none border-0 bg-transparent focus:ring-0 focus-visible:ring-0 dark:bg-transparent max-h-25 py-[10px] pr-10 md:py-3.5 md:pr-12 placeholder-white/50 pl-10 md:pl-[55px]"
+                                          tabindex="0" rows="1" placeholder="{{ 'Message ' . $agent->name . '...' }}"
+                                          class=" outline-none m-0 w-full resize-none border-0 bg-transparent
+                                          focus:ring-0 focus-visible:ring-0 dark:bg-transparent max-h-25 py-[10px] pr-10
+                                          md:py-3.5 md:pr-12 placeholder-white/50 pl-10 md:pl-[55px]"
                                           style="height: 52px; overflow-y: hidden;"></textarea>
                                 <div class="absolute bottom-2 md:bottom-3 left-2 md:left-4">
 
