@@ -10,7 +10,6 @@ use Exception;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\View\View;
-use League\CommonMark\CommonMarkConverter;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -34,11 +33,8 @@ class Chat extends Component
 
     public $pending = false;
 
-    private $commonMarkConverter;
-
     public function mount($id = null): void
     {
-        $this->commonMarkConverter = new CommonMarkConverter();
 
         // If we're in a chat, load the messages
         if ($id) {
@@ -198,18 +194,6 @@ class Chat extends Component
 
     public function render(): \Illuminate\Contracts\View\View|\Illuminate\Foundation\Application|Factory|View|Application
     {
-        // if (!$this->commonMarkConverter) {
-        //     $this->commonMarkConverter = new CommonMarkConverter();
-        // }
-
-        // // Convert each message body from Markdown to HTML before rendering
-        // foreach ($this->messages as &$message) {
-        //     if ($message['sender'] === 'agent') {
-        //         $message['body'] = $this->commonMarkConverter->convertToHtml($message['body'])->getContent();
-        //     }
-        // }
-
         return view('livewire.chat');
-        //->layout('components.layouts.chat');
     }
 }
