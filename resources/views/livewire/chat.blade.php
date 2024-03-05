@@ -146,12 +146,11 @@
         @endif
 
         <div class="mt-[70px] mb-[5px] flex-1 overflow-auto bg-gray-900 text-white">
-            @php
-                dd($messages);
-            @endphp
-
             @foreach($messages as $message)
-                <x-message author="You" :message="$message['body']"/>
+                @php
+                    $author = $message['agent_id'] ? 'Agent Builder' : 'User';
+                @endphp
+                <x-message :author="$author" :message="$message['body']"/>
             @endforeach
 
             @if($pending)
