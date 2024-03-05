@@ -17,6 +17,8 @@ class Frontpage extends Component
 {
     public string $first_message;
 
+    private Thread $thread;
+
     public function sendFirstMessage(): void
     {
         $this->validate([
@@ -25,6 +27,7 @@ class Frontpage extends Component
 
         // Create a new Thread
         $thread = Thread::create();
+        $this->thread = $thread;
         $thread->messages()->create([
             'body' => $this->first_message,
         ]);
@@ -57,6 +60,8 @@ To build your agent, I'll need more details. Tell me some things like:
                 'instructions' => 'You help users build an AI agent',
                 'user_id' => 1,
             ]);
+            // And join agent to this thread
+            $agent->threads()->attach($this->thread);
         }
 
         return $agent;

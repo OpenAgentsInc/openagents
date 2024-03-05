@@ -10,11 +10,11 @@
                 <div class="mt-2 text-md">
                     <p class="text-gray px-3 tracking-wider">Recent</p>
                     <ul class="mt-2 cursor-pointer">
-                        @foreach($conversations as $conversation)
+                        @foreach($threads as $thread)
                             <a wire:navigate
                                href="{{ route('chat.show', $conversation['id']) }}">
                                 <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
-                                    {{ $conversation['title'] ?? 'New chat' }}
+                                    {{ $thread['title'] ?? 'New chat' }}
                                 </li>
                             </a>
                         @endforeach
@@ -146,6 +146,10 @@
         @endif
 
         <div class="mt-[70px] mb-[5px] flex-1 overflow-auto bg-gray-900 text-white">
+            @php
+                dd($messages);
+            @endphp
+
             @foreach($messages as $message)
                 <x-message author="You" :message="$message['body']"/>
             @endforeach

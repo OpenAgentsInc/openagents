@@ -5,7 +5,7 @@
             <x-logomark size="4"/>
         </a>
         @auth
-            <a href="/chat" wire:navigate class="ml-8 text-gray hover:text-white">Chat</a>
+            {{--            <a href="/chat" wire:navigate class="ml-8 text-gray hover:text-white">Chat</a>--}}
         @endauth
         {{--        <a href="/docs" wire:navigate class="ml-8 text-gray hover:text-white">Docs</a>--}}
     </div>
