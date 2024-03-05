@@ -3,8 +3,8 @@
 namespace App\Livewire;
 
 use App\Models\Agent;
-use App\Models\Conversation;
 use App\Models\Task;
+use App\Models\Thread;
 use App\Services\Inferencer;
 use Exception;
 use Illuminate\Contracts\Foundation\Application;
@@ -26,7 +26,7 @@ class Chat extends Component
 
     public Agent $agent;
 
-    public $conversation;
+    public Thread $thread;
 
     public $conversations = [];
 
@@ -41,11 +41,11 @@ class Chat extends Component
         $this->commonMarkConverter = new CommonMarkConverter();
 
         // If we're in a chat, load the messages
-        //        if ($id) {
-        //            $this->conversation = Conversation::findOrFail($id);
-        //            $this->messages = $this->conversation->messages->sortBy('created_at')->toArray();
-        //            $this->agent = $this->conversation->agent;
-        //        }
+        if ($id) {
+            $this->thread = Thread::findOrFail($id);
+            $this->messages = $this->thread->messages->sortBy('created_at')->toArray();
+            //            $this->agent = $this->conversation->agent;
+        }
 
         // Load this user's conversations from database - TODO: Limit
         $this->conversations = []; // Conversation::all();
@@ -54,9 +54,9 @@ class Chat extends Component
     public function sendMessage(): void
     {
         // Check if the user is authenticated
-        if (! auth()->check()) {
-            abort(403, 'Unauthorized action.');
-        }
+        //        if (! auth()->check()) {
+        //            abort(403, 'Unauthorized action.');
+        //        }
 
         $this->input = $this->body;
 
@@ -87,15 +87,15 @@ class Chat extends Component
         }
 
         // If the current conversation is null, create a new one
-        if (! $this->conversation) {
-            $this->agent = Agent::first();
-            $this->conversation = Conversation::create([
-                'title' => 'New Conversation',
-                'agent_id' => $this->agent->id,
-            ]);
-
-            $this->conversations = Conversation::all();
-        }
+        //        if (! $this->conversation) {
+        //            $this->agent = Agent::first();
+        //            $this->conversation = Conversation::create([
+        //                'title' => 'New Conversation',
+        //                'agent_id' => $this->agent->id,
+        //            ]);
+        //
+        //            $this->conversations = Conversation::all();
+        //        }
 
         // Append the message to the chat
         $this->messages[] = [

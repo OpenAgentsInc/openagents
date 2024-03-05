@@ -1,5 +1,5 @@
 <div class="h-full flex flex-col justify-center items-center">
-    <h1>Command your agent</h1>
+    <h1>Build your own AI agent</h1>
     <h4 class="mt-4 mb-8 text-gray">What do you want to accomplish?</h4>
     <form wire:submit.prevent="sendFirstMessage" class="w-[450px]">
         <x-input autofocus placeholder="I want my agent to..." :showIcon="true" iconName="send"

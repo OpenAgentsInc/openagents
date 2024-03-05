@@ -65,7 +65,7 @@
             </div>
         @endif
 
-        @if(!$agent)
+        @if(!$messages)
             <!-- big thing in the center -->
             <div class="flex items-center justify-center h-full">
                 <div class="flex flex-col items-center">
@@ -147,11 +147,7 @@
 
         <div class="mt-[70px] mb-[5px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
-                @php
-                    $message['sender'] = $message['sender'] === 'user' ? 'You' : $agent->name ?? 'Agent';
-                @endphp
-
-                <x-message :author="$message['sender']" :message="$message['body']"/>
+                <x-message author="You" :message="$message['body']"/>
             @endforeach
 
             @if($pending)
