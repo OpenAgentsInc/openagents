@@ -41,14 +41,14 @@ class Chat extends Component
         $this->commonMarkConverter = new CommonMarkConverter();
 
         // If we're in a chat, load the messages
-        if ($id) {
-            $this->conversation = Conversation::findOrFail($id);
-            $this->messages = $this->conversation->messages->sortBy('created_at')->toArray();
-            $this->agent = $this->conversation->agent;
-        }
+        //        if ($id) {
+        //            $this->conversation = Conversation::findOrFail($id);
+        //            $this->messages = $this->conversation->messages->sortBy('created_at')->toArray();
+        //            $this->agent = $this->conversation->agent;
+        //        }
 
         // Load this user's conversations from database - TODO: Limit
-        $this->conversations = Conversation::all();
+        $this->conversations = []; // Conversation::all();
     }
 
     public function sendMessage(): void
