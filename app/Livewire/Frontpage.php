@@ -1,23 +1,35 @@
 <?php
 
+/**
+ * Frontpage
+ * Shown to first-time visitors to the OpenAgents homepage
+ * Visitor is asked what they want an agent to do
+ * That begins an introductory conversation as a Thread
+ */
+
 namespace App\Livewire;
 
+use App\Models\Thread;
 use Livewire\Component;
 
 class Frontpage extends Component
 {
-    public string $body;
+    public string $first_message;
 
-    public function sendMessage()
+    public function sendFirstMessage()
     {
         $this->validate([
-            'body' => 'required|string|max:255',
+            'first_message' => 'required|string|max:255',
         ]);
 
-        dd($this->body);
+        // Create a new Thread
+        $thread = Thread::create();
+        $thread->messages()->create([
+            'body' => $this->first_message,
+        ]);
 
-        // Send message
-        $this->reset('body');
+        // Redirect to that chat page
+        $this->redirect('/chat/'.$thread->id, navigate: true);
     }
 
     public function render()

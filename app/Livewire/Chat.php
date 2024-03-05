@@ -209,6 +209,7 @@ class Chat extends Component
         //     }
         // }
 
-        return view('livewire.chat')->layout('components.layouts.chat');
+        return view('livewire.chat');
+        //->layout('components.layouts.chat');
     }
 }
