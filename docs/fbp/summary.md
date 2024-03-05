@@ -11,6 +11,8 @@
   multitasking and parallel data processing. They can be suspended and resumed without awareness, enhancing system
   flexibility.
 
+- **Stream**: The entire series of IPs passing across a particular connectionsxz
+
 - **Non-Deterministic Processor (NDP)**: A type of process that may produce different outputs from the same inputs on
   different executions. NDPs add variability and adaptability to the system, enabling more dynamic data processing.
 
