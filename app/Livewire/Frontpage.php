@@ -60,9 +60,10 @@ To build your agent, I'll need more details. Tell me some things like:
                 'instructions' => 'You help users build an AI agent',
                 'user_id' => 1,
             ]);
-            // And join agent to this thread
-            $agent->threads()->attach($this->thread);
         }
+
+        // And join agent to this thread
+        $agent->threads()->attach($this->thread);
 
         return $agent;
     }
