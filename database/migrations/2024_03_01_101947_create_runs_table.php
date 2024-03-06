@@ -13,7 +13,10 @@ return new class extends Migration
     {
         Schema::create('runs', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('agent_id')->constrained()->cascadeOnDelete();
             $table->foreignId('flow_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('thread_id')->constrained()->cascadeOnDelete();
+            $table->string('input')->nullable();
             $table->timestamps();
         });
     }

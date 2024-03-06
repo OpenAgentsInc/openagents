@@ -9,10 +9,8 @@ class RunService
     /**
      * Create a run for the given agent/flow/thread with the given input and streaming function
      */
-    public function triggerRun($data): void
+    public function triggerRun($data)
     {
-        dd($data);
-
         // Extract the data
         $agent = $data['agent'];
         $flow = $data['flow'];
@@ -27,9 +25,8 @@ class RunService
             'thread_id' => $thread->id,
             'input' => $input,
         ]);
-        $run->trigger();
 
-        // Run the streaming function
-        $streamingFunction($run);
+        // Trigger the run and return its result as output
+        return $run->trigger($streamingFunction);
     }
 }
