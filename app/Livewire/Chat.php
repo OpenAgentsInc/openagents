@@ -66,6 +66,7 @@ class Chat extends Component
             'agent_id' => null,
             'sender' => 'You',
         ];
+        $this->dispatch('scrollToBottomAgain');
 
         // Clear the input
         $this->body = '';
@@ -91,6 +92,7 @@ class Chat extends Component
                 to: 'streamtext',
                 content: $token
             );
+            $this->dispatch('scrollToBottomAgain');
             $messageContent .= $token;
         };
 
@@ -107,7 +109,7 @@ class Chat extends Component
                 } else {
                     $messageContent = $output['output'];
                 }
-
+                $this->dispatch('scrollToBottomAgain');
             } catch (Exception $e) {
                 dd($output);
                 dd($e->getMessage());
