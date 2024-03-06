@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Inferencer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,38 +22,30 @@ class Node extends Model
     /**
      * Triggers this node's logic.
      *
-     * @param  string  $input  The input string to the node.
-     * @param  callable  $streamingFunction  A callback function for streaming the output.
+     * @param  array  $params  Parameters including 'input', 'streamingFunction', 'agent', 'flow', and 'thread'.
      * @return string The output string from the node.
      */
-    public function trigger(string $input, callable $streamingFunction): string
+    public function trigger(array $params): string
     {
-        // Node-specific logic goes here.
-        // The implementation will vary depending on the node's functionality.
+        // Extract parameters
+        $input = $params['input'];
+        $streamingFunction = $params['streamingFunction'];
+        $agent = $params['agent'];
+        $thread = $params['thread'];
 
-        // Example logic:
-        // Check the type of the node or other attributes to determine what action to perform.
+        // Node-specific logic
         switch ($this->type) {
             case 'inference':
-                // If it's an inference node, you might perform some AI inference here.
-                // Use $input as your input data for the inference.
-
-                //                llmInference
-
-                // This is a placeholder for where you'd integrate with your AI service, like an AI gateway.
-                $output = 'Inferred output for: '.$input;
+                // Call the Inferencer for LLM inference
+                $output = Inferencer::llmInference($input, $thread, $agent, $streamingFunction);
                 break;
 
             default:
-                // Handle other types of nodes or default behavior.
+                // Default processing logic for nodes
                 $output = 'Default node processing for: '.$input;
                 break;
         }
 
-        // Optionally, use the streaming function to stream part of the output.
-        // $streamingFunction("Streaming part of the output...");
-
-        // Return the final output of the node.
         return $output;
     }
 }

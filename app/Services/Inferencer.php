@@ -10,14 +10,8 @@ class Inferencer
 {
     public static function llmInference($input, Thread $thread, Agent $agent, $streamFunction)
     {
-        $decodedInput = json_decode($input['input'], true);
-
-        // It's plain text or not properly decoded, proceed as before
-        $text = $input['input'];
-        // $model = 'gpt-4';
-        //            $model = 'mistral-large-latest';
         $model = 'mixtral-8x7b-32768';
-        $messages = self::prepareTextInference($text, $thread, $agent);
+        $messages = self::prepareTextInference($input, $thread, $agent);
         //            $client = new MistralAIGateway();
         $client = new GroqAIGateway();
         $content = $client->chat()->createStreamed([
@@ -61,72 +55,5 @@ Your instructions are:
         ]);
 
         return $previousMessages;
-    }
-
-    private static function prepareMultiModalInference($input, Thread $thread)
-    {
-        // Initial text message from the system
-        $systemMessage = [
-            'role' => 'system',
-            'content' => 'You are a helpful AI agent.', // TODO: Grab proper agent name here
-            //            'content' => 'You are a helpful AI agent named '.$thread->agent->name.'. Your description is '.$thread->agent->description,
-        ];
-
-        // User message containing both text and image(s)
-        $userMessageContent = [];
-
-        // Add text part
-        if (! empty($input['text'])) {
-            $userMessageContent[] = [
-                'type' => 'text',
-                'text' => $input['text'],
-            ];
-        }
-
-        // Add image part(s)
-        if (! empty($input['image_url'])) {
-            $base64prefixedPng = 'data:image/png;base64,'.$input['image_url'];
-            // foreach ($input['input']['images'] as $imageUrl) {
-            $userMessageContent[] = [
-                'type' => 'image_url',
-                // 'image_url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg', // $input['image_url'],
-                'image_url' => $base64prefixedPng,
-                // 'image_url' => $input['image_url'], // Ensure this is a string URL, not an array
-            ];
-
-        }
-
-        $userMessage = [
-            'role' => 'user',
-            'content' => $userMessageContent, // This now directly matches the expected structure
-        ];
-
-        return [$systemMessage, $userMessage];
-    }
-
-    private static function old_prepareMultiModalInference($input, Conversation $conversation)
-    {
-        $messages = [
-            // System message
-            [
-                'role' => 'system',
-                'content' => [
-                    'type' => 'text',
-                    'text' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
-                ],
-            ],
-            // User message including both text and an image
-            [
-                'role' => 'user',
-                'content' => [
-                    ['type' => 'text', 'text' => $input['text']],
-                    ['type' => 'image_url', 'image_url' => [
-                        'url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg', // $input['image_url'],
-                    ]],
-                ],
-            ],
-        ];
-
-        return $messages;
     }
 }
