@@ -6,11 +6,11 @@ use App\Http\Controllers\StaticController;
 use App\Livewire\AgentShow;
 use App\Livewire\Chat;
 use App\Livewire\CreatePassword;
+use App\Livewire\Frontpage;
 use App\Livewire\Login;
-use App\Livewire\Splash;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', Splash::class)->name('home');
+Route::get('/', Frontpage::class)->name('home');
 
 // Agent chat
 Route::get('/chat', Chat::class)->name('chat'); // todo - put behind auth middleware

@@ -3,14 +3,13 @@
 namespace App\Livewire;
 
 use App\Models\Agent;
-use App\Models\Conversation;
 use App\Models\Task;
+use App\Models\Thread;
 use App\Services\Inferencer;
 use Exception;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\View\View;
-use League\CommonMark\CommonMarkConverter;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -26,82 +25,48 @@ class Chat extends Component
 
     public Agent $agent;
 
-    public $conversation;
+    public Thread $thread;
 
-    public $conversations = [];
+    public $threads = [];
 
     public $messages = [];
 
     public $pending = false;
 
-    private $commonMarkConverter;
-
-    public function mount($id = null): void
+    public function mount($id = null)
     {
-        $this->commonMarkConverter = new CommonMarkConverter();
-
-        // If we're in a chat, load the messages
-        if ($id) {
-            $this->conversation = Conversation::findOrFail($id);
-            $this->messages = $this->conversation->messages->sortBy('created_at')->toArray();
-            $this->agent = $this->conversation->agent;
+        // For now if there's no id, redirect to homepage
+        if (! $id) {
+            return $this->redirect('/');
         }
 
-        // Load this user's conversations from database - TODO: Limit
-        $this->conversations = Conversation::all();
+        // Find this thread
+        $thread = Thread::find($id);
+
+        // If it doesn't exist, redirect to homepage
+        if (! $thread) {
+            return $this->redirect('/');
+        }
+
+        // Set the thread and its messages
+        $this->thread = $thread;
+        $this->messages = $this->thread->messages->sortBy('created_at')->toArray();
+
+        // Set the agent (it's a many-to-many relationship so grab the first agent)
+        $this->agent = $this->thread->agents->first();
     }
 
     public function sendMessage(): void
     {
-        // Check if the user is authenticated
-        if (! auth()->check()) {
-            abort(403, 'Unauthorized action.');
-        }
-
         $this->input = $this->body;
-
-        $imageDataArray = [];
-
-        // Handle file upload
-        if (! empty($this->images)) {
-            foreach ($this->images as $image) {
-                // Read the image file contents
-                $imageContents = $image->get();
-
-                // Encode the image contents to base64
-                $imageBase64 = base64_encode($imageContents);
-
-                // Collect the base64-encoded images
-                $imageDataArray[] = $imageBase64;
-            }
-        }
-
-        // If there are images, adjust the input for inference
-        if (! empty($imageDataArray)) {
-            // Assuming your Inferencer can handle JSON strings,
-            // encode the message and images together.
-            $this->input = json_encode([
-                'text' => $this->body,
-                'images' => $imageDataArray, // Pass an array of base64-encoded images
-            ]);
-        }
-
-        // If the current conversation is null, create a new one
-        if (! $this->conversation) {
-            $this->agent = Agent::first();
-            $this->conversation = Conversation::create([
-                'title' => 'New Conversation',
-                'agent_id' => $this->agent->id,
-            ]);
-
-            $this->conversations = Conversation::all();
-        }
 
         // Append the message to the chat
         $this->messages[] = [
             'body' => $this->input,
-            'sender' => 'user',
+            'agent_id' => null,
+            'sender' => 'You',
         ];
+        $this->dispatch('scrollToBottomAgain');
 
         // Clear the input
         $this->body = '';
@@ -127,6 +92,7 @@ class Chat extends Component
                 to: 'streamtext',
                 content: $token
             );
+            $this->dispatch('scrollToBottomAgain');
             $messageContent .= $token;
         };
 
@@ -143,7 +109,7 @@ class Chat extends Component
                 } else {
                     $messageContent = $output['output'];
                 }
-
+                $this->dispatch('scrollToBottomAgain');
             } catch (Exception $e) {
                 dd($output);
                 dd($e->getMessage());
@@ -160,7 +126,8 @@ class Chat extends Component
         // Append the response to the chat
         $this->messages[] = [
             'body' => $messageContent,
-            'sender' => 'agent',
+            'sender' => $this->agent->name,
+            'agent_id' => $this->agent->id,
         ];
 
         $this->pending = false;
@@ -177,19 +144,19 @@ class Chat extends Component
 
             $output = $task->agent->runTask([
                 'input' => $input,
-            ], $task, $this->conversation, $logFunction, $streamFunction);
+            ], $task, $this->thread, $logFunction, $streamFunction);
 
         } else {
-            $this->conversation->messages()->create([
-                'user_id' => auth()->id(),
+            $this->thread->messages()->create([
+                //                'user_id' => auth()->id(),
                 'body' => $input,
-                'sender' => 'user',
+                //                'sender' => 'user',
             ]);
-            $output = Inferencer::llmInference(['input' => $input], $this->conversation, $streamFunction);
-            $this->conversation->messages()->create([
-                'user_id' => auth()->id(),
+            $output = Inferencer::llmInference(['input' => $input], $this->thread, $this->agent, $streamFunction);
+            $this->thread->messages()->create([
+                //                'user_id' => auth()->id(),
                 'body' => $output['output'],
-                'sender' => 'agent',
+                //                'sender' => 'agent',
             ]);
         }
 
@@ -198,17 +165,6 @@ class Chat extends Component
 
     public function render(): \Illuminate\Contracts\View\View|\Illuminate\Foundation\Application|Factory|View|Application
     {
-        // if (!$this->commonMarkConverter) {
-        //     $this->commonMarkConverter = new CommonMarkConverter();
-        // }
-
-        // // Convert each message body from Markdown to HTML before rendering
-        // foreach ($this->messages as &$message) {
-        //     if ($message['sender'] === 'agent') {
-        //         $message['body'] = $this->commonMarkConverter->convertToHtml($message['body'])->getContent();
-        //     }
-        // }
-
-        return view('livewire.chat')->layout('components.layouts.chat');
+        return view('livewire.chat');
     }
 }

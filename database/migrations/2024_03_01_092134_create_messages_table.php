@@ -20,6 +20,9 @@ return new class extends Migration
             // Messages may be sent by a user, or null if agent
             $table->foreignId('user_id')->nullable();
 
+            // Messages may be sent by an agent, or null if user
+            $table->foreignId('agent_id')->nullable();
+
             // Message content
             $table->text('body');
 
