@@ -3,17 +3,40 @@
 namespace App\Services;
 
 use App\AI\GroqAIGateway;
+use App\AI\MistralAIGateway;
 use App\Models\Agent;
+use App\Models\Node;
 use App\Models\Thread;
+use Exception;
 
 class Inferencer
 {
-    public static function llmInference($input, Thread $thread, Agent $agent, $streamFunction)
+    public static function llmInference(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
     {
-        $model = 'mixtral-8x7b-32768';
+        // Decode the node's config to determine which gateway to use
+        $config = json_decode($node->config, true);
+        $gateway = $config['gateway'];
+        $model = $config['model'];
+
+        // If no gateway or model, throw
+        if (! $gateway || ! $model) {
+            throw new Exception('Invalid node configuration: '.json_encode($config));
+        }
+
+        // Prepare the messages for inference
         $messages = self::prepareTextInference($input, $thread, $agent);
-        //            $client = new MistralAIGateway();
-        $client = new GroqAIGateway();
+
+        // Dynamically choose the gateway client based on the node's configuration
+        switch ($gateway) {
+            case 'mistral':
+                $client = new MistralAIGateway();
+                break;
+            case 'groq':
+                $client = new GroqAIGateway();
+                break;
+            default:
+                throw new Exception("Unsupported gateway: $gateway");
+        }
 
         return $client->chat()->createStreamed([
             'model' => $model,

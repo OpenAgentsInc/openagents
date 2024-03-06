@@ -40,7 +40,7 @@ Do not ask more than one question at a time!
             'description' => 'Performs inference using an OpenAgents AI gateway',
             'type' => 'inference',
             'config' => json_encode([
-                'gateway' => 'MistralAIGateway',
+                'gateway' => 'mistral',
                 'model' => 'mistral-large-latest',
             ]),
         ]);
