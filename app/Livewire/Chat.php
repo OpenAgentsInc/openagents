@@ -11,17 +11,18 @@ class Chat extends Component
     // User input from chat form
     public $message_input = '';
 
+    // The saved input we pass to agent
+    public $input = '';
+
+    // The agent we're chatting with
     public Agent $agent;
 
+    // The thread we're chatting in
     public Thread $thread;
-
-    public $threads = [];
 
     public $messages = [];
 
     public $pending = false;
-
-    private $input = '';
 
     public function mount($id = null)
     {

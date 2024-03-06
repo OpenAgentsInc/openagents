@@ -1,48 +1,7 @@
 <div class="flex h-screen w-full overflow-hidden">
-    <div class="hidden fixed top-[47px] left-0 h-screen w-[300px] bg-offblack z-10">
-        <div class="flex flex-col h-full mt-4">
-            <a wire:navigate href="{{ route('chat') }}" class="w-full px-4">
-                <x-button variant="primary" size="lg" icon="create" class="w-full">
-                    New session
-                </x-button>
-            </a>
-            <div class="flex flex-col flex-grow overflow-y-auto px-3 pb-3.5">
-                <div class="mt-2 text-md">
-                    <p class="text-gray px-3 tracking-wider">Recent</p>
-                    <ul class="mt-2 cursor-pointer">
-                        @foreach($threads as $thread)
-                            <a wire:navigate
-                               href="{{ route('chat.show', $conversation['id']) }}">
-                                <li class="text-white px-3 py-1 hover:bg-darkgray rounded-[6px]">
-                                    {{ $thread['title'] ?? 'New chat' }}
-                                </li>
-                            </a>
-                        @endforeach
-                    </ul>
-                </div>
-                <div class="mt-auto">
-                    <div class="flex items-center justify-between px-3 py-2 rounded-lg">
-                        <div class="flex items-center">
-                            <div class="h-8 w-8 bg-gray rounded-full mr-2"></div>
-                            <span class="text-white text-sm">Chris</span>
-                        </div>
-                        <button class="text-white text-xs">
-                            <svg class="h-4 w-4 fill-white" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M10 12a2 2 0 110-4 2 2 0 010 4z"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="w-full h-screen flex flex-col">
-        <div
-                class="fixed top-[60px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]">
-        </div>
-
-
+        <div class="fixed top-[60px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]"></div>
+        
         @if(!$messages)
             <!-- big thing in the center -->
             <div class="flex items-center justify-center h-full">
@@ -135,7 +94,7 @@
                 <x-messagestreaming :author="$agent->name ?? 'Agent'"/>
             @endif
         </div>
-        
+
         <div class="fixed bottom-0 left-[0px] right-0 h-[80px] px-4 py-3 flex items-center z-10">
             <div class="fixed bottom-0 w-screen left-[0px] right-0 h-[70px] bg-black z-5"></div>
             <div
@@ -149,13 +108,14 @@
                         <div class="flex w-full items-center text-white">
                             <div x-data x-init="$refs.answer.focus()"
                                  class="overflow-hidden [&amp;:has(textarea:focus)]:border-gray [&amp;:has(textarea:focus)]:shadow-[0_2px_6px_rgba(0,0,0,.05)] flex flex-col w-full dark:border-gray flex-grow relative border border-gray dark:text-white rounded-[6px]">
-                                <textarea x-ref="answer" id="message-input" name="input" wire:model="message_input"
+                                <textarea x-ref="answer" id="message-input" name="message_input"
+                                          wire:model="message_input"
                                           autofocus
                                           onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
                                           tabindex="0" rows="1" placeholder="{{ 'Message ' . $agent->name . '...' }}"
                                           class=" outline-none m-0 w-full resize-none border-0 bg-transparent
                                           focus:ring-0 focus-visible:ring-0 dark:bg-transparent max-h-25 py-[10px] pr-10
-                                          md:py-3.5 md:pr-12 placeholder-white/50 pl-10 md:pl-[55px]"
+                                          md:py-3.5 md:pr-12 placeholder-white/50 pl-10 md:pl-[22px]"
                                           style="height: 52px; overflow-y: hidden;"></textarea>
 
                                 <button id="send-message" class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5
