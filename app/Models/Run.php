@@ -18,6 +18,18 @@ class Run extends Model
         return $this->belongsTo(Flow::class);
     }
 
+    // belongs to an Agent
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
+    }
+
+    // belongs to a Thread
+    public function thread(): BelongsTo
+    {
+        return $this->belongsTo(Thread::class);
+    }
+
     /**
      * Triggers the execution of the associated flow.
      *
@@ -34,8 +46,15 @@ class Run extends Model
 
         // Execute each node in sequence (assuming nodes are already sorted by their execution order)
         foreach ($this->flow->nodes as $node) {
+
             // Call the node's trigger method and pass the current input
-            $nodeOutput = $node->trigger($input, $streamingFunction);
+            $nodeOutput = $node->trigger([
+                'agent' => $this->agent,
+                'flow' => $this->flow,
+                'thread' => $this->thread,
+                'input' => $input,
+                'streamingFunction' => $streamingFunction,
+            ]);
 
             // Set the output of the current node as the input for the next node
             $input = $nodeOutput;

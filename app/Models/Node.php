@@ -37,6 +37,8 @@ class Node extends Model
                 // If it's an inference node, you might perform some AI inference here.
                 // Use $input as your input data for the inference.
 
+                //                llmInference
+
                 // This is a placeholder for where you'd integrate with your AI service, like an AI gateway.
                 $output = 'Inferred output for: '.$input;
                 break;
