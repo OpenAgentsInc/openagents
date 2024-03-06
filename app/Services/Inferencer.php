@@ -5,7 +5,6 @@ namespace App\Services;
 use App\AI\GroqAIGateway;
 use App\Models\Agent;
 use App\Models\Thread;
-use OpenAI;
 
 class Inferencer
 {
@@ -13,56 +12,55 @@ class Inferencer
     {
         $decodedInput = json_decode($input['input'], true);
 
-        // Determine if input is multimodal (text + images)
-        if (json_last_error() === JSON_ERROR_NONE && isset($decodedInput['images'])) {
-            // It's JSON and has images, adjust handling for text and images
-            $text = $decodedInput['text'] ?? '';
-            $images = $decodedInput['images'] ?? [];
-
-            // Assuming images are base64, we need to adjust how we pass this to OpenAI
-            // For demonstration, let's assume a simplified scenario where we just pass the text and first image
-            $inputForModel = [
-                'text' => $text,
-                // Assuming 'images' is an array of base64-encoded strings
-                'image_url' => $images[0] ?? null, // Example: Taking the first image for simplicity
-            ];
-
-            $model = 'gpt-4-vision-preview';
-            $messages = self::prepareMultiModalInference($inputForModel, $thread);
-            $client = OpenAI::client(env('OPENAI_API_KEY'));
-
-            $stream = $client->chat()->createStreamed([
-                'model' => $model,
-                'messages' => $messages,
-                'max_tokens' => 3024,
-                'stream_function' => $streamFunction,
-            ]);
-
-            $content = '';
-            foreach ($stream as $response) {
-                $token = $response['choices'][0]['delta']['content'] ?? '';
-                $streamFunction($response);
-                $content .= $token;
-            }
-
-        } else {
-            // It's plain text or not properly decoded, proceed as before
-            $text = $input['input'];
-            // $model = 'gpt-4';
-            //            $model = 'mistral-large-latest';
-            $model = 'mixtral-8x7b-32768';
-            $messages = self::prepareTextInference($text, $thread, $agent);
-            //            $client = new MistralAIGateway();
-            $client = new GroqAIGateway();
-            $content = $client->chat()->createStreamed([
-                'model' => $model,
-                'messages' => $messages,
-                'max_tokens' => 3024,
-                'stream_function' => $streamFunction,
-            ]);
-        }
+        // It's plain text or not properly decoded, proceed as before
+        $text = $input['input'];
+        // $model = 'gpt-4';
+        //            $model = 'mistral-large-latest';
+        $model = 'mixtral-8x7b-32768';
+        $messages = self::prepareTextInference($text, $thread, $agent);
+        //            $client = new MistralAIGateway();
+        $client = new GroqAIGateway();
+        $content = $client->chat()->createStreamed([
+            'model' => $model,
+            'messages' => $messages,
+            'max_tokens' => 3024,
+            'stream_function' => $streamFunction,
+        ]);
 
         return ['output' => $content];
+    }
+
+    private static function prepareTextInference($text, Thread $thread, Agent $agent)
+    {
+        // Fetch previous messages
+        $previousMessages = $thread->messages()
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(function ($message) {
+                // Map 'user' and 'agent' to 'user' and 'assistant' respectively
+                $role = $message->sender === 'agent' ? 'assistant' : 'user';
+
+                return [
+                    'role' => $role,
+                    'content' => $message->body,
+                ];
+            })
+            ->toArray();
+
+        // Prepend system message
+        array_unshift($previousMessages, [
+            'role' => 'system',
+            'content' => 'You are a helpful AI agent named '.$agent->name.' 
+            
+Your description is: '.$agent->description.'
+
+Your instructions are: 
+---
+'.$agent->instructions.'
+---',
+        ]);
+
+        return $previousMessages;
     }
 
     private static function prepareMultiModalInference($input, Thread $thread)
@@ -104,39 +102,6 @@ class Inferencer
         ];
 
         return [$systemMessage, $userMessage];
-    }
-
-    private static function prepareTextInference($text, Thread $thread, Agent $agent)
-    {
-        // Fetch previous messages
-        $previousMessages = $thread->messages()
-            ->orderBy('created_at', 'asc')
-            ->get()
-            ->map(function ($message) {
-                // Map 'user' and 'agent' to 'user' and 'assistant' respectively
-                $role = $message->sender === 'agent' ? 'assistant' : 'user';
-
-                return [
-                    'role' => $role,
-                    'content' => $message->body,
-                ];
-            })
-            ->toArray();
-
-        // Prepend system message
-        array_unshift($previousMessages, [
-            'role' => 'system',
-            'content' => 'You are a helpful AI agent named '.$agent->name.' 
-            
-Your description is: '.$agent->description.'
-
-Your instructions are: 
----
-'.$agent->instructions.'
----',
-        ]);
-
-        return $previousMessages;
     }
 
     private static function old_prepareMultiModalInference($input, Conversation $conversation)
