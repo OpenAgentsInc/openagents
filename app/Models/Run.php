@@ -22,29 +22,32 @@ class Run extends Model
      * Triggers the execution of the associated flow.
      *
      * @param  callable  $streamingFunction  A callback function for streaming the output.
-     * @return mixed The result of the flow execution.
+     * @return string The aggregated result of the flow execution.
      */
     public function trigger($streamingFunction)
     {
-        // Ensure the flow is loaded
-        $flow = $this->load('flow');
+        // Ensure the flow is loaded along with its nodes
+        $flow = $this->load('flow.nodes');
 
-        // Get the nodes of the flow
-        $nodes = $flow->nodes()->orderBy('sequence', 'asc')->get(); // Assuming you have a 'sequence' field to order nodes
+        $input = $this->input; // Assume this run model has an 'input' attribute.
+        $output = '';
 
-        // Execute each node in sequence
-        foreach ($nodes as $node) {
-            // Here, you'd call a service or logic that knows how to execute the node.
-            // For demonstration, let's assume you have a NodeExecutionService that handles the logic.
-            $nodeExecutionService = new NodeExecutionService();
-            $result = $nodeExecutionService->executeNode($node, $this->input, $streamingFunction);
+        // Execute each node in sequence (assuming nodes are already sorted by their execution order)
+        foreach ($flow->nodes as $node) {
+            // Call the node's trigger method and pass the current input
+            $nodeOutput = $node->trigger($input);
 
-            // If your node execution can directly affect the flow (like causing it to stop early),
-            // you might want to handle that logic here.
+            // Optional: Use streamingFunction to stream output of each node if necessary
+            // $streamingFunction($nodeOutput);
+
+            // Set the output of the current node as the input for the next node
+            $input = $nodeOutput;
+
+            // Append the output to the overall run output (this can be adjusted based on your needs)
+            $output .= $nodeOutput;
         }
 
-        // Return the final result
-        // This is a simplified view. You might need to collect and aggregate results from each node.
-        return $result ?? 'Flow completed without output.';
+        // Return the final aggregated output
+        return $output;
     }
 }
