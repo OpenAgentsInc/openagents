@@ -1,7 +1,6 @@
 <div class="flex h-screen w-full overflow-hidden">
     <div class="w-full h-screen flex flex-col">
         <div class="fixed top-[60px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]"></div>
-
         <div id="chatbox-container" class="mt-[70px] mb-[5px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
                 @php
@@ -14,14 +13,10 @@
                 <x-messagestreaming :author="$agent->name ?? 'Agent'"/>
             @endif
         </div>
-
         <div class="fixed bottom-0 left-[0px] right-0 h-[80px] px-4 py-3 flex items-center z-10">
             <div class="fixed bottom-0 w-screen left-[0px] right-0 h-[70px] bg-black z-5"></div>
-            <div
-                    class="fixed bottom-[70px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-t from-black to-transparent z-5">
-            </div>
-            <div
-                    class="w-full pt-2 md:pt-0 dark:border-white/20 md:border-transparent md:dark:border-transparent md:w-[calc(100%-.5rem)]">
+            <div class="fixed bottom-[70px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-t from-black to-transparent z-5"></div>
+            <div class="w-full pt-2 md:pt-0 dark:border-white/20 md:border-transparent md:dark:border-transparent md:w-[calc(100%-.5rem)]">
                 <form wire:submit.prevent="sendMessage"
                       class="stretch mx-2 flex flex-row gap-3 last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl">
                     <div class="relative flex h-full flex-1 items-stretch md:flex-col">
@@ -37,7 +32,6 @@
                                           focus:ring-0 focus-visible:ring-0 dark:bg-transparent max-h-25 py-[10px] pr-10
                                           md:py-3.5 md:pr-12 placeholder-white/50 pl-10 md:pl-[22px]"
                                           style="height: 52px; overflow-y: hidden;"></textarea>
-
                                 <button id="send-message" class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5
                                     text-white transition-colors enabled:bg-black disabled:text-gray-400
                                     disabled:opacity-25 dark:border-white dark:bg-white dark:hover:bg-white md:bottom-3
@@ -59,17 +53,13 @@
 
     <script>
         window.addEventListener('scrollToBottomAgain', event => {
-            console.log("scrolling")
-            // Scroll chatbox-container to the bottom
             setTimeout(() => {
                 let chatboxContainer = document.querySelector('#chatbox-container');
-                // chatboxContainer.scrollTop = chatboxContainer.scrollHeight;
                 chatboxContainer.scrollTo({
                     top: chatboxContainer.scrollHeight,
                     behavior: 'smooth'
                 });
             }, 200)
-
         })
     </script>
 </div>
