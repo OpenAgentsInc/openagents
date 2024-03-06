@@ -3,25 +3,13 @@
 namespace App\Livewire;
 
 use App\Models\Agent;
-use App\Models\Task;
 use App\Models\Thread;
-use App\Services\Inferencer;
-use Exception;
-use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Contracts\View\Factory;
-use Illuminate\View\View;
 use Livewire\Component;
-use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
-    use WithFileUploads;
-
-    public $images = [];
-
-    public $body = '';
-
-    public $input = '';
+    // User input from chat form
+    public $message_input = '';
 
     public Agent $agent;
 
@@ -32,6 +20,8 @@ class Chat extends Component
     public $messages = [];
 
     public $pending = false;
+
+    private $input = '';
 
     public function mount($id = null)
     {
@@ -58,7 +48,7 @@ class Chat extends Component
 
     public function sendMessage(): void
     {
-        $this->input = $this->body;
+        $this->input = $this->message_input;
 
         // Append the message to the chat
         $this->messages[] = [
@@ -69,101 +59,18 @@ class Chat extends Component
         $this->dispatch('scrollToBottomAgain');
 
         // Clear the input
-        $this->body = '';
+        $this->message_input = '';
         $this->pending = true;
 
-        $this->js('$wire.runTask()');
+        $this->js('$wire.startRun()');
     }
 
-    public function runTask(): void
+    public function startRun()
     {
-        $messageContent = '';
-
-        $logFunction = function ($message) {
-            $this->stream(
-                to: 'taskProgress',
-                content: "Executing step: $message <br />"
-            );
-        };
-
-        $streamFunction = function ($response) use (&$messageContent) {
-            $token = $response['choices'][0]['delta']['content'] ?? '';
-            $this->stream(
-                to: 'streamtext',
-                content: $token
-            );
-            $this->dispatch('scrollToBottomAgain');
-            $messageContent .= $token;
-        };
-
-        $output = $this->routeInput($this->input, $logFunction, $streamFunction);
-
-        // worst code in the world
-        if (empty($messageContent)) {
-            try {
-                // If output is a json blob, decode it
-                if (is_string($output) && json_decode($output)) {
-                    $output = json_decode($output);
-                    // $output = json_decode($output);
-                    $messageContent = $output->output;
-                } else {
-                    $messageContent = $output['output'];
-                }
-                $this->dispatch('scrollToBottomAgain');
-            } catch (Exception $e) {
-                dd($output);
-                dd($e->getMessage());
-            }
-
-        }
-
-        // $task = Task::where('name', 'Inference with web context')->firstOrFail();
-
-        // $output = $task->agent->runTask($task, [
-        //     'input' => $this->input,
-        // ], $logFunction, $streamFunction);
-
-        // Append the response to the chat
-        $this->messages[] = [
-            'body' => $messageContent,
-            'sender' => $this->agent->name,
-            'agent_id' => $this->agent->id,
-        ];
-
-        $this->pending = false;
+        dd($this->input);
     }
 
-    private function routeInput($input, $logFunction, $streamFunction)
-    {
-        // Does input contain a URL anywhere inside it?
-        $containsUrl = preg_match('/\b(?:https?|ftp):\/\/\S+\b/', $input);
-
-        // If yes, run the "Inference with web context" task
-        if ($containsUrl) {
-            $task = Task::where('name', 'Inference with web context')->firstOrFail();
-
-            $output = $task->agent->runTask([
-                'input' => $input,
-            ], $task, $this->thread, $logFunction, $streamFunction);
-
-        } else {
-            $this->thread->messages()->create([
-                //                'user_id' => auth()->id(),
-                'body' => $input,
-                //                'sender' => 'user',
-            ]);
-            $output = Inferencer::llmInference(['input' => $input], $this->thread, $this->agent, $streamFunction);
-            $this->thread->messages()->create([
-                //                'user_id' => auth()->id(),
-                'body' => $output['output'],
-                //                'sender' => 'agent',
-            ]);
-        }
-
-        return $output;
-    }
-
-    public function render(): \Illuminate\Contracts\View\View|\Illuminate\Foundation\Application|Factory|View|Application
+    public function render()
     {
         return view('livewire.chat');
     }
