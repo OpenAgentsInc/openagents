@@ -41,29 +41,7 @@
         <div
                 class="fixed top-[60px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]">
         </div>
-        @if($agent)
-            <div class="fixed top-0 right-0 h-[60px] z-10">
-                <div class="text-white flex items-center justify-between p-2 bg-black">
-                    <a href="{{ route('agent.show', ['id' => $agent->id ] ) }}"
-                       wire:navigate class="mt-1 cursor-pointer flex items-center">
-                        <div class="ml-2 p-2 border border-darkgray rounded">
-                            <x-icon name="code" class="w-6 h-6"/>
-                        </div>
-
-                        <div class="ml-4 flex flex-col">
-                            <span class="text-lg font-bold">{{ $agent->name }}</span>
-                            <span class="text-sm text-gray">Created by OpenAgents</span>
-                        </div>
-
-                    </a>
-                    <div class="mr-4">
-                        <x-button variant="secondary" icon="share">
-                            Share
-                        </x-button>
-                    </div>
-                </div>
-            </div>
-        @endif
+       
 
         @if(!$messages)
             <!-- big thing in the center -->

@@ -15,9 +15,10 @@
 
 ## Milestones
 
-* New Livewire agent flow must use the new data models
+* New Livewire agent flow must use the new data models and services
     * Agent Builder is specified via DB seeder as Flow of Nodes
-    * Input is sent to new API endpoint that triggers a Run
+    * Input is sent to new API endpoint/service that triggers a Run
+    * Runs broadcast events with status updates
 
 ## Comms
 
@@ -30,5 +31,6 @@
     * Two-sided marketplace: agent builders & users
         * Builders may be developers or not
     * All open-source. Hey, submit a PR or fork the code and build this yourself
+    * Where are the agents you would pay for? They don't exist. We need to build them - together.
 * Docs
 * Bounties
