@@ -27,18 +27,15 @@ class Run extends Model
     public function trigger($streamingFunction)
     {
         // Ensure the flow is loaded along with its nodes
-        $flow = $this->load('flow.nodes');
+        $this->load('flow.nodes');
 
         $input = $this->input; // Assume this run model has an 'input' attribute.
         $output = '';
 
         // Execute each node in sequence (assuming nodes are already sorted by their execution order)
-        foreach ($flow->nodes as $node) {
+        foreach ($this->flow->nodes as $node) {
             // Call the node's trigger method and pass the current input
-            $nodeOutput = $node->trigger($input);
-
-            // Optional: Use streamingFunction to stream output of each node if necessary
-            // $streamingFunction($nodeOutput);
+            $nodeOutput = $node->trigger($input, $streamingFunction);
 
             // Set the output of the current node as the input for the next node
             $input = $nodeOutput;
