@@ -1,7 +1,7 @@
 <div class="flex h-screen w-full overflow-hidden">
     <div class="w-full h-screen flex flex-col">
         <div class="fixed top-[60px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]"></div>
-        <div id="chatbox-container" class="mt-[70px] mb-[5px] flex-1 overflow-auto bg-gray-900 text-white">
+        <div id="chatbox-container" class="mt-[70px] mb-[5px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
                 @php
                     $author = $message['agent_id'] ? 'Agent Builder' : 'User';
