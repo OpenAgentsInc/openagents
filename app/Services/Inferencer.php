@@ -14,14 +14,13 @@ class Inferencer
         $messages = self::prepareTextInference($input, $thread, $agent);
         //            $client = new MistralAIGateway();
         $client = new GroqAIGateway();
-        $content = $client->chat()->createStreamed([
+
+        return $client->chat()->createStreamed([
             'model' => $model,
             'messages' => $messages,
             'max_tokens' => 3024,
             'stream_function' => $streamFunction,
         ]);
-
-        return ['output' => $content];
     }
 
     private static function prepareTextInference($text, Thread $thread, Agent $agent)
