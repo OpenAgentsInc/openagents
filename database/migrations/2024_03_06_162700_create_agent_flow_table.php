@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('agent_flow', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('agent_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('flow_id')->constrained()->cascadeOnDelete();
             $table->timestamps();
         });
     }

@@ -144,6 +144,11 @@ class Agent extends Model
         return $this->hasMany(Task::class);
     }
 
+    public function flows()
+    {
+        return $this->belongsToMany(Flow::class, 'agent_flow');
+    }
+
     public function conversations()
     {
         return $this->hasMany(Conversation::class);
