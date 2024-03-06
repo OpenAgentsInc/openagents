@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\Agent;
 use App\Models\Thread;
+use App\Services\RunService;
 use Livewire\Component;
 
 class Chat extends Component
@@ -75,8 +76,14 @@ class Chat extends Component
         // Trigger a run through the RunService
         $runService = new RunService();
 
-        // Pass the input, agent & thread IDs, and a callback to handle the response stream
-        $output = $runService->run($this->input, $this->thread, $this->getStreamingCallback());
+        // Pass the input, agent/flow/thread, and a callback to handle the response stream
+        $output = $runService->triggerRun([
+            'agent' => $this->agent,
+            'flow' => $this->agent->flows->first(),
+            'thread' => $this->thread,
+            'input' => $this->input,
+            'streamingFunction' => $this->getStreamingCallback(),
+        ]);
 
         // The final output is the message
         $this->messages[] = [
@@ -85,6 +92,7 @@ class Chat extends Component
             'agent_id' => $this->agent->id,
         ];
 
+        // Reset/scroll
         $this->pending = false;
         $this->dispatch('scrollToBottomAgain');
     }

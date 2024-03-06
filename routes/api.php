@@ -28,8 +28,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Many-to-many relationships
     Route::apiResource('agents.files', AgentFileController::class);
+    Route::apiResource('agents.threads', AgentThreadController::class);
     Route::apiResource('files.threads', FileThreadController::class);
     Route::apiResource('flows.nodes', FlowNodeController::class);
-    Route::apiResource('agents.threads', AgentThreadController::class);
     Route::apiResource('users.threads', UserThreadController::class);
 });
