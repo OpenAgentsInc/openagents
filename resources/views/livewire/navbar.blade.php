@@ -12,7 +12,7 @@
     <div class="flex flex-row items-center">
         @auth
         @else
-            <a href="/login" wire:navigate class="ml-8 text-gray hover:text-white">Login</a>
+            {{--            <a href="/login" wire:navigate class="ml-8 text-gray hover:text-white">Login</a>--}}
         @endauth
     </div>
 </div>
