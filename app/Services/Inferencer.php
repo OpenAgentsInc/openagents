@@ -3,12 +3,13 @@
 namespace App\Services;
 
 use App\AI\GroqAIGateway;
-use App\Models\Conversation;
+use App\Models\Agent;
+use App\Models\Thread;
 use OpenAI;
 
 class Inferencer
 {
-    public static function llmInference($input, Conversation $conversation, $streamFunction)
+    public static function llmInference($input, Thread $thread, Agent $agent, $streamFunction)
     {
         $decodedInput = json_decode($input['input'], true);
 
@@ -27,7 +28,7 @@ class Inferencer
             ];
 
             $model = 'gpt-4-vision-preview';
-            $messages = self::prepareMultiModalInference($inputForModel, $conversation);
+            $messages = self::prepareMultiModalInference($inputForModel, $thread);
             $client = OpenAI::client(env('OPENAI_API_KEY'));
 
             $stream = $client->chat()->createStreamed([
@@ -50,7 +51,7 @@ class Inferencer
             // $model = 'gpt-4';
             //            $model = 'mistral-large-latest';
             $model = 'mixtral-8x7b-32768';
-            $messages = self::prepareTextInference($text, $conversation);
+            $messages = self::prepareTextInference($text, $thread, $agent);
             //            $client = new MistralAIGateway();
             $client = new GroqAIGateway();
             $content = $client->chat()->createStreamed([
@@ -64,12 +65,13 @@ class Inferencer
         return ['output' => $content];
     }
 
-    private static function prepareMultiModalInference($input, Conversation $conversation)
+    private static function prepareMultiModalInference($input, Thread $thread)
     {
         // Initial text message from the system
         $systemMessage = [
             'role' => 'system',
-            'content' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
+            'content' => 'You are a helpful AI agent.', // TODO: Grab proper agent name here
+            //            'content' => 'You are a helpful AI agent named '.$thread->agent->name.'. Your description is '.$thread->agent->description,
         ];
 
         // User message containing both text and image(s)
@@ -104,10 +106,10 @@ class Inferencer
         return [$systemMessage, $userMessage];
     }
 
-    private static function prepareTextInference($text, Conversation $conversation)
+    private static function prepareTextInference($text, Thread $thread, Agent $agent)
     {
         // Fetch previous messages
-        $previousMessages = $conversation->messages()
+        $previousMessages = $thread->messages()
             ->orderBy('created_at', 'asc')
             ->get()
             ->map(function ($message) {
@@ -121,13 +123,17 @@ class Inferencer
             })
             ->toArray();
 
-        // Add the current user message to the array of previous messages
-        // $previousMessages[] = ['role' => 'user', 'content' => $text];
-
         // Prepend system message
         array_unshift($previousMessages, [
             'role' => 'system',
-            'content' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
+            'content' => 'You are a helpful AI agent named '.$agent->name.' 
+            
+Your description is: '.$agent->description.'
+
+Your instructions are: 
+---
+'.$agent->instructions.'
+---',
         ]);
 
         return $previousMessages;

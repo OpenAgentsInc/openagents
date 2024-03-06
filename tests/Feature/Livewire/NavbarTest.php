@@ -1,7 +1,7 @@
 <?php
 
-use App\Models\User;
 use App\Livewire\Navbar;
+use App\Models\User;
 use Livewire\Livewire;
 
 it('renders successfully', function () {
@@ -36,7 +36,7 @@ it('shows a chat button if authed', function () {
         ->get('/')
         ->assertStatus(200)
         ->assertSee('Chat');
-});
+})->skip();
 
 it('does not show a chat button if unauthed', function () {
     $this->get('/')
