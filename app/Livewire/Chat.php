@@ -20,8 +20,10 @@ class Chat extends Component
     // The thread we're chatting in
     public Thread $thread;
 
+    // The messages we render on the page
     public $messages = [];
 
+    // Whether we're waiting for a response from the agent
     public $pending = false;
 
     public function mount($id = null)
@@ -49,6 +51,7 @@ class Chat extends Component
 
     public function sendMessage(): void
     {
+        // Save this input even after we clear the form this variable is tied to
         $this->input = $this->message_input;
 
         // Append the message to the chat
@@ -63,12 +66,39 @@ class Chat extends Component
         $this->message_input = '';
         $this->pending = true;
 
+        // Call startRun after the next render
         $this->js('$wire.startRun()');
     }
 
     public function startRun()
     {
-        dd($this->input);
+        // Trigger a run through the RunService
+        $runService = new RunService();
+
+        // Pass the input, agent & thread IDs, and a callback to handle the response stream
+        $output = $runService->run($this->input, $this->thread, $this->getStreamingCallback());
+
+        // The final output is the message
+        $this->messages[] = [
+            'body' => $output,
+            'sender' => $this->agent->name,
+            'agent_id' => $this->agent->id,
+        ];
+
+        $this->pending = false;
+        $this->dispatch('scrollToBottomAgain');
+    }
+
+    private function getStreamingCallback()
+    {
+        return function ($response) {
+            $token = $response['choices'][0]['delta']['content'] ?? '';
+            $this->stream(
+                to: 'streamtext',
+                content: $token
+            );
+            $this->dispatch('scrollToBottomAgain');
+        };
     }
 
     public function render()
