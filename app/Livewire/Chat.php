@@ -73,6 +73,12 @@ class Chat extends Component
 
     public function startRun()
     {
+        // Save this user message to the thread
+        $this->thread->messages()->create([
+            'body' => $this->input,
+            'agent_id' => null,
+        ]);
+
         // Trigger a run through the RunService
         $runService = new RunService();
 
@@ -91,6 +97,12 @@ class Chat extends Component
             'sender' => $this->agent->name,
             'agent_id' => $this->agent->id,
         ];
+
+        // Save the agent message to the thread
+        $this->thread->messages()->create([
+            'body' => $output,
+            'agent_id' => $this->agent->id,
+        ]);
 
         // Reset/scroll
         $this->pending = false;
