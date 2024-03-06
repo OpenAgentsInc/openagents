@@ -130,7 +130,10 @@ class Inferencer
             
 Your description is: '.$agent->description.'
 
-Your instructions are: '.$agent->instructions,
+Your instructions are: 
+---
+'.$agent->instructions.'
+---',
         ]);
 
         return $previousMessages;

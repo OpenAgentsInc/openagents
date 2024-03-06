@@ -11,6 +11,7 @@ namespace App\Livewire;
 
 use App\Models\Agent;
 use App\Models\Thread;
+use App\Models\User;
 use Livewire\Component;
 
 class Frontpage extends Component
@@ -51,6 +52,14 @@ To build your agent, I'll need more details. Tell me some things like:
 
     private function getAgentBuilderAgent()
     {
+        $user = User::first();
+        if (! $user) {
+            User::create([
+                'name' => 'OpenAgents',
+                'email' => 'chris@openagents.com',
+            ]);
+        }
+
         // Look up the first Agent with name Agent Builder
         $agent = Agent::where('name', 'Agent Builder')->first();
         if (! $agent) {
@@ -63,7 +72,11 @@ OpenAgents is a platform for building AI agents. It is similar to the OpenAI Ass
 
 Your mission is to help create a scope of work that can reasonably be created via OpenAgents.com using nothing other than the interface of OpenAgents.com and its API.
 
-When you arrive at a clearly defined and achievable scope of work, you can ask the user for their email address where we will email them further instructions.                
+Keep your responses short, under 150 words. You need to ask users questions one at a time until you collect all information. Plan to refine the scope of work over multiple messages. Do not ask more than one question at a time!
+
+When you arrive at a clearly defined and achievable scope of work, you can ask the user for their email address where we will email them further instructions.
+
+Do not ask more than one question at a time!              
 ',
                 'user_id' => 1,
             ]);
