@@ -11,6 +11,11 @@ class Flow extends Model
 
     protected $guarded = [];
 
+    public function agents()
+    {
+        return $this->belongsToMany(Agent::class, 'agent_flow');
+    }
+
     public function nodes()
     {
         return $this->belongsToMany(Node::class);
