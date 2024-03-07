@@ -3,290 +3,292 @@
 @tailwind utilities;
 
 .shiki {
-  @apply p-4 rounded-lg text-sm;
+    @apply p-4 rounded-lg text-sm;
 }
 
 @layer base {
-  :root {
-    --livewire-progress-bar-color: white !important;
-  }
+    :root {
+        --livewire-progress-bar-color: white !important;
+    }
 
-  h1.title {
-    @apply text-[64px] font-bold;
-  }
+    h1.title {
+        @apply text-[64px] font-bold;
+    }
 
-  h1 {
-    @apply text-[40px] font-bold;
-  }
+    h1 {
+        @apply text-[40px] font-bold;
+    }
 
-  h2 {
-    @apply text-[32px] font-bold mt-12;
-  }
+    h2 {
+        @apply text-[32px];
+    }
 
-  h3 {
-    @apply text-[24px] font-bold;
-  }
+    h3 {
+        @apply text-[24px];
+    }
 
-  h4 {
-    @apply text-[20px] font-bold;
-  }
+    h4 {
+        @apply text-[20px];
+    }
 
-  h5 {
-    @apply text-[16px] font-bold;
-  }
+    h5 {
+        @apply text-[16px];
+    }
 
-  h6 {
-    @apply text-[14px] font-bold;
-  }
+    h6 {
+        @apply text-[14px];
+    }
 
-  p {
-    @apply text-[16px] my-4;
-  }
+    p {
+        @apply text-[16px] my-4;
+    }
 
-  .docs ul {
-    @apply list-disc pl-6;
-  }
+    .docs ul {
+        @apply list-disc pl-6;
+    }
 
-  .docs li {
-    @apply text-[16px] text-lightgray leading-loose pl-2;
-  }
+    .docs li {
+        @apply text-[16px] text-lightgray leading-loose pl-2;
+    }
 
-  .docs h1 {
-    @apply mt-6 text-[32px];
-  }
+    .docs h1 {
+        @apply mt-6 text-[32px];
+    }
 
-  .docs h2 {
-    @apply mt-[70px] text-[24px];
-  }
+    .docs h2 {
+        @apply mt-[70px] text-[24px];
+    }
 
-  .docs h3 {
-    @apply mt-8 mb-4 text-[20px];
-  }
+    .docs h3 {
+        @apply mt-8 mb-4 text-[20px];
+    }
 
-  .docs h4 {
-    @apply mt-8 mb-4 text-[16px];
-  }
+    .docs h4 {
+        @apply mt-8 mb-4 text-[16px];
+    }
 
-  .docs p {
-    @apply text-lightgray leading-normal my-5;
-  }
+    .docs p {
+        @apply text-lightgray leading-normal my-5;
+    }
 
-  .docs a {
-    @apply text-white underline;
-  }
+    .docs a {
+        @apply text-white underline;
+    }
 
-  .docs pre {
-    @apply overflow-x-scroll;
-  }
+    .docs pre {
+        @apply overflow-x-scroll;
+    }
 
-  .docs .verysmall pre {
-    font-size: 0.75rem;
-    line-height: 0.9rem;
-  }
+    .docs .verysmall pre {
+        font-size: 0.75rem;
+        line-height: 0.9rem;
+    }
 
-  body {
-    @apply bg-black text-white h-screen font-mono;
-  }
+    body {
+        @apply bg-black text-white h-screen font-mono;
+    }
 }
 
 @layer components {
-  .nice-scrollbar {
-    @apply scrollbar scrollbar-track-white scrollbar-thumb-bitcoin scrollbar-thumb-rounded scrollbar-w-2;
-  }
+    .nice-scrollbar {
+        @apply scrollbar scrollbar-track-white scrollbar-thumb-bitcoin scrollbar-thumb-rounded scrollbar-w-2;
+    }
 
-  .weird-height {
-    max-height: calc(100vh - 180px);
-  }
+    .weird-height {
+        max-height: calc(100vh - 180px);
+    }
 }
 
 @layer base {
-  input[type="range"] {
-    /* removing default appearance */
-    -webkit-appearance: none;
-    appearance: none;
-    /* creating a custom design */
-    width: 100%;
-    cursor: pointer;
-    outline: none;
-    border-radius: 15px;
-    /*  overflow: hidden;  remove this line*/
+    input[type="range"] {
+        /* removing default appearance */
+        -webkit-appearance: none;
+        appearance: none;
+        /* creating a custom design */
+        width: 100%;
+        cursor: pointer;
+        outline: none;
+        border-radius: 15px;
+        /*  overflow: hidden;  remove this line*/
 
-    /* New additions */
-    height: 6px;
-    background: #ccc;
-  }
+        /* New additions */
+        height: 6px;
+        background: #ccc;
+    }
 
-  /* Thumb: webkit */
-  input[type="range"]::-webkit-slider-thumb {
-    /* removing default appearance */
-    -webkit-appearance: none;
-    appearance: none;
-    /* creating a custom design */
-    height: 15px;
-    width: 15px;
-    background-color: #FF9900;
-    border-radius: 50%;
-    border: none;
+    /* Thumb: webkit */
+    input[type="range"]::-webkit-slider-thumb {
+        /* removing default appearance */
+        -webkit-appearance: none;
+        appearance: none;
+        /* creating a custom design */
+        height: 15px;
+        width: 15px;
+        background-color: #FF9900;
+        border-radius: 50%;
+        border: none;
 
-    /* box-shadow: -407px 0 0 400px #FF9900; emove this line */
-    transition: .2s ease-in-out;
-  }
+        /* box-shadow: -407px 0 0 400px #FF9900; emove this line */
+        transition: .2s ease-in-out;
+    }
 
-  /* Thumb: Firefox */
-  input[type="range"]::-moz-range-thumb {
-    height: 15px;
-    width: 15px;
-    background-color: #FF9900;
-    border-radius: 50%;
-    border: none;
+    /* Thumb: Firefox */
+    input[type="range"]::-moz-range-thumb {
+        height: 15px;
+        width: 15px;
+        background-color: #FF9900;
+        border-radius: 50%;
+        border: none;
 
-    /* box-shadow: -407px 0 0 400px #FF9900; emove this line */
-    transition: .2s ease-in-out;
-  }
+        /* box-shadow: -407px 0 0 400px #FF9900; emove this line */
+        transition: .2s ease-in-out;
+    }
 
-  /* Hover, active & focus Thumb: Webkit */
+    /* Hover, active & focus Thumb: Webkit */
+    input[type="range"]::-webkit-slider-thumb:hover {
+        box-shadow: 0 0 0 10px rgba(255, 153, 0, .1)
+    }
 
-  input[type="range"]::-webkit-slider-thumb:hover {
-    box-shadow: 0 0 0 10px rgba(255,153,0, .1)
-  }
-  input[type="range"]:active::-webkit-slider-thumb {
-    box-shadow: 0 0 0 13px rgba(255,153,0, .2)
-  }
-  input[type="range"]:focus::-webkit-slider-thumb {
-    box-shadow: 0 0 0 13px rgba(255,153,0, .2)
-  }
+    input[type="range"]:active::-webkit-slider-thumb {
+        box-shadow: 0 0 0 13px rgba(255, 153, 0, .2)
+    }
 
-  /* Hover, active & focus Thumb: Firfox */
+    input[type="range"]:focus::-webkit-slider-thumb {
+        box-shadow: 0 0 0 13px rgba(255, 153, 0, .2)
+    }
 
-  input[type="range"]::-moz-range-thumb:hover {
-    box-shadow: 0 0 0 10px rgba(255,153,0, .1)
-  }
-  input[type="range"]:active::-moz-range-thumb {
-    box-shadow: 0 0 0 13px rgba(255,153,0, .2)
-  }
-  input[type="range"]:focus::-moz-range-thumb {
-    box-shadow: 0 0 0 13px rgba(255,153,0, .2)
-  }
+    /* Hover, active & focus Thumb: Firfox */
+    input[type="range"]::-moz-range-thumb:hover {
+        box-shadow: 0 0 0 10px rgba(255, 153, 0, .1)
+    }
 
-  .range {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin: 0 auto;
-    height: 4rem;
-    width: 100%;
+    input[type="range"]:active::-moz-range-thumb {
+        box-shadow: 0 0 0 13px rgba(255, 153, 0, .2)
+    }
 
-    padding: 0px 10px;
-  }
+    input[type="range"]:focus::-moz-range-thumb {
+        box-shadow: 0 0 0 13px rgba(255, 153, 0, .2)
+    }
 
-  .value {
-    font-size: 24px;
-    width: 30px;
-    text-align: center;
-  }
+    .range {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin: 0 auto;
+        height: 4rem;
+        width: 100%;
+
+        padding: 0px 10px;
+    }
+
+    .value {
+        font-size: 24px;
+        width: 30px;
+        text-align: center;
+    }
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-Thin.woff2') format('woff2');
-  font-weight: 100; /* Thin */
-  font-style: normal;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-Thin.woff2') format('woff2');
+    font-weight: 100; /* Thin */
+    font-style: normal;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-ThinItalic.woff2') format('woff2');
-  font-weight: 100; /* Thin */
-  font-style: italic;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-ThinItalic.woff2') format('woff2');
+    font-weight: 100; /* Thin */
+    font-style: italic;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-ExtraLight.woff2') format('woff2');
-  font-weight: 200; /* ExtraLight */
-  font-style: normal;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-ExtraLight.woff2') format('woff2');
+    font-weight: 200; /* ExtraLight */
+    font-style: normal;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-ExtraLightItalic.woff2') format('woff2');
-  font-weight: 200; /* ExtraLight */
-  font-style: italic;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-ExtraLightItalic.woff2') format('woff2');
+    font-weight: 200; /* ExtraLight */
+    font-style: italic;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-Light.woff2') format('woff2');
-  font-weight: 300; /* Light */
-  font-style: normal;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-Light.woff2') format('woff2');
+    font-weight: 300; /* Light */
+    font-style: normal;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-LightItalic.woff2') format('woff2');
-  font-weight: 300; /* Light */
-  font-style: italic;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-LightItalic.woff2') format('woff2');
+    font-weight: 300; /* Light */
+    font-style: italic;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
-  font-weight: normal;
-  font-style: normal;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-Medium.woff2') format('woff2');
-  font-weight: 500; /* Medium */
-  font-style: normal;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+    font-weight: 500; /* Medium */
+    font-style: normal;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-MediumItalic.woff2') format('woff2');
-  font-weight: 500; /* Medium */
-  font-style: italic;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-MediumItalic.woff2') format('woff2');
+    font-weight: 500; /* Medium */
+    font-style: italic;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-SemiBold.woff2') format('woff2');
-  font-weight: 600; /* SemiBold */
-  font-style: normal;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-SemiBold.woff2') format('woff2');
+    font-weight: 600; /* SemiBold */
+    font-style: normal;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-SemiBoldItalic.woff2') format('woff2');
-  font-weight: 600; /* SemiBold */
-  font-style: italic;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-SemiBoldItalic.woff2') format('woff2');
+    font-weight: 600; /* SemiBold */
+    font-style: italic;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2');
-  font-weight: 700; /* Bold */
-  font-style: normal;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+    font-weight: 700; /* Bold */
+    font-style: normal;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-BoldItalic.woff2') format('woff2');
-  font-weight: 700; /* Bold */
-  font-style: italic;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-BoldItalic.woff2') format('woff2');
+    font-weight: 700; /* Bold */
+    font-style: italic;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-ExtraBold.woff2') format('woff2');
-  font-weight: 800; /* ExtraBold */
-  font-style: normal;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-ExtraBold.woff2') format('woff2');
+    font-weight: 800; /* ExtraBold */
+    font-style: normal;
 }
 
 @font-face {
-  font-family: 'JetBrains Mono';
-  src: url('/fonts/JetBrainsMono-ExtraBoldItalic.woff2') format('woff2');
-  font-weight: 800; /* ExtraBold */
-  font-style: italic;
+    font-family: 'JetBrains Mono';
+    src: url('/fonts/JetBrainsMono-ExtraBoldItalic.woff2') format('woff2');
+    font-weight: 800; /* ExtraBold */
+    font-style: italic;
 }
