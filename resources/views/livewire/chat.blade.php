@@ -4,7 +4,7 @@
         <div id="chatbox-container" class="mt-[70px] mb-[5px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
             @foreach($messages as $message)
                 @php
-                    $author = $message['agent_id'] ? 'Agent Builder' : 'User';
+                    $author = $message['agent_id'] ? 'Agent Builder' : 'You';
                 @endphp
                 <x-message :author="$author" :message="$message['body']"/>
             @endforeach
