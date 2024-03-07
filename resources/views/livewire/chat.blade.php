@@ -1,7 +1,31 @@
 <div class="flex h-screen w-full overflow-hidden">
     <div class="w-full h-screen flex flex-col">
         <div class="fixed top-[60px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]"></div>
-        <div id="chatbox-container" class="mt-[70px] mb-[5px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white">
+
+        <div id="chatbox-container" x-ref="chatboxContainer"
+             class="mt-[70px] mb-[5px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white"
+
+             x-data="{ pending: @entangle('pending').live }"
+             x-init="
+        let chatbox = $refs.chatboxContainer;
+        setTimeout(() => {
+            chatbox.scrollTo({ top: chatbox.scrollHeight, behavior: 'smooth' });
+        }, 500);
+        let lastScrollHeight = chatbox.scrollHeight;
+
+        $watch('pending', value => {
+            if (value) {
+                let scrollInterval = setInterval(() => {
+                    if (chatbox.scrollHeight != lastScrollHeight) {
+                        chatbox.scrollTo({ top: chatbox.scrollHeight, behavior: 'smooth' });
+                        lastScrollHeight = chatbox.scrollHeight;
+                    }
+
+                    if (!pending) clearInterval(scrollInterval);
+                }, 1);
+            }
+        });"
+        >
             @foreach($messages as $message)
                 @php
                     $author = $message['agent_id'] ? 'Agent Builder' : 'You';
@@ -13,6 +37,7 @@
                 <x-messagestreaming :author="$agent->name ?? 'Agent'"/>
             @endif
         </div>
+
         <div class="fixed bottom-0 left-[0px] right-0 h-[80px] px-4 py-3 flex items-center z-10">
             <div class="fixed bottom-0 w-screen left-[0px] right-0 h-[70px] bg-black z-5"></div>
             <div class="fixed bottom-[70px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-t from-black to-transparent z-5"></div>
@@ -51,15 +76,17 @@
         </div>
     </div>
 
+
     <script>
-        window.addEventListener('scrollToBottomAgain', event => {
-            setTimeout(() => {
-                let chatboxContainer = document.querySelector('#chatbox-container');
-                chatboxContainer.scrollTo({
-                    top: chatboxContainer.scrollHeight,
-                    behavior: 'smooth'
-                });
-            }, 200)
-        })
+        // window.addEventListener('scrollToBottomAgain', event => {
+        //     setTimeout(() => {
+        //         let chatboxContainer = document.querySelector('#chatbox-container');
+        //         console.log("scrolling to", chatboxContainer.scrollHeight);
+        //         chatboxContainer.scrollTo({
+        //             top: chatboxContainer.scrollHeight,
+        //             behavior: 'smooth'
+        //         });
+        //     }, 200)
+        // })
     </script>
 </div>

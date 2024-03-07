@@ -36,13 +36,13 @@ class Frontpage extends Component
         // Send first message from agent
         $agent = $this->getAgentBuilderAgent();
         $thread->messages()->create([
-            'body' => "Welcome to OpenAgents! 
-            
-To build your agent, I'll need more details. Tell me some things like:
- 
-- What knowledge the agent will need (like files or web links)
-- What APIs or services we'll need
-- What a successful result looks like",
+            'body' => "Let's start creating your AI agent. To begin, please share:
+
+- The types of information or resources it should use (e.g., specific websites, files).
+- Any specific APIs or services it should integrate with.
+- Your vision of what success for this agent looks like.
+
+We'll refine these details step by step. What's the main goal for your AI agent?",
             'agent_id' => $agent->id,
         ]);
 
@@ -61,26 +61,7 @@ To build your agent, I'll need more details. Tell me some things like:
         }
 
         // Look up the first Agent with name Agent Builder
-        $agent = Agent::where('name', 'Agent Builder')->first();
-        if (! $agent) {
-            $agent = Agent::create([
-                'name' => 'Agent Builder',
-                'description' => 'Helps you build an agent',
-                'instructions' => 'You help users build an AI agent via OpenAgents.com.
-
-OpenAgents is a platform for building AI agents. It is similar to the OpenAI Assistants API and the GPT store, allowing users to create agents using a no-code approach, while allowing developers to augment their agents using plugins and a developer API.
-
-Your mission is to help create a scope of work that can reasonably be created via OpenAgents.com using nothing other than the interface of OpenAgents.com and its API.
-
-Keep your responses short, under 150 words. You need to ask users questions one at a time until you collect all information. Plan to refine the scope of work over multiple messages. Do not ask more than one question at a time!
-
-When you arrive at a clearly defined and achievable scope of work, you can ask the user for their email address where we will email them further instructions.
-
-Do not ask more than one question at a time!              
-',
-                'user_id' => 1,
-            ]);
-        }
+        $agent = Agent::where('name', 'Agent Builder')->firstOrFail();
 
         // And join agent to this thread
         $agent->threads()->attach($this->thread);
