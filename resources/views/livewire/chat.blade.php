@@ -75,18 +75,4 @@
             </div>
         </div>
     </div>
-
-
-    <script>
-        // window.addEventListener('scrollToBottomAgain', event => {
-        //     setTimeout(() => {
-        //         let chatboxContainer = document.querySelector('#chatbox-container');
-        //         console.log("scrolling to", chatboxContainer.scrollHeight);
-        //         chatboxContainer.scrollTo({
-        //             top: chatboxContainer.scrollHeight,
-        //             behavior: 'smooth'
-        //         });
-        //     }, 200)
-        // })
-    </script>
 </div>
