@@ -42,6 +42,8 @@ Do not ask more than one question at a time!
             'config' => json_encode([
                 'gateway' => 'mistral',
                 'model' => 'mistral-large-latest',
+                //                'gateway' => 'groq',
+                //                'model' => 'mixtral-8x7b-32768',
             ]),
         ]);
     }
