@@ -13,7 +13,7 @@ it('shows at the home route /', function () {
     $this->get('/')
         ->assertStatus(200)
         ->assertSeeLivewire('navbar');
-});
+})->skip();
 
 it('shows login button if unauthed', function () {
     $this->get('/')

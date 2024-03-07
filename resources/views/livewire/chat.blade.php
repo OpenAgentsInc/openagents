@@ -1,4 +1,5 @@
 <div class="flex h-screen w-full overflow-hidden">
+    <livewire:navbar/>
     <div class="w-full h-screen flex flex-col">
         <div class="fixed top-[60px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]"></div>
 

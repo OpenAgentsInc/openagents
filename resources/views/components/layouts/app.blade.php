@@ -11,8 +11,7 @@
 </head>
 
 <body>
-    <livewire:navbar />
-    {{ $slot }}
+{{ $slot }}
 </body>
 
 </html>
