@@ -3,107 +3,47 @@
 namespace App\Services;
 
 use App\AI\GroqAIGateway;
+use App\AI\MistralAIGateway;
 use App\Models\Agent;
+use App\Models\Node;
 use App\Models\Thread;
-use OpenAI;
+use Exception;
 
 class Inferencer
 {
-    public static function llmInference($input, Thread $thread, Agent $agent, $streamFunction)
+    public static function llmInference(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
     {
-        $decodedInput = json_decode($input['input'], true);
+        // Decode the node's config to determine which gateway to use
+        $config = json_decode($node->config, true);
+        $gateway = $config['gateway'];
+        $model = $config['model'];
 
-        // Determine if input is multimodal (text + images)
-        if (json_last_error() === JSON_ERROR_NONE && isset($decodedInput['images'])) {
-            // It's JSON and has images, adjust handling for text and images
-            $text = $decodedInput['text'] ?? '';
-            $images = $decodedInput['images'] ?? [];
-
-            // Assuming images are base64, we need to adjust how we pass this to OpenAI
-            // For demonstration, let's assume a simplified scenario where we just pass the text and first image
-            $inputForModel = [
-                'text' => $text,
-                // Assuming 'images' is an array of base64-encoded strings
-                'image_url' => $images[0] ?? null, // Example: Taking the first image for simplicity
-            ];
-
-            $model = 'gpt-4-vision-preview';
-            $messages = self::prepareMultiModalInference($inputForModel, $thread);
-            $client = OpenAI::client(env('OPENAI_API_KEY'));
-
-            $stream = $client->chat()->createStreamed([
-                'model' => $model,
-                'messages' => $messages,
-                'max_tokens' => 3024,
-                'stream_function' => $streamFunction,
-            ]);
-
-            $content = '';
-            foreach ($stream as $response) {
-                $token = $response['choices'][0]['delta']['content'] ?? '';
-                $streamFunction($response);
-                $content .= $token;
-            }
-
-        } else {
-            // It's plain text or not properly decoded, proceed as before
-            $text = $input['input'];
-            // $model = 'gpt-4';
-            //            $model = 'mistral-large-latest';
-            $model = 'mixtral-8x7b-32768';
-            $messages = self::prepareTextInference($text, $thread, $agent);
-            //            $client = new MistralAIGateway();
-            $client = new GroqAIGateway();
-            $content = $client->chat()->createStreamed([
-                'model' => $model,
-                'messages' => $messages,
-                'max_tokens' => 3024,
-                'stream_function' => $streamFunction,
-            ]);
+        // If no gateway or model, throw
+        if (! $gateway || ! $model) {
+            throw new Exception('Invalid node configuration: '.json_encode($config));
         }
 
-        return ['output' => $content];
-    }
+        // Prepare the messages for inference
+        $messages = self::prepareTextInference($input, $thread, $agent);
 
-    private static function prepareMultiModalInference($input, Thread $thread)
-    {
-        // Initial text message from the system
-        $systemMessage = [
-            'role' => 'system',
-            'content' => 'You are a helpful AI agent.', // TODO: Grab proper agent name here
-            //            'content' => 'You are a helpful AI agent named '.$thread->agent->name.'. Your description is '.$thread->agent->description,
-        ];
-
-        // User message containing both text and image(s)
-        $userMessageContent = [];
-
-        // Add text part
-        if (! empty($input['text'])) {
-            $userMessageContent[] = [
-                'type' => 'text',
-                'text' => $input['text'],
-            ];
+        // Dynamically choose the gateway client based on the node's configuration
+        switch ($gateway) {
+            case 'mistral':
+                $client = new MistralAIGateway();
+                break;
+            case 'groq':
+                $client = new GroqAIGateway();
+                break;
+            default:
+                throw new Exception("Unsupported gateway: $gateway");
         }
 
-        // Add image part(s)
-        if (! empty($input['image_url'])) {
-            $base64prefixedPng = 'data:image/png;base64,'.$input['image_url'];
-            // foreach ($input['input']['images'] as $imageUrl) {
-            $userMessageContent[] = [
-                'type' => 'image_url',
-                // 'image_url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg', // $input['image_url'],
-                'image_url' => $base64prefixedPng,
-                // 'image_url' => $input['image_url'], // Ensure this is a string URL, not an array
-            ];
-
-        }
-
-        $userMessage = [
-            'role' => 'user',
-            'content' => $userMessageContent, // This now directly matches the expected structure
-        ];
-
-        return [$systemMessage, $userMessage];
+        return $client->chat()->createStreamed([
+            'model' => $model,
+            'messages' => $messages,
+            'max_tokens' => 3024,
+            'stream_function' => $streamFunction,
+        ]);
     }
 
     private static function prepareTextInference($text, Thread $thread, Agent $agent)
@@ -137,31 +77,5 @@ Your instructions are:
         ]);
 
         return $previousMessages;
-    }
-
-    private static function old_prepareMultiModalInference($input, Conversation $conversation)
-    {
-        $messages = [
-            // System message
-            [
-                'role' => 'system',
-                'content' => [
-                    'type' => 'text',
-                    'text' => 'You are a helpful AI agent named '.$conversation->agent->name.'. Your description is '.$conversation->agent->description,
-                ],
-            ],
-            // User message including both text and an image
-            [
-                'role' => 'user',
-                'content' => [
-                    ['type' => 'text', 'text' => $input['text']],
-                    ['type' => 'image_url', 'image_url' => [
-                        'url' => 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg', // $input['image_url'],
-                    ]],
-                ],
-            ],
-        ];
-
-        return $messages;
     }
 }

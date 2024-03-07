@@ -11,12 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('runs', function (Blueprint $table) {
+        Schema::create('agent_flow', function (Blueprint $table) {
             $table->id();
             $table->foreignId('agent_id')->constrained()->cascadeOnDelete();
             $table->foreignId('flow_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('thread_id')->constrained()->cascadeOnDelete();
-            $table->string('input')->nullable();
             $table->timestamps();
         });
     }
@@ -26,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('runs');
+        Schema::dropIfExists('agent_flow');
     }
 };

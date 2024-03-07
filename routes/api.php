@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\API\AgentController;
 use App\Http\Controllers\API\AgentFileController;
+use App\Http\Controllers\API\AgentFlowController;
 use App\Http\Controllers\API\AgentThreadController;
 use App\Http\Controllers\API\FileController;
 use App\Http\Controllers\API\FileThreadController;
@@ -28,8 +29,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Many-to-many relationships
     Route::apiResource('agents.files', AgentFileController::class);
+    Route::apiResource('agents.flows', AgentFlowController::class);
+    Route::apiResource('agents.threads', AgentThreadController::class);
     Route::apiResource('files.threads', FileThreadController::class);
     Route::apiResource('flows.nodes', FlowNodeController::class);
-    Route::apiResource('agents.threads', AgentThreadController::class);
     Route::apiResource('users.threads', UserThreadController::class);
 });

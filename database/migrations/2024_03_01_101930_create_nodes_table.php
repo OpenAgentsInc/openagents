@@ -22,6 +22,9 @@ return new class extends Migration
             // Nodes must have a type
             $table->string('type');
 
+            // Nodes have an optional config
+            $table->json('config')->nullable();
+
             $table->timestamps();
         });
     }
