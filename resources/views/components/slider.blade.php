@@ -10,27 +10,29 @@
 </div>
 
 <script>
-    const sliderEl = document.querySelector("#range");
-    const sliderValue = document.querySelector(".value");
-    const sliderInput = document.querySelector("#slider-input");
+    document.addEventListener('DOMContentLoaded', function () {
+        const sliderEl = document.querySelector("#range");
+        const sliderValue = document.querySelector(".value");
+        const sliderInput = document.querySelector("#slider-input");
 
-    // Function to update UI based on slider value
-    function updateSliderUI(value) {
-        sliderValue.textContent = value; // Update text content
+        // Function to update UI based on slider value
+        function updateSliderUI(value) {
+            sliderValue.textContent = value; // Update text content
 
-        const progress = (value / sliderEl.max) * 100;
-        sliderEl.style.background = `linear-gradient(to right, #FF9900 ${progress}%, #ccc ${progress}%)`;
+            const progress = (value / sliderEl.max) * 100;
+            sliderEl.style.background = `linear-gradient(to right, #FF9900 ${progress}%, #ccc ${progress}%)`;
 
-        if (sliderInput) {
-            sliderInput.value = value; // Update hidden input if present
+            if (sliderInput) {
+                sliderInput.value = value; // Update hidden input if present
+            }
         }
-    }
 
-    // Initialize slider UI on page load
-    updateSliderUI(sliderEl.value);
+        // Initialize slider UI on page load
+        updateSliderUI(sliderEl.value);
 
-    // Update UI on slider input change
-    sliderEl.addEventListener("input", (event) => {
-        updateSliderUI(event.target.value);
+        // Update UI on slider input change
+        sliderEl.addEventListener("input", (event) => {
+            updateSliderUI(event.target.value);
+        });
     });
 </script>
