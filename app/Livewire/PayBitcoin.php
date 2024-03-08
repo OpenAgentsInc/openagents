@@ -27,22 +27,33 @@ class PayBitcoin extends Component
 
             // Save the invoice details to the database
             Invoice::create([
+                'settled' => $data['settled'] ?? false,
                 'amount' => $data['amount'],
-                'comment' => $data['comment'] ?? null, // Use null coalescing for optional fields
+                'comment' => $data['comment'] ?? null,
                 'created_at_alby' => $data['created_at'] ?? null,
+                'creation_date' => $data['creation_date'] ?? null,
                 'currency' => $data['currency'],
-                'expires_at' => $data['expires_at'],
+                'destination_pubkey' => $data['destination_pubkey'] ?? null,
+                'expiry' => $data['expiry'] ?? null,
+                'fiat_currency' => $data['fiat_currency'] ?? null,
+                'fiat_in_cents' => $data['fiat_in_cents'] ?? null,
                 'identifier' => $data['identifier'],
-                'memo' => $data['memo'] ?? 'OpenAgents credit purchase',
+                'memo' => $data['memo'] ?? null,
+                'metadata' => $data['metadata'] ?? null,
+                'payer_name' => $data['payer_name'] ?? null,
+                'payer_email' => $data['payer_email'] ?? null,
+                'payer_pubkey' => $data['payer_pubkey'] ?? null,
                 'payment_hash' => $data['payment_hash'],
                 'payment_request' => $data['payment_request'],
-                'settled' => $data['settled'],
+                'preimage' => $data['preimage'] ?? null,
+                'r_hash_str' => $data['r_hash_str'] ?? null,
                 'state' => $data['state'],
                 'type' => $data['type'],
-                'value' => $data['value'],
                 'qr_code_png' => $data['qr_code_png'],
                 'qr_code_svg' => $data['qr_code_svg'],
-                // Add other fields as necessary
+                'value' => $data['value'],
+                'settled_at' => $data['settled_at'] ?? null,
+                'expires_at' => $data['expires_at'],
             ]);
 
             $this->qr = $data['qr_code_png'];
