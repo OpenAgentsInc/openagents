@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use Illuminate\Support\Facades\Http;
 use Livewire\Component;
 
 class PayBitcoin extends Component
@@ -12,13 +13,12 @@ class PayBitcoin extends Component
 
     public function generateInvoice()
     {
-        dd($this->amount);
-        //         Create invoice by hitting the Alby API - via POST to https://api.getalby.com/invoices
+        // Create invoice by hitting the Alby API - via POST to https://api.getalby.com/invoices
         $response = Http::withHeaders([
             'Authorization' => 'Bearer '.env('ALBY_ACCESS_TOKEN'),
         ])->post('https://api.getalby.com/invoices', [
-            'amount' => 100,
-            'description' => 'Payment for the product',
+            'amount' => $this->amount,
+            'description' => 'OpenAgents credit purchase',
         ]);
 
         $this->qr = $response->json()['qr_code_png'];
