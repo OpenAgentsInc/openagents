@@ -1,7 +1,8 @@
 @props(['min' => 0, 'max' => 10000, 'step' => 1, 'value' => 0])
 
 <div class="range text-bitcoin">
-    <input type="range" min="{{ $min }}" max="{{ $max }}" value="{{ $value }}" step="{{ $step }}" id="range"/>
+    <input wire:model="amount" type="range" min="{{ $min }}" max="{{ $max }}" value="{{ $value }}" step="{{ $step }}"
+           id="range"/>
     <div
             class="relative bg-elevation3 p-2 rounded-md font-sans inline-flex items-center justify-center text-grey-500 dark:text-grey-300">
         <div class="text-2xl text-bitcoin mr-1">₿</div>

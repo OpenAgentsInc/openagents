@@ -6,11 +6,13 @@ use Livewire\Component;
 
 class PayBitcoin extends Component
 {
+    public $amount = 100;
+
     public $qr;
 
     public function generateInvoice()
     {
-        dd('we here');
+        dd($this->amount);
         //         Create invoice by hitting the Alby API - via POST to https://api.getalby.com/invoices
         $response = Http::withHeaders([
             'Authorization' => 'Bearer '.env('ALBY_ACCESS_TOKEN'),

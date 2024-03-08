@@ -7,14 +7,14 @@
 
         <form wire:submit="generateInvoice">
             <div class="mt-16 w-[350px] flex flex-col text-left">
-                <x-label for="fee">Amount (sats)</x-label>
+                <x-label for="amount">Amount (sats)</x-label>
                 <div class="w-full">
-                    <input type="hidden" name="fee" id="slider-input" value="0"/>
-                    <x-slider min="10" max="5000" step="10" value="100"/>
+                    <input type="hidden" name="amount" id="slider-input"/>
+                    <x-slider min="10" max="5000" step="10" value="{{ $amount }}"/>
                 </div>
             </div>
 
-            <x-button type="submit" size="lg" class="mt-4">Generate invoice</x-button>
+            <x-button size="lg" class="mt-4">Generate invoice</x-button>
         </form>
 
         @if (!!$qr)
