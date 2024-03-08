@@ -22,11 +22,8 @@ class AlbyController extends Controller
                 'svix-signature' => $svixSignature,
             ]);
 
-            // If the request is verified, proceed to process the payload
-            $invoiceData = json_decode($verifiedPayload, true);
-
             // Process the invoice data (e.g., credit user's account)
-            Log::info($invoiceData);
+            Log::info($verifiedPayload);
 
             return response()->json(['message' => 'Success'], 200);
         } catch (Exception $e) {
