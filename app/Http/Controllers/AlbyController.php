@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
+use Log;
 use Svix\Webhook;
 
 class AlbyController extends Controller
@@ -23,7 +24,9 @@ class AlbyController extends Controller
 
             // If the request is verified, proceed to process the payload
             $invoiceData = json_decode($verifiedPayload, true);
+
             // Process the invoice data (e.g., credit user's account)
+            Log::info($invoiceData);
 
             return response()->json(['message' => 'Success'], 200);
         } catch (Exception $e) {
