@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AlbyController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocsController;
 use App\Http\Controllers\StaticController;
@@ -8,9 +9,14 @@ use App\Livewire\Chat;
 use App\Livewire\CreatePassword;
 use App\Livewire\Frontpage;
 use App\Livewire\Login;
+use App\Livewire\PayBitcoin;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', Frontpage::class)->name('home');
+
+// Billing
+Route::get('/pay/bitcoin', PayBitcoin::class);
+Route::post('/webhooks/alby/invoice-settled', [AlbyController::class, 'handleInvoiceSettled']);
 
 // Agent chat
 Route::get('/chat', Chat::class)->name('chat'); // todo - put behind auth middleware
