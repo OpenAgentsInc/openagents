@@ -23,12 +23,12 @@
 @endphp
 
 <button {{ $attributes->merge(['class' => "$baseClasses $variantClasses $sizeClasses"]) }}>
-    <x-label :size="$size">
+    <x-label :size="$size" class="pointer-events-none">
         {{ $slot }}
     </x-label>
     @if($icon)
         <span class="ml-3">
-            <x-icon :name="$icon" :class="$iconClasses" />
+            <x-icon :name="$icon" :class="$iconClasses"/>
         </span>
     @endif
 </button>
