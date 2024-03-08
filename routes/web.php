@@ -8,9 +8,13 @@ use App\Livewire\Chat;
 use App\Livewire\CreatePassword;
 use App\Livewire\Frontpage;
 use App\Livewire\Login;
+use App\Livewire\PayBitcoin;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', Frontpage::class)->name('home');
+
+// Billing
+Route::get('/pay/bitcoin', PayBitcoin::class);
 
 // Agent chat
 Route::get('/chat', Chat::class)->name('chat'); // todo - put behind auth middleware
