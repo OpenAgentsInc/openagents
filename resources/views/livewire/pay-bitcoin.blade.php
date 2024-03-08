@@ -18,7 +18,7 @@
                 <x-button size="lg" class="mt-4">Generate invoice</x-button>
             </form>
         @else
-            <img class="mt-12" src="{{ $qr }}" alt="QR code">
+            <img class="mt-12 w-[300px]" src="{{ $qr }}" alt="QR code">
         @endif
     </div>
 </div>
