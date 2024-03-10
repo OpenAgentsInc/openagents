@@ -18,7 +18,8 @@ Route::get('/', Frontpage::class)->name('home');
 Route::get('/finnhub', function () {
     $finnhub = new Finnhub();
 
-    return $finnhub->getCompanyProfile('MSTR');
+    // Get company news (timestamp) from 2 weeks ago to today
+    return $finnhub->getCompanyNews('MSTR', date('Y-m-d', strtotime('-2 weeks')), date('Y-m-d'));
 });
 
 // Billing
