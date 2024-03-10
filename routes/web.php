@@ -10,9 +10,16 @@ use App\Livewire\CreatePassword;
 use App\Livewire\Frontpage;
 use App\Livewire\Login;
 use App\Livewire\PayBitcoin;
+use App\Services\Finnhub;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', Frontpage::class)->name('home');
+
+Route::get('/finnhub', function () {
+    $finnhub = new Finnhub();
+
+    return $finnhub->getCompanyProfile('MSTR');
+});
 
 // Billing
 Route::get('/pay/bitcoin', PayBitcoin::class);

@@ -5,6 +5,8 @@ namespace App\Services;
 use Exception;
 use Finnhub\Api\DefaultApi;
 use Finnhub\Configuration;
+use Finnhub\Model\CompanyProfile2;
+use Finnhub\Model\Quote;
 use GuzzleHttp\Client;
 
 class Finnhub
@@ -32,7 +34,7 @@ class Finnhub
         }
     }
 
-    public function getCompanyProfile(string $symbol): array
+    public function getCompanyProfile(string $symbol): CompanyProfile2
     {
         try {
             $profile = $this->client->companyProfile2($symbol);
@@ -43,7 +45,7 @@ class Finnhub
         }
     }
 
-    public function getQuote(string $symbol): array
+    public function getQuote(string $symbol): Quote
     {
         try {
             $quote = $this->client->quote($symbol);
