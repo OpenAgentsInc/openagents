@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -11,12 +13,12 @@ class Task extends Model
 
     protected $guarded = [];
 
-    public function agent()
+    public function agent(): BelongsTo
     {
         return $this->belongsTo(Agent::class);
     }
 
-    public function steps()
+    public function steps(): HasMany
     {
         return $this->hasMany(Step::class);
     }

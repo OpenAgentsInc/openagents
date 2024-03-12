@@ -9,7 +9,7 @@ use Tests\TestCase;
 class FrontpageTest extends TestCase
 {
     /** @test */
-    public function renders_successfully()
+    public function renders_successfully(): void
     {
         Livewire::test(Frontpage::class)
             ->assertStatus(200);

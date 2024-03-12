@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Traits\UsesChat;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -139,37 +142,37 @@ class Agent extends Model
         return $step_executed->fresh()->output;
     }
 
-    public function tasks()
+    public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
     }
 
-    public function flows()
+    public function flows(): BelongsToMany
     {
         return $this->belongsToMany(Flow::class, 'agent_flow');
     }
 
-    public function conversations()
+    public function conversations(): HasMany
     {
         return $this->hasMany(Conversation::class);
     }
 
-    public function files()
+    public function files(): BelongsToMany
     {
         return $this->belongsToMany(File::class, 'agent_file');
     }
 
-    public function steps()
+    public function steps(): HasMany
     {
         return $this->hasMany(Step::class);
     }
 
-    public function threads()
+    public function threads(): BelongsToMany
     {
         return $this->belongsToMany(Thread::class);
     }
 
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }

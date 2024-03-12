@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -11,12 +12,12 @@ class Flow extends Model
 
     protected $guarded = [];
 
-    public function agents()
+    public function agents(): BelongsToMany
     {
         return $this->belongsToMany(Agent::class, 'agent_flow');
     }
 
-    public function nodes()
+    public function nodes(): BelongsToMany
     {
         return $this->belongsToMany(Node::class);
     }

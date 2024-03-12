@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Services\Inferencer;
 use App\Traits\StepActions;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -40,17 +41,17 @@ class StepExecuted extends Model
         return $output;
     }
 
-    public function step()
+    public function step(): BelongsTo
     {
         return $this->belongsTo(Step::class);
     }
 
-    public function task_executed()
+    public function task_executed(): BelongsTo
     {
         return $this->belongsTo(TaskExecuted::class);
     }
 
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }

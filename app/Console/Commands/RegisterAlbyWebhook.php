@@ -11,7 +11,7 @@ class RegisterAlbyWebhook extends Command
 
     protected $description = 'Registers a webhook endpoint with Alby and displays the secret key';
 
-    public function handle()
+    public function handle(): void
     {
         $url = 'https://api.getalby.com/webhook_endpoints'; // Use the actual Alby API URL
         $apiKey = env('ALBY_ACCESS_TOKEN'); // Store your Alby API key in the .env file for security
