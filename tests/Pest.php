@@ -14,7 +14,7 @@ use Tests\TestCase;
 |
 */
 
-uses(TestCase::class, RefreshDatabase::class)->in('Feature', 'Unit');
+uses(TestCase::class, RefreshDatabase::class)->in('Feature');
 
 /*
 |--------------------------------------------------------------------------
@@ -45,9 +45,4 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
-}
-
-function apiHeaders()
-{
-    return ['Accept' => 'application/json'];
 }
