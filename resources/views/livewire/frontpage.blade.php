@@ -1,5 +1,5 @@
 <div class="h-full flex flex-col justify-center items-center">
-    <div class="fixed w-[584px]">
+    <div class="fixed w-full px-8 sm:w-[584px]">
         <x-logomark size="1"/>
         <h2 class="mt-4 mb-12 text-[#D7D8E5]">Welcome!<br/>
             How can we help you?</h2>

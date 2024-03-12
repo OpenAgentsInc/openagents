@@ -20,7 +20,7 @@
     @if($showIcon && $iconName)
         <button
                 :disabled="isDisabled"
-                class="absolute md:bottom-[10px] md:right-[10px] text-black shadow rounded"
+                class="absolute bottom-[10px] right-[10px] text-black shadow rounded"
                 :class="isDisabled ? 'bg-gray' : 'bg-white hover:bg-white/90'"
         >
             <x-icon :name="$iconName" class="w-[24px] h-[24px] m-0.5 flex flex-col justify-center items-center"/>
