@@ -14,8 +14,19 @@ export default {
     theme: {
         extend: {
             fontFamily: {
+                mono: ['"JetBrains Mono"', ...defaultTheme.fontFamily.mono],
                 sans: ['Figtree', ...defaultTheme.fontFamily.sans],
             },
+            colors: {
+                offblack: '#1e1e1e',
+                darkgray: '#3D3D40',
+                gray: '#8B8585',
+                lightgray: '#A7A7A7',
+                white: '#fff',
+                bitcoin: '#FF9900',
+                green: '#00CC00',
+                red: '#FF3B00'
+            }
         },
     },
 
