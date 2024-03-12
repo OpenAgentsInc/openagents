@@ -19,7 +19,8 @@ Route::get('/finnhub', function () {
     $finnhub = new Finnhub();
 
     // Get company news (timestamp) from 2 weeks ago to today
-    return $finnhub->getCompanyNews('MSTR', date('Y-m-d', strtotime('-2 weeks')), date('Y-m-d'));
+    // return $finnhub->getStockCandles('MSTR', 'D', strtotime('-2 weeks'), time());
+       return $finnhub->getCompanyNews('MSTR', date('Y-m-d', strtotime('-2 weeks')), date('Y-m-d'));
 });
 
 // Billing
