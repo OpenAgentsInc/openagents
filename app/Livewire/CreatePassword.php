@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Providers\AppServiceProvider;
 use App\Models\User;
 use App\Providers\RouteServiceProvider;
 use Illuminate\Support\Facades\Auth;
@@ -55,7 +56,7 @@ class CreatePassword extends Component
 
         Auth::login($user);
 
-        return redirect(RouteServiceProvider::HOME);
+        return redirect(AppServiceProvider::HOME);
     }
 
     public function render()
