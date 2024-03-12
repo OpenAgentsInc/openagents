@@ -14,15 +14,15 @@ class Agent extends Model
 
     protected $guarded = [];
 
-    //    public function flows()
+    //    public function files(): BelongsToMany
     //    {
-    //        return $this->belongsToMany(Flow::class, 'agent_flow');
+    //        return $this->belongsToMany(File::class);
     //    }
-    //
-    //    public function files()
-    //    {
-    //        return $this->belongsToMany(File::class, 'agent_file');
-    //    }
+
+    public function flows(): BelongsToMany
+    {
+        return $this->belongsToMany(Flow::class);
+    }
 
     public function threads(): BelongsToMany
     {
