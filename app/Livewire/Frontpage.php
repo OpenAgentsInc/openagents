@@ -35,16 +35,16 @@ class Frontpage extends Component
 
         // Send first message from agent
         $agent = $this->getAgentBuilderAgent();
-        $thread->messages()->create([
-            'body' => "Let's start creating your AI agent. To begin, please share:
-
-- The types of information or resources it should use (e.g., specific websites, files).
-- Any specific APIs or services it should integrate with.
-- Your vision of what success for this agent looks like.
-
-We'll refine these details step by step. What's the main goal for your AI agent?",
-            'agent_id' => $agent->id,
-        ]);
+        //        $thread->messages()->create([
+        //            'body' => "Let's start creating your AI agent. To begin, please share:
+        //
+        //- The types of information or resources it should use (e.g., specific websites, files).
+        //- Any specific APIs or services it should integrate with.
+        //- Your vision of what success for this agent looks like.
+        //
+        //We'll refine these details step by step. What's the main goal for your AI agent?",
+        //            'agent_id' => $agent->id,
+        //        ]);
 
         // Redirect to that chat page
         $this->redirect('/chat/'.$thread->id, navigate: true);

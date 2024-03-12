@@ -48,6 +48,16 @@ class Chat extends Component
 
         // Set the agent (it's a many-to-many relationship so grab the first agent)
         $this->agent = $this->thread->agents->first();
+
+        // If the thread was just created, send the first message from the agent
+        if (count($this->messages) <= 1) {
+            $this->pending = true;
+            $this->js('$wire.runFirst()');
+
+            //            $this->thread->messages()->create([
+            //                'body' => "Let's start creating your AI agent. To begin, please share:",
+            //            ]);
+        }
     }
 
     public function sendMessage(): void
@@ -124,5 +134,37 @@ class Chat extends Component
     public function render()
     {
         return view('livewire.chat');
+    }
+
+    public function runFirst()
+    {
+        // Trigger a run through the RunService
+        $runService = new RunService();
+
+        // Pass the input, agent/flow/thread, and a callback to handle the response stream
+        $output = $runService->triggerRun([
+            'agent' => $this->agent,
+            'flow' => $this->agent->flows->first(),
+            'thread' => $this->thread,
+            'input' => $this->input,
+            'streamingFunction' => $this->getStreamingCallback(),
+        ]);
+
+        // The final output is the message
+        $this->messages[] = [
+            'body' => $output,
+            'sender' => $this->agent->name,
+            'agent_id' => $this->agent->id,
+        ];
+
+        // Save the agent message to the thread
+        $this->thread->messages()->create([
+            'body' => $output,
+            'agent_id' => $this->agent->id,
+        ]);
+
+        // Reset/scroll
+        $this->pending = false;
+        $this->dispatch('scrollToBottomAgain');
     }
 }
