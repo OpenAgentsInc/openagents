@@ -10,9 +10,18 @@ use App\Livewire\CreatePassword;
 use App\Livewire\Frontpage;
 use App\Livewire\Login;
 use App\Livewire\PayBitcoin;
+use App\Services\Finnhub;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', Frontpage::class)->name('home');
+
+Route::get('/finnhub', function () {
+    $finnhub = new Finnhub();
+
+    // Get company news (timestamp) from 2 weeks ago to today
+    // return $finnhub->getStockCandles('MSTR', 'D', strtotime('-2 weeks'), time());
+       return $finnhub->getCompanyNews('MSTR', date('Y-m-d', strtotime('-2 weeks')), date('Y-m-d'));
+});
 
 // Billing
 Route::get('/pay/bitcoin', PayBitcoin::class);
