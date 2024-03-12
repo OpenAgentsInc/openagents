@@ -3,13 +3,10 @@
 namespace App\Traits;
 
 use App\Events\ChatTokenReceived;
-use App\Http\Controllers\StreamController;
 use App\Models\Conversation;
 use App\Models\Message;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
-use GuzzleHttp\Psr7\Request;
-use Illuminate\Support\Facades\Http;
 
 trait UsesChat
 {
@@ -36,47 +33,47 @@ trait UsesChat
             // Start with the system prompt
             $messages = [
                 [
-                    "role" => "system",
-                    "content" => "You are a helpful AI agent named " . $agent->name . ". Your description is " . $agent->description . "  And you follow these user instructions: " . $systemPrompt,
+                    'role' => 'system',
+                    'content' => 'You are a helpful AI agent named '.$agent->name.'. Your description is '.$agent->description.'  And you follow these user instructions: '.$systemPrompt,
                 ],
                 [
-                    "role" => "user",
-                    "content" => $systemPrompt,
+                    'role' => 'user',
+                    'content' => $systemPrompt,
                 ],
                 [
-                    "role" => "assistant",
-                    "content" => $agent->welcome_message
+                    'role' => 'assistant',
+                    'content' => $agent->welcome_message,
                 ],
                 [
-                    "role" => "user",
-                    "content" => "Remember: " . $systemPrompt,
+                    'role' => 'user',
+                    'content' => 'Remember: '.$systemPrompt,
                 ],
             ];
 
             // Add previous messages to the array
             foreach ($previousMessages as $msg) {
                 $messages[] = [
-                    "role" => $msg['sender'] === 'user' ? 'user' : 'assistant',
-                    "content" => $msg['body']
+                    'role' => $msg['sender'] === 'user' ? 'user' : 'assistant',
+                    'content' => $msg['body'],
                 ];
             }
 
             // Add the current user input as the last element
-            $messages[] = ["role" => "user", "content" => $input];
+            $messages[] = ['role' => 'user', 'content' => $input];
 
             $data = [
-                "model" => $model,
-                "messages" => $messages,
-                "max_tokens" => 1024,
-                "temperature" => 0.7,
-                "stream_tokens" => true
+                'model' => $model,
+                'messages' => $messages,
+                'max_tokens' => 1024,
+                'temperature' => 0.7,
+                'stream_tokens' => true,
             ];
 
             $response = $client->post($url, [
                 'json' => $data,
                 'stream' => true,
                 'headers' => [
-                    'Authorization' => 'Bearer ' . env('TOGETHER_API_KEY'),
+                    'Authorization' => 'Bearer '.env('TOGETHER_API_KEY'),
                 ],
             ]);
 
@@ -86,15 +83,15 @@ trait UsesChat
             $message = Message::create([
                 'conversation_id' => $conversation->id,
                 'user_id' => $conversation->user_id,
-                'body' => "",
+                'body' => '',
                 'sender' => 'agent',
             ]);
 
-            $content = "";
+            $content = '';
             $tokenId = 0;
 
             foreach ($this->readStream($stream) as $responseLine) {
-                $token = $responseLine["choices"][0]["text"];
+                $token = $responseLine['choices'][0]['text'];
                 $content .= $token;
                 broadcast(new ChatTokenReceived($token, $message->id, $tokenId++, $conversation->id));
             }
@@ -112,10 +109,10 @@ trait UsesChat
 
     public function readStream($stream)
     {
-        while (!$stream->eof()) {
+        while (! $stream->eof()) {
             $line = $this->readLine($stream);
 
-            if (!str_starts_with($line, 'data:')) {
+            if (! str_starts_with($line, 'data:')) {
                 continue;
             }
 
@@ -138,13 +135,14 @@ trait UsesChat
     public function readLine($stream)
     {
         $line = '';
-        while (!$stream->eof()) {
+        while (! $stream->eof()) {
             $char = $stream->read(1);
             if ($char === "\n") {
                 break;
             }
             $line .= $char;
         }
+
         return $line;
     }
 }

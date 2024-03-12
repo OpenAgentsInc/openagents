@@ -18,8 +18,8 @@ class TaskFactory extends Factory
     public function definition(): array
     {
         return [
-          'agent_id' => Agent::factory(),
-          'description' => $this->faker->sentence(),
+            'agent_id' => Agent::factory(),
+            'description' => $this->faker->sentence(),
         ];
     }
 }

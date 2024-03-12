@@ -9,6 +9,7 @@ class OpenAIGateway implements AIGateway
     public function inference($input)
     { /* Implementation */
     }
+
     public function embedding($input)
     { /* Implementation */
     }
@@ -20,6 +21,7 @@ class GPUtopiaGateway implements AIGateway
     public function inference($input)
     { /* Implementation */
     }
+
     public function embedding($input)
     { /* Implementation */
     }

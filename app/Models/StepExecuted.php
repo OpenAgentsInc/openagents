@@ -4,12 +4,8 @@ namespace App\Models;
 
 use App\Services\Inferencer;
 use App\Traits\StepActions;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\RequestException;
-use GuzzleHttp\Psr7\Request;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use OpenAI;
 
 class StepExecuted extends Model
 {
@@ -17,7 +13,7 @@ class StepExecuted extends Model
 
     protected $guarded = [];
 
-    public function run(Conversation $conversation, callable $streamFunction = null)
+    public function run(Conversation $conversation, ?callable $streamFunction = null)
     {
         $input = (array) json_decode($this->input);
 
@@ -38,8 +34,9 @@ class StepExecuted extends Model
         // Update the StepExecuted with completed status and output
         $this->update([
             'status' => 'completed',
-            'output' => $output
+            'output' => $output,
         ]);
+
         return $output;
     }
 

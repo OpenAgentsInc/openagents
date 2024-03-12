@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Conversation;
 use App\Models\Message;
 
 it('has a body', function () {

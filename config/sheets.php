@@ -7,6 +7,6 @@ return [
         'docs' => [
             'content_parser' => MarkdownParser::class,
             //'content_parser' => Spatie\Sheets\ContentParsers\MarkdownWithFrontMatterParser::class,
-        ]
+        ],
     ],
 ];

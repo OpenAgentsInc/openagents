@@ -11,11 +11,11 @@ test('can comment on pr conversation', function () {
     $response = GitHub::issues()->show($owner, $repository, $pullRequestNumber);
     $title = $response['title'];
 
-    $system = "You are Faerie, an AI agent specialized in writing & analyzing code.
+    $system = 'You are Faerie, an AI agent specialized in writing & analyzing code.
 
 You have been summoned to OpenAgentsInc/openagents pull request.
 
-The pull request is titled `" . $title . "`
+The pull request is titled `'.$title."`
 
 Please respond with the comment you would like to add based on the comments. If there are any failing tests, suggest how to fix them. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
 
@@ -30,11 +30,11 @@ Please respond with the comment you would like to add based on the comments. If 
     $gateway = new OpenAIGateway();
 
     $response = $gateway->makeChatCompletion([
-      'model' => 'gpt-4',
-      'messages' => [
-        ['role' => 'system', 'content' => $system],
-        ...$messages,
-      ],
+        'model' => 'gpt-4',
+        'messages' => [
+            ['role' => 'system', 'content' => $system],
+            ...$messages,
+        ],
     ]);
 
     $comment = $response['choices'][0]['message']['content'];
@@ -49,26 +49,26 @@ test('can pull runs from pr', function () {
     $repo = 'openagents';
     $reference = 'testpestpr';
     $checks = GitHub::api('repo')->checkRuns()->allForReference($owner, $repo, $reference);
-    expect($checks["total_count"])->toBeInt();
+    expect($checks['total_count'])->toBeInt();
 })->group('integration');
 
 test('can create and delete github branch', function () {
     $owner = 'OpenAgentsInc';
     $repo = 'openagents';
     $baseBranch = 'main';
-    $commit = GitHub::api('repo')->commits()->all($owner, $repo, array('sha' => $baseBranch))[0];
+    $commit = GitHub::api('repo')->commits()->all($owner, $repo, ['sha' => $baseBranch])[0];
     $latestCommitSha = $commit['sha'];
 
     // Step 2: Create the new branch
     $newBranch = 'delete_me';
-    $response = GitHub::api('git')->references()->create($owner, $repo, array(
-        'ref' => 'refs/heads/' . $newBranch,
-        'sha' => $latestCommitSha
-    ));
-    expect($response['ref'])->toBe('refs/heads/' . $newBranch);
+    $response = GitHub::api('git')->references()->create($owner, $repo, [
+        'ref' => 'refs/heads/'.$newBranch,
+        'sha' => $latestCommitSha,
+    ]);
+    expect($response['ref'])->toBe('refs/heads/'.$newBranch);
 
     // Step 3: Delete the branch
-    $response = GitHub::api('git')->references()->remove($owner, $repo, 'heads/' . $newBranch);
+    $response = GitHub::api('git')->references()->remove($owner, $repo, 'heads/'.$newBranch);
     expect($response)->toBe('');
 })->group('integration');
 
@@ -89,16 +89,15 @@ test('can fetch github issue comments', function () {
     expect($response[0]['html_url'])->toBe('https://github.com/OpenAgentsInc/openagents/issues/1#issuecomment-1817537867');
     expect($response[0]['issue_url'])->toBe('https://api.github.com/repos/OpenAgentsInc/openagents/issues/1');
     expect($response[0]['user']['login'])->toBe('FaerieAI');
-    expect($response[0]['body'])->toContain("This `memory stream` structure, as described, is quite intriguing and appears well-suited for our needs.");
+    expect($response[0]['body'])->toContain('This `memory stream` structure, as described, is quite intriguing and appears well-suited for our needs.');
 
     // Test for the second comment
     expect($response[1]['url'])->toBe('https://api.github.com/repos/OpenAgentsInc/openagents/issues/comments/1817553619');
     expect($response[1]['html_url'])->toBe('https://github.com/OpenAgentsInc/openagents/issues/1#issuecomment-1817553619');
     expect($response[1]['issue_url'])->toBe('https://api.github.com/repos/OpenAgentsInc/openagents/issues/1');
     expect($response[1]['user']['login'])->toBe('AtlantisPleb');
-    expect($response[1]['body'])->toContain("Thank you @FaerieAI, that was a good initial answer.");
+    expect($response[1]['body'])->toContain('Thank you @FaerieAI, that was a good initial answer.');
 })->group('integration');
-
 
 test('can respond to github issue as faerie', function () {
     $response = GitHub::issues()->show('OpenAgentsInc', 'openagents', 1);
@@ -106,15 +105,15 @@ test('can respond to github issue as faerie', function () {
     $body = $response['body'];
     $title = $response['title'];
 
-    $prompt = "You are Faerie, an AI agent specialized in writing & analyzing code.
+    $prompt = 'You are Faerie, an AI agent specialized in writing & analyzing code.
 
 You have been summoned to OpenAgentsInc/openagents issue #1.
 
-The issue is titled `" . $title . "`
+The issue is titled `'.$title.'`
 
 The issue body is:
 ```
-" . $body . "
+'.$body."
 ```
 
 Please respond with the comment you would like to add to the issue. Write like a senior developer would write; don't introduce yourself or use flowery text or a closing signature.";
@@ -122,11 +121,11 @@ Please respond with the comment you would like to add to the issue. Write like a
     $gateway = new OpenAIGateway();
 
     $response = $gateway->makeChatCompletion([
-      'model' => 'gpt-4',
-      'messages' => [
-        // ['role' => 'system', 'content' => 'You are a helpful assistant.'],
-        ['role' => 'user', 'content' => $prompt],
-      ],
+        'model' => 'gpt-4',
+        'messages' => [
+            // ['role' => 'system', 'content' => 'You are a helpful assistant.'],
+            ['role' => 'user', 'content' => $prompt],
+        ],
     ]);
 
     $this->assertIsArray($response);

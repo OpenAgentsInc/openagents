@@ -8,7 +8,7 @@ test('user can view a published agent listing', function () {
         'description' => 'This is a test agent',
     ]);
 
-    $this->get('/agent/' . $agent->id)
+    $this->get('/agent/'.$agent->id)
         ->assertStatus(200)
         ->assertSee('Test Agent')
         ->assertSee('This is a test agent');
@@ -20,6 +20,6 @@ test('user cannot view an unpublished agent listing', function () {
         'description' => 'This is a test agent',
     ]);
 
-    $this->get('/agent/' . $agent->id)
+    $this->get('/agent/'.$agent->id)
         ->assertStatus(404);
 });

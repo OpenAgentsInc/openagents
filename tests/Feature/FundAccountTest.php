@@ -1,7 +1,7 @@
 <?php
 
-use App\Billing\PaymentGateway;
 use App\Billing\FakePaymentGateway;
+use App\Billing\PaymentGateway;
 use App\Models\User;
 
 // before each test, set up

@@ -2,7 +2,6 @@
 
 use App\Livewire\CreatePassword;
 use Livewire\Livewire;
-use Illuminate\Support\Facades\Session;
 
 it('renders successfully', function () {
     Livewire::test(CreatePassword::class)

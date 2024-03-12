@@ -1,14 +1,12 @@
 <?php
 
 use App\Models\Agent;
-
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Step;
 use App\Models\StepExecuted;
 use App\Models\Task;
 use App\Models\TaskExecuted;
-use App\Models\Thought;
 use App\Models\User;
 use Database\Seeders\ConciergeSeeder;
 use Database\Seeders\ConciergeWithPluginSeeder;
@@ -21,7 +19,6 @@ it('can create default chat task', function () {
     expect($task->description)->toBe('Send input to LLM and return response');
     expect($task->agent_id)->toBe($agent->id);
 });
-
 
 it('can create knowledge retrieval task', function () {
     $agent = Agent::factory()->create();
@@ -79,11 +76,11 @@ it('getUserConversation returns the conversation messages', function () {
     $agent = Agent::factory()->create(['user_id' => $user->id]);
     $conversation = Conversation::factory()->create([
         'agent_id' => $agent->id,
-        'user_id' => $user->id
+        'user_id' => $user->id,
     ]);
     Message::factory(3)->create([
         'conversation_id' => $conversation->id,
-        'user_id' => $user->id
+        'user_id' => $user->id,
     ]);
 
     $conversation = $agent->getUserConversation();
@@ -97,7 +94,7 @@ it('can get conversation with current user - if it already exists', function () 
     $agent = Agent::factory()->create(['user_id' => $user->id]);
     $conversation = Conversation::factory()->create([
         'agent_id' => $agent->id,
-        'user_id' => $user->id
+        'user_id' => $user->id,
     ]);
     expect($agent->getUserConversation()->id)->toBe($conversation->id);
 });
@@ -131,7 +128,7 @@ it('can run', function () {
     expect(StepExecuted::count())->toBe(0);
 
     $agent = Agent::first();
-    $agent->run(["input" => "Does this work?"]);
+    $agent->run(['input' => 'Does this work?']);
     // There should be one TaskExecuted and four StepExecuteds
 
     expect(TaskExecuted::count())->toBe(1);
@@ -169,8 +166,8 @@ it('has many conversations', function () {
     $user = User::factory()->create();
     $agent = Agent::factory()->create(['user_id' => $user->id]);
     $conversation = Conversation::factory()->create([
-      'agent_id' => $agent->id,
-      'user_id' => $user->id
+        'agent_id' => $agent->id,
+        'user_id' => $user->id,
     ]);
 
     $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $agent->conversations);
@@ -200,7 +197,7 @@ it('can use plugin', function () {
     expect(StepExecuted::count())->toBe(0);
 
     $agent = Agent::first();
-    $agent->run(["input" => "Does this work?"]);
+    $agent->run(['input' => 'Does this work?']);
 
     expect(TaskExecuted::count())->toBe(1);
     expect(StepExecuted::count())->toBe($agent->steps->count());

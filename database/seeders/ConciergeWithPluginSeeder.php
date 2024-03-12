@@ -7,7 +7,6 @@ use App\Models\Plugin;
 use App\Models\Step;
 use App\Models\Task;
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class ConciergeWithPluginSeeder extends Seeder
@@ -19,15 +18,15 @@ class ConciergeWithPluginSeeder extends Seeder
     {
         // If there's a User, use that. If not, create a user via factory.
         $user = User::find(1);
-        if (!$user) {
+        if (! $user) {
             $user = User::factory()->create(['id' => 1]);
         }
 
         $plugin = Plugin::create([
             'name' => 'Count Vowels',
-            'description' => "Count vowels in a string",
+            'description' => 'Count vowels in a string',
             'fee' => 0,
-            'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm",
+            'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm',
         ]);
 
         // Create Concierge agent
@@ -44,7 +43,7 @@ class ConciergeWithPluginSeeder extends Seeder
         $task = Task::create([
             'agent_id' => $agent->id,
             'name' => 'Respond With Vowels',
-            'description' => 'Respond to user chat message after consulting knowledge base, but only count the vowels of what you would respond with'
+            'description' => 'Respond to user chat message after consulting knowledge base, but only count the vowels of what you would respond with',
         ]);
 
         // Create the steps

@@ -41,7 +41,7 @@ class StepFactory extends Factory
             'error_message' => $this->faker->sentence(),
             // 'status' => $this->faker->randomElement(['success', 'failure']),
             'entry_type' => $this->faker->randomElement(['input', 'node']),
-            'category' => "validation",
+            'category' => 'validation',
             // 'category' => $this->faker->randomElement(['validation', 'embedding', 'similarity_search', 'inference']),
             'success_action' => $this->faker->randomElement(['next_node', 'return_json', 'func']),
             // 'input' => json_encode($input),

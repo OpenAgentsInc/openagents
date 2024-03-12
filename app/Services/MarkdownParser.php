@@ -2,12 +2,11 @@
 
 namespace App\Services;
 
-use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\Blade;
-use League\CommonMark\MarkdownConverter;
-use League\CommonMark\CommonMarkConverter;
+use Illuminate\Support\HtmlString;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use League\CommonMark\MarkdownConverter;
 use Spatie\CommonMarkShikiHighlighter\HighlightCodeExtension;
 use Spatie\Sheets\ContentParser;
 use Spatie\YamlFrontMatter\YamlFrontMatter;
@@ -59,6 +58,7 @@ class MarkdownParser implements ContentParser
     {
         // Example placeholder replacement for Livewire components
         $content = preg_replace('/<livewire:([^>]+)\/>/', 'LIVEWIREPLACEHOLDERSTART$1LIVEWIREPLACEHOLDEREND', $content);
+
         return $content;
     }
 
@@ -66,6 +66,7 @@ class MarkdownParser implements ContentParser
     {
         // Replace placeholders back to Livewire tags
         $content = preg_replace('/LIVEWIREPLACEHOLDERSTART([^L]+)LIVEWIREPLACEHOLDEREND/', '<livewire:$1/>', $content);
+
         return $content;
     }
 

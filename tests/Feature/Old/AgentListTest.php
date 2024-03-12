@@ -3,7 +3,7 @@
 use App\Models\Agent;
 use App\Models\User;
 
-test("user sees list of their agents", function () {
+test('user sees list of their agents', function () {
 
     $user = User::factory()->create();
     $agent = Agent::factory()->create(['user_id' => $user->id]);
@@ -17,9 +17,6 @@ test("user sees list of their agents", function () {
     // $this->assertSee
 
     // expect($response)->status(200);
-
-
-
 
     expect($response->content())->toContain($agent->name);
 

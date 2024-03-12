@@ -1,7 +1,7 @@
 <?php
 
-use App\Models\Agent;
 use App\Livewire\AgentShow;
+use App\Models\Agent;
 use Livewire\Livewire;
 
 it('renders successfully', function () {

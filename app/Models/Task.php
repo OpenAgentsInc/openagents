@@ -32,7 +32,7 @@ class Task extends Model
             $conversation->messages()->create([
                 'user_id' => auth()->id() ?? null,
                 'body' => $input['input'],
-                'sender' => 'user'
+                'sender' => 'user',
             ]);
         }
 
@@ -44,7 +44,7 @@ class Task extends Model
             'task_id' => $this->id,
             'conversation_id' => $conversationId,
             'user_id' => auth()->id(), // // Current user ID if authed or null
-            'status' => 'pending'
+            'status' => 'pending',
         ]);
 
         $step_executed = null;
@@ -71,7 +71,7 @@ class Task extends Model
         }
 
         // if $step_executed is null, then there are no steps
-        if (!$step_executed) {
+        if (! $step_executed) {
             return null;
         }
 

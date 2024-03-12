@@ -15,9 +15,9 @@ class PluginSeeder extends Seeder
         // Seed demo plugins
         Plugin::create([
             'name' => 'Count Vowels',
-            'description' => "Count vowels in a string",
+            'description' => 'Count vowels in a string',
             'fee' => 0,
-            'wasm_url' => "https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm",
+            'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm',
         ]);
 
         // Plugin::create([

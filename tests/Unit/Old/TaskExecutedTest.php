@@ -14,7 +14,7 @@ it('may belong to a conversation', function () {
     expect($task_executed->conversation)->toBeInstanceOf(Conversation::class);
 
     $task_executed2 = TaskExecuted::factory()->create([
-        'conversation_id' => null
+        'conversation_id' => null,
     ]);
     expect($task_executed2->conversation)->toBeNull();
 });

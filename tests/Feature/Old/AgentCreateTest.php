@@ -38,7 +38,6 @@ test('user can create agent', function () {
     expect(Agent::all())->toHaveCount(1);
 });
 
-
 test('after creating agent, user is redirected to the agent builder page', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -52,5 +51,5 @@ test('after creating agent, user is redirected to the agent builder page', funct
 
     $agent = Agent::where('user_id', $user->id)->first();
 
-    $response->assertRedirect('/agent/' . $agent->id . '/build');
+    $response->assertRedirect('/agent/'.$agent->id.'/build');
 });

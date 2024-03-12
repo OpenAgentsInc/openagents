@@ -35,7 +35,6 @@ it('has a username', function () {
     $this->assertEquals('johndoe', $user->username);
 });
 
-
 it('has a balance', function () {
     $user = User::factory()->create(['balance' => 1000]);
     $this->assertEquals(1000, $user->balance);

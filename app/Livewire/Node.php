@@ -7,10 +7,15 @@ use Livewire\Component;
 class Node extends Component
 {
     public $id;
+
     public $x;
+
     public $y;
+
     public $title;
+
     public $width;
+
     public $height;
 
     public function mount($id, $x, $y, $title, $width, $height)

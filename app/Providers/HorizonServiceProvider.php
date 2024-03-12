@@ -29,7 +29,7 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     {
         Gate::define('viewHorizon', function ($user) {
             return in_array($user->github_nickname, [
-                "AtlantisPleb"
+                'AtlantisPleb',
             ]);
         });
     }

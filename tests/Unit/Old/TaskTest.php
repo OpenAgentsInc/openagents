@@ -8,7 +8,7 @@ use App\Models\TaskExecuted;
 
 it('can run', function () {
     $task = Task::factory()->create();
-    $task->run("Hello");
+    $task->run('Hello');
 
     expect(TaskExecuted::count())->toBe(1);
     expect(StepExecuted::count())->toBe(0);
@@ -18,7 +18,7 @@ it('can run', function () {
         'task_id' => $task->id,
     ]);
 
-    $task->run("Hello");
+    $task->run('Hello');
 
     expect(TaskExecuted::count())->toBe(2);
     expect(StepExecuted::count())->toBe(1);
@@ -26,24 +26,24 @@ it('can run', function () {
 
 it('may have a name', function () {
     $task = Task::factory()->create([
-      'name' => null,
+        'name' => null,
     ]);
     expect($task->name)->toBeNull();
 
     $task = Task::factory()->create([
-      'name' => 'foo',
+        'name' => 'foo',
     ]);
     expect($task->name)->toBe('foo');
 });
 
 it('may have a description', function () {
     $task = Task::factory()->create([
-      'description' => null,
+        'description' => null,
     ]);
     expect($task->description)->toBeNull();
 
     $task = Task::factory()->create([
-      'description' => 'foo',
+        'description' => 'foo',
     ]);
     expect($task->description)->toBe('foo');
 });
@@ -57,13 +57,13 @@ it('has proper relationships', function () {
     $agent = Agent::factory()->create();
 
     $task = Task::factory()->create([
-      'agent_id' => $agent->id
+        'agent_id' => $agent->id,
     ]);
 
     expect($task->agent->id)->toBe($agent->id);
 
     $step = Step::factory()->create([
-      'agent_id' => $agent->id,
+        'agent_id' => $agent->id,
     ]);
 
     expect($step->agent->id)->toBe($agent->id);

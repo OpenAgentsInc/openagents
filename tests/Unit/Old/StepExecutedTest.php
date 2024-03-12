@@ -6,7 +6,7 @@ use App\Models\TaskExecuted;
 use App\Models\User;
 
 it('can run', function () {
-    $step_executed = StepExecuted::factory()->create(["input" => json_encode(["input" => "Hi there"])]);
+    $step_executed = StepExecuted::factory()->create(['input' => json_encode(['input' => 'Hi there'])]);
     $output = $step_executed->run();
     expect($output)->toBeArray();
 });
@@ -42,7 +42,7 @@ it('belongs to a user', function () {
 it('has optional input and output', function () {
     $step = StepExecuted::factory()->create([
         'input' => null,
-        'output' => null
+        'output' => null,
     ]);
     expect($step->input)->toBeNull();
     expect($step->output)->toBeNull();
@@ -51,8 +51,8 @@ it('has optional input and output', function () {
     $output = ['result' => 'success'];
 
     $step = StepExecuted::factory()->create([
-      'input' => json_encode($input),
-      'output' => json_encode($output)
+        'input' => json_encode($input),
+        'output' => json_encode($output),
     ]);
 
     expect($step->input)->toBe(json_encode($input));
