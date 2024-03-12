@@ -16,3 +16,8 @@ Route::middleware([
         return view('dashboard');
     })->name('dashboard');
 });
+
+// Add a catch-all redirect to the homepage
+Route::get('/{any}', function () {
+    return redirect('/');
+})->where('any', '.*');
