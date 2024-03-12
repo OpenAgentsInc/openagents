@@ -13,6 +13,19 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     // When user is created, check session for an r variable - then look up the user by username and set the referrer_id
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+        ];
+    }
+
     protected static function booted()
     {
         static::creating(function ($user) {
@@ -53,15 +66,6 @@ class User extends Authenticatable
         'password',
         'remember_token',
     ];
-
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'password' => 'hashed',
     ];
 
     // user hasmany Withdrawals
