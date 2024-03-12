@@ -14,31 +14,6 @@ class User extends Authenticatable
 
     // When user is created, check session for an r variable - then look up the user by username and set the referrer_id
     /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
-    }
-
-    protected static function booted()
-    {
-        static::creating(function ($user) {
-            if (session()->has('r')) {
-                $referrer = User::where('github_nickname', session('r'))->first();
-                if ($referrer) {
-                    $user->referrer_id = $referrer->id;
-                }
-            }
-        });
-    }
-
-    /**
      * The attributes that are mass assignable.
      *
      * @var array<int, string>
@@ -66,13 +41,25 @@ class User extends Authenticatable
         'password',
         'remember_token',
     ];
-    ];
 
-    // user hasmany Withdrawals
+    protected static function booted()
+    {
+        static::creating(function ($user) {
+            if (session()->has('r')) {
+                $referrer = User::where('github_nickname', session('r'))->first();
+                if ($referrer) {
+                    $user->referrer_id = $referrer->id;
+                }
+            }
+        });
+    }
+
     public function withdrawals()
     {
         return $this->hasMany(Withdrawal::class);
     }
+
+    // user hasmany Withdrawals
 
     public function agents()
     {
@@ -110,10 +97,24 @@ class User extends Authenticatable
         return $this->belongsTo(User::class);
     }
 
-    // referrals are users that have this user as their referrer
     public function referrals()
     {
         // only return user nickname and nothing else
         return $this->hasMany(User::class, 'referrer_id')->select('id', 'github_nickname', 'created_at');
+    }
+
+    // referrals are users that have this user as their referrer
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+        ];
     }
 }
