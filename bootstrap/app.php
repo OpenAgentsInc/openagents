@@ -14,7 +14,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        //
+        $middleware->redirectGuestsTo(fn () => route('login'));
+        $middleware->redirectUsersTo(RouteServiceProvider::HOME);
+
+        $middleware->web(\Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class);
+
+        $middleware->api(ThrottleRequests::class.':api');
+
+        $middleware->replaceInGroup('web', \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class, \App\Http\Middleware\VerifyCsrfToken::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
