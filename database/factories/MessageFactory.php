@@ -22,7 +22,7 @@ class MessageFactory extends Factory
         return [
             'thread_id' => Thread::factory(),
             'user_id' => User::factory(),
-            'body' => $this->faker->paragraph,
+            'body' => $this->faker->paragraph(),
         ];
     }
 }

@@ -17,8 +17,8 @@ class PluginFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => $this->faker->name,
-            'description' => $this->faker->text,
+            'name' => $this->faker->name(),
+            'description' => $this->faker->text(),
             'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm',
         ];
     }

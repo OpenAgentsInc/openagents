@@ -24,7 +24,7 @@ class StepFactory extends Factory
         // $input = [
         //     'type' => $inputType,
         //     'model' => $inputType == 'llm' ? 'gpt-4' : null,
-        //     'instruction' => $this->faker->sentence,
+        //     'instruction' => $this->faker->sentence(),
         // ];
 
         // $output = [
