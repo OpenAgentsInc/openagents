@@ -4,8 +4,8 @@ use App\Livewire\Chat;
 use App\Livewire\Frontpage;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', Frontpage::class)->name('home');
-Route::get('/chat/{id}', Chat::class)->name('chat.show');
+Route::get('/', Frontpage::class);
+Route::get('/chat/{id}', Chat::class);
 
 Route::middleware([
     'auth:sanctum',
