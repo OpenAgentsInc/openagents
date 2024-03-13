@@ -90,7 +90,7 @@ class MistralAIChat
         $messages = $params['messages'];
         $maxTokens = $params['max_tokens'];
         $streamFunction = $params['stream_function'];
-        $temperature = $params['temperature'] ?? 0.5;
+        $temperature = $params['temperature'] ?? 0.7;
         $topP = $params['top_p'] ?? 1;
 
         $client = new Client();

@@ -66,9 +66,10 @@ class Inferencer
             ->toArray();
 
         // Prepend system message
-        array_unshift($previousMessages, [
-            'role' => 'system',
-            'content' => 'You are a helpful AI agent named '.$agent->name.' 
+        if (count($previousMessages) <= 3) {
+            array_unshift($previousMessages, [
+                'role' => 'system',
+                'content' => 'You are a helpful AI agent named '.$agent->name.' 
             
 Your description is: '.$agent->description.'
 
@@ -85,7 +86,8 @@ Do not refer to yourself in the third person. Use "I" and "me" instead of "the a
 
 Keep your responses short and concise, usually <150 words. Try giving a short answer, then asking the user ONE (1) followup question.
 ',
-        ]);
+            ]);
+        }
 
         return $previousMessages;
     }
