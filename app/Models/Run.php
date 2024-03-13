@@ -56,7 +56,19 @@ class Run extends Model
 
         // If route is finance, trigger the Finnhub flow
         if ($route === 'finance') {
-            $flow = Flow::where('name', 'Finnhub')->firstOrFail();
+            $flow = Flow::where('name', 'Financial Analysis')->first();
+            if (! $flow) {
+                $flow = Flow::create();
+                $flow->nodes()->create([
+                    'name' => 'Finnhub Function Call',
+                    'description' => 'Passes input to Mistral AI Gateway for Finnhub function call',
+                    'type' => 'finnhub_function_call',
+                    'config' => json_encode([
+                        'gateway' => 'mistral',
+                        'model' => 'mistral-large-latest',
+                    ]),
+                ]);
+            }
         } else {
             $flow = $this->flow;
         }
@@ -67,7 +79,7 @@ class Run extends Model
             // Call the node's trigger method and pass the current input
             $nodeOutput = $node->trigger([
                 'agent' => $this->agent,
-                'flow' => $this->flow,
+                'flow' => $flow,
                 'thread' => $this->thread,
                 'input' => $input,
                 'streamingFunction' => $streamingFunction,
