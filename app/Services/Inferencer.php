@@ -53,8 +53,12 @@ class Inferencer
             ->orderBy('created_at', 'asc')
             ->get()
             ->map(function ($message) {
-                // Map 'user' and 'agent' to 'user' and 'assistant' respectively
-                $role = $message->sender === 'agent' ? 'assistant' : 'user';
+                // If agent_id is not null, this is agent. Otherwise user
+                if ($message->agent_id) {
+                    $role = 'assistant';
+                } else {
+                    $role = 'user';
+                }
 
                 return [
                     'role' => $role,
