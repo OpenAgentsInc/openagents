@@ -70,11 +70,14 @@ class Inferencer
         // json stringify the response
         $functionCallingOutput = json_encode($functionResponse);
 
+        // Truncate that to max 2000 characters
+        $functionCallingOutput = substr($functionCallingOutput, 0, 2000);
+
         $newInput = 'The user asked: '.$input." \n\n We retrieved the necessary information from the relevant API. Now use the following information to answer the question: \n".$functionCallingOutput;
 
         //        return json_encode($functionResponse) ?? 'No function calls were made :(';
 
-        return self::llmInference($agent, $node, $thread, $newInput, $streamFunction, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Note, the current date is ".date('Y-m-d').'.');
+        return self::llmInference($agent, $node, $thread, $newInput, $streamFunction, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Only respond with information directly related to the query; do not include advertisements. Note, the current date is ".date('Y-m-d').'.');
     }
 
     private static function prepareFunctionCallMessages($text)
@@ -197,18 +200,3 @@ Inferencer::registerFunction('company_news', function ($params) { // symbol, fro
 
     return $response->json();
 });
-
-//Inferencer::registerFunction('check_stock_metrics', function ($param1) {
-//    $response = Http::get('https://finnhub.io/api/v1/stock/metric?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
-//
-//    return $response->json();
-//});
-//
-//Inferencer::registerFunction('check_news_sentiment', function ($param1) {
-//
-//    $response = Http::get('https://finnhub.io/api/v1/news_sentiment?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
-//
-//    //    dd($response);
-//    //
-//    return $response->json();
-//});
