@@ -12,7 +12,6 @@ class SemanticRouter
 
         foreach ($routes as $routeName => $routeVector) {
             $score = self::cosineSimilarity($vectorizedInput, $routeVector);
-            dump($routeName, $score);
             if ($score > $highestScore) {
                 $highestScore = $score;
                 $selectedRoute = $routeName;
