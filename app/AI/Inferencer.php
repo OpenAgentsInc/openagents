@@ -58,10 +58,10 @@ class Inferencer
                 $functionParams = json_decode($toolCall['function']['arguments'], true);
 
                 // Check if the function is registered
-                if (isset($this->$registeredFunctions[$functionName])) {
+                if (isset($this->registeredFunctions[$functionName])) {
                     try {
                         // Call the registered function with the provided parameters
-                        $functionResponse = call_user_func($this->$registeredFunctions[$functionName], $functionParams);
+                        $functionResponse = call_user_func($this->registeredFunctions[$functionName], $functionParams);
 
                         // Here, you would typically modify the response or take some action based on $functionResponse
                         // For simplicity, we'll just log it

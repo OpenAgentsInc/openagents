@@ -29,15 +29,17 @@ class Node extends Model
         $agent = $params['agent'];
         $thread = $params['thread'];
 
+        $inferencer = new Inferencer();
+
         // Node-specific logic
         switch ($this->type) {
             case 'inference':
                 // Call the Inferencer for LLM inference
-                $output = Inferencer::llmInference($agent, $this, $thread, $input, $streamingFunction);
+                $output = $inferencer->llmInference($agent, $this, $thread, $input, $streamingFunction);
                 break;
 
             case 'finnhub_function_call':
-                $output = Inferencer::llmInferenceWithFunctionCalling($agent, $this, $thread, $input, $streamingFunction);
+                $output = $inferencer->llmInferenceWithFunctionCalling($agent, $this, $thread, $input, $streamingFunction);
                 break;
 
             default:
