@@ -107,7 +107,7 @@ class Inferencer
         }
 
         // Prepare the messages for inference
-        $messages = self::prepareFunctionCallMessages($input, $thread, $agent, $systemPromptOverride);
+        $messages = self::prepareTextInference($input, $thread, $agent, $systemPromptOverride);
 
         // Dynamically choose the gateway client based on the node's configuration
         switch ($gateway) {
