@@ -54,25 +54,42 @@ class Run extends Model
         $router = new SemanticRouter();
         $route = $router->route($vectorizedInput);
 
-        // If route is finance, trigger the Finnhub flow
-        if ($route === 'finance') {
-            $flow = Flow::where('name', 'Financial Analysis')->first();
-            if (! $flow) {
-                $flow = Flow::create([
-                    'name' => 'Financial Analysis',
-                ]);
-                $flow->nodes()->create([
-                    'name' => 'Finnhub Function Call',
-                    'description' => 'Passes input to Mistral AI Gateway for Finnhub function call',
-                    'type' => 'finnhub_function_call',
-                    'config' => json_encode([
-                        'gateway' => 'mistral',
-                        'model' => 'mistral-large-latest',
-                    ]),
-                ]);
-            }
-        } else {
-            $flow = $this->flow;
+        switch ($route) {
+            case 'bitcoin_price':
+            case 'finance':
+                // If route is finance, trigger the Finnhub flow
+                $flow = Flow::where('name', 'Financial Analysis')->first();
+                if (! $flow) {
+                    $flow = Flow::create([
+                        'name' => 'Financial Analysis',
+                    ]);
+                    $flow->nodes()->create([
+                        'name' => 'Finnhub Function Call',
+                        'description' => 'Passes input to Mistral AI Gateway for Finnhub function call',
+                        'type' => 'finnhub_function_call',
+                        'config' => json_encode([
+                            'gateway' => 'mistral',
+                            'model' => 'mistral-large-latest',
+                        ]),
+                    ]);
+                }
+                break;
+
+            case 'shitcoins':
+            case 'bitcoin_cash':
+            case 'bsv':
+                // If route is shitcoins, provide a custom message
+                return 'Shitcoins are not supported. Study Bitcoin.';
+
+            case 'craig_wright_satoshi':
+                // If route is Craig Wright, provide a custom message
+                return 'We are all Satoshi, except Craig Wright.';
+
+            case 'bitcoin':
+            default:
+                // For any other route, use the existing flow
+                $flow = $this->flow;
+                break;
         }
 
         // Execute each node in sequence (assuming nodes are already sorted by their execution order)
