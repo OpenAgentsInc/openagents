@@ -52,11 +52,8 @@ class Chat extends Component
         // If the thread was just created, send the first message from the agent
         if (count($this->messages) <= 1) {
             $this->pending = true;
+            $this->input = $this->messages[0]['body'] ?? '';
             $this->js('$wire.runFirst()');
-
-            //            $this->thread->messages()->create([
-            //                'body' => "Let's start creating your AI agent. To begin, please share:",
-            //            ]);
         }
     }
 

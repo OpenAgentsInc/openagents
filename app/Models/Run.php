@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\AI\MistralAIGateway;
+use App\Services\SemanticRouter;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -43,6 +45,16 @@ class Run extends Model
 
         $input = $this->input; // Assume this run model has an 'input' attribute.
         $output = '';
+
+        // First see if we should override node with a semantic route
+        // Vectorize the input
+        $gateway = new MistralAIGateway();
+        $vectorizedInput = $gateway->embed($input);
+
+        $router = new SemanticRouter();
+        $route = $router->route($vectorizedInput);
+
+        dd($route);
 
         // Execute each node in sequence (assuming nodes are already sorted by their execution order)
         foreach ($this->flow->nodes as $node) {

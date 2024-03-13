@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Services\Inferencer;
+use App\AI\Inferencer;
 use Exception;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
