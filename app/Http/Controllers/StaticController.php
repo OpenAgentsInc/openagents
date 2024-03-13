@@ -10,6 +10,15 @@ use Laravel\Jetstream\Jetstream;
 
 class StaticController extends Controller
 {
+    public function launch(Request $request)
+    {
+        $policyFile = Jetstream::localizedMarkdownPath('launch.md');
+
+        return view('policy', [
+            'policy' => Str::markdown(file_get_contents($policyFile)),
+        ]);
+    }
+
     /**
      * Show the privacy policy for the application.
      *
