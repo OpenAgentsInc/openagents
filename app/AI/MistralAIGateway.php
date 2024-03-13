@@ -121,7 +121,6 @@ class MistralAIChat
         $messages = $params['messages'];
         $maxTokens = $params['max_tokens'];
         $streamFunction = $params['stream_function'];
-        $tools = $params['tools'] ?? [];
         $temperature = $params['temperature'] ?? 0.7;
         $topP = $params['top_p'] ?? 1;
 
@@ -158,7 +157,7 @@ class MistralAIChat
             return $content;
         } catch (RequestException $e) {
             // Handle exception or error
-            dd('error', $e->getMessage());
+            dd($e->getMessage());
 
             return 'Error: '.$e->getMessage();
         }
