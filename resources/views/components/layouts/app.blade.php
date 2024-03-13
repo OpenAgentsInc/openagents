@@ -8,6 +8,7 @@
     @stack('scripts')
     @include('partials.vite')
     @include('partials.analytics')
+    @include('partials.ogtags')
 </head>
 
 <body>
