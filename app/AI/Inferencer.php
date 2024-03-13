@@ -39,7 +39,7 @@ class Inferencer
         return $client->chat()->createStreamed([
             'model' => $model,
             'messages' => $messages,
-            'max_tokens' => 4024,
+            'max_tokens' => 3024,
             'stream_function' => $streamFunction,
         ]);
     }
