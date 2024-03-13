@@ -6,6 +6,7 @@ use App\Models\Agent;
 use App\Models\Node;
 use App\Models\Thread;
 use Exception;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class Inferencer
@@ -155,8 +156,8 @@ Inferencer::registerFunction('demoFunction', function ($param1, $param2) {
 });
 
 Inferencer::registerFunction('check_stock_price', function ($param1) {
-    // Implementation of your function
-    $client = new Finnhub();
-    $financials = $client->companyBasicFinancials($param1, 'margin');
+    $response = Http::get('https://finnhub.io/api/v1/stock/price-metric?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
+    $financials = $response->json();
+
     dd($financials);
 });
