@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('agent_id')->constrained()->cascadeOnDelete();
             $table->foreignId('flow_id')->constrained()->cascadeOnDelete();
             $table->foreignId('thread_id')->constrained()->cascadeOnDelete();
-            $table->string('input')->nullable();
+            $table->text('input')->nullable();
             $table->timestamps();
         });
     }
