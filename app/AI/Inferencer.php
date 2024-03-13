@@ -156,5 +156,7 @@ Inferencer::registerFunction('demoFunction', function ($param1, $param2) {
 
 Inferencer::registerFunction('check_stock_price', function ($param1) {
     // Implementation of your function
-    return "LOL $param1 IS GOING UP FOREVER";
+    $client = new Finnhub();
+    $financials = $client->companyBasicFinancials($param1, 'margin');
+    dd($financials);
 });
