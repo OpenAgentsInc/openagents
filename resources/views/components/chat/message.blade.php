@@ -9,7 +9,7 @@
                     </div>
                 @else
                     <div class="m-[2px] w-[36px] p-2 border border-darkgray rounded">
-                        <x-icon name="code" class=""/>
+                        <x-icon name="logo" class=""/>
                     </div>
                 @endif
             </div>

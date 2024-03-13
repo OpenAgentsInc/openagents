@@ -39,7 +39,7 @@ test('email can be verified', function () {
     $response->assertRedirect(route('dashboard', absolute: false).'?verified=1');
 })->skip(function () {
     return ! Features::enabled(Features::emailVerification());
-}, 'Email verification not enabled.');
+}, 'Email verification not enabled.')->skip();
 
 test('email can not verified with invalid hash', function () {
     $user = User::factory()->create([
