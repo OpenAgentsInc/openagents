@@ -11,17 +11,54 @@ use Illuminate\Support\Facades\Log;
 
 class Inferencer
 {
-    protected static $registeredFunctions = [];
+    protected array $registeredFunctions = [];
 
-    public static function registerFunction(string $name, callable $function): void
+    protected $streamFunction;
+
+    public function __construct()
     {
-        self::$registeredFunctions[$name] = $function;
+        // Example of setting a placeholder stream function. You'll likely set this elsewhere based on actual streaming logic.
+        $this->streamFunction = function ($message) {
+            // Placeholder for streaming logic
+            echo $message; // Or replace with actual streaming function logic
+        };
+
+        $this->registerFunction('check_bitcoin_price', function ($param) {
+            $fmpKey = env('FMP_API_KEY');
+            $url = "https://financialmodelingprep.com/api/v3/quote/BTCUSD?apikey={$fmpKey}";
+            $response = Http::get($url)->json();
+            $price = $response[0]['price'];
+
+            return $price;
+        });
+
+        // Register functions as part of the object initialization
+        $this->registerFunction('check_stock_price', function ($params) {
+            $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$params['ticker_symbol'].'&token='.env('FINNHUB_API_KEY'));
+
+            return $response->json();
+        });
+
+        $this->registerFunction('company_news', function ($params) {
+            //            $this->streamFunction('Checking company news...');
+
+            $response = Http::get('https://finnhub.io/api/v1/company-news?symbol='.$params['symbol'].'&from='.$params['from'].'&to='.$params['to'].'&token='.env('FINNHUB_API_KEY'));
+
+            return $response->json();
+        });
     }
 
-    public static function llmInferenceWithFunctionCalling(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
+    public function registerFunction(string $name, callable $function): void
     {
+        $this->registeredFunctions[$name] = $function;
+    }
+
+    public function llmInferenceWithFunctionCalling(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
+    {
+        $this->streamFunction = $streamFunction;
+
         // Prepare the messages for inference
-        $messages = self::prepareFunctionCallMessages($input);
+        $messages = $this->prepareFunctionCallMessages($input);
 
         $client = new MistralAIGateway();
 
@@ -42,10 +79,10 @@ class Inferencer
                 $functionParams = json_decode($toolCall['function']['arguments'], true);
 
                 // Check if the function is registered
-                if (isset(self::$registeredFunctions[$functionName])) {
+                if (isset($this->registeredFunctions[$functionName])) {
                     try {
                         // Call the registered function with the provided parameters
-                        $functionResponse = call_user_func(self::$registeredFunctions[$functionName], $functionParams);
+                        $functionResponse = call_user_func($this->registeredFunctions[$functionName], $functionParams);
 
                         // Here, you would typically modify the response or take some action based on $functionResponse
                         // For simplicity, we'll just log it
@@ -77,10 +114,10 @@ class Inferencer
 
         //        return json_encode($functionResponse) ?? 'No function calls were made :(';
 
-        return self::llmInference($agent, $node, $thread, $newInput, $streamFunction, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Only respond with information directly related to the query; do not include advertisements. Note, the current date is ".date('Y-m-d').'.');
+        return $this->llmInference($agent, $node, $thread, $newInput, $streamFunction, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Only respond with information directly related to the query; do not include advertisements. Note, the current date is ".date('Y-m-d').'.');
     }
 
-    private static function prepareFunctionCallMessages($text)
+    private function prepareFunctionCallMessages($text)
     {
         return [
             [
@@ -94,7 +131,7 @@ class Inferencer
         ];
     }
 
-    public static function llmInference(Agent $agent, Node $node, Thread $thread, $input, $streamFunction, $systemPromptOverride = null): string
+    public function llmInference(Agent $agent, Node $node, Thread $thread, $input, $streamFunction, $systemPromptOverride = null): string
     {
         // Decode the node's config to determine which gateway to use
         $config = json_decode($node->config, true);
@@ -107,7 +144,7 @@ class Inferencer
         }
 
         // Prepare the messages for inference
-        $messages = self::prepareTextInference($input, $thread, $agent, $systemPromptOverride);
+        $messages = $this->prepareTextInference($input, $thread, $agent, $systemPromptOverride);
 
         // Dynamically choose the gateway client based on the node's configuration
         switch ($gateway) {
@@ -129,7 +166,7 @@ class Inferencer
         ]);
     }
 
-    private static function prepareTextInference($text, Thread $thread, Agent $agent, $systemPromptOverride = null)
+    private function prepareTextInference($text, Thread $thread, Agent $agent, $systemPromptOverride = null)
     {
         // Fetch previous messages
         $previousMessages = $thread->messages()
@@ -188,15 +225,3 @@ Keep your responses short and concise, usually <150 words. Try giving a short an
         return $previousMessages;
     }
 }
-
-Inferencer::registerFunction('check_stock_price', function ($params) {
-    $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$params['ticker_symbol'].'&token='.env('FINNHUB_API_KEY'));
-
-    return $response->json();
-});
-
-Inferencer::registerFunction('company_news', function ($params) { // symbol, from, to
-    $response = Http::get('https://finnhub.io/api/v1/company-news?symbol='.$params['symbol'].'&from='.$params['from'].'&to='.$params['to'].'&token='.env('FINNHUB_API_KEY'));
-
-    return $response->json();
-});
