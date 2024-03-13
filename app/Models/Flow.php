@@ -10,6 +10,8 @@ class Flow extends Model
 {
     use HasFactory;
 
+    protected $fillable = ['name'];
+
     public function agents(): BelongsToMany
     {
         return $this->belongsToMany(Agent::class);
