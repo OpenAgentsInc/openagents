@@ -37,7 +37,7 @@ class Node extends Model
                 break;
 
             case 'finnhub_function_call':
-                $output = "IT'S GOING UP FOREVER LAURA";
+                $output = Inferencer::llmInferenceWithFunctionCalling($agent, $this, $thread, $input, $streamingFunction);
                 break;
 
             default:

@@ -82,6 +82,37 @@ class MistralAIGateway
 
 class MistralAIChat
 {
+    public function createFunctionCall($params)
+    {
+        $url = 'https://api.mistral.ai/v1/chat/completions';
+        $apiKey = env('MISTRAL_API_KEY');
+        $model = $params['model'];
+        $messages = $params['messages'];
+        $maxTokens = $params['max_tokens'];
+        $tools = $params['tools'] ?? [];
+        $temperature = $params['temperature'] ?? 0.7;
+        $topP = $params['top_p'] ?? 1;
+
+        $data = [
+            'tools' => FunctionCaller::parsedTools($tools),
+            'tool_choice' => 'any',
+            'model' => $model,
+            'messages' => $messages,
+            'max_tokens' => $maxTokens,
+            'temperature' => $temperature,
+            'top_p' => $topP,
+        ];
+
+        try {
+            $response = Http::withHeaders(['Authorization' => 'Bearer '.$apiKey])->post($url, $data);
+
+            return $response->json();
+        } catch (RequestException $e) {
+            // Handle exception or error
+            return 'Error: '.$e->getMessage();
+        }
+    }
+
     public function createStreamed($params)
     {
         $url = 'https://api.mistral.ai/v1/chat/completions';
@@ -90,6 +121,7 @@ class MistralAIChat
         $messages = $params['messages'];
         $maxTokens = $params['max_tokens'];
         $streamFunction = $params['stream_function'];
+        $tools = $params['tools'] ?? [];
         $temperature = $params['temperature'] ?? 0.7;
         $topP = $params['top_p'] ?? 1;
 
