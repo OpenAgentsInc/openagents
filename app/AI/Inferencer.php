@@ -1,9 +1,7 @@
 <?php
 
-namespace App\Services;
+namespace App\AI;
 
-use App\AI\GroqAIGateway;
-use App\AI\MistralAIGateway;
 use App\Models\Agent;
 use App\Models\Node;
 use App\Models\Thread;

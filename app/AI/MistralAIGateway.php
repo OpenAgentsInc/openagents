@@ -8,6 +8,39 @@ use Illuminate\Support\Facades\Http;
 
 class MistralAIGateway
 {
+    public function embed($inputs)
+    {
+        // Your API endpoint for embeddings
+        $url = 'https://api.mistral.ai/v1/embeddings';
+
+        // Prepare the data payload
+        $data = [
+            'model' => 'mistral-embed', // Assuming 'mistral-embed' is the correct model ID for embeddings
+            'input' => $inputs,
+            'encoding_format' => 'float', // Assuming you want the output in float format
+        ];
+
+        // Make the HTTP POST request
+        $response = Http::withHeaders([
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer '.env('MISTRAL_API_KEY'),
+        ])->post($url, $data);
+
+        // Check if the request was successful
+        if ($response->successful()) {
+            // Return the response body
+            $json = $response->json();
+
+            return $json['data'][0]['embedding'];
+        } else {
+            // Handle the error
+            return [
+                'error' => 'Failed to retrieve embeddings',
+                'details' => $response->json(),
+            ];
+        }
+    }
+
     public function chat()
     {
         return new MistralAIChat();
