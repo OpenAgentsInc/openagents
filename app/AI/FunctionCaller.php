@@ -65,24 +65,24 @@ class FunctionCaller
                 ],
             ],
 
-            //            [
-            //                'type' => 'function',
-            //                'function' => [
-            //                    'name' => 'check_news_sentiment',
-            //                    'description' => 'Check the current market news sentiment given its ticker symbol',
-            //                    'parameters' => [
-            //                        'type' => 'object',
-            //                        'properties' => [
-            //                            'ticker_symbol' => [
-            //                                'type' => 'string',
-            //                                'description' => 'The stock ticker symbol.',
-            //                            ],
-            //                        ],
-            //                        'required' => ['ticker_symbol'],
-            //                    ],
-            //                ],
-            //            ],
-            //
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'check_bitcoin_price',
+                    'description' => 'Retrieve the bitcoin price',
+                    'parameters' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'exchange' => [
+                                'type' => 'string',
+                                'description' => 'The exchange name.',
+                            ],
+                        ],
+                        'required' => ['exchange'],
+                    ],
+                ],
+            ],
+
         ];
     }
 }
