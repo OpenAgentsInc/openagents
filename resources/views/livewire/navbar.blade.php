@@ -4,15 +4,12 @@
         <a href="/" wire:navigate>
             <x-logomark size="4"/>
         </a>
-        @auth
-            {{--            <a href="/chat" wire:navigate class="ml-8 text-gray hover:text-white">Chat</a>--}}
-        @endauth
-        {{--        <a href="/docs" wire:navigate class="ml-8 text-gray hover:text-white">Docs</a>--}}
     </div>
     <div class="flex flex-row items-center">
-        @auth
-        @else
-            {{--            <a href="/login" wire:navigate class="ml-8 text-gray hover:text-white">Login</a>--}}
-        @endauth
+        <a class="twitter-share-button"
+           target="_blank"
+           href="https://twitter.com/intent/tweet?text=I%27m%20having%20a%20fun%20chat%20with%20%40OpenAgentsInc"
+           data-size="large">
+        </a>
     </div>
 </div>
