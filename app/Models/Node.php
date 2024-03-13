@@ -36,6 +36,10 @@ class Node extends Model
                 $output = Inferencer::llmInference($agent, $this, $thread, $input, $streamingFunction);
                 break;
 
+            case 'finnhub_function_call':
+                $output = Inferencer::llmInferenceWithFunctionCalling($agent, $this, $thread, $input, $streamingFunction);
+                break;
+
             default:
                 // Default processing logic for nodes
                 $output = 'Default node processing for: '.$input;

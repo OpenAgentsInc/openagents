@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\AI\MistralAIGateway;
+use App\Services\SemanticRouter;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -46,21 +48,38 @@ class Run extends Model
 
         // First see if we should override node with a semantic route
         // Vectorize the input
-        //        $gateway = new MistralAIGateway();
-        //        $vectorizedInput = $gateway->embed($input);
-        //
-        //        $router = new SemanticRouter();
-        //        $route = $router->route($vectorizedInput);
+        $gateway = new MistralAIGateway();
+        $vectorizedInput = $gateway->embed($input);
 
-        //        dd($route);
+        $router = new SemanticRouter();
+        $route = $router->route($vectorizedInput);
+
+        // If route is finance, trigger the Finnhub flow
+        if ($route === 'finance') {
+            $flow = Flow::where('name', 'Financial Analysis')->first();
+            if (! $flow) {
+                $flow = Flow::create();
+                $flow->nodes()->create([
+                    'name' => 'Finnhub Function Call',
+                    'description' => 'Passes input to Mistral AI Gateway for Finnhub function call',
+                    'type' => 'finnhub_function_call',
+                    'config' => json_encode([
+                        'gateway' => 'mistral',
+                        'model' => 'mistral-large-latest',
+                    ]),
+                ]);
+            }
+        } else {
+            $flow = $this->flow;
+        }
 
         // Execute each node in sequence (assuming nodes are already sorted by their execution order)
-        foreach ($this->flow->nodes as $node) {
+        foreach ($flow->nodes as $node) {
 
             // Call the node's trigger method and pass the current input
             $nodeOutput = $node->trigger([
                 'agent' => $this->agent,
-                'flow' => $this->flow,
+                'flow' => $flow,
                 'thread' => $this->thread,
                 'input' => $input,
                 'streamingFunction' => $streamingFunction,
