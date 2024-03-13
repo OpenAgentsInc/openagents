@@ -21,7 +21,7 @@ class Inferencer
     public static function llmInferenceWithFunctionCalling(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
     {
         // Prepare the messages for inference
-        $messages = self::prepareTextInference($input, $thread, $agent, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Note, the current date is ".date('Y-m-d').'.');
+        $messages = self::prepareFunctionCallMessages($input);
 
         $client = new MistralAIGateway();
 
@@ -41,13 +41,11 @@ class Inferencer
                 $functionName = $toolCall['function']['name'];
                 $functionParams = json_decode($toolCall['function']['arguments'], true);
 
-                dd($functionName, $functionParams);
-
                 // Check if the function is registered
                 if (isset(self::$registeredFunctions[$functionName])) {
                     try {
                         // Call the registered function with the provided parameters
-                        $functionResponse = call_user_func(self::$registeredFunctions[$functionName], $functionParams['ticker_symbol']);
+                        $functionResponse = call_user_func(self::$registeredFunctions[$functionName], $functionParams);
 
                         // Here, you would typically modify the response or take some action based on $functionResponse
                         // For simplicity, we'll just log it
@@ -55,11 +53,13 @@ class Inferencer
 
                     } catch (Exception $e) {
                         Log::error('Error executing registered function: '.$e->getMessage());
+                        dd('Error executing registered function: '.$e->getMessage());
                         // Handle the error appropriately
                     }
                 } else {
                     Log::warning('Function not registered: '.$functionName);
                     // Handle the case where the function is not registered
+                    dd('Function not registered: '.$functionName);
                 }
             }
         } else {
@@ -75,6 +75,55 @@ class Inferencer
         //        return json_encode($functionResponse) ?? 'No function calls were made :(';
 
         return self::llmInference($agent, $node, $thread, $newInput, $streamFunction, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Note, the current date is ".date('Y-m-d').'.');
+    }
+
+    private static function prepareFunctionCallMessages($text)
+    {
+        return [
+            [
+                'role' => 'system',
+                'content' => "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Note, the current date is ".date('Y-m-d').'.',
+            ],
+            [
+                'role' => 'user',
+                'content' => $text,
+            ],
+        ];
+    }
+
+    public static function llmInference(Agent $agent, Node $node, Thread $thread, $input, $streamFunction, $systemPromptOverride = null): string
+    {
+        // Decode the node's config to determine which gateway to use
+        $config = json_decode($node->config, true);
+        $gateway = $config['gateway'];
+        $model = $config['model'];
+
+        // If no gateway or model, throw
+        if (! $gateway || ! $model) {
+            throw new Exception('Invalid node configuration: '.json_encode($config));
+        }
+
+        // Prepare the messages for inference
+        $messages = self::prepareFunctionCallMessages($input, $thread, $agent, $systemPromptOverride);
+
+        // Dynamically choose the gateway client based on the node's configuration
+        switch ($gateway) {
+            case 'mistral':
+                $client = new MistralAIGateway();
+                break;
+            case 'groq':
+                $client = new GroqAIGateway();
+                break;
+            default:
+                throw new Exception("Unsupported gateway: $gateway");
+        }
+
+        return $client->chat()->createStreamed([
+            'model' => $model,
+            'messages' => $messages,
+            'max_tokens' => 9024,
+            'stream_function' => $streamFunction,
+        ]);
     }
 
     private static function prepareTextInference($text, Thread $thread, Agent $agent, $systemPromptOverride = null)
@@ -135,54 +184,18 @@ Keep your responses short and concise, usually <150 words. Try giving a short an
 
         return $previousMessages;
     }
-
-    public static function llmInference(Agent $agent, Node $node, Thread $thread, $input, $streamFunction, $systemPromptOverride = null): string
-    {
-        // Decode the node's config to determine which gateway to use
-        $config = json_decode($node->config, true);
-        $gateway = $config['gateway'];
-        $model = $config['model'];
-
-        // If no gateway or model, throw
-        if (! $gateway || ! $model) {
-            throw new Exception('Invalid node configuration: '.json_encode($config));
-        }
-
-        // Prepare the messages for inference
-        $messages = self::prepareTextInference($input, $thread, $agent, $systemPromptOverride);
-
-        // Dynamically choose the gateway client based on the node's configuration
-        switch ($gateway) {
-            case 'mistral':
-                $client = new MistralAIGateway();
-                break;
-            case 'groq':
-                $client = new GroqAIGateway();
-                break;
-            default:
-                throw new Exception("Unsupported gateway: $gateway");
-        }
-
-        return $client->chat()->createStreamed([
-            'model' => $model,
-            'messages' => $messages,
-            'max_tokens' => 3024,
-            'stream_function' => $streamFunction,
-        ]);
-    }
 }
 
-Inferencer::registerFunction('check_stock_price', function ($param1) {
-    $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
+Inferencer::registerFunction('check_stock_price', function ($params) {
+    $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$params['ticker_symbol'].'&token='.env('FINNHUB_API_KEY'));
 
     return $response->json();
 });
 
-Inferencer::registerFunction('company_news', function ($param1, $param2, $param3) {
-    dd($param1, $param2, $param3);
-    //    $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
-    //
-    //    return $response->json();
+Inferencer::registerFunction('company_news', function ($params) { // symbol, from, to
+    $response = Http::get('https://finnhub.io/api/v1/company-news?symbol='.$params['symbol'].'&from='.$params['from'].'&to='.$params['to'].'&token='.env('FINNHUB_API_KEY'));
+
+    return $response->json();
 });
 
 //Inferencer::registerFunction('check_stock_metrics', function ($param1) {
