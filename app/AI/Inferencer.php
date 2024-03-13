@@ -18,7 +18,7 @@ class Inferencer
         self::$registeredFunctions[$name] = $function;
     }
 
-    public static function llmInferenceWithFunctionCalling(Agent $agent, Node $node, Thread $thread, $input): string
+    public static function llmInferenceWithFunctionCalling(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
     {
         // Prepare the messages for inference
         $messages = self::prepareTextInference($input, $thread, $agent);
@@ -60,12 +60,22 @@ class Inferencer
                     // Handle the case where the function is not registered
                 }
             }
+        } else {
+            dd('No function calls were made :(');
         }
 
-        return $functionResponse ?? 'No function calls were made :(';
+        //        dd($functionResponse);
+        // json stringify the response
+        $functionCallingOutput = json_encode($functionResponse);
+
+        $newInput = 'The user asked: '.$input." \n\n We retrieved the necessary information from the relevant API. Now use the following information to answer the question: \n".$functionCallingOutput;
+
+        //        return json_encode($functionResponse) ?? 'No function calls were made :(';
+
+        return self::llmInference($agent, $node, $thread, $newInput, $streamFunction, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user.");
     }
 
-    private static function prepareTextInference($text, Thread $thread, Agent $agent)
+    private static function prepareTextInference($text, Thread $thread, Agent $agent, $systemPromptOverride = null)
     {
         // Fetch previous messages
         $previousMessages = $thread->messages()
@@ -87,7 +97,18 @@ class Inferencer
             ->toArray();
 
         // Prepend system message
-        if (count($previousMessages) <= 3) {
+        if ($systemPromptOverride) {
+            array_unshift($previousMessages, [
+                'role' => 'system',
+                'content' => $systemPromptOverride,
+            ]);
+
+            // Also append the input as a user message
+            $previousMessages[] = [
+                'role' => 'user',
+                'content' => $text,
+            ];
+        } else {
             array_unshift($previousMessages, [
                 'role' => 'system',
                 'content' => 'You are a helpful AI agent named '.$agent->name.' 
@@ -113,7 +134,7 @@ Keep your responses short and concise, usually <150 words. Try giving a short an
         return $previousMessages;
     }
 
-    public static function llmInference(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
+    public static function llmInference(Agent $agent, Node $node, Thread $thread, $input, $streamFunction, $systemPromptOverride = null): string
     {
         // Decode the node's config to determine which gateway to use
         $config = json_decode($node->config, true);
@@ -126,7 +147,7 @@ Keep your responses short and concise, usually <150 words. Try giving a short an
         }
 
         // Prepare the messages for inference
-        $messages = self::prepareTextInference($input, $thread, $agent);
+        $messages = self::prepareTextInference($input, $thread, $agent, $systemPromptOverride);
 
         // Dynamically choose the gateway client based on the node's configuration
         switch ($gateway) {
@@ -156,8 +177,22 @@ Inferencer::registerFunction('demoFunction', function ($param1, $param2) {
 });
 
 Inferencer::registerFunction('check_stock_price', function ($param1) {
-    $response = Http::get('https://finnhub.io/api/v1/stock/price-metric?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
-    $financials = $response->json();
+    $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
 
-    dd($financials);
+    return $response->json();
 });
+
+//Inferencer::registerFunction('check_stock_metrics', function ($param1) {
+//    $response = Http::get('https://finnhub.io/api/v1/stock/metric?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
+//
+//    return $response->json();
+//});
+//
+//Inferencer::registerFunction('check_news_sentiment', function ($param1) {
+//
+//    $response = Http::get('https://finnhub.io/api/v1/news_sentiment?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
+//
+//    //    dd($response);
+//    //
+//    return $response->json();
+//});

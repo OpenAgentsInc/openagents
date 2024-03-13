@@ -39,40 +39,25 @@ class FunctionCaller
                     ],
                 ],
             ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'retrieve_payment_status',
-                    'description' => 'Get payment status of a transaction',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'transaction_id' => [
-                                'type' => 'string',
-                                'description' => 'The transaction id.',
-                            ],
-                        ],
-                        'required' => ['transaction_id'],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'retrieve_payment_date',
-                    'description' => 'Get payment date of a transaction',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'transaction_id' => [
-                                'type' => 'string',
-                                'description' => 'The transaction id.',
-                            ],
-                        ],
-                        'required' => ['transaction_id'],
-                    ],
-                ],
-            ],
+
+            //            [
+            //                'type' => 'function',
+            //                'function' => [
+            //                    'name' => 'check_news_sentiment',
+            //                    'description' => 'Check the current market news sentiment given its ticker symbol',
+            //                    'parameters' => [
+            //                        'type' => 'object',
+            //                        'properties' => [
+            //                            'ticker_symbol' => [
+            //                                'type' => 'string',
+            //                                'description' => 'The stock ticker symbol.',
+            //                            ],
+            //                        ],
+            //                        'required' => ['ticker_symbol'],
+            //                    ],
+            //                ],
+            //            ],
+            //
         ];
     }
 }
