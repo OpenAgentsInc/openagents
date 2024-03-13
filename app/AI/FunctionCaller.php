@@ -39,6 +39,31 @@ class FunctionCaller
                     ],
                 ],
             ],
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'company_news',
+                    'description' => 'Retrieve news related to a company within a specified date range',
+                    'parameters' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'symbol' => [
+                                'type' => 'string',
+                                'description' => 'Company symbol.',
+                            ],
+                            'from' => [
+                                'type' => 'string',
+                                'description' => 'From date YYYY-MM-DD.',
+                            ],
+                            'to' => [
+                                'type' => 'string',
+                                'description' => 'To date YYYY-MM-DD.',
+                            ],
+                        ],
+                        'required' => ['symbol', 'from', 'to'],
+                    ],
+                ],
+            ],
 
             //            [
             //                'type' => 'function',

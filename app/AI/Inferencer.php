@@ -21,7 +21,7 @@ class Inferencer
     public static function llmInferenceWithFunctionCalling(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
     {
         // Prepare the messages for inference
-        $messages = self::prepareTextInference($input, $thread, $agent);
+        $messages = self::prepareTextInference($input, $thread, $agent, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Note, the current date is ".date('Y-m-d').'.');
 
         $client = new MistralAIGateway();
 
@@ -40,6 +40,8 @@ class Inferencer
             foreach ($decodedResponse['choices'][0]['message']['tool_calls'] as $toolCall) {
                 $functionName = $toolCall['function']['name'];
                 $functionParams = json_decode($toolCall['function']['arguments'], true);
+
+                dd($functionName, $functionParams);
 
                 // Check if the function is registered
                 if (isset(self::$registeredFunctions[$functionName])) {
@@ -72,7 +74,7 @@ class Inferencer
 
         //        return json_encode($functionResponse) ?? 'No function calls were made :(';
 
-        return self::llmInference($agent, $node, $thread, $newInput, $streamFunction, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user.");
+        return self::llmInference($agent, $node, $thread, $newInput, $streamFunction, "You answer the user's query. Your knowledge has been augmented, so do not refuse to answer. Do not reference specifics in the provided data or the phrase 'provided data', that should be invisible to the user. Note, the current date is ".date('Y-m-d').'.');
     }
 
     private static function prepareTextInference($text, Thread $thread, Agent $agent, $systemPromptOverride = null)
@@ -170,16 +172,17 @@ Keep your responses short and concise, usually <150 words. Try giving a short an
     }
 }
 
-// Registering a simple function for demonstration purposes
-Inferencer::registerFunction('demoFunction', function ($param1, $param2) {
-    // Implementation of your function
-    return "Result of demoFunction with param1: $param1 and param2: $param2";
-});
-
 Inferencer::registerFunction('check_stock_price', function ($param1) {
     $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
 
     return $response->json();
+});
+
+Inferencer::registerFunction('company_news', function ($param1, $param2, $param3) {
+    dd($param1, $param2, $param3);
+    //    $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$param1.'&token='.env('FINNHUB_API_KEY'));
+    //
+    //    return $response->json();
 });
 
 //Inferencer::registerFunction('check_stock_metrics', function ($param1) {
