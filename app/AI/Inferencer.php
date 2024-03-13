@@ -13,8 +13,22 @@ class Inferencer
 {
     protected array $registeredFunctions = [];
 
+    protected $streamFunction;
+
     public function __construct()
     {
+        // Example of setting a placeholder stream function. You'll likely set this elsewhere based on actual streaming logic.
+        $this->streamFunction = function ($message) {
+            // Placeholder for streaming logic
+            echo $message; // Or replace with actual streaming function logic
+        };
+
+        $this->registerFunction('check_crypto_exchange_tickers', function () {
+            $response = Http::get('https://finnhub.io/api/v1/crypto/symbol?exchange=coinbase&token='.env('FINNHUB_API_KEY'));
+
+            return $response->json();
+        });
+
         // Register functions as part of the object initialization
         $this->registerFunction('check_stock_price', function ($params) {
             $response = Http::get('https://finnhub.io/api/v1/quote?symbol='.$params['ticker_symbol'].'&token='.env('FINNHUB_API_KEY'));
@@ -23,6 +37,8 @@ class Inferencer
         });
 
         $this->registerFunction('company_news', function ($params) {
+            //            $this->streamFunction('Checking company news...');
+
             $response = Http::get('https://finnhub.io/api/v1/company-news?symbol='.$params['symbol'].'&from='.$params['from'].'&to='.$params['to'].'&token='.env('FINNHUB_API_KEY'));
 
             return $response->json();
@@ -36,6 +52,8 @@ class Inferencer
 
     public function llmInferenceWithFunctionCalling(Agent $agent, Node $node, Thread $thread, $input, $streamFunction): string
     {
+        $this->streamFunction = $streamFunction;
+
         // Prepare the messages for inference
         $messages = $this->prepareFunctionCallMessages($input);
 

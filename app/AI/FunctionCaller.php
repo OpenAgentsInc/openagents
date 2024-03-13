@@ -64,6 +64,25 @@ class FunctionCaller
                     ],
                 ],
             ],
+
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'check_crypto_exchange_tickers',
+                    'description' => 'Retrieve a list of available crypto exchange ticker symbols.',
+                    'parameters' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'exchange' => [
+                                'type' => 'string',
+                                'description' => 'The exchange name.',
+                            ],
+                        ],
+                        'required' => ['exchange'],
+                    ],
+                ],
+            ],
+
         ];
     }
 }

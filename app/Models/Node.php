@@ -29,7 +29,7 @@ class Node extends Model
         $agent = $params['agent'];
         $thread = $params['thread'];
 
-        $inferencer = new Inferencer();
+        $inferencer = new Inferencer($streamingFunction);
 
         // Node-specific logic
         switch ($this->type) {
