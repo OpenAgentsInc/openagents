@@ -58,7 +58,9 @@ class Run extends Model
         if ($route === 'finance') {
             $flow = Flow::where('name', 'Financial Analysis')->first();
             if (! $flow) {
-                $flow = Flow::create();
+                $flow = Flow::create([
+                    'name' => 'Financial Analysis',
+                ]);
                 $flow->nodes()->create([
                     'name' => 'Finnhub Function Call',
                     'description' => 'Passes input to Mistral AI Gateway for Finnhub function call',
