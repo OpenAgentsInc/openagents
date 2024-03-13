@@ -23,10 +23,13 @@ class Inferencer
             echo $message; // Or replace with actual streaming function logic
         };
 
-        $this->registerFunction('check_crypto_exchange_tickers', function () {
-            $response = Http::get('https://finnhub.io/api/v1/crypto/symbol?exchange=coinbase&token='.env('FINNHUB_API_KEY'));
+        $this->registerFunction('check_bitcoin_price', function ($param) {
+            $fmpKey = env('FMP_API_KEY');
+            $url = "https://financialmodelingprep.com/api/v3/quote/BTCUSD?apikey={$fmpKey}";
+            $response = Http::get($url)->json();
+            $price = $response[0]['price'];
 
-            return $response->json();
+            return $price;
         });
 
         // Register functions as part of the object initialization

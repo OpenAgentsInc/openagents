@@ -68,8 +68,8 @@ class FunctionCaller
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'check_crypto_exchange_tickers',
-                    'description' => 'Retrieve a list of available crypto exchange ticker symbols.',
+                    'name' => 'check_bitcoin_price',
+                    'description' => 'Retrieve the bitcoin price',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
