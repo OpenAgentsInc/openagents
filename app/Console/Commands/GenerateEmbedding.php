@@ -40,9 +40,13 @@ class GenerateEmbedding extends Command
 
             return 1;
         } else {
+            // Prepare the comment with input texts
+            $comment = '// Input: '.implode(', ', $texts)."\n";
             $embeddingJson = json_encode($embedding);
             $filePath = base_path('embedding.txt');
-            file_put_contents($filePath, $embeddingJson);
+
+            // Clear the file (if exists) and write the comment and embedding
+            file_put_contents($filePath, $comment.$embeddingJson);
             $this->info("Embedding saved to: $filePath");
 
             return 0;
