@@ -16,12 +16,16 @@ Right now OpenAgents is only good at three things: 1) general conversation, 2) i
 answering questions
 about stock and bitcoin prices.
 
-Starting now, agent builders can earn bitcoin revenue by contributing upgrades to the agent swarm. (Documentation will
-be posted here later today, March 14.)
+Starting now, agent builders can earn bitcoin revenue by contributing upgrades to the agent swarm.
 
 Anytime a user pays an agent for a task that uses your upgrade, you get a piece of that revenue added immediately to
 your
 account, which you can withdraw anytime via bitcoin.
+
+We are now allocating 1 BTC to a bounty prize pool for developers who build our first plugins. We hope to distribute ₿1M
+to
+100 individual developers as soon as possible. Documentation will
+be posted here later today, March 14.
 
 ## How we got here
 
@@ -47,7 +51,14 @@ breakthroughs:
    single "meta-agent" that is infinitely extensible and upgradeable, with contributors to its many nodes earning  
    residual revenue-sharing.
 
-## Moving forward
+## How you can help
 
-We are allocating 1 BTC to a bounty prize pool for developers who build our first plugins. We hope to distribute ₿1M to
-100 individual developers as soon as possible. 
+We've built the tech, now we need your help to build the market.
+
+We want to know what agent functionality you'd like to use (and pay for!).
+
+Please [chat with OpenAgents now](/) and tell us what you'd like AI agents to help you with.
+
+We'll match that demand - and our bounties - with developers who'll help us build OpenAgents as...
+
+**ONE AGENT TO RULE THEM ALL**
