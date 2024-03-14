@@ -20,6 +20,7 @@
     }
 
     .prose h2:first-of-type {
+        color: black;
         text-align: center;
         margin-top: 0.1em;
         margin-bottom: 2.5em;
