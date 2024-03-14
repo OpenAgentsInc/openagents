@@ -180,9 +180,16 @@ class Inferencer
                     $role = 'user';
                 }
 
+                // Check if message content starts with "data:image/"
+                if (starts_with(strtolower($message->body), 'data:image/')) {
+                    $content = '<image>';
+                } else {
+                    $content = $message->body;
+                }
+
                 return [
                     'role' => $role,
-                    'content' => $message->body,
+                    'content' => $content,
                 ];
             })
             ->toArray();
