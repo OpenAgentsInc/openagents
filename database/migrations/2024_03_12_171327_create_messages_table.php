@@ -23,7 +23,7 @@ return new class extends Migration
             // Messages may be sent by an agent, or null if user
             $table->foreignId('agent_id')->nullable();
 
-            // Message content
+            // Message content - will be changed to longtext
             $table->text('body');
 
             $table->timestamps();
