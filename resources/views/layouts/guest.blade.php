@@ -9,15 +9,15 @@
 
     <!-- Scripts -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @include('partials.ogtags')
 
-    <!-- Styles -->
-    @livewireStyles
 </head>
 <body>
 <div class="font-mono text-white antialiased">
+    <livewire:navbar/>
     {{ $slot }}
 </div>
 
-@livewireScripts
+@include('partials.twitter')
 </body>
 </html>
