@@ -15,6 +15,22 @@
         @apply bg-black text-white h-screen font-mono;
     }
 
+    .prose h1:first-of-type {
+        text-align: center;
+    }
+
+    .prose h2:first-of-type {
+        text-align: center;
+        margin-top: 0.1em;
+        margin-bottom: 2.5em;
+        font-size: 16px;
+        color: "#d1d5db";
+    }
+
+    .prose img {
+        @apply border border-white;
+    }
+
     h1.title {
         @apply text-[64px] font-bold;
     }
