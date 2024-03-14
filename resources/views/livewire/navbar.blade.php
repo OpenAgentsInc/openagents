@@ -5,6 +5,7 @@
             <x-logomark size="4"/>
         </a>
         <a href="/launch" wire:navigate class="ml-8 text-gray hover:text-white">Launch announcement</a>
+        <a href="/docs" wire:navigate class="ml-8 text-gray hover:text-white">Docs</a>
     </div>
     <div class="flex flex-row items-center">
         @php
