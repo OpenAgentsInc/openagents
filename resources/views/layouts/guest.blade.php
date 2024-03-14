@@ -9,11 +9,12 @@
 
     <!-- Scripts -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @include('partials.ogtags')
 
 </head>
 <body>
 <div class="font-mono text-white antialiased">
-    {{--    <livewire:navbar/>--}}
+    <livewire:navbar/>
     {{ $slot }}
 </div>
 
