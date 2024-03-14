@@ -18,7 +18,13 @@
                 <div class="flex-col gap-1 md:gap-3">
                     <div class="-mt-4 flex flex-grow flex-col max-w-[936px]">
                         @if($author !== 'You')
-                            <x-markdown class="text-md">{!! $message !!}</x-markdown>
+
+                            @if(substr($message, 0, 11) === 'data:image/')
+                                <img class="mt-6" src="{{ $message }}" alt="Embedded Image">
+                            @else
+                                <x-markdown class="text-md">{!! $message !!}</x-markdown>
+                            @endif
+
                         @else
                             <x-markdown class="text-md">{{ $message }}</x-markdown>
                         @endif
