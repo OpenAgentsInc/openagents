@@ -5,16 +5,21 @@
 Today we launch OpenAgents, the world's first AI agent swarm capable of recursive daily improvement through
 crowdsourcing and bitcoin incentives.
 
-While a few Californians high on various drugs fantasize themselves masters or slaves to some new AI god, the rest of us
-can do the real work of harnessing this technology for the advancement of humanity.
+It begins with a simple chatbox on our [homepage](/):
 
-Missing from the AI community to date has been any substantive collaboration between applied AI projects. What the AI/ML
-research community has in HuggingFace, applied AI has no equivalent. Hopefully that changes now.
+![OpenAgents Chat](/images/launch-chatui.png)
 
-## Enter OpenAgents
+Behind that chatbox sits an upgradeable 'meta-agent' that will route your request to the best agent or
+function for the task.
 
-This effort [began](https://twitter.com/OpenAgentsInc/status/1721942435125715086) with us taking aim at the OpenAI "GPT
-store", which we predicted correctly when it was announced four months ago would have only half-baked or non-existent
-monetization. We saw a clear way to improve upon using the global and permissionless internet money that is bitcoin.
+Right now OpenAgents is only good at three things: 1) general conversation, 2) introducing you to OpenAgents, and 3)
+answering questions
+about stock and bitcoin prices.
 
-Get ready for this shit
+Starting now, agent builders can earn bitcoin revenue by contributing upgrades to the agent swarm. (See
+documentation for details.)
+
+Anytime a user pays an agent for a task that uses your upgrade, you get a piece of that revenue added immediately to
+your
+account, which you can withdraw anytime via bitcoin.
+
