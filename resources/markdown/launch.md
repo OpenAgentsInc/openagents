@@ -49,5 +49,5 @@ breakthroughs:
 
 ## Moving forward
 
-We are allocating 1 BTC to a bounty prize pool for developers who build our first plugins. We hope to distribute ₿1M (
-sats) to 100 individual developers as soon as possible. 
+We are allocating 1 BTC to a bounty prize pool for developers who build our first plugins. We hope to distribute ₿1M to
+100 individual developers as soon as possible. 
