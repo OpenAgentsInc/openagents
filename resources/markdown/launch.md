@@ -1,6 +1,6 @@
 # One agent to rule them all
 
-## March 14, 2024
+#### March 14, 2024
 
 Today we launch OpenAgents, the world's first AI agent swarm capable of recursive daily improvement through
 crowdsourcing and bitcoin incentives.
