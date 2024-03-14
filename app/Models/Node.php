@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\AI\Inferencer;
+use App\AI\StabilityAIGateway;
 use Exception;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -40,6 +41,11 @@ class Node extends Model
 
             case 'finnhub_function_call':
                 $output = $inferencer->llmInferenceWithFunctionCalling($agent, $this, $thread, $input, $streamingFunction);
+                break;
+
+            case 'stability_text_to_image':
+                $gateway = new StabilityAIGateway();
+                $output = $gateway->text_to_image($input);
                 break;
 
             default:
