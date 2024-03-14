@@ -7,9 +7,15 @@
         <a href="/launch" wire:navigate class="ml-8 text-gray hover:text-white">Launch announcement</a>
     </div>
     <div class="flex flex-row items-center">
+        @php
+            $tweetText = request()->is('chat/*')
+                ? "I'm having a fun chat with @OpenAgentsInc"
+                : "You should read this";
+            $encodedTweetText = urlencode($tweetText);
+        @endphp
         <a class="twitter-share-button"
            target="_blank"
-           href="https://twitter.com/intent/tweet?text=I%27m%20having%20a%20fun%20chat%20with%20%40OpenAgentsInc"
+           href="https://twitter.com/intent/tweet?text={{ $encodedTweetText }}"
            data-size="large">
         </a>
     </div>

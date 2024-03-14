@@ -34,6 +34,7 @@ export default {
                         p: {
                             marginTop: '2.2em', // Increase top margin
                             marginBottom: '2.2em', // Increase bottom margin
+                            color: 'white'
                         },
                         // You can also customize other elements here as needed
                     },
