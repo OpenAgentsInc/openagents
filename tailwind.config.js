@@ -26,7 +26,19 @@ export default {
                 bitcoin: '#FF9900',
                 green: '#00CC00',
                 red: '#FF3B00'
-            }
+            },
+            typography: (theme) => ({
+                DEFAULT: {
+                    css: {
+                        // Customizing paragraph spacing
+                        p: {
+                            marginTop: '2.2em', // Increase top margin
+                            marginBottom: '2.2em', // Increase bottom margin
+                        },
+                        // You can also customize other elements here as needed
+                    },
+                },
+            }),
         },
     },
 

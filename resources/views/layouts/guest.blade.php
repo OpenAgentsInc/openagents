@@ -15,6 +15,7 @@
 </head>
 <body>
 <div class="font-mono text-white antialiased">
+    <livewire:navbar/>
     {{ $slot }}
 </div>
 
