@@ -15,4 +15,5 @@
 {{ $slot }}
 </body>
 
+@include('partials.twitter')
 </html>
