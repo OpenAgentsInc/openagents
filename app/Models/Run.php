@@ -56,7 +56,24 @@ class Run extends Model
 
         switch ($route) {
             case 'make_an_image_of':
-                return "I'm learning to make images! Please check back later.";
+
+                // If route is finance, trigger the Finnhub flow
+                $flow = Flow::where('name', 'Image Generator')->first();
+                if (! $flow) {
+                    $flow = Flow::create([
+                        'name' => 'Image Generator',
+                    ]);
+                    $flow->nodes()->create([
+                        'name' => 'Image Generator',
+                        'description' => 'Generates an image via the Stability API',
+                        'type' => 'stability_text_to_image',
+                        //                        'config' => json_encode([
+                        //                            'gateway' => 'mistral',
+                        //                            'model' => 'mistral-large-latest',
+                        //                        ]),
+                    ]);
+                }
+                break;
 
             case 'bitcoin_price':
             case 'finance':
