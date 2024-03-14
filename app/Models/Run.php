@@ -51,8 +51,13 @@ class Run extends Model
         $gateway = new MistralAIGateway();
         $vectorizedInput = $gateway->embed($input);
 
-        $router = new SemanticRouter();
-        $route = $router->route($vectorizedInput);
+        // If input contains the phrase "make an image of", set route manually to "make_an_image_of"
+        if (str_contains($input, 'make an image of')) {
+            $route = 'make_an_image_of';
+        } else {
+            $router = new SemanticRouter();
+            $route = $router->route($vectorizedInput);
+        }
 
         switch ($route) {
             case 'make_an_image_of':
