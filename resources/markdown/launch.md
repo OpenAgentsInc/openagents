@@ -24,8 +24,9 @@ account, which you can withdraw anytime via bitcoin.
 
 We are now allocating 1 BTC to a bounty prize pool for developers who build our first plugins. We hope to distribute ₿1M
 to
-100 individual developers as soon as possible. Documentation will
-be posted here later today, March 14.
+100 individual developers as soon as possible.
+
+See our [developer documentation](https://openagents.com/docs) for details.
 
 ## How we got here
 
