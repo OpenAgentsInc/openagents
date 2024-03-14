@@ -55,6 +55,9 @@ class Run extends Model
         $route = $router->route($vectorizedInput);
 
         switch ($route) {
+            case 'make_an_image_of':
+                return "I'm learning to make images! Please check back later.";
+
             case 'bitcoin_price':
             case 'finance':
                 // If route is finance, trigger the Finnhub flow
