@@ -55,6 +55,26 @@ class Run extends Model
         $route = $router->route($vectorizedInput);
 
         switch ($route) {
+            case 'make_an_image_of':
+
+                // If route is finance, trigger the Finnhub flow
+                $flow = Flow::where('name', 'Image Generator')->first();
+                if (! $flow) {
+                    $flow = Flow::create([
+                        'name' => 'Image Generator',
+                    ]);
+                    $flow->nodes()->create([
+                        'name' => 'Image Generator',
+                        'description' => 'Generates an image via the Stability API',
+                        'type' => 'stability_text_to_image',
+                        //                        'config' => json_encode([
+                        //                            'gateway' => 'mistral',
+                        //                            'model' => 'mistral-large-latest',
+                        //                        ]),
+                    ]);
+                }
+                break;
+
             case 'bitcoin_price':
             case 'finance':
                 // If route is finance, trigger the Finnhub flow
