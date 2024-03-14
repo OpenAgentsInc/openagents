@@ -13,8 +13,9 @@
                 <button class="hidden" id="send-message" type="submit"></button>
 
             </form>
-            <p class="text-center text-darkgray mt-12 text-sm">All conversations are public. Don't share sensitive
-                info.</p>
+            <p class="text-center text-gray mt-12 text-sm">
+                All conversations are public (read & write).<br/>Don't share sensitive info.
+            </p>
 
         </div>
     </div>
