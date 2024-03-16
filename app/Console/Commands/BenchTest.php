@@ -40,23 +40,21 @@ class BenchTest extends Command
             $problemStatement = $benchmark['problem_statement'];
 
             // Create a new directory for the benchmark
-            $benchmarkDir = base_path("benchmarks/$instanceId");
+            $benchmarkDir = storage_path("benchmarks/$instanceId");
             if (! file_exists($benchmarkDir)) {
-                mkdir($benchmarkDir);
+                mkdir($benchmarkDir, 0777, true); // Enable recursive directory creation
             }
 
             // Change to the benchmark directory
             chdir($benchmarkDir);
 
             // Clone the repository
-            exec("git clone $repo .");
+            exec("git clone https://github.com/$repo .");
 
             // Checkout the base commit
             exec("git checkout $baseCommit");
 
-            // Apply the patch
-            exec("git apply $patch");
-
+            dd('what');
         }
     }
 }
