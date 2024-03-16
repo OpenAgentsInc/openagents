@@ -26,7 +26,7 @@ class BenchTest extends Command
     public function handle()
     {
         // Load the /resources/swebench/swe-bench-dev.json file and decode it
-        $benchData = json_decode(file_get_contents(base_path('resources/swebench/swe-bench-dev.json')), true);
+        $benchData = json_decode(file_get_contents(base_path('storage/benchmarks/swe-bench.json')), true);
 
         // Loop through each benchmark
         foreach ($benchData as $benchmark) {
@@ -36,7 +36,7 @@ class BenchTest extends Command
             $repo = $benchmark['repo'];
             $instanceId = $benchmark['instance_id'];
             $baseCommit = $benchmark['base_commit'];
-            $patch = $benchmark['patch'];
+            //            $patch = $benchmark['patch'];
             $problemStatement = $benchmark['problem_statement'];
 
             // Create a new directory for the benchmark
@@ -48,13 +48,15 @@ class BenchTest extends Command
             // Change to the benchmark directory
             chdir($benchmarkDir);
 
-            // Clone the repository
-            exec("git clone https://github.com/$repo .");
+            // Clone the repository - but only if it doesn't exist
+            if (! file_exists("$benchmarkDir/.git")) {
+                exec("git clone https://github.com/$repo .");
+            }
 
             // Checkout the base commit
             exec("git checkout $baseCommit");
 
-            dd('what');
+            dd($problemStatement);
         }
     }
 }
