@@ -3,8 +3,9 @@
 OpenAgents is a platform for building and commercializing AI agents using shared databases of skills and knowledge. It
 will soon include a two-sided marketplace for builders and users of AI agents.
 
-See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more. Now building
-our [MVP Spec](https://github.com/OpenAgentsInc/openagents/wiki/MVP-Spec).
+See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
+
+Now preparing a coding agent for [SWE-bench](https://github.com/OpenAgentsInc/openagents/wiki/SWE%E2%80%90bench).
 
 ![builder1](https://github.com/OpenAgentsInc/openagents/assets/14167547/2114cfed-5731-4d50-9a11-1f58de3b41e9)
 
