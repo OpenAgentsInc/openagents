@@ -25,6 +25,17 @@ OpenAgents.com is a platform for building and commercializing AI agents using sh
 
 * A Run is an instance of executing a Flow.
 
+## Definitions
+
+* **Agent** - An AI entity executing defined tasks
+* **Thread** - A message chain between user and agent
+* **Message** - A single communication in a thread
+* **File** - Document processed or created by agents
+* **Run** - The active execution of an agent flow
+* **Flow** - A sequence of nodes
+* **Node** - An individual task within a flow
+* **Plugin** - A WebAssembly binary extending agent functionality
+
 ## Getting paid for agent upgrades
 
 Payouts are Bitcoin only, paid via the Lightning network.
