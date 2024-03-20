@@ -1,0 +1,33 @@
+
+@props([
+    'type' => 'text',
+    'className' => '',
+    'hasError' => false,
+    'showIcon' => false,
+    'iconName' => '',
+    'name' => '',
+    'id' => null
+])
+
+
+<div>
+    <div class="mt-1 relative rounded-md shadow-sm">
+      <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <!-- Heroicon name: solid/mail -->
+        <x-icon :name="$iconName" class="w-[24px] h-[24px] m-0.5 flex flex-col justify-center items-center"/>
+      </div>
+
+      <input
+            autocomplete="off"
+            spellcheck="false"
+            type="{{ $type }}"
+            id="{{ $id }}"
+            name="{{ $name }}"
+            {{ $attributes->merge([
+                'class' => "h-[48px]  text-[16px] border border-2 bg-transparent placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white border-[#3D3E42] rounded-md shadow-sm block w-full pl-10  mt-1 sm:text-sm rounded-md" . ($hasError ? 'border-red-500' : 'border-[#3D3E42]') . " $className"
+            ]) }}
+
+    />
+
+    </div>
+  </div>
