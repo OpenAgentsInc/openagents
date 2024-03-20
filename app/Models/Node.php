@@ -48,6 +48,10 @@ class Node extends Model
                 $output = $gateway->text_to_image($input);
                 break;
 
+            case 'plugin':
+                dd("We've got a plugin!");
+                break;
+
             default:
                 // Default processing logic for nodes
                 $output = 'Default node processing for: '.$input;
