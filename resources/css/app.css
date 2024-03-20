@@ -7,8 +7,16 @@
 }
 
 .shiki {
-    @apply p-4 rounded-lg text-sm;
+    @apply mt-6 p-4 rounded-lg text-sm;
 }
+
+.shiki code {
+    white-space: pre-wrap; /* Preserve whitespace but allow wrapping */
+    word-wrap: break-word; /* Break long words that would overflow */
+    overflow-wrap: break-word; /* Similar to word-wrap, for better compatibility */
+    max-width: 100%; /* Prevent the code block from exceeding its container's width */
+}
+
 
 @layer base {
     :root {
