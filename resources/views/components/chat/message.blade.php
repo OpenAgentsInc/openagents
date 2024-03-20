@@ -22,7 +22,8 @@
                             @if(substr($message, 0, 11) === 'data:image/')
                                 <img class="mt-6" src="{{ $message }}" alt="Embedded Image">
                             @else
-                                <x-markdown class="text-md">{!! $message !!}</x-markdown>
+                                <x-markdown
+                                        class="text-md">{!! $message !!}</x-markdown>
                             @endif
 
                         @else

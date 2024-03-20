@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b0ceb908fe4c38124f3244de846a9faa",
+    "content-hash": "ad8db6489f65eb71c649843a4bdaaaf6",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -604,6 +604,68 @@
                 }
             ],
             "time": "2023-10-06T06:47:41+00:00"
+        },
+        {
+            "name": "extism/extism",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/extism/php-sdk.git",
+                "reference": "0a522ebeec0628f85b49acd079c96ee3d77692dc"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/extism/php-sdk/zipball/0a522ebeec0628f85b49acd079c96ee3d77692dc",
+                "reference": "0a522ebeec0628f85b49acd079c96ee3d77692dc",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^7.4 || ^8"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^10"
+            },
+            "type": "library",
+            "autoload": {
+                "files": [
+                    "src/Manifest.php",
+                    "src/Plugin.php",
+                    "src/CurrentPlugin.php"
+                ],
+                "psr-4": {
+                    "Extism\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "BSD-3-Clause"
+            ],
+            "authors": [
+                {
+                    "name": "The Extism Authors",
+                    "email": "oss@extism.org",
+                    "homepage": "https://extism.org"
+                },
+                {
+                    "name": "Dylibso, Inc.",
+                    "email": "oss@dylibso.com",
+                    "homepage": "https://dylibso.com"
+                }
+            ],
+            "description": "Make your software programmable. Run WebAssembly extensions in your app using the first off-the-shelf, universal plug-in system.",
+            "keywords": [
+                "framework",
+                "plug-in",
+                "plugin-system",
+                "runtime",
+                "wasm",
+                "webassembly"
+            ],
+            "support": {
+                "issues": "https://github.com/extism/php-sdk/issues",
+                "source": "https://github.com/extism/php-sdk/tree/v1.0.0"
+            },
+            "time": "2024-01-29T14:12:42+00:00"
         },
         {
             "name": "finnhub/client",
