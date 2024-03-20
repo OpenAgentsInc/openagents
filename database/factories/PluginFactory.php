@@ -2,10 +2,11 @@
 
 namespace Database\Factories;
 
+use App\Models\Plugin;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Plugin>
+ * @extends Factory<Plugin>
  */
 class PluginFactory extends Factory
 {
@@ -17,7 +18,9 @@ class PluginFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'name' => $this->faker->name,
+            'description' => $this->faker->text,
+            'wasm_url' => 'https://github.com/extism/plugins/releases/latest/download/count_vowels.wasm',
         ];
     }
 }
