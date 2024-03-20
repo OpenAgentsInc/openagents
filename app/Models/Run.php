@@ -60,9 +60,12 @@ class Run extends Model
         }
 
         switch ($route) {
-            case 'make_an_image_of':
+            case 'zipcode':
+                // If route is zipcode, provide a custom message
 
-                // If route is finance, trigger the Finnhub flow
+                return 'Adding zipcode support now. input: '.$input;
+
+            case 'make_an_image_of':
                 $flow = Flow::where('name', 'Image Generator')->first();
                 if (! $flow) {
                     $flow = Flow::create([
@@ -72,10 +75,6 @@ class Run extends Model
                         'name' => 'Image Generator',
                         'description' => 'Generates an image via the Stability API',
                         'type' => 'stability_text_to_image',
-                        //                        'config' => json_encode([
-                        //                            'gateway' => 'mistral',
-                        //                            'model' => 'mistral-large-latest',
-                        //                        ]),
                     ]);
                 }
                 break;
