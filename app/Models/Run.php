@@ -61,9 +61,31 @@ class Run extends Model
 
         switch ($route) {
             case 'zipcode':
-                // If route is zipcode, provide a custom message
+                $plugin = Plugin::where('name', 'World Zipcode Finder')->first();
+                if (! $plugin) {
+                    $plugin = Plugin::create([
+                        'name' => 'World Zipcode Finder',
+                        'description' => 'Finds the location of a zipcode',
+                        'wasm_url' => 'https://github.com/OpenAgentsInc/plugin-world-zipcode-finder/releases/download/v0.0.1/plugin-world-zipcode-finder.wasm',
+                    ]);
+                }
 
-                return 'Adding zipcode support now. input: '.$input;
+                // If route is zipcode, provide a custom message
+                $flow = Flow::where('name', 'World Zipcode Finder')->first();
+                if (! $flow) {
+                    $flow = Flow::create([
+                        'name' => 'World Zipcode Finder',
+                    ]);
+                    $flow->nodes()->create([
+                        'name' => 'World Zipcode Finder',
+                        'description' => 'Finds the location of a zipcode',
+                        'type' => 'plugin',
+                        'config' => json_encode([
+                            'plugin_id' => $plugin->id,
+                        ]),
+                    ]);
+                }
+                break;
 
             case 'make_an_image_of':
                 $flow = Flow::where('name', 'Image Generator')->first();

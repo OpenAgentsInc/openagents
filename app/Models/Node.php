@@ -49,7 +49,11 @@ class Node extends Model
                 break;
 
             case 'plugin':
-                dd("We've got a plugin!");
+                $config = json_decode($this->config, true);
+                $plugin_id = $config['plugin_id'];
+                $plugin = Plugin::find($plugin_id);
+                $output = $plugin->call('run', $input);
+                dd($output);
                 break;
 
             default:
