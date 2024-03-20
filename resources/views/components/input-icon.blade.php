@@ -3,8 +3,6 @@
     'type' => 'text',
     'disabled' => false,
     'className' => '',
-    'hasError' => false,
-    'showIcon' => false,
     'iconName' => '',
     'name' => '',
     'id' => null
@@ -19,15 +17,13 @@
       </div>
 
       <input
-            autocomplete="off"
-            spellcheck="false"
+
             type="{{ $type }}"
-            id="{{ $id }}"
-            name="{{ $name }}"
+
             {{ $disabled ? 'disabled' : '' }}
 
             {!! $attributes->merge([
-                'class' => "h-[48px]  text-[16px] border border-2 bg-transparent placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white border-[#3D3E42] rounded-md shadow-sm block w-full pl-10  mt-1 sm:text-sm rounded-md" . ($hasError ? 'border-red-500' : 'border-[#3D3E42]') . " $className"
+                'class' => "h-[48px]  text-[16px] border border-2 bg-transparent placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white border-[#3D3E42] rounded-md shadow-sm block w-full pl-10  mt-1 sm:text-sm rounded-md $className"
             ]) !!}
 
     />
