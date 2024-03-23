@@ -57,11 +57,22 @@ class PrismService
         // Assuming $recipients is an array of lightning addresses
         $response = Http::withToken($this->apiKey)
             ->post("{$this->baseUrl}/payment/prism", [
-                'senderId' => '1e90c130-8bce-4aa8-abd0-92329d57fafe',
+                'senderId' => '67c2cc15-d90f-4af5-b16f-06cebd9e8e5d', // atlantispleb
+                //                'senderId' => '1e90c130-8bce-4aa8-abd0-92329d57fafe', // openagents
                 'amount' => $amount,
                 'currency' => $currency,
                 'prism' => $recipients,
             ]);
+
+        return $response->json();
+    }
+
+    public function getTransactionDetails($transactionId)
+    {
+        // Replace with the actual endpoint for fetching transaction details
+        // Assuming the endpoint follows the pattern /transaction/{transactionId}
+        $response = Http::withToken($this->apiKey)
+            ->get("{$this->baseUrl}/payment/{$transactionId}");
 
         return $response->json();
     }
