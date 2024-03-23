@@ -15,6 +15,29 @@ class PrismService
         $this->apiKey = env('PRISM_API_KEY');
     }
 
+    public function createUser($lightningAddress = null)
+    {
+        $userData = [];
+        if ($lightningAddress) {
+            $userData['lnAddress'] = $lightningAddress;
+        }
+
+        $response = Http::withToken($this->apiKey)
+            ->post("{$this->baseUrl}/user", $userData);
+
+        return $response->json(); // Expecting to get back a user ID
+    }
+
+    public function updateUserLnAddress($userId, $lightningAddress)
+    {
+        $response = Http::withToken($this->apiKey)
+            ->patch("{$this->baseUrl}/user/{$userId}", [
+                'lnAddress' => $lightningAddress,
+            ]);
+
+        return $response->json();
+    }
+
     public function sendPayment($amount, $currency, array $recipients)
     {
         // Assuming $recipients is an array of lightning addresses
