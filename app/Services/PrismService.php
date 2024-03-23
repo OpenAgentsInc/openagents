@@ -15,17 +15,17 @@ class PrismService
         $this->apiKey = env('PRISM_API_KEY');
     }
 
-    public function createUser($lightningAddress = null)
+    public function createUser($lnAddress = null)
     {
-        $userData = [];
-        if ($lightningAddress) {
-            $userData['lnAddress'] = $lightningAddress;
+        $payload = [];
+        if (! is_null($lnAddress)) {
+            $payload['lnAddress'] = $lnAddress;
         }
 
         $response = Http::withToken($this->apiKey)
-            ->post("{$this->baseUrl}/user", $userData);
+            ->post("{$this->baseUrl}/user", $payload);
 
-        return $response->json(); // Expecting to get back a user ID
+        return $response->json();
     }
 
     public function updateUserLnAddress($userId, $lightningAddress)

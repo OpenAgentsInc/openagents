@@ -2,29 +2,35 @@
 
 namespace App\Console\Commands;
 
+use App\Services\PrismService;
 use Illuminate\Console\Command;
 
 class CreatePrismUser extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'app:create-prism-user';
+    protected $signature = 'prism:create-user {lnAddress?}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Command description';
+    protected $description = 'Creates a new Prism user with an optional Lightning Address';
 
-    /**
-     * Execute the console command.
-     */
+    private $prismService;
+
+    public function __construct(PrismService $prismService)
+    {
+        parent::__construct();
+        $this->prismService = $prismService;
+    }
+
     public function handle()
     {
-        //
+        $lnAddress = $this->argument('lnAddress');
+
+        $result = $this->prismService->createUser($lnAddress);
+
+        if (isset($result['error'])) {
+            $this->error('Failed to create user: '.$result['message']);
+        } else {
+            print_r($result);
+            //            $this->info('User created successfully. User ID: '.$result['userId']);
+            // Display other relevant info if needed
+        }
     }
 }

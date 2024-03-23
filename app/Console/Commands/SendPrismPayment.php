@@ -22,8 +22,8 @@ class SendPrismPayment extends Command
     public function handle()
     {
         $recipients = [
-            ['rblb@blink.sv', 50], // Example recipient format
-            ['mcdonald55@bitnob.io', 50],
+            ['3cf9098c-283f-4843-8ee8-ada9a907a75f', 50], // rblb@blink.sv
+            ['9a96fe41-30a6-4b84-96a2-7184f107be96', 50], // mcdonald55@bitnob.io
         ];
 
         $result = $this->prismService->sendPayment(100, 'SAT', $recipients);
