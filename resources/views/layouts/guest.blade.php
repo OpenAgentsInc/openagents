@@ -13,7 +13,7 @@
 
 </head>
 <body>
-<div class="font-mono text-white antialiased">
+<div class="min-h-screen font-mono text-white antialiased">
     <livewire:navbar/>
     {{ $slot }}
 </div>
