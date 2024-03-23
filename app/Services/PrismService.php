@@ -15,11 +15,25 @@ class PrismService
         $this->apiKey = env('PRISM_API_KEY');
     }
 
-    public function createUser($lnAddress = null)
+    public function createUser($lnAddress = null, $nwcConnection = null)
     {
         $payload = [];
+
         if (! is_null($lnAddress)) {
             $payload['lnAddress'] = $lnAddress;
+        }
+
+        if (! is_null($nwcConnection)) {
+            // Assuming $nwcConnection is an array with the necessary fields
+            $payload['nwcConnection'] = $nwcConnection;
+        } else {
+            // Use the NWC_URL from .env if no nwcConnection is explicitly passed
+            $nwcUrl = env('NWC_URL');
+            $payload['nwcConnection'] = [
+                'nwcUrl' => $nwcUrl,
+                'connectorType' => 'nwc.alby',
+                'connectorName' => 'bitcoin-connect',
+            ];
         }
 
         $response = Http::withToken($this->apiKey)
@@ -43,6 +57,7 @@ class PrismService
         // Assuming $recipients is an array of lightning addresses
         $response = Http::withToken($this->apiKey)
             ->post("{$this->baseUrl}/payment/prism", [
+                'senderId' => '1e90c130-8bce-4aa8-abd0-92329d57fafe',
                 'amount' => $amount,
                 'currency' => $currency,
                 'prism' => $recipients,

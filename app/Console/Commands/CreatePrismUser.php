@@ -22,15 +22,16 @@ class CreatePrismUser extends Command
     public function handle()
     {
         $lnAddress = $this->argument('lnAddress');
-
+        // For now, let's not pass nwcConnection details through the command,
+        // and just use what's defined in PrismService (which defaults to .env NWC_URL)
         $result = $this->prismService->createUser($lnAddress);
 
         if (isset($result['error'])) {
             $this->error('Failed to create user: '.$result['message']);
         } else {
-            print_r($result);
-            //            $this->info('User created successfully. User ID: '.$result['userId']);
-            // Display other relevant info if needed
+            $this->info('User created successfully.');
+            // Optionally print the full result for debugging/verification
+            $this->line(print_r($result, true));
         }
     }
 }
