@@ -15,3 +15,5 @@ You should sign up if:
 
 - You have needs unmet by other AI projects
 - You want to help us make agents work well for you
+
+[Sign up for Pro](https://pay.openagents.com/b/14kg0d0nt2TCegEcMP)
