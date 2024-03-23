@@ -6,6 +6,7 @@
         </a>
         <a href="/launch" wire:navigate class="ml-8 text-gray hover:text-white">Launch announcement</a>
         <a href="/docs" wire:navigate class="ml-8 text-gray hover:text-white">Docs</a>
+        <a href="/pro" wire:navigate class="ml-8 text-gray hover:text-white">Pro</a>
     </div>
     <div class="flex flex-row items-center">
         @php
