@@ -10,6 +10,15 @@ use Laravel\Jetstream\Jetstream;
 
 class StaticController extends Controller
 {
+    public function pro(Request $request)
+    {
+        $policyFile = Jetstream::localizedMarkdownPath('pro.md');
+
+        return view('policy', [
+            'policy' => Str::markdown(file_get_contents($policyFile)),
+        ]);
+    }
+
     public function docs(Request $request)
     {
         $policyFile = Jetstream::localizedMarkdownPath('docs.md');
