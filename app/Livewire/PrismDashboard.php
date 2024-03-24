@@ -52,7 +52,7 @@ class PrismDashboard extends Component
 
         // Convert createdAt timestamps to formatted dates
         foreach ($this->payments as &$payment) {
-            $payment['resolvedAt'] = Carbon::createFromTimestamp($payment['resolvedAt'])
+            $payment['createdAt'] = Carbon::createFromTimestamp($payment['createdAt'])
                 ->format('Y-m-d H:i:s');
         }
     }
