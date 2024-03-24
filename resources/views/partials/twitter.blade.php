@@ -17,6 +17,9 @@
     }(document, "script", "twitter-wjs"));
 
     document.addEventListener('livewire:navigated', function () {
+        if (typeof window.twttr.widgets === 'undefined') {
+            return;
+        }
         window.twttr.widgets.load();
     });
 </script>
