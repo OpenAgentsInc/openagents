@@ -18,6 +18,11 @@ class SemanticRouter
             }
         }
 
+        //        Log::info($highestScore);
+        if ($highestScore < 0.7) {
+            return 'default'; // If no route has a high enough similarity, return the default route
+        }
+
         return $selectedRoute; // Return the name of the route with the highest cosine similarity
     }
 
