@@ -36,8 +36,7 @@ class LogFilepaths extends Command
                 continue;
             }
 
-            // Log each file's contents
-            //            $this->line(Storage::get($file));
+            // $this->line(Storage::get($file));
         }
 
         $this->info('All file paths have been logged.');
