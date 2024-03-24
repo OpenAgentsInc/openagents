@@ -2,6 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+.terminal {
+    background-color: black;
+    color: white;
+    width: 450px;
+}
+
+.terminal-box {
+    border: 2px solid white;
+    position: relative; /* Added for absolute positioning of the header */
+    padding: 18px 16px 10px; /* Adjusted to give space for the header */
+    margin-bottom: 20px; /* Space between boxes */
+}
+
+.terminal-header {
+    position: absolute;
+    top: -13px; /* Adjust as needed */
+    left: 6px; /* Adjust as needed */
+    background-color: black;
+    padding: 0 10px;
+}
+
+.terminal-content {
+    line-height: 1.5;
+}
+
+.terminal-line {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px; /* Spacing between lines */
+}
+
+.terminal-line .label {
+    flex: 0 0 auto;
+}
+
+.terminal-line .value {
+    flex: 1 1 auto;
+    text-align: right;
+}
+
+
 [x-cloak] {
     display: none;
 }

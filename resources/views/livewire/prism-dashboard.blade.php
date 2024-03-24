@@ -4,7 +4,10 @@
     <div class="p-4">
         <div class="mt-12 font-bold text-lg">Prism payments</div>
         <div class="mt-4">
-<pre>
+            <x-pane/>
+
+
+            <pre class="mt-4">
 ┌ CPU - Payment Processing Load ───────────┐┌ mem - Funds Overview ───────────┐
 │ Load Average: 1.2 1.5 1.3                ││ Total: 100,000 SAT              │
 │ Active Threads: 4                        ││ Used: 60,000 SAT (60%)          │
