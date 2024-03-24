@@ -60,6 +60,10 @@ class Run extends Model
         }
 
         switch ($route) {
+            case 'repo':
+                dd('repo!');
+                break;
+
             case 'zipcode':
                 $plugin = Plugin::where('name', 'World Zipcode Finder')->first();
                 if (! $plugin) {
