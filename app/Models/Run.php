@@ -61,7 +61,7 @@ class Run extends Model
 
         switch ($route) {
             case 'repo':
-                dd('repo!');
+                return "That's a Pro feature but ur a noob";
                 break;
 
             case 'zipcode':
