@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use Carbon\Carbon;
 use Livewire\Component;
 
 class PrismDashboard extends Component
@@ -18,6 +19,7 @@ class PrismDashboard extends Component
                 'expiresAt' => 1711320285,
                 'senderId' => '68f5d9c3-9260-4fdc-b29f-8e5e8edcb849',
                 'receiverId' => '9a96fe41-30a6-4b84-96a2-7184f107be96',
+                'receiverAddress' => 'mcdonald55@bitnob.io',
                 'amountMsat' => 50000,
                 'status' => 'paid',
                 'resolvedAt' => 1711233889,
@@ -35,6 +37,7 @@ class PrismDashboard extends Component
                 'expiresAt' => 1711320284,
                 'senderId' => '68f5d9c3-9260-4fdc-b29f-8e5e8edcb849',
                 'receiverId' => '3cf9098c-283f-4843-8ee8-ada9a907a75f',
+                'receiverAddress' => 'rblb@blink.sv',
                 'amountMsat' => 50000,
                 'status' => 'paid',
                 'resolvedAt' => 1711233962,
@@ -46,6 +49,12 @@ class PrismDashboard extends Component
                 'type' => 'DEFAULT',
             ],
         ];
+
+        // Convert createdAt timestamps to formatted dates
+        foreach ($this->payments as &$payment) {
+            $payment['resolvedAt'] = Carbon::createFromTimestamp($payment['resolvedAt'])
+                ->format('Y-m-d H:i:s');
+        }
     }
 
     public function render()
