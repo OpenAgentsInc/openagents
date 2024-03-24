@@ -26,7 +26,6 @@ class ReverbDemo extends Component
     #[On('echo:demo-channel,SendDemoMessage')]
     public function handleDemoMessage($message): void
     {
-        // dd($message);
         $chats = array_merge($this->chats, $message);
         $this->chats[] = $chats;
 
