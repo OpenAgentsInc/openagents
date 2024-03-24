@@ -25,12 +25,11 @@ class LogFilepaths extends Command
         $folderPath = 'git-repo'; // Relative to Laravel's storage folder
         $files = Storage::allFiles($folderPath);
 
-        // dd the nuber of files
         $this->line(count($files).' files found.');
 
         foreach ($files as $file) {
-            // Log each file's relative path
-            $this->line($file);
+            // Log each file's relative path - but first remove the $folderPath from the beginning
+            $this->line($file = str_replace($folderPath.'/', '', $file));
 
             // Skip if path includes ".git"
             if (strpos($file, '.git') !== false) {
@@ -38,10 +37,7 @@ class LogFilepaths extends Command
             }
 
             // Log each file's contents
-            $this->line(Storage::get($file));
-
-            // Sleep 1 second
-            sleep(1);
+            //            $this->line(Storage::get($file));
         }
 
         $this->info('All file paths have been logged.');
