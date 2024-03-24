@@ -1,15 +1,16 @@
 <div>
     <livewire:navbar/>
     <div class="p-4 max-w-6xl mx-auto">
-        <div class="mt-36 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <div class="mt-36 grid grid-cols-1 gap-4 items-start">
 
-            <x-pane title="Funds Overview">
+            <!--<x-pane title="Funds Overview">
                 <div class="flex justify-between"><span>Total:</span> <span>100,000 SAT</span></div>
                 <div class="flex justify-between"><span>Used:</span> <span>60,000 SAT (60%)</span></div>
                 <div class="flex justify-between"><span>Available:</span> <span>40,000 SAT (40%)</span></div>
                 <div class="flex justify-between"><span>Reserved:</span> <span>10,000 SAT</span></div>
                 <div class="flex justify-between"><span>Cache:</span> <span>5,000 SAT</span></div>
             </x-pane>
+            -->
 
             <x-pane title="Recent Payments">
                 <div class="space-y-2">
