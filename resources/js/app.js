@@ -15,3 +15,4 @@ async function experiment() {
 
     weblnProvider.close();
 }
+
