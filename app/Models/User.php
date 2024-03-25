@@ -27,6 +27,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'prism_user_id',
     ];
 
     /**
