@@ -10,6 +10,13 @@ class PrismDashboard extends Component
 {
     public $payments;
 
+    protected $listeners = ['echo:payments,PaymentCreated' => 'ohshit'];
+
+    public function ohshit()
+    {
+        dd('NICE');
+    }
+
     public function mount()
     {
         // Check if there are any payments in the database
@@ -23,7 +30,7 @@ class PrismDashboard extends Component
                     'expiresAt' => Carbon::createFromTimestamp($payment->expires_at)->format('Y-m-d H:i:s'),
                     'senderId' => $payment->sender_prism_id,
                     'receiverId' => $payment->receiver_prism_id,
-                    'receiverAddress' => $payment->receiver->ln_address ?? 'N/A', // Example, adjust based on your model relations
+                    'receiverAddress' => $payment->receiver->ln_address ?? 'unknown_demo@blah.com', // Example, adjust based on your model relations
                     'amountMsat' => $payment->amount_msat,
                     'status' => $payment->status,
                     'resolvedAt' => $payment->resolved_at ? Carbon::createFromTimestamp($payment->resolved_at)->format('Y-m-d H:i:s') : null,
