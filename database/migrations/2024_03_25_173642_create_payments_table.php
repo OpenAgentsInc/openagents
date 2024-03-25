@@ -15,8 +15,8 @@ return new class extends Migration
             $table->id();
             $table->timestamps();
 
-            $table->foreignId('receiver_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('sender_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('receiver_id')->constrained('users')->onDelete('set null');
+            $table->foreignId('sender_id')->constrained('users')->onDelete('set null');
 
             // Prism SinglePayment fields
             $table->uuid('prism_id')->unique(); // Same as "id" from prism API (not the "prism payment" id)
