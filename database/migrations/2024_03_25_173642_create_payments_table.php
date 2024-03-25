@@ -15,13 +15,16 @@ return new class extends Migration
             $table->id();
             $table->timestamps();
 
+            $table->foreignId('receiver_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('sender_id')->constrained('users')->onDelete('cascade');
+
             // Prism SinglePayment fields
             $table->uuid('prism_id')->unique(); // Same as "id" from prism API (not the "prism payment" id)
             $table->unsignedBigInteger('prism_created_at');
             $table->unsignedBigInteger('prism_updated_at');
             $table->unsignedBigInteger('expires_at');
-            $table->string('receiver_id');
-            $table->string('sender_id');
+            $table->string('receiver_prism_id');
+            $table->string('sender_prism_id');
             $table->string('type');
             $table->bigInteger('amount_msat');
             $table->string('status');
@@ -33,7 +36,7 @@ return new class extends Migration
             $table->string('failure_code')->nullable();
 
             // Indexes for faster searching on frequently queried fields
-            $table->index(['sender_id', 'receiver_id', 'status']);
+            $table->index(['sender_prism_id', 'receiver_prism_id', 'status']);
         });
     }
 
@@ -42,6 +45,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::table('payments', function (Blueprint $table) {
+            $table->dropForeign(['receiver_id']);
+            $table->dropForeign(['sender_id']);
+        });
         Schema::dropIfExists('payments');
     }
 };
