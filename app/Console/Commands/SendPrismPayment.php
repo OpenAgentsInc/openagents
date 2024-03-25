@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Payment;
 use App\Models\User;
 use App\Services\PrismService;
 use Illuminate\Console\Command;
@@ -47,5 +48,37 @@ class SendPrismPayment extends Command
         $result = $this->prismService->sendPayment(100, 'SAT', $prism_recipients);
 
         $this->info('Payment response: '.print_r($result, true));
+
+        if (isset($result['payments']) && is_array($result['payments'])) {
+            foreach ($result['payments'] as $paymentData) {
+                $receiver = User::firstOrCreate(
+                    ['prism_user_id' => $paymentData['receiverId']],
+                    ['name' => 'Unknown Receiver', 'email' => $paymentData['receiverId'].'@placeholder.com']
+                );
+
+                Payment::create([
+                    'prism_id' => $paymentData['id'],
+                    'prism_created_at' => $paymentData['createdAt'],
+                    'prism_updated_at' => $paymentData['updatedAt'],
+                    'expires_at' => $paymentData['expiresAt'],
+                    'receiver_id' => $receiver->id,
+                    'sender_id' => $sender->id,
+                    'receiver_prism_id' => $paymentData['receiverId'],
+                    'sender_prism_id' => $paymentData['senderId'],
+                    'type' => $paymentData['type'],
+                    'amount_msat' => $paymentData['amountMsat'],
+                    'status' => $paymentData['status'],
+                    'resolved' => $paymentData['resolved'],
+                    'resolved_at' => $paymentData['resolved'] ? $paymentData['resolvedAt'] : null,
+                    'prism_payment_id' => $paymentData['prismPaymentId'],
+                    'bolt11' => $paymentData['bolt11'],
+                    'preimage' => $paymentData['preimage'],
+                    'failure_code' => $paymentData['failureCode'],
+                ]);
+            }
+        }
+
+        // Log how many Payments are in the database total
+        $this->info('Total payments in database: '.Payment::count());
     }
 }
