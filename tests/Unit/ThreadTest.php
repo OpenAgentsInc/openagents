@@ -5,11 +5,13 @@ use App\Models\Message;
 use App\Models\Thread;
 use App\Models\User;
 
+// Basics
 it('can be created', function () {
     $thread = Thread::factory()->create();
     $this->assertModelExists($thread);
 });
 
+// Relationships
 it('has many messages', function () {
     $thread = Thread::factory()->create();
     Message::factory(2)->create(['thread_id' => $thread->id]);
@@ -30,4 +32,27 @@ it('belongs to many users', function () {
     $thread->users()->attach($user);
 
     expect($thread->users)->toHaveCount(1);
+});
+
+// Privacy
+it('can be private', function () {
+    $thread = Thread::factory()->private()->create();
+    expect($thread->private)->toBeTrue();
+});
+
+it('is public by default', function () {
+    $thread = Thread::factory()->create();
+    expect($thread->private)->toBeFalse();
+});
+
+it('can be set private', function () {
+    $thread = Thread::factory()->create();
+    $thread->setPrivate();
+    expect($thread->private)->toBeTrue();
+});
+
+it('can be set public', function () {
+    $thread = Thread::factory()->private()->create();
+    $thread->setPublic();
+    expect($thread->private)->toBeFalse();
 });
