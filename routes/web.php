@@ -20,6 +20,10 @@ Route::get('/docs', [StaticController::class, 'docs']);
 Route::get('/demo/reverb-chat', ReverbDemo::class);
 Route::get('/nwc', [PrismController::class, 'nwc']);
 
+Route::get('/billing', function () {
+    return request()->user()?->redirectToBillingPortal() ?? redirect('/');
+});
+
 // Add auth route here for Livewire views
 Route::get('/reset/account', ForgetPassword::class);
 Route::get('/reset/account/link', PasswordResetLink::class);
