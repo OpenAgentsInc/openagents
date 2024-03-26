@@ -14,12 +14,25 @@
 <body class="h-full bg-black" x-data="{ sidebarOpen: false }">
     <div class="h-full" x-data="{ showSidebar: true, collapsed: false }">
         <!-- Off-canvas menu for mobile -->
-        <div x-show="sidebarOpen" class="fixed inset-0 flex z-40 lg:hidden" role="dialog" aria-modal="true">
+        <div x-show="sidebarOpen" class="fixed inset-0 flex z-40 lg:hidden" role="dialog" aria-modal="true" x-bind:class="{
+            'w-16': collapsed,
+            '-translate-x-full': !showSidebar
+           }">
             <!-- Off-canvas menu overlay -->
-            <div class="fixed inset-0 bg-white/15 bg-opacity-75" aria-hidden="true"></div>
+            <div class="fixed inset-0 bg-white/15 bg-opacity-75"  x-bind:class="{
+
+                'w-[300px]': !collapsed,
+                'w-16': collapsed,
+                '-translate-x-full': !showSidebar
+               }" aria-hidden="true"></div>
 
             <!-- Off-canvas menu content -->
-            <div class="relative flex-1 flex flex-col max-w-xs w-full pt-5 pb-4 bg-black border-r-2 border-[#1B1B1B]">
+            <div class="relative flex-1 flex flex-col max-w-xs w-full pt-5 pb-4 bg-black border-r-2 border-[#1B1B1B]" x-bind:class="{
+
+                'w-[300px]': !collapsed,
+                'w-16': collapsed,
+                '-translate-x-full': !showSidebar
+               }" aria-hidden="true">
                 <!-- Close button -->
                 <div class="absolute top-0 right-0 -mr-12 pt-2">
                     <button type="button" @click="sidebarOpen = false" class="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white">
@@ -31,7 +44,103 @@
                 </div>
 
                 <!-- Off-canvas menu items -->
+
                 <!-- Include your menu items here -->
+                <div class=" h-full flex flex-col  lg:inset-y-0 z-40">
+
+                    <!-- Include your sidebar content here -->
+                    <div x-bind:class="{
+                      'bg-black  text-zinc-50 fixed h-screen z-100': true,
+                      'w-[300px]': !collapsed,
+                      'w-16': collapsed,
+                      '-translate-x-full': !showSidebar
+                     }">
+                        <div x-bind:class="{
+                          'flex flex-col justify-between h-screen lg:h-full sticky inset-0': true,
+                          'p-4 justify-between': !collapsed,
+                          'py-4 justify-center': collapsed
+                         }">
+                            <div x-bind:class="{
+                              'flex items-center  transition-none': true,
+                              'p-4 justify-between': !collapsed,
+                              'py-4 justify-center': collapsed
+                             }">
+                                <div class="w-full">
+                                    <div class="flex gap-2 items-center justify-center overflow-hidden">
+                                        <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" height="36" width="36" alt="profile image" class="rounded-full">
+                                        <div x-show="!collapsed" class="flex flex-col">
+                                            <span class="text-indigo-50 my-0 text-sm">Tom Cook</span>
+                                            <!--                 <a href="/" class="text-indigo-200 text-sm">View Profile</a> -->
+
+                                        </div>
+                                        <div x-show="!collapsed" class="relative flex-1 text-right">
+                                            <div x-data="{ dropdown: false }">
+                                                <button @click="dropdown= !dropdown" class="p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                                        <path fill-rule="evenodd" d="M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.76 9.2a.75.75 0 011.06.04l2.7 2.908 2.7-2.908a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 01.04-1.06z" clip-rule="evenodd" />
+                                                    </svg>
+                                                </button>
+
+                                                <div x-show="dropdown" @click.away="dropdown= false" class="fixed z-100 divide-y divide-white/15 transition-[opacity,margin] duration  min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45" aria-labelledby="hs-dropdown-with-header">
+                                                    <div class="py-2 flex px-5 -m-2 bg-gray-100 rounded-t-lg text-sm gap-1 hover:bg-white/15 text-gray-300 hover:text-white">
+                                                        {{-- <p class="text-xs ">Signed in as</p> --}}
+                                                        <p class="text-sm font-medium">james@site.com</p>
+                                                    </div>
+                                                    <div class=" py-0 first:pt-0 last:pb-0">
+                                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                            <!-- Newsletter SVG Icon -->
+                                                            <span>Newsletter</span>
+                                                        </a>
+                                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                            <!-- Purchases SVG Icon -->
+                                                            <span>Purchases</span>
+                                                        </a>
+                                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                            <!-- Downloads SVG Icon -->
+                                                            <span>Downloads</span>
+                                                        </a>
+                                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                            <!-- Team Account SVG Icon -->
+                                                            <span>Team Account</span>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <nav class="flex-grow w-full">
+
+
+                                {{ $sidecontent_mobile ?? '' }}
+
+
+                            </nav>
+
+                            <div x-bind:class="{
+                            'grid place-content-stretch p-4 ': true,
+                            'justify-end': !collapsed,
+                            'justify-center': collapsed
+                              }">
+                                <button @click="collapsed = !collapsed" class="flex hover:bg-[#1B1B1B] w-10 h-10 rounded-full items-center justify-center opacity-100">
+                                    <span x-show="collapsed">
+                                        <x-icon.session-right /> </span>
+                                    <span x-show="!collapsed">
+                                        <x-icon.session-left /> </span>
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
+                <!-- end menuitems -->
+
+
+
+
             </div>
 
             <!-- Dummy element to force sidebar to shrink -->
@@ -47,17 +156,17 @@
               'w-[300px]': !collapsed,
               'w-16': collapsed,
               '-translate-x-full': !showSidebar
-           }">
+             }">
                 <div x-bind:class="{
                   'flex flex-col justify-between h-screen lg:h-full sticky inset-0': true,
                   'p-4 justify-between': !collapsed,
                   'py-4 justify-center': collapsed
-               }">
+                 }">
                     <div x-bind:class="{
                       'flex items-center  transition-none': true,
                       'p-4 justify-between': !collapsed,
                       'py-4 justify-center': collapsed
-                   }">
+                     }">
                         <div class="w-full">
                             <div class="flex gap-2 items-center justify-center overflow-hidden">
                                 <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" height="36" width="36" alt="profile image" class="rounded-full">
@@ -67,37 +176,37 @@
 
                                 </div>
                                 <div x-show="!collapsed" class="relative flex-1 text-right">
-                                    <div  x-data="{ open: true }">
-                                    <button @click="open = !open" class="p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-                                            <path fill-rule="evenodd" d="M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.76 9.2a.75.75 0 011.06.04l2.7 2.908 2.7-2.908a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 01.04-1.06z" clip-rule="evenodd" />
-                                        </svg>
-                                    </button>
+                                    <div x-data="{ dropdown: false }">
+                                        <button @click="dropdown= !dropdown" class="p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                                <path fill-rule="evenodd" d="M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.76 9.2a.75.75 0 011.06.04l2.7 2.908 2.7-2.908a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 01.04-1.06z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
 
-                                    <div x-show="open" @click.away="open = false" class="absolute z-50 transition-[opacity,margin] duration hs-dropdown-open:opacity-100 opacity-0 min-w-60 bg-white shadow-md rounded-lg p-2 dark:bg-gray-800 dark:border dark:border-gray-700" aria-labelledby="hs-dropdown-with-header">
-                                        <div class="py-3 px-5 -m-2 bg-gray-100 rounded-t-lg dark:bg-gray-700">
-                                            <p class="text-sm text-gray-500 dark:text-gray-400">Signed in as</p>
-                                            <p class="text-sm font-medium text-gray-800 dark:text-gray-300">james@site.com</p>
+                                        <div x-show="dropdown" @click.away="dropdown= false" class="fixed z-100 divide-y divide-white/15 transition-[opacity,margin] duration  min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45" aria-labelledby="hs-dropdown-with-header">
+                                            <div class="py-2 flex px-5 -m-2 bg-gray-100 rounded-t-lg text-sm gap-1 hover:bg-white/15 text-gray-300 hover:text-white">
+                                                {{-- <p class="text-xs ">Signed in as</p> --}}
+                                                <p class="text-sm font-medium">james@site.com</p>
+                                            </div>
+                                            <div class=" py-0 first:pt-0 last:pb-0">
+                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                    <!-- Newsletter SVG Icon -->
+                                                    <span>Newsletter</span>
+                                                </a>
+                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                    <!-- Purchases SVG Icon -->
+                                                    <span>Purchases</span>
+                                                </a>
+                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                    <!-- Downloads SVG Icon -->
+                                                    <span>Downloads</span>
+                                                </a>
+                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                    <!-- Team Account SVG Icon -->
+                                                    <span>Team Account</span>
+                                                </a>
+                                            </div>
                                         </div>
-                                        <div class="mt-2 py-2 first:pt-0 last:pb-0">
-                                            <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300">
-                                                <!-- Newsletter SVG Icon -->
-                                                <span>Newsletter</span>
-                                            </a>
-                                            <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300">
-                                                <!-- Purchases SVG Icon -->
-                                                <span>Purchases</span>
-                                            </a>
-                                            <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300">
-                                                <!-- Downloads SVG Icon -->
-                                                <span>Downloads</span>
-                                            </a>
-                                            <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm text-gray-800 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300">
-                                                <!-- Team Account SVG Icon -->
-                                                <span>Team Account</span>
-                                            </a>
-                                        </div>
-                                    </div>
                                     </div>
                                 </div>
                             </div>
@@ -106,32 +215,17 @@
                     </div>
                     <nav class="flex-grow w-full">
 
-                        <ul x-bind:class="{
-                          'my-2 flex flex-col gap-2 items-stretch': true,
-                          'rounded-md p-2 mx- gap-4': !collapsed,
-                          'rounded-full p-2 mx- w-10 h-10': collapsed
-                       }">
-                       <li>
-                        <span class="text-left font-sm text-[#777A82] px-4" x-show="!collapsed">
-                            Recent
-                        </span>
-                       </li>
-                            <li x-bind:class="{
-                              'text-white hover:bg-white/15 bg-black   flex transition-colors duration-300': true
-                           }">
-                                <a href="#" class="flex gap-2 p-3 rounded">
 
-                                    <span x-show="!collapsed"> Why we did it</span>
-                                </a>
-                            </li>
-                        </ul>
+                        {{ $sidecontent ?? '' }}
+
+
                     </nav>
 
                     <div x-bind:class="{
                     'grid place-content-stretch p-4 ': true,
                     'justify-end': !collapsed,
                     'justify-center': collapsed
-                }">
+                      }">
                         <button @click="collapsed = !collapsed" class="flex hover:bg-[#1B1B1B] w-10 h-10 rounded-full items-center justify-center opacity-0 lg:opacity-100">
                             <span x-show="collapsed">
                                 <x-icon.session-right /> </span>
@@ -146,22 +240,19 @@
         </div>
 
         <!-- Navbar -->
-        <div class=" flex flex-col  z-20" x-bind:class="{
+        <div class=" flex flex-col  z-100" >
+            <!-- Navbar content -->
+            <div class="fixed top-0 inset-x-0 z-48 flex-shrink-0 flx h-auto bg-black shadow border border-b-2 border-[#1B1B1B]"
+            x-bind:class="{
 
               'transition-all duration-300 ease-in-out': true,
               'lg:pl-[300px]': !collapsed,
               'lg:pl-16': collapsed,
               '-translate-x-full': !showSidebar
            }">
-            <!-- Navbar content -->
-            <div class="sticky top-0 z-10 flex-shrink-0 flex h-16 bg-black shadow border border-b-2 border-[#1B1B1B]">
-                <button type="button" @click="sidebarOpen = !sidebarOpen" class="px-4 border-r border-gray-200 text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[] lg:hidden">
-                    <span class="sr-only">Open sidebar</span>
-                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" />
-                    </svg>
-                </button>
+
                 <!-- Include your navbar content here -->
+                @livewire('layouts.sidebar.navbar')
             </div>
 
             <!-- Main content area -->
@@ -176,6 +267,209 @@
             </main>
         </div>
     </div>
+
+    {{-- Modal Pop up here --}}
+
+    <!-- login modal -->
+    <div x-data="{ open: false }" @open-login-modal.window="open = true" @close-login-modal.window="open = false">
+        <!-- Trigger button -->
+        <!-- Modal -->
+        <div x-show="open" @click.away="$dispatch('close-login-modal')" class="fixed inset-0 flex items-center justify-center  bg-black/90 w-full h-full z-[500]">
+
+
+            <!-- Overlay -->
+            <div class="fixed bg-black/20 rounded-lg p-6  w-full max-w-full shadow-lg transform transition-all duration-300 z-[5]" x-show.transition.opacity="open"></div>
+
+            <div class="fixed border border-[#3C3E42] bg-black rounded-lg p-6  max-w-md   shadow-lg transform transition-all duration-300 z-[5000]" x-show.transition.opacity="open">
+                <!-- Modal Header -->
+
+                <div class="flex justify-end items-center  pb-4">
+                    {{-- <h2 class="text-2xl font-semibold">Get Started</h2> --}}
+                    <button @click="open = false" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="">
+                    <h2 class="block text-xl text-center font-bold text-gray-800 dark:text-gray-200">Sign In</h2>
+                </div>
+
+                <div class="p-4 sm:p-7">
+
+                        <div class="mb-4">
+                            <x-input id="email" class="block mt-1 w-full"  type="email" name="email" :value="old('email')"
+                                          required autofocus autocomplete="username" placeholder="email"/>
+                        </div>
+
+                        <div class="flex justify-end items-center">
+
+                            <a  @click="$dispatch('open-resetpassword-modal')" @click="$dispatch('close-login-modal')" class="text-sm text-gray decoration-2 hover:underline hover:text-white font-medium focus:outline-none focus:ring-1 focus:ring-gray-600" href="#">Forgot password?</a>
+                          </div>
+
+                        <div class="mb-4">
+                            <x-input id="password" class="block mt-1 w-full"  type="password" name="password"
+                                          required autofocus autocomplete="password" placeholder="password"/>
+                        </div>
+
+
+                    <div class="mt-5">
+                        {{-- <a class="w-full py-3 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-slate-900 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800 dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600" href="#">
+
+                        </a> --}}
+                        <x-button class="w-full flex justify-center gap-2 hover:bg-gray">
+                            <x-icon.agent class="h-5 w-5 text-black"></x-icon.agent>
+                            Sign In
+                        </x-button>
+
+                        <div class="py-3 flex items-center text-xs text-gray-400 uppercase before:flex-[1_1_0%] before:border-t before:border-gray-200 before:me-6 after:flex-[1_1_0%] after:border-t after:border-gray-200 after:ms-6 dark:text-gray-500 dark:before:border-gray-600 dark:after:border-gray-600">Or</div>
+
+
+                        <x-secondary-button class="w-full flex justify-center gap-2">
+                            <x-icon.google class="h-5 w-5"></x-icon.google>
+                            Continue with Google
+                        </x-secondary-button>
+
+                    </div>
+
+                    <div class="text-center">
+                        <p class="mt-2 text-sm text-gray">
+                           Do not have an account?
+                            <a @click="$dispatch('open-register-modal')" id="hs-dropdown-with-header" type="button" class="text-white decoration-2 hover:underline font-medium dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600" href="#">
+                                Create an account
+                            </a>
+
+                        </p>
+                    </div>
+                </div>
+
+
+
+
+
+            </div>
+        </div>
+    </div>
+
+    <!-- registration modal -->
+    <div x-data="{ open: false }" @open-register-modal.window="open = true" @close-register-modal.window="open = false">
+        <!-- Trigger button -->
+        <!-- Modal -->
+        <div x-show="open" @click.away="$dispatch('close-register-modal')" class="fixed inset-0 flex items-center justify-center  bg-black/90 w-full h-full z-[500]">
+
+
+            <!-- Overlay -->
+            <div class="fixed bg-black/20 rounded-lg p-6  w-full max-w-full shadow-lg transform transition-all duration-300 z-[5]" x-show.transition.opacity="open"></div>
+
+            <div class="fixed border border-[#3C3E42] bg-black rounded-lg p-6  max-w-md   shadow-lg transform transition-all duration-300 z-[5000]" x-show.transition.opacity="open">
+                <!-- Modal Header -->
+
+                <div class="flex justify-end items-center  pb-4">
+                    {{-- <h2 class="text-2xl font-semibold">Get Started</h2> --}}
+                    <button @click="open = false" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+
+               @livewire('auth.register')
+
+
+
+
+
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Forgot Password modal -->
+    <div x-data="{ open: false }" @open-resetpassword-modal.window="open = true" @close-resetpassword-modal.window="open = false">
+        <!-- Trigger button -->
+        <!-- Modal -->
+        <div x-show="open" @click.away="$dispatch('close-resetpassword-modal')" class="fixed inset-0 flex items-center justify-center  bg-black/90 w-full h-full z-[500]">
+
+
+            <!-- Overlay -->
+            <div class="fixed bg-black/20 rounded-lg p-6  w-full max-w-full shadow-lg transform transition-all duration-300 z-[5]" x-show.transition.opacity="open"></div>
+
+            <div class="fixed border border-[#3C3E42] bg-black rounded-lg p-6  max-w-md   shadow-lg transform transition-all duration-300 z-[5000]" x-show.transition.opacity="open">
+                <!-- Modal Header -->
+
+                <div class="flex justify-end items-center  pb-4">
+                    {{-- <h2 class="text-2xl font-semibold">Get Started</h2> --}}
+                    <button @click="open = false" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="">
+                    <h2 class="block text-xl text-center font-bold text-gray-800 dark:text-gray-200">Reset Password</h2>
+                </div>
+
+
+
+                <div class="p-4 sm:p-7">
+
+                    <div class=" flex justify-center">
+                        <span class="mb-4 inline-flex justify-center items-center  rounded-full">
+                            <x-icon.padlock class="w-[100px] h-[100px]">
+                            </x-icon.padlock>
+                        </span>
+                    </div>
+
+                        <div class="mb-4">
+                            <x-input id="email" class="block mt-1 w-full"  type="email" name="email" :value="old('email')"
+                                          required autofocus autocomplete="username" placeholder="email"/>
+                        </div>
+
+
+                    <div class="mt-5">
+                        {{-- <a class="w-full py-3 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-slate-900 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800 dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600" href="#">
+
+                        </a> --}}
+                        <x-button class="w-full flex justify-center gap-2 hover:bg-gray">
+                            <x-icon.agent class="h-5 w-5 text-black"></x-icon.agent>
+                            Reset Account
+                        </x-button>
+
+
+
+                    </div>
+
+                    <div class="text-center">
+                        <p class="mt-2 text-sm text-gray">
+                            Do you have an account?
+                            <a @click="$dispatch('close-resetpassword-modal')" class="text-white decoration-2 hover:underline font-medium dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600" href="#">
+                               Login
+                            </a>
+
+
+                        </p>
+                    </div>
+                </div>
+
+
+
+
+
+            </div>
+        </div>
+    </div>
+
+
+
+
+    @yield('modal')
+
+    {{-- End Modal Popup --}}
 </body>
 
 @include('partials.twitter')
