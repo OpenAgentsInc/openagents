@@ -37,13 +37,13 @@ class Chat extends Component
         // Find this thread
         $thread = Thread::find($id);
 
-        // If it's private, check if the user is a member - if not, redirect to homepage
-        if ($thread->private && ! $thread->users->contains(auth()->id())) {
+        // If it doesn't exist, redirect to homepage
+        if (! $thread) {
             return $this->redirect('/');
         }
 
-        // If it doesn't exist, redirect to homepage
-        if (! $thread) {
+        // If it's private, check if the user is a member - if not, redirect to homepage
+        if ($thread->private && ! $thread->users->contains(auth()->id())) {
             return $this->redirect('/');
         }
 
