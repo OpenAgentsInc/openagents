@@ -27,4 +27,14 @@ class Thread extends Model
     {
         return $this->belongsToMany(User::class);
     }
+
+    public function setPrivate(): void
+    {
+        $this->update(['private' => true]);
+    }
+
+    public function setPublic(): void
+    {
+        $this->update(['private' => false]);
+    }
 }

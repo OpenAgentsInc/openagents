@@ -2,10 +2,12 @@
 
 namespace Database\Factories;
 
+use App\Models\Agent;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Agent>
+ * @extends Factory<Agent>
  */
 class AgentFactory extends Factory
 {
@@ -17,7 +19,10 @@ class AgentFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'name' => $this->faker->name,
+            'description' => $this->faker->sentence,
+            'instructions' => $this->faker->sentence,
+            'user_id' => User::factory(),
         ];
     }
 }
