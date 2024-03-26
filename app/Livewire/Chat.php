@@ -42,6 +42,11 @@ class Chat extends Component
             return $this->redirect('/');
         }
 
+        // If it's private, check if the user is a member - if not, redirect to homepage
+        if ($thread->private && ! $thread->users->contains(auth()->id())) {
+            return $this->redirect('/');
+        }
+
         // Set the thread and its messages
         $this->thread = $thread;
         $this->messages = $this->thread->messages->sortBy('created_at')->toArray();
