@@ -1,15 +1,15 @@
 <?php
 
-use App\Http\Controllers\PrismController;
-use App\Http\Controllers\StaticController;
-use App\Livewire\Auth\ChangePassword;
-use App\Livewire\Auth\ForgetPassword;
-use App\Livewire\Auth\PasswordResetLink;
 use App\Livewire\Chat;
 use App\Livewire\Frontpage;
-use App\Livewire\PrismDashboard;
 use App\Livewire\ReverbDemo;
+use App\Livewire\PrismDashboard;
+use App\Livewire\Auth\ChangePassword;
+use App\Livewire\Auth\ForgetPassword;
 use Illuminate\Support\Facades\Route;
+use App\Livewire\Auth\PasswordResetLink;
+use App\Http\Controllers\PrismController;
+use App\Http\Controllers\StaticController;
 
 Route::get('/', Frontpage::class);
 Route::get('/chat/{id}', Chat::class);
