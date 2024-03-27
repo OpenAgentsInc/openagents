@@ -295,12 +295,7 @@
     </div>
 </div>
 
-{{-- Modal Pop up here --}}
-
-
 @include('partials.modals')
-
-
 
 @yield('modal')
 

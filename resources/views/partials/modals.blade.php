@@ -21,7 +21,7 @@
                              :value="old('email')"
                              required autofocus autocomplete="username" placeholder="Enter email..."/>
                 </div>
-                
+
                 <div class="mt-6">
                     <x-button class="text-xl w-full flex justify-center gap-2 hover:bg-gray">
                         Continue
@@ -87,7 +87,7 @@
 
 
 <!-- Forgot Password modal -->
-<div x-data="{ open: false }" @open-resetpassword-modal.window="open = true"
+<div x-data="{ open: false }" @open-resetpassword-modal.window="open = false"
      @close-resetpassword-modal.window="open = false">
     <!-- Trigger button -->
     <!-- Modal -->
