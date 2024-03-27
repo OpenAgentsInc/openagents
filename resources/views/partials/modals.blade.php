@@ -1,4 +1,7 @@
-<div x-data="{ open: false }" @open-login-modal.window="open = true" @close-login-modal.window="open = false">
+<div x-data="{ open: false }" @open-login-modal.window="open = true" @close-login-modal.window="open = false"
+     class="hidden"
+     :class="{'hidden': !open}"
+>
     <!-- Trigger button -->
     <div x-show="open" class="fixed inset-0 flex items-center justify-center  bg-black/90 w-full h-full z-[50]">
 
@@ -53,7 +56,10 @@
 </div>
 
 <!-- registration modal -->
-<div x-data="{ open: false }" @open-register-modal.window="open = true" @close-register-modal.window="open = false">
+<div x-data="{ open: false }" @open-register-modal.window="open = true" @close-register-modal.window="open = false"
+     class="hidden"
+     :class="{'hidden': !open}"
+>
     <!-- Trigger button -->
     <!-- Modal -->
     <div x-show="open" @click.away="$dispatch('close-register-modal')"
@@ -88,7 +94,10 @@
 
 <!-- Forgot Password modal -->
 <div x-data="{ open: false }" @open-resetpassword-modal.window="open = false"
-     @close-resetpassword-modal.window="open = false">
+     @close-resetpassword-modal.window="open = false"
+     class="hidden"
+     :class="{'hidden': !open}"
+>
     <!-- Trigger button -->
     <!-- Modal -->
     <div x-show="open" @click.away="$dispatch('close-resetpassword-modal')"
