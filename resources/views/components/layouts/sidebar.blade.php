@@ -11,7 +11,7 @@
     @include('partials.ogtags')
 </head>
 
-<body class="h-full bg-black" x-data="{ sidebarOpen: false,  showSidebar: true, collapsed: false }">
+<body class="h-full bg-black" x-data="{ sidebarOpen: false, showSidebar: true, collapsed: false }">
 <div class="h-full">
     <!-- Off-canvas menu for mobile -->
     <div x-show="sidebarOpen" class="fixed inset-0 flex z-40 lg:hidden" role="dialog" aria-modal="true" x-bind:class="{
@@ -49,7 +49,7 @@
             <!-- Off-canvas menu items -->
 
             <!-- Include your menu items here -->
-            <div class=" h-full flex flex-col  lg:inset-y-0 z-40">
+            <div class="h-full flex flex-col  lg:inset-y-0 z-40">
 
                 <!-- Include your sidebar content here -->
                 <div x-bind:class="{
@@ -269,8 +269,6 @@
         <!-- Navbar content -->
         <div class="fixed top-0 inset-x-0 z-48 flex-shrink-0 flx h-auto bg-black shadow"
              x-bind:class="{
-
-              'transition-all duration-300 ease-in-out': true,
               'lg:pl-[300px]': !collapsed,
               'lg:pl-16': collapsed,
               '-translate-x-full': !showSidebar
@@ -285,8 +283,6 @@
             <!-- Include your main content here -->
 
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" x-bind:class="{
-
-                    'transition-all duration-300 ease-in-out': true,
                     'lg:pl-[0px]': !collapsed,
                     'lg:pl-16': collapsed,
                     '-translate-x-full': !showSidebar

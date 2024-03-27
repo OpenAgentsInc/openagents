@@ -13,8 +13,6 @@
 
 
         <div class="w-full h-screen flex flex-col" x-bind:class="{
-
-                'transition-all duration-300 ease-in-out': true,
                 'lg:pl-[300px]': !collapsed,
                 'lg:pl-16': collapsed,
                 '-translate-x-full': !showSidebar
@@ -56,8 +54,6 @@
 
             <div class="xl:fixed bottom-0 left-[0px] right-0 h-[80px] px-4 py-3 flex items-center z-10"
                  x-bind:class="{
-
-                    'transition-all duration-300 ease-in-out': true,
                     'lg:pl-[300px]': !collapsed,
                     'lg:pl-16': collapsed,
                     '-translate-x-full': !showSidebar

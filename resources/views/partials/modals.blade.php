@@ -14,20 +14,19 @@
                 <h2 class="block text-[32px] text-center font-bold text-gray-800 dark:text-gray-200">Get started</h2>
             </div>
 
-            <div class="p-4 sm:px-7">
+            <div class="py-4 px-1">
 
                 <div class="my-4">
-                    <x-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')"
+                    <x-input id="email" class="h-[48px] block mt-1 w-full" type="email" name="email"
+                             :value="old('email')"
                              required autofocus autocomplete="username" placeholder="Enter email..."/>
                 </div>
-
-
-                <div class="mt-5">
+                
+                <div class="mt-6">
                     <x-button class="text-xl w-full flex justify-center gap-2 hover:bg-gray">
-                        Get started
+                        Continue
                     </x-button>
                 </div>
-
 
                 <div class="mt-8 text-center">
                     <p class="text-sm text-gray mb-0">
@@ -121,7 +120,7 @@
             </div>
 
 
-            <div class="p-4 sm:px-7">
+            <div class="py-4">
 
                 <div class=" flex justify-center">
                      <span class="mb-4 inline-flex justify-center items-center  rounded-full">
