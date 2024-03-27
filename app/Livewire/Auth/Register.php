@@ -8,8 +8,7 @@ class Register extends Component
 {
     public int $step = 1;
 
-    public function set_step()
-    {
+    public function set_step(){
         $this->step = 2;
     }
 
