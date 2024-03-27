@@ -15,10 +15,7 @@
             </div>
 
             <div class="w-full justify-end flex items-center  ms-auto md:justify-between sm:gap-x-3 sm:order-3">
-
-
                 <div class="items-center py-4 hidden md:flex">
-
                     <!-- Breadcrumb -->
                     <ol class="ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
                         <li class="flex items-center text-sm text-gray hover:text-white">
@@ -35,7 +32,7 @@
                                  tabindex="0" @click="dropdown= !dropdown">
                                 <x-icon.chatgpt class="w-8 h-8"></x-icon.chatgpt>
                                 <div class="flex flex-col">
-                                    <span class="text-indigo-50 my-0 text-sm">GPT-4 </span>
+                                    <span class="text-indigo-50 my-0 text-[20px]">GPT-4 </span>
 
                                 </div>
                                 <div class="relative flex-1 text-right bg-black">
