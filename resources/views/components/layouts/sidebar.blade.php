@@ -28,7 +28,7 @@
                }" aria-hidden="true"></div>
 
         <!-- Off-canvas menu content -->
-        <div class="relative flex-1 flex flex-col max-w-xs w-full pt-5 pb-4 bg-black border-r-2 border-[#1B1B1B]"
+        <div class="relative flex-1 flex flex-col max-w-xs w-full pt-5 pb-4 bg-black border-r-2 border border-[#1B1B1B]"
              x-bind:class="{
 
                 'w-[300px]': !collapsed,
@@ -127,7 +127,7 @@
 
         <!-- Include your sidebar content here -->
         <div x-cloak x-show="showSidebar" x-bind:class="{
-              'bg-black border-r-4 border-[#1B1B1B] text-zinc-50 fixed h-screen lg:static z-20': true,
+              'bg-black border-r-2 border-[#1B1B1B] text-zinc-50 fixed h-screen lg:static z-20': true,
               'w-[300px]': !collapsed,
               'w-16': collapsed,
               '-translate-x-full': !showSidebar
