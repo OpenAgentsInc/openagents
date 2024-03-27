@@ -14,49 +14,36 @@
                 <h2 class="block text-[32px] text-center font-bold text-gray-800 dark:text-gray-200">Get started</h2>
             </div>
 
-            <div class="p-4 sm:p-7">
+            <div class="p-4 sm:px-7">
 
-                <div class="mb-4">
+                <div class="my-4">
                     <x-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')"
-                             required autofocus autocomplete="username" placeholder="email"/>
-                </div>
-
-                <div class="flex justify-end items-center">
-                    <a @click="$dispatch('open-resetpassword-modal')" @click="$dispatch('close-login-modal')"
-                       class="text-sm text-gray decoration-2 hover:underline hover:text-white font-medium focus:outline-none focus:ring-1 focus:ring-gray-600"
-                       href="#">Forgot password?</a>
-                </div>
-
-                <div class="mb-4">
-                    <x-input id="password" class="block mt-1 w-full" type="password" name="password" required autofocus
-                             autocomplete="password" placeholder="password"/>
+                             required autofocus autocomplete="username" placeholder="Enter email..."/>
                 </div>
 
 
                 <div class="mt-5">
-                    <x-button class="w-full flex justify-center gap-2 hover:bg-gray">
-                        <x-icon.agent class="h-5 w-5 text-black"></x-icon.agent>
-                        Sign In
+                    <x-button class="text-xl w-full flex justify-center gap-2 hover:bg-gray">
+                        Get started
                     </x-button>
-
-                    <div class="py-3 flex items-center text-xs text-gray-400 uppercase before:flex-[1_1_0%] before:border-t before:border-gray-200 before:me-6 after:flex-[1_1_0%] after:border-t after:border-gray-200 after:ms-6 dark:text-gray-500 dark:before:border-gray-600 dark:after:border-gray-600">
-                        Or
-                    </div>
-
-                    <x-secondary-button class="w-full flex justify-center gap-2">
-                        <x-icon.google class="h-5 w-5"></x-icon.google>
-                        Continue with Google
-                    </x-secondary-button>
-
                 </div>
 
-                <div class="text-center">
-                    <p class="mt-2 text-sm text-gray">
-                        Do not have an account?
-                        <a @click="$dispatch('open-register-modal')" id="hs-dropdown-with-header" type="button"
-                           class="text-white decoration-2 hover:underline font-medium dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600"
-                           href="#">
-                            Create an account
+
+                <div class="mt-8 text-center">
+                    <p class="text-sm text-gray mb-0">
+                        By continuing you agree to our
+                        <a class="text-white decoration-2 hover:underline font-medium dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600"
+                           href="/terms"
+                           target="_blank"
+                        >
+                            Terms of Service
+                        </a>
+                        and
+                        <a class="text-white decoration-2 hover:underline font-medium dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600"
+                           href="/privacy"
+                           target="_blank"
+                        >
+                            Privacy Policy.
                         </a>
 
                     </p>
@@ -134,7 +121,7 @@
             </div>
 
 
-            <div class="p-4 sm:p-7">
+            <div class="p-4 sm:px-7">
 
                 <div class=" flex justify-center">
                      <span class="mb-4 inline-flex justify-center items-center  rounded-full">
