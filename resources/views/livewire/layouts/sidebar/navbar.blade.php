@@ -44,7 +44,7 @@
                                         <div x-show="dropdown" @click.away="dropdown= false" class="fixed z-[90000] divide-y divide-white/15   min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45" aria-labelledby="hs-dropdown-with-header">
 
                                             <div class=" py-0 first:pt-0 last:pb-0 bg-black">
-                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/25">
                                                     <x-icon.chatgpt class="w-8 h-8"></x-icon.chatgpt>
                                                     <div class="flex flex-col">
                                                         <span class="text-indigo-50 my-0 text-sm">ChatGPT </span>
@@ -52,7 +52,7 @@
                                                     </div>
                                                 </a>
 
-                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/25">
                                                     <x-icon.claude class="w-8 h-8"></x-icon.claude>
                                                     <div class="flex flex-col">
                                                         <span class="text-indigo-50 my-0 text-sm">Claude </span>
@@ -60,7 +60,7 @@
                                                     </div>
                                                 </a>
 
-                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                                <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/25">
                                                     <x-icon.gemini class="w-8 h-8"></x-icon.gemini>
                                                     <div class="flex flex-col">
                                                         <span class="text-indigo-50 my-0 text-sm">Gemini </span>
@@ -224,7 +224,7 @@
                                 <div x-show="dropdown" @click.away="dropdown= false" class="fixed z-[90000] divide-y divide-white/15   min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45" aria-labelledby="hs-dropdown-with-header">
 
                                     <div class=" py-0 first:pt-0 last:pb-0 bg-black">
-                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/25">
                                             <x-icon.chatgpt class="w-8 h-8"></x-icon.chatgpt>
                                             <div class="flex flex-col">
                                                 <span class="text-indigo-50 my-0 text-sm">ChatGPT </span>
@@ -232,7 +232,7 @@
                                             </div>
                                         </a>
 
-                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/25">
                                             <x-icon.claude class="w-8 h-8"></x-icon.claude>
                                             <div class="flex flex-col">
                                                 <span class="text-indigo-50 my-0 text-sm">Claude </span>
@@ -240,7 +240,7 @@
                                             </div>
                                         </a>
 
-                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
+                                        <a href="#" class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/25">
                                             <x-icon.gemini class="w-8 h-8"></x-icon.gemini>
                                             <div class="flex flex-col">
                                                 <span class="text-indigo-50 my-0 text-sm">Gemini </span>
