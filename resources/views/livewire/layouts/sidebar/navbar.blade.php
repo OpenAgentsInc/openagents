@@ -18,14 +18,7 @@
                 <div class="items-center py-4 hidden md:flex">
                     <!-- Breadcrumb -->
                     <ol class="ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
-                        <li class="flex items-center text-sm text-gray hover:text-white">
-                            <x-icon.logo class="w-8 h-8"></x-icon.logo>
-                            <svg class="flex-shrink-0 mx-3 overflow-visible size-2.5 text-gray-400 " width="16"
-                                 height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5 1L10.6869 7.16086C10.8637 7.35239 10.8637 7.64761 10.6869 7.83914L5 14"
-                                      stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-                            </svg>
-                        </li>
+
                         <li class="text-sm font-semibold text-gray-800 truncate " x-data="{ dropdown: false }"
                             aria-current="page">
                             <div class="flex gap-2 items-center justify-center overflow-hidden" role="button"
@@ -204,10 +197,10 @@
                                 </button>
 
                                 <div x-show="dropdown" @click.away="dropdown= false"
-                                     class="fixed z-[90000] divide-y divide-white/15   min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
+                                     class="fixed z-[9000] divide-y divide-white/15   min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
                                      aria-labelledby="hs-dropdown-with-header">
 
-                                    <div class=" py-0 first:pt-0 last:pb-0 bg-black">
+                                    <div class="z-[9999] py-0 first:pt-0 last:pb-0 bg-white">
                                         <a href="#"
                                            class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/25">
                                             <x-icon.chatgpt class="w-8 h-8"></x-icon.chatgpt>

@@ -78,8 +78,6 @@
                                             x-cloak
                                             x-show="!collapsed" class="flex flex-col">
                                         <span class="text-indigo-50 my-0 text-sm">Tom Cook</span>
-                                        <!--                 <a href="/" class="text-indigo-200 text-sm">View Profile</a> -->
-
                                     </div>
                                     <div x-cloak
                                          x-show="!collapsed" class="relative flex-1 text-right">
@@ -94,38 +92,6 @@
                                                 </svg>
                                             </button>
 
-                                            <div
-                                                    x-cloak
-                                                    x-show="dropdown" @click.away="dropdown= false"
-                                                    class="fixed z-100 divide-y divide-white/15 transition-[opacity,margin] duration  min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
-                                                    aria-labelledby="hs-dropdown-with-header">
-                                                <div class="py-2 flex px-5 -m-2 bg-gray-100 rounded-t-lg text-sm gap-1 hover:bg-white/15 text-gray-300 hover:text-white">
-                                                    {{-- <p class="text-xs ">Signed in as</p> --}}
-                                                    <p class="text-sm font-medium">james@site.com</p>
-                                                </div>
-                                                <div class=" py-0 first:pt-0 last:pb-0">
-                                                    <a href="#"
-                                                       class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
-                                                        <!-- Newsletter SVG Icon -->
-                                                        <span>Newsletter</span>
-                                                    </a>
-                                                    <a href="#"
-                                                       class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
-                                                        <!-- Purchases SVG Icon -->
-                                                        <span>Purchases</span>
-                                                    </a>
-                                                    <a href="#"
-                                                       class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
-                                                        <!-- Downloads SVG Icon -->
-                                                        <span>Downloads</span>
-                                                    </a>
-                                                    <a href="#"
-                                                       class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
-                                                        <!-- Team Account SVG Icon -->
-                                                        <span>Team Account</span>
-                                                    </a>
-                                                </div>
-                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -188,79 +154,9 @@
                   'p-4 justify-between': !collapsed,
                   'py-4 justify-center': collapsed
                  }">
-                <div x-bind:class="{
-                      'flex items-center  transition-none': true,
-                      'p-4 justify-between': !collapsed,
-                      'py-4 justify-center': collapsed
-                     }">
-                    <div class="w-full">
-                        <div class="flex gap-2 items-center justify-center overflow-hidden">
-                            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                                 height="36" width="36" alt="profile image" class="rounded-full">
-                            <div x-cloak
-                                 x-show="!collapsed" class="flex flex-col">
-                                <span class="text-indigo-50 my-0 text-sm">Tom Cook</span>
-                                <!--                 <a href="/" class="text-indigo-200 text-sm">View Profile</a> -->
 
-                            </div>
-                            <div
-                                    x-cloak
-                                    x-show="!collapsed" class="relative flex-1 text-right">
-                                <div x-data="{ dropdown: false }">
-                                    <button @click="dropdown= !dropdown"
-                                            class="p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
-                                             class="w-5 h-5">
-                                            <path fill-rule="evenodd"
-                                                  d="M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.76 9.2a.75.75 0 011.06.04l2.7 2.908 2.7-2.908a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 01.04-1.06z"
-                                                  clip-rule="evenodd"/>
-                                        </svg>
-                                    </button>
-
-                                    <div
-                                            x-cloak
-                                            x-show="dropdown" @click.away="dropdown= false"
-                                            class="fixed z-100 divide-y divide-white/15 transition-[opacity,margin] duration  min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
-                                            aria-labelledby="hs-dropdown-with-header">
-                                        <div class="py-2 flex px-5 -m-2 bg-gray-100 rounded-t-lg text-sm gap-1 hover:bg-white/15 text-gray-300 hover:text-white">
-                                            {{-- <p class="text-xs ">Signed in as</p> --}}
-                                            <p class="text-sm font-medium">james@site.com</p>
-                                        </div>
-                                        <div class=" py-0 first:pt-0 last:pb-0">
-                                            <a href="#"
-                                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
-                                                <!-- Newsletter SVG Icon -->
-                                                <span>Newsletter</span>
-                                            </a>
-                                            <a href="#"
-                                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
-                                                <!-- Purchases SVG Icon -->
-                                                <span>Purchases</span>
-                                            </a>
-                                            <a href="#"
-                                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
-                                                <!-- Downloads SVG Icon -->
-                                                <span>Downloads</span>
-                                            </a>
-                                            <a href="#"
-                                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-gray-200">
-                                                <!-- Team Account SVG Icon -->
-                                                <span>Team Account</span>
-                                            </a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
                 <nav class="flex-grow w-full">
-
-
                     {{ $sidecontent ?? '' }}
-
-
                 </nav>
 
                 <div x-bind:class="{
@@ -286,7 +182,7 @@
     </div>
 
     <!-- Navbar -->
-    <div class=" flex flex-col  z-100">
+    <div class=" flex flex-col z-[9000]">
         <!-- Navbar content -->
         <div class="fixed top-0 inset-x-0 z-48 flex-shrink-0 flx h-auto bg-black shadow"
              x-bind:class="{
