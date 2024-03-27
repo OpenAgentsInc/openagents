@@ -14,9 +14,8 @@
 <body class="h-full bg-black" x-cloak x-data="{ sidebarOpen: false, showSidebar: true, collapsed: false }">
 <div class="h-full">
     <!-- Off-canvas menu for mobile -->
-    <div
-            x-cloak
-            x-show="sidebarOpen" class="fixed inset-0 flex z-40 lg:hidden" role="dialog" aria-modal="true" x-bind:class="{
+    <div x-cloak x-show="sidebarOpen" class="fixed inset-0 flex z-40 lg:hidden" role="dialog" aria-modal="true"
+         x-bind:class="{
             'w-16': collapsed,
             '-translate-x-full': !showSidebar
            }">
@@ -41,9 +40,10 @@
                 <button type="button" @click="sidebarOpen = false"
                         class="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white">
                     <span class="sr-only">Close sidebar</span>
-                    <svg class="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                         stroke="currentColor" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    <svg class="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none"
+                         viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                 </button>
             </div>
@@ -71,16 +71,15 @@
                               'py-4 justify-center': collapsed
                              }">
                             <div class="w-full">
-                                <div class="flex gap-2 items-center justify-center overflow-hidden" role="button">
-                                    <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                                         height="36" width="36" alt="profile image" class="rounded-full">
-                                    <div
-                                            x-cloak
-                                            x-show="!collapsed" class="flex flex-col">
+                                <div class="flex gap-2 items-center justify-center overflow-hidden"
+                                     role="button">
+                                    <img
+                                            src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+                                            height="36" width="36" alt="profile image" class="rounded-full">
+                                    <div x-cloak x-show="!collapsed" class="flex flex-col">
                                         <span class="text-indigo-50 my-0 text-sm">Tom Cook</span>
                                     </div>
-                                    <div x-cloak
-                                         x-show="!collapsed" class="relative flex-1 text-right">
+                                    <div x-cloak x-show="!collapsed" class="relative flex-1 text-right">
                                         <div x-data="{ dropdown: false }">
                                             <button @click="dropdown= !dropdown"
                                                     class="p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
@@ -99,13 +98,8 @@
 
                         </div>
                         <nav class="flex-grow w-full">
-
-
                             {{ $sidecontent_mobile ?? '' }}
-
-
                         </nav>
-
                         <div x-bind:class="{
                             'grid place-content-stretch p-4 ': true,
                             'justify-end': !collapsed,
@@ -113,26 +107,17 @@
                               }">
                             <button @click="collapsed = !collapsed"
                                     class="flex hover:bg-[#1B1B1B] w-10 h-10 rounded-full items-center justify-center opacity-100">
-                                    <span
-                                            x-cloak
-                                            x-show="collapsed">
+                                    <span x-cloak x-show="collapsed">
                                         <x-icon.session-right/> </span>
-                                <span
-                                        x-cloak
-                                        x-show="!collapsed">
+                                <span x-cloak x-show="!collapsed">
                                         <x-icon.session-left/> </span>
                             </button>
                         </div>
-
                     </div>
                 </div>
-
             </div>
             <!-- end menuitems -->
-
-
         </div>
-
         <!-- Dummy element to force sidebar to shrink -->
         <div class="flex-shrink-0 w-14" aria-hidden="true"></div>
     </div>
@@ -141,9 +126,7 @@
     <div class=" h-full hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 z-40">
 
         <!-- Include your sidebar content here -->
-        <div
-                x-cloak
-                x-show="showSidebar" x-bind:class="{
+        <div x-cloak x-show="showSidebar" x-bind:class="{
               'bg-black border-r-4 border-[#1B1B1B] text-zinc-50 fixed h-screen lg:static z-20': true,
               'w-[300px]': !collapsed,
               'w-16': collapsed,
@@ -166,19 +149,14 @@
                       }">
                     <button @click="collapsed = !collapsed"
                             class="flex hover:bg-[#1B1B1B] w-10 h-10 rounded-full items-center justify-center opacity-0 lg:opacity-100">
-                            <span
-                                    x-cloak
-                                    x-show="collapsed">
+                            <span x-cloak x-show="collapsed">
                                 <x-icon.session-right/> </span>
-                        <span x-cloak
-                              x-show="!collapsed">
+                        <span x-cloak x-show="!collapsed">
                                 <x-icon.session-left/> </span>
                     </button>
                 </div>
-
             </div>
         </div>
-
     </div>
 
     <!-- Navbar -->
@@ -204,9 +182,7 @@
                     'lg:pl-16': collapsed,
                     '-translate-x-full': !showSidebar
                  }">
-                <!-- Replace this with your actual content -->
                 {{$slot}}
-                <!-- /End replace -->
             </div>
         </main>
     </div>
@@ -221,3 +197,4 @@
 
 @include('partials.twitter')
 </html>
+
