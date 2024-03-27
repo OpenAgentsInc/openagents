@@ -20,7 +20,7 @@
             {{-- <div class="fixed top-[80px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]"></div> --}}
 
             <div id="chatbox-container" x-ref="chatboxContainer"
-                 class="mb-[5px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white"
+                 class="pt-[80px] mb-[5px] pb-[60px] flex-1 overflow-auto bg-gray-900 text-white"
                  x-data="{ pending: @entangle('pending').live }" x-init="
             let chatbox = $refs.chatboxContainer;
             setTimeout(() => {
