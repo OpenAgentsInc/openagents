@@ -11,10 +11,12 @@
     @include('partials.ogtags')
 </head>
 
-<body class="h-full bg-black" x-data="{ sidebarOpen: false, showSidebar: true, collapsed: false }">
+<body class="h-full bg-black" x-cloak x-data="{ sidebarOpen: false, showSidebar: true, collapsed: false }">
 <div class="h-full">
     <!-- Off-canvas menu for mobile -->
-    <div x-show="sidebarOpen" class="fixed inset-0 flex z-40 lg:hidden" role="dialog" aria-modal="true" x-bind:class="{
+    <div
+            x-cloak
+            x-show="sidebarOpen" class="fixed inset-0 flex z-40 lg:hidden" role="dialog" aria-modal="true" x-bind:class="{
             'w-16': collapsed,
             '-translate-x-full': !showSidebar
            }">
@@ -72,12 +74,15 @@
                                 <div class="flex gap-2 items-center justify-center overflow-hidden" role="button">
                                     <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
                                          height="36" width="36" alt="profile image" class="rounded-full">
-                                    <div x-show="!collapsed" class="flex flex-col">
+                                    <div
+                                            x-cloak
+                                            x-show="!collapsed" class="flex flex-col">
                                         <span class="text-indigo-50 my-0 text-sm">Tom Cook</span>
                                         <!--                 <a href="/" class="text-indigo-200 text-sm">View Profile</a> -->
 
                                     </div>
-                                    <div x-show="!collapsed" class="relative flex-1 text-right">
+                                    <div x-cloak
+                                         x-show="!collapsed" class="relative flex-1 text-right">
                                         <div x-data="{ dropdown: false }">
                                             <button @click="dropdown= !dropdown"
                                                     class="p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
@@ -89,9 +94,11 @@
                                                 </svg>
                                             </button>
 
-                                            <div x-show="dropdown" @click.away="dropdown= false"
-                                                 class="fixed z-100 divide-y divide-white/15 transition-[opacity,margin] duration  min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
-                                                 aria-labelledby="hs-dropdown-with-header">
+                                            <div
+                                                    x-cloak
+                                                    x-show="dropdown" @click.away="dropdown= false"
+                                                    class="fixed z-100 divide-y divide-white/15 transition-[opacity,margin] duration  min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
+                                                    aria-labelledby="hs-dropdown-with-header">
                                                 <div class="py-2 flex px-5 -m-2 bg-gray-100 rounded-t-lg text-sm gap-1 hover:bg-white/15 text-gray-300 hover:text-white">
                                                     {{-- <p class="text-xs ">Signed in as</p> --}}
                                                     <p class="text-sm font-medium">james@site.com</p>
@@ -140,9 +147,13 @@
                               }">
                             <button @click="collapsed = !collapsed"
                                     class="flex hover:bg-[#1B1B1B] w-10 h-10 rounded-full items-center justify-center opacity-100">
-                                    <span x-show="collapsed">
+                                    <span
+                                            x-cloak
+                                            x-show="collapsed">
                                         <x-icon.session-right/> </span>
-                                <span x-show="!collapsed">
+                                <span
+                                        x-cloak
+                                        x-show="!collapsed">
                                         <x-icon.session-left/> </span>
                             </button>
                         </div>
@@ -164,7 +175,9 @@
     <div class=" h-full hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 z-40">
 
         <!-- Include your sidebar content here -->
-        <div x-show="showSidebar" x-bind:class="{
+        <div
+                x-cloak
+                x-show="showSidebar" x-bind:class="{
               'bg-black border-r-4 border-[#1B1B1B] text-zinc-50 fixed h-screen lg:static z-20': true,
               'w-[300px]': !collapsed,
               'w-16': collapsed,
@@ -184,12 +197,15 @@
                         <div class="flex gap-2 items-center justify-center overflow-hidden">
                             <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
                                  height="36" width="36" alt="profile image" class="rounded-full">
-                            <div x-show="!collapsed" class="flex flex-col">
+                            <div x-cloak
+                                 x-show="!collapsed" class="flex flex-col">
                                 <span class="text-indigo-50 my-0 text-sm">Tom Cook</span>
                                 <!--                 <a href="/" class="text-indigo-200 text-sm">View Profile</a> -->
 
                             </div>
-                            <div x-show="!collapsed" class="relative flex-1 text-right">
+                            <div
+                                    x-cloak
+                                    x-show="!collapsed" class="relative flex-1 text-right">
                                 <div x-data="{ dropdown: false }">
                                     <button @click="dropdown= !dropdown"
                                             class="p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
@@ -201,9 +217,11 @@
                                         </svg>
                                     </button>
 
-                                    <div x-show="dropdown" @click.away="dropdown= false"
-                                         class="fixed z-100 divide-y divide-white/15 transition-[opacity,margin] duration  min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
-                                         aria-labelledby="hs-dropdown-with-header">
+                                    <div
+                                            x-cloak
+                                            x-show="dropdown" @click.away="dropdown= false"
+                                            class="fixed z-100 divide-y divide-white/15 transition-[opacity,margin] duration  min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
+                                            aria-labelledby="hs-dropdown-with-header">
                                         <div class="py-2 flex px-5 -m-2 bg-gray-100 rounded-t-lg text-sm gap-1 hover:bg-white/15 text-gray-300 hover:text-white">
                                             {{-- <p class="text-xs ">Signed in as</p> --}}
                                             <p class="text-sm font-medium">james@site.com</p>
@@ -252,9 +270,12 @@
                       }">
                     <button @click="collapsed = !collapsed"
                             class="flex hover:bg-[#1B1B1B] w-10 h-10 rounded-full items-center justify-center opacity-0 lg:opacity-100">
-                            <span x-show="collapsed">
+                            <span
+                                    x-cloak
+                                    x-show="collapsed">
                                 <x-icon.session-right/> </span>
-                        <span x-show="!collapsed">
+                        <span x-cloak
+                              x-show="!collapsed">
                                 <x-icon.session-left/> </span>
                     </button>
                 </div>
