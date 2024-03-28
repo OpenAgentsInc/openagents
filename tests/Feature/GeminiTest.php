@@ -19,7 +19,7 @@ test('can generate inference response from both models', function () {
 
     foreach ($models as $model) {
         $response = $gemini->inference($text, $model);
-        dump($response);
+        //        dump($response);
 
         expect($response)->toBeArray();
         expect($response)->toHaveKey('candidates');
