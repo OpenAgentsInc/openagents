@@ -6,9 +6,7 @@ use App\Livewire\ReverbDemo;
 use App\Livewire\PrismDashboard;
 use App\Livewire\Auth\VerifyAccount;
 use App\Livewire\Auth\ChangePassword;
-use App\Livewire\Auth\ForgetPassword;
 use Illuminate\Support\Facades\Route;
-use App\Livewire\Auth\PasswordResetLink;
 use App\Http\Controllers\PrismController;
 use App\Http\Controllers\StaticController;
 
@@ -26,10 +24,8 @@ Route::get('/billing', function () {
 });
 
 // Add auth route here for Livewire views
-Route::get('/reset/account', ForgetPassword::class);
-Route::get('/reset/account/link', PasswordResetLink::class);
-Route::get('/reset/account/change-password', ChangePassword::class);
 
+Route::get('/reset/account/change-password', ChangePassword::class);
 Route::get('/verify/account', VerifyAccount::class);
 
 // Add a catch-all redirect to the homepage
