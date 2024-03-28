@@ -9,9 +9,10 @@ class ForgetPassword extends Component
     public bool $show = false;
 
     // Toggle the value of $show
-    public function  sendResetLink(){
+    public function sendResetLink()
+    {
 
-        $this->show = !$this->show;
+        $this->show = ! $this->show;
     }
 
     public function render()
