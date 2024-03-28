@@ -8,24 +8,22 @@ test('can retrieve file contents from github api', function () {
     $repo = 'openagents';
     $path = 'README.md';
 
-    $fileDetails = $github->getFileContents($owner, $repo, $path);
+    $result = $github->getFileContents($owner, $repo, $path);
 
-    // Assert the structure of the response
-    expect($fileDetails)->toBeArray()
-        ->toHaveKeys(['name', 'path', 'sha', 'size', 'url', 'html_url', 'git_url', 'download_url', 'type', 'content']);
+    // Assert that 'contents' key exists and is a string (the decoded README content)
+    expect($result)->toHaveKey('contents');
+    expect($result['contents'])->toBeString();
+    expect($result['contents'])->toContain('OpenAgents'); // Adjust based on actual content
 
-    // Assert specific fields if necessary
-    expect($fileDetails['name'])->toEqual('README.md');
-    expect($fileDetails['path'])->toEqual('README.md');
-    expect($fileDetails['sha'])->toBeString();
-    expect($fileDetails['size'])->toBeInt();
-    expect($fileDetails['url'])->toBeString();
-    expect($fileDetails['html_url'])->toBeString();
-    expect($fileDetails['git_url'])->toBeString();
-    expect($fileDetails['download_url'])->toBeString();
-    expect($fileDetails['type'])->toEqual('file');
+    // Assert the structure of the full response in 'response' key
+    expect($result['response'])->toMatchArray([
+        'name' => 'README.md',
+        'path' => 'README.md',
+        // Continue for other fields as necessary
+    ]);
 
-    // Decode and check part of the actual content
-    $decodedContent = base64_decode($fileDetails['content']);
-    expect($decodedContent)->toContain('OpenAgents');
+    // If you want to assert the presence of keys without specifying their exact values
+    foreach (['sha', 'size', 'url', 'html_url', 'git_url', 'download_url', 'type', 'content'] as $key) {
+        expect($result['response'])->toHaveKey($key);
+    }
 });

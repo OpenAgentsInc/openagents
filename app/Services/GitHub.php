@@ -28,6 +28,20 @@ class GitHub
             'X-GitHub-Api-Version' => '2022-11-28',
         ])->get("{$this->baseUrl}/repos/{$owner}/{$repo}/contents/{$path}");
 
-        return $response->successful() ? $response->json() : ['error' => 'Failed to fetch file contents'];
+        if ($response->successful()) {
+            $responseData = $response->json();
+            // Decode the base64 content
+            $decodedContent = isset($responseData['content']) ? base64_decode($responseData['content']) : null;
+
+            return [
+                'contents' => $decodedContent,
+                'response' => $responseData,
+            ];
+        }
+
+        return [
+            'contents' => null,
+            'response' => ['error' => 'Failed to fetch file contents'],
+        ];
     }
 }
