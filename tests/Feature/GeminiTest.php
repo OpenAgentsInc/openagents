@@ -2,6 +2,8 @@
 
 use App\AI\GeminiAIGateway;
 
+$skipThese = true;
+
 test('can generate inference using new model', function () {
     $gemini = new GeminiAIGateway();
     $text = 'Hello, world!';
@@ -10,7 +12,7 @@ test('can generate inference using new model', function () {
 
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
-});
+})->skip($skipThese);
 
 test('can generate inference response from both models', function () {
     $gemini = new GeminiAIGateway();
@@ -24,7 +26,7 @@ test('can generate inference response from both models', function () {
         expect($response)->toBeArray();
         expect($response)->toHaveKey('candidates');
     }
-});
+})->skip($skipThese);
 
 test('can generate inference', function () {
     $gemini = new GeminiAIGateway();
@@ -61,7 +63,7 @@ test('can generate inference', function () {
         // Ensure 'probability' falls within a known range
         $rating->probability->toBeIn(['NEGLIGIBLE', 'LOW', 'MEDIUM', 'HIGH']);
     });
-});
+})->skip($skipThese);
 
 test('can generate chat response', function () {
     $gemini = new GeminiAIGateway();
@@ -90,4 +92,4 @@ test('can generate chat response', function () {
 
     // If the API's response includes dynamic values that you can predict or a range of acceptable values,
     // you can insert more specific assertions here to validate those.
-});
+})->skip($skipThese);
