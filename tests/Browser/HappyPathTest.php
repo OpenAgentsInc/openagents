@@ -2,7 +2,7 @@
 
 use Laravel\Dusk\Browser;
 
-test('basic example', function () {
+test('happy path', function () {
     $this->browse(function (Browser $browser) {
         $browser->visit('/')
             ->assertSee('OpenAgents');
