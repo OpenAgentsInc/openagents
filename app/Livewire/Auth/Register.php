@@ -6,11 +6,20 @@ use Livewire\Component;
 
 class Register extends Component
 {
-    public int $step = 1;
 
-    public function set_step()
-    {
-        $this->step = 2;
+
+    public bool $verification = false;
+
+    public bool $show = false;
+
+    // Toggle the value of $show
+    public function showpassword(){
+
+        $this->show = !$this->show;
+    }
+
+    public function set_verified(){
+        $this->verification = !$this->verification;
     }
 
     public function render()
