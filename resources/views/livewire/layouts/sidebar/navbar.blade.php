@@ -40,7 +40,7 @@
                                         <div
                                                 x-cloak
                                                 x-show="dropdown" @click.away="dropdown= false"
-                                                class="fixed z-[9000] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/45"
+                                                class="fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/45"
                                                 aria-labelledby="hs-dropdown-with-header">
 
                                             <div class="py-0 first:pt-0 last:pb-0 bg-black">
@@ -197,7 +197,7 @@
                                 </button>
 
                                 <div x-show="dropdown" @click.away="dropdown= false"
-                                     class="fixed z-[9000] divide-y divide-white/15   min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
+                                     class="fixed z-[50] divide-y divide-white/15   min-w-60  shadow-md rounded-lg p-2 bg-black border border-white/45"
                                      aria-labelledby="hs-dropdown-with-header">
 
                                     <div class="z-[9999] py-0 first:pt-0 last:pb-0 bg-white">
