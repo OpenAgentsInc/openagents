@@ -2,7 +2,7 @@
 
 use App\AI\GeminiAIGateway;
 
-test('can run inference', function () {
+test('can generate inference', function () {
     $gemini = new GeminiAIGateway();
     $inference = $gemini->inference('Hello, world!');
 
@@ -37,4 +37,33 @@ test('can run inference', function () {
         // Ensure 'probability' falls within a known range
         $rating->probability->toBeIn(['NEGLIGIBLE', 'LOW', 'MEDIUM', 'HIGH']);
     });
+});
+
+test('can generate chat response', function () {
+    $gemini = new GeminiAIGateway();
+    $conversation = [
+        ['role' => 'user', 'text' => "Pretend you're a snowman and stay in character for each response."],
+        ['role' => 'model', 'text' => "Hello! It's so cold! Isn't that great?"],
+        ['role' => 'user', 'text' => "What's your favorite season of the year?"],
+    ];
+
+    $response = $gemini->chat($conversation);
+    //    dump($response);
+
+    // Assert that the response is an array (indicative of a successful structure from the API)
+    expect($response)->toBeArray();
+
+    // Depending on the expected structure, you might want to assert that certain keys exist
+    // This is a generic check assuming a structure. Adjust according to the actual API response structure
+    expect($response)->toHaveKey('candidates');
+    $candidates = $response['candidates'];
+    expect($candidates)->toBeArray();
+    expect($candidates)->not->toBeEmpty();
+
+    // Check the first candidate for a generic structure
+    $firstCandidate = $candidates[0];
+    expect($firstCandidate)->toHaveKeys(['content', 'finishReason', 'index', 'safetyRatings']);
+
+    // If the API's response includes dynamic values that you can predict or a range of acceptable values,
+    // you can insert more specific assertions here to validate those.
 });

@@ -6,14 +6,20 @@ use Illuminate\Support\Facades\Http;
 
 class GeminiAIGateway
 {
+    protected $apiKey;
+
+    protected $baseUrl = 'https://generativelanguage.googleapis.com';
+
+    public function __construct()
+    {
+        $this->apiKey = env('GEMINI_API_KEY');
+    }
+
     public function inference(string $text): array
     {
-        $apiKey = env('GEMINI_API_KEY');
-        $baseUrl = 'https://generativelanguage.googleapis.com';
-
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-        ])->post("{$baseUrl}/v1/models/gemini-pro:generateContent?key={$apiKey}", [
+        ])->post("{$this->baseUrl}/v1/models/gemini-pro:generateContent?key={$this->apiKey}", [
             'contents' => [
                 [
                     'parts' => [
@@ -23,12 +29,31 @@ class GeminiAIGateway
             ],
         ]);
 
-        // Check if the request was successful
         if ($response->successful()) {
             return $response->json();
         } else {
-            // Log error details or handle the error
-            // For simplicity, we're returning an empty array to indicate failure
+            return [];
+        }
+    }
+
+    public function chat(array $messages): array
+    {
+        $response = Http::withHeaders([
+            'Content-Type' => 'application/json',
+        ])->post("{$this->baseUrl}/v1beta/models/gemini-pro:generateContent?key={$this->apiKey}", [
+            'contents' => array_map(function ($message) {
+                return [
+                    'role' => $message['role'],
+                    'parts' => [
+                        ['text' => $message['text']],
+                    ],
+                ];
+            }, $messages),
+        ]);
+
+        if ($response->successful()) {
+            return $response->json();
+        } else {
             return [];
         }
     }
