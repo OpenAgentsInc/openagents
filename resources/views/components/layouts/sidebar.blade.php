@@ -123,7 +123,7 @@
     </div>
 
     <!-- Static sidebar for desktop -->
-    <div class=" h-full hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 z-40">
+    <div class=" h-full hidden lg:flex  lg:flex-col lg:fixed lg:inset-y-0 z-40">
 
         <!-- Include your sidebar content here -->
         <div x-cloak x-show="showSidebar" x-bind:class="{
@@ -169,30 +169,39 @@
               '-translate-x-full': !showSidebar
            }">
 
-            <!-- Include your navbar content here -->
-            @livewire('layouts.sidebar.navbar')
-        </div>
+                <!-- Include your navbar content here -->
+                @livewire('layouts.sidebar.navbar')
+            </div>
 
-        <!-- Main content area -->
-        <main class="flex-1">
-            <!-- Include your main content here -->
+            <!-- Main content area -->
+            <main class="flex-1 -z-20">
+                <!-- Include your main content here -->
 
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" x-bind:class="{
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"  x-bind:class="{
+
+                    'transition-all duration-300 ease-in-out': true,
                     'lg:pl-[0px]': !collapsed,
                     'lg:pl-16': collapsed,
                     '-translate-x-full': !showSidebar
                  }">
-                {{$slot}}
-            </div>
-        </main>
+                    <!-- Replace this with your actual content -->
+                    {{$slot}}
+                    <!-- /End replace -->
+                </div>
+            </main>
+        </div>
     </div>
-</div>
 
-@include('partials.modals')
+    {{-- Modal Pop up here --}}
 
-@yield('modal')
 
-{{-- End Modal Popup --}}
+    @include('partials.modals')
+
+
+
+    @yield('modal')
+
+    {{-- End Modal Popup --}}
 </body>
 
 @include('partials.twitter')
