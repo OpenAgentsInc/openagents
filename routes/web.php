@@ -4,6 +4,7 @@ use App\Livewire\Chat;
 use App\Livewire\Frontpage;
 use App\Livewire\ReverbDemo;
 use App\Livewire\PrismDashboard;
+use App\Livewire\Auth\VerifyAccount;
 use App\Livewire\Auth\ChangePassword;
 use App\Livewire\Auth\ForgetPassword;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,8 @@ Route::get('/billing', function () {
 Route::get('/reset/account', ForgetPassword::class);
 Route::get('/reset/account/link', PasswordResetLink::class);
 Route::get('/reset/account/change-password', ChangePassword::class);
+
+Route::get('/verify/account', VerifyAccount::class);
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {
