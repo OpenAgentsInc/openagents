@@ -9,7 +9,8 @@ class CodeAnalyzer
         $prompt = '';
 
         foreach ($filepaths as $filepath) {
-            $prompt .= file_get_contents($filepath);
+            $prompt .= "### File: {$filepath}\n\n```".
+                file_get_contents($filepath)."```\n\n";
         }
 
         return $prompt;
