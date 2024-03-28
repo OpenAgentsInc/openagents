@@ -2,6 +2,30 @@
 
 use App\AI\GeminiAIGateway;
 
+test('can generate inference using new model', function () {
+    $gemini = new GeminiAIGateway();
+    $text = 'Hello, world!';
+    $response = $gemini->inference($text, 'new');
+    dump($response);
+
+    expect($response)->toBeArray();
+    expect($response)->toHaveKey('candidates');
+});
+
+//test('can generate inference response from both models', function () {
+//    $gemini = new GeminiAIGateway();
+//    $text = 'Hello, world!';
+//    $models = ['default', 'new']; // Specify the models to test against
+//
+//    foreach ($models as $model) {
+//        $response = $gemini->inference($text, $model);
+//        dump($response);
+//
+//        expect($response)->toBeArray();
+//        expect($response)->toHaveKey('candidates');
+//    }
+//});
+
 test('can generate inference', function () {
     $gemini = new GeminiAIGateway();
     $inference = $gemini->inference('Hello, world!');

@@ -10,16 +10,24 @@ class GeminiAIGateway
 
     protected $baseUrl = 'https://generativelanguage.googleapis.com';
 
+    protected $defaultModel = 'gemini-pro'; // Default model
+
+    protected $newModel = 'gemini-1.5-pro-latest'; // New model
+
     public function __construct()
     {
         $this->apiKey = env('GEMINI_API_KEY');
     }
 
-    public function inference(string $text): array
+    public function inference(string $text, ?string $model = null): array
     {
+        $isNewModel = $model === 'new';
+        $modelPath = $isNewModel ? $this->newModel : $this->defaultModel;
+        $apiVersion = $isNewModel ? 'v1beta' : 'v1';
+
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-        ])->post("{$this->baseUrl}/v1/models/gemini-pro:generateContent?key={$this->apiKey}", [
+        ])->post("{$this->baseUrl}/{$apiVersion}/models/{$modelPath}:generateContent?key={$this->apiKey}", [
             'contents' => [
                 [
                     'parts' => [
@@ -29,18 +37,19 @@ class GeminiAIGateway
             ],
         ]);
 
-        if ($response->successful()) {
-            return $response->json();
-        } else {
-            return [];
-        }
+        return $response->successful() ? $response->json() : [
+            'error' => 'Failed to generate inference',
+            'details' => $response->json(),
+        ];
     }
 
-    public function chat(array $messages): array
+    public function chat(array $messages, ?string $model = null): array
     {
+        $modelPath = $model === 'new' ? $this->newModel : $this->defaultModel;
+
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-        ])->post("{$this->baseUrl}/v1beta/models/gemini-pro:generateContent?key={$this->apiKey}", [
+        ])->post("{$this->baseUrl}/v1beta/models/{$modelPath}:generateContent?key={$this->apiKey}", [
             'contents' => array_map(function ($message) {
                 return [
                     'role' => $message['role'],
@@ -51,10 +60,6 @@ class GeminiAIGateway
             }, $messages),
         ]);
 
-        if ($response->successful()) {
-            return $response->json();
-        } else {
-            return [];
-        }
+        return $response->successful() ? $response->json() : [];
     }
 }
