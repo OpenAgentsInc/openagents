@@ -1,14 +1,14 @@
 <?php
 
-use App\Livewire\Chat;
-use App\Livewire\Frontpage;
-use App\Livewire\ReverbDemo;
-use App\Livewire\PrismDashboard;
-use App\Livewire\Auth\VerifyAccount;
-use App\Livewire\Auth\ChangePassword;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PrismController;
 use App\Http\Controllers\StaticController;
+use App\Livewire\Auth\ChangePassword;
+use App\Livewire\Auth\VerifyAccount;
+use App\Livewire\Chat;
+use App\Livewire\Frontpage;
+use App\Livewire\PrismDashboard;
+use App\Livewire\ReverbDemo;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', Frontpage::class);
 Route::get('/chat/{id}', Chat::class);
