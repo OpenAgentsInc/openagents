@@ -1,15 +1,14 @@
 <?php
 
-use App\Http\Controllers\PrismController;
-use App\Http\Controllers\StaticController;
-use App\Livewire\Auth\ChangePassword;
-use App\Livewire\Auth\ForgetPassword;
-use App\Livewire\Auth\PasswordResetLink;
 use App\Livewire\Chat;
 use App\Livewire\Frontpage;
-use App\Livewire\PrismDashboard;
 use App\Livewire\ReverbDemo;
+use App\Livewire\PrismDashboard;
+use App\Livewire\Auth\VerifyAccount;
+use App\Livewire\Auth\ChangePassword;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\PrismController;
+use App\Http\Controllers\StaticController;
 
 Route::get('/', Frontpage::class);
 Route::get('/chat/{id}', Chat::class);
@@ -25,9 +24,9 @@ Route::get('/billing', function () {
 });
 
 // Add auth route here for Livewire views
-Route::get('/reset/account', ForgetPassword::class);
-Route::get('/reset/account/link', PasswordResetLink::class);
+
 Route::get('/reset/account/change-password', ChangePassword::class);
+Route::get('/verify/account', VerifyAccount::class);
 
 // Add a catch-all redirect to the homepage
 Route::get('/{any}', function () {
