@@ -4,10 +4,10 @@ namespace App\Livewire\Auth;
 
 use Livewire\Component;
 
-class PasswordResetLink extends Component
+class VerifyAccount extends Component
 {
     public function render()
     {
-        return view('livewire.auth.password-reset-link');
+        return view('livewire.auth.verify-account');
     }
 }
