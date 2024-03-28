@@ -160,7 +160,7 @@
     </div>
 
     <!-- Navbar -->
-    <div class=" flex flex-col z-[9000]">
+    <div class="flex flex-col z-[20]">
         <!-- Navbar content -->
         <div class="fixed top-0 inset-x-0 z-48 flex-shrink-0 flx h-auto bg-black shadow"
              x-bind:class="{
@@ -169,39 +169,39 @@
               '-translate-x-full': !showSidebar
            }">
 
-                <!-- Include your navbar content here -->
-                @livewire('layouts.sidebar.navbar')
-            </div>
+            <!-- Include your navbar content here -->
+            @livewire('layouts.sidebar.navbar')
+        </div>
 
-            <!-- Main content area -->
-            <main class="flex-1 -z-20">
-                <!-- Include your main content here -->
+        <!-- Main content area -->
+        <main class="flex-1 -z-20">
+            <!-- Include your main content here -->
 
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"  x-bind:class="{
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" x-bind:class="{
 
                     'transition-all duration-300 ease-in-out': true,
                     'lg:pl-[0px]': !collapsed,
                     'lg:pl-16': collapsed,
                     '-translate-x-full': !showSidebar
                  }">
-                    <!-- Replace this with your actual content -->
-                    {{$slot}}
-                    <!-- /End replace -->
-                </div>
-            </main>
-        </div>
+                <!-- Replace this with your actual content -->
+                {{$slot}}
+                <!-- /End replace -->
+            </div>
+        </main>
     </div>
+</div>
 
-    {{-- Modal Pop up here --}}
-
-
-    @include('partials.modals')
+{{-- Modal Pop up here --}}
 
 
+@include('partials.modals')
 
-    @yield('modal')
 
-    {{-- End Modal Popup --}}
+
+@yield('modal')
+
+{{-- End Modal Popup --}}
 </body>
 
 @include('partials.twitter')
