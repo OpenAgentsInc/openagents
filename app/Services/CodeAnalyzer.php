@@ -40,7 +40,7 @@ class CodeAnalyzer
         return $filePaths;
     }
 
-    public static function generatePrompt(array $filepaths): string
+    public static function generateContext(array $filepaths): string
     {
         $prompt = '';
 
