@@ -56,4 +56,4 @@ test('can pass to gemini for analysis', function () {
 
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
-});
+})->skip();

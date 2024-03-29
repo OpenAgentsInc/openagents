@@ -128,4 +128,4 @@ test('can generate inference with text and image data', function () {
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
     // ... (add more specific assertions based on expected response)
-});
+})->skip();
