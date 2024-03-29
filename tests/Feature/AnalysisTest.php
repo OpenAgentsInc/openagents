@@ -27,6 +27,7 @@ test('can pass to gemini for analysis', function () {
         'app/AI/GeminiAIGateway.php',
         'resources/markdown/docs.md',
         'resources/markdown/gemini.md',
+        'resources/markdown/launch.md',
         'tests/Feature/AnalysisTest.php',
         'tests/Feature/GeminiTest.php',
         'tests/Feature/GitHubTest.php',
@@ -34,7 +35,7 @@ test('can pass to gemini for analysis', function () {
 
     $prompt = CodeAnalyzer::generatePrompt($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = "Analyze the provided files. Describe opportunities and next steps. \n".$prompt;
+    $text = "Suggest an addition to one of the feature tests and GeminiAIGateway, then write the code for it. \n".$prompt;
     //    $text = 'Analyze the following code. Write names of feature and unit tests we should write to cover all mentioned functionality. \n '.$prompt;
     $response = $gemini->inference($text, 'new');
     dump($response['candidates'][0]['content']['parts'][0]['text']);
