@@ -24,20 +24,20 @@ test('can generate prompt from filepaths', function () {
 test('can pass to gemini for analysis', function () {
     //    $filepaths = CodeAnalyzer::getAllCodebaseFilePaths(base_path()); // first just markdown
     $filepaths = [
-        'app/AI/GeminiAIGateway.php',
-        'resources/markdown/docs.md',
-        'resources/markdown/gemini.md',
-        'resources/markdown/gemini-pro.md',
-        'resources/markdown/gemini-file-api-faq.md',
-        'resources/markdown/gemini-file-api-reference.md',
-        'resources/markdown/20240329-201124-gemini.md',
-        'tests/Feature/AnalysisTest.php',
-        'tests/Feature/GeminiTest.php',
+        //        'app/AI/GeminiAIGateway.php',
+        //        'resources/markdown/docs.md',
+        //        'resources/markdown/gemini.md',
+        //        'resources/markdown/gemini-pro.md',
+        //        'resources/markdown/gemini-file-api-faq.md',
+        //        'resources/markdown/gemini-file-api-reference.md',
+        //        'resources/markdown/20240329-201124-gemini.md',
+        //        'tests/Feature/AnalysisTest.php',
+        //        'tests/Feature/GeminiTest.php',
     ];
 
     $context = CodeAnalyzer::generateContext($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = 'Write the listFiles method for GeminiAIGateway.';
+    $text = 'Describe this file';
     $prompt = $text."\n\n".$context;
 
     $response = $gemini->inference($prompt, 'new');
@@ -50,7 +50,7 @@ test('can pass to gemini for analysis', function () {
     $filename = 'resources/markdown/'.date('Ymd-His').'-gemini.md';
 
     // Prepend the prompt to the text
-    $texttowrite = "# Prompt \n".$text."\n\n".$response;
+    $texttowrite = "# Prompt \n".$text."\n\n # Response \n".$response;
 
     file_put_contents($filename, $texttowrite);
 

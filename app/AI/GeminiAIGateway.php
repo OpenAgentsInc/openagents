@@ -38,7 +38,15 @@ class GeminiAIGateway
             'contents' => [
                 [
                     'parts' => [
-                        ['text' => $prompt],
+                        [
+                            'text' => $prompt,
+                        ],
+                        [
+                            'fileData' => [
+                                'mimeType' => 'image/png',
+                                'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/5a0ftzdl7aij',
+                            ],
+                        ],
                     ],
                 ],
             ],
