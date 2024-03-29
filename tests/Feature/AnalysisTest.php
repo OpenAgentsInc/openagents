@@ -27,18 +27,21 @@ test('can pass to gemini for analysis', function () {
         'app/AI/GeminiAIGateway.php',
         'resources/markdown/docs.md',
         'resources/markdown/gemini.md',
-        'resources/markdown/gemini-file-api.md',
+        'resources/markdown/gemini-file-api-faq.md',
+        'resources/markdown/gemini-file-api-reference.md',
         'resources/markdown/gemini-pro.md',
+        'resources/markdown/20240329-161749-gemini.md',
         'tests/Feature/AnalysisTest.php',
         'tests/Feature/GeminiTest.php',
         'tests/Feature/GitHubTest.php',
     ];
 
-    $prompt = CodeAnalyzer::generatePrompt($filepaths);
+    $context = CodeAnalyzer::generateContext($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = 'Fix my GeminiAIGateway. The inference method should use either the default Gemini model or the new pro model. If pro, the URL must be v1beta not v1. Chat should be the old model only. Code: \n '.$prompt;
-    //    $text = 'Analyze the following code. Write names of feature and unit tests we should write to cover all mentioned functionality. \n '.$prompt;
-    $response = $gemini->inference($text, 'new');
+    $text = 'Write the GeminiAIGateway uploadFile method based on the File API documentation.';
+    $prompt = $text."\n\n".$context;
+
+    $response = $gemini->inference($prompt, 'new');
 
     $response = $response['candidates'][0]['content']['parts'][0]['text'];
 
