@@ -22,15 +22,23 @@ test('can generate prompt from filepaths', function () {
 })->skip($skipThese);
 
 test('can pass to gemini for analysis', function () {
-    $filepaths = CodeAnalyzer::getAllCodebaseFilePaths(base_path()); // first just markdown
+    //    $filepaths = CodeAnalyzer::getAllCodebaseFilePaths(base_path()); // first just markdown
+    $filepaths = [
+        'app/AI/GeminiAIGateway.php',
+        'resources/markdown/docs.md',
+        'resources/markdown/gemini.md',
+        'tests/Feature/AnalysisTest.php',
+        'tests/Feature/GeminiTest.php',
+        'tests/Feature/GitHubTest.php',
+    ];
 
     $prompt = CodeAnalyzer::generatePrompt($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = "Analyze the following documents. Summarize the project in one paragraph, the API in one paragraph, and recommendations for future directions in a third paragraph. \n".$prompt;
+    $text = "Analyze the provided files. Describe opportunities and next steps. \n".$prompt;
     //    $text = 'Analyze the following code. Write names of feature and unit tests we should write to cover all mentioned functionality. \n '.$prompt;
     $response = $gemini->inference($text, 'new');
     dump($response['candidates'][0]['content']['parts'][0]['text']);
 
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
-})->skip($skipThese);
+});
