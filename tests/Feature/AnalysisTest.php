@@ -30,14 +30,14 @@ test('can pass to gemini for analysis', function () {
         'resources/markdown/gemini-pro.md',
         'resources/markdown/gemini-file-api-faq.md',
         'resources/markdown/gemini-file-api-reference.md',
-        'resources/markdown/20240329-193950-gemini.md',
+        'resources/markdown/20240329-201124-gemini.md',
         'tests/Feature/AnalysisTest.php',
         'tests/Feature/GeminiTest.php',
     ];
 
     $context = CodeAnalyzer::generateContext($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = 'Write the GeminiTest feature test for the GeminiAIGateway uploadFile method.';
+    $text = 'Write the listFiles method for GeminiAIGateway.';
     $prompt = $text."\n\n".$context;
 
     $response = $gemini->inference($prompt, 'new');

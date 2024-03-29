@@ -158,3 +158,13 @@ test('can upload file using GeminiAIGateway', function () {
     //    // Clean up temporary file
     //    fclose($tempFile);
 });
+
+test('can list uploaded files', function () {
+    $gemini = new GeminiAIGateway();
+
+    // Call the files.list method
+    $response = $gemini->listFiles();
+
+    dump($response);
+
+});

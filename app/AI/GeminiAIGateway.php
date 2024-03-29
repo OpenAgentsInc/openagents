@@ -166,4 +166,23 @@ class GeminiAIGateway
             'details' => $fileResponse->json(),
         ];
     }
+
+    public function listFiles(?string $pageToken = null): array
+    {
+        $apiKey = $this->apiKey;
+        $baseUrl = $this->baseUrl;
+
+        $url = "{$baseUrl}/v1beta/files?key={$apiKey}";
+
+        if ($pageToken) {
+            $url .= "&pageToken={$pageToken}";
+        }
+
+        $response = Http::get($url);
+
+        return $response->successful() ? $response->json() : [
+            'error' => 'Failed to list files',
+            'details' => $response->json(),
+        ];
+    }
 }
