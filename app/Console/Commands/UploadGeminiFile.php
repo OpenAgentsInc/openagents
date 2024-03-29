@@ -26,8 +26,8 @@ class UploadGeminiFile extends Command
     public function handle()
     {
         $apiKey = escapeshellarg(env('GEMINI_API_KEY'));
-        $filePath = escapeshellarg(base_path('resources/localimages/home.png'));
-        $displayName = escapeshellarg('Demo Home Screenshot');
+        $filePath = escapeshellarg(base_path('resources/localimages/warn1.png'));
+        $displayName = escapeshellarg('Chat With Messages Remaining Screenshot');
 
         $scriptPath = base_path('scripts/gemini-upload-file.sh'); // Adjust this path to where your script is located.
 

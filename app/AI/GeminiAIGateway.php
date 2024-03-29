@@ -44,7 +44,9 @@ class GeminiAIGateway
                         [
                             'fileData' => [
                                 'mimeType' => 'image/png',
-                                'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/5a0ftzdl7aij',
+                                'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/z7n8iwshkb38', // Chat With Messages Remaining Screenshot',
+                                // 'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/u4lkezwelsaf', // Payment Successful Screenshot
+                                // 'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/5a0ftzdl7aij', // Home Chat
                             ],
                         ],
                     ],
