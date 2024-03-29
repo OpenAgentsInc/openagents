@@ -129,3 +129,32 @@ test('can generate inference with text and image data', function () {
     expect($response)->toHaveKey('candidates');
     // ... (add more specific assertions based on expected response)
 });
+
+test('can upload file using GeminiAIGateway', function () {
+    $gemini = new GeminiAIGateway();
+
+    // Upload a screenshot
+    $filepath = 'resources/localimages/home.png';
+
+    // Optional display name
+    $displayName = 'Home Page Screenshot';
+
+    // Call the uploadFile method
+    $response = $gemini->uploadFile($filepath, $displayName);
+
+    dump($response);
+
+    // Assert successful response structure
+    //    expect($response)->toBeArray();
+    //    expect($response)->toHaveKeys(['file']);
+    //
+    //    // Assert file metadata
+    //    $fileData = $response['file'];
+    //    expect($fileData)->toHaveKeys(['name', 'displayName', 'mimeType', 'sizeBytes', 'createTime', 'updateTime']);
+    //    expect($fileData['displayName'])->toBe($displayName);
+    //    expect($fileData['mimeType'])->toBe('text/plain'); // Adjust based on your test file type
+    //    expect($fileData['sizeBytes'])->toBeGreaterThan(0);
+    //
+    //    // Clean up temporary file
+    //    fclose($tempFile);
+});

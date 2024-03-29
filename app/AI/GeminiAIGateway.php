@@ -112,6 +112,9 @@ class GeminiAIGateway
             ];
         }
 
+        // dd with the response headers
+        //        dd($startResponse->headers());
+
         // Extract upload URL from response header
         $uploadUrl = $startResponse->header('x-goog-upload-url');
 
@@ -128,6 +131,17 @@ class GeminiAIGateway
                 $uploadCommand .= ', finalize';
             }
 
+            //            dd([
+            //                'Content-Length' => strlen($chunkData),
+            //                'X-Goog-Upload-Offset' => $offset,
+            //                'X-Goog-Upload-Command' => $uploadCommand,
+            //            ]);
+            // [
+            //                "Content-Length" => 79067
+            //  "X-Goog-Upload-Offset" => 0
+            //  "X-Goog-Upload-Command" => "upload"
+            //]
+
             $chunkResponse = Http::withHeaders([
                 'Content-Length' => strlen($chunkData),
                 'X-Goog-Upload-Offset' => $offset,
@@ -135,6 +149,8 @@ class GeminiAIGateway
             ])->withBody($chunkData, 'application/octet-stream')->post($uploadUrl);
 
             if (! $chunkResponse->successful()) {
+                dd($chunkResponse);
+
                 return [
                     'error' => 'Failed to upload file chunk',
                     'details' => $chunkResponse->json(),
