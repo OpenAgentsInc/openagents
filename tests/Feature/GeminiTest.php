@@ -93,3 +93,39 @@ test('can generate chat response', function () {
     // If the API's response includes dynamic values that you can predict or a range of acceptable values,
     // you can insert more specific assertions here to validate those.
 })->skip($skipThese);
+
+test('can generate inference with text and image data', function () {
+    $gemini = new GeminiAIGateway();
+
+    // Prepare text and image data
+    $text = "Describe what's happening in this image.";
+    //    $imagePath = 'path/to/your/image.jpg'; // Replace with actual image path
+    $imagePath = 'public/images/design/warn1.png';
+    $imageData = base64_encode(file_get_contents($imagePath));
+
+    // Create the prompt with text and image parts
+    $prompt = [
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $text],
+                    [
+                        'inlineData' => [
+                            'mimeType' => 'image/png', // Adjust based on image type
+                            'data' => $imageData,
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    // Send the prompt to the Gemini API
+    $response = $gemini->inference($prompt, 'new'); // Use the appropriate model
+    dump($response);
+
+    // Assert the response structure (similar to existing tests)
+    expect($response)->toBeArray();
+    expect($response)->toHaveKey('candidates');
+    // ... (add more specific assertions based on expected response)
+});

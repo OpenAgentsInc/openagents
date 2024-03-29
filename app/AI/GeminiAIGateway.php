@@ -10,32 +10,29 @@ class GeminiAIGateway
 
     protected $baseUrl = 'https://generativelanguage.googleapis.com';
 
-    protected $defaultModel = 'gemini-pro'; // Default model
+    protected $defaultModel = 'gemini-pro'; // Default text-only model
 
-    protected $newModel = 'gemini-1.5-pro-latest'; // New model
+    protected $visionModel = 'gemini-pro-vision'; // Model for text and image prompts
 
     public function __construct()
     {
         $this->apiKey = env('GEMINI_API_KEY');
     }
 
-    public function inference(string $text, ?string $model = null): array
+    public function inference(string|array $prompt, ?string $model = null): array
     {
-        $isNewModel = $model === 'new';
-        $modelPath = $isNewModel ? $this->newModel : $this->defaultModel;
-        $apiVersion = $isNewModel ? 'v1beta' : 'v1';
+        // Determine the model to use based on prompt type and optional parameter
+        if (is_array($prompt) && array_key_exists('contents', $prompt)) {
+            // Assume prompts with 'contents' key contain image data, use vision model
+            $modelPath = $this->visionModel;
+        } else {
+            // Use default text-only model or specified model
+            $modelPath = $model === 'new' ? $this->newModel : $this->defaultModel;
+        }
 
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-        ])->post("{$this->baseUrl}/{$apiVersion}/models/{$modelPath}:generateContent?key={$this->apiKey}", [
-            'contents' => [
-                [
-                    'parts' => [
-                        ['text' => $text],
-                    ],
-                ],
-            ],
-        ]);
+        ])->post("{$this->baseUrl}/v1/models/{$modelPath}:generateContent?key={$this->apiKey}", $prompt);
 
         return $response->successful() ? $response->json() : [
             'error' => 'Failed to generate inference',
