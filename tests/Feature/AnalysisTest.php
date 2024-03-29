@@ -32,21 +32,27 @@ test('can pass to gemini for analysis', function () {
         'tests/Feature/GeminiTest.php',
         'tests/Feature/GitHubTest.php',
         'resources/markdown/20240328-gemini.md',
+        'resources/markdown/20240329-024442-gemini.md',
+        'resources/markdown/20240329-024920-gemini.md',
     ];
 
     $prompt = CodeAnalyzer::generatePrompt($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = "Note your previous response in the 20240328-gemini.md. You said no changes to the GeminiAIGateway were required, but in fact yes it must be changed to use the vision model not the text-only model. Rewrite GeminiAIGateway accordingly. \n".$prompt;
+    $text = "Continue the conversation based on 20240329-024442-gemini.md. You gave a partial code snippet. I need you to write the entire contents of the file so I can copy-paste it in entirely. Ensure that the tests in GeminiTest will continue to pass. \n".$prompt;
     //    $text = 'Analyze the following code. Write names of feature and unit tests we should write to cover all mentioned functionality. \n '.$prompt;
     $response = $gemini->inference($text, 'new');
 
-    $text = $response['candidates'][0]['content']['parts'][0]['text'];
+    $response = $response['candidates'][0]['content']['parts'][0]['text'];
 
-    dump($text);
+    dump($response);
 
     // Write $text to a file with the current timestamp like "20240328-123456-gemini.md" in the resources/markdown folder
     $filename = 'resources/markdown/'.date('Ymd-His').'-gemini.md';
-    file_put_contents($filename, $text);
+
+    // Prepend the prompt to the text
+    $texttowrite = "# Prompt \n".$text."\n\n".$response;
+
+    file_put_contents($filename, $texttowrite);
 
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
