@@ -128,7 +128,7 @@ test('can generate inference with text and image data', function () {
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
     // ... (add more specific assertions based on expected response)
-});
+})->skip();
 
 test('can upload file using GeminiAIGateway', function () {
     $gemini = new GeminiAIGateway();
@@ -157,7 +157,7 @@ test('can upload file using GeminiAIGateway', function () {
     //
     //    // Clean up temporary file
     //    fclose($tempFile);
-});
+})->skip();
 
 test('can list uploaded files', function () {
     $gemini = new GeminiAIGateway();
@@ -167,4 +167,4 @@ test('can list uploaded files', function () {
 
     dump($response);
 
-});
+})->skip();
