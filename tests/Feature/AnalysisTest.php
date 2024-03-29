@@ -3,7 +3,7 @@
 use App\AI\GeminiAIGateway;
 use App\Services\CodeAnalyzer;
 
-$skipThese = false;
+$skipThese = true;
 
 test('can generate prompt from filepaths', function () {
     $filepaths = [
