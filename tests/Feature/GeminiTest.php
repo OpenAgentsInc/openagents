@@ -98,9 +98,9 @@ test('can generate inference with text and image data', function () {
     $gemini = new GeminiAIGateway();
 
     // Prepare text and image data
-    $text = "Describe what's happening in this image.";
+    $text = 'You are a designer agent who translates Figma designs into specs to give to a developer. Describe every detail of this design. Respond only in English.';
     //    $imagePath = 'path/to/your/image.jpg'; // Replace with actual image path
-    $imagePath = 'public/images/design/upgrade.png';
+    $imagePath = 'resources/localimages/home.png';
     $imageData = base64_encode(file_get_contents($imagePath));
 
     // Create the prompt with text and image parts
@@ -128,4 +128,4 @@ test('can generate inference with text and image data', function () {
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
     // ... (add more specific assertions based on expected response)
-})->skip();
+});
