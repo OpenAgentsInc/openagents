@@ -27,18 +27,16 @@ test('can pass to gemini for analysis', function () {
         'app/AI/GeminiAIGateway.php',
         'resources/markdown/docs.md',
         'resources/markdown/gemini.md',
-        'resources/markdown/launch.md',
+        'resources/markdown/gemini-file-api.md',
+        'resources/markdown/gemini-pro.md',
         'tests/Feature/AnalysisTest.php',
         'tests/Feature/GeminiTest.php',
         'tests/Feature/GitHubTest.php',
-        'resources/markdown/20240328-gemini.md',
-        'resources/markdown/20240329-024442-gemini.md',
-        'resources/markdown/20240329-024920-gemini.md',
     ];
 
     $prompt = CodeAnalyzer::generatePrompt($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = "Continue the conversation based on 20240329-024442-gemini.md. You gave a partial code snippet. I need you to write the entire contents of the file so I can copy-paste it in entirely. Ensure that the tests in GeminiTest will continue to pass. \n".$prompt;
+    $text = 'Fix my GeminiAIGateway. The inference method should use either the default Gemini model or the new pro model. If pro, the URL must be v1beta not v1. Chat should be the old model only. Code: \n '.$prompt;
     //    $text = 'Analyze the following code. Write names of feature and unit tests we should write to cover all mentioned functionality. \n '.$prompt;
     $response = $gemini->inference($text, 'new');
 
@@ -56,4 +54,4 @@ test('can pass to gemini for analysis', function () {
 
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
-})->skip();
+});

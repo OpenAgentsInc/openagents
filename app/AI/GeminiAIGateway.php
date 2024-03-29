@@ -12,6 +12,8 @@ class GeminiAIGateway
 
     protected $defaultModel = 'gemini-pro'; // Default text-only model
 
+    protected $newModel = 'gemini-1.5-pro-latest';
+
     protected $visionModel = 'gemini-pro-vision'; // Model for text and image prompts
 
     public function __construct()
@@ -30,9 +32,23 @@ class GeminiAIGateway
             $modelPath = $model === 'new' ? $this->newModel : $this->defaultModel;
         }
 
+        $url = "{$this->baseUrl}/v1beta/models/{$modelPath}:generateContent?key={$this->apiKey}";
+
+        $blob = [
+            'contents' => [
+                [
+                    'parts' => [
+                        ['text' => $prompt],
+                    ],
+                ],
+            ],
+        ];
+
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
-        ])->post("{$this->baseUrl}/v1/models/{$modelPath}:generateContent?key={$this->apiKey}", $prompt);
+        ])->post($url, $blob);
+
+        dump($response->json());
 
         return $response->successful() ? $response->json() : [
             'error' => 'Failed to generate inference',
