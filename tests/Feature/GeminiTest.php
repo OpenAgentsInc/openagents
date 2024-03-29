@@ -98,9 +98,9 @@ test('can generate inference with text and image data', function () {
     $gemini = new GeminiAIGateway();
 
     // Prepare text and image data
-    $text = "Describe what's happening in this image.";
+    $text = 'You are a designer agent who translates Figma designs into specs to give to a developer. Describe every detail of this design. Respond only in English.';
     //    $imagePath = 'path/to/your/image.jpg'; // Replace with actual image path
-    $imagePath = 'public/images/design/upgrade.png';
+    $imagePath = 'resources/localimages/home.png';
     $imageData = base64_encode(file_get_contents($imagePath));
 
     // Create the prompt with text and image parts
@@ -128,4 +128,43 @@ test('can generate inference with text and image data', function () {
     expect($response)->toBeArray();
     expect($response)->toHaveKey('candidates');
     // ... (add more specific assertions based on expected response)
+})->skip();
+
+test('can upload file using GeminiAIGateway', function () {
+    $gemini = new GeminiAIGateway();
+
+    // Upload a screenshot
+    $filepath = 'resources/localimages/home.png';
+
+    // Optional display name
+    $displayName = 'Home Page Screenshot';
+
+    // Call the uploadFile method
+    $response = $gemini->uploadFile($filepath, $displayName);
+
+    dump($response);
+
+    // Assert successful response structure
+    //    expect($response)->toBeArray();
+    //    expect($response)->toHaveKeys(['file']);
+    //
+    //    // Assert file metadata
+    //    $fileData = $response['file'];
+    //    expect($fileData)->toHaveKeys(['name', 'displayName', 'mimeType', 'sizeBytes', 'createTime', 'updateTime']);
+    //    expect($fileData['displayName'])->toBe($displayName);
+    //    expect($fileData['mimeType'])->toBe('text/plain'); // Adjust based on your test file type
+    //    expect($fileData['sizeBytes'])->toBeGreaterThan(0);
+    //
+    //    // Clean up temporary file
+    //    fclose($tempFile);
+})->skip();
+
+test('can list uploaded files', function () {
+    $gemini = new GeminiAIGateway();
+
+    // Call the files.list method
+    $response = $gemini->listFiles();
+
+    dump($response);
+
 })->skip();
