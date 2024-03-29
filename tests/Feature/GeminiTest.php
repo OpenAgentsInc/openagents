@@ -100,7 +100,7 @@ test('can generate inference with text and image data', function () {
     // Prepare text and image data
     $text = "Describe what's happening in this image.";
     //    $imagePath = 'path/to/your/image.jpg'; // Replace with actual image path
-    $imagePath = 'public/images/design/warn1.png';
+    $imagePath = 'public/images/design/upgrade.png';
     $imageData = base64_encode(file_get_contents($imagePath));
 
     // Create the prompt with text and image parts
