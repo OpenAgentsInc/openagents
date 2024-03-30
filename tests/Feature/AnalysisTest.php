@@ -24,23 +24,27 @@ test('can generate prompt from filepaths', function () {
 test('can pass to gemini for analysis', function () {
     //    $filepaths = CodeAnalyzer::getAllCodebaseFilePaths(base_path()); // first just markdown
     $filepaths = [
-        'routes/web.php',
-        'app/AI/GeminiAIGateway.php',
-        'resources/markdown/launch.md',
-        'resources/markdown/docs.md',
+        //        'routes/web.php',
+        //        'app/AI/GeminiAIGateway.php',
+        //        'resources/markdown/launch.md',
+        //        'resources/markdown/docs.md',
         //        'resources/markdown/gemini.md',
         //        'resources/markdown/gemini-pro.md',
         //        'resources/markdown/gemini-file-api-faq.md',
         //        'resources/markdown/gemini-file-api-reference.md',
-        'resources/markdown/20240329-201124-gemini.md',
-        'tests/Feature/AnalysisTest.php',
-        'tests/Feature/GeminiTest.php',
+        //        'resources/markdown/20240329-201124-gemini.md',
+        //        'tests/Feature/AnalysisTest.php',
+        //        'tests/Feature/GeminiTest.php',
+        'resources/markdown/20240330-012348-gemini.md',
     ];
 
     $context = CodeAnalyzer::generateContext($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = 'We are writing a new Markdown specification describing the attached images in exhaustive detail, with the target audience being a junior developer who will implement the designs in our Laravel codebase. Write a document that will help the developer implement the designs. Focus on each element of the designs, also speculating about what are appropriate sub-components for partial Laravel views and which are appropriate to do as Livewire components vs. basic Blade components.';
-    $prompt = $text."\n\n".$context;
+
+    $text = 'We are writing a Markdown specification documents describing the attached images in exhaustive detail. Please review the prior entry in this conversation below. Your response was a good start, but does not go into enough detail about the styles you see there. It also does not detail which components are appropriate for Livewire or basic Blade components. Rewrite the document with greater detail.';
+    //    $prompt = $text;
+    $prompt = $text."\n\n --------- \n\n".$context;
+    //    dd($prompt);
 
     $response = $gemini->inference($prompt, 'new');
 
