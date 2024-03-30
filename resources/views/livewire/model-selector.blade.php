@@ -1,12 +1,16 @@
 <ol class="ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
-    <li class="flex items-center text-sm text-gray">
-        <a href="/" wire:navigate class="h-[48px] w-[48px] flex justify-center items-center">
-            <div class="border rounded w-[32px] h-[32px] flex justify-center items-center">
-                <x-icon.logo class="w-[20px] h-[20px]"></x-icon.logo>
-            </div>
-        </a>
-        <h3 class="ml-2 mr-4">/</h3>
-    </li>
+    @auth
+        <div class="h-[48px"></div>
+    @else
+        <li class="flex items-center text-sm text-gray">
+            <a href="/" wire:navigate class="h-[48px] w-[48px] flex justify-center items-center">
+                <div class="border rounded w-[32px] h-[32px] flex justify-center items-center">
+                    <x-icon.logo class="w-[20px] h-[20px]"></x-icon.logo>
+                </div>
+            </a>
+            <h3 class="ml-2 mr-4">/</h3>
+        </li>
+    @endauth
     <li class="text-sm font-semibold text-gray-800 truncate " x-data="{ dropdown: false }"
         aria-current="page">
         <div class="flex gap-2 items-center justify-center overflow-hidden" role="button"

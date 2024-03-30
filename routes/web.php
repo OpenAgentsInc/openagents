@@ -7,6 +7,7 @@ use App\Livewire\Auth\VerifyAccount;
 use App\Livewire\Chat;
 use App\Livewire\Frontpage;
 use Illuminate\Support\Facades\Route;
+use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // CHAT
 Route::get('/', Frontpage::class);
@@ -23,6 +24,9 @@ Route::get('/billing', [BillingController::class, 'stripe_billing_portal'])->mid
 Route::get('/pro', [StaticController::class, 'pro']);
 Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/docs', [StaticController::class, 'docs']);
+
+// Add GET logout route
+Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {
