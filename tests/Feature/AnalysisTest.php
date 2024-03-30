@@ -24,20 +24,22 @@ test('can generate prompt from filepaths', function () {
 test('can pass to gemini for analysis', function () {
     //    $filepaths = CodeAnalyzer::getAllCodebaseFilePaths(base_path()); // first just markdown
     $filepaths = [
-        //        'app/AI/GeminiAIGateway.php',
-        //        'resources/markdown/docs.md',
+        'routes/web.php',
+        'app/AI/GeminiAIGateway.php',
+        'resources/markdown/launch.md',
+        'resources/markdown/docs.md',
         //        'resources/markdown/gemini.md',
         //        'resources/markdown/gemini-pro.md',
         //        'resources/markdown/gemini-file-api-faq.md',
         //        'resources/markdown/gemini-file-api-reference.md',
-        //        'resources/markdown/20240329-201124-gemini.md',
-        //        'tests/Feature/AnalysisTest.php',
-        //        'tests/Feature/GeminiTest.php',
+        'resources/markdown/20240329-201124-gemini.md',
+        'tests/Feature/AnalysisTest.php',
+        'tests/Feature/GeminiTest.php',
     ];
 
     $context = CodeAnalyzer::generateContext($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = 'Describe this file';
+    $text = 'We are writing a new Markdown specification describing the attached images in exhaustive detail, with the target audience being a junior developer who will implement the designs in our Laravel codebase. Write a document that will help the developer implement the designs. Focus on each element of the designs, also speculating about what are appropriate sub-components for partial Laravel views and which are appropriate to do as Livewire components vs. basic Blade components.';
     $prompt = $text."\n\n".$context;
 
     $response = $gemini->inference($prompt, 'new');
@@ -55,4 +57,4 @@ test('can pass to gemini for analysis', function () {
     file_put_contents($filename, $texttowrite);
 
     //    expect($response)->toBeString();
-})->skip();
+});
