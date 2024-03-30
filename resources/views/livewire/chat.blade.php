@@ -1,33 +1,12 @@
 <div>
-
-    <x-slot:sidecontent>
-        @livewire('layouts.sidebar.content')
-        </x-slot>
-
-        <x-slot:sidecontent_mobile>
-            @livewire('layouts.sidebar.content')
-            </x-slot>
-
-
-            <div class="flex h-screen w-full relative py-15 " x-bind:class="{
-
-        'transition-all duration-300 ease-in-out': true,
-        'lg:pl-[300px]': !collapsed,
-        'lg:pl-20': collapsed,
-        '-translate-x-full': !showSidebar
-    }">
-
-
-                <div class="flex flex-col lg:ml-16 mb-20 ">
-                    {{-- <div class="fixed top-[80px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-b from-black to-transparent z-[9]"></div> --}}
-
-                    <div id="chatbox-container" x-ref="chatboxContainer"
-                         class="absolute  mt-[100px] mb-[5px] pb-[100px] flex-1 overflow-auto bg-gray-900 text-white">
-                        <div class="relative "
-                             x-data="{ pending: @entangle('pending').live }"
-
-
-                             x-init="
+    <div class="flex h-screen w-full relative py-15">
+        <div class="mx-auto w-[768px]">
+            <div class="flex flex-col mb-20">
+                <div id="chatbox-container" x-ref="chatboxContainer"
+                     class="mt-[100px] mb-[5px] pb-[100px] overflow-auto bg-gray-900 text-white">
+                    <div class="relative "
+                         x-data="{ pending: @entangle('pending').live }"
+                         x-init="
                             let chatbox = $refs.chatboxContainer;
                             setTimeout(() => {
                                 chatbox.scrollTo({ top: chatbox.scrollHeight, behavior: 'smooth' });
@@ -46,43 +25,32 @@
                                     }, 1);
                                 }
                     });">
-                            @foreach($messages as $message)
-                                @php
-                                    $author = $message['agent_id'] ? 'OpenAgents' : 'You';
-                                @endphp
-                                <x-chat.message :author="$author" :message="$message['body']"/>
-                            @endforeach
+                        @foreach($messages as $message)
+                            @php
+                                $author = $message['agent_id'] ? 'OpenAgents' : 'You';
+                            @endphp
+                            <x-chat.message :author="$author" :message="$message['body']"/>
+                        @endforeach
 
-                            @if($pending)
-                                <x-chat.messagestreaming :author="$agent->name ?? 'Agent'"/>
-                            @endif
-                        </div>
+                        @if($pending)
+                            <x-chat.messagestreaming :author="$agent->name ?? 'Agent'"/>
+                        @endif
                     </div>
+                </div>
 
-                    <div class="fixed bottom-0 left-[0px] right-0 h-[80px] px-4 py-3 flex items-center z-30"
-                         x-bind:class="{
-
-                        'transition-all duration-300 ease-in-out': true,
-                        'lg:pl-[300px]': !collapsed,
-                        'lg:pl-16': collapsed,
-                        '-translate-x-full': !showSidebar
-                    }">
-
-
-                        {{-- <div class="fixed bottom-0 w-screen left-[0px] right-0 h-[70px] bg-black z-5"></div> --}}
-                        {{-- <div class="fixed bottom-[90px] w-screen left-[0px] right-0 h-[40px] bg-gradient-to-t from-black to-transparent z-5"></div> --}}
-                        <div class="bg-black relative w-full pt-2 md:pt-0 dark:border-white/20 md:border-transparent md:dark:border-transparent md:w-[calc(100%-.5rem)] z-40">
-                            <div class="stretch bg-black text-center text-[#777A82] mx-2 flex flex-row gap-3 mb-4  last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl z-40">
+                <div class="fixed bottom-0 left-[0px] right-0 h-[80px] px-4 py-3 flex items-center z-30">
+                    <div class="bg-black relative w-full pt-2 md:pt-0 dark:border-white/20 md:border-transparent md:dark:border-transparent md:w-[calc(100%-.5rem)] z-40">
+                        <div class="stretch bg-black text-center text-[#777A82] mx-2 flex flex-row gap-3 mb-4  last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl z-40">
                                 <span class="mx-auto text-ellipsis text-xs sm:text-sm">
                                     Chat agents make mistakes. All chats are public.
                                 </span>
-                            </div>
-                            <form wire:submit.prevent="sendMessage"
-                                  class="stretch mx-2 flex flex-row gap-3 last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl">
-                                <div class="relative flex h-full flex-1 items-stretch md:flex-col">
-                                    <div class="flex w-full items-center text-white">
-                                        <div x-data x-init="$refs.answer.focus()"
-                                             class="overflow-hidden [&amp;:has(textarea:focus)]:border-gray [&amp;:has(textarea:focus)]:shadow-[0_2px_6px_rgba(0,0,0,.05)] flex flex-col w-full dark:border-gray flex-grow relative border border-gray dark:text-white rounded-[6px]">
+                        </div>
+                        <form wire:submit.prevent="sendMessage"
+                              class="stretch mx-2 flex flex-row gap-3 last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl">
+                            <div class="relative flex h-full flex-1 items-stretch md:flex-col">
+                                <div class="flex w-full items-center text-white">
+                                    <div x-data x-init="$refs.answer.focus()"
+                                         class="overflow-hidden [&amp;:has(textarea:focus)]:border-gray [&amp;:has(textarea:focus)]:shadow-[0_2px_6px_rgba(0,0,0,.05)] flex flex-col w-full dark:border-gray flex-grow relative border border-gray dark:text-white rounded-[6px]">
                                             <textarea x-ref="answer" id="message-input" name="message_input"
                                                       wire:model="message_input" autofocus
                                                       onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
@@ -91,7 +59,7 @@
                                               focus:ring-0 focus-visible:ring-0 dark:bg-transparent max-h-25 py-[10px] pr-10
                                               md:py-3.5 md:pr-12 placeholder-white/50 pl-10 md:pl-[22px]"
                                                       style="height: 52px; overflow-y: hidden;"></textarea>
-                                            <button id="send-message" class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5
+                                        <button id="send-message" class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5
                                         text-white transition-colors enabled:bg-black disabled:text-gray-400
                                         disabled:opacity-25 dark:border-white dark:bg-white dark:hover:bg-white md:bottom-3
                                         md:right-3">
@@ -103,15 +71,17 @@
                                                               stroke-linejoin="round"></path>
                                                     </svg>
                                                 </span>
-                                            </button>
-                                        </div>
+                                        </button>
                                     </div>
                                 </div>
-                            </form>
-                        </div>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
+
+        </div>
+    </div>
 
 
 </div>
