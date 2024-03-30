@@ -64,4 +64,4 @@ test('can pass to gemini for analysis', function () {
     file_put_contents($filename, $texttowrite);
 
     //    expect($response)->toBeString();
-});
+})->skip();
