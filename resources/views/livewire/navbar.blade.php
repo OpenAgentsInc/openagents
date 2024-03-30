@@ -1,24 +1,13 @@
 <div
-        class="fixed w-full border-b border-offblack px-5 py-2 flex flex-row items-center justify-between bg-black z-[300]">
+        class="fixed w-full px-5 py-2 flex flex-row items-center justify-between bg-black z-[300]">
     <div class="flex flex-row items-center">
-        <a href="/" wire:navigate>
-            <x-logomark size="4"/>
-        </a>
-        <a href="/launch" wire:navigate class="ml-8 text-gray hover:text-white">Launch announcement</a>
-        <a href="/docs" wire:navigate class="ml-8 text-gray hover:text-white">Docs</a>
-        <a href="/pro" wire:navigate class="ml-8 text-gray hover:text-white">Pro</a>
+        <livewire:model-selector/>
     </div>
     <div class="flex flex-row items-center">
-        @php
-            $tweetText = request()->is('chat/*')
-                ? "I'm having a fun chat with @OpenAgentsInc"
-                : "You should read this";
-            $encodedTweetText = urlencode($tweetText);
-        @endphp
-        <a class="twitter-share-button"
-           target="_blank"
-           href="https://twitter.com/intent/tweet?text={{ $encodedTweetText }}"
-           data-size="large">
-        </a>
+        <x-secondary-button x-data @click="$dispatch('open-login-modal')" id="hs-dropdown-with-header"
+                            type="button"
+                            class="py-2 text-[20px] inline-flex justify-center items-center gap-x-2 font-semibold rounded-full disabled:opacity-50 disabled:pointer-events-none">
+            Log in
+        </x-secondary-button>
     </div>
 </div>
