@@ -9,7 +9,7 @@
 
     <!-- Fixed input bar at the bottom -->
     <div class="fixed bottom-0 left-0 right-0 px-8 sm:w-[584px] lg:w-[768px] mx-auto">
-        <form wire:submit.prevent="sendFirstMessage" class="mb-6">
+        <form wire:submit.prevent="sendFirstMessage">
             <x-chat.input dusk="first-message-input" autofocus placeholder="Message OpenAgents..." :showIcon="true"
                           iconName="send"
                           wire:model="first_message"
@@ -17,10 +17,6 @@
             />
             <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
         </form>
-        <div class="pointer-events-none">
-            <p class="text-center text-gray text-sm mb-6">
-                Chat agents make mistakes. Don't share sensitive info.
-            </p>
-        </div>
+        <x-chat-warning/>
     </div>
 </div>

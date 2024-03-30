@@ -38,50 +38,24 @@
                     </div>
                 </div>
 
-                <div class="fixed bottom-0 left-[0px] right-0 h-[80px] px-4 py-3 flex items-center z-30">
-                    <div class="bg-black relative w-full pt-2 md:pt-0 dark:border-white/20 md:border-transparent md:dark:border-transparent md:w-[calc(100%-.5rem)] z-40">
-                        <div class="stretch bg-black text-center text-[#777A82] mx-2 flex flex-row gap-3 mb-4  last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl z-40">
-                                <span class="mx-auto text-ellipsis text-xs sm:text-sm">
-                                    Chat agents make mistakes. All chats are public.
-                                </span>
-                        </div>
-                        <form wire:submit.prevent="sendMessage"
-                              class="stretch mx-2 flex flex-row gap-3 last:mb-2 md:mx-4 md:last:mb-6 lg:mx-auto lg:max-w-2xl xl:max-w-3xl">
-                            <div class="relative flex h-full flex-1 items-stretch md:flex-col">
-                                <div class="flex w-full items-center text-white">
-                                    <div x-data x-init="$refs.answer.focus()"
-                                         class="overflow-hidden [&amp;:has(textarea:focus)]:border-gray [&amp;:has(textarea:focus)]:shadow-[0_2px_6px_rgba(0,0,0,.05)] flex flex-col w-full dark:border-gray flex-grow relative border border-gray dark:text-white rounded-[6px]">
-                                            <textarea x-ref="answer" id="message-input" name="message_input"
-                                                      wire:model="message_input" autofocus
-                                                      onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
-                                                      tabindex="0" rows="1"
-                                                      placeholder="{{ 'Message ' . $agent->name . '...' }}" class=" placeholder:text-xs placeholder:sm:text-sm placeholder:md:text-md outline-none m-0 w-full resize-none border-0 bg-transparent
-                                              focus:ring-0 focus-visible:ring-0 dark:bg-transparent max-h-25 py-[10px] pr-10
-                                              md:py-3.5 md:pr-12 placeholder-white/50 pl-10 md:pl-[22px]"
-                                                      style="height: 52px; overflow-y: hidden;"></textarea>
-                                        <button id="send-message" class="absolute bottom-1.5 right-2 rounded-lg border border-black bg-black p-0.5
-                                        text-white transition-colors enabled:bg-black disabled:text-gray-400
-                                        disabled:opacity-25 dark:border-white dark:bg-white dark:hover:bg-white md:bottom-3
-                                        md:right-3">
-                                                <span class="" data-state="closed">
-                                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                                                         class="text-gray">
-                                                        <path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor"
-                                                              stroke-width="2" stroke-linecap="round"
-                                                              stroke-linejoin="round"></path>
-                                                    </svg>
-                                                </span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
+                <div class="fixed bottom-0 left-0 right-0 px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                    <form wire:submit.prevent="sendMessage">
+                        <x-chat.input autofocus placeholder="Message OpenAgents..." :showIcon="true"
+                                      iconName="send"
+                                      wire:model="message_input"
+                                      onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
+                        />
+                        <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
+                    </form>
 
+                    <x-chat-warning/>
+                </div>
+
+            </div>
         </div>
+
     </div>
+</div>
 
 
 </div>
