@@ -1,8 +1,6 @@
 <ol class="ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
     @auth
-        <div class="h-[32px] -ml-1 mr-12">
-            <x-icon.menu/>
-        </div>
+
     @else
         <li class="flex items-center text-sm text-gray">
             <a href="/" wire:navigate class="h-[48px] w-[48px] flex justify-center items-center">

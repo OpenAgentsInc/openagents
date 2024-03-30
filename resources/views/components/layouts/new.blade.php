@@ -11,9 +11,33 @@
     @include('partials.ogtags')
 </head>
 
-<body class="h-full bg-black">
+<body class="h-full bg-black" x-cloak x-data="{ sidebarOpen: true, collapsed: false }">
 
-<livewire:navbar/>
-{{$slot}}
+
+{{--<livewire:navbar/>--}}
+
+<div class="relative z-0 flex h-full w-full overflow-hidden">
+    <div class="flex-shrink-0 overflow-x-hidden"
+         x-cloak
+         x-bind:class="{
+            'w-[128px]': !sidebarOpen,
+            'w-[260px] border-r border-darkgray': sidebarOpen
+           }"
+    >
+        <button class="cursor-pointer h-[32px] m-4 mr-12" @click="sidebarOpen = !sidebarOpen">
+            <x-icon.menu/>
+        </button>
+    </div>
+    <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
+        {{$slot}}
+    </div>
+
+</div>
+
+@include('partials.modals')
+
+@yield('modal')
 
 </body>
+
+</html>
