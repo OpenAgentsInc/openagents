@@ -1,15 +1,17 @@
 <ol class="ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
     <li class="flex items-center text-sm text-gray">
-        <div class="border rounded-[9px] h-[48px] w-[48px] flex justify-center items-center">
-            <x-icon.logo class="w-[32px] h-[32px]"></x-icon.logo>
+        <div class="h-[48px] w-[48px] flex justify-center items-center">
+            <div class="border rounded w-[32px] h-[32px] flex justify-center items-center">
+                <x-icon.logo class="w-[20px] h-[20px]"></x-icon.logo>
+            </div>
         </div>
-        <h3 class="mx-4">/</h3>
+        <h3 class="ml-2 mr-4">/</h3>
     </li>
     <li class="text-sm font-semibold text-gray-800 truncate " x-data="{ dropdown: false }"
         aria-current="page">
         <div class="flex gap-2 items-center justify-center overflow-hidden" role="button"
              tabindex="0" @click="dropdown= !dropdown">
-            <x-icon.chatgpt class="w-8 h-8"></x-icon.chatgpt>
+            <x-icon.chatgpt class="w-[32px] h-[32px]"></x-icon.chatgpt>
             <div class="flex flex-col">
                 <span class="text-indigo-50 my-0 text-[20px]">GPT-4 </span>
 
