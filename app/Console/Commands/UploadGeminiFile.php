@@ -11,7 +11,7 @@ class UploadGeminiFile extends Command
      *
      * @var string
      */
-    protected $signature = 'gemini:upload';
+    protected $signature = 'gemini:upload {filePath : The path to the file you want to upload}';
 
     /**
      * The console command description.
@@ -26,12 +26,17 @@ class UploadGeminiFile extends Command
     public function handle()
     {
         $apiKey = escapeshellarg(env('GEMINI_API_KEY'));
-        $filePath = escapeshellarg(base_path('resources/localimages/warn1.png'));
-        $displayName = escapeshellarg('Chat With Messages Remaining Screenshot');
+        // Retrieve the file path argument
+        $filePath = $this->argument('filePath');
+        // Extract the filename from the path
+        $filename = pathinfo($filePath, PATHINFO_BASENAME);
+        // Escaping the file path and display name for shell command
+        $escapedFilePath = escapeshellarg($filePath);
+        $displayName = escapeshellarg($filename);
 
         $scriptPath = base_path('scripts/gemini-upload-file.sh'); // Adjust this path to where your script is located.
 
-        $command = "{$scriptPath} -a {$apiKey} -i {$filePath} -d {$displayName}";
+        $command = "{$scriptPath} -a {$apiKey} -i {$escapedFilePath} -d {$displayName}";
 
         $output = null;
         $returnVar = null;

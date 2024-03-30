@@ -24,7 +24,9 @@ test('can generate prompt from filepaths', function () {
 test('can pass to gemini for analysis', function () {
     //    $filepaths = CodeAnalyzer::getAllCodebaseFilePaths(base_path()); // first just markdown
     $filepaths = [
+        //        'routes/web.php',
         //        'app/AI/GeminiAIGateway.php',
+        //        'resources/markdown/launch.md',
         //        'resources/markdown/docs.md',
         //        'resources/markdown/gemini.md',
         //        'resources/markdown/gemini-pro.md',
@@ -33,12 +35,19 @@ test('can pass to gemini for analysis', function () {
         //        'resources/markdown/20240329-201124-gemini.md',
         //        'tests/Feature/AnalysisTest.php',
         //        'tests/Feature/GeminiTest.php',
+        'resources/markdown/20240330-012348-gemini.md',
+        'resources/markdown/20240330-012826-gemini.md',
     ];
 
     $context = CodeAnalyzer::generateContext($filepaths);
     $gemini = new GeminiAIGateway();
-    $text = 'Describe this file';
-    $prompt = $text."\n\n".$context;
+
+    $text = 'Review the conversations below, then select one small component from the attached Figma designs and write code for the Blade or Livewire component, using Tailwind classes.';
+
+    //    $text = 'We are writing a Markdown specification documents describing the attached images in exhaustive detail. Please review the prior entry in this conversation below. Your response was a good start, but does not go into enough detail about the styles you see there. It also does not detail which components are appropriate for Livewire or basic Blade components. Rewrite the document with greater detail.';
+    //    $prompt = $text;
+    $prompt = $text."\n\n --------- \n\n".$context;
+    //    dd($prompt);
 
     $response = $gemini->inference($prompt, 'new');
 

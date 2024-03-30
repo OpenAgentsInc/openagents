@@ -49,6 +49,30 @@ class GeminiAIGateway
                                 // 'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/5a0ftzdl7aij', // Home Chat
                             ],
                         ],
+                        [
+                            'fileData' => [
+                                'mimeType' => 'image/png',
+                                'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/q9pjp7mxikei', // Manage_chats.png
+                            ],
+                        ],
+                        [
+                            'fileData' => [
+                                'mimeType' => 'image/png',
+                                'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/p658yxp61wzp', // Modify chat.png
+                            ],
+                        ],
+                        [
+                            'fileData' => [
+                                'mimeType' => 'image/png',
+                                'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/1ac2r283eqjz', // Home.png
+                            ],
+                        ],
+                        [
+                            'fileData' => [
+                                'mimeType' => 'image/png',
+                                'fileUri' => 'https://generativelanguage.googleapis.com/v1beta/files/4kwh4fircjh4', // Rename_chat.png
+                            ],
+                        ],
                     ],
                 ],
             ],
