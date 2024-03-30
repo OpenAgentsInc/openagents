@@ -1,6 +1,8 @@
 <ol class="ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
     @auth
-        <div class="h-[48px"></div>
+        <div class="h-[32px] -ml-1 mr-12">
+            <x-icon.menu/>
+        </div>
     @else
         <li class="flex items-center text-sm text-gray">
             <a href="/" wire:navigate class="h-[48px] w-[48px] flex justify-center items-center">
@@ -11,7 +13,7 @@
             <h3 class="ml-2 mr-4">/</h3>
         </li>
     @endauth
-    <li class="text-sm font-semibold text-gray-800 truncate " x-data="{ dropdown: false }"
+    <li class="text-sm font-semibold text-gray-800 truncate select-none" x-data="{ dropdown: false }"
         aria-current="page">
         <div class="flex gap-2 items-center justify-center overflow-hidden" role="button"
              tabindex="0" @click="dropdown= !dropdown">
@@ -29,7 +31,7 @@
                     <div
                             x-cloak
                             x-show="dropdown" @click.away="dropdown= false"
-                            class="fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/45"
+                            class="mt-4 -ml-[130px] fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/45"
                             aria-labelledby="hs-dropdown-with-header">
 
                         <div class="py-0 first:pt-0 last:pb-0 bg-black">
