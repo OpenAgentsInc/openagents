@@ -1,4 +1,4 @@
-<div class="pointer-events-none">
+<div class="select-none pointer-events-none">
     <p class="text-center text-gray text-xs my-4">
         Chat agents make mistakes. Don't share sensitive info.
     </p>
