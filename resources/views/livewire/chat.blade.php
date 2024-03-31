@@ -33,7 +33,7 @@
                         <livewire:model-selector/>
                         <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
                     </div>
-                    <div class="-ml-[50px]">
+                    <div class="xl:-ml-[50px]">
                         @foreach($messages as $message)
                             @php
                                 $author = $message['agent_id'] ? 'OpenAgents' : 'You';
