@@ -17,6 +17,10 @@
             transition: border-color 0.3s ease-in-out, width 0.3s ease-in-out;
         }
 
+        .hmmm {
+            transition: margin-left 0.3s ease-in-out;
+        }
+
         .sidebar-open {
             width: 260px;
             border-right: 1px solid rgba(255, 255, 255, 0.15);
@@ -29,10 +33,11 @@
     </style>
 </head>
 
-<body class="h-full bg-black" x-cloak x-data="{ sidebarOpen: true, collapsed: false }">
+<body class="h-screen bg-black antialiased" x-cloak x-data="{ sidebarOpen: false, collapsed: false }">
 
-<div class="relative z-0 flex h-full w-full overflow-hidden">
-    <button class="z-50 absolute top-0 left-0 cursor-pointer h-[32px] m-4 mr-12" @click="sidebarOpen = !sidebarOpen">
+<div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
+    <button class="z-50 absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] mr-12"
+            @click="sidebarOpen = !sidebarOpen">
         <x-icon.menu/>
     </button>
     <div class="flex-shrink-0 overflow-x-hidden sidebar"
@@ -42,10 +47,14 @@
             'sidebar-closed': !sidebarOpen
            }"
     >
-
+        <livewire:layouts.sidebar.content/>
     </div>
-    <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
-        {{$slot}}
+    <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden hmmm"
+         :style="`margin-left: ${sidebarOpen ? '0' : '50px'}`"
+    >
+        <main class="relative h-full w-full flex-1 overflow-auto transition-width">
+            {{$slot}}
+        </main>
     </div>
 
 </div>

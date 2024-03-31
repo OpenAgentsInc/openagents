@@ -8,7 +8,7 @@
     </div>
 
     <!-- Fixed input bar at the bottom -->
-    <div class="fixed bottom-0 left-0 right-0 px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+    <div class="fixed bottom-0 left-0 right-0 sm:w-[584px] lg:w-[768px] mx-auto">
         <form wire:submit.prevent="sendFirstMessage">
             <x-chat.input dusk="first-message-input" autofocus placeholder="Message OpenAgents..." :showIcon="true"
                           iconName="send"
