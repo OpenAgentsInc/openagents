@@ -1,9 +1,9 @@
 <div role="presentation" tabindex="0" class="flex flex-col h-full min-h-screen">
     <div class="flex-1 overflow-hidden">
-        <div class="scroll-me h-full">
+        <div class="overflow-y-scroll h-full">
             <div class="scroll-me">
                 <div class="flex flex-col text-sm pb-9" style="">
-                    <div class="sticky top-0 mb-1.5 flex items-center justify-between z-10 h-14 p-2 font-semibold bg-token-main-surface-primary">
+                    <div class="sticky top-0 mb-1.5 flex items-center justify-between z-10 h-14 p-2 font-semibold bg-black">
                         <div class="absolute left-1/2 -translate-x-1/2"></div>
                         <livewire:model-selector/>
                         <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
@@ -23,7 +23,7 @@
         </div>
     </div>
     <div class="w-full">
-        <div class="px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+        <div class="sm:w-[584px] lg:w-[768px] mx-auto">
             <form wire:submit.prevent="sendMessage">
                 <x-chat.input dusk="message-input" autofocus placeholder="Message OpenAgents..." :showIcon="true"
                               iconName="send"
