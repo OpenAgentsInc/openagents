@@ -29,9 +29,9 @@
     </style>
 </head>
 
-<body class="h-full bg-black" x-cloak x-data="{ sidebarOpen: true, collapsed: false }">
+<body class="h-full min-h-screen bg-black" x-cloak x-data="{ sidebarOpen: true, collapsed: false }">
 
-<div class="relative z-0 flex h-full w-full overflow-hidden">
+<div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
     <button class="z-50 absolute top-0 left-0 cursor-pointer h-[32px] m-4 mr-12" @click="sidebarOpen = !sidebarOpen">
         <x-icon.menu/>
     </button>
@@ -46,9 +46,7 @@
     </div>
     <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
         <main class="relative h-full w-full flex-1 overflow-auto transition-width">
-            <div role="presentation" tabindex="0" class="flex flex-col h-full">
-                {{$slot}}
-            </div>
+            {{$slot}}
         </main>
     </div>
 
