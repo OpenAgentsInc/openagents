@@ -1,6 +1,6 @@
 <div>
     <div class="flex h-screen w-full relative py-15">
-        <div class="mx-auto w-[768px]">
+        <div class="mx-auto w-full lg:max-w-[768px] relative">
             <div class="flex flex-col mb-20">
                 <div id="chatbox-container" x-ref="chatboxContainer"
                      class="mt-[100px] mb-[5px] pb-[100px] overflow-auto bg-gray-900 text-white">
@@ -38,7 +38,7 @@
                     </div>
                 </div>
 
-                <div class="fixed bottom-0 left-0 right-0 px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                <div class="absolute bottom-0 left-0 right-0 px-8">
                     <form wire:submit.prevent="sendMessage">
                         <x-chat.input autofocus placeholder="Message OpenAgents..." :showIcon="true"
                                       iconName="send"
