@@ -33,21 +33,23 @@
                         <livewire:model-selector/>
                         <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
                     </div>
-                    @foreach($messages as $message)
-                        @php
-                            $author = $message['agent_id'] ? 'OpenAgents' : 'You';
-                        @endphp
-                        <x-chat.message :author="$author" :message="$message['body']"/>
-                    @endforeach
+                    <div class="-ml-[50px]">
+                        @foreach($messages as $message)
+                            @php
+                                $author = $message['agent_id'] ? 'OpenAgents' : 'You';
+                            @endphp
+                            <x-chat.message :author="$author" :message="$message['body']"/>
+                        @endforeach
 
-                    @if($pending)
-                        <x-chat.messagestreaming :author="$agent->name ?? 'Agent'"/>
-                    @endif
+                        @if($pending)
+                            <x-chat.messagestreaming :author="$agent->name ?? 'Agent'"/>
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    <div class="w-full">
+    <div class="w-full -ml-[25px]">
         <div class="sm:w-[584px] lg:w-[768px] mx-auto">
             <form wire:submit.prevent="sendMessage">
                 <x-chat.input dusk="message-input" autofocus placeholder="Message OpenAgents..." :showIcon="true"
