@@ -18,6 +18,7 @@ export default {
                 mono: ['"JetBrains Mono"', ...defaultTheme.fontFamily.mono],
             },
             colors: {
+                text: '#D7D8E5',
                 offblack: '#1e1e1e',
                 darkgray: '#3D3D40',
                 gray: '#8B8585',

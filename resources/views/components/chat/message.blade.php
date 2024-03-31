@@ -23,11 +23,11 @@
                                 <img class="mt-6" src="{{ $message }}" alt="Embedded Image">
                             @else
                                 <x-markdown
-                                        class="text-md">{!! $message !!}</x-markdown>
+                                        class="text-md text-text">{!! $message !!}</x-markdown>
                             @endif
 
                         @else
-                            <x-markdown class="text-md">{{ $message }}</x-markdown>
+                            <x-markdown class="text-md text-text">{{ $message }}</x-markdown>
                         @endif
                     </div>
                     <div class="flex justify-start gap-3 empty:hidden">
