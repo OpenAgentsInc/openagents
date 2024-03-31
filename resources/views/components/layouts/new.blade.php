@@ -17,6 +17,10 @@
             transition: border-color 0.3s ease-in-out, width 0.3s ease-in-out;
         }
 
+        .hmmm {
+            transition: margin-left 0.3s ease-in-out;
+        }
+
         .sidebar-open {
             width: 260px;
             border-right: 1px solid rgba(255, 255, 255, 0.15);
@@ -44,7 +48,9 @@
     >
         <livewire:layouts.sidebar.content/>
     </div>
-    <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
+    <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden hmmm"
+         :style="`margin-left: ${sidebarOpen ? '0' : '50px'}`"
+    >
         <main class="relative h-full w-full flex-1 overflow-auto transition-width">
             {{$slot}}
         </main>
