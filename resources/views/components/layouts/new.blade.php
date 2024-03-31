@@ -23,7 +23,7 @@
         }
 
         .sidebar-closed {
-            width: 128px; /* Collapsed width */
+            width: 0px; /* Collapsed width */
             border-right: 1px solid rgba(0, 0, 0, 0); /* Fully transparent when closed */
         }
     </style>
@@ -32,6 +32,9 @@
 <body class="h-full bg-black" x-cloak x-data="{ sidebarOpen: true, collapsed: false }">
 
 <div class="relative z-0 flex h-full w-full overflow-hidden">
+    <button class="z-50 absolute top-0 left-0 cursor-pointer h-[32px] m-4 mr-12" @click="sidebarOpen = !sidebarOpen">
+        <x-icon.menu/>
+    </button>
     <div class="flex-shrink-0 overflow-x-hidden sidebar"
          x-cloak
          x-bind:class="{
@@ -39,9 +42,7 @@
             'sidebar-closed': !sidebarOpen
            }"
     >
-        <button class="cursor-pointer h-[32px] m-4 mr-12" @click="sidebarOpen = !sidebarOpen">
-            <x-icon.menu/>
-        </button>
+
     </div>
     <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
         {{$slot}}
