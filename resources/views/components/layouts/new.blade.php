@@ -42,10 +42,14 @@
             'sidebar-closed': !sidebarOpen
            }"
     >
-
+        <livewire:layouts.sidebar.content/>
     </div>
     <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
-        {{$slot}}
+        <main class="relative h-full w-full flex-1 overflow-auto transition-width">
+            <div role="presentation" tabindex="0" class="flex flex-col h-full">
+                {{$slot}}
+            </div>
+        </main>
     </div>
 
 </div>
