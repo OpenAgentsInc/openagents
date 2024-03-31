@@ -9,19 +9,34 @@
     @include('partials.vite')
     @include('partials.analytics')
     @include('partials.ogtags')
+
+    <style>
+        /* Custom CSS for transitioning the sidebar */
+        .sidebar {
+            /* Apply transition to both border-color and width */
+            transition: border-color 0.3s ease-in-out, width 0.3s ease-in-out;
+        }
+
+        .sidebar-open {
+            width: 260px;
+            border-right: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .sidebar-closed {
+            width: 128px; /* Collapsed width */
+            border-right: 1px solid rgba(0, 0, 0, 0); /* Fully transparent when closed */
+        }
+    </style>
 </head>
 
 <body class="h-full bg-black" x-cloak x-data="{ sidebarOpen: true, collapsed: false }">
 
-
-{{--<livewire:navbar/>--}}
-
 <div class="relative z-0 flex h-full w-full overflow-hidden">
-    <div class="flex-shrink-0 overflow-x-hidden"
+    <div class="flex-shrink-0 overflow-x-hidden sidebar"
          x-cloak
          x-bind:class="{
-            'w-[128px]': !sidebarOpen,
-            'w-[260px] border-r border-darkgray': sidebarOpen
+            'sidebar-open': sidebarOpen,
+            'sidebar-closed': !sidebarOpen
            }"
     >
         <button class="cursor-pointer h-[32px] m-4 mr-12" @click="sidebarOpen = !sidebarOpen">
