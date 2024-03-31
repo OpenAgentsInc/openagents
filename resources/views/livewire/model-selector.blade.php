@@ -15,7 +15,7 @@
         aria-current="page">
         <div class="flex gap-2 items-center justify-center overflow-hidden" role="button"
              tabindex="0" @click="dropdown= !dropdown">
-            <x-icon.chatgpt class="w-[32px] h-[32px]"></x-icon.chatgpt>
+            <x-icon.chatgpt class="w-[28px] h-[28px]"></x-icon.chatgpt>
             <div class="flex flex-col">
                 <span class="text-indigo-50 my-0 text-[20px]">GPT-4 </span>
 

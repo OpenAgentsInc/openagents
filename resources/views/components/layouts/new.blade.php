@@ -36,7 +36,8 @@
 <body class="h-screen bg-black antialiased" x-cloak x-data="{ sidebarOpen: false, collapsed: false }">
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
-    <button class="z-50 absolute top-0 left-0 cursor-pointer h-[32px] m-4 mr-12" @click="sidebarOpen = !sidebarOpen">
+    <button class="z-50 absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] mr-12"
+            @click="sidebarOpen = !sidebarOpen">
         <x-icon.menu/>
     </button>
     <div class="flex-shrink-0 overflow-x-hidden sidebar"

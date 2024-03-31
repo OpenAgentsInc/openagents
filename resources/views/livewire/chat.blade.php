@@ -28,10 +28,23 @@
                     });
                 ">
                 <div class="flex flex-col text-sm pb-9" style="">
-                    <div class="sticky top-0 mb-1.5 flex items-center justify-between z-10 h-14 p-2 font-semibold bg-black">
+                    <div class="sticky top-0 mb-1.5 flex items-center justify-between z-10 h-14 p-2 px-5 font-semibold bg-black">
                         <div class="absolute left-1/2 -translate-x-1/2"></div>
                         <livewire:model-selector/>
-                        <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
+
+                        @auth
+                            <div class="flex flex-row items-center">
+                                <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
+                                <a href="/logout">
+                                    <div class="select-none cursor-pointer bg-darkgray w-[32px] h-[32px] rounded-full text-[#d7d8e5] flex items-center justify-center">
+                                        C
+                                    </div>
+                                </a>
+                            </div>
+
+                        @else
+                            <x-login-button/>
+                        @endauth
                     </div>
                     <div class="xl:-ml-[50px]">
                         @foreach($messages as $message)
