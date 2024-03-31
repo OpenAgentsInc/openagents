@@ -11,21 +11,24 @@
     @include('partials.ogtags')
 </head>
 
-<body>
-{{ $slot }}
+<body class="h-full bg-black" x-cloak x-data="{ sidebarOpen: false, showSidebar: true, collapsed: false }">
 
+<div class="h-full">
+    <div class="flex flex-col z-[20]">
+        <livewire:navbar/>
 
-{{-- Modal Pop up here --}}
-
+        <main class="flex-1">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                {{$slot}}
+            </div>
+        </main>
+    </div>
+</div>
 
 @include('partials.modals')
-
-
-
 @yield('modal')
 
-{{-- End Modal Popup --}}
 </body>
 
-
 </html>
+

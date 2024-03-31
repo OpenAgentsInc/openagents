@@ -204,6 +204,5 @@
 {{-- End Modal Popup --}}
 </body>
 
-@include('partials.twitter')
 </html>
 

@@ -1,34 +1,34 @@
 <?php
 
-use App\Http\Controllers\PrismController;
+use App\Http\Controllers\BillingController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Auth\ChangePassword;
 use App\Livewire\Auth\VerifyAccount;
 use App\Livewire\Chat;
 use App\Livewire\Frontpage;
-use App\Livewire\PrismDashboard;
-use App\Livewire\ReverbDemo;
 use Illuminate\Support\Facades\Route;
+use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
+// CHAT
 Route::get('/', Frontpage::class);
 Route::get('/chat/{id}', Chat::class);
-Route::get('/prism', PrismDashboard::class);
-Route::get('/pro', [StaticController::class, 'pro']);
-Route::get('/launch', [StaticController::class, 'launch']);
-Route::get('/docs', [StaticController::class, 'docs']);
-Route::get('/demo/reverb-chat', ReverbDemo::class);
-Route::get('/nwc', [PrismController::class, 'nwc']);
 
-Route::get('/billing', function () {
-    return request()->user()?->redirectToBillingPortal() ?? redirect('/');
-});
-
-// Add auth route here for Livewire views
-
+// AUTH
 Route::get('/reset/account/change-password', ChangePassword::class);
 Route::get('/verify/account', VerifyAccount::class);
 
-// Add a catch-all redirect to the homepage
+// BILLING
+Route::get('/billing', [BillingController::class, 'stripe_billing_portal'])->middleware(['auth']);
+
+// STATIC
+Route::get('/pro', [StaticController::class, 'pro']);
+Route::get('/launch', [StaticController::class, 'launch']);
+Route::get('/docs', [StaticController::class, 'docs']);
+
+// Add GET logout route
+Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
+
+// Catch-all redirect to the homepage
 Route::get('/{any}', function () {
     return redirect('/');
 })->where('any', '.*');
