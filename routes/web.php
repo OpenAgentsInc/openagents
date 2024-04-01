@@ -2,8 +2,8 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\StaticController;
-use App\Livewire\Auth\ChangePassword;
-use App\Livewire\Auth\VerifyAccount;
+use App\Livewire\Auth_Old\ChangePassword;
+use App\Livewire\Auth_Old\VerifyAccount;
 use App\Livewire\Chat;
 use App\Livewire\Frontpage;
 use Illuminate\Support\Facades\Route;

@@ -1,6 +1,6 @@
 <?php
 
-use App\Livewire\Login;
+use App\Livewire\Auth\Login;
 use Livewire\Livewire;
 
 it('renders successfully', function () {
