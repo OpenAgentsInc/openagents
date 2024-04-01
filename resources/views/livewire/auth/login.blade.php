@@ -1,6 +1,6 @@
 <div class="bg-black text-white p-[32px]">
     <div class="">
-        <h2 class="block text-xl text-center font-bold text-gray-800 dark:text-gray-200">Get Started</h2>
+        <h2 class="block text-xl text-center font-bold text-gray-800 dark:text-gray-200">Get started</h2>
     </div>
 
     <div class="px-2 pt-7 sm:px-7">
