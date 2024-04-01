@@ -15,7 +15,7 @@
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
 
-    <div class="flex-shrink-0 overflow-x-hidden sidebar"
+    <div class="flex-shrink-0 sidebar"
          x-cloak
          x-bind:class="{
             'sidebar-open': sidebarOpen,
