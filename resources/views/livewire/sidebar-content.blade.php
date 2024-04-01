@@ -68,23 +68,18 @@
                      class="relative ml-auto flex items-center justify-center w-9 min-w-max whitespace-nowrap rounded-full px-2.5 py-0.5 text-center text-xs font-medium leading-5 text-white"
                      aria-hidden="true">
                     <x-icon.dots role='button' class="w-4 h-4" @click="isOpen = !isOpen"></x-icon.dots>
-                    <div x-cloak x-show.transition="isOpen" @click.away="isOpen = false"
-                         @keydown.escape.window="isOpen = false"
-                         class="absolute top-0 left-0 z-[51] border border-1 border-[#3C3E42] mt-8 w-48 origin-top-right rounded-md bg-black py-1 shadow-lg ring-1 ring-gray ring-opacity-5 focus:outline-none"
-                         role="menu" aria-orientation="vertical" aria-labelledby="sidebar-menu-button" tabindex="-1">
-                        <a href="#" class="hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-white" role="menuitem"
-                           tabindex="-1" id="user-menu-item-0">
+                    <div x-cloak x-show.transition="isOpen" @click.away="isOpen = false" @keydown.escape.window="isOpen = false" class="absolute top-0 left-0 z-[51] border border-1 border-[#3C3E42] mt-8 w-48 origin-top-right rounded-md bg-black py-1 shadow-lg ring-1 ring-gray ring-opacity-5 focus:outline-none" role="menu" aria-orientation="vertical" aria-labelledby="sidebar-menu-button" tabindex="-1">
+                        <button  x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.rename' })" class="w-full hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-white" role="menuitem" tabindex="-1" id="user-menu-item-0">
                             <span>
                                 <x-icon.pen class="h-4 w-4"></x-icon.pen>
                             </span> Rename
-                        </a>
+                        </button>
 
-                        <a href="#" class="hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-[#EF4444]"
-                           role="menuitem" tabindex="-1" id="user-menu-item-0">
+                        <button  x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.delete' })" class="w-full hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-[#EF4444]" role="menuitem" tabindex="-1" id="user-menu-item-0">
                             <span>
                                 <x-icon.trash class="h-4 w-4 text-[#EF4444]"></x-icon.trash>
                             </span> Delete chat
-                        </a>
+                        </button>
 
                     </div>
                 </div>
@@ -104,23 +99,18 @@
                      class="relative ml-auto flex items-center justify-center w-9 min-w-max whitespace-nowrap rounded-full px-2.5 py-0.5 text-center text-xs font-medium leading-5 text-white"
                      aria-hidden="true">
                     <x-icon.dots role='button' class="w-4 h-4" @click="isOpen = !isOpen"></x-icon.dots>
-                    <div x-cloak x-show.transition="isOpen" @click.away="isOpen = false"
-                         @keydown.escape.window="isOpen = false"
-                         class="absolute top-0 left-0 z-[51] border border-1 border-[#3C3E42] mt-8 w-48 origin-top-right rounded-md bg-black py-1 shadow-lg ring-1 ring-gray ring-opacity-5 focus:outline-none"
-                         role="menu" aria-orientation="vertical" aria-labelledby="sidebar-menu-button" tabindex="-1">
-                        <a href="#" class="hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-white" role="menuitem"
-                           tabindex="-1" id="user-menu-item-0">
+                    <div x-cloak x-show.transition="isOpen" @click.away="isOpen = false" @keydown.escape.window="isOpen = false" class="absolute top-0 left-0 z-[51] border border-1 border-[#3C3E42] mt-8 w-48 origin-top-right rounded-md bg-black py-1 shadow-lg ring-1 ring-gray ring-opacity-5 focus:outline-none" role="menu" aria-orientation="vertical" aria-labelledby="sidebar-menu-button" tabindex="-1">
+                        <button  x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.rename' })" class="w-full hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-white" role="menuitem" tabindex="-1" id="user-menu-item-0">
                             <span>
                                 <x-icon.pen class="h-4 w-4"></x-icon.pen>
                             </span> Rename
-                        </a>
+                        </button>
 
-                        <a href="#" class="hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-[#EF4444]"
-                           role="menuitem" tabindex="-1" id="user-menu-item-0">
+                        <button  x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.delete' })" class="w-full hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-[#EF4444]" role="menuitem" tabindex="-1" id="user-menu-item-0">
                             <span>
                                 <x-icon.trash class="h-4 w-4 text-[#EF4444]"></x-icon.trash>
                             </span> Delete chat
-                        </a>
+                        </button>
 
                     </div>
                 </div>
@@ -134,23 +124,18 @@
                      class="relative ml-auto flex items-center justify-center w-9 min-w-max whitespace-nowrap rounded-full px-2.5 py-0.5 text-center text-xs font-medium leading-5 text-white"
                      aria-hidden="true">
                     <x-icon.dots role='button' class="w-4 h-4" @click="isOpen = !isOpen"></x-icon.dots>
-                    <div x-cloak x-show.transition="isOpen" @click.away="isOpen = false"
-                         @keydown.escape.window="isOpen = false"
-                         class="absolute top-0 left-0 z-[51] border border-1 border-[#3C3E42] mt-8 w-48 origin-top-right rounded-md bg-black py-1 shadow-lg ring-1 ring-gray ring-opacity-5 focus:outline-none"
-                         role="menu" aria-orientation="vertical" aria-labelledby="sidebar-menu-button" tabindex="-1">
-                        <a href="#" class="hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-white" role="menuitem"
-                           tabindex="-1" id="user-menu-item-0">
+                    <div x-cloak x-show.transition="isOpen" @click.away="isOpen = false" @keydown.escape.window="isOpen = false" class="absolute top-0 left-0 z-[51] border border-1 border-[#3C3E42] mt-8 w-48 origin-top-right rounded-md bg-black py-1 shadow-lg ring-1 ring-gray ring-opacity-5 focus:outline-none" role="menu" aria-orientation="vertical" aria-labelledby="sidebar-menu-button" tabindex="-1">
+                        <button  x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.rename' })" class="w-full hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-white" role="menuitem" tabindex="-1" id="user-menu-item-0">
                             <span>
                                 <x-icon.pen class="h-4 w-4"></x-icon.pen>
                             </span> Rename
-                        </a>
+                        </button>
 
-                        <a href="#" class="hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-[#EF4444]"
-                           role="menuitem" tabindex="-1" id="user-menu-item-0">
+                        <button  x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.delete' })" class="w-full hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-[#EF4444]" role="menuitem" tabindex="-1" id="user-menu-item-0">
                             <span>
                                 <x-icon.trash class="h-4 w-4 text-[#EF4444]"></x-icon.trash>
                             </span> Delete chat
-                        </a>
+                        </button>
 
                     </div>
                 </div>
