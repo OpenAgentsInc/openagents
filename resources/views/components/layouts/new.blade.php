@@ -22,9 +22,9 @@
             'sidebar-closed': !sidebarOpen
            }"
     >
-        <nav class="flex-grow w-full">
-            <livewire:layouts.sidebar.content/>
-        </nav>
+    <nav class="flex-grow w-full">
+        <livewire:layouts.sidebar.content/>
+    </nav>
     </div>
     <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden hmmm"
          :style="`margin-left: ${sidebarOpen ? '0' : '50px'}`"
