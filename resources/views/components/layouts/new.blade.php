@@ -37,9 +37,7 @@
 
 </div>
 
-@include('partials.modals')
-
-@yield('modal')
+@livewire('wire-elements-modal')
 
 </body>
 

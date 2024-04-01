@@ -13,9 +13,7 @@
 
 <body>
 {{ $slot }}
-
-@include('partials.modals')
-@yield('modal')
+@livewire('wire-elements-modal')
 </body>
 
 </html>
