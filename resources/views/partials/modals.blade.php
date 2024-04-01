@@ -11,7 +11,7 @@
         <div @click.away="$dispatch('close-login-modal')"
              class="fixed border  border-[#3C3E42] bg-black rounded-lg p-6  max-w-md   shadow-lg transform transition-all duration-300 z-[5000]"
              x-show.transition.opacity="open">
-            @livewire('auth.login')
+            @livewire('auth-old.login')
         </div>
 
 
@@ -36,7 +36,7 @@
             <!-- Modal Header -->
 
 
-            @livewire('auth.register')
+            @livewire('auth-old.register')
 
 
         </div>
@@ -60,7 +60,7 @@
         <div @click.away="$dispatch('close-resetpassword-modal')"
              class="fixed border  border-[#3C3E42] bg-black rounded-lg p-6  max-w-md   shadow-lg transform transition-all duration-300 z-[5000]"
              x-show.transition.opacity="open">
-            @livewire('auth.forget-password')
+            @livewire('auth-old.forget-password')
         </div>
 
 

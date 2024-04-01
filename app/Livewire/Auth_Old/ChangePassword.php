@@ -1,15 +1,15 @@
 <?php
 
-namespace App\Livewire\Auth;
+namespace App\Livewire\Auth_Old;
 
 use Livewire\Component;
 
-class ForgetPassword extends Component
+class ChangePassword extends Component
 {
     public bool $show = false;
 
     // Toggle the value of $show
-    public function sendResetLink()
+    public function changePassword()
     {
 
         $this->show = ! $this->show;
@@ -17,6 +17,6 @@ class ForgetPassword extends Component
 
     public function render()
     {
-        return view('livewire.auth.forget-password');
+        return view('livewire.auth.change-password');
     }
 }

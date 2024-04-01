@@ -2,8 +2,8 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\StaticController;
-use App\Livewire\Auth\ChangePassword;
-use App\Livewire\Auth\VerifyAccount;
+use App\Livewire\Auth_Old\ChangePassword;
+use App\Livewire\Auth_Old\VerifyAccount;
 use App\Livewire\Chat;
 use App\Livewire\Frontpage;
 use Illuminate\Support\Facades\Route;
@@ -18,7 +18,7 @@ Route::get('/reset/account/change-password', ChangePassword::class);
 Route::get('/verify/account', VerifyAccount::class);
 
 // BILLING
-Route::get('/billing', [BillingController::class, 'stripe_billing_portal'])->middleware(['auth']);
+Route::get('/billing', [BillingController::class, 'stripe_billing_portal'])->middleware(['auth-old']);
 
 // STATIC
 Route::get('/pro', [StaticController::class, 'pro']);
