@@ -18,7 +18,7 @@ Route::get('/reset/account/change-password', ChangePassword::class);
 Route::get('/verify/account', VerifyAccount::class);
 
 // BILLING
-Route::get('/billing', [BillingController::class, 'stripe_billing_portal'])->middleware(['auth']);
+Route::get('/billing', [BillingController::class, 'stripe_billing_portal'])->middleware(['auth-old']);
 
 // STATIC
 Route::get('/pro', [StaticController::class, 'pro']);

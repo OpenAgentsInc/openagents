@@ -2,12 +2,12 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
+use LivewireUI\Modal\ModalComponent;
 
-class Login extends Component
+class Login extends ModalComponent
 {
     public function render()
     {
-        return view('livewire.login');
+        return view('livewire.auth.login');
     }
 }

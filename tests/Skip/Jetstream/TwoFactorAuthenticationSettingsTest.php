@@ -8,7 +8,7 @@ use Livewire\Livewire;
 test('two factor authentication can be enabled', function () {
     $this->actingAs($user = User::factory()->create()->fresh());
 
-    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $this->withSession(['auth-old.password_confirmed_at' => time()]);
 
     Livewire::test(TwoFactorAuthenticationForm::class)
         ->call('enableTwoFactorAuthentication');
@@ -24,7 +24,7 @@ test('two factor authentication can be enabled', function () {
 test('recovery codes can be regenerated', function () {
     $this->actingAs($user = User::factory()->create()->fresh());
 
-    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $this->withSession(['auth-old.password_confirmed_at' => time()]);
 
     $component = Livewire::test(TwoFactorAuthenticationForm::class)
         ->call('enableTwoFactorAuthentication')
@@ -43,7 +43,7 @@ test('recovery codes can be regenerated', function () {
 test('two factor authentication can be disabled', function () {
     $this->actingAs($user = User::factory()->create()->fresh());
 
-    $this->withSession(['auth.password_confirmed_at' => time()]);
+    $this->withSession(['auth-old.password_confirmed_at' => time()]);
 
     $component = Livewire::test(TwoFactorAuthenticationForm::class)
         ->call('enableTwoFactorAuthentication');
