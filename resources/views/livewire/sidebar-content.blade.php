@@ -5,7 +5,7 @@
 
     <div class="w-full">
         <div class="flex gap-2 items-center  overflow-hidden" x-bind:class="{
-            'justify-between': !collapsed,
+            'justify-between': sidebarOpen,
             'justify-center': collapsed
            }">
             <button class="z-50 absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] mr-12" @click="sidebarOpen = !sidebarOpen">
