@@ -21,6 +21,6 @@ class ChatWarning extends Component
      */
     public function render(): View|Closure|string
     {
-        return view('components.chat-warning');
+        return view('components.chat.warning');
     }
 }
