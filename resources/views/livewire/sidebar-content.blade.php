@@ -3,7 +3,7 @@
 
     <div class="w-full">
         <div class="flex gap-2 items-center  overflow-hidden" x-bind:class="{
-            'justify-between': !collapsed,
+            'justify-between': sidebarOpen,
             'justify-center': collapsed
            }">
             <button class="z-50 absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] mr-12" @click="sidebarOpen = !sidebarOpen">
@@ -28,12 +28,12 @@
         'rounded-full p-2 mx- w-10 h-10': sidebarOpen
      }">
 
-            <li>
-                <span class="text-left leading-6 font-sm text-sm text-[#777A82] " x-cloak x-show="!collapsed">
-                    Today
-                </span>
-            </li>
-            <li x-cloak x-show="!collapsed" class="text-white bg-white/15 group flex gap-x-2 rounded-md p-2 text-sm leading-6 font-semibold">
+     <li class="mt-4">
+        <span class="text-left leading-6 font-sm text-sm text-[#777A82] px-2" x-cloak x-show="sidebarOpen">
+            Today
+        </span>
+    </li>
+            <li x-cloak x-show="sidebarOpen" class="text-white bg-white/15 group flex gap-x-2 rounded-md p-2 text-sm leading-6 font-semibold">
                 <a href="#" class="flex w-full">
                     Why we did it
                 </a>
@@ -56,13 +56,13 @@
                 </div>
             </li>
 
-            <li>
-                <span class="text-left leading-6 font-sm text-sm text-[#777A82] px-4" x-cloak x-show="!collapsed">
+            <li class="mt-4">
+                <span class="text-left leading-6 font-sm text-sm text-[#777A82] px-2" x-cloak x-show="sidebarOpen">
                     Previous 7 Days
                 </span>
             </li>
 
-            <li x-cloak x-show="!collapsed" class="text-white hover:text-white bg-black  hover:bg-white/15 group flex gap-x-2 rounded-md p-2 text-sm leading-6 font-semibold">
+            <li x-cloak x-show="sidebarOpen" class="text-white hover:text-white bg-black  hover:bg-white/15 group flex gap-x-2 rounded-md p-2 text-sm leading-6 font-semibold">
                 <a href="#" class="flex w-full">
                     Tim Cook is CEO
                 </a>
@@ -85,7 +85,7 @@
                 </div>
             </li>
 
-            <li x-cloak x-show="!collapsed" class="text-white hover:text-white bg-black  hover:bg-white/15 group flex gap-x-2 rounded-md p-2 text-sm leading-6 font-semibold">
+            <li x-cloak x-show="sidebarOpen" class="text-white hover:text-white bg-black  hover:bg-white/15 group flex gap-x-2 rounded-md p-2 text-sm leading-6 font-semibold">
                 <a href="#" class="flex w-full">
                     Why we did it
                 </a>
