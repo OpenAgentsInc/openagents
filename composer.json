@@ -19,7 +19,8 @@
     "laravel/tinker": "^2.9",
     "livewire/livewire": "^3.0",
     "pusher/pusher-php-server": "^7.2",
-    "spatie/laravel-markdown": "^2.5"
+    "spatie/laravel-markdown": "^2.5",
+    "wire-elements/modal": "^2.0"
   },
   "require-dev": {
     "fakerphp/faker": "^1.23",
