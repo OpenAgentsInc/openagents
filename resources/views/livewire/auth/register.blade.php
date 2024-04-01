@@ -1,8 +1,5 @@
 <div>
-    {{-- In work, do what you enjoy. --}}
-
     <div class="flex justify-end items-center  pb-4">
-        {{-- <h2 class="text-2xl font-semibold">Get Started</h2> --}}
         <button @click="open = false" wire:click='showpassword()'
                 class="text-gray-500 hover:text-gray-700 focus:outline-none">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -25,21 +22,14 @@
         </div>
     @endif
 
-
     @if(!$this->show)
-
         <div class="p-4 sm:p-7">
-
             <div class="mb-4">
                 <x-input id="register-email" class="block mt-1 w-full" type="email" name="email" :value="old('email')"
                          required autofocus autocomplete="username" placeholder="email"/>
             </div>
 
-
             <div class="mt-5">
-                {{-- <a class="w-full py-3 px-4 inline-flex justify-center items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-slate-900 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800 dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600" href="#">
-
-                </a> --}}
                 <x-button class="w-full flex justify-center gap-2 text-center" wire:click='showpassword()'>
                     Get Started
                 </x-button>
@@ -48,12 +38,10 @@
                     Or
                 </div>
 
-
                 <x-secondary-button class="w-full flex justify-center gap-2">
                     <x-icon.google class="h-5 w-5"></x-icon.google>
                     <span class="text-sm md:text-md">Continue with Google</span>
                 </x-secondary-button>
-
             </div>
 
             <div class="text-center">
@@ -68,15 +56,11 @@
                        href="#">
                         Privacy Policy.
                     </a>
-
                 </p>
             </div>
         </div>
     @elseif ($this->show && !$this->verification)
-
         <div class="p-2 sm:p-7">
-
-
             <div class="mb-4">
                 <x-input id="password" class="block mt-1 w-full" type="password" name="password" required autofocus
                          placeholder="EnterPassword"/>
@@ -87,23 +71,15 @@
                          placeholder="Confirm Password"/>
             </div>
 
-
             <div class="mt-5">
-
                 <x-button class="w-full flex justify-center text-center gap-2" wire:click='set_verified()'>
                     Create Password
                 </x-button>
-
-
             </div>
-
-
         </div>
 
     @elseif ($this->show && $this->verification)
         <div class="p-4 sm:p-7">
-
-
             <div class="text-center">
                 <p class="mt-2 text-sm md:text-md text-gray">
                     We sent a verification link to satoshi@nakamoto.com
@@ -116,7 +92,5 @@
                 </p>
             </div>
         </div>
-
     @endif
-
 </div>
