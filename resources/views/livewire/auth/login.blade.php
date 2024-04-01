@@ -7,13 +7,12 @@
 
         <div class="mb-4">
             <x-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required
-                     autofocus autocomplete="username" placeholder="email"/>
+                     autofocus autocomplete="username" placeholder="Enter email..."/>
         </div>
 
         <div class="mt-5">
-            <x-button class="w-full flex justify-center gap-2 hover:bg-gray">
-                <x-icon.agent class="h-5 w-5 text-black"></x-icon.agent>
-                Get Started
+            <x-button class="w-full flex justify-center gap-2">
+                Get started
             </x-button>
 
             <div class="py-5 w-full text-center text-sm text-gray before:flex-[1_1_0%]">
