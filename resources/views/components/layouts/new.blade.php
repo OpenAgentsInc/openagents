@@ -9,28 +9,6 @@
     @include('partials.vite')
     @include('partials.analytics')
     @include('partials.ogtags')
-
-    <style>
-        /* Custom CSS for transitioning the sidebar */
-        .sidebar {
-            /* Apply transition to both border-color and width */
-            transition: border-color 0.3s ease-in-out, width 0.3s ease-in-out;
-        }
-
-        .hmmm {
-            transition: margin-left 0.3s ease-in-out;
-        }
-
-        .sidebar-open {
-            width: 260px;
-            border-right: 1px solid rgba(255, 255, 255, 0.15);
-        }
-
-        .sidebar-closed {
-            width: 0px; /* Collapsed width */
-            border-right: 1px solid rgba(0, 0, 0, 0); /* Fully transparent when closed */
-        }
-    </style>
 </head>
 
 <body class="h-screen bg-black antialiased" x-cloak x-data="{ sidebarOpen: false, collapsed: false }">

@@ -14,18 +14,8 @@
 <body>
 {{ $slot }}
 
-
-{{-- Modal Pop up here --}}
-
-
 @include('partials.modals')
-
-
-
 @yield('modal')
-
-{{-- End Modal Popup --}}
 </body>
-
 
 </html>
