@@ -39,7 +39,8 @@
 
                         @auth
                             <div class="flex flex-row items-center">
-                                <x-icon.share  wire:click="$dispatch('openModal', { component: 'modals.chat.share' })" class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
+                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
+                                              class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
                                 <a href="/logout">
                                     <div class="select-none cursor-pointer bg-darkgray w-[32px] h-[32px] rounded-full text-[#d7d8e5] flex items-center justify-center">
                                         C
@@ -49,12 +50,21 @@
 
                         @else
                             <div class="flex flex-row items-center">
-                                <x-icon.share  wire:click="$dispatch('openModal', { component: 'modals.chat.share' })" class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
+                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
+                                              class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
                                 <x-login-button/>
                             </div>
                         @endauth
                     </div>
                     <div class="xl:-ml-[50px]">
+                        <!-- if message count is zero -->
+                        @if (count($messages) === 0)
+                            <div class="fixed pointer-events-none top-0 bottom-0 left-0 right-0 flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                                <x-logomark :size="2"/>
+                                <h3 class="mt-[16px] mb-12">How can we help you today?</h3>
+                            </div>
+                        @endif
+
                         @foreach($messages as $message)
                             @php
                                 $author = $message['agent_id'] ? 'OpenAgents' : 'You';

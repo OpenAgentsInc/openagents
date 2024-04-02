@@ -45,22 +45,25 @@ class Chat extends Component
     public function mount($id = null)
     {
         // For now if there's no id, redirect to homepage
-        if (! $id) {
-            return $this->redirect('/');
-        }
+        //        if (! $id) {
+        //            return $this->redirect('/');
+        //        }
 
         // Find this thread
         $thread = Thread::find($id);
+        if (! $thread) {
+            return;
+        }
 
         // If it doesn't exist, redirect to homepage
-        if (! $thread) {
-            return $this->redirect('/');
-        }
+        //        if (! $thread) {
+        //            return $this->redirect('/');
+        //        }
 
         // If it's private, check if the user is a member - if not, redirect to homepage
-        if ($thread->private && ! $thread->users->contains(auth()->id())) {
-            return $this->redirect('/');
-        }
+        //        if ($thread->private && ! $thread->users->contains(auth()->id())) {
+        //            return $this->redirect('/');
+        //        }
 
         // Set the thread and its messages
         $this->thread = $thread;
@@ -207,8 +210,7 @@ class Chat extends Component
 
     public function render()
     {
-        return view('livewire.chat')
-            ->layout('components.layouts.new');
+        return view('livewire.chat');
     }
 
     public function runFirst()
