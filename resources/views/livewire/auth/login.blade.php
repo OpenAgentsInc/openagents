@@ -1,9 +1,7 @@
 <div class="bg-black text-white p-[32px]">
-    <div class="">
-        <h2 class="block text-md md:text-xl lg:text-2xl text-center font-bold text-white">{{$this->show ? 'Enter Password' : 'Log in'}}</h2>
-    </div>
+    <h2 class="block text-md md:text-xl lg:text-2xl text-center font-bold text-white">Log in</h2>
 
-    <div class="p-4">
+    <form class="p-4">
         <div>
             <x-label for="email" value="{{ __('Email') }}"/>
             <x-chat.input id="email" class="block mt-[6px] w-full" type="email" name="email" :value="old('email')"
@@ -22,20 +20,17 @@
 
         <div class="mt-6">
             <x-button class="w-full text-center justify-center gap-2 py-2" wire:click='showLogin()'>
-                {{$this->show ? 'Enter Password' : 'Log in'}}
+                Log in
             </x-button>
 
-            @if(!$this->show)
-                <div class="py-3 my-2 flex flex-col items-center text-sm text-[#777A82]">
-                    or
-                </div>
+            <div class="py-3 my-2 flex flex-col items-center text-sm text-[#777A82]">
+                or
+            </div>
 
-                <x-secondary-button class="w-full flex justify-center gap-2 mb-0">
-                    <x-icon.google class="h-5 w-5"></x-icon.google>
-                    <span class="text-sm md:text-md">Log in with Google</span>
-                </x-secondary-button>
-            @endif
-
+            <x-secondary-button class="w-full flex justify-center gap-2 mb-0">
+                <x-icon.google class="h-5 w-5"></x-icon.google>
+                <span class="text-sm md:text-md">Log in with Google</span>
+            </x-secondary-button>
         </div>
-    </div>
+    </form>
 </div>
