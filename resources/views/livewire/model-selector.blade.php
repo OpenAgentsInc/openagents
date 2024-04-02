@@ -3,10 +3,12 @@
         aria-current="page">
         <div class="flex gap-2 items-center justify-center overflow-hidden" role="button"
              tabindex="0" @click="dropdown= !dropdown">
-            <x-icon.chatgpt class="w-[28px] h-[28px]"></x-icon.chatgpt>
+            {{--            <x-icon.chatgpt class="w-[28px] h-[28px]"></x-icon.chatgpt>--}}
+
             <div class="flex flex-col">
-                <span class="text-indigo-50 my-0 text-[20px]">GPT-4 </span>
+                <span class="my-0 text-[18px]">{{ $this->getModelName() }}</span>
             </div>
+
             <div class="relative flex-1 text-right bg-black">
                 <div>
                     <button class="p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100 focus:outline-none">
