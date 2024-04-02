@@ -67,15 +67,25 @@
                             </div>
                         @endif
 
+                        @php
+                            $models = [
+                                'mistral-large-latest' => 'Mistral Large',
+                                'mixtral-8x7b-32768' => 'Mixtral (Groq)',
+                                'gpt-4' => 'GPT-4',
+                                'claude' => 'Claude',
+                                'gemini' => 'Gemini',
+                            ];
+                        @endphp
+
                         @foreach($messages as $message)
                             @php
-                                $author = $message['model'] ?? 'You';
+                                $author = !empty($message['model']) ? $models[$message['model']] : 'You';
                             @endphp
                             <x-chat.message :author="$author" :message="$message['body']"/>
                         @endforeach
 
                         @if($pending)
-                            <x-chat.messagestreaming :author="$agent->name ?? 'Agent'"/>
+                            <x-chat.messagestreaming :author="$agent->name ?? $models[$selectedModel]"/>
                         @endif
 
                         @if ($showNoMoreMessages)
