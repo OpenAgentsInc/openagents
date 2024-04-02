@@ -21,6 +21,6 @@ class LoginButton extends Component
      */
     public function render(): View|Closure|string
     {
-        return view('components.login-button');
+        return view('components.login-buttons');
     }
 }

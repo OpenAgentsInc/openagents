@@ -1,4 +1,4 @@
-<div class="fixed w-full h-[64px] px-5 py-3 flex flex-row items-center justify-between z-[300]">
+<div class="fixed w-full h-14 px-5 py-2 flex flex-row items-center justify-between z-[300]">
     <livewire:model-selector/>
 
     @auth
@@ -12,6 +12,9 @@
         </div>
 
     @else
-        <x-login-button/>
+        <div class="flex flex-row items-center">
+            <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
+            <x-login-buttons/>
+        </div>
     @endauth
 </div>

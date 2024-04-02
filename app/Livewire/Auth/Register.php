@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Auth;
 
-use Livewire\Component;
 use LivewireUI\Modal\ModalComponent;
 
 class Register extends ModalComponent
@@ -15,18 +14,18 @@ class Register extends ModalComponent
     public function showpassword()
     {
 
-        $this->show = !$this->show;
+        $this->show = ! $this->show;
     }
 
     public function set_verified()
     {
-        $this->verification = !$this->verification;
+        $this->verification = ! $this->verification;
     }
 
     public static function closeModalOnClickAway(): bool
     {
 
-        return  true;
+        return true;
     }
 
     public function render()
