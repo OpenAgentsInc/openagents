@@ -113,8 +113,8 @@ class Chat extends Component
             'session_id' => $sessionId,
         ]);
 
-        // Fucken do it
-        $output = SimpleInferencer::inference($this->input, 'mistral-large-latest', $this->getStreamingCallback());
+        // Simply do it
+        $output = SimpleInferencer::inference($this->input, 'mixtral-8x7b-32768', $this->thread, $this->getStreamingCallback());
 
         // Append the response to the chat
         $this->messages[] = [
