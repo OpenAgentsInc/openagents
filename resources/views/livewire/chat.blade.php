@@ -73,7 +73,7 @@
                 />
                 <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
             </form>
-            <x-chat.warning/>
+            <livewire:messages-remaining/>
         </div>
     </div>
 </div>
