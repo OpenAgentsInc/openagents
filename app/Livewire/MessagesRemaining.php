@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Message;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class MessagesRemaining extends Component
@@ -45,6 +46,12 @@ class MessagesRemaining extends Component
             // Assuming 10 free messages for unauthenticated users
             $this->remaining = max(0, 10 - $messagesToday);
         }
+    }
+
+    #[On('message-created')]
+    public function updateStuff()
+    {
+        $this->calculateRemainingMessages();
     }
 
     public function render()

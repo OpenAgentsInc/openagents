@@ -129,6 +129,9 @@ class Chat extends Component
         // Reset/scroll
         $this->pending = false;
         $this->dispatch('scrollToBottomAgain');
+
+        // Notify other component we got a message back
+        $this->dispatch('message-created');
     }
 
     private function getStreamingCallback()
