@@ -59,7 +59,7 @@
                         @endif
 
                         @if ($showNoMoreMessages)
-                            <div class="pt-4 pb-2 w-[600px] mx-auto">
+                            <div class="pt-4 pb-8 w-[600px] mx-auto">
                                 <x-pane title="Sign up to continue">
                                     <div class="flex flex-col justify-center items-center w-full">
                                         <p class="px-1 my-0 leading-relaxed">Sign up for OpenAgents and receive 10
@@ -69,7 +69,7 @@
                                             the world's
                                             leading chat
                                             agents.</p>
-                                        <a href="/register" class="my-1">
+                                        <a href="#" class="my-1">
                                             <x-secondary-button class="mt-4">Sign up</x-secondary-button>
                                         </a>
                                     </div>
