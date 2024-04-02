@@ -26,6 +26,9 @@ return new class extends Migration
             // Message content - will be changed to longtext
             $table->text('body');
 
+            // Model used for inference
+            $table->text('model');
+
             // Session ID for unauthenticated users
             $table->string('session_id')->nullable();
 

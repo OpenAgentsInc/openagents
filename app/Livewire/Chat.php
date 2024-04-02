@@ -90,6 +90,8 @@ class Chat extends Component
 
     public function sendMessage(): void
     {
+        $this->ensureThread();
+
         // Save this input even after we clear the form this variable is tied to
         $this->input = $this->message_input;
 
@@ -111,6 +113,15 @@ class Chat extends Component
 
     // Example simple response generator
 
+    private function ensureThread()
+    {
+        if (empty($this->thread)) {
+            // Create a new Thread
+            $thread = Thread::create();
+            $this->thread = $thread;
+        }
+    }
+
     public function simpleRun()
     {
         // This method skips node flow and directly processes the response
@@ -131,14 +142,16 @@ class Chat extends Component
         // Append the response to the chat
         $this->messages[] = [
             'body' => $output,
-            'sender' => $this->agent->name,
-            'agent_id' => $this->agent->id,
+            'sender' => 'Agent', // $this->agent->name,
+            'agent_id' => null, // $this->agent->id,
         ];
 
         // Save the agent's response to the thread
         $this->thread->messages()->create([
             'body' => $output,
-            'agent_id' => $this->agent->id, // The agent's ID for their messages
+            'session_id' => $sessionId, // or if authed?
+            'model' => $this->selectedModel, // 'mixtral-8x7b-32768
+            //            'agent_id' => 99, // $this->agent->id, // The agent's ID for their messages
         ]);
 
         // Reset pending status and scroll to the latest message
