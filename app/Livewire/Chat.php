@@ -5,10 +5,15 @@ namespace App\Livewire;
 use App\Models\Agent;
 use App\Models\Thread;
 use App\Services\RunService;
+use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Chat extends Component
 {
+    // Whether to show the "no more messages" message
+    public $showNoMoreMessages = false;
+
     // User input from chat form
     public $message_input = '';
 
@@ -62,6 +67,14 @@ class Chat extends Component
         }
     }
 
+    // Listen for no more messages
+    #[On('no-more-messages')]
+    public function noMoreMessages()
+    {
+        // Redirect to homepage
+        $this->showNoMoreMessages = true;
+    }
+
     public function sendMessage(): void
     {
         // Save this input even after we clear the form this variable is tied to
@@ -73,7 +86,6 @@ class Chat extends Component
             'agent_id' => null,
             'sender' => 'You',
         ];
-        $this->dispatch('scrollToBottomAgain');
 
         // Clear the input
         $this->message_input = '';
@@ -85,10 +97,19 @@ class Chat extends Component
 
     public function startRun()
     {
+        // Check if the user is authenticated
+        if (! auth()->check()) {
+            // Get or generate a session ID for unauthenticated users
+            $sessionId = Session::getId();
+        } else {
+            $sessionId = null; // Authenticated users don't need a session ID
+        }
+
         // Save this user message to the thread
         $this->thread->messages()->create([
             'body' => $this->input,
             'agent_id' => null,
+            'session_id' => $sessionId,
         ]);
 
         // Trigger a run through the RunService
@@ -118,7 +139,9 @@ class Chat extends Component
 
         // Reset/scroll
         $this->pending = false;
-        $this->dispatch('scrollToBottomAgain');
+
+        // Notify other component we got a message back
+        $this->dispatch('message-created');
     }
 
     private function getStreamingCallback()
@@ -129,7 +152,6 @@ class Chat extends Component
                 to: 'streamtext',
                 content: $token
             );
-            $this->dispatch('scrollToBottomAgain');
         };
     }
 
@@ -168,6 +190,5 @@ class Chat extends Component
 
         // Reset/scroll
         $this->pending = false;
-        $this->dispatch('scrollToBottomAgain');
     }
 }

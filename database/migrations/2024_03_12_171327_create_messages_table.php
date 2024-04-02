@@ -17,7 +17,7 @@ return new class extends Migration
             // Messages must belong to one thread.
             $table->foreignId('thread_id')->constrained();
 
-            // Messages may be sent by a user, or null if agent
+            // Messages may be sent by a user, or null if agent or unauthed
             $table->foreignId('user_id')->nullable();
 
             // Messages may be sent by an agent, or null if user
@@ -25,6 +25,9 @@ return new class extends Migration
 
             // Message content - will be changed to longtext
             $table->text('body');
+
+            // Session ID for unauthenticated users
+            $table->string('session_id')->nullable();
 
             $table->timestamps();
         });
