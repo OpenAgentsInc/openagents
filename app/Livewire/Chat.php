@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\Thread;
 use App\Services\RunService;
@@ -112,9 +113,8 @@ class Chat extends Component
             'session_id' => $sessionId,
         ]);
 
-        // Simulate generating a response. This could be a static response or
-        // a response from a simpler service that doesn't involve complex flows.
-        $output = $this->generateSimpleResponse($this->input);
+        // Fucken do it
+        $output = SimpleInferencer::inference($this->input);
 
         // Append the response to the chat
         $this->messages[] = [
@@ -134,13 +134,6 @@ class Chat extends Component
 
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
-    }
-
-    private function generateSimpleResponse($input)
-    {
-        // This is a placeholder for your response generation logic.
-        // For now, it just echoes back the input with a prefix.
-        return 'Echo: '.$input;
     }
 
     public function startRun()
@@ -238,5 +231,12 @@ class Chat extends Component
 
         // Reset/scroll
         $this->pending = false;
+    }
+
+    private function generateSimpleResponse($input)
+    {
+        // This is a placeholder for your response generation logic.
+        // For now, it just echoes back the input with a prefix.
+        return 'Echo: '.$input;
     }
 }
