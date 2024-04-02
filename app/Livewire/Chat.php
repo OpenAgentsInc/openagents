@@ -33,6 +33,15 @@ class Chat extends Component
     // Whether we're waiting for a response from the agent
     public $pending = false;
 
+    public $selectedModel = 'mixtral-8x7b-32768';
+
+    // Listen to select-model event
+    #[On('select-model')]
+    public function selectModel($model)
+    {
+        $this->selectedModel = $model;
+    }
+
     public function mount($id = null)
     {
         // For now if there's no id, redirect to homepage
@@ -114,7 +123,7 @@ class Chat extends Component
         ]);
 
         // Simply do it
-        $output = SimpleInferencer::inference($this->input, 'mixtral-8x7b-32768', $this->thread, $this->getStreamingCallback());
+        $output = SimpleInferencer::inference($this->input, $this->selectedModel, $this->thread, $this->getStreamingCallback());
 
         // Append the response to the chat
         $this->messages[] = [

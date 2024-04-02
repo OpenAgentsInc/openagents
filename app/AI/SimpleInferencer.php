@@ -11,7 +11,7 @@ class SimpleInferencer
         $messages = [
             [
                 'role' => 'system',
-                'content' => 'You are a helpful assistant on OpenAgents.com.',
+                'content' => 'You are a helpful assistant on OpenAgents.com. Answer the inquiry from the user.',
             ],
             ...get_previous_messages($thread),
             [
