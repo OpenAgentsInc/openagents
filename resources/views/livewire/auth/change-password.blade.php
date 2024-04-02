@@ -16,15 +16,15 @@
                     <div class="p-4 sm:p-7">
                         <div class="mb-4">
                             <x-input id="password" class="block mt-1 w-full" type="password" name="password" required
-                                autofocus placeholder="New password..." />
+                                     autofocus placeholder="New password"/>
                         </div>
                         <div class="mb-4">
                             <x-input id="password" class="block mt-1 w-full" type="password" name="password" required
-                                autofocus placeholder="Confirm new password..." />
+                                     autofocus placeholder="Confirm new password"/>
                         </div>
                         <div class="mt-5">
                             <x-button class="w-full flex  items-center justify-center gap-2"
-                                wire:click='changePassword()'>
+                                      wire:click='changePassword()'>
                                 Change Password
                             </x-button>
                         </div>

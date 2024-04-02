@@ -1,4 +1,4 @@
-<div class="fixed w-full h-14 px-5 py-2 flex flex-row items-center justify-between z-[300]">
+<div class="mt-[10px] fixed w-full px-5 flex flex-row items-center justify-between z-[300]">
     <livewire:model-selector/>
 
     @auth
