@@ -92,7 +92,55 @@ class Chat extends Component
         $this->pending = true;
 
         // Call startRun after the next render
-        $this->js('$wire.startRun()');
+        $this->js('$wire.simpleRun()');
+        //        $this->js('$wire.startRun()');
+    }
+
+    // Example simple response generator
+
+    public function simpleRun()
+    {
+        // This method skips node flow and directly processes the response
+
+        // Authenticate user session or proceed without it
+        $sessionId = auth()->check() ? null : Session::getId();
+
+        // Save user message to the thread
+        $this->thread->messages()->create([
+            'body' => $this->input,
+            'agent_id' => null, // Null for user messages
+            'session_id' => $sessionId,
+        ]);
+
+        // Simulate generating a response. This could be a static response or
+        // a response from a simpler service that doesn't involve complex flows.
+        $output = $this->generateSimpleResponse($this->input);
+
+        // Append the response to the chat
+        $this->messages[] = [
+            'body' => $output,
+            'sender' => $this->agent->name,
+            'agent_id' => $this->agent->id,
+        ];
+
+        // Save the agent's response to the thread
+        $this->thread->messages()->create([
+            'body' => $output,
+            'agent_id' => $this->agent->id, // The agent's ID for their messages
+        ]);
+
+        // Reset pending status and scroll to the latest message
+        $this->pending = false;
+
+        // Optionally notify other components of the new message
+        $this->dispatch('message-created');
+    }
+
+    private function generateSimpleResponse($input)
+    {
+        // This is a placeholder for your response generation logic.
+        // For now, it just echoes back the input with a prefix.
+        return 'Echo: '.$input;
     }
 
     public function startRun()
