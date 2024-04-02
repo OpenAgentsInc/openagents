@@ -25,6 +25,11 @@
 
                     $nextTick(() => {
                         document.getElementById('message-input').focus(); // Focus the textarea
+                        $wire.on('no-more-messages', () => {
+                            setTimeout(() => {
+                                chatbox.scrollTo({ top: chatbox.scrollHeight, behavior: 'smooth' });
+                            }, 250);
+                        });
                     });
                 ">
                 <div class="flex flex-col text-sm pb-9" style="">
@@ -60,17 +65,18 @@
 
                         @if ($showNoMoreMessages)
                             <div class="px-[24px] py-[32px] pb-8 w-[600px] mx-auto border border-[#3C3E42] rounded-[12px]">
-                                <h2 class="font-bold">Sign up to continue</h2>
+                                <h2 class="font-bold text-[32px]">Sign up to continue</h2>
                                 <div class="flex flex-col justify-center items-center w-full">
-                                    <p class="px-1 my-[32px] leading-relaxed">Sign up for OpenAgents and receive 10
+                                    <p class="px-1 my-[32px] leading-relaxed text-text">Sign up for OpenAgents and
+                                        receive 10
                                         free
                                         responses per day
                                         from
                                         the world's
                                         leading chat
                                         agents.</p>
-                                    <a href="#" class="my-1">
-                                        <x-secondary-button class="mt-4">Sign up</x-secondary-button>
+                                    <a href="#" class="my-1 w-full">
+                                        <x-button class="w-full justify-center font-medium">Sign up</x-button>
                                     </a>
                                 </div>
 
@@ -99,4 +105,9 @@
             @endif
         </div>
     </div>
+    <script>
+        document.addEventListener('livewire:init', () => {
+
+        });
+    </script>
 </div>
