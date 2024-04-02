@@ -6,10 +6,14 @@ use App\Models\Agent;
 use App\Models\Thread;
 use App\Services\RunService;
 use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Chat extends Component
 {
+    // Whether to show the "no more messages" message
+    public $showNoMoreMessages = false;
+
     // User input from chat form
     public $message_input = '';
 
@@ -61,6 +65,14 @@ class Chat extends Component
             $this->input = $this->messages[0]['body'] ?? '';
             $this->js('$wire.runFirst()');
         }
+    }
+
+    // Listen for no more messages
+    #[On('no-more-messages')]
+    public function noMoreMessages()
+    {
+        // Redirect to homepage
+        $this->showNoMoreMessages = true;
     }
 
     public function sendMessage(): void

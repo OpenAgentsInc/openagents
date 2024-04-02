@@ -57,6 +57,25 @@
                         @if($pending)
                             <x-chat.messagestreaming :author="$agent->name ?? 'Agent'"/>
                         @endif
+
+                        @if ($showNoMoreMessages)
+                            <div class="pt-4 pb-2 w-[600px] mx-auto">
+                                <x-pane title="Sign up to continue">
+                                    <div class="flex flex-col justify-center items-center w-full">
+                                        <p class="px-1 my-0 leading-relaxed">Sign up for OpenAgents and receive 10
+                                            free
+                                            responses per day
+                                            from
+                                            the world's
+                                            leading chat
+                                            agents.</p>
+                                        <a href="/register" class="my-1">
+                                            <x-secondary-button class="mt-4">Sign up</x-secondary-button>
+                                        </a>
+                                    </div>
+                                </x-pane>
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -64,16 +83,20 @@
     </div>
     <div class="w-full -ml-[25px]">
         <div class="sm:w-[584px] lg:w-[768px] mx-auto">
-            <form wire:submit.prevent="sendMessage">
-                <x-chat.input dusk="message-input" autofocus placeholder="Message OpenAgents..." :showIcon="true"
-                              id="message-input"
-                              iconName="send"
-                              wire:model="message_input"
-                              onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
-                />
-                <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
-            </form>
-            <livewire:messages-remaining/>
+            @if ($showNoMoreMessages)
+
+            @else
+                <form wire:submit.prevent="sendMessage">
+                    <x-chat.input dusk="message-input" autofocus placeholder="Message OpenAgents..." :showIcon="true"
+                                  id="message-input"
+                                  iconName="send"
+                                  wire:model="message_input"
+                                  onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
+                    />
+                    <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
+                </form>
+                <livewire:messages-remaining/>
+            @endif
         </div>
     </div>
 </div>

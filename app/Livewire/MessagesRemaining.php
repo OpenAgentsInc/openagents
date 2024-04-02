@@ -46,6 +46,11 @@ class MessagesRemaining extends Component
             // Assuming 10 free messages for unauthenticated users
             $this->remaining = max(0, 10 - $messagesToday);
         }
+
+        // If this->remaining is 0, dispatch an event to other Livewire components
+        if ($this->remaining === 0) {
+            $this->dispatch('no-more-messages');
+        }
     }
 
     #[On('message-created')]
