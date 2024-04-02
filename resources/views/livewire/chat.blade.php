@@ -39,7 +39,8 @@
 
                         @auth
                             <div class="flex flex-row items-center">
-                                <x-icon.share  wire:click="$dispatch('openModal', { component: 'modals.chat.share' })" class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
+                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
+                                              class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
                                 <a href="/logout">
                                     <div class="select-none cursor-pointer bg-darkgray w-[32px] h-[32px] rounded-full text-[#d7d8e5] flex items-center justify-center">
                                         C
@@ -49,21 +50,42 @@
 
                         @else
                             <div class="flex flex-row items-center">
-                                <x-icon.share  wire:click="$dispatch('openModal', { component: 'modals.chat.share' })" class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
+                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
+                                              class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
                                 <x-login-button/>
                             </div>
                         @endauth
                     </div>
                     <div class="xl:-ml-[50px]">
+                        <!-- if message count is zero -->
+                        @if (count($messages) === 0)
+                            <div class="w-full h-[70vh] flex flex-col justify-center">
+                                <div class="pointer-events-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                                    <x-logomark :size="2"/>
+                                    <h3 class="mt-[36px]">How can we help you today?</h3>
+                                </div>
+                            </div>
+                        @endif
+
+                        @php
+                            $models = [
+                                'mistral-large-latest' => 'Mistral Large',
+                                'mixtral-8x7b-32768' => 'Mixtral (Groq)',
+                                'gpt-4' => 'GPT-4',
+                                'claude' => 'Claude',
+                                'gemini' => 'Gemini',
+                            ];
+                        @endphp
+
                         @foreach($messages as $message)
                             @php
-                                $author = $message['agent_id'] ? 'OpenAgents' : 'You';
+                                $author = !empty($message['model']) ? $models[$message['model']] : 'You';
                             @endphp
                             <x-chat.message :author="$author" :message="$message['body']"/>
                         @endforeach
 
                         @if($pending)
-                            <x-chat.messagestreaming :author="$agent->name ?? 'Agent'"/>
+                            <x-chat.messagestreaming :author="$agent->name ?? $models[$selectedModel]"/>
                         @endif
 
                         @if ($showNoMoreMessages)

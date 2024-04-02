@@ -5,12 +5,11 @@ use App\Http\Controllers\StaticController;
 use App\Livewire\Auth\ChangePassword;
 use App\Livewire\Auth\VerifyAccount;
 use App\Livewire\Chat;
-use App\Livewire\Frontpage;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // CHAT
-Route::get('/', Frontpage::class);
+Route::get('/', Chat::class);
 Route::get('/chat/{id}', Chat::class);
 
 // AUTH

@@ -11,9 +11,33 @@
     @include('partials.ogtags')
 </head>
 
-<body>
-{{ $slot }}
+<body class="h-screen bg-black antialiased" x-cloak x-data="{ sidebarOpen: false, collapsed: false }">
+
+<div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
+
+    <div class="flex-shrink-0 sidebar"
+         x-cloak
+         x-bind:class="{
+            'sidebar-open': sidebarOpen,
+            'sidebar-closed': !sidebarOpen
+           }"
+    >
+    <nav class="flex-grow w-full">
+        <livewire:layouts.sidebar.content/>
+    </nav>
+    </div>
+    <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden hmmm"
+         :style="`margin-left: ${sidebarOpen ? '0' : '50px'}`"
+    >
+        <main class="relative h-full w-full flex-1 overflow-auto transition-width">
+            {{$slot}}
+        </main>
+    </div>
+
+</div>
+
 @livewire('wire-elements-modal')
+
 </body>
 
 </html>
