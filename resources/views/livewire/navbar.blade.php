@@ -1,9 +1,12 @@
-<div class="mt-[10px] fixed w-full px-5 flex flex-row items-center justify-between z-[300]">
-    <livewire:model-selector/>
+<div>
+    <div class="fixed w-full h-14 px-5 py-2 flex flex-row items-center justify-between z-[300]">
+        <livewire:model-selector />
 
-    @auth
+        @auth
         <div class="flex flex-row items-center">
-            <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
+            <button role="button" wire:click="$dispatch('openModal', { component: 'modals.chat.share })">
+                <x-icon.share class="w-[24px] h-[24px] mr-[56px]" />
+            </button>
             <a href="/logout">
                 <div class="select-none cursor-pointer bg-darkgray w-[32px] h-[32px] rounded-full text-[#d7d8e5] flex items-center justify-center">
                     C
@@ -11,10 +14,13 @@
             </a>
         </div>
 
-    @else
+        @else
         <div class="flex flex-row items-center">
-            <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
-            <x-login-buttons/>
+            <button role="button" wire:click="$dispatch('openModal', { component: 'modals.chat.share })">
+                <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[56px]" />
+            </button>
+            <x-login-buttons />
         </div>
-    @endauth
+        @endauth
+    </div>
 </div>
