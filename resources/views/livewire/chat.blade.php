@@ -59,21 +59,21 @@
                         @endif
 
                         @if ($showNoMoreMessages)
-                            <div class="pt-4 pb-8 w-[600px] mx-auto">
-                                <x-pane title="Sign up to continue">
-                                    <div class="flex flex-col justify-center items-center w-full">
-                                        <p class="px-1 my-0 leading-relaxed">Sign up for OpenAgents and receive 10
-                                            free
-                                            responses per day
-                                            from
-                                            the world's
-                                            leading chat
-                                            agents.</p>
-                                        <a href="#" class="my-1">
-                                            <x-secondary-button class="mt-4">Sign up</x-secondary-button>
-                                        </a>
-                                    </div>
-                                </x-pane>
+                            <div class="px-[24px] py-[32px] pb-8 w-[600px] mx-auto border border-[#3C3E42] rounded-[12px]">
+                                <h2 class="font-bold">Sign up to continue</h2>
+                                <div class="flex flex-col justify-center items-center w-full">
+                                    <p class="px-1 my-[32px] leading-relaxed">Sign up for OpenAgents and receive 10
+                                        free
+                                        responses per day
+                                        from
+                                        the world's
+                                        leading chat
+                                        agents.</p>
+                                    <a href="#" class="my-1">
+                                        <x-secondary-button class="mt-4">Sign up</x-secondary-button>
+                                    </a>
+                                </div>
+
                             </div>
                         @endif
                     </div>
