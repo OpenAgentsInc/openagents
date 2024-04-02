@@ -50,7 +50,6 @@ class MessagesRemaining extends Component
         // If this->remaining is 0, dispatch an event to other Livewire components
         if ($this->remaining === 0) {
             $this->dispatch('no-more-messages');
-            $this->dispatch('scrollToBottomAgain');
         }
     }
 

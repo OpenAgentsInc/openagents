@@ -86,7 +86,6 @@ class Chat extends Component
             'agent_id' => null,
             'sender' => 'You',
         ];
-        $this->dispatch('scrollToBottomAgain');
 
         // Clear the input
         $this->message_input = '';
@@ -140,7 +139,6 @@ class Chat extends Component
 
         // Reset/scroll
         $this->pending = false;
-        $this->dispatch('scrollToBottomAgain');
 
         // Notify other component we got a message back
         $this->dispatch('message-created');
@@ -154,7 +152,6 @@ class Chat extends Component
                 to: 'streamtext',
                 content: $token
             );
-            $this->dispatch('scrollToBottomAgain');
         };
     }
 
@@ -193,6 +190,5 @@ class Chat extends Component
 
         // Reset/scroll
         $this->pending = false;
-        $this->dispatch('scrollToBottomAgain');
     }
 }
