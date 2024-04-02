@@ -12,6 +12,7 @@ namespace App\Livewire;
 use App\Models\Agent;
 use App\Models\Thread;
 use App\Models\User;
+use Illuminate\Support\Facades\Session;
 use Livewire\Component;
 
 class Frontpage extends Component
@@ -26,11 +27,20 @@ class Frontpage extends Component
             'first_message' => 'required|string|max:255',
         ]);
 
+        // Check if the user is authenticated
+        if (! auth()->check()) {
+            // Get or generate a session ID for unauthenticated users
+            $sessionId = Session::getId();
+        } else {
+            $sessionId = null; // Authenticated users don't need a session ID
+        }
+
         // Create a new Thread
         $thread = Thread::create();
         $this->thread = $thread;
         $thread->messages()->create([
             'body' => $this->first_message,
+            'session_id' => $sessionId,
         ]);
 
         // Ensure agent is set up

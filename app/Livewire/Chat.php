@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Agent;
 use App\Models\Thread;
 use App\Services\RunService;
+use Illuminate\Support\Facades\Session;
 use Livewire\Component;
 
 class Chat extends Component
@@ -85,10 +86,19 @@ class Chat extends Component
 
     public function startRun()
     {
+        // Check if the user is authenticated
+        if (! auth()->check()) {
+            // Get or generate a session ID for unauthenticated users
+            $sessionId = Session::getId();
+        } else {
+            $sessionId = null; // Authenticated users don't need a session ID
+        }
+
         // Save this user message to the thread
         $this->thread->messages()->create([
             'body' => $this->input,
             'agent_id' => null,
+            'session_id' => $sessionId,
         ]);
 
         // Trigger a run through the RunService
