@@ -59,9 +59,11 @@
                     <div class="xl:-ml-[50px]">
                         <!-- if message count is zero -->
                         @if (count($messages) === 0)
-                            <div class="fixed pointer-events-none top-0 bottom-0 left-0 right-0 flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
-                                <x-logomark :size="2"/>
-                                <h3 class="mt-[16px] mb-12">How can we help you today?</h3>
+                            <div class="w-full h-[70vh] flex flex-col justify-center">
+                                <div class="pointer-events-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                                    <x-logomark :size="2"/>
+                                    <h3 class="mt-[36px]">How can we help you today?</h3>
+                                </div>
                             </div>
                         @endif
 
