@@ -1,5 +1,6 @@
 <div class="fixed w-full h-[64px] px-5 py-3 flex flex-row items-center justify-between z-[300]">
     <livewire:model-selector/>
+
     @auth
         <div class="flex flex-row items-center">
             <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
