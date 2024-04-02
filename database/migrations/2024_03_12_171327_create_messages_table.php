@@ -27,7 +27,7 @@ return new class extends Migration
             $table->text('body');
 
             // Model used for inference
-            $table->text('model');
+            $table->text('model')->nullable();
 
             // Session ID for unauthenticated users
             $table->string('session_id')->nullable();

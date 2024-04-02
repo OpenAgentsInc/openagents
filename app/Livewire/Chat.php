@@ -143,6 +143,7 @@ class Chat extends Component
         $this->messages[] = [
             'body' => $output,
             'sender' => 'Agent', // $this->agent->name,
+            'model' => $this->selectedModel, // 'mixtral-8x7b-32768
             'agent_id' => null, // $this->agent->id,
         ];
 

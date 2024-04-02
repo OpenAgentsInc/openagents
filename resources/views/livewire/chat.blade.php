@@ -69,7 +69,7 @@
 
                         @foreach($messages as $message)
                             @php
-                                $author = $message['agent_id'] ? 'OpenAgents' : 'You';
+                                $author = $message['model'] ?? 'You';
                             @endphp
                             <x-chat.message :author="$author" :message="$message['body']"/>
                         @endforeach
