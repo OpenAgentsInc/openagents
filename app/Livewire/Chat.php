@@ -114,7 +114,7 @@ class Chat extends Component
         ]);
 
         // Fucken do it
-        $output = SimpleInferencer::inference($this->input);
+        $output = SimpleInferencer::inference($this->input, 'mistral-large-latest', $this->getStreamingCallback());
 
         // Append the response to the chat
         $this->messages[] = [
@@ -134,6 +134,17 @@ class Chat extends Component
 
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
+    }
+
+    private function getStreamingCallback()
+    {
+        return function ($response) {
+            $token = $response['choices'][0]['delta']['content'] ?? '';
+            $this->stream(
+                to: 'streamtext',
+                content: $token
+            );
+        };
     }
 
     public function startRun()
@@ -183,17 +194,6 @@ class Chat extends Component
 
         // Notify other component we got a message back
         $this->dispatch('message-created');
-    }
-
-    private function getStreamingCallback()
-    {
-        return function ($response) {
-            $token = $response['choices'][0]['delta']['content'] ?? '';
-            $this->stream(
-                to: 'streamtext',
-                content: $token
-            );
-        };
     }
 
     public function render()
