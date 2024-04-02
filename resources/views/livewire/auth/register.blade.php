@@ -1,9 +1,8 @@
-<div>
+<div class="bg-black text-white p-[32px]">
 
     @if(!$this->verification)
-        <div class="pt-[32px]">
-            <h2 class="block text-md md:text-xl lg:text-2xl text-center font-bold text-white">{{$this->show ? 'Create Password' : 'Sign up'}}</h2>
-        </div>
+
+        <h2 class="block text-md md:text-xl lg:text-2xl text-center font-bold text-white">{{$this->show ? 'Create Password' : 'Sign up'}}</h2>
 
     @else
         <div class="py-4 mt-2">
@@ -13,13 +12,15 @@
 
     @if(!$this->show)
         {{-- Step 1 input email --}}
-        <div class="p-4 sm:p-7 mb-2">
+        <div class="p-4 pb-0">
             <div class="mb-4">
-                <x-input id="register-email" class="block mt-1 w-full" type="email" name="email" :value="old('email')"
-                         required autofocus autocomplete="username" placeholder="Enter email..."/>
+                <x-label for="register-email" value="{{ __('Email') }}"/>
+                <x-input id="register-email" class="block mt-[6px] w-full" type="email" name="email"
+                         :value="old('email')"
+                         required autofocus autocomplete="username" placeholder="Enter email"/>
             </div>
 
-            <div class="mt-5 mb-3">
+            <div class="mt-6 mb-3">
                 <x-button class="w-full flex justify-center gap-2 text-center" wire:click='showpassword()'>
                     Continue
                 </x-button>
@@ -53,7 +54,7 @@
         </div>
     @elseif ($this->show && !$this->verification)
         {{-- Step 2 Input password --}}
-        <div class="p-2 sm:p-7">
+        <div class="p-2">
             <div class="mb-6">
                 <x-input id="password" class="block mt-1 w-full" type="password" name="password" required autofocus
                          placeholder="Enter password..."/>
