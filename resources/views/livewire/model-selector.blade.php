@@ -32,29 +32,29 @@
                                     <span class="text-indigo-50 my-0 text-sm">Mixtral (Groq) </span>
                                 </div>
                             </a>
-                            <a wire:click="selectModel('gpt-4')"
-                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
-                                <x-icon.chatgpt class="w-[28px] h-[28px]"></x-icon.chatgpt>
-                                <div class="flex flex-col">
-                                    <span class="text-indigo-50 my-0 text-sm">GPT-4 </span>
-                                </div>
-                            </a>
-                            <a wire:click="selectModel('claude')"
-                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
-                                <x-icon.claude class="w-[28px] h-[28px]"></x-icon.claude>
-                                <div class="flex flex-col">
-                                    <span class="text-indigo-50 my-0 text-sm">Claude </span>
+                            {{--                            <a wire:click="selectModel('gpt-4')"--}}
+                            {{--                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">--}}
+                            {{--                                <x-icon.chatgpt class="w-[28px] h-[28px]"></x-icon.chatgpt>--}}
+                            {{--                                <div class="flex flex-col">--}}
+                            {{--                                    <span class="text-indigo-50 my-0 text-sm">GPT-4 </span>--}}
+                            {{--                                </div>--}}
+                            {{--                            </a>--}}
+                            {{--                            <a wire:click="selectModel('claude')"--}}
+                            {{--                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">--}}
+                            {{--                                <x-icon.claude class="w-[28px] h-[28px]"></x-icon.claude>--}}
+                            {{--                                <div class="flex flex-col">--}}
+                            {{--                                    <span class="text-indigo-50 my-0 text-sm">Claude </span>--}}
 
-                                </div>
-                            </a>
-                            <a wire:click="selectModel('gemini')"
-                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
-                                <x-icon.gemini class="w-[28px] h-[28px]"></x-icon.gemini>
-                                <div class="flex flex-col">
-                                    <span class="text-indigo-50 my-0 text-sm">Gemini </span>
+                            {{--                                </div>--}}
+                            {{--                            </a>--}}
+                            {{--                            <a wire:click="selectModel('gemini')"--}}
+                            {{--                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm  focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">--}}
+                            {{--                                <x-icon.gemini class="w-[28px] h-[28px]"></x-icon.gemini>--}}
+                            {{--                                <div class="flex flex-col">--}}
+                            {{--                                    <span class="text-indigo-50 my-0 text-sm">Gemini </span>--}}
 
-                                </div>
-                            </a>
+                            {{--                                </div>--}}
+                            {{--                            </a>--}}
                         </div>
                     </div>
                 </div>
