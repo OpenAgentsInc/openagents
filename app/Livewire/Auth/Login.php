@@ -6,7 +6,6 @@ use LivewireUI\Modal\ModalComponent;
 
 class Login extends ModalComponent
 {
-
     public bool $show = false;
 
     // Toggle the value of $show

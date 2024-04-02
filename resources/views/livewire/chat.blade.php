@@ -48,7 +48,10 @@
                             </div>
 
                         @else
-                            <x-login-button/>
+                            <div class="flex flex-row items-center">
+                                <x-icon.share class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
+                                <x-login-button/>
+                            </div>
                         @endauth
                     </div>
                     <div class="xl:-ml-[50px]">
