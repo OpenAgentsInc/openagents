@@ -2,15 +2,14 @@
 
 namespace App\Livewire\Auth;
 
-use LivewireUI\Modal\ModalComponent;
+use Livewire\Component;
 
-class Login extends ModalComponent
+class ChangePassword extends Component
 {
-
     public bool $show = false;
 
     // Toggle the value of $show
-    public function showLogin()
+    public function changePassword()
     {
 
         $this->show = ! $this->show;
@@ -18,6 +17,6 @@ class Login extends ModalComponent
 
     public function render()
     {
-        return view('livewire.auth.login');
+        return view('livewire.auth.change-password');
     }
 }

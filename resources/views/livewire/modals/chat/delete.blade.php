@@ -11,7 +11,6 @@
         <div class="text-left">
             <p class="mt-2 text-md lg:text-lg text-[#D7D8E5]">
                 <span class="font-bold text-white"> First date ideas </span> will be permanently deleted.
-            </p>
         </div>
 
 

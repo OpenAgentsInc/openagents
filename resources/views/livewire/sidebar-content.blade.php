@@ -1,6 +1,8 @@
 <div>
 
 
+
+
     <div class="w-full">
         <div class="flex gap-2 items-center  overflow-hidden" x-bind:class="{
             'justify-between': sidebarOpen,
