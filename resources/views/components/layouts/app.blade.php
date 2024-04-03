@@ -11,7 +11,7 @@
     @include('partials.ogtags')
 </head>
 
-<body class="h-screen bg-black antialiased" x-cloak x-data="{ sidebarOpen: false, collapsed: false }">
+<body class="h-screen bg-black antialiased" x-cloak x-data="{ sidebarOpen: true, collapsed: false }">
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
     <div class="flex-shrink-0 overflow-x-hidden sidebar"
@@ -25,6 +25,24 @@
                 <div class="relative h-full w-full flex-1 items-start">
                     <div class="flex h-full w-full flex-col px-3 pb-3.5">
                         <div class="flex-col flex-1 transition-opacity duration-500 -mr-2 pr-2 overflow-y-auto">
+                            <div class="w-full">
+                                <div class="flex gap-2 items-center overflow-hidden fixed z-50" x-bind:class="{
+                                    'justify-between': sidebarOpen,
+                                    'justify-center': collapsed
+                                   }">
+                                    <button class="z-50 absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] mr-12"
+                                            @click="sidebarOpen = !sidebarOpen">
+                                        <x-icon.menu/>
+                                    </button>
+
+                                    <div class="relative flex-1 text-right mr-6" x-data="{ dropdown: false }">
+                                        <button @click="dropdown= !dropdown" x-cloak
+                                                class="mt-4 p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
+                                            <x-icon.plus class="h-6 w-6"></x-icon.plus>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             <livewire:layouts.sidebar.content/>
                         </div>
                     </div>
@@ -32,30 +50,10 @@
             </div>
         </div>
     </div>
-    <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
+    <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden hmmm"
+         :style="`margin-left: ${sidebarOpen ? '0' : '50px'}`"
+    >
         <main class="relative h-full w-full flex-1 overflow-auto transition-width">
-            <div class="fixed left-0 top-1/2 z-40"
-                 style="transform: translateX(260px) translateY(-50%) rotate(0deg) translateZ(0px);">
-                <button
-                        @click="sidebarOpen = !sidebarOpen"
-                ><span class="" data-state="closed">
-                        <div class="flex h-[72px] w-8 items-center justify-center">
-                            <div
-                                    class="flex h-6 w-6 flex-col items-center">
-                                <div class="h-3 w-1 rounded-full"
-                                     style="background: #ffffff; transform: translateY(0.15rem) rotate(0deg) translateZ(0px);"></div>
-                                <div
-                                        class="h-3 w-1 rounded-full"
-                                        style="background: #ffffff; transform: translateY(-0.15rem) rotate(0deg) translateZ(0px);">
-
-                                </div>
-                            </div>
-                        </div>
-                        <span
-                                style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; overflow-wrap: normal;">Close sidebar</span>
-                    </span>
-                </button>
-            </div>
             {{$slot}}
         </main>
     </div>

@@ -1,22 +1,4 @@
 <div class="w-[260px]">
-    <div class="w-full">
-        <div class="flex gap-2 items-center overflow-hidden" x-bind:class="{
-            'justify-between': sidebarOpen,
-            'justify-center': collapsed
-           }">
-            <button class="z-50 absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] mr-12"
-                    @click="sidebarOpen = !sidebarOpen">
-                <x-icon.menu/>
-            </button>
-
-            <div class="relative flex-1 text-right mr-6" x-data="{ dropdown: false }">
-                <button @click="dropdown= !dropdown" x-cloak
-                        class="mt-4 p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
-                    <x-icon.plus class="h-6 w-6"></x-icon.plus>
-                </button>
-            </div>
-        </div>
-    </div>
 
 
     <div class="mt-8 w-[260px] p-4">
