@@ -32,6 +32,7 @@
         'rounded-full p-2 mx- w-10 h-10': sidebarOpen
      }">
 
+     @if($threads)
      <li class="mt-4">
         <span class="text-left leading-6 font-sm text-sm text-[#777A82] px-2" x-cloak x-show="sidebarOpen">
             Today
@@ -41,5 +42,6 @@
                 <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
             @endforeach
         </ol>
+        @endif'
     </div>
 </div>

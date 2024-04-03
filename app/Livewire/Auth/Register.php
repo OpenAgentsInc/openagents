@@ -4,13 +4,16 @@ namespace App\Livewire\Auth;
 
 use App\Models\User;
 use Livewire\Component;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use LivewireUI\Modal\ModalComponent;
 use Illuminate\Auth\Events\Registered;
-use Illuminate\Support\Facades\Auth;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 
 class Register extends ModalComponent
 {
+    use LivewireAlert;
+
     public bool $verification = false;
 
     public bool $show = false;

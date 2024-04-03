@@ -14,8 +14,15 @@ class VerifyAccount extends Component
 
     use LivewireAlert;
 
-    public function mount()
+    public string $hash;
+
+    public string $id_v;
+
+    public function mount($id,$hash)
     {
+        $this->id_v = $id;
+        $this->hash = $hash;
+
         if($this->check()){
             $this->fulfill();
         }else{
@@ -25,11 +32,11 @@ class VerifyAccount extends Component
 
     public function check(){
         $user = auth()->user();
-        if (! hash_equals((string)  $user->getKey(), (string) route('id'))) {
+        if (! hash_equals((string)  $user->getKey(), (string) $this->id_v)) {
             return false;
         }
 
-        if (! hash_equals(sha1( $user->getEmailForVerification()), (string) route('hash'))) {
+        if (! hash_equals(sha1( $user->getEmailForVerification()), (string) $this->hash)) {
             return false;
         }
 
@@ -57,6 +64,7 @@ class VerifyAccount extends Component
 
     public function render()
     {
-        return view('livewire.auth.verify-account');
+        return view('livewire.auth.verify-account')
+        ->layout('components.layouts.nobar');
     }
 }
