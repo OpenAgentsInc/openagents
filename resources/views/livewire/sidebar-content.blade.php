@@ -9,12 +9,14 @@
         </div>
     </div>
 
-    <div class="mt-8 p-4">
-        <span class="text-left leading-6 font-sm text-sm text-[#777A82] px-2" x-cloak>
+    <div class="flex flex-col gap-2 mt-8 p-4">
+        <span class="text-left text-sm text-[#777A82] px-2" x-cloak>
             Today
         </span>
-        @foreach($threads as $thread)
-            <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
-        @endforeach
+        <ol>
+            @foreach($threads as $thread)
+                <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
+            @endforeach
+        </ol>
     </div>
 </div>
