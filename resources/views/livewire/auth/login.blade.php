@@ -4,8 +4,9 @@
     <form class="p-4">
         <div>
             <x-label for="email" value="{{ __('Email') }}"/>
-            <x-chat.input id="email" class="block mt-[6px] w-full" type="email" name="email" :value="old('email')"
+            <x-chat.input id="email" class="block mt-[6px] w-full  @error('email') border-red-500 @enderror" type="email" name="email" :value="old('email')"
                           required autofocus autocomplete="username" placeholder="Enter email"/>
+                          @error('email') <span class="text-red-500">{{ $message }}</span> @enderror
         </div>
         <div class="mt-6">
             <div class="flex flex-row justify-between">
