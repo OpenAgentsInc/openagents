@@ -5,9 +5,11 @@ namespace App\Livewire\Auth;
 use Livewire\Attributes\Validate;
 use Illuminate\Support\Facades\Auth;
 use LivewireUI\Modal\ModalComponent;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 
 class Login extends ModalComponent
 {
+    use LivewireAlert;
 
     #[Validate('required|email')]
     public $email;
@@ -25,12 +27,14 @@ class Login extends ModalComponent
         ];
 
         if (Auth::attempt($credentials)) {
-            session()->flash('message', 'You have successfully logged in!');
+            session()->flash('message');
+
+            $this->alert('success', 'You have successfully logged in!');
 
             return $this->redirectRoute('chat.intro', navigate: true);
         }
 
-        session()->flash('error', 'Invalid credentials!');
+        $this->alert('warning', 'Invalid credentials!');
     }
 
     public function render()

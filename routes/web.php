@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // CHAT
-Route::get('/', Chat::class);
+Route::get('/', Chat::class)->name('chat.intro');
 Route::get('/chat/{id}', Chat::class)->name('chat');
 
 // AUTH
