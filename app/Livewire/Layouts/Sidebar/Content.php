@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Layouts\Sidebar;
 
+use App\Models\Thread;
 use Livewire\Component;
 
 class Content extends Component
@@ -11,7 +12,8 @@ class Content extends Component
     public function mount()
     {
         if (auth()->guest()) {
-            $this->threads = [];
+            // temporary
+            $this->threads = Thread::all()->reverse();
         } else {
             $this->threads = auth()->user()->threads;
         }
