@@ -10,7 +10,7 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // CHAT
 Route::get('/', Chat::class);
-Route::get('/chat/{id}', Chat::class);
+Route::get('/chat/{id}', Chat::class)->name('chat');
 
 // AUTH
 Route::get('/reset/account/change-password', ChangePassword::class);
