@@ -7,18 +7,30 @@
         </div>
     </a>
 
-    <!-- Popover Trigger and Content -->
-    <div x-data="{ open: false }" @click.away="open = false" class="relative">
-        <button @click="open = !open" class="p-2">
+    <div x-data="{ isOpen: false }" @click.away="isOpen = false" class="relative">
+        <button @click="isOpen = !isOpen" class="p-2">
             <x-icon.dots class="h-4 w-4 text-white"/>
         </button>
 
-        <ul x-show="open" x-popover:panel
-            class="absolute right-0 mt-2 w-48 bg-white shadow-lg rounded-md overflow-hidden z-50"
-            @keydown.escape.window="open = false">
-            <li><a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Edit</a></li>
-            <li><a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Delete</a></li>
-            <!-- Add more options as needed -->
-        </ul>
+        <div x-cloak x-show.transition="isOpen" @click.away="isOpen = false"
+             @keydown.escape.window="isOpen = false"
+             class="absolute top-0 right-0 z-50 mt-8 w-48 origin-top-right rounded-md bg-black py-1 shadow-lg ring-1 ring-gray ring-opacity-5 focus:outline-none"
+             role="menu" aria-orientation="vertical" aria-labelledby="menu-button" tabindex="-1">
+            <!-- Rename Action -->
+            <button x-on:click="$wire.emit('openModal', 'modals.thread.rename', {{ json_encode(['threadId' => $thread->id]) }})"
+                    class="block w-full text-left hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-white"
+                    role="menuitem">
+                <x-icon.pen class="h-4 w-4"></x-icon.pen>
+                Rename
+            </button>
+
+            <!-- Delete Action -->
+            <button x-on:click="$wire.emit('openModal', 'modals.thread.delete', {{ json_encode(['threadId' => $thread->id]) }})"
+                    class="block w-full text-left hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-[#EF4444]"
+                    role="menuitem">
+                <x-icon.trash class="h-4 w-4 text-[#EF4444]"></x-icon.trash>
+                Delete chat
+            </button>
+        </div>
     </div>
 </div>
