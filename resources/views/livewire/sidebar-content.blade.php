@@ -1,15 +1,19 @@
-<div class="w-[260px]">
+<div class="w-full">
+    <div class="justify-between flex gap-2 items-center overflow-hidden z-50">
+        <div class="relative flex-1 text-right" x-data="{ dropdown: false }">
+            <button @click="dropdown= !dropdown" x-cloak
+                    class="mt-4 p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
+                <x-icon.plus class="h-6 w-6"></x-icon.plus>
+            </button>
+        </div>
+    </div>
 
-
-    <div class="mt-8 w-[260px] p-4">
-        <ul x-cloak x-bind:class="{
-
-     }">
-
+    <div class="mt-8 p-4">
+        <ul>
             <li class="mt-4">
-        <span class="text-left leading-6 font-sm text-sm text-[#777A82] px-2" x-cloak>
-            Today
-        </span>
+                <span class="text-left leading-6 font-sm text-sm text-[#777A82] px-2" x-cloak>
+                    Today
+                </span>
             </li>
             <li x-cloak
                 class="text-white bg-white/15 group flex gap-x-2 rounded-md p-2 text-sm leading-6 font-semibold">
@@ -78,7 +82,6 @@
                                 <x-icon.trash class="h-4 w-4 text-[#EF4444]"></x-icon.trash>
                             </span> Delete chat
                         </button>
-
                     </div>
                 </div>
             </li>
@@ -111,12 +114,9 @@
                                 <x-icon.trash class="h-4 w-4 text-[#EF4444]"></x-icon.trash>
                             </span> Delete chat
                         </button>
-
                     </div>
                 </div>
             </li>
-
-
         </ul>
     </div>
 </div>
