@@ -1,4 +1,4 @@
-<div class="w-[260px]">
+<div>
     <div class="w-full">
         <div class="flex gap-2 items-center overflow-hidden" x-bind:class="{
             'justify-between': sidebarOpen,
@@ -9,7 +9,7 @@
                 <x-icon.menu/>
             </button>
 
-            <div class="relative flex-1 text-right mr-6" x-data="{ dropdown: false }">
+            <div class="relative flex-1 text-right" x-data="{ dropdown: false }">
                 <button @click="dropdown= !dropdown" x-cloak
                         class="mt-4 p-1.5 rounded-md text-white hover:bg-gray-50 active:bg-gray-100">
                     <x-icon.plus class="h-6 w-6"></x-icon.plus>
@@ -19,11 +19,8 @@
     </div>
 
 
-    <div class="mt-8 w-[260px] p-4">
-        <ul x-cloak x-bind:class="{
-
-     }">
-
+    <div class="mt-8 w-[260px] p-4 bg-amber-500">
+        <ul x-cloak>
             <li class="mt-4">
         <span class="text-left leading-6 font-sm text-sm text-[#777A82] px-2" x-cloak>
             Today
