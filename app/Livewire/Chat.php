@@ -5,7 +5,6 @@ namespace App\Livewire;
 use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\Thread;
-use App\Services\RunService;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -57,40 +56,24 @@ class Chat extends Component
 
     public function mount($id = null)
     {
-        // For now if there's no id, redirect to homepage
-        //        if (! $id) {
-        //            return $this->redirect('/');
-        //        }
-
-        // Find this thread
-        $thread = Thread::find($id);
-        if (! $thread) {
+        // If ID is not null, we're in a thread. But if thread doesn't exist, redirect to homepage.
+        if ($id) {
+            $thread = Thread::find($id);
+            if (! $thread) {
+                return $this->redirect('/');
+            }
+        } else {
             return;
         }
 
-        // If it doesn't exist, redirect to homepage
-        //        if (! $thread) {
-        //            return $this->redirect('/');
-        //        }
-
         // If it's private, check if the user is a member - if not, redirect to homepage
-        //        if ($thread->private && ! $thread->users->contains(auth()->id())) {
-        //            return $this->redirect('/');
-        //        }
+        if ($thread->private && ! $thread->users->contains(auth()->id())) {
+            return $this->redirect('/');
+        }
 
         // Set the thread and its messages
         $this->thread = $thread;
         $this->messages = $this->thread->messages->sortBy('created_at')->toArray();
-
-        // Set the agent (it's a many-to-many relationship so grab the first agent)
-        $this->agent = $this->thread->agents->first();
-
-        // If the thread was just created, send the first message from the agent
-        if (count($this->messages) <= 1) {
-            $this->pending = true;
-            $this->input = $this->messages[0]['body'] ?? '';
-            $this->js('$wire.runFirst()');
-        }
     }
 
     // Listen for no more messages
@@ -130,8 +113,12 @@ class Chat extends Component
     {
         if (empty($this->thread)) {
             // Create a new Thread
-            $thread = Thread::create();
+            $thread = Thread::create([
+                'title' => 'New chat',
+            ]);
             $this->thread = $thread;
+
+            //            $this->redirect(route('chat', ['id' => $thread->id]), true);
         }
     }
 
@@ -186,95 +173,8 @@ class Chat extends Component
         };
     }
 
-    public function startRun()
-    {
-        // Check if the user is authenticated
-        if (! auth()->check()) {
-            // Get or generate a session ID for unauthenticated users
-            $sessionId = Session::getId();
-        } else {
-            $sessionId = null; // Authenticated users don't need a session ID
-        }
-
-        // Save this user message to the thread
-        $this->thread->messages()->create([
-            'body' => $this->input,
-            'agent_id' => null,
-            'session_id' => $sessionId,
-        ]);
-
-        // Trigger a run through the RunService
-        $runService = new RunService();
-
-        // Pass the input, agent/flow/thread, and a callback to handle the response stream
-        $output = $runService->triggerRun([
-            'agent' => $this->agent,
-            'flow' => $this->agent->flows->first(),
-            'thread' => $this->thread,
-            'input' => $this->input,
-            'streamingFunction' => $this->getStreamingCallback(),
-        ]);
-
-        // The final output is the message
-        $this->messages[] = [
-            'body' => $output,
-            'sender' => $this->agent->name,
-            'agent_id' => $this->agent->id,
-        ];
-
-        // Save the agent message to the thread
-        $this->thread->messages()->create([
-            'body' => $output,
-            'agent_id' => $this->agent->id,
-        ]);
-
-        // Reset/scroll
-        $this->pending = false;
-
-        // Notify other component we got a message back
-        $this->dispatch('message-created');
-    }
-
     public function render()
     {
         return view('livewire.chat');
-    }
-
-    public function runFirst()
-    {
-        // Trigger a run through the RunService
-        $runService = new RunService();
-
-        // Pass the input, agent/flow/thread, and a callback to handle the response stream
-        $output = $runService->triggerRun([
-            'agent' => $this->agent,
-            'flow' => $this->agent->flows->first(),
-            'thread' => $this->thread,
-            'input' => $this->input,
-            'streamingFunction' => $this->getStreamingCallback(),
-        ]);
-
-        // The final output is the message
-        $this->messages[] = [
-            'body' => $output,
-            'sender' => $this->agent->name,
-            'agent_id' => $this->agent->id,
-        ];
-
-        // Save the agent message to the thread
-        $this->thread->messages()->create([
-            'body' => $output,
-            'agent_id' => $this->agent->id,
-        ]);
-
-        // Reset/scroll
-        $this->pending = false;
-    }
-
-    private function generateSimpleResponse($input)
-    {
-        // This is a placeholder for your response generation logic.
-        // For now, it just echoes back the input with a prefix.
-        return 'Echo: '.$input;
     }
 }
