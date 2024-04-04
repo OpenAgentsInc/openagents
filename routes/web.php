@@ -7,7 +7,6 @@ use App\Livewire\Auth\VerifyAccount;
 use App\Livewire\Chat;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
-use App\Livewire\Frontpage;
 
 // CHAT
 Route::get('/', Chat::class)->name('chat.intro');

@@ -2,50 +2,43 @@
 
 namespace App\Livewire\Auth;
 
-use Livewire\Component;
-
 use Illuminate\Auth\Events\Verified;
-use Illuminate\Support\Facades\Auth;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
-use Illuminate\Foundation\Auth\EmailVerificationRequest;
+use Livewire\Component;
 
 class VerifyAccount extends Component
 {
-
     use LivewireAlert;
 
     public string $hash;
 
     public string $id_v;
 
-    public function mount($id,$hash)
+    public function mount($id, $hash)
     {
         $this->id_v = $id;
         $this->hash = $hash;
 
-        if($this->check()){
+        if ($this->check()) {
             $this->fulfill();
-        }else{
-            abort('404','Invalid verification link');
+        } else {
+            abort('404', 'Invalid verification link');
         }
     }
 
-    public function check(){
+    public function check()
+    {
         $user = auth()->user();
-        if (! hash_equals((string)  $user->getKey(), (string) $this->id_v)) {
+        if (! hash_equals((string) $user->getKey(), (string) $this->id_v)) {
             return false;
         }
 
-        if (! hash_equals(sha1( $user->getEmailForVerification()), (string) $this->hash)) {
+        if (! hash_equals(sha1($user->getEmailForVerification()), (string) $this->hash)) {
             return false;
         }
 
         return true;
     }
-
-
-
-
 
     /**
      * Fulfill the email verification request.
@@ -65,6 +58,6 @@ class VerifyAccount extends Component
     public function render()
     {
         return view('livewire.auth.verify-account')
-        ->layout('components.layouts.nobar');
+            ->layout('components.layouts.nobar');
     }
 }

@@ -16,6 +16,9 @@ class Content extends Component
             $this->threads = Thread::all()->reverse();
         } else {
             $this->threads = auth()->user()->threads;
+            if (! $this->threads) {
+                $this->threads = [];
+            }
         }
     }
 

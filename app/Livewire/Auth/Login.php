@@ -2,10 +2,10 @@
 
 namespace App\Livewire\Auth;
 
-use Livewire\Attributes\Validate;
 use Illuminate\Support\Facades\Auth;
-use LivewireUI\Modal\ModalComponent;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Attributes\Validate;
+use LivewireUI\Modal\ModalComponent;
 
 class Login extends ModalComponent
 {
