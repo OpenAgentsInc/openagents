@@ -32,7 +32,7 @@ class Chat extends Component
     // Whether we're waiting for a response from the agent
     public $pending = false;
 
-    public $selectedModel = 'mixtral-8x7b-32768';
+    public $selectedModel = 'mistral-large-latest';
 
     public function getModelName()
     {
