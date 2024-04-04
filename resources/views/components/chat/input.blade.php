@@ -13,7 +13,7 @@
             type="{{ $type }}"
             @input="inputVal = $event.target.value; isDisabled = inputVal.length === 0"
             {{ $attributes->merge([
-                'class' => "flex h-[48px] w-full rounded-md border border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className"
+                'class' => "flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className"
             ]) }}
     />
 
