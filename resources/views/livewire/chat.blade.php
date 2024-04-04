@@ -118,7 +118,7 @@
 
             @else
                 <form wire:submit.prevent="sendMessage">
-                    <x-autosize-textarea id="message-input" minRows="1" maxRows="16" default="Message OpenAgents..."
+                    <x-autosize-textarea id="message-input" minRows="1" default="Message OpenAgents..."
                                          class="flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white"/>
                     <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
                 </form>
@@ -126,9 +126,4 @@
             @endif
         </div>
     </div>
-    <script>
-        document.addEventListener('livewire:init', () => {
-
-        });
-    </script>
 </div>

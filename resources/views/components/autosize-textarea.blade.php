@@ -26,19 +26,28 @@
                 this.$refs.textarea.style.height = 'auto';
                 let newHeight = this.$refs.textarea.scrollHeight;
                 if (this.maxRows !== null) {
-                    let maxHeight = this.maxRows * this.lineHeight();
+                    let maxHeight = this.maxRows * this.lineHeight() + this.scrollbarWidth();
                     if (newHeight > maxHeight) {
-                        newHeight = maxHeight;
-                        this.$refs.textarea.style.overflow = 'auto';
+                        // Keep at maxHeight instead of collapsing
+                        this.$refs.textarea.style.height = `${maxHeight}px`;
+                        this.$refs.textarea.style.overflowY = 'auto'; // Ensure scrollbar is shown when needed
                     } else {
-                        this.$refs.textarea.style.overflow = 'hidden';
+                        this.$refs.textarea.style.height = `${newHeight}px`;
+                        this.$refs.textarea.style.overflowY = 'hidden'; // Hide scrollbar when content fits within maxRows
                     }
+                } else {
+                    // No maxRows set, just adjust height directly
+                    this.$refs.textarea.style.height = `${newHeight}px`;
                 }
-                this.height = newHeight;
             },
             lineHeight() {
                 return parseFloat(getComputedStyle(this.$refs.textarea).lineHeight);
+            },
+            scrollbarWidth() {
+                // Calculate scrollbar width to adjust maxHeight if necessary
+                return this.$refs.textarea.offsetWidth - this.$refs.textarea.clientWidth;
             }
         }
     }
 </script>
+
