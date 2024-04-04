@@ -53,11 +53,12 @@
         <div class="p-2">
             <div class="mb-6">
                 <x-input id="password" wire:model='password' class="block mt-1 w-full" type="password" name="password" required autofocus placeholder="Enter password..." />
-                @error('email') <span class="text-red-500">{{ $message }}</span> @enderror
+                @error('password') <span class="text-red-500">{{ $message }}</span> @enderror
             </div>
 
             <div class="mb-6">
-                <x-input id="password" wire:model='password_confirmation' class="block mt-1 w-full" type="password" name="password" required autofocus placeholder="Confirm password..." />
+                <x-input id="password" wire:model='password_confirmation' class="block mt-1 w-full" type="password" name="password_confirmation" required autofocus placeholder="Confirm password..." />
+                @error('password_confirmation') <span class="text-red-500">{{ $message }}</span> @enderror
             </div>
 
             <div class="mt-8">

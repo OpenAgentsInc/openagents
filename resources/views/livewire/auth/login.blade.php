@@ -15,8 +15,11 @@
                    wire:click="$dispatch('openModal', { component: 'auth.forget-password' })"
                 >Forgot?</a>
             </div>
+            <div>
             <x-chat.input wire:model='password' id="password" class="block mt-[6px] w-full" type="password" name="password" required
                           autocomplete="current-password" placeholder="Enter password"/>
+                          @error('password') <span class="text-red-500">{{ $message }}</span> @enderror
+            </div>
         </div>
 
         <div class="mt-6">
