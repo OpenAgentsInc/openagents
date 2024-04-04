@@ -10,7 +10,7 @@
 
         <div class="text-left">
             <p class="mt-2 text-md lg:text-lg text-[#D7D8E5]">
-                <span class="font-bold text-white"> First date ideas </span> will be permanently deleted.
+                <span class="font-bold text-white"> {{$this->title }}</span> will be permanently deleted.
         </div>
 
 
@@ -19,7 +19,7 @@
                 Cancel
             </x-secondary-button>
 
-            <x-button class="w-full text-center justify-center gap-2 py-2 text-white bg-[#EF4444]">
+            <x-button wire:click='delete()' class="w-full text-center justify-center gap-2 py-2 text-white bg-[#EF4444]">
                 Delete
             </x-button>
 

@@ -8,8 +8,8 @@
 
     <div class="p-4 sm:p-7">
         <div class="mb-4">
-            <x-input id="rename" class="block mt-1 w-full" type="text" name="rename" required
-                      placeholder="Rename chat"/>
+            <x-input id="rename" class="block mt-1 w-full" type="text" name="title" wire:model='title' required placeholder="Rename chat"/>
+                    @error('title') <span class="text-red-500 mt-2 text-xs">{{ $message }}</span> @enderror
         </div>
 
 
@@ -19,7 +19,7 @@
                 Cancel
             </x-secondary-button>
 
-            <x-button class="w-full text-center justify-center gap-2 py-2">
+            <x-button class="w-full text-center justify-center gap-2 py-2" wire:click='update'>
                 Confirm
             </x-button>
 
