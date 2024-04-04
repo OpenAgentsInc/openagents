@@ -3,14 +3,15 @@
 namespace App\Livewire\Modals\Chat;
 
 use App\Models\Thread;
-use Jantinnerezo\LivewireAlert\LivewireAlert;
 use LivewireUI\Modal\ModalComponent;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 
 class Rename extends ModalComponent
 {
+
     use LivewireAlert;
 
-    public Thread $thread;
+    public  Thread $thread;
 
     public $title;
 
@@ -23,7 +24,7 @@ class Rename extends ModalComponent
     {
 
         $this->validate([
-            'title' => 'required',
+            'title' => 'required'
         ]);
 
         $this->thread->title = $this->title;

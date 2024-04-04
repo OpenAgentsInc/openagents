@@ -8,6 +8,7 @@ use Livewire\Component;
 
 class Content extends Component
 {
+
     public $threads;
 
     public function mount()
@@ -24,8 +25,7 @@ class Content extends Component
     }
 
     #[On('thread-update')]
-    public function refershThread()
-    {
+    public function refershThread(){
         if (auth()->guest()) {
             // temporary
             $this->threads = Thread::all()->reverse();
