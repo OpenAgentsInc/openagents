@@ -1,4 +1,4 @@
-<div role="presentation" tabindex="0" class="flex flex-col h-full min-h-screen chat">
+<div role="presentation" tabindex="0" class="flex flex-col h-full min-h-screen">
     <div class="flex-1 overflow-hidden">
         <div id="chatbox-container" x-ref="chatboxContainer" class="overflow-y-scroll h-full">
             <div class="relative"
@@ -56,7 +56,7 @@
                             </div>
                         @endauth
                     </div>
-                    <div class="xl:-ml-[50px]">
+                    <div class="xl:-ml-[50px] chat">
                         <!-- if message count is zero -->
                         @if (count($messages) === 0)
                             <div class="w-full h-[70vh] flex flex-col justify-center">
