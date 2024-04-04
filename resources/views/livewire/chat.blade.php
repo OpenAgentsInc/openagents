@@ -39,7 +39,8 @@
 
                         @auth
                             <div class="flex flex-row items-center">
-                                <x-icon.share  wire:click="$dispatch('openModal', { component: 'modals.chat.share' })" class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
+                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
+                                              class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
                                 <a href="/logout">
                                     <div class="select-none cursor-pointer bg-darkgray w-[32px] h-[32px] rounded-full text-[#d7d8e5] flex items-center justify-center">
                                         C
@@ -49,7 +50,8 @@
 
                         @else
                             <div class="flex flex-row items-center">
-                                <x-icon.share  wire:click="$dispatch('openModal', { component: 'modals.chat.share' })" class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
+                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
+                                              class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
                                 <x-login-button/>
                             </div>
                         @endauth
@@ -116,21 +118,18 @@
 
             @else
                 <form wire:submit.prevent="sendMessage">
-                    <x-chat.input dusk="message-input" autofocus placeholder="Message OpenAgents..." :showIcon="true"
-                                  id="message-input"
-                                  iconName="send"
-                                  wire:model="message_input"
-                                  onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
-                    />
+                    <x-chat.textarea id="message-input" minRows="1" default="Message OpenAgents..."
+                                     :showIcon="true"
+                                     iconName="send"
+                                     min-rows="1"
+                                     max-rows="12"
+                                     wire:model="message_input"
+                                     onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
+                                     class="flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white"/>
                     <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
                 </form>
                 <livewire:messages-remaining/>
             @endif
         </div>
     </div>
-    <script>
-        document.addEventListener('livewire:init', () => {
-
-        });
-    </script>
 </div>
