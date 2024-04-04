@@ -12,9 +12,7 @@
                 <div class="flex-col gap-1 md:gap-3">
                     <div class="flex flex-grow flex-col max-w-[936px]">
                         <div wire:stream="taskProgress" class="text-sm text-text"></div>
-                        <x-markdown wire:stream="streamtext" class="text-md">
-
-                        </x-markdown>
+                        <x-markdown wire:stream="streamtext" class="text-md whitespace-pre-wrap"></x-markdown>
                     </div>
                     <div class="flex justify-start gap-3 empty:hidden">
                         <div
