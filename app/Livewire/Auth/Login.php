@@ -27,7 +27,6 @@ class Login extends ModalComponent
         ];
 
         if (Auth::attempt($credentials)) {
-            session()->flash('message');
 
             $this->alert('success', 'You have successfully logged in!');
 

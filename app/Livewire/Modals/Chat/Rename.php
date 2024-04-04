@@ -2,14 +2,37 @@
 
 namespace App\Livewire\Modals\Chat;
 
+use App\Models\Thread;
 use LivewireUI\Modal\ModalComponent;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 
 class Rename extends ModalComponent
 {
+
+    use LivewireAlert;
+
+    public  Thread $thread;
+
+    public $title;
+
+    public function mount(Thread $thread)
+    {
+        $this->title = $thread->title;
+    }
+
     public function update()
     {
 
-        //save data and close modal
+        $this->validate([
+            'title' => 'required'
+        ]);
+
+        $this->thread->title = $this->title;
+        $this->thread->save();
+
+        $this->alert('success', 'Name Updated');
+
+        $this->dispatch('thread-update');
 
         $this->closeModal();
     }

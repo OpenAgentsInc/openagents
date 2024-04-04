@@ -13,7 +13,7 @@ Route::get('/', Chat::class)->name('chat.intro');
 Route::get('/chat/{id}', Chat::class)->name('chat');
 
 // AUTH
-Route::get('/reset/account/change-password', ChangePassword::class);
+Route::get('/reset/account/{token}', ChangePassword::class)->name('password.reset');
 Route::get('/email/verify//{id}/{hash}', VerifyAccount::class)->name('verification.verify');
 
 // BILLING

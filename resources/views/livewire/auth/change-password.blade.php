@@ -13,26 +13,27 @@
             </div>
             <div class="text-center">
                 @if (!$this->show)
+                <form wire:submit.prevent='reset_account'>
                     <div class="p-4 sm:p-7">
                         <div class="mb-4">
-                            <x-input id="password" class="block mt-1 w-full" type="password" name="password" required
-                                     autofocus placeholder="New password"/>
+                            <x-input wire:model='password' id="password" class="block mt-1 w-full" type="password" name="password" required autofocus placeholder="New password" />
+                            @error('password') <span class="text-red-500 text-xs block mt-1">{{ $message }}</span> @enderror
                         </div>
                         <div class="mb-4">
-                            <x-input id="password" class="block mt-1 w-full" type="password" name="password" required
-                                     autofocus placeholder="Confirm new password"/>
+                            <x-input wire:model='password_confirmation' id="password" class="block mt-1 w-full" type="password" name="password_confirmation" required autofocus placeholder="Confirm new password" />
+                            @error('password_confirmation') <span class="text-red-500 text-xs block mt-1">{{ $message }}</span> @enderror
                         </div>
                         <div class="mt-5">
-                            <x-button class="w-full flex  items-center justify-center gap-2"
-                                      wire:click='changePassword()'>
+                            <x-button class="w-full flex  items-center justify-center gap-2">
                                 Change Password
                             </x-button>
                         </div>
                     </div>
+                </form>
                 @else
-                    <p class="mt-2 text-sm md:text-lg text-[#D7D8E5]">
-                        Return to OpenAgents to login.
-                    </p>
+                <p class="mt-2 text-sm md:text-lg text-[#D7D8E5]">
+                    Return to OpenAgents to login.
+                </p>
                 @endif
             </div>
         </div>
