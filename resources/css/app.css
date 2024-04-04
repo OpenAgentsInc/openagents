@@ -38,6 +38,18 @@
 }
 
 @layer base {
+    ol {
+        @apply list-decimal pl-8;
+    }
+    
+    li {
+        @apply my-3;
+    }
+
+    ul {
+        @apply list-disc pl-8;
+    }
+
     :root {
         --livewire-progress-bar-color: white !important;
     }
