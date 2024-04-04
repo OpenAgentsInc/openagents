@@ -2,17 +2,54 @@
 
 namespace App\Livewire\Modals\Chat;
 
+use App\Models\Thread;
 use LivewireUI\Modal\ModalComponent;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 
 class Delete extends ModalComponent
 {
+
+    use LivewireAlert;
+
+    public $thread;
+
+    public $title;
+    public $thread_id;
+
+    public function mount(Thread $thread)
+    {
+        $this->title = $thread->title;
+        $this->thread_id = $thread->id;
+    }
+
+
+
     public function delete()
     {
 
-        //save data and close modal
+        $thread = Thread::find($this->thread_id);
 
-        $this->closeModal();
+        if ($thread && !empty($thread)) {
+
+            // Delete related messages
+            $thread->messages()->delete();
+
+            // Now delete the thread
+            $thread->delete();
+
+            $this->alert('success', 'Thread Deleted');
+
+            $this->dispatch('thread-update');
+
+            $this->closeModal();
+        } else {
+            $this->alert('error', 'An unknown Error occured');
+            $this->closeModal();
+        }
     }
+
+
+
 
     public function render()
     {

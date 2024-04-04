@@ -17,7 +17,7 @@
 
         <div x-popover:panel x-cloak x-transition
              class="fixed left-[240px] rounded-md shadow-md text-white bg-black border border-darkgray">
-            <button x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.rename' })"
+            <button x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.rename', arguments: { thread: {{ $thread->id }} } })"
                     class="w-full hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-white" role="menuitem"
                     tabindex="-1" id="user-menu-item-0">
                 <span>
@@ -25,7 +25,7 @@
                 </span> Rename
             </button>
 
-            <button x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.delete' })"
+            <button x-on:click="Livewire.dispatch('openModal', { component: 'modals.chat.delete', arguments: { thread: {{ $thread->id }} } })"
                     class="w-full hover:bg-white/20 gap-4 flex px-4 py-2 text-sm text-[#EF4444]"
                     role="menuitem" tabindex="-1" id="user-menu-item-0">
                             <span>
