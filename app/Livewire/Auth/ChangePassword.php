@@ -3,23 +3,25 @@
 namespace App\Livewire\Auth;
 
 use App\Models\User;
-use Illuminate\Auth\Events\PasswordReset;
+use Livewire\Component;
+use Illuminate\Support\Str;
+use Livewire\Attributes\Url;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Contracts\Hashing\Hasher;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Str;
+use Illuminate\Auth\Events\PasswordReset;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
-use Livewire\Attributes\Url;
-use Livewire\Component;
 
 class ChangePassword extends Component
 {
+
     use LivewireAlert;
+
 
     public bool $show = false;
 
     public string $password;
-
     public string $password_confirmation;
 
     #[Url]
@@ -33,22 +35,26 @@ class ChangePassword extends Component
 
         $this->verify_token();
 
+
     }
+
 
     public function verify_token()
     {
 
-        $user = User::where('email', $this->email)->first();
-        if (is_null($user)) {
-            abort(404, 'Invalid Token!');
+        $user = User::where('email',$this->email)->first();
+        if(is_null($user)){
+            abort(404,'Invalid Token!');
         }
 
-        $updatePassword = Password::tokenExists($user, $this->token);
+        $updatePassword = Password::tokenExists($user,$this->token);
 
-        if (! $updatePassword) {
+        if (!$updatePassword) {
             abort(404, 'Invalid token!');
         }
     }
+
+
 
     public function render()
     {
@@ -61,7 +67,7 @@ class ChangePassword extends Component
         $this->validate([
             'token' => 'required',
             'email' => 'required|email',
-            'password' => 'required|confirmed',
+            'password' => 'required|confirmed'
         ]);
 
         $user = User::where('email', $this->email)->first();
@@ -93,7 +99,7 @@ class ChangePassword extends Component
                 $this->alert('success', 'Password Change!');
 
                 $this->show = true;
-            } else {
+            }else{
                 $this->alert('error', 'Invalid token!');
             }
 

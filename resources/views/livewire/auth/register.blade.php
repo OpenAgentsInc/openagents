@@ -53,20 +53,18 @@
         </div>
     @endif
     @if ($this->show && !$this->verification)
-        {{-- Step 2 Input password --}}
-        <form wire:submit.prevent='create'>
-            <div class="p-2">
-                <div class="mb-6">
-                    <x-input id="password" wire:model='password' class="block mt-1 w-full" type="password"
-                             name="password" required autofocus placeholder="Enter password..."/>
-                    @error('password') <span class="text-red-500">{{ $message }}</span> @enderror
-                </div>
+    {{-- Step 2 Input password --}}
+    <form wire:submit.prevent='create'>
+        <div class="p-2">
+            <div class="mb-6">
+                <x-input id="password" wire:model='password' class="block mt-1 w-full" type="password" name="password" required autofocus placeholder="Enter password..." />
+                @error('password') <span class="text-red-500">{{ $message }}</span> @enderror
+            </div>
 
-                <div class="mb-6">
-                    <x-input id="password" wire:model='password_confirmation' class="block mt-1 w-full" type="password"
-                             name="password_confirmation" required autofocus placeholder="Confirm password..."/>
-                    @error('password_confirmation') <span class="text-red-500">{{ $message }}</span> @enderror
-                </div>
+            <div class="mb-6">
+                <x-input id="password" wire:model='password_confirmation' class="block mt-1 w-full" type="password" name="password_confirmation" required autofocus placeholder="Confirm password..." />
+                @error('password_confirmation') <span class="text-red-500">{{ $message }}</span> @enderror
+            </div>
 
                 <div class="mt-8">
                     <x-button class="w-full flex justify-center text-center gap-2">
