@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Auth;
 
+use Livewire\Component;
 use LivewireUI\Modal\ModalComponent;
 
 class ForgetPassword extends ModalComponent

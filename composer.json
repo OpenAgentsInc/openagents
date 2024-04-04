@@ -11,6 +11,7 @@
     "php": "^8.2",
     "extism/extism": "^1.0",
     "finnhub/client": "dev-update-guzzle-compatibility as 1.1.18",
+    "jantinnerezo/livewire-alert": "^3.0",
     "laravel/cashier": "^15.3",
     "laravel/framework": "^11.0",
     "laravel/jetstream": "^5.0",
