@@ -3,17 +3,17 @@
 namespace App\Livewire\Modals\Chat;
 
 use App\Models\Thread;
-use LivewireUI\Modal\ModalComponent;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use LivewireUI\Modal\ModalComponent;
 
 class Delete extends ModalComponent
 {
-
     use LivewireAlert;
 
     public $thread;
 
     public $title;
+
     public $thread_id;
 
     public function mount(Thread $thread)
@@ -22,14 +22,12 @@ class Delete extends ModalComponent
         $this->thread_id = $thread->id;
     }
 
-
-
     public function delete()
     {
 
         $thread = Thread::find($this->thread_id);
 
-        if ($thread && !empty($thread)) {
+        if ($thread && ! empty($thread)) {
 
             // Delete related messages
             $thread->messages()->delete();
@@ -47,9 +45,6 @@ class Delete extends ModalComponent
             $this->closeModal();
         }
     }
-
-
-
 
     public function render()
     {
