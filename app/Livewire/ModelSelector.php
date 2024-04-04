@@ -6,9 +6,9 @@ use Livewire\Component;
 
 class ModelSelector extends Component
 {
-    public $selectedModel = 'mixtral-8x7b-32768'; // Default selection
+    public $selectedModel = 'mistral-large-latest'; // Default selection
 
-    public $formattedModel = 'Mixtral (Groq)';
+    public $formattedModel = 'Mistral Large';
 
     public $modelnames = [
         'mistral-large-latest' => 'Mistral Large',
