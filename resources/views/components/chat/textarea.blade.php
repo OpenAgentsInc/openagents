@@ -1,5 +1,4 @@
 @props([
-    'type' => 'text', // Not applicable for textarea but kept for consistency
     'className' => '',
     'hasError' => false,
     'showIcon' => false,
@@ -19,6 +18,7 @@
     update() {
         this.$refs.textarea.style.height = 'auto';
         let newHeight = this.$refs.textarea.scrollHeight;
+        console.log(newHeight);
         let maxHeight = this.viewportMaxHeight;
 
         if (this.maxRows !== null) {
@@ -27,9 +27,15 @@
         }
 
         if (newHeight > maxHeight) {
+            console.log('if - maxHeight', maxHeight);
             this.$refs.textarea.style.height = `${maxHeight}px`;
             this.$refs.textarea.style.overflowY = 'auto';
         } else {
+            console.log('else - newHeight', newHeight);
+            // If newHeight is less than 48px, set it to 48px
+            newHeight = Math.max(newHeight, 48);
+            console.log('else - newHeight', newHeight);
+
             this.$refs.textarea.style.height = `${newHeight}px`;
             this.$refs.textarea.style.overflowY = 'hidden';
         }
@@ -50,7 +56,7 @@
         placeholder="{{ $default }}"
         :rows="minRows"
             {{ $attributes->merge([
-                'class' => "flex w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className transition-all duration-300 ease-in-out",
+                'class' => "flex w-full rounded-md border-2 bg-transparent px-3 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className transition-all duration-300 ease-in-out",
                 'style' => "'resize: none; overflow: hidden;'"
             ]) }}
     ></textarea>
