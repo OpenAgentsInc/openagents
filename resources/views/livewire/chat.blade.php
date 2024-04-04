@@ -1,4 +1,4 @@
-<div role="presentation" tabindex="0" class="flex flex-col h-full min-h-screen">
+<div role="presentation" tabindex="0" class="flex flex-col h-full min-h-screen chat">
     <div class="flex-1 overflow-hidden">
         <div id="chatbox-container" x-ref="chatboxContainer" class="overflow-y-scroll h-full">
             <div class="relative"

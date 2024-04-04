@@ -38,15 +38,15 @@
 }
 
 @layer base {
-    ol {
+    .chat ol {
         @apply list-decimal pl-8;
     }
-    
-    li {
+
+    .chat li {
         @apply my-3;
     }
 
-    ul {
+    .chat ul {
         @apply list-disc pl-8;
     }
 
