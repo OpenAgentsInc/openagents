@@ -14,7 +14,7 @@ return [
     |
     */
 
-    'twitter-oauth-2' => [
+    'twitter' => [
         'client_id' => env('X_CLIENT_ID'),
         'client_secret' => env('X_CLIENT_SECRET'),
         'redirect' => '/callback/x',

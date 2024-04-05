@@ -10,12 +10,12 @@ class SocialAuthController extends Controller
 {
     public function login_x()
     {
-        return Socialite::driver('twitter-oauth-2')->redirect();
+        return Socialite::driver('twitter')->redirect();
     }
 
     public function login_x_callback()
     {
-        $twitterUser = Socialite::driver('twitter-oauth-2')->user();
+        $twitterUser = Socialite::driver('twitter')->user();
 
         dd($twitterUser);
 
