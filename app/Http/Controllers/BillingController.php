@@ -9,12 +9,16 @@ class BillingController extends Controller
 {
     public function stripe_billing_portal(Request $request)
     {
-        // User is not a Stripe customer yet. See the createAsStripeCustomer method.
         $user = $request->user();
-        if ($user->stripe_id === null) {
+        if (! $user) {
             return redirect('/');
         }
 
-        return request()->user()?->redirectToBillingPortal() ?? redirect('/');
+        if ($user->stripe_id === null) {
+            // Create a new Stripe customer for the user
+            $user->createAsStripeCustomer();
+        }
+
+        return $user->redirectToBillingPortal();
     }
 }
