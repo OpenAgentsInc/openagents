@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SocialAccount;
 use App\Models\User;
 use Illuminate\Routing\Controller;
 use Socialite;
@@ -15,19 +16,32 @@ class SocialAuthController extends Controller
 
     public function login_x_callback()
     {
-        $twitterUser = Socialite::driver('twitter')->user();
+        $socialUser = Socialite::driver('twitter')->user();
+        $socialData = [
+            'id' => $socialUser->id,
+            'nickname' => $socialUser->nickname,
+            'name' => $socialUser->name,
+            'email' => $socialUser->email,
+            'avatar' => $socialUser->avatar,
+            // Include other data you might want to store
+        ];
 
-        dd($twitterUser);
-
-        $user = User::updateOrCreate(
-            ['twitter_id' => $twitterUser->id], // Check if Twitter ID exists
-            [
-                'name' => $twitterUser->name,
-                'email' => $twitterUser->email,
-                'twitter_nickname' => $twitterUser->nickname,
-                'twitter_avatar' => $twitterUser->avatar,
-            ]
+        // Logic to associate the social account with a user
+        $user = User::firstOrCreate(
+            ['email' => $socialUser->email],
+            ['name' => $socialUser->name]
         );
+
+        $socialAccount = SocialAccount::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'provider_id' => $socialUser->id,
+                'provider_name' => 'twitter',
+            ],
+            ['provider_data' => $socialData]
+        );
+
+        dd($user, $socialAccount);
 
         auth()->login($user, true);
 
