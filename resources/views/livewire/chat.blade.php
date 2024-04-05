@@ -57,12 +57,11 @@
                             <div class="flex flex-row items-center">
                                 <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
                                               class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
-                                <x-login-button/>
+                                <x-login-buttons/>
                             </div>
                         @endauth
                     </div>
                     <div class="xl:-ml-[50px] pt-8 chat">
-                        <!-- if message count is zero -->
                         @if (count($messages) === 0)
                             <div class="w-full h-[70vh] flex flex-col justify-center">
                                 <div class="pointer-events-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
