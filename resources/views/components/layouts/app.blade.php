@@ -16,7 +16,7 @@
 <body class="h-screen bg-black antialiased" x-cloak x-data="{ sidebarOpen: true, collapsed: false }">
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
-    <button class="z-[9001] absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] mr-12"
+    <button class="z-[9001] absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[14px] mr-12"
             @click="sidebarOpen = !sidebarOpen">
         <x-icon.menu/>
     </button>
@@ -49,7 +49,7 @@
 
 @livewire('wire-elements-modal')
 <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<x-livewire-alert::scripts />
+<x-livewire-alert::scripts/>
 </body>
 
 </html>
