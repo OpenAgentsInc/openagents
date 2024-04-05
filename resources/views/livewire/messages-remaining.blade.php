@@ -6,7 +6,8 @@
         @else
             {{-- For authenticated free users --}}
             You have <span class="text-white">{{ $remaining }}</span> responses remaining today.
-            <a href="/upgrade" class="text-white underline">
+            <a class="text-white underline cursor-pointer"
+               wire:click="$dispatch('openModal', { component: 'modals.upgrade' })">
                 Upgrade to Pro and get 100 responses per day.
             </a>
         @endif
