@@ -30,9 +30,11 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     protected $fillable = [
         'name',
+        'username',
         'email',
         'password',
         'prism_user_id',
+        'profile_photo_path',
     ];
 
     /**

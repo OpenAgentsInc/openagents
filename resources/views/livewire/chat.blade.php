@@ -42,9 +42,14 @@
                                 <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
                                               class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
                                 <a href="/logout">
-                                    <div class="select-none cursor-pointer bg-darkgray w-[32px] h-[32px] rounded-full text-[#d7d8e5] flex items-center justify-center">
-                                        C
-                                    </div>
+                                    <a href="/logout">
+                                        @if(Auth::user()->profile_photo_path)
+                                            <img src="{{ Auth::user()->profile_photo_path }}" alt="Profile"
+                                                 class="rounded-full w-[32px] h-[32px] object-cover">
+                                        @else
+                                            {{ strtoupper(Auth::user()->name[0] ?? 'N/A') }}
+                                        @endif
+                                    </a>
                                 </a>
                             </div>
 
