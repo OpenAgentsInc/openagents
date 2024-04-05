@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Contracts\View\View;
 use Illuminate\View\Component;
 
-class AutosizeTextarea extends Component
+class LoginButtons extends Component
 {
     /**
      * Create a new component instance.
@@ -21,6 +21,6 @@ class AutosizeTextarea extends Component
      */
     public function render(): View|Closure|string
     {
-        return view('components.autosize-textarea');
+        return view('components.login-buttons');
     }
 }
