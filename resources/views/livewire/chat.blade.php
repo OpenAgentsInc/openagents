@@ -47,7 +47,7 @@
                                             <img src="{{ Auth::user()->profile_photo_path }}" alt="Profile"
                                                  class="rounded-full w-[32px] h-[32px] object-cover">
                                         @else
-                                            {{ strtoupper(Auth::user()->name[0] ?? 'N/A') }}
+                                            {{ strtoupper(Auth::user()->name[0] ?? '-') }}
                                         @endif
                                     </a>
                                 </a>
