@@ -64,7 +64,7 @@
                     <div class="xl:-ml-[50px] pt-8 chat">
                         @if (count($messages) === 0)
                             <div class="w-full h-[70vh] flex flex-col justify-center">
-                                <div class="pointer-events-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                                <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                     <x-logomark :size="2"/>
                                     <h3 class="mt-[36px]">How can we help you today?</h3>
                                 </div>
