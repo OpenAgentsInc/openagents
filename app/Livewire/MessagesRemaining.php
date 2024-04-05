@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Message;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class MessagesRemaining extends Component
@@ -23,6 +24,7 @@ class MessagesRemaining extends Component
             $user = Auth::user();
             $messagesToday = Message::where('user_id', $user->id)
                 ->whereDate('created_at', today())
+                ->whereNotNull('model')
                 ->count();
 
             if ($user->isPro()) {
@@ -37,13 +39,20 @@ class MessagesRemaining extends Component
             $sessionId = Session::getId();
             $messagesToday = Message::where('session_id', $sessionId)
                 ->whereDate('created_at', today())
+                ->whereNotNull('model')
                 ->count();
             $this->remaining = max(0, 5 - $messagesToday);
         }
 
         if ($this->remaining === 0) {
-            $this->dispatchBrowserEvent('no-more-messages');
+            $this->dispatch('no-more-messages');
         }
+    }
+
+    #[On('message-created')]
+    public function updateStuff()
+    {
+        $this->calculateRemainingMessages();
     }
 
     public function render()
