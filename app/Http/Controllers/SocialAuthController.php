@@ -38,7 +38,12 @@ class SocialAuthController extends Controller
 
             // Set the profile photo path from the social provider
             if (isset($socialUser->avatar)) {
-                $user->profile_photo_path = $socialUser->avatar;
+                $avatarUrl = $socialUser->avatar;
+                // Check if the URL starts with 'http://' and replace with 'https://'
+                if (strpos($avatarUrl, 'http://') === 0) {
+                    $avatarUrl = str_replace('http://', 'https://', $avatarUrl);
+                }
+                $user->profile_photo_path = $avatarUrl;
             }
 
             $user->save();
