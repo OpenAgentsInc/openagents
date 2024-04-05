@@ -61,7 +61,7 @@
                             </div>
                         @endauth
                     </div>
-                    <div class="xl:-ml-[50px] chat">
+                    <div class="xl:-ml-[50px] pt-8 chat">
                         <!-- if message count is zero -->
                         @if (count($messages) === 0)
                             <div class="w-full h-[70vh] flex flex-col justify-center">
