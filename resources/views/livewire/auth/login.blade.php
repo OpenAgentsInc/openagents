@@ -4,9 +4,11 @@
     <form wire:submit.prevent="login" class="p-4">
         <div>
             <x-label for="email" value="{{ __('Email') }}"/>
-            <x-chat.input wire:model='email' id="email" class="block mt-[6px] w-full  @error('email') border border-red-500 @enderror" type="email" name="email" :value="old('email')"
+            <x-chat.input wire:model='email' id="email"
+                          class="block mt-[6px] w-full  @error('email') border border-red-500 @enderror" type="email"
+                          name="email" :value="old('email')"
                           required autofocus autocomplete="username" placeholder="Enter email"/>
-                          @error('email') <span class="text-red-500">{{ $message }}</span> @enderror
+            @error('email') <span class="text-red-500">{{ $message }}</span> @enderror
         </div>
         <div class="mt-6">
             <div class="flex flex-row justify-between">
@@ -16,9 +18,10 @@
                 >Forgot?</a>
             </div>
             <div>
-            <x-chat.input wire:model='password' id="password" class="block mt-[6px] w-full" type="password" name="password" required
-                          autocomplete="current-password" placeholder="Enter password"/>
-                          @error('password') <span class="text-red-500">{{ $message }}</span> @enderror
+                <x-chat.input wire:model='password' id="password" class="block mt-[6px] w-full" type="password"
+                              name="password" required
+                              autocomplete="current-password" placeholder="Enter password"/>
+                @error('password') <span class="text-red-500">{{ $message }}</span> @enderror
             </div>
         </div>
 
@@ -31,10 +34,12 @@
                 or
             </div>
 
-            <x-secondary-button class="w-full flex justify-center gap-2 mb-0">
-                <x-icon.google class="h-5 w-5"></x-icon.google>
-                <span class="text-sm md:text-md">Log in with Google</span>
-            </x-secondary-button>
+            <a href="/login/x">
+                <x-secondary-button class="w-full flex justify-center gap-2 mb-0 h-[44px]">
+                    <x-icon.x class="h-5 w-5"></x-icon.x>
+                    <span class="">Log in with X</span>
+                </x-secondary-button>
+            </a>
         </div>
     </form>
 </div>
