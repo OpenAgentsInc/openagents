@@ -44,7 +44,7 @@ class MessagesRemaining extends Component
                 ->count();
 
             // Assuming 10 free messages for unauthenticated users
-            $this->remaining = max(0, 10000 - $messagesToday);
+            $this->remaining = max(0, 10 - $messagesToday);
         }
 
         // If this->remaining is 0, dispatch an event to other Livewire components
