@@ -134,6 +134,7 @@ class Chat extends Component
             'body' => $this->input,
             'agent_id' => null, // Null for user messages
             'session_id' => $sessionId,
+            'user_id' => auth()->id() ?? null,
         ]);
 
         // Simply do it
@@ -145,6 +146,7 @@ class Chat extends Component
             'sender' => 'Agent', // $this->agent->name,
             'model' => $this->selectedModel, // 'mixtral-8x7b-32768
             'agent_id' => null, // $this->agent->id,
+            'user_id' => auth()->id() ?? null,
         ];
 
         // Save the agent's response to the thread
@@ -152,6 +154,7 @@ class Chat extends Component
             'body' => $output,
             'session_id' => $sessionId, // or if authed?
             'model' => $this->selectedModel, // 'mixtral-8x7b-32768
+            'user_id' => auth()->id() ?? null,
             //            'agent_id' => 99, // $this->agent->id, // The agent's ID for their messages
         ]);
 
