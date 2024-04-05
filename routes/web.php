@@ -23,7 +23,7 @@ Route::get('/callback/x', [SocialAuthController::class, 'login_x_callback']);
 
 // BILLING
 Route::get('/billing', [BillingController::class, 'stripe_billing_portal']);
-Route::get('/subscribe', [BillingController::class, 'stripe_subscribe']);
+Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 
 // STATIC
 //Route::get('/pro', [StaticController::class, 'pro']);
