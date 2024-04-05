@@ -3,7 +3,6 @@
 namespace App\Livewire;
 
 use App\AI\SimpleInferencer;
-use App\Models\Agent;
 use App\Models\Thread;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
@@ -17,11 +16,8 @@ class Chat extends Component
     // User input from chat form
     public $message_input = '';
 
-    // The saved input we pass to agent
+    // The saved input
     public $input = '';
-
-    // The agent we're chatting with
-    public Agent $agent;
 
     // The thread we're chatting in
     public Thread $thread;
@@ -29,7 +25,7 @@ class Chat extends Component
     // The messages we render on the page
     public $messages = [];
 
-    // Whether we're waiting for a response from the agent
+    // Whether we're waiting for a response
     public $pending = false;
 
     public $selectedModel = 'mistral-large-latest';
@@ -94,7 +90,6 @@ class Chat extends Component
         // Append the message to the chat
         $this->messages[] = [
             'body' => $this->input,
-            'agent_id' => null,
             'sender' => 'You',
         ];
 
@@ -102,9 +97,8 @@ class Chat extends Component
         $this->message_input = '';
         $this->pending = true;
 
-        // Call startRun after the next render
+        // Call simpleRun after the next render
         $this->js('$wire.simpleRun()');
-        //        $this->js('$wire.startRun()');
     }
 
     // Example simple response generator
@@ -132,7 +126,6 @@ class Chat extends Component
         // Save user message to the thread
         $this->thread->messages()->create([
             'body' => $this->input,
-            'agent_id' => null, // Null for user messages
             'session_id' => $sessionId,
             'user_id' => auth()->id() ?? null,
         ]);
@@ -143,9 +136,8 @@ class Chat extends Component
         // Append the response to the chat
         $this->messages[] = [
             'body' => $output,
-            'sender' => 'Agent', // $this->agent->name,
+            //            'sender' => 'Agent', // $this->agent->name,
             'model' => $this->selectedModel, // 'mixtral-8x7b-32768
-            'agent_id' => null, // $this->agent->id,
             'user_id' => auth()->id() ?? null,
         ];
 

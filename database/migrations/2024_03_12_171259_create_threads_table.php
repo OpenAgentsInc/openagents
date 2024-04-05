@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('threads', function (Blueprint $table) {
             $table->id();
             $table->string('title')->nullable();
+            $table->boolean('private')->default(false);
             $table->timestamps();
         });
     }

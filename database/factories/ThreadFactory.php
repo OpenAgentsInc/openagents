@@ -17,22 +17,6 @@ class ThreadFactory extends Factory
      */
     public function definition(): array
     {
-        return [
-            'private' => false,
-        ];
-    }
-
-    /**
-     * Indicate that the thread is private.
-     *
-     * @return $this
-     */
-    public function private(): self
-    {
-        return $this->state(function (array $attributes) {
-            return [
-                'private' => true,
-            ];
-        });
+        return [];
     }
 }
