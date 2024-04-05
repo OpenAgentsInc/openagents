@@ -23,19 +23,9 @@ class SocialAuthController extends Controller
             // User doesn't exist, so we create a new user
             $user = User::create([
                 'email' => $socialUser->email,
-                'name' => $socialUser->name, // Use Socialite name for user's display name
+                'name' => $socialUser->name,
+                'username' => $socialUser->nickname,
             ]);
-
-            // Attempt to set a unique username from the social provider's nickname
-            $baseUsername = $socialUser->nickname;
-            $username = $baseUsername;
-            $counter = 1;
-            while (User::where('username', $username)->exists()) {
-                // Append number to make username unique
-                $username = $baseUsername.$counter;
-                $counter++;
-            }
-            $user->username = $username;
 
             // Set the profile photo path from the social provider
             if (isset($socialUser->avatar)) {
