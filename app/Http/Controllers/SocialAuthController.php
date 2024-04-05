@@ -21,9 +21,10 @@ class SocialAuthController extends Controller
 
         if (! $user) {
             // User doesn't exist, so we create a new user
-            $user = new User;
-            $user->email = $socialUser->email;
-            $user->name = $socialUser->name; // Use Socialite name for user's display name
+            $user = User::create([
+                'email' => $socialUser->email,
+                'name' => $socialUser->name, // Use Socialite name for user's display name
+            ]);
 
             // Attempt to set a unique username from the social provider's nickname
             $baseUsername = $socialUser->nickname;
