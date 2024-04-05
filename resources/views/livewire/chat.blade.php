@@ -33,7 +33,7 @@
                     });
                 ">
                 <div class="flex flex-col text-sm pb-9" style="">
-                    <div class="h-[48px] sticky top-0 pt-[10px] mb-1.5 flex items-center justify-between z-10 px-5 bg-black">
+                    <div class="h-[52px] sticky top-0 pt-[10px] mb-1.5 flex items-center justify-between z-10 px-5 bg-black">
                         <div class="absolute left-1/2 -translate-x-1/2"></div>
                         <livewire:model-selector/>
 

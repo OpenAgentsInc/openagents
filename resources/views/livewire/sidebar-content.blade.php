@@ -2,7 +2,7 @@
     <div class="justify-between flex gap-2 items-center overflow-hidden z-50">
         <div class="relative flex-1 text-right" x-data="{ dropdown: false }">
             <a href="/" wire:navigate>
-                <button class="mt-3 p-1.5 rounded-md text-white">
+                <button class="mt-2 p-1.5 rounded-md text-white">
                     <x-icon.plus class="h-6 w-6"></x-icon.plus>
                 </button>
             </a>
