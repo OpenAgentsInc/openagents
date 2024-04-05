@@ -5,7 +5,6 @@ namespace App\Livewire;
 use App\Models\Message;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
-use Livewire\Attributes\On;
 use Livewire\Component;
 
 class MessagesRemaining extends Component
@@ -19,44 +18,32 @@ class MessagesRemaining extends Component
 
     protected function calculateRemainingMessages()
     {
+        $messagesToday = 0;
         if (Auth::check()) {
-            // User is authenticated
-            $userId = Auth::id();
-            // Assuming a 'user_id' column in your messages table for simplicity
-            $messagesToday = Message::where('user_id', $userId)
+            $user = Auth::user();
+            $messagesToday = Message::where('user_id', $user->id)
                 ->whereDate('created_at', today())
                 ->count();
 
-            // Adjust these numbers as per your actual limits
-            $initialFreeMessages = 10;
-            $additionalMessagesAfterSignup = 50;
-
-            $totalAvailable = $initialFreeMessages + $additionalMessagesAfterSignup;
-            $this->remaining = max(0, $totalAvailable - $messagesToday);
-
+            if ($user->isPro()) {
+                // Assuming there's a method to check if the user is a Pro user
+                $this->remaining = max(0, 100 - $messagesToday);
+            } else {
+                // Authenticated free user
+                $this->remaining = max(0, 10 - $messagesToday);
+            }
         } else {
-            // User is not authenticated, use session ID
+            // Guest user
             $sessionId = Session::getId();
-            // You'll need a way to associate messages with sessions for unauthenticated users
-            // This might require a custom implementation
             $messagesToday = Message::where('session_id', $sessionId)
                 ->whereDate('created_at', today())
                 ->count();
-
-            // Assuming 10 free messages for unauthenticated users
-            $this->remaining = max(0, 10 - $messagesToday);
+            $this->remaining = max(0, 5 - $messagesToday);
         }
 
-        // If this->remaining is 0, dispatch an event to other Livewire components
         if ($this->remaining === 0) {
-            $this->dispatch('no-more-messages');
+            $this->dispatchBrowserEvent('no-more-messages');
         }
-    }
-
-    #[On('message-created')]
-    public function updateStuff()
-    {
-        $this->calculateRemainingMessages();
     }
 
     public function render()

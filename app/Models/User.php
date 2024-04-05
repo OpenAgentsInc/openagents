@@ -58,6 +58,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'profile_photo_url',
     ];
 
+    public function isPro(): bool
+    {
+        return false;
+        //        return $this->subscribed('pro');
+    }
+
     public function socialAccounts(): HasMany
     {
         return $this->hasMany(SocialAccount::class);
