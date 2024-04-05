@@ -9,7 +9,7 @@
         </p>
 
         <div class="mt-8 mb-2">
-            <a class="w-full" href="https://pay.openagents.com/b/14kg0d0nt2TCegEcMP">
+            <a class="w-full" href="/upgrade">
                 <x-button class="w-full justify-center font-medium">Upgrade plan</x-button>
             </a>
         </div>

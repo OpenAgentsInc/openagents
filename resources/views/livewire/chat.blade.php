@@ -103,7 +103,7 @@
                                         <p class="px-1 my-[32px] leading-relaxed text-text">Upgrade to Pro for
                                             $10/month
                                             and receive 100 responses per day. Secure billing via Stripe.</p>
-                                        <a class="w-full" href="https://pay.openagents.com/b/14kg0d0nt2TCegEcMP">
+                                        <a class="w-full" href="/upgrade">
                                             <x-button class="w-full justify-center font-medium">Upgrade plan
                                             </x-button>
                                         </a>
