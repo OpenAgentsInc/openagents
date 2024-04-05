@@ -24,7 +24,7 @@ return new class extends Migration
             $table->foreignId('agent_id')->nullable();
 
             // Message content - will be changed to longtext
-            $table->text('body');
+            $table->longText('body');
 
             // Model used for inference
             $table->text('model')->nullable();

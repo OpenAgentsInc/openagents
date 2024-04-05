@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "34aa4a5183f3b1466356507398ab1d77",
+    "content-hash": "9d218c23df7d5bb403afce0da560623a",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -604,129 +604,6 @@
                 }
             ],
             "time": "2023-10-06T06:47:41+00:00"
-        },
-        {
-            "name": "extism/extism",
-            "version": "v1.0.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/extism/php-sdk.git",
-                "reference": "0a522ebeec0628f85b49acd079c96ee3d77692dc"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/extism/php-sdk/zipball/0a522ebeec0628f85b49acd079c96ee3d77692dc",
-                "reference": "0a522ebeec0628f85b49acd079c96ee3d77692dc",
-                "shasum": ""
-            },
-            "require": {
-                "php": "^7.4 || ^8"
-            },
-            "require-dev": {
-                "phpunit/phpunit": "^10"
-            },
-            "type": "library",
-            "autoload": {
-                "files": [
-                    "src/Manifest.php",
-                    "src/Plugin.php",
-                    "src/CurrentPlugin.php"
-                ],
-                "psr-4": {
-                    "Extism\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "BSD-3-Clause"
-            ],
-            "authors": [
-                {
-                    "name": "The Extism Authors",
-                    "email": "oss@extism.org",
-                    "homepage": "https://extism.org"
-                },
-                {
-                    "name": "Dylibso, Inc.",
-                    "email": "oss@dylibso.com",
-                    "homepage": "https://dylibso.com"
-                }
-            ],
-            "description": "Make your software programmable. Run WebAssembly extensions in your app using the first off-the-shelf, universal plug-in system.",
-            "keywords": [
-                "framework",
-                "plug-in",
-                "plugin-system",
-                "runtime",
-                "wasm",
-                "webassembly"
-            ],
-            "support": {
-                "issues": "https://github.com/extism/php-sdk/issues",
-                "source": "https://github.com/extism/php-sdk/tree/v1.0.0"
-            },
-            "time": "2024-01-29T14:12:42+00:00"
-        },
-        {
-            "name": "finnhub/client",
-            "version": "dev-update-guzzle-compatibility",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/OpenAgentsInc/finnhub-php.git",
-                "reference": "31f775c1f85aa152dc75950b9167f7544d7af9ec"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/OpenAgentsInc/finnhub-php/zipball/31f775c1f85aa152dc75950b9167f7544d7af9ec",
-                "reference": "31f775c1f85aa152dc75950b9167f7544d7af9ec",
-                "shasum": ""
-            },
-            "require": {
-                "ext-curl": "*",
-                "ext-json": "*",
-                "ext-mbstring": "*",
-                "guzzlehttp/guzzle": "^7.2",
-                "php": "^7.3 || ^8.0"
-            },
-            "require-dev": {
-                "friendsofphp/php-cs-fixer": "^2.12",
-                "phpunit/phpunit": "^8.0 || ^9.0"
-            },
-            "type": "library",
-            "autoload": {
-                "psr-4": {
-                    "Finnhub\\": "lib/"
-                }
-            },
-            "autoload-dev": {
-                "psr-4": {
-                    "Finnhub\\Test\\": "test/"
-                }
-            },
-            "license": [
-                "unlicense"
-            ],
-            "authors": [
-                {
-                    "name": "OpenAPI-Generator contributors",
-                    "homepage": "https://openapi-generator.tech"
-                }
-            ],
-            "description": "Official Finnhub stock API PHP library. https://finnhub.io/",
-            "homepage": "https://openapi-generator.tech",
-            "keywords": [
-                "api",
-                "openapi",
-                "openapi-generator",
-                "openapitools",
-                "php",
-                "rest",
-                "sdk"
-            ],
-            "support": {
-                "source": "https://github.com/OpenAgentsInc/finnhub-php/tree/update-guzzle-compatibility"
-            },
-            "time": "2024-03-10T20:17:36+00:00"
         },
         {
             "name": "fruitcake/php-cors",
@@ -10912,18 +10789,9 @@
             "time": "2024-03-03T12:36:25+00:00"
         }
     ],
-    "aliases": [
-        {
-            "package": "finnhub/client",
-            "version": "dev-update-guzzle-compatibility",
-            "alias": "1.1.18",
-            "alias_normalized": "1.1.18.0"
-        }
-    ],
+    "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "finnhub/client": 20
-    },
+    "stability-flags": [],
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

@@ -18,23 +18,8 @@ class Thread extends Model
         return $this->hasMany(Message::class);
     }
 
-    public function agents(): BelongsToMany
-    {
-        return $this->belongsToMany(Agent::class);
-    }
-
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class);
-    }
-
-    public function setPrivate(): void
-    {
-        $this->update(['private' => true]);
-    }
-
-    public function setPublic(): void
-    {
-        $this->update(['private' => false]);
     }
 }
