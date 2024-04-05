@@ -33,7 +33,7 @@
                     });
                 ">
                 <div class="flex flex-col text-sm pb-9" style="">
-                    <div class="h-[52px] sticky top-0 pt-[10px] mb-1.5 flex items-center justify-between z-10 px-5 bg-black">
+                    <div class="h-[52px] sticky top-0 flex flex-row items-center justify-between z-10 px-5 bg-black">
                         <div class="absolute left-1/2 -translate-x-1/2"></div>
                         <livewire:model-selector/>
 
@@ -64,7 +64,7 @@
                     <div class="xl:-ml-[50px] pt-8 chat">
                         @if (count($messages) === 0)
                             <div class="w-full h-[70vh] flex flex-col justify-center">
-                                <div class="pointer-events-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                                <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                     <x-logomark :size="2"/>
                                     <h3 class="mt-[36px]">How can we help you today?</h3>
                                 </div>

@@ -30,7 +30,7 @@ class Login extends ModalComponent
 
             $this->alert('success', 'You have successfully logged in!');
 
-            return $this->redirectRoute('chat.intro', navigate: true);
+            return $this->redirectRoute('home', navigate: true);
         }
 
         $this->alert('warning', 'Invalid credentials!');
