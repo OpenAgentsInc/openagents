@@ -93,24 +93,42 @@
                         @endif
 
                         @if ($showNoMoreMessages)
-                            <div class="px-[24px] py-[32px] pb-8 w-[600px] mx-auto border border-[#3C3E42] rounded-[12px]">
-                                <h2 class="font-bold text-[32px]">Sign up to continue</h2>
-                                <div class="flex flex-col justify-center items-center w-full">
-                                    <p class="px-1 my-[32px] leading-relaxed text-text">Sign up for OpenAgents and
-                                        receive 10
-                                        free
-                                        responses per day
-                                        from
-                                        the world's
-                                        leading chat
-                                        agents.</p>
-                                    <a wire:click="$dispatch('openModal', { component: 'auth.register' })"
-                                       class="my-1 w-full">
-                                        <x-button class="w-full justify-center font-medium">Sign up</x-button>
-                                    </a>
+                            @auth
+                                @if (count($messages) === 0)
+                                    <div class="-mt-[15%]"></div>
+                                @endif
+                                <div class="px-[24px] py-[32px] pb-8 w-[600px] mx-auto border border-[#3C3E42] rounded-[12px]">
+                                    <h2 class="font-bold text-[32px]">Upgrade to continue</h2>
+                                    <div class="flex flex-col justify-center items-center w-full">
+                                        <p class="px-1 my-[32px] leading-relaxed text-text">Upgrade to Pro for
+                                            $10/month
+                                            and receive 100 responses per day. Secure billing via Stripe.</p>
+                                        <a class="w-full" href="https://pay.openagents.com/b/14kg0d0nt2TCegEcMP">
+                                            <x-button class="w-full justify-center font-medium">Upgrade plan
+                                            </x-button>
+                                        </a>
+                                    </div>
                                 </div>
-
-                            </div>
+                            @else
+                                <div class="px-[24px] py-[32px] pb-8 w-[600px] mx-auto border border-[#3C3E42] rounded-[12px]">
+                                    <h2 class="font-bold text-[32px]">Sign up to continue</h2>
+                                    <div class="flex flex-col justify-center items-center w-full">
+                                        <p class="px-1 my-[32px] leading-relaxed text-text">Sign up for OpenAgents
+                                            and
+                                            receive 10
+                                            free
+                                            responses per day
+                                            from
+                                            the world's
+                                            leading chat
+                                            agents.</p>
+                                        <a wire:click="$dispatch('openModal', { component: 'auth.register' })"
+                                           class="my-1 w-full">
+                                            <x-button class="w-full justify-center font-medium">Sign up</x-button>
+                                        </a>
+                                    </div>
+                                </div>
+                            @endauth
                         @endif
                     </div>
                 </div>
