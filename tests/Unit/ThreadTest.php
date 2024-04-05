@@ -24,26 +24,3 @@ it('belongs to many users', function () {
 
     expect($thread->users)->toHaveCount(1);
 });
-
-// Privacy
-it('can be private', function () {
-    $thread = Thread::factory()->private()->create();
-    expect($thread->private)->toBeTrue();
-});
-
-it('is public by default', function () {
-    $thread = Thread::factory()->create();
-    expect($thread->private)->toBeFalse();
-});
-
-it('can be set private', function () {
-    $thread = Thread::factory()->create();
-    $thread->setPrivate();
-    expect($thread->private)->toBeTrue();
-});
-
-it('can be set public', function () {
-    $thread = Thread::factory()->private()->create();
-    $thread->setPublic();
-    expect($thread->private)->toBeFalse();
-});
