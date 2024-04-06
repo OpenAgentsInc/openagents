@@ -5,22 +5,64 @@ namespace App\AI;
 class Models
 {
     public const MODELS = [
-        'mistral-small-latest' => 'Mistral Small',
-        'mistral-medium-latest' => 'Mistral Medium',
-        'mistral-large-latest' => 'Mistral Large',
-        'gpt-3.5-turbo-16k' => 'GPT-3.5 Turbo 16K',
-        'gpt-4-turbo-preview' => 'GPT-4 Turbo',
-        'gpt-4' => 'GPT-4',
-        'claude-3-haiku-20240307' => 'Claude Haiku',
-        'claude-3-sonnet-20240229' => 'Claude Sonnet',
-        'claude-3-opus-20240229' => 'Claude Opus',
+        'mistral-small-latest' => [
+            'name' => 'Mistral Small',
+            'gateway' => 'mistral',
+            'access' => 'guest',
+            'max_tokens' => 2000,
+        ],
+        'mistral-medium-latest' => [
+            'name' => 'Mistral Medium',
+            'gateway' => 'mistral',
+            'access' => 'user',
+            'max_tokens' => 2000,
+        ],
+        'mistral-large-latest' => [
+            'name' => 'Mistral Large',
+            'gateway' => 'mistral',
+            'access' => 'pro',
+            'max_tokens' => 2000,
+        ],
+        'gpt-3.5-turbo-16k' => [
+            'name' => 'GPT-3.5 Turbo 16K',
+            'gateway' => 'openai',
+            'access' => 'guest',
+            'max_tokens' => 2000,
+        ],
+        'gpt-4-turbo-preview' => [
+            'name' => 'GPT-4 Turbo',
+            'gateway' => 'openai',
+            'access' => 'user',
+            'max_tokens' => 2000,
+        ],
+        'gpt-4' => [
+            'name' => 'GPT-4',
+            'gateway' => 'openai',
+            'access' => 'pro',
+            'max_tokens' => 2000,
+        ],
+        'claude-3-haiku-20240307' => [
+            'name' => 'Claude Haiku',
+            'gateway' => 'anthropic',
+            'access' => 'guest',
+            'max_tokens' => 2000,
+        ],
+        'claude-3-sonnet-20240229' => [
+            'name' => 'Claude Sonnet',
+            'gateway' => 'anthropic',
+            'access' => 'user',
+            'max_tokens' => 2000,
+        ],
+        'claude-3-opus-20240229' => [
+            'name' => 'Claude Opus',
+            'gateway' => 'anthropic',
+            'access' => 'pro',
+            'max_tokens' => 2000,
+        ],
     ];
 
     public static function getDefaultModel()
     {
-        // temporary
-        return 'claude-3-haiku-20240307';
-
         // If user is not logged in, use Mistral Small.
         if (! auth()->check()) {
             return 'mistral-small-latest';
@@ -37,6 +79,6 @@ class Models
 
     public static function getModelName($model)
     {
-        return self::MODELS[$model] ?? 'Unknown Model';
+        return self::MODELS[$model]['name'] ?? 'Unknown Model';
     }
 }
