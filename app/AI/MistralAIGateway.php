@@ -8,6 +8,17 @@ use Illuminate\Support\Facades\Http;
 
 class MistralAIGateway
 {
+    public function models()
+    {
+        $url = 'https://api.mistral.ai/v1/models';
+        $response = Http::withHeaders([
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer '.env('MISTRAL_API_KEY'),
+        ])->get($url);
+
+        dd($response->json());
+    }
+
     public function embed($inputs)
     {
         // Your API endpoint for embeddings
