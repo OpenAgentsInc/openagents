@@ -21,64 +21,45 @@ class SimpleInferencer
             ],
         ];
 
-        // switch model
-        switch ($model) {
-            case 'claude-3-sonnet-20240229':
-            case 'claude-3-haiku-20240307':
-            case 'claude-3-opus-20240229':
-                $client = new AnthropicAIGateway();
-                $inference = $client->createStreamed([
-                    'model' => $model,
-                    'messages' => $messages,
-                    'max_tokens' => 4096,
-                    'stream_function' => $streamFunction,
-                ]);
-                break;
-            case 'mistral-tiny':
-            case 'mistral-small-latest':
-            case 'mistral-medium-latest':
-            case 'mistral-large-latest':
-            case 'open-mixtral-8x7b':
-            case 'open-mistral-7b':
-                $client = new MistralAIGateway();
+        $modelDetails = Models::MODELS[$model] ?? null;
 
-                $inference = $client->chat()->createStreamed([
-                    'model' => $model,
-                    'messages' => $messages,
-                    'max_tokens' => 9024,
-                    'stream_function' => $streamFunction,
-                ]);
-                break;
-            case 'mixtral-8x7b-32768':
-                $client = new GroqAIGateway();
-                break;
-            case 'gpt-4':
-                $client = new OpenAIGateway();
-                $inference = $client->stream([
-                    'model' => $model,
-                    'messages' => $messages,
-                    'max_tokens' => 5000,
-                    'stream_function' => $streamFunction,
-                ]);
-                break;
-            case 'gpt-4-turbo-preview':
-                $client = new OpenAIGateway();
-                $inference = $client->stream([
-                    'model' => $model,
-                    'messages' => $messages,
-                    'max_tokens' => 3500,
-                    'stream_function' => $streamFunction,
-                ]);
-                break;
-            case 'gpt-3.5-turbo-16k':
-                $client = new OpenAIGateway();
-                $inference = $client->stream([
-                    'model' => $model,
-                    'messages' => $messages,
-                    'max_tokens' => 15024,
-                    'stream_function' => $streamFunction,
-                ]);
-                break;
+        if ($modelDetails) {
+            $gateway = $modelDetails['gateway'];
+            $maxTokens = $modelDetails['max_tokens'];
+
+            switch ($gateway) {
+                case 'anthropic':
+                    $client = new AnthropicAIGateway();
+                    $inference = $client->createStreamed([
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $maxTokens,
+                        'stream_function' => $streamFunction,
+                    ]);
+                    break;
+                case 'mistral':
+                    $client = new MistralAIGateway();
+                    $inference = $client->chat()->createStreamed([
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $maxTokens,
+                        'stream_function' => $streamFunction,
+                    ]);
+                    break;
+                case 'openai':
+                    $client = new OpenAIGateway();
+                    $inference = $client->stream([
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $maxTokens,
+                        'stream_function' => $streamFunction,
+                    ]);
+                    break;
+                    // Add more cases for other gateways if needed
+            }
+        } else {
+            // Handle unknown model
+            dd("Unknown model: $model");
         }
 
         return $inference;

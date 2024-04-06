@@ -78,13 +78,13 @@
 
                         @foreach($messages as $message)
                             @php
-                                $author = !empty($message['model']) ? $models[$message['model']] : 'You';
+                                $author = !empty($message['model']) ? $models[$message['model']]["name"] : 'You';
                             @endphp
                             <x-chat.message :author="$author" :message="$message['body']"/>
                         @endforeach
 
                         @if($pending)
-                            <x-chat.messagestreaming :author="$agent->name ?? $models[$selectedModel]"/>
+                            <x-chat.messagestreaming :author="$agent->name ?? $models[$selectedModel]['name']"/>
                         @endif
 
                         @if ($showNoMoreMessages)
