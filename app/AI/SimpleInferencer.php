@@ -23,6 +23,17 @@ class SimpleInferencer
 
         // switch model
         switch ($model) {
+            case 'claude-3-sonnet-20240229':
+            case 'claude-3-haiku-20240307':
+            case 'claude-3-opus-20240229':
+                $client = new AnthropicAIGateway();
+                $inference = $client->createStreamed([
+                    'model' => $model,
+                    'messages' => $messages,
+                    'max_tokens' => 4096,
+                    'stream_function' => $streamFunction,
+                ]);
+                break;
             case 'mistral-tiny':
             case 'mistral-small-latest':
             case 'mistral-medium-latest':
@@ -46,7 +57,7 @@ class SimpleInferencer
                 $inference = $client->stream([
                     'model' => $model,
                     'messages' => $messages,
-                    'max_tokens' => 7800,
+                    'max_tokens' => 5000,
                     'stream_function' => $streamFunction,
                 ]);
                 break;
@@ -80,8 +91,8 @@ function get_previous_messages(Thread $thread)
         ->orderBy('created_at', 'asc')
         ->get()
         ->map(function ($message) {
-            // If agent_id is not null, this is agent. Otherwise user
-            if ($message->agent_id) {
+            // If model is not null, this is agent. Otherwise user
+            if ($message->model !== null) {
                 $role = 'assistant';
             } else {
                 $role = 'user';
