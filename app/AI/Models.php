@@ -8,7 +8,7 @@ class Models
         'mistral-small-latest' => 'Mistral Small',
         'mistral-medium-latest' => 'Mistral Medium',
         'mistral-large-latest' => 'Mistral Large',
-        // 'gpt-4' => 'GPT-4',
+        'gpt-4' => 'GPT-4',
     ];
 
     public static function getDefaultModel()

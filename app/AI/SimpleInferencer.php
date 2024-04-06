@@ -30,18 +30,29 @@ class SimpleInferencer
             case 'open-mixtral-8x7b':
             case 'open-mistral-7b':
                 $client = new MistralAIGateway();
+
+                $inference = $client->chat()->createStreamed([
+                    'model' => $model,
+                    'messages' => $messages,
+                    'max_tokens' => 9024,
+                    'stream_function' => $streamFunction,
+                ]);
                 break;
             case 'mixtral-8x7b-32768':
                 $client = new GroqAIGateway();
                 break;
+            case 'gpt-4':
+                $client = new OpenAIGateway();
+                $inference = $client->stream([
+                    'model' => $model,
+                    'messages' => $messages,
+                    'max_tokens' => 6024,
+                    'stream_function' => $streamFunction,
+                ]);
+                break;
         }
 
-        return $client->chat()->createStreamed([
-            'model' => $model,
-            'messages' => $messages,
-            'max_tokens' => 9024,
-            'stream_function' => $streamFunction,
-        ]);
+        return $inference;
     }
 }
 
