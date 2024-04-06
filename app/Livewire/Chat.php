@@ -81,6 +81,8 @@ class Chat extends Component
         $this->messages[] = [
             'body' => $this->input,
             'sender' => 'You',
+            'user_id' => auth()->id(), // Add user_id if logged in
+            'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
         ];
 
         // Clear the input
@@ -91,18 +93,21 @@ class Chat extends Component
         $this->js('$wire.simpleRun()');
     }
 
-    // Example simple response generator
-
     private function ensureThread()
     {
         if (empty($this->thread)) {
             // Create a new Thread
-            $thread = Thread::create([
+            $data = [
                 'title' => 'New chat',
-            ]);
-            $this->thread = $thread;
+                'session_id' => auth()->check() ? null : Session::getId(),
+            ];
 
-            //            $this->redirect(route('chat', ['id' => $thread->id]), true);
+            if (auth()->check()) {
+                $data['user_id'] = auth()->id();
+            }
+
+            $thread = Thread::create($data);
+            $this->thread = $thread;
         }
     }
 
@@ -126,18 +131,17 @@ class Chat extends Component
         // Append the response to the chat
         $this->messages[] = [
             'body' => $output,
-            //            'sender' => 'Agent', // $this->agent->name,
-            'model' => $this->selectedModel, // 'mixtral-8x7b-32768
+            'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
+            'session_id' => $sessionId,
         ];
 
         // Save the agent's response to the thread
         $this->thread->messages()->create([
             'body' => $output,
-            'session_id' => $sessionId, // or if authed?
-            'model' => $this->selectedModel, // 'mixtral-8x7b-32768
+            'session_id' => $sessionId,
+            'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
-            //            'agent_id' => 99, // $this->agent->id, // The agent's ID for their messages
         ]);
 
         // Reset pending status and scroll to the latest message

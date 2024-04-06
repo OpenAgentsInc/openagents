@@ -3,6 +3,7 @@
 namespace App\Livewire\Layouts\Sidebar;
 
 use App\Models\Thread;
+use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -13,8 +14,8 @@ class Content extends Component
     public function mount()
     {
         if (auth()->guest()) {
-            // temporary
-            $this->threads = Thread::all()->reverse();
+            $sessionId = Session::getId();
+            $this->threads = Thread::whereSessionId($sessionId)->latest()->get();
         } else {
             $this->threads = auth()->user()->threads;
             if (! $this->threads) {
@@ -24,11 +25,11 @@ class Content extends Component
     }
 
     #[On('thread-update')]
-    public function refershThread()
+    public function refreshThread()
     {
         if (auth()->guest()) {
-            // temporary
-            $this->threads = Thread::all()->reverse();
+            $sessionId = Session::getId();
+            $this->threads = Thread::whereSessionId($sessionId)->latest()->get();
         } else {
             $this->threads = auth()->user()->threads;
             if (! $this->threads) {
