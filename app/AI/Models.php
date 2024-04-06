@@ -5,15 +5,30 @@ namespace App\AI;
 class Models
 {
     public const MODELS = [
-        // 'mistral-tiny' => 'Mistral Tiny',
         'mistral-small-latest' => 'Mistral Small',
         'mistral-medium-latest' => 'Mistral Medium',
         'mistral-large-latest' => 'Mistral Large',
-        // 'open-mixtral-8x7b' => 'Open Mixtral 8x7B',
-        // 'open-mistral-7b' => 'Open Mistral 7B',
-        // 'mixtral-8x7b-32768' => 'Mixtral (Groq)',
         // 'gpt-4' => 'GPT-4',
-        // 'claude' => 'Claude',
-        // 'gemini' => 'Gemini',
     ];
+
+    public static function getDefaultModel()
+    {
+        // If user is not logged in, use Mistral Small.
+        if (! auth()->check()) {
+            return 'mistral-small-latest';
+        }
+
+        // If user is logged in and is Pro, use Mistral Large.
+        if (auth()->check() && auth()->user()->isPro()) {
+            return 'mistral-large-latest';
+        }
+
+        // For authed non-Pro users, use Mistral Medium.
+        return 'mistral-medium-latest';
+    }
+
+    public static function getModelName($model)
+    {
+        return self::MODELS[$model] ?? 'Unknown Model';
+    }
 }

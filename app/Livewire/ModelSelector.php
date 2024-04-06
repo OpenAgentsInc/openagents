@@ -7,22 +7,23 @@ use Livewire\Component;
 
 class ModelSelector extends Component
 {
-    public $selectedModel = 'mistral-small-latest'; // Default selection
+    public $selectedModel = '';
 
-    public $formattedModel = 'Mistral Small';
+    public $formattedModel = '';
 
     public $models = Models::MODELS;
+
+    public function mount()
+    {
+        $this->selectedModel = Models::getDefaultModel();
+        $this->formattedModel = Models::getModelName($this->selectedModel);
+    }
 
     public function selectModel($model)
     {
         $this->selectedModel = $model;
-        $this->formattedModel = $this->getModelName();
+        $this->formattedModel = Models::getModelName($model);
         $this->dispatch('select-model', $model);
-    }
-
-    public function getModelName()
-    {
-        return $this->models[$this->selectedModel] ?? 'Unknown Model';
     }
 
     public function render()
