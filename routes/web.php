@@ -15,7 +15,11 @@ Route::get('/chat/{id}', Chat::class)->name('chat');
 
 // AUTH
 Route::get('/reset/account/{token}', ChangePassword::class)->name('password.reset');
-Route::get('/email/verify//{id}/{hash}', VerifyAccount::class)->name('verification.verify');
+Route::get('/email/verify/{id}/{hash}', VerifyAccount::class)->name('verification.verify');
+
+// AUTH - SOCIAL
+Route::get('/login/x', [SocialAuthController::class, 'login_x']);
+Route::get('/callback/x', [SocialAuthController::class, 'login_x_callback']);
 
 // BILLING
 Route::get('/billing', [BillingController::class, 'stripe_billing_portal']);
