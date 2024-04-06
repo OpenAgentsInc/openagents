@@ -46,7 +46,7 @@ class SimpleInferencer
                 $inference = $client->stream([
                     'model' => $model,
                     'messages' => $messages,
-                    'max_tokens' => 7800,
+                    'max_tokens' => 5000,
                     'stream_function' => $streamFunction,
                 ]);
                 break;
