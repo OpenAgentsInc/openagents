@@ -9,7 +9,7 @@
         </div>
     </div>
 
-    <div class="flex flex-col flex-grow gap-2 mt-8 py-4 px-1" @thread_updated="$refresh">
+    <div class="flex flex-col gap-2 mt-8 py-4 px-1" @thread_updated="$refresh">
         <span class="text-left text-sm text-[#777A82] px-2" x-cloak>
             Today
         </span>
