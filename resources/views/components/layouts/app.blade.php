@@ -12,7 +12,7 @@
     @include('partials.analytics')
     @include('partials.ogtags')
 
-    <link rel="stylesheet" href="{{asset('css/sweetalert/dark.css')}}">
+    <link rel="stylesheet" href="{{asset('vendor/swal-dark.min.css')}}">
 </head>
 
 <body class="h-screen bg-black antialiased" x-cloak
