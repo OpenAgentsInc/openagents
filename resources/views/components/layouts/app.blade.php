@@ -12,10 +12,11 @@
     @include('partials.analytics')
     @include('partials.ogtags')
 
-    <link rel="stylesheet" href="{{url('css/sweetalert/dark.css')}}">
+    <link rel="stylesheet" href="{{asset('css/sweetalert/dark.css')}}">
 </head>
 
-<body class="h-screen bg-black antialiased" x-cloak x-data="{  sidebarOpen: window.innerWidth > 768, collapsed: false }">
+<body class="h-screen bg-black antialiased" x-cloak
+      x-data="{  sidebarOpen: window.innerWidth > 768, collapsed: false }">
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
     <button class="z-[9001] absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] mr-12 hidden sm:block"
@@ -41,7 +42,7 @@
         </div>
     </div>
     <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden hmmm"
-          x-bind:style="`margin-left: ${sidebarOpen ? '0' : (window.innerWidth <= 768 ? '0' : '50px')}`"
+         x-bind:style="`margin-left: ${sidebarOpen ? '0' : (window.innerWidth <= 768 ? '0' : '50px')}`"
     >
         <main class="relative h-full w-full flex-1 overflow-auto transition-width">
             {{$slot}}
@@ -50,7 +51,7 @@
 </div>
 
 @livewire('wire-elements-modal')
-<x-livewire-alert::scripts />
+<x-livewire-alert::scripts/>
 
 
 </body>
