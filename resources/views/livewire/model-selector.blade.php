@@ -4,7 +4,7 @@
         <div class="flex gap-2 items-center justify-center overflow-hidden" role="button" tabindex="0"
              @click="dropdown = !dropdown">
             <div class="flex flex-col">
-                <span class="my-0 text-[18px]">{{ $this->getModelName() }}</span>
+                <span class="my-0 text-[18px]">{{ $this->formattedModel }}</span>
             </div>
 
             <div class="relative flex-1 text-right bg-black">
@@ -15,7 +15,7 @@
                      class="mt-4 -ml-[125px] fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/25"
                      aria-labelledby="hs-dropdown-with-header">
                     <div class="py-0 first:pt-0 last:pb-0 bg-black">
-                        @foreach($modelnames as $modelKey => $modelName)
+                        @foreach($models as $modelKey => $modelName)
                             <a wire:click="selectModel('{{ $modelKey }}')"
                                class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
                                 <div class="flex flex-col">
