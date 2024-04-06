@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\AI\Models;
 use App\AI\SimpleInferencer;
 use App\Models\Thread;
 use Illuminate\Support\Facades\Session;
@@ -28,25 +29,7 @@ class Chat extends Component
     // Whether we're waiting for a response
     public $pending = false;
 
-    public $selectedModel = 'mistral-small-latest';
-
-    public function getModelName()
-    {
-        $models = [
-            'mistral-tiny' => 'Mistral Tiny',
-            'mistral-small-latest' => 'Mistral Small',
-            'mistral-medium-latest' => 'Mistral Medium',
-            'mistral-large-latest' => 'Mistral Large',
-            'open-mixtral-8x7b' => 'Open Mixtral 8x7b',
-            'open-mistral-7b' => 'Open Mistral 7b',
-            'mixtral-8x7b-32768' => 'Mixtral (Groq)',
-            'gpt-4' => 'GPT-4',
-            'claude' => 'Claude',
-            'gemini' => 'Gemini',
-        ];
-
-        return $models[$this->selectedModel] ?? 'Unknown Model';
-    }
+    public $selectedModel = '';
 
     // Listen to select-model event
     #[On('select-model')]
@@ -57,6 +40,8 @@ class Chat extends Component
 
     public function mount($id = null)
     {
+        $this->selectedModel = Models::getDefaultModel();
+
         // If ID is not null, we're in a thread. But if thread doesn't exist, redirect to homepage.
         if ($id) {
             $thread = Thread::find($id);
