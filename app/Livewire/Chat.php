@@ -40,6 +40,7 @@ class Chat extends Component
 
     public function mount($id = null)
     {
+        // Set the default model
         $this->selectedModel = Models::getDefaultModel();
 
         // If ID is not null, we're in a thread. But if thread doesn't exist, redirect to homepage.
@@ -47,6 +48,9 @@ class Chat extends Component
             $thread = Thread::find($id);
             if (! $thread) {
                 return $this->redirect('/');
+            } else {
+                // Notify the sidebar component of the active thread
+                $this->dispatch('active-thread', $id);
             }
         } else {
             return;

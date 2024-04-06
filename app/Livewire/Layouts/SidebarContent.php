@@ -11,6 +11,8 @@ class SidebarContent extends Component
 {
     public $threads;
 
+    public $activeThreadId;
+
     public function mount()
     {
         $this->refreshThreads();
@@ -33,6 +35,12 @@ class SidebarContent extends Component
         $threads = auth()->user()->threads()->orderBy('created_at', 'desc')->get();
 
         return $threads ? $threads : collect();
+    }
+
+    #[On('active-thread')]
+    public function activeThreadHandler($id)
+    {
+        $this->activeThreadId = $id;
     }
 
     public function render()
