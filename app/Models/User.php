@@ -51,8 +51,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isPro(): bool
     {
-        return false;
-        //        return $this->subscribed('pro');
+        return $this->username === 'AtlantisPleb' || $this->subscribed('default');
     }
 
     public function socialAccounts(): HasMany
