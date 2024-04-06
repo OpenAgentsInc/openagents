@@ -60,7 +60,6 @@ class Models
             'max_tokens' => 2000,
         ],
     ];
-    ];
 
     public static function getDefaultModel()
     {
@@ -80,6 +79,6 @@ class Models
 
     public static function getModelName($model)
     {
-        return self::MODELS[$model] ?? 'Unknown Model';
+        return self::MODELS[$model]['name'] ?? 'Unknown Model';
     }
 }
