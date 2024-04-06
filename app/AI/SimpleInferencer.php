@@ -23,7 +23,12 @@ class SimpleInferencer
 
         // switch model
         switch ($model) {
+            case 'mistral-tiny':
+            case 'mistral-small-latest':
+            case 'mistral-medium-latest':
             case 'mistral-large-latest':
+            case 'open-mixtral-8x7b':
+            case 'open-mistral-7b':
                 $client = new MistralAIGateway();
                 break;
             case 'mixtral-8x7b-32768':
