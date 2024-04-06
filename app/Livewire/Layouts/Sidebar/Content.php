@@ -13,29 +13,26 @@ class Content extends Component
 
     public function mount()
     {
-        if (auth()->guest()) {
-            $sessionId = Session::getId();
-            $this->threads = Thread::whereSessionId($sessionId)->latest()->get();
-        } else {
-            $this->threads = auth()->user()->threads;
-            if (! $this->threads) {
-                $this->threads = [];
-            }
-        }
+        $this->refreshThreads();
     }
 
     #[On('thread-update')]
-    public function refreshThread()
+    public function refreshThreads()
+    {
+        $this->threads = $this->getThreadsForUser();
+    }
+
+    protected function getThreadsForUser()
     {
         if (auth()->guest()) {
             $sessionId = Session::getId();
-            $this->threads = Thread::whereSessionId($sessionId)->latest()->get();
-        } else {
-            $this->threads = auth()->user()->threads;
-            if (! $this->threads) {
-                $this->threads = [];
-            }
+
+            return Thread::whereSessionId($sessionId)->latest()->get()->reverse();
         }
+
+        $threads = auth()->user()->threads;
+
+        return $threads ? $threads->reverse() : collect();
     }
 
     public function render()
