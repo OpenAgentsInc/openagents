@@ -1,9 +1,7 @@
 <div role="presentation" tabindex="0" class="flex flex-col h-full min-h-screen">
     <div class="flex-1 overflow-hidden">
         <div id="chatbox-container" x-ref="chatboxContainer" class="overflow-y-scroll h-full">
-            <div class="relative"
-                 x-data="{ pending: @entangle('pending').live }"
-                 x-init="
+            <div class="relative" x-data="{ pending: @entangle('pending').live }" x-init="
                     let chatbox = $refs.chatboxContainer;
                     setTimeout(() => {
                         chatbox.scrollTo({ top: chatbox.scrollHeight, behavior: 'smooth' });
@@ -33,12 +31,18 @@
                     });
                 ">
                 <div class="flex flex-col text-sm pb-9" style="">
-                    <div class="h-[52px] sticky top-0 flex flex-row items-center justify-between z-10 px-5 bg-black">
+                    <div class="sticky top-3 pt-[10px] mb-1.5 flex items-center justify-between z-10 px-5 md:px-10 bg-black w-full">
                         <div class="absolute left-1/2 -translate-x-1/2"></div>
-                        <livewire:model-selector/>
+                        <div class="flex gap-1 items-center">
+                            <button class="z-[9001] top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[18px] block sm:hidden" @click="sidebarOpen = !sidebarOpen">
+                                <x-icon.menu />
+                            </button>
+                            <livewire:model-selector />
+
+                        </div>
 
                         @auth
-                            <div class="flex flex-row items-center">
+                            <div class="flex flex-row items-center gap-7">
                                 <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
                                               class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
                                 <a href="/logout">
@@ -54,7 +58,7 @@
                             </div>
 
                         @else
-                            <div class="flex flex-row items-center">
+                            <div class="flex flex-row items-center gap-7">
                                 <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
                                               class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
                                 <x-login-buttons/>
@@ -69,27 +73,28 @@
                                     <h3 class="mt-[36px]">How can we help you today?</h3>
                                 </div>
                             </div>
+                        </div>
                         @endif
 
                         @php
-                            $models = [
-                                'mistral-large-latest' => 'Mistral Large',
-                                'mixtral-8x7b-32768' => 'Mixtral (Groq)',
-                                'gpt-4' => 'GPT-4',
-                                'claude' => 'Claude',
-                                'gemini' => 'Gemini',
-                            ];
+                        $models = [
+                        'mistral-large-latest' => 'Mistral Large',
+                        'mixtral-8x7b-32768' => 'Mixtral (Groq)',
+                        'gpt-4' => 'GPT-4',
+                        'claude' => 'Claude',
+                        'gemini' => 'Gemini',
+                        ];
                         @endphp
 
                         @foreach($messages as $message)
-                            @php
-                                $author = !empty($message['model']) ? $models[$message['model']] : 'You';
-                            @endphp
-                            <x-chat.message :author="$author" :message="$message['body']"/>
+                        @php
+                        $author = !empty($message['model']) ? $models[$message['model']] : 'You';
+                        @endphp
+                        <x-chat.message :author="$author" :message="$message['body']" />
                         @endforeach
 
                         @if($pending)
-                            <x-chat.messagestreaming :author="$agent->name ?? $models[$selectedModel]"/>
+                        <x-chat.messagestreaming :author="$agent->name ?? $models[$selectedModel]" />
                         @endif
 
                         @if ($showNoMoreMessages)
@@ -135,23 +140,16 @@
             </div>
         </div>
     </div>
-    <div class="w-full -ml-[25px]">
+    <div class="w-full" x-bind:class="{ '-ml-[25px]': window.innerWidth > 768, 'px-3': window.innerWidth < 768 }">
         <div class="sm:w-[584px] lg:w-[768px] mx-auto">
             @if ($showNoMoreMessages)
 
             @else
-                <form wire:submit.prevent="sendMessage">
-                    <x-chat.textarea id="message-input" minRows="1" default="Message OpenAgents..."
-                                     :showIcon="true"
-                                     iconName="send"
-                                     min-rows="1"
-                                     max-rows="12"
-                                     wire:model="message_input"
-                                     onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
-                                     class="flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white"/>
-                    <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
-                </form>
-                <livewire:messages-remaining/>
+            <form wire:submit.prevent="sendMessage">
+                <x-chat.textarea id="message-input" minRows="1" default="Message OpenAgents..." :showIcon="true" iconName="send" min-rows="1" max-rows="12" wire:model="message_input" onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }" class="flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white" />
+                <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
+            </form>
+            <livewire:messages-remaining />
             @endif
         </div>
     </div>
