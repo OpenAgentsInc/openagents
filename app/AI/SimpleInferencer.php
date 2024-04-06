@@ -23,6 +23,17 @@ class SimpleInferencer
 
         // switch model
         switch ($model) {
+            case 'claude-3-sonnet-20240229':
+            case 'claude-3-haiku-20240307':
+            case 'claude-3-opus-20240229':
+                $client = new AnthropicAIGateway();
+                $inference = $client->createStreamed([
+                    'model' => $model,
+                    'messages' => $messages,
+                    'max_tokens' => 4096,
+                    'stream_function' => $streamFunction,
+                ]);
+                break;
             case 'mistral-tiny':
             case 'mistral-small-latest':
             case 'mistral-medium-latest':
