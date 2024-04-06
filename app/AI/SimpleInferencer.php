@@ -55,7 +55,6 @@ class SimpleInferencer
                         'stream_function' => $streamFunction,
                     ]);
                     break;
-                    // Add more cases for other gateways if needed
             }
         } else {
             // Handle unknown model
