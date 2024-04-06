@@ -1,13 +1,13 @@
 <?php
 
-namespace App\Livewire\Layouts\Sidebar;
+namespace App\Livewire\Layouts;
 
 use App\Models\Thread;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
-class Content extends Component
+class SidebarContent extends Component
 {
     public $threads;
 
