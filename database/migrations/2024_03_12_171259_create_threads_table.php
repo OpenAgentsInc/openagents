@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('threads', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users');
+            $table->foreignId('user_id')->nullable()->constrained('users');
+            $table->string('session_id')->nullable();
             $table->string('title')->nullable();
             $table->boolean('private')->default(false);
             $table->timestamps();
