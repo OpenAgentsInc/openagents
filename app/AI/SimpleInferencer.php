@@ -46,7 +46,25 @@ class SimpleInferencer
                 $inference = $client->stream([
                     'model' => $model,
                     'messages' => $messages,
-                    'max_tokens' => 6024,
+                    'max_tokens' => 7800,
+                    'stream_function' => $streamFunction,
+                ]);
+                break;
+            case 'gpt-4-turbo-preview':
+                $client = new OpenAIGateway();
+                $inference = $client->stream([
+                    'model' => $model,
+                    'messages' => $messages,
+                    'max_tokens' => 3500,
+                    'stream_function' => $streamFunction,
+                ]);
+                break;
+            case 'gpt-3.5-turbo-16k':
+                $client = new OpenAIGateway();
+                $inference = $client->stream([
+                    'model' => $model,
+                    'messages' => $messages,
+                    'max_tokens' => 15024,
                     'stream_function' => $streamFunction,
                 ]);
                 break;

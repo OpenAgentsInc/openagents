@@ -8,6 +8,8 @@ class Models
         'mistral-small-latest' => 'Mistral Small',
         'mistral-medium-latest' => 'Mistral Medium',
         'mistral-large-latest' => 'Mistral Large',
+        'gpt-3.5-turbo-16k' => 'GPT-3.5 Turbo 16K',
+        'gpt-4-turbo-preview' => 'GPT-4 Turbo',
         'gpt-4' => 'GPT-4',
     ];
 
