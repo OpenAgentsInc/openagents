@@ -6,17 +6,17 @@ use Livewire\Component;
 
 class ModelSelector extends Component
 {
-    public $selectedModel = 'mistral-large-latest'; // Default selection
+    public $selectedModel = 'mistral-small-latest'; // Default selection
 
-    public $formattedModel = 'Mistral Large';
+    public $formattedModel = 'Mistral Small';
 
     public $modelnames = [
-        'mistral-tiny' => 'Mistral Tiny',
+        //        'mistral-tiny' => 'Mistral Tiny',
         'mistral-small-latest' => 'Mistral Small',
         'mistral-medium-latest' => 'Mistral Medium',
         'mistral-large-latest' => 'Mistral Large',
-        'open-mixtral-8x7b' => 'Open Mixtral 8x7B',
-        'open-mistral-7b' => 'Open Mistral 7B',
+        //        'open-mixtral-8x7b' => 'Open Mixtral 8x7B',
+        //        'open-mistral-7b' => 'Open Mistral 7B',
         //        'mixtral-8x7b-32768' => 'Mixtral (Groq)',
         //        'gpt-4' => 'GPT-4',
         //        'claude' => 'Claude',

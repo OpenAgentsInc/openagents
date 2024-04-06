@@ -28,7 +28,7 @@ class Chat extends Component
     // Whether we're waiting for a response
     public $pending = false;
 
-    public $selectedModel = 'mistral-large-latest';
+    public $selectedModel = 'mistral-small-latest';
 
     public function getModelName()
     {
