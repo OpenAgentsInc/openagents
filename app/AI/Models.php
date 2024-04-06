@@ -45,19 +45,19 @@ class Models
             'name' => 'Claude Haiku',
             'gateway' => 'anthropic',
             'access' => 'guest',
-            'max_tokens' => 2000,
+            'max_tokens' => 4096,
         ],
         'claude-3-sonnet-20240229' => [
             'name' => 'Claude Sonnet',
             'gateway' => 'anthropic',
             'access' => 'user',
-            'max_tokens' => 2000,
+            'max_tokens' => 4096,
         ],
         'claude-3-opus-20240229' => [
             'name' => 'Claude Opus',
             'gateway' => 'anthropic',
             'access' => 'pro',
-            'max_tokens' => 2000,
+            'max_tokens' => 4096,
         ],
     ];
 
