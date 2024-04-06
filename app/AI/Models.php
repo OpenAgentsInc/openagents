@@ -11,10 +11,16 @@ class Models
         'gpt-3.5-turbo-16k' => 'GPT-3.5 Turbo 16K',
         'gpt-4-turbo-preview' => 'GPT-4 Turbo',
         'gpt-4' => 'GPT-4',
+        'claude-3-haiku-20240307' => 'Claude Haiku',
+        'claude-3-sonnet-20240229' => 'Claude Sonnet',
+        'claude-3-opus-20240229' => 'Claude Opus',
     ];
 
     public static function getDefaultModel()
     {
+        // temporary
+        return 'claude-3-haiku-20240307';
+
         // If user is not logged in, use Mistral Small.
         if (! auth()->check()) {
             return 'mistral-small-latest';
