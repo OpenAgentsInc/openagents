@@ -99,12 +99,11 @@ class Chat extends Component
             // Create a new Thread
             $data = [
                 'title' => 'New chat',
+                'session_id' => auth()->check() ? null : Session::getId(),
             ];
 
             if (auth()->check()) {
                 $data['user_id'] = auth()->id();
-            } else {
-                $data['session_id'] = Session::getId();
             }
 
             $thread = Thread::create($data);
