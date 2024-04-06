@@ -67,37 +67,14 @@ class AnthropicAIGateway
             ]);
 
             $stream = $response->getBody();
+
             $content = '';
-
-            $buffer = ''; // Accumulate partial data that hasn't yet formed a complete JSON object
-
-            while (! $stream->eof()) {
-                $buffer .= $stream->read(1024);
-                while (($newlinePos = strpos($buffer, "\n")) !== false) {
-                    $line = substr($buffer, 0, $newlinePos);
-                    $buffer = substr($buffer, $newlinePos + 1); // Remove the processed line from the buffer
-
-                    $data = json_decode($line, true); // Decode the line as JSON
-                    if ($data) {
-                        dd($data);
-                        // Process the decoded data
-                        if ($data['type'] === 'content_block_delta' && isset($data['delta']['text'])) {
-                            $content .= $data['delta']['text']; // Concatenate text deltas to form the complete message
-                        }
-                        // Handle other event types as needed...
-                    }
+            foreach ($this->readStream($stream) as $event) {
+                if ($event['type'] === 'content_block_delta' && isset($event['delta']['text'])) {
+                    $content .= $event['delta']['text'];
                 }
+                // Process other event types as needed
             }
-
-            //            while (! $stream->eof()) {
-            //                $line = $stream->read(1024); // Adjust the chunk size as needed
-            //                dd($line);
-            //                $data = json_decode($line, true);
-            //                if ($data) {
-            //                    $content .= $data['text'] ?? ''; // Append the content or handle it as per your requirement
-            //                    call_user_func($params['stream_function'], $data);
-            //                }
-            //            }
 
             return $content;
         } catch (RequestException $e) {
@@ -105,6 +82,25 @@ class AnthropicAIGateway
             dd($e->getMessage());
 
             return 'Error: '.$e->getMessage();
+        }
+    }
+
+    private function readStream($stream)
+    {
+        $buffer = '';
+        while (! $stream->eof()) {
+            $buffer .= $stream->read(1024);
+            while (($pos = strpos($buffer, "\n")) !== false) {
+                $line = substr($buffer, 0, $pos);
+                $buffer = substr($buffer, $pos + 1);
+
+                if (str_starts_with($line, 'data: ')) {
+                    $data = json_decode(trim(substr($line, 5)), true);
+                    if ($data) {
+                        yield $data;
+                    }
+                }
+            }
         }
     }
 }

@@ -91,8 +91,8 @@ function get_previous_messages(Thread $thread)
         ->orderBy('created_at', 'asc')
         ->get()
         ->map(function ($message) {
-            // If agent_id is not null, this is agent. Otherwise user
-            if ($message->agent_id) {
+            // If model is not null, this is agent. Otherwise user
+            if ($message->model !== null) {
                 $role = 'assistant';
             } else {
                 $role = 'user';
