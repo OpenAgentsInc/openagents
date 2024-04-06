@@ -27,12 +27,12 @@ class SidebarContent extends Component
         if (auth()->guest()) {
             $sessionId = Session::getId();
 
-            return Thread::whereSessionId($sessionId)->latest()->get()->reverse();
+            return Thread::whereSessionId($sessionId)->orderBy('created_at', 'desc')->get();
         }
 
-        $threads = auth()->user()->threads;
+        $threads = auth()->user()->threads()->orderBy('created_at', 'desc')->get();
 
-        return $threads ? $threads->reverse() : collect();
+        return $threads ? $threads : collect();
     }
 
     public function render()

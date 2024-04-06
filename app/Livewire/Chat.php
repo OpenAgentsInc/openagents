@@ -108,6 +108,7 @@ class Chat extends Component
 
             $thread = Thread::create($data);
             $this->thread = $thread;
+            $this->dispatch('thread-update');
         }
     }
 
