@@ -1,6 +1,11 @@
+
+
+@import url("/node_modules/@sweetalert2/themes/dark/dark.css");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+
 
 [x-cloak] {
     display: none !important;

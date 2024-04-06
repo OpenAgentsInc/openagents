@@ -1,5 +1,8 @@
 import './bootstrap';
 import {webln} from "@getalby/sdk";
+import Swal from 'sweetalert2/dist/sweetalert2.js';
+
+window.Swal = Swal;
 
 async function experiment() {
     const weblnProvider = webln.NostrWebLNProvider.withNewSecret()

@@ -19,6 +19,9 @@
     },
     "dependencies": {
         "@getalby/sdk": "^3.4.0",
-        "shiki": "^1.1.7"
+        "@sweetalert2/theme-dark": "^5.0.16",
+        "@sweetalert2/themes": "^5.0.16",
+        "shiki": "^1.1.7",
+        "sweetalert2": "^11.10.7"
     }
 }
