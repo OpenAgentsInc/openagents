@@ -21,13 +21,13 @@ class Models
             'name' => 'Mistral Large',
             'gateway' => 'mistral',
             'access' => 'pro',
-            'max_tokens' => 2000,
+            'max_tokens' => 4096,
         ],
         'gpt-3.5-turbo-16k' => [
             'name' => 'GPT-3.5 Turbo 16K',
             'gateway' => 'openai',
-            'access' => 'guest',
-            'max_tokens' => 2000,
+            'access' => 'user',
+            'max_tokens' => 14000,
         ],
         'gpt-4-turbo-preview' => [
             'name' => 'GPT-4 Turbo',
@@ -39,25 +39,25 @@ class Models
             'name' => 'GPT-4',
             'gateway' => 'openai',
             'access' => 'pro',
-            'max_tokens' => 2000,
+            'max_tokens' => 4096,
         ],
         'claude-3-haiku-20240307' => [
             'name' => 'Claude Haiku',
             'gateway' => 'anthropic',
             'access' => 'guest',
-            'max_tokens' => 2000,
+            'max_tokens' => 4096,
         ],
         'claude-3-sonnet-20240229' => [
             'name' => 'Claude Sonnet',
             'gateway' => 'anthropic',
             'access' => 'user',
-            'max_tokens' => 2000,
+            'max_tokens' => 4096,
         ],
         'claude-3-opus-20240229' => [
             'name' => 'Claude Opus',
             'gateway' => 'anthropic',
             'access' => 'pro',
-            'max_tokens' => 2000,
+            'max_tokens' => 4096,
         ],
     ];
 
