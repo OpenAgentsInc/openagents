@@ -27,13 +27,21 @@ class SimpleInferencer
             $gateway = $modelDetails['gateway'];
             $maxTokens = $modelDetails['max_tokens'];
 
+            // Calculate the approximate number of tokens in the messages
+            $messageTokens = array_sum(array_map(function ($message) {
+                return ceil(str_word_count($message['content']) / 3);
+            }, $messages));
+
+            // Adjust the max_tokens value for the completion
+            $completionTokens = $maxTokens - $messageTokens;
+
             switch ($gateway) {
                 case 'anthropic':
                     $client = new AnthropicAIGateway();
                     $inference = $client->createStreamed([
                         'model' => $model,
                         'messages' => $messages,
-                        'max_tokens' => $maxTokens,
+                        'max_tokens' => $completionTokens,
                         'stream_function' => $streamFunction,
                     ]);
                     break;
@@ -42,7 +50,7 @@ class SimpleInferencer
                     $inference = $client->chat()->createStreamed([
                         'model' => $model,
                         'messages' => $messages,
-                        'max_tokens' => $maxTokens,
+                        'max_tokens' => $completionTokens,
                         'stream_function' => $streamFunction,
                     ]);
                     break;
@@ -51,7 +59,7 @@ class SimpleInferencer
                     $inference = $client->stream([
                         'model' => $model,
                         'messages' => $messages,
-                        'max_tokens' => $maxTokens,
+                        'max_tokens' => $completionTokens,
                         'stream_function' => $streamFunction,
                     ]);
                     break;
@@ -71,6 +79,7 @@ function get_previous_messages(Thread $thread)
         ->orderBy('created_at', 'asc')
         ->get()
         ->map(function ($message) {
+
             // If model is not null, this is agent. Otherwise user
             if ($message->model !== null) {
                 $role = 'assistant';
