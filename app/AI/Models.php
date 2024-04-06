@@ -70,7 +70,7 @@ class Models
 
         // If user is logged in and is Pro, use Mistral Large.
         if (auth()->check() && auth()->user()->isPro()) {
-            return 'mistral-large-latest';
+            return 'claude-3-sonnet-20240229';
         }
 
         // For authed non-Pro users, use Mistral Medium.
