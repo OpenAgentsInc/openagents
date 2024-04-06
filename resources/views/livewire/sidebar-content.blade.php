@@ -9,11 +9,11 @@
         </div>
     </div>
 
-    <div class="flex flex-col gap-2 mt-8 py-4 px-1" @thread_updated=“$refresh”>
+    <div class="flex flex-col gap-2 mt-8 py-4 px-1" @thread_updated="$refresh">
         <span class="text-left text-sm text-[#777A82] px-2" x-cloak>
             Today
         </span>
-        <ol >
+        <ol>
             @foreach($threads as $thread)
                 <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
             @endforeach
