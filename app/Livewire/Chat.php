@@ -33,7 +33,12 @@ class Chat extends Component
     public function getModelName()
     {
         $models = [
+            'mistral-tiny' => 'Mistral Tiny',
+            'mistral-small-latest' => 'Mistral Small',
+            'mistral-medium-latest' => 'Mistral Medium',
             'mistral-large-latest' => 'Mistral Large',
+            'open-mixtral-8x7b' => 'Open Mixtral 8x7b',
+            'open-mistral-7b' => 'Open Mistral 7b',
             'mixtral-8x7b-32768' => 'Mixtral (Groq)',
             'gpt-4' => 'GPT-4',
             'claude' => 'Claude',

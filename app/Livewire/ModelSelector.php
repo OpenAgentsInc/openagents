@@ -11,11 +11,16 @@ class ModelSelector extends Component
     public $formattedModel = 'Mistral Large';
 
     public $modelnames = [
+        'mistral-tiny' => 'Mistral Tiny',
+        'mistral-small-latest' => 'Mistral Small',
+        'mistral-medium-latest' => 'Mistral Medium',
         'mistral-large-latest' => 'Mistral Large',
-        'mixtral-8x7b-32768' => 'Mixtral (Groq)',
-        'gpt-4' => 'GPT-4',
-        'claude' => 'Claude',
-        'gemini' => 'Gemini',
+        'open-mixtral-8x7b' => 'Open Mixtral 8x7B',
+        'open-mistral-7b' => 'Open Mistral 7B',
+        //        'mixtral-8x7b-32768' => 'Mixtral (Groq)',
+        //        'gpt-4' => 'GPT-4',
+        //        'claude' => 'Claude',
+        //        'gemini' => 'Gemini',
     ];
 
     public function selectModel($model)
@@ -27,15 +32,7 @@ class ModelSelector extends Component
 
     public function getModelName()
     {
-        $models = [
-            'mistral-large-latest' => 'Mistral Large',
-            'mixtral-8x7b-32768' => 'Mixtral (Groq)',
-            'gpt-4' => 'GPT-4',
-            'claude' => 'Claude',
-            'gemini' => 'Gemini',
-        ];
-
-        return $models[$this->selectedModel] ?? 'Unknown Model';
+        return $this->modelnames[$this->selectedModel] ?? 'Unknown Model';
     }
 
     public function render()
