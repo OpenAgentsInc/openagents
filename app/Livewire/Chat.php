@@ -14,6 +14,8 @@ class Chat extends Component
     // Whether to show the "no more messages" message
     public $showNoMoreMessages = false;
 
+    public $waitingForStream = false;
+
     // User input from chat form
     public $message_input = '';
 

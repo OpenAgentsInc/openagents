@@ -1,11 +1,28 @@
-
-
 @import url("/node_modules/@sweetalert2/themes/dark/dark.css");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+.spinner {
+    border: 4px solid #ffffff; /* White border */
+    border-top: 4px solid #777; /* Light gray border on top */
+    border-radius: 50%;
+    margin-top: 5px;
+    width: 24px;
+    height: 24px;
+    animation: spin 2s linear infinite;
+    margin-right: 10px;
+}
 
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
 
 [x-cloak] {
     display: none !important;
