@@ -2,10 +2,10 @@
      style="opacity: 1; height: auto; overflow: hidden; transform: none; transform-origin: 50% 50% 0px;"
 >
     @php
-        $classes = $active ? 'bg-[#1A1A1A]' : '';
+        $classes = $active ? 'bg-[#262626]' : '';
     @endphp
     <div x-popover
-         class="group relative rounded-lg active:opacity-90 hover:bg-[#262626] px-3 {{ $classes }}"
+         class="group relative rounded-lg active:opacity-90 px-3 {{ $classes }}"
     ><a
                 href="/chat/{{ $thread->id }}" class="flex items-center gap-2 py-2" wire:navigate>
             <div class="relative grow overflow-hidden whitespace-nowrap">
