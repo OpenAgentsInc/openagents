@@ -19,9 +19,4 @@ test('LLM inference saves tokens to Message model', function () {
     };
     $response = SimpleInferencer::inference($prompt, $model, $thread, $streamFunction);
     dd($response); // "Hello there! It's nice to meet you. I'm an AI assistant created by Anthropic. How can I be of help to you today?"
-
-    // Assert
-    //    $message = $thread->messages()->latest()->first();
-    //    $this->assertNotNull($message->tokens);
-    //    $this->assertGreaterThan(0, $message->tokens);
 });
