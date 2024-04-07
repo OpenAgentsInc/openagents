@@ -12,7 +12,7 @@
                 <div class="flex-col gap-1 md:gap-3">
                     <div class="flex flex-grow flex-col max-w-[936px]">
                         <x-markdown wire:stream="streamtext" class="text-md whitespace-pre-wrap">
-                            <div class="spinner"></div>
+                            <div class="dot-flashing"></div>
                         </x-markdown>
                     </div>
                     <div class="flex justify-start gap-3 empty:hidden">
