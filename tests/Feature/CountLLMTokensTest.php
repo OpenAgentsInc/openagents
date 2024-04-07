@@ -12,7 +12,8 @@ test('LLM inference saves tokens to Message model', function () {
         'body' => 'Hello, world!',
     ]);
     $prompt = 'What is the capital of France?';
-    $model = 'claude-3-sonnet-20240229';
+    $model = 'gpt-3.5-turbo-16k';
+    //    $model = 'claude-3-sonnet-20240229';
 
     // Act
     $streamFunction = function ($chunk) {
