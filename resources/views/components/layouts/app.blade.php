@@ -34,7 +34,7 @@
                 <div class="relative h-full w-full flex-1 items-start">
                     <div class="flex h-full w-full flex-col px-1 pb-3.5">
                         <div class="flex-col flex-1 transition-opacity duration-500 overflow-y-auto">
-                            <livewire:layouts.sidebar.content/>
+                            <livewire:layouts.sidebar-content/>
                         </div>
                     </div>
                 </div>

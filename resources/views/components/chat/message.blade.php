@@ -4,11 +4,11 @@
                 class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[800px]">
             <div class="flex-shrink-0 flex flex-col relative items-end">
                 @if ($author === 'You')
-                    <div class="m-[2px] w-[36px] p-1 border border-darkgray rounded">
+                    <div class="m-[2px] w-[28px] p-[2px] border border-darkgray rounded">
                         <x-icon name="user" class=""/>
                     </div>
                 @else
-                    <div class="m-[2px] w-[36px] p-2 border border-darkgray rounded">
+                    <div class="m-[1px] w-[28px] p-[5px] border border-darkgray rounded">
                         <x-icon name="logo" class=""/>
                     </div>
                 @endif
