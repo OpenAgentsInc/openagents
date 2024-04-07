@@ -16,11 +16,19 @@
                      aria-labelledby="hs-dropdown-with-header">
                     <div class="py-0 first:pt-0 last:pb-0 bg-black">
                         @foreach($models as $modelKey => $modelName)
+                            @php
+                                $userAccess = $this->getUserAccess();
+                                $indicator = $this->getModelIndicator($modelKey, $userAccess);
+                                $disabled = $indicator ? 'opacity-25' : '';
+                            @endphp
                             <a wire:click="selectModel('{{ $modelKey }}')"
-                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
+                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
                                 <div class="flex flex-col">
                                     <span class="text-indigo-50 my-0 text-sm">{{ $modelName["name"] }}</span>
                                 </div>
+                                @if($indicator)
+                                    <span class="ml-auto text-gray-500">{{ $indicator }}</span>
+                                @endif
                             </a>
                         @endforeach
                     </div>
