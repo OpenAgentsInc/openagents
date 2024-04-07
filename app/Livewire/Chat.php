@@ -48,8 +48,8 @@ class Chat extends Component
         // If ID is not null, we're in a thread. But if thread doesn't exist, redirect to homepage.
         if ($id) {
             $thread = Thread::find($id);
-            // If there's no thread or if the thread is private and doesn't belong to the user and doesn't match the session ID, redirect to homepage
-            if (! $thread || ($thread->private && ($thread->user_id !== auth()->id()) && ($thread->session_id !== session()->getId()))) {
+            // If there's no thread or thread doesn't belong to the user and doesn't match the session ID, redirect to homepage
+            if (! $thread || ($thread->user_id !== auth()->id()) && ($thread->session_id !== session()->getId())) {
                 return $this->redirect('/');
             } else {
                 // Notify the sidebar component of the active thread
