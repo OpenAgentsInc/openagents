@@ -14,6 +14,8 @@ class Chat extends Component
     // Whether to show the "no more messages" message
     public $showNoMoreMessages = false;
 
+    public $waitingForStream = false;
+
     // User input from chat form
     public $message_input = '';
 
@@ -40,6 +42,7 @@ class Chat extends Component
 
     public function mount($id = null)
     {
+        // Set the default model
         $this->selectedModel = Models::getDefaultModel();
 
         // If ID is not null, we're in a thread. But if thread doesn't exist, redirect to homepage.
@@ -47,8 +50,13 @@ class Chat extends Component
             $thread = Thread::find($id);
             if (! $thread) {
                 return $this->redirect('/');
+            } else {
+                // Notify the sidebar component of the active thread
+                $this->dispatch('active-thread', $id);
             }
         } else {
+            $this->ensureThread();
+
             return;
         }
 
@@ -63,6 +71,33 @@ class Chat extends Component
     }
 
     // Listen for no more messages
+
+    private function ensureThread()
+    {
+        if (empty($this->thread)) {
+            // Create a new Thread
+            $data = [
+                'title' => 'New chat',
+                'session_id' => auth()->check() ? null : Session::getId(),
+            ];
+
+            if (auth()->check()) {
+                $data['user_id'] = auth()->id();
+            }
+
+            $thread = Thread::create($data);
+            $this->thread = $thread;
+            $this->dispatch('thread-update');
+
+            // If the current chat URL is not chat/{thread_id}, redirect to the correct URL
+            //            if (request()->path() !== 'chat/'.$this->thread->id) {
+            return $this->redirect('/chat/'.$this->thread->id, true);
+            //            }
+        } else {
+            dd('what');
+        }
+    }
+
     #[On('no-more-messages')]
     public function noMoreMessages()
     {
@@ -72,8 +107,6 @@ class Chat extends Component
 
     public function sendMessage(): void
     {
-        $this->ensureThread();
-
         // Save this input even after we clear the form this variable is tied to
         $this->input = $this->message_input;
 
@@ -91,24 +124,6 @@ class Chat extends Component
 
         // Call simpleRun after the next render
         $this->js('$wire.simpleRun()');
-    }
-
-    private function ensureThread()
-    {
-        if (empty($this->thread)) {
-            // Create a new Thread
-            $data = [
-                'title' => 'New chat',
-                'session_id' => auth()->check() ? null : Session::getId(),
-            ];
-
-            if (auth()->check()) {
-                $data['user_id'] = auth()->id();
-            }
-
-            $thread = Thread::create($data);
-            $this->thread = $thread;
-        }
     }
 
     public function simpleRun()

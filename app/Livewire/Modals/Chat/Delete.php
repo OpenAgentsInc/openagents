@@ -35,9 +35,9 @@ class Delete extends ModalComponent
             // Now delete the thread
             $thread->delete();
 
-            $this->alert('success', 'Thread Deleted');
+            $this->alert('success', 'Deleted successfully');
 
-            $this->dispatch('thread-update');
+            $this->dispatch('thread-delete');
 
             $this->closeModal();
         } else {

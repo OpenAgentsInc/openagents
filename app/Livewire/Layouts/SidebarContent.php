@@ -1,38 +1,39 @@
 <?php
 
-namespace App\Livewire\Layouts\Sidebar;
+namespace App\Livewire\Layouts;
 
 use App\Models\Thread;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
-class Content extends Component
+class SidebarContent extends Component
 {
-    public $threads;
+    public $threads = [];
 
     public function mount()
     {
         $this->refreshThreads();
     }
 
+    #[On('thread-delete')]
     #[On('thread-update')]
     public function refreshThreads()
     {
         $this->threads = $this->getThreadsForUser();
     }
 
-    protected function getThreadsForUser()
+    public function getThreadsForUser()
     {
         if (auth()->guest()) {
             $sessionId = Session::getId();
 
-            return Thread::whereSessionId($sessionId)->latest()->get()->reverse();
+            return Thread::whereSessionId($sessionId)->orderBy('created_at', 'desc')->get();
         }
 
-        $threads = auth()->user()->threads;
+        $threads = auth()->user()->threads()->orderBy('created_at', 'desc')->get();
 
-        return $threads ? $threads->reverse() : collect();
+        return $threads ? $threads : collect();
     }
 
     public function render()

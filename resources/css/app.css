@@ -1,11 +1,63 @@
-
-
 @import url("/node_modules/@sweetalert2/themes/dark/dark.css");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * ==============================================
+ * Dot Flashing
+ * ==============================================
+ */
+.dot-flashing {
+    position: relative;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: #ffffff;
+    color: #ffffff;
+    animation: dot-flashing 1s infinite linear alternate;
+    animation-delay: 0.5s;
+    margin: 10px 20px; /* Vertical margin: 8px, Horizontal margin: 20px */
+}
 
+.dot-flashing::before, .dot-flashing::after {
+    content: "";
+    display: inline-block;
+    position: absolute;
+    top: 0;
+}
+
+.dot-flashing::before {
+    left: -15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: #ffffff;
+    color: #ffffff;
+    animation: dot-flashing 1s infinite alternate;
+    animation-delay: 0s;
+}
+
+.dot-flashing::after {
+    left: 15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: #ffffff;
+    color: #ffffff;
+    animation: dot-flashing 1s infinite alternate;
+    animation-delay: 1s;
+}
+
+@keyframes dot-flashing {
+    0% {
+        background-color: #ffffff;
+    }
+    50%, 100% {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+}
 
 [x-cloak] {
     display: none !important;
