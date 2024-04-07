@@ -65,4 +65,26 @@ class ModelSelector extends Component
     {
         return view('livewire.model-selector');
     }
+
+    protected function getModelIndicator($model, $userAccess)
+    {
+        $modelDetails = Models::MODELS[$model] ?? null;
+
+        if ($modelDetails) {
+            $requiredAccess = $modelDetails['access'];
+            $accessLevels = ['guest', 'user', 'pro'];
+            $userAccessIndex = array_search($userAccess, $accessLevels);
+            $requiredAccessIndex = array_search($requiredAccess, $accessLevels);
+
+            if ($userAccessIndex < $requiredAccessIndex) {
+                if ($requiredAccess === 'pro') {
+                    return 'Pro';
+                } else {
+                    return 'Log in';
+                }
+            }
+        }
+
+        return '';
+    }
 }

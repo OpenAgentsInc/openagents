@@ -21,6 +21,13 @@
                                 <div class="flex flex-col">
                                     <span class="text-indigo-50 my-0 text-sm">{{ $modelName["name"] }}</span>
                                 </div>
+                                @php
+                                    $userAccess = $this->getUserAccess();
+                                    $indicator = $this->getModelIndicator($modelKey, $userAccess);
+                                @endphp
+                                @if($indicator)
+                                    <span class="ml-auto text-gray-500 opacity-75">{{ $indicator }}</span>
+                                @endif
                             </a>
                         @endforeach
                     </div>
