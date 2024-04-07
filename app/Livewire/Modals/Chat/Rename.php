@@ -25,12 +25,9 @@ class Rename extends ModalComponent
             'title' => 'required',
         ]);
 
-        //        $this->thread->title = $this->title;
-        //        $this->thread->save();
-
         $this->thread->update(['title' => $this->title]);
 
-        $this->alert('success', 'Name Updated');
+        $this->alert('success', 'Updated successfully');
         $this->dispatch('thread-update', $this->thread->id);
 
         $this->closeModal();
