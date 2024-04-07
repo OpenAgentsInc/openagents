@@ -24,6 +24,13 @@ class ModelSelector extends Component
     {
         $userAccess = $this->getUserAccess();
 
+        // Check if the selected model requires "pro" access and the user is not a "pro" user
+        if ($this->isProModelSelected($model) && $userAccess !== 'pro') {
+            $this->dispatch('openModal', 'modals.upgrade');
+
+            return;
+        }
+
         // Check if the user has access to the selected model
         if ($this->hasModelAccess($model, $userAccess)) {
             $this->selectedModel = $model;
@@ -43,6 +50,17 @@ class ModelSelector extends Component
         } else {
             return 'guest';
         }
+    }
+
+    protected function isProModelSelected($model)
+    {
+        $modelDetails = Models::MODELS[$model] ?? null;
+
+        if ($modelDetails) {
+            return $modelDetails['access'] === 'pro';
+        }
+
+        return false;
     }
 
     protected function hasModelAccess($model, $userAccess)
@@ -80,7 +98,7 @@ class ModelSelector extends Component
                 if ($requiredAccess === 'pro') {
                     return 'Pro';
                 } else {
-                    return 'Log in';
+                    return 'Sign up';
                 }
             }
         }
