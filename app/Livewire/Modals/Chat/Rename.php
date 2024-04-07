@@ -21,17 +21,17 @@ class Rename extends ModalComponent
 
     public function update()
     {
-
         $this->validate([
             'title' => 'required',
         ]);
 
-        $this->thread->title = $this->title;
-        $this->thread->save();
+        //        $this->thread->title = $this->title;
+        //        $this->thread->save();
+
+        $this->thread->update(['title' => $this->title]);
 
         $this->alert('success', 'Name Updated');
-
-        $this->dispatch('thread-update');
+        $this->dispatch('thread-update', $this->thread->id);
 
         $this->closeModal();
     }

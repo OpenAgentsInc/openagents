@@ -9,22 +9,21 @@ use Livewire\Component;
 
 class SidebarContent extends Component
 {
-    public $threads;
-
-    public $activeThreadId;
+    public $threads = [];
 
     public function mount()
     {
         $this->refreshThreads();
     }
 
+    #[On('thread-delete')]
     #[On('thread-update')]
     public function refreshThreads()
     {
         $this->threads = $this->getThreadsForUser();
     }
 
-    protected function getThreadsForUser()
+    public function getThreadsForUser()
     {
         if (auth()->guest()) {
             $sessionId = Session::getId();
@@ -35,12 +34,6 @@ class SidebarContent extends Component
         $threads = auth()->user()->threads()->orderBy('created_at', 'desc')->get();
 
         return $threads ? $threads : collect();
-    }
-
-    #[On('active-thread')]
-    public function activeThreadHandler($id)
-    {
-        $this->activeThreadId = $id;
     }
 
     public function render()

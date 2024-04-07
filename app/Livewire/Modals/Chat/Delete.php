@@ -37,7 +37,7 @@ class Delete extends ModalComponent
 
             $this->alert('success', 'Thread Deleted');
 
-            $this->dispatch('thread-update');
+            $this->dispatch('thread-delete');
 
             $this->closeModal();
         } else {

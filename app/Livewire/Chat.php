@@ -53,6 +53,8 @@ class Chat extends Component
                 $this->dispatch('active-thread', $id);
             }
         } else {
+            $this->ensureThread();
+
             return;
         }
 
@@ -67,35 +69,6 @@ class Chat extends Component
     }
 
     // Listen for no more messages
-    #[On('no-more-messages')]
-    public function noMoreMessages()
-    {
-        // Redirect to homepage
-        $this->showNoMoreMessages = true;
-    }
-
-    public function sendMessage(): void
-    {
-        $this->ensureThread();
-
-        // Save this input even after we clear the form this variable is tied to
-        $this->input = $this->message_input;
-
-        // Append the message to the chat
-        $this->messages[] = [
-            'body' => $this->input,
-            'sender' => 'You',
-            'user_id' => auth()->id(), // Add user_id if logged in
-            'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
-        ];
-
-        // Clear the input
-        $this->message_input = '';
-        $this->pending = true;
-
-        // Call simpleRun after the next render
-        $this->js('$wire.simpleRun()');
-    }
 
     private function ensureThread()
     {
@@ -113,7 +86,42 @@ class Chat extends Component
             $thread = Thread::create($data);
             $this->thread = $thread;
             $this->dispatch('thread-update');
+
+            // If the current chat URL is not chat/{thread_id}, redirect to the correct URL
+            //            if (request()->path() !== 'chat/'.$this->thread->id) {
+            return $this->redirect('/chat/'.$this->thread->id, true);
+            //            }
+        } else {
+            dd('what');
         }
+    }
+
+    #[On('no-more-messages')]
+    public function noMoreMessages()
+    {
+        // Redirect to homepage
+        $this->showNoMoreMessages = true;
+    }
+
+    public function sendMessage(): void
+    {
+        // Save this input even after we clear the form this variable is tied to
+        $this->input = $this->message_input;
+
+        // Append the message to the chat
+        $this->messages[] = [
+            'body' => $this->input,
+            'sender' => 'You',
+            'user_id' => auth()->id(), // Add user_id if logged in
+            'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
+        ];
+
+        // Clear the input
+        $this->message_input = '';
+        $this->pending = true;
+
+        // Call simpleRun after the next render
+        $this->js('$wire.simpleRun()');
     }
 
     public function simpleRun()
