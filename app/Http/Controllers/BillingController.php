@@ -17,7 +17,7 @@ class BillingController extends Controller
         return $user
             ->newSubscription('default', env('STRIPE_PRO_SUBSCRIPTION_PRICE_ID'))
             ->checkout([
-                'success_url' => route('home'),
+                'success_url' => route('pro'),
                 'cancel_url' => route('home'),
             ]);
 

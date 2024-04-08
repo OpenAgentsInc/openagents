@@ -10,6 +10,15 @@ use Laravel\Jetstream\Jetstream;
 
 class StaticController extends Controller
 {
+    public function pro()
+    {
+        if (! auth()->check() || ! auth()->user()->isPro()) {
+            return redirect('/');
+        }
+
+        return view('pro');
+    }
+
     public function blog(Request $request)
     {
         return view('blog');
