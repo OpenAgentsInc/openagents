@@ -106,7 +106,7 @@ class ModelSelector extends Component
                 if ($requiredAccess === 'pro') {
                     return 'Pro';
                 } else {
-                    return 'Sign up';
+                    return 'Join';
                 }
             }
         }
