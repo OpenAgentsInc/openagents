@@ -9,18 +9,19 @@
                 <h3 class="text-[16px] fixed top-[18px] left-[24px] text-gray"> &larr; Back to chat</h3>
             </a>
 
+            <h1 class="mt-12 text-center">OpenAgents Blog</h1>
+
             <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
                 <div class="mt-6 grid grid-cols-1 gap-12">
                     <a href="/goodbye-chatgpt" wire:navigate class="no-underline">
-                        <x-pane title="Goodbye ChatGPT">
+                        <x-pane title="Goodbye ChatGPT" subtitle="April 8, 2024">
                             We celebrate our first milestone: a chat
-                            interface capable of replacing our
-                            daily use of ChatGPT. You're welcome to try it now.
+                            interface capable of replacing day-to-day use of ChatGPT. You can try it now.
                         </x-pane>
                     </a>
 
                     <a href="/launch" wire:navigate class="no-underline">
-                        <x-pane title="One agent to rule them all">
+                        <x-pane title="One agent to rule them all" subtitle="March 14, 2024">
                             <p class="text-text m-1">
                                 Today we launch OpenAgents, the world's first AI agent swarm capable of
                                 recursive daily improvement through crowdsourcing and bitcoin incentives.
