@@ -19,19 +19,19 @@
 
     <div class="flex flex-col gap-2 py-4 px-1 mt-auto">
         <ol>
-            @auth
-                <li>
-                    <div class="relative z-[15]">
-                        <div class="group relative rounded-lg active:opacity-90 px-3">
-                            <a href="/billing" target="_blank" class="flex items-center gap-2 py-2" wire:navigate>
-                                <div class="relative grow overflow-hidden whitespace-nowrap">
-                                    Billing
-                                </div>
-                            </a>
-                        </div>
+            @pro
+            <li>
+                <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                        <a href="/subscription" target="_blank" class="flex items-center gap-2 py-2" wire:navigate>
+                            <div class="relative grow overflow-hidden whitespace-nowrap">
+                                Manage subscription
+                            </div>
+                        </a>
                     </div>
-                </li>
-            @endauth
+                </div>
+            </li>
+            @endpro
         </ol>
     </div>
 </div>
