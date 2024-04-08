@@ -4,7 +4,8 @@ OpenAgents.com is a platform for building and commercializing AI agents using sh
 
 ## Concepts
 
-* The primary chat interface at OpenAgents.com allows users to interact with our meta-agent called "OpenAgents", which
+* The primary chat interface at OpenAgents.com allows users to interact with a variety of basic chat models and soon our
+  meta-agent called "OpenAgents", which
   is
   composed of multiple
   Agents.
