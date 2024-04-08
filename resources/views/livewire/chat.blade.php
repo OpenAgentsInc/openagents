@@ -54,10 +54,11 @@
                                             @endif
                                         </button>
                                         <div x-popover:panel x-cloak x-transition x-show="open"
-                                             class="fixed right-[8px] mt-2 rounded-md shadow-md text-white bg-black border border-darkgray">
+                                             class="fixed right-[8px] mt-2 shadow-md text-white bg-black border border-darkgray"
+                                             style="border-radius: 3px !important;">
                                             <a href="/logout"
                                                class="block px-4 py-2 text-sm text-white hover:bg-white/20">
-                                                Logout
+                                                Log out
                                             </a>
                                         </div>
                                     </div>

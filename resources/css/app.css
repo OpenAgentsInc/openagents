@@ -4,6 +4,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* This will remove the default browser outline for all elements */
+*:focus {
+    outline: none;
+}
+
 /**
  * ==============================================
  * Dot Flashing
