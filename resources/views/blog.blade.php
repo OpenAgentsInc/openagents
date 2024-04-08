@@ -15,7 +15,7 @@
                 <div class="mt-6 grid grid-cols-1 gap-12">
                     <a href="/goodbye-chatgpt" wire:navigate class="no-underline">
                         <x-pane title="Goodbye ChatGPT" subtitle="April 8, 2024">
-                            <p class="m-1 text-text">
+                            <p class="mx-1 my-0 text-text">
                                 We celebrate our first milestone: a chat
                                 interface capable of replacing day-to-day use of ChatGPT. You can try it now.
                             </p>
@@ -24,7 +24,7 @@
 
                     <a href="/launch" wire:navigate class="no-underline">
                         <x-pane title="One agent to rule them all" subtitle="March 14, 2024">
-                            <p class="m-1 text-text">
+                            <p class="mx-1 my-0 text-text">
                                 Today we launch OpenAgents, the world's first AI agent swarm capable of
                                 recursive daily improvement through crowdsourcing and bitcoin incentives.
                             </p>
