@@ -4,3 +4,5 @@
 
 Today we celebrate our first product milestone: a chat
 interface that can replace day-to-day use of ChatGPT.
+
+[video embed]
