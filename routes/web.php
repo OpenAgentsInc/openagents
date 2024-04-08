@@ -20,6 +20,7 @@ Route::get('/subscription', [BillingController::class, 'stripe_billing_portal'])
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 
 // STATIC
+Route::get('/pro', [StaticController::class, 'pro'])->name('pro');
 Route::get('/blog', [StaticController::class, 'blog']);
 Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
