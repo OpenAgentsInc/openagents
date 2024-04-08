@@ -1,4 +1,4 @@
-<ol class="ml-16 sm:ml-0 ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
+<ol class="ml-16 md:ml-0 ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
     <li class="text-sm font-semibold text-gray-800 truncate select-none" x-data="{ dropdown: false }"
         aria-current="page">
         <div class="flex gap-2 items-center justify-center overflow-hidden" role="button" tabindex="0"
