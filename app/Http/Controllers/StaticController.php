@@ -10,18 +10,6 @@ use Laravel\Jetstream\Jetstream;
 
 class StaticController extends Controller
 {
-    public function pro(Request $request)
-    {
-        // Check if the referrer is from Stripe (using our custom pay domain)
-        $isFromStripe = $request->server('HTTP_REFERER') && str_contains($request->server('HTTP_REFERER'), 'pay.openagents.com');
-
-        if (! auth()->check() || (! auth()->user()->isPro() && ! $isFromStripe)) {
-            return redirect('/');
-        }
-
-        return view('pro');
-    }
-
     public function blog(Request $request)
     {
         return view('blog');
