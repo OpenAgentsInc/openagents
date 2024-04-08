@@ -2,4 +2,7 @@
 
 #### April 8, 2024
 
-Today we say goodbye to ChatGPT, the AI agent that started it all.
+Today we celebrate our first milestone: a chat
+interface capable of replacing day-to-day use of ChatGPT and other chatbots.
+
+Watc
