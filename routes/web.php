@@ -28,6 +28,7 @@ Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 // STATIC
 Route::get('/blog', [StaticController::class, 'blog']);
 Route::get('/launch', [StaticController::class, 'launch']);
+Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
 Route::get('/docs', [StaticController::class, 'docs']);
 
 // Add GET logout route

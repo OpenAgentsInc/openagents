@@ -5,6 +5,10 @@
                 <x-icon.logo class="w-20 h-20 text-white"/>
             </a>
 
+            <a href="/" wire:navigate>
+                <h3 class="text-lg fixed top-[18px] left-[24px] text-gray"> &larr; Back to chat</h3>
+            </a>
+
             <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
                 {!! $policy !!}
             </div>

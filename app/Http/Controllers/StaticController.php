@@ -19,6 +19,15 @@ class StaticController extends Controller
         ]);
     }
 
+    public function goodbye(Request $request)
+    {
+        $policyFile = Jetstream::localizedMarkdownPath('goodbye-chatgpt.md');
+
+        return view('policy', [
+            'policy' => Str::markdown(file_get_contents($policyFile)),
+        ]);
+    }
+
     public function docs(Request $request)
     {
         $policyFile = Jetstream::localizedMarkdownPath('docs.md');

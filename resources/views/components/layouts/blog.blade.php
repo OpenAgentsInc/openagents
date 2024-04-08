@@ -21,4 +21,6 @@
 
 </body>
 
+@include('partials.twitter')
+
 </html>
