@@ -36,8 +36,6 @@ class AnthropicAIGateway
             $systemMessage = array_shift($params['messages'])['content'];
         }
 
-        array_pop($params['messages']);
-
         $data = [
             'model' => $params['model'],
             'messages' => $params['messages'],
@@ -69,14 +67,24 @@ class AnthropicAIGateway
             $stream = $response->getBody();
 
             $content = '';
+            $inputTokens = null;
+            $outputTokens = null;
+
             foreach ($this->readStream($stream) as $event) {
                 if ($event['type'] === 'content_block_delta' && isset($event['delta']['text'])) {
                     $content .= $event['delta']['text'];
+                } elseif ($event['type'] === 'message_start' && isset($event['message']['usage']['input_tokens'])) {
+                    $inputTokens = $event['message']['usage']['input_tokens'];
+                } elseif ($event['type'] === 'message_delta' && isset($event['usage']['output_tokens'])) {
+                    $outputTokens = $event['usage']['output_tokens'];
                 }
-                // Process other event types as needed
             }
 
-            return $content;
+            return [
+                'content' => $content,
+                'input_tokens' => $inputTokens,
+                'output_tokens' => $outputTokens,
+            ];
         } catch (RequestException $e) {
             // Handle exception or error
             dd($e->getMessage());

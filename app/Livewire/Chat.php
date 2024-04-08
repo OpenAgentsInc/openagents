@@ -141,7 +141,7 @@ class Chat extends Component
 
         // Append the response to the chat
         $this->messages[] = [
-            'body' => $output,
+            'body' => $output['content'],
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
@@ -149,10 +149,12 @@ class Chat extends Component
 
         // Save the agent's response to the thread
         $this->thread->messages()->create([
-            'body' => $output,
+            'body' => $output['content'],
             'session_id' => $sessionId,
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
+            'input_tokens' => $output['input_tokens'],
+            'output_tokens' => $output['output_tokens'],
         ]);
 
         // Reset pending status and scroll to the latest message
