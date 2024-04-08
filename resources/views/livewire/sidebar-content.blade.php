@@ -17,7 +17,7 @@
         </ol>
     </div>
 
-    <div class="flex flex-col gap-2 py-4 px-1 mt-auto">
+    <div class="flex flex-col gap-2 py-2 px-1 mt-auto">
         <ol>
             <li>
                 <div class="relative z-[15]">
@@ -76,6 +76,22 @@
                     </li>
                 @endauth
                 @endpro
+                <li>
+                    <div class="relative z-[15]">
+                        <div class="flex flex-row group pt-3 px-3 text-gray text-xs">
+                            <a href="/terms" class="flex items-center">
+                                <div class="relative grow overflow-hidden whitespace-nowrap">
+                                    Terms
+                                </div>
+                            </a> <span class="px-1">&middot;</span>
+                            <a href="/privacy" class="flex items-center">
+                                <div class="relative grow overflow-hidden whitespace-nowrap">
+                                    Privacy
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </li>
         </ol>
     </div>
 </div>
