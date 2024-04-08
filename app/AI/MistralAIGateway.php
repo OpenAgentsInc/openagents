@@ -158,15 +158,23 @@ class MistralAIChat
 
             $stream = $response->getBody();
             $content = '';
-            foreach ($this->readStream($stream) as $responseLine) {
-                if (isset($responseLine['choices'][0]['delta']['content'])) {
-                    $content .= $responseLine['choices'][0]['delta']['content'];
-                    $streamFunction($responseLine);
-                    // Here, you could also broadcast or handle each token/message part as it arrives
-                }
+            $inputTokens = 0;
+            $outputTokens = 0;
+
+            foreach ($this->readStream($stream) as $chunk) {
+                $content = $chunk['content'];
+                $inputTokens = $chunk['input_tokens'];
+                $outputTokens += $chunk['output_tokens'];
+
+                // Call the stream function with the updated content
+                $streamFunction($content);
             }
 
-            return $content;
+            return [
+                'content' => $content,
+                'input_tokens' => $inputTokens,
+                'output_tokens' => $outputTokens,
+            ];
         } catch (RequestException $e) {
             // Handle exception or error
             dd($e->getMessage());
@@ -177,6 +185,10 @@ class MistralAIChat
 
     private function readStream($stream)
     {
+        $content = '';
+        $inputTokens = null;
+        $outputTokens = null;
+
         while (! $stream->eof()) {
             $line = $this->readLine($stream);
             Log::info($line);
@@ -192,10 +204,45 @@ class MistralAIChat
 
             $response = json_decode($data, true);
             if ($response) {
-                yield $response;
+                if (isset($response['choices'][0]['delta']['content'])) {
+                    $content .= $response['choices'][0]['delta']['content'];
+                }
+
+                if (isset($response['usage'])) {
+                    $inputTokens = $response['usage']['prompt_tokens'];
+                    $outputTokens = $response['usage']['completion_tokens'];
+                }
+
+                yield [
+                    'content' => $content,
+                    'input_tokens' => $inputTokens,
+                    'output_tokens' => $outputTokens,
+                ];
             }
         }
     }
+
+    //    private function readStream($stream)
+    //    {
+    //        while (! $stream->eof()) {
+    //            $line = $this->readLine($stream);
+    //            Log::info($line);
+    //
+    //            if (! str_starts_with($line, 'data:')) {
+    //                continue;
+    //            }
+    //
+    //            $data = trim(substr($line, 5)); // Skip the 'data:' part
+    //            if ($data === '[DONE]') {
+    //                break;
+    //            }
+    //
+    //            $response = json_decode($data, true);
+    //            if ($response) {
+    //                yield $response;
+    //            }
+    //        }
+    //    }
 
     private function readLine($stream)
     {
