@@ -31,7 +31,23 @@
                     </div>
                 </div>
             </li>
-            @endpro
+            @else
+                @auth
+                    <li>
+                        <div class="relative z-[15]">
+                            <div class="group relative rounded-lg active:opacity-90 px-3">
+                                <a class="flex items-center gap-2 py-2"
+                                   wire:click="$dispatch('openModal', { component: 'modals.upgrade' })"
+                                >
+                                    <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
+                                        Upgrade to Pro
+                                    </div>
+                                </a>
+                            </div>
+                        </div>
+                    </li>
+                @endauth
+                @endpro
         </ol>
     </div>
 </div>

@@ -51,7 +51,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isPro(): bool
     {
-        return $this->username === 'AtlantisPleb' || $this->subscribed('default');
+        return $this->subscribed('default');
     }
 
     public function threads(): HasMany
