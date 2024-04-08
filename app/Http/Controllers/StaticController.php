@@ -10,6 +10,11 @@ use Laravel\Jetstream\Jetstream;
 
 class StaticController extends Controller
 {
+    public function pro()
+    {
+        return view('pro');
+    }
+
     public function blog(Request $request)
     {
         return view('blog');
