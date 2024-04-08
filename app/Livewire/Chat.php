@@ -153,7 +153,8 @@ class Chat extends Component
             'session_id' => $sessionId,
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
-            // here add the input and output tokens
+            'input_tokens' => $output['input_tokens'],
+            'output_tokens' => $output['output_tokens'],
         ]);
 
         // Reset pending status and scroll to the latest message
