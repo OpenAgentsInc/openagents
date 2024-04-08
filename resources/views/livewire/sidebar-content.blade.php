@@ -19,6 +19,20 @@
 
     <div class="flex flex-col gap-2 py-4 px-1 mt-auto">
         <ol>
+            <li>
+                <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                        <a class="flex items-center gap-2 py-2"
+                           wire:navigate
+                           href="/blog"
+                        >
+                            <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
+                                Blog
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </li>
             @pro
             <li>
                 <div class="relative z-[15]">

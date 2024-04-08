@@ -26,7 +26,7 @@ Route::get('/subscription', [BillingController::class, 'stripe_billing_portal'])
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 
 // STATIC
-//Route::get('/pro', [StaticController::class, 'pro']);
+Route::get('/blog', [StaticController::class, 'blog']);
 Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/docs', [StaticController::class, 'docs']);
 
