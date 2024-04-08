@@ -2,6 +2,8 @@
 
 OpenAgents.com is a platform for building and commercializing AI agents using shared databases of skills and knowledge.
 
+It is under active development. All code is open source under AGPL3 [here](https://github.com/OpenAgentsInc/openagents).
+
 ## Concepts
 
 * The primary chat interface at OpenAgents.com allows users to interact with a variety of basic chat models and soon our
