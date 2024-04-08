@@ -16,8 +16,8 @@
                     <a href="/goodbye-chatgpt" wire:navigate class="no-underline">
                         <x-pane title="Goodbye ChatGPT" subtitle="April 8, 2024">
                             <p class="mx-1 my-0 text-text">
-                                We celebrate our first milestone: a chat
-                                interface capable of replacing day-to-day use of ChatGPT. You can try it now.
+                                Today we celebrate our first product milestone: a chat
+                                interface that can replace day-to-day use of ChatGPT.
                             </p>
                         </x-pane>
                     </a>
