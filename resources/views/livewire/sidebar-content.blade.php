@@ -37,7 +37,7 @@
             <li>
                 <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">
-                        <a href="/subscription" target="_blank" class="flex items-center gap-2 py-2" wire:navigate>
+                        <a href="/subscription" target="_blank" class="flex items-center gap-2 py-2">
                             <div class="relative grow overflow-hidden whitespace-nowrap">
                                 Manage subscription
                             </div>

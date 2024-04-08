@@ -10,7 +10,13 @@
             </a>
 
             <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
-                nice
+                <div class="grid grid-cols-1 gap-8">
+                    <x-pane title="Goodbye ChatGPT">
+                    </x-pane>
+
+                    <x-pane title="One agent to rule them all">
+                    </x-pane>
+                </div>
             </div>
         </div>
     </div>
