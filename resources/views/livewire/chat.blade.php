@@ -41,14 +41,14 @@
                         @auth
                             <div class="relative z-[15]">
                                 <div x-data="{ open: false }" class="flex flex-row items-center">
-                                    <x-icon.share
-                                            wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
-                                            class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>
+                                    {{--                                    <x-icon.share--}}
+                                    {{--                                            wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"--}}
+                                    {{--                                            class="cursor-pointer w-[24px] h-[24px] mr-[56px]"/>--}}
                                     <div x-popover @click.outside="open = false" class="relative">
                                         <button x-popover:button @click="open = !open" class="focus:outline-none">
                                             @if(Auth::user()->profile_photo_path)
                                                 <img src="{{ Auth::user()->profile_photo_path }}" alt="Profile"
-                                                     class="rounded-full w-[32px] h-[32px] object-cover">
+                                                     class="mt-4 rounded-full w-[32px] h-[32px] object-cover">
                                             @else
                                                 {{ strtoupper(Auth::user()->name[0] ?? '-') }}
                                             @endif
@@ -67,8 +67,8 @@
 
                         @else
                             <div class="flex flex-row items-center">
-                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"
-                                              class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>
+                                {{--                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"--}}
+                                {{--                                              class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>--}}
                                 <x-login-buttons/>
                             </div>
                         @endauth
