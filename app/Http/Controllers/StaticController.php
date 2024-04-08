@@ -12,6 +12,10 @@ class StaticController extends Controller
 {
     public function pro()
     {
+        if (! auth()->check() || ! auth()->user()->isPro()) {
+            return redirect('/');
+        }
+
         return view('pro');
     }
 
