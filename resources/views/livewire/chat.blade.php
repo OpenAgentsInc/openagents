@@ -67,8 +67,6 @@
 
                         @else
                             <div class="flex flex-row items-center">
-                                {{--                                <x-icon.share wire:click="$dispatch('openModal', { component: 'modals.chat.share' })"--}}
-                                {{--                                              class="cursor-pointer w-[24px] h-[24px] mr-[32px]"/>--}}
                                 <x-login-buttons/>
                             </div>
                         @endauth
@@ -77,7 +75,7 @@
                         @if (count($messages) === 0)
                             <div class="w-full h-[70vh] flex flex-col justify-center">
                                 <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
-                                    <x-logomark :size="2"/>
+                                    <x-logomark :size="2"></x-logomark>
                                     <h3 class="mt-[36px]">How can we help you today?</h3>
                                 </div>
                             </div>
@@ -91,11 +89,12 @@
                             @php
                                 $author = !empty($message['model']) ? $models[$message['model']]["name"] : 'You';
                             @endphp
-                            <x-chat.message :author="$author" :message="$message['body']"/>
+                            <x-chat.message :author="$author" :message="$message['body']"></x-chat.message>
                         @endforeach
 
                         @if($pending)
-                            <x-chat.messagestreaming :author="$agent->name ?? $models[$selectedModel]['name']"/>
+                            <x-chat.messagestreaming
+                                    :author="$agent->name ?? $models[$selectedModel]['name']"></x-chat.messagestreaming>
                         @endif
 
                         @if ($showNoMoreMessages)
@@ -141,7 +140,7 @@
             </div>
         </div>
     </div>
-    <div class="w-full -ml-[25px]">
+    <div class="w-full lg:-ml-[25px] px-3">
         <div class="sm:w-[584px] lg:w-[768px] mx-auto">
             @if ($showNoMoreMessages)
 
