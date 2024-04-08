@@ -10,9 +10,6 @@
     </div>
 
     <div class="flex flex-col gap-2 mt-8 py-4 px-1" @thread_updated="$refresh">
-        {{--        <span class="text-left text-sm text-[#777A82] px-2" x-cloak>--}}
-        {{--            Today--}}
-        {{--        </span>--}}
         <ol>
             @foreach($threads as $thread)
                 <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
@@ -20,12 +17,37 @@
         </ol>
     </div>
 
-    <!-- New section for links -->
     <div class="flex flex-col gap-2 py-4 px-1 mt-auto">
         <ol>
-            @auth
-                <li class="ml-4"><a target="_blank" href="/billing">Billing</a></li>
-            @endauth
+            @pro
+            <li>
+                <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                        <a href="/subscription" target="_blank" class="flex items-center gap-2 py-2" wire:navigate>
+                            <div class="relative grow overflow-hidden whitespace-nowrap">
+                                Manage subscription
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </li>
+            @else
+                @auth
+                    <li>
+                        <div class="relative z-[15]">
+                            <div class="group relative rounded-lg active:opacity-90 px-3">
+                                <a class="flex items-center gap-2 py-2"
+                                   wire:click="$dispatch('openModal', { component: 'modals.upgrade' })"
+                                >
+                                    <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
+                                        Upgrade to Pro
+                                    </div>
+                                </a>
+                            </div>
+                        </div>
+                    </li>
+                @endauth
+                @endpro
         </ol>
     </div>
 </div>

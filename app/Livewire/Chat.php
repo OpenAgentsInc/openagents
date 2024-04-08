@@ -45,12 +45,11 @@ class Chat extends Component
         // Set the default model
         $this->selectedModel = Models::getDefaultModel();
 
-        // If ID is not null, we're in a thread. But if thread doesn't exist, redirect to homepage.
+        // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
             $thread = Thread::find($id);
-            // If there's no thread or thread doesn't belong to the user and doesn't match the session ID, redirect to homepage
-            if (! $thread || ($thread->user_id !== auth()->id()) && ($thread->session_id !== session()->getId())) {
-                return $this->redirect('/');
+            if (! $thread || (auth()->check() && $thread->user_id !== auth()->id()) || (! auth()->check() && $thread->session_id !== session()->getId())) {
+                return $this->redirect('/', true);
             } else {
                 // Notify the sidebar component of the active thread
                 $this->dispatch('active-thread', $id);
@@ -66,12 +65,32 @@ class Chat extends Component
         $this->messages = $this->thread->messages->sortBy('created_at')->toArray();
     }
 
-    // Listen for no more messages
-
     private function ensureThread()
     {
         if (empty($this->thread)) {
-            // Create a new Thread
+            // Check if the user or guest has a recent thread with no messages
+            $recentThread = null;
+
+            if (auth()->check()) {
+                $recentThread = Thread::where('user_id', auth()->id())
+                    ->whereDoesntHave('messages')
+                    ->latest()
+                    ->first();
+            } else {
+                $recentThread = Thread::where('session_id', Session::getId())
+                    ->whereDoesntHave('messages')
+                    ->latest()
+                    ->first();
+            }
+
+            if ($recentThread) {
+                $this->thread = $recentThread;
+                $this->dispatch('thread-update');
+
+                return $this->redirect('/chat/'.$this->thread->id, true);
+            }
+
+            // If no recent thread found, create a new one
             $data = [
                 'title' => 'New chat',
                 'session_id' => auth()->check() ? null : Session::getId(),
@@ -85,10 +104,7 @@ class Chat extends Component
             $this->thread = $thread;
             $this->dispatch('thread-update');
 
-            // If the current chat URL is not chat/{thread_id}, redirect to the correct URL
-            //            if (request()->path() !== 'chat/'.$this->thread->id) {
             return $this->redirect('/chat/'.$this->thread->id, true);
-            //            }
         } else {
             dd('what');
         }
