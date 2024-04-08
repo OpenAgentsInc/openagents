@@ -20,11 +20,15 @@ Route::get('/subscription', [BillingController::class, 'stripe_billing_portal'])
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 Route::get('/pro', [BillingController::class, 'pro'])->name('pro');
 
-// STATIC
+// BLOG
 Route::get('/blog', [StaticController::class, 'blog']);
 Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
+
+// MISC
 Route::get('/docs', [StaticController::class, 'docs']);
+Route::get('/terms', [StaticController::class, 'terms']);
+Route::get('/privacy', [StaticController::class, 'privacy']);
 
 // Add GET logout route
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);

@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
-use Illuminate\View\View;
 use Laravel\Jetstream\Jetstream;
 
 class StaticController extends Controller
@@ -42,14 +41,18 @@ class StaticController extends Controller
         ]);
     }
 
-    /**
-     * Show the privacy policy for the application.
-     *
-     * @return View
-     */
+    public function terms(Request $request)
+    {
+        $policyFile = Jetstream::localizedMarkdownPath('terms.md');
+
+        return view('policy', [
+            'policy' => Str::markdown(file_get_contents($policyFile)),
+        ]);
+    }
+
     public function privacy(Request $request)
     {
-        $policyFile = Jetstream::localizedMarkdownPath('policy.md');
+        $policyFile = Jetstream::localizedMarkdownPath('privacy.md');
 
         return view('policy', [
             'policy' => Str::markdown(file_get_contents($policyFile)),
