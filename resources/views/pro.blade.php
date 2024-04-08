@@ -24,9 +24,9 @@
                     </div>
                 </div>
 
-                <p class="text-text"><a href="https://twitter.com/AtlantisPleb" target="_blank"
-                                        class="text-white underline">DM
-                        Chris on
+                <p class="text-text"><a href="https://twitter.com/OpenAgentsInc" target="_blank"
+                                        class="text-white underline">DM or tag
+                        @OpenAgentsInc on
                         X</a> any
                     complaints/insults/requests</p>
             </div>
