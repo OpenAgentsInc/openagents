@@ -12,11 +12,7 @@ class StaticController extends Controller
 {
     public function blog(Request $request)
     {
-        $policyFile = Jetstream::localizedMarkdownPath('blog.md');
-
-        return view('policy', [
-            'policy' => Str::markdown(file_get_contents($policyFile)),
-        ]);
+        return view('blog');
     }
 
     public function goodbye(Request $request)
