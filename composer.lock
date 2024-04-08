@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4dbcf9ed96f8e0c3150dd72405246276",
+    "content-hash": "cc9c0086b2e8f28e5a2da4eb60ec82d2",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -7580,6 +7580,55 @@
                 "source": "https://github.com/wire-elements/modal/tree/2.0.9"
             },
             "time": "2023-12-08T09:31:14+00:00"
+        },
+        {
+            "name": "yethee/tiktoken",
+            "version": "0.3.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/yethee/tiktoken-php.git",
+                "reference": "c84f066dcb0cff60685537c71bf795967775446a"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/yethee/tiktoken-php/zipball/c84f066dcb0cff60685537c71bf795967775446a",
+                "reference": "c84f066dcb0cff60685537c71bf795967775446a",
+                "shasum": ""
+            },
+            "require": {
+                "php": "^8.1",
+                "symfony/service-contracts": "^2.5 || ^3.0"
+            },
+            "require-dev": {
+                "doctrine/coding-standard": "^12.0",
+                "phpunit/phpunit": "^10.3",
+                "psalm/plugin-phpunit": "^0.18.3",
+                "vimeo/psalm": "5.19.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Yethee\\Tiktoken\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "PHP version of tiktoken",
+            "keywords": [
+                "bpe",
+                "decode",
+                "encode",
+                "openai",
+                "tiktoken",
+                "tokenizer"
+            ],
+            "support": {
+                "issues": "https://github.com/yethee/tiktoken-php/issues",
+                "source": "https://github.com/yethee/tiktoken-php/tree/0.3.0"
+            },
+            "time": "2024-01-10T10:34:57+00:00"
         }
     ],
     "packages-dev": [

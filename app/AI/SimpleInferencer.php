@@ -6,7 +6,7 @@ use App\Models\Thread;
 
 class SimpleInferencer
 {
-    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction): string
+    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction): array|string
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
@@ -21,10 +21,6 @@ class SimpleInferencer
                     // 'content' => 'You are a helpful assistant on OpenAgents.com. Answer the inquiry from the user.',
                 ],
                 ...get_truncated_messages($thread, $maxTokens),
-                [
-                    'role' => 'user',
-                    'content' => $prompt,
-                ],
             ];
 
             // Calculate the approximate number of tokens in the messages

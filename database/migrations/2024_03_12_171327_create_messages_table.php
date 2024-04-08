@@ -20,9 +20,6 @@ return new class extends Migration
             // Messages may be sent by a user, or null if agent or unauthed
             $table->foreignId('user_id')->nullable();
 
-            // Messages may be sent by an agent, or null if user
-            $table->foreignId('agent_id')->nullable();
-
             // Message content - will be changed to longtext
             $table->longText('body');
 
@@ -31,6 +28,9 @@ return new class extends Migration
 
             // Session ID for unauthenticated users
             $table->string('session_id')->nullable();
+
+            $table->integer('input_tokens')->nullable();
+            $table->integer('output_tokens')->nullable();
 
             $table->timestamps();
         });
