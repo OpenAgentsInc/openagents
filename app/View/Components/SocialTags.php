@@ -35,6 +35,7 @@ class SocialTags extends Component
     {
         $imagePaths = [
             'launch' => 'https://openagents.com/images/one.png',
+            'goodbye-chatgpt' => 'https://openagents.com/images/goodbye-chatgpt.png',
             // Add more paths and their corresponding image URLs here
             // For example: 'about' => 'https://openagents.com/images/about.png',
         ];
