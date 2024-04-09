@@ -16,7 +16,6 @@ return new class extends Migration
             $table->foreignId('user_id')->nullable()->constrained('users');
             $table->string('session_id')->nullable();
             $table->string('title')->nullable();
-            $table->boolean('private')->default(false);
             $table->timestamps();
         });
     }
