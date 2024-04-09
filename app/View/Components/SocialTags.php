@@ -53,10 +53,29 @@ class SocialTags extends Component
     {
         $descriptions = [
             'launch' => "It's the coolest AI chat for launching your product. Literally 1000x better than the rest. Try it now or else.",
+            'goodbye-chatgpt' => 'We unsubscribe from ChatGPT.',
             // Add more paths and their corresponding descriptions here
             // For example: 'about' => 'Learn more about OpenAgents and our missiosn.',
         ];
 
         return $descriptions[$currentPath] ?? "It's the coolest AI chat. Literally 1000x better than the rest. Try it now or else.";
+    }
+
+    /**
+     * Get the title based on the current path.
+     *
+     * @param  string  $currentPath
+     * @return string
+     */
+    protected function getTitle($currentPath)
+    {
+        $titles = [
+            'launch' => 'One agent to rule them all',
+            'goodbye-chatgpt' => 'Goodbye ChatGPT',
+            // Add more paths and their corresponding titles here
+            // For example: 'about' => 'About OpenAgents',
+        ];
+
+        return $titles[$currentPath] ?? 'Chat with OpenAgents';
     }
 }

@@ -3,6 +3,6 @@
 <meta name="twitter:creator" content="@OpenAgentsInc">
 
 <meta property="og:url" content="{{ url()->current() }}">
-<meta property="og:title" content="Chat with OpenAgents">
+<meta property="og:title" content="{{ $title }}">
 <meta property="og:description" content="{{ $description }}">
 <meta property="og:image" content="{{ $imageUrl }}">
