@@ -17,9 +17,11 @@ class SocialTags extends Component
     {
         $currentPath = request()->path();
         $imageUrl = $this->getImageUrl($currentPath);
+        $description = $this->getDescription($currentPath);
 
         return view('components.social-tags', [
             'imageUrl' => $imageUrl,
+            'description' => $description,
         ]);
     }
 
@@ -38,5 +40,22 @@ class SocialTags extends Component
         ];
 
         return $imagePaths[$currentPath] ?? 'https://openagents.com/images/openagents.png';
+    }
+
+    /**
+     * Get the description based on the current path.
+     *
+     * @param  string  $currentPath
+     * @return string
+     */
+    protected function getDescription($currentPath)
+    {
+        $descriptions = [
+            'launch' => "It's the coolest AI chat for launching your product. Literally 1000x better than the rest. Try it now or else.",
+            // Add more paths and their corresponding descriptions here
+            // For example: 'about' => 'Learn more about OpenAgents and our missiosn.',
+        ];
+
+        return $descriptions[$currentPath] ?? "It's the coolest AI chat. Literally 1000x better than the rest. Try it now or else.";
     }
 }
