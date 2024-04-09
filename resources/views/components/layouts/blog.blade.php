@@ -8,7 +8,7 @@
     @stack('scripts')
     @include('partials.vite')
     @include('partials.analytics')
-    @include('partials.ogtags')
+    <x-social-tags/>
 </head>
 
 <body class="h-screen bg-black antialiased">
