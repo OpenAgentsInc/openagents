@@ -10,7 +10,7 @@
     @stack('scripts')
     @include('partials.vite')
     @include('partials.analytics')
-    @include('partials.ogtags')
+    <x-social-tags/>
 
     <link rel="stylesheet" href="{{asset('vendor/swal-dark.min.css')}}">
 </head>
