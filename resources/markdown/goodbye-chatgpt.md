@@ -32,6 +32,8 @@ And guess what:
 Now watch me cancel my ChatGPT Plus and Claude Pro subscriptions,
 then [try OpenAgents for yourself](https://openagents.com/).
 
+Basic models require no account, medium models require a free account, and advanced models require Pro. Enjoy!
+
 <div class="w-full mx-auto flex flex-col justify-center items-center">
 <blockquote class="twitter-tweet" data-theme="dark"><p lang="en" dir="ltr">Cancelled my ChatGPT Plus after 13 months<br><br>Because finally my own product is better 😎 <a href="https://t.co/KhupcyF7Ap">https://t.co/KhupcyF7Ap</a></p>&mdash; Christopher David ⚡️ (@AtlantisPleb) <a href="https://twitter.com/AtlantisPleb/status/1777500619928142064?ref_src=twsrc%5Etfw">April 9, 2024</a></blockquote> 
 </div>
