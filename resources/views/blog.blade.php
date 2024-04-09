@@ -14,7 +14,7 @@
             <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
                 <div class="mt-6 grid grid-cols-1 gap-12">
                     <a href="/goodbye-chatgpt" wire:navigate class="no-underline">
-                        <x-pane title="Goodbye ChatGPT" subtitle="April 8, 2024">
+                        <x-pane title="Goodbye ChatGPT" subtitle="April 9, 2024">
                             <p class="mx-1 my-0 text-text">
                                 Today we celebrate our first product milestone: a chat
                                 interface that can replace day-to-day use of ChatGPT.
