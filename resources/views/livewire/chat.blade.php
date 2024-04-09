@@ -46,6 +46,9 @@
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                 <x-logomark :size="2"></x-logomark>
                                 <h3 class="mt-[36px] text-center leading-relaxed">How can we help you today?</h3>
+                                <p class="pointer-events-auto select-auto mt-[30px] text-gray">Blog: <a
+                                            class="underline" href="/goodbye-chatgpt" wire:navigate>Goodbye
+                                        ChatGPT</a></p>
                             </div>
                         </div>
                     @endif
