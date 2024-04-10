@@ -59,6 +59,17 @@ class SimpleInferencer
                         'stream_function' => $streamFunction,
                     ]);
                     break;
+                case 'perplexity':
+                    $client = new PerplexityAIGateway();
+                    $inference = $client->createStreamed([
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $completionTokens,
+                        'stream_function' => $streamFunction,
+                    ]);
+                default:
+                    // Handle unknown gateway
+                    dd("Unknown gateway: $gateway");
             }
         } else {
             // Handle unknown model
