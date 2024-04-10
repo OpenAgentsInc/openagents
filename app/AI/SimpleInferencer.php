@@ -67,6 +67,7 @@ class SimpleInferencer
                         'max_tokens' => $completionTokens,
                         'stream_function' => $streamFunction,
                     ]);
+                    break;
                 default:
                     // Handle unknown gateway
                     dd("Unknown gateway: $gateway");
