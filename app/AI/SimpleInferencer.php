@@ -59,6 +59,18 @@ class SimpleInferencer
                         'stream_function' => $streamFunction,
                     ]);
                     break;
+                case 'perplexity':
+                    $client = new PerplexityAIGateway();
+                    $inference = $client->createStreamed([
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $completionTokens,
+                        'stream_function' => $streamFunction,
+                    ]);
+                    break;
+                default:
+                    // Handle unknown gateway
+                    dd("Unknown gateway: $gateway");
             }
         } else {
             // Handle unknown model
@@ -98,6 +110,8 @@ function get_truncated_messages(Thread $thread, int $maxTokens)
 {
     $messages = [];
     $tokenCount = 0;
+    $prevRole = null;
+    $userContent = '';
 
     foreach ($thread->messages()->orderBy('created_at', 'asc')->get() as $message) {
         if ($message->model !== null) {
@@ -106,24 +120,61 @@ function get_truncated_messages(Thread $thread, int $maxTokens)
             $role = 'user';
         }
 
-        if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
-            $content = '<image>';
+        if ($role === 'user') {
+            if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
+                $userContent .= ' <image>';
+            } else {
+                $userContent .= ' '.$message->body;
+            }
         } else {
-            $content = $message->body;
+            if (! empty($userContent)) {
+                $messageTokens = ceil(str_word_count($userContent) / 3);
+
+                if ($tokenCount + $messageTokens > $maxTokens) {
+                    break; // Stop adding messages if the remaining context is not enough
+                }
+
+                $messages[] = [
+                    'role' => 'user',
+                    'content' => trim($userContent),
+                ];
+
+                $tokenCount += $messageTokens;
+                $userContent = '';
+            }
+
+            if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
+                $content = '<image>';
+            } else {
+                $content = $message->body;
+            }
+
+            $messageTokens = ceil(str_word_count($content) / 3);
+
+            if ($tokenCount + $messageTokens > $maxTokens) {
+                break; // Stop adding messages if the remaining context is not enough
+            }
+
+            $messages[] = [
+                'role' => 'assistant',
+                'content' => $content,
+            ];
+
+            $tokenCount += $messageTokens;
         }
 
-        $messageTokens = ceil(str_word_count($content) / 3);
+        $prevRole = $role;
+    }
 
-        if ($tokenCount + $messageTokens > $maxTokens) {
-            break; // Stop adding messages if the remaining context is not enough
+    if (! empty($userContent)) {
+        $messageTokens = ceil(str_word_count($userContent) / 3);
+
+        if ($tokenCount + $messageTokens <= $maxTokens) {
+            $messages[] = [
+                'role' => 'user',
+                'content' => trim($userContent),
+            ];
         }
-
-        $messages[] = [
-            'role' => $role,
-            'content' => $content,
-        ];
-
-        $tokenCount += $messageTokens;
     }
 
     return $messages;
