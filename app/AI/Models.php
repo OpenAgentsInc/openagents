@@ -30,7 +30,13 @@ class Models
             'max_tokens' => 14000,
         ],
         'gpt-4-turbo-preview' => [
-            'name' => 'GPT-4 Turbo',
+            'name' => 'GPT-4 Turbo Preview',
+            'gateway' => 'openai',
+            'access' => 'user',
+            'max_tokens' => 2000,
+        ],
+        'gpt-4-turbo-2024-04-09' => [
+            'name' => 'GPT-4 Turbo 2024-04-09',
             'gateway' => 'openai',
             'access' => 'user',
             'max_tokens' => 2000,
