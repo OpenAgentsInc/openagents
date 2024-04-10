@@ -5,6 +5,7 @@ namespace App\AI;
 class Models
 {
     public const MODELS = [
+        // MISTRAL
         'mistral-small-latest' => [
             'name' => 'Mistral Small',
             'gateway' => 'mistral',
@@ -29,6 +30,8 @@ class Models
             'access' => 'user',
             'max_tokens' => 14000,
         ],
+
+        // OPENAI
         'gpt-4-turbo-preview' => [
             'name' => 'GPT-4 Turbo Preview',
             'gateway' => 'openai',
@@ -47,6 +50,8 @@ class Models
             'access' => 'pro',
             'max_tokens' => 4096,
         ],
+
+        // ANTHROPIC
         'claude-3-haiku-20240307' => [
             'name' => 'Claude Haiku',
             'gateway' => 'anthropic',
@@ -62,6 +67,20 @@ class Models
         'claude-3-opus-20240229' => [
             'name' => 'Claude Opus',
             'gateway' => 'anthropic',
+            'access' => 'pro',
+            'max_tokens' => 4096,
+        ],
+
+        // PERPLEXITY
+        'sonar-small-online' => [
+            'name' => 'Sonar Small Online',
+            'gateway' => 'perplexity',
+            'access' => 'user',
+            'max_tokens' => 2000,
+        ],
+        'sonar-medium-online' => [
+            'name' => 'Sonar Medium Online',
+            'gateway' => 'perplexity',
             'access' => 'pro',
             'max_tokens' => 4096,
         ],
