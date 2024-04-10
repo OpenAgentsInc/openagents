@@ -78,6 +78,12 @@ class Models
             'access' => 'user',
             'max_tokens' => 2000,
         ],
+        'sonar-medium-online' => [
+            'name' => 'Sonar Medium Online',
+            'gateway' => 'perplexity',
+            'access' => 'pro',
+            'max_tokens' => 4096,
+        ],
     ];
 
     public static function getDefaultModel()
