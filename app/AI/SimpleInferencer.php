@@ -68,6 +68,15 @@ class SimpleInferencer
                         'stream_function' => $streamFunction,
                     ]);
                     break;
+                case 'cohere':
+                    $client = new CohereAIGateway();
+                    $inference = $client->chatWithHistory([
+                        'chat_history' => $messages,
+                        'message' => $prompt,
+                        'connectors' => [],
+                        'model' => $model,
+                    ]);
+                    break;
                 default:
                     // Handle unknown gateway
                     dd("Unknown gateway: $gateway");

@@ -84,6 +84,15 @@ class Models
             'access' => 'pro',
             'max_tokens' => 4096,
         ],
+
+        // COHERE
+        'command-r' => [
+            'name' => 'Command-R',
+            'gateway' => 'cohere',
+            'access' => 'user',
+            'max_tokens' => 2000,
+        ],
+
     ];
 
     public static function getDefaultModel()
