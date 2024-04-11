@@ -92,6 +92,12 @@ class Models
             'access' => 'user',
             'max_tokens' => 2000,
         ],
+        'command-r-plus' => [
+            'name' => 'Command-R+',
+            'gateway' => 'cohere',
+            'access' => 'user',
+            'max_tokens' => 4000,
+        ],
 
     ];
 
