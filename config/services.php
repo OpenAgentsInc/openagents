@@ -20,6 +20,14 @@ return [
         'redirect' => '/callback/x',
     ],
 
+    'greptile' => [
+        'api_key' => env('GREPTILE_API_KEY'),
+    ],
+
+    'github' => [
+        'token' => env('GITHUB_TOKEN'),
+    ],
+
     //    'postmark' => [
     //        'token' => env('POSTMARK_TOKEN'),
     //    ],
