@@ -31,4 +31,21 @@ class GreptileGateway
 
         return $response->json();
     }
+
+    public function getRepository($repositoryId = 'github:main:OpenAgentsInc/openagents')
+    {
+        $encodedRepositoryId = rawurlencode($repositoryId);
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->greptileApiKey,
+            'Accept' => 'application/json',
+        ])->get($this->greptileBaseUrl.'/repositories/'.$encodedRepositoryId);
+
+        if ($response->successful() && $response->body()) {
+            return $response->json();
+        } else {
+            // Handle error or empty response
+            dd($response->body());
+        }
+    }
 }
