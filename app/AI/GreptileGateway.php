@@ -48,4 +48,38 @@ class GreptileGateway
             dd($response->body());
         }
     }
+
+    public function queryRepository($sessionId = '123345')
+    {
+        $messages = [
+            'content' => 'Summarize this repo.',
+            'role' => 'user',
+        ];
+
+        $data = [
+            'messages' => $messages,
+            'repositories' => [
+                [
+                    'remote' => 'github',
+                    'branch' => 'main',
+                    'repository' => 'OpenAgentsInc/openagents',
+                ],
+            ],
+            'sessionId' => $sessionId,
+            //            'stream' => true,
+        ];
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->greptileApiKey,
+            'Content-Type' => 'application/json',
+            'X-GitHub-Token' => $this->githubToken,
+        ])->post($this->greptileBaseUrl.'/query', $data);
+
+        if ($response->successful() && $response->body()) {
+            return $response->json();
+        } else {
+            // Handle error or empty response
+            dd($response->body());
+        }
+    }
 }
