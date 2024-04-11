@@ -2,6 +2,8 @@
 
 namespace App\AI;
 
+use Illuminate\Support\Facades\Http;
+
 class GreptileGateway
 {
     private $greptileApiKey;
