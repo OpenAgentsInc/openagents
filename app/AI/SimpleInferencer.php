@@ -79,9 +79,12 @@ class SimpleInferencer
                     break;
                 case 'huggingface':
                     $client = new HuggingfaceAIGateway();
-                    $inference = $client->inference([
+                    $formattedMessages = $client->formatMessagesForConversation($messages);
+                    $inference = $client->conversationalInference([
                         'model' => $model,
-                        'messages' => $messages,
+                        'text' => $prompt,
+                        'past_user_inputs' => $formattedMessages['past_user_inputs'],
+                        'generated_responses' => $formattedMessages['generated_responses'],
                         'max_tokens' => $completionTokens,
                     ]);
                     break;
