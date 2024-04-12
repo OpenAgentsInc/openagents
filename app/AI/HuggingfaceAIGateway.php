@@ -15,59 +15,10 @@ class HuggingfaceAIGateway
         $this->apiKey = config('services.huggingface.api_key');
     }
 
-    public function conversationalInference($params)
-    {
-        $inputs = [
-            'text' => $params['text'],
-            'generated_responses' => $params['generated_responses'] ?? [],
-            'past_user_inputs' => $params['past_user_inputs'] ?? [],
-        ];
-
-        $options = $params['options'] ?? [
-            'use_cache' => true,
-            'wait_for_model' => false,
-        ];
-
-        $parameters = $params['parameters'] ?? [
-            'min_length' => null,
-            'max_length' => 1000,
-            'top_k' => null,
-            'top_p' => null,
-            'temperature' => 1.0,
-            'repetition_penalty' => null,
-            'max_time' => null,
-        ];
-
-        $data = [
-            'inputs' => json_encode($inputs),
-            'options' => $options,
-            'parameters' => $parameters,
-        ];
-
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer '.$this->apiKey,
-        ])->post($this->apiUrl, $data);
-
-        dd($response->json());
-
-        if ($response->successful()) {
-            $result = $response->json();
-
-            return $result;
-        } else {
-            return [
-                'error' => 'Failed to make conversational inference',
-                'details' => $response->json(),
-            ];
-        }
-    }
-
     public function inference($params)
     {
-        $model = $params['model'];
+        // dont care about params model cuz for now we only have one model, deployed at the api url
         $messages = $params['messages'];
-        $maxTokens = $params['max_tokens'];
 
         $prompt = $this->formatMessagesToPrompt($messages);
 
@@ -91,12 +42,19 @@ class HuggingfaceAIGateway
             $response = $result[0]['generated_text'];
             // Explode response by "Assistant: " and take the second thing
             $actualresponse = explode('Assistant: ', $response);
-            $finalResponse = $actualresponse[1];
 
-            // If this response says "Human:" anywhere, then explode it and take everything else
-            if (strpos($finalResponse, 'Human:') !== false) {
-                $actualresponse = explode('Human: ', $finalResponse);
-                $finalResponse = $actualresponse[0];
+            // Check if the $actualresponse array has at least two elements
+            if (count($actualresponse) > 1) {
+                $finalResponse = $actualresponse[1];
+
+                // If this response says "Human:" anywhere, then explode it and take everything else
+                if (strpos($finalResponse, 'Human:') !== false) {
+                    $actualresponse = explode('Human: ', $finalResponse);
+                    $finalResponse = $actualresponse[0];
+                }
+            } else {
+                // If the "Assistant: " pattern is not found, use the entire response
+                $finalResponse = $response;
             }
 
             return [
