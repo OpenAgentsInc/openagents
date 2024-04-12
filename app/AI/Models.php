@@ -99,6 +99,14 @@ class Models
             'max_tokens' => 4000,
         ],
 
+        // SPIRIT OF SATOSHI
+        'satoshi-7b' => [
+            'name' => 'Satoshi 7B',
+            'gateway' => 'huggingface',
+            'access' => 'guest',
+            'max_tokens' => 2000,
+        ],
+
     ];
 
     public static function getDefaultModel()

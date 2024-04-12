@@ -20,6 +20,10 @@ return [
         'redirect' => '/callback/x',
     ],
 
+    'huggingface' => [
+        'api_key' => env('HUGGINGFACE_API_KEY'),
+    ],
+
     //    'postmark' => [
     //        'token' => env('POSTMARK_TOKEN'),
     //    ],
