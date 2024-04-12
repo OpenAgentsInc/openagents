@@ -77,6 +77,14 @@ class SimpleInferencer
                         'model' => $model,
                     ]);
                     break;
+                case 'huggingface':
+                    $client = new HuggingfaceAIGateway();
+                    $inference = $client->inference([
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $completionTokens,
+                    ]);
+                    break;
                 default:
                     // Handle unknown gateway
                     dd("Unknown gateway: $gateway");
