@@ -6,7 +6,8 @@ use Illuminate\Support\Facades\Http;
 
 class HuggingfaceAIGateway
 {
-    private $apiUrl = 'https://zub38q2qmtrdgl1x.us-east-1.aws.endpoints.huggingface.cloud';
+    private $apiUrl = 'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large';
+    //    private $apiUrl = 'https://zub38q2qmtrdgl1x.us-east-1.aws.endpoints.huggingface.cloud';
 
     private $apiKey;
 
@@ -17,42 +18,48 @@ class HuggingfaceAIGateway
 
     public function conversationalInference($params)
     {
-        $text = $params['text'];
-        $generatedResponses = $params['generated_responses'] ?? [];
-        $pastUserInputs = $params['past_user_inputs'] ?? [];
-        $options = $params['options'] ?? [];
-        $parameters = $params['parameters'] ?? [];
+        $inputs = [
+            'text' => $params['text'],
+            'generated_responses' => $params['generated_responses'] ?? [],
+            'past_user_inputs' => $params['past_user_inputs'] ?? [],
+        ];
+
+        $options = $params['options'] ?? [
+            'use_cache' => true,
+            'wait_for_model' => false,
+        ];
+
+        $parameters = $params['parameters'] ?? [
+            'min_length' => null,
+            'max_length' => 1000,
+            'top_k' => null,
+            'top_p' => null,
+            'temperature' => 1.0,
+            'repetition_penalty' => null,
+            'max_time' => null,
+        ];
 
         $data = [
-            'inputs' => [
-                'text' => $text,
-                'generated_responses' => $generatedResponses,
-                'past_user_inputs' => $pastUserInputs,
-            ],
+            'inputs' => json_encode($inputs),
             'options' => $options,
             'parameters' => $parameters,
         ];
-
-        dd($data);
 
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
             'Authorization' => 'Bearer '.$this->apiKey,
         ])->post($this->apiUrl, $data);
 
+        dd($response->json());
+
         if ($response->successful()) {
             $result = $response->json();
 
             return $result;
         } else {
-            dd($response);
-
             return [
                 'error' => 'Failed to make conversational inference',
                 'details' => $response->json(),
-                'content' => 'Error occurred. Please try again.'.$response->json(),
-                'output_tokens' => 0,
-                'input_tokens' => 0,
             ];
         }
     }
@@ -108,6 +115,7 @@ class HuggingfaceAIGateway
 
     public function formatMessagesForConversation($messages)
     {
+        return [];
         $pastUserInputs = [];
         $generatedResponses = [];
 
