@@ -6,8 +6,7 @@ use Illuminate\Support\Facades\Http;
 
 class HuggingfaceAIGateway
 {
-    private $apiUrl = 'https://api-inference.huggingface.co/models/microsoft/DialoGPT-large';
-    //    private $apiUrl = 'https://zub38q2qmtrdgl1x.us-east-1.aws.endpoints.huggingface.cloud';
+    private $apiUrl = 'https://zub38q2qmtrdgl1x.us-east-1.aws.endpoints.huggingface.cloud';
 
     private $apiKey;
 
@@ -74,6 +73,11 @@ class HuggingfaceAIGateway
 
         $data = [
             'inputs' => $prompt,
+            'parameters' => [
+                'return_full_text' => false,
+                'max_length' => 200,
+                'max_new_tokens' => 200,
+            ],
         ];
 
         $response = Http::withHeaders([
@@ -85,12 +89,18 @@ class HuggingfaceAIGateway
             $result = $response->json();
 
             $response = $result[0]['generated_text'];
+            // Explode response by "Assistant: " and take the second thing
+            $actualresponse = explode('Assistant: ', $response);
+            $finalResponse = $actualresponse[1];
 
-            //            $messages = preg_split('/Human:|Assistant:/', $response, -1, PREG_SPLIT_NO_EMPTY);
-            //            $finalResponse = trim(end($messages));
+            // If this response says "Human:" anywhere, then explode it and take everything else
+            if (strpos($finalResponse, 'Human:') !== false) {
+                $actualresponse = explode('Human: ', $finalResponse);
+                $finalResponse = $actualresponse[0];
+            }
 
             return [
-                'content' => $result,
+                'content' => $finalResponse,
                 'output_tokens' => 0,
                 'input_tokens' => 0,
             ];
