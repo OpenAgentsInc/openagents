@@ -7,6 +7,8 @@ use Yethee\Tiktoken\EncoderProvider;
 
 class OpenAIGateway
 {
+    private OpenAI $client;
+
     public function __construct()
     {
         $this->client = OpenAI::client(env('OPENAI_API_KEY'));

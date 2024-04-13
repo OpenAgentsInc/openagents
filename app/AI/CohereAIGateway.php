@@ -7,22 +7,6 @@ use GuzzleHttp\Exception\RequestException;
 
 class CohereAIGateway
 {
-    private $client;
-
-    private $apiBaseUrl = 'https://api.cohere.ai';
-
-    public function __construct()
-    {
-        $this->client = new Client([
-            'base_uri' => $this->apiBaseUrl,
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer '.env('COHERE_API_KEY'),
-                'accept' => 'application/json',
-            ],
-        ]);
-    }
-
     public function chatWithHistory($params)
     {
         $client = new Client();

@@ -7,25 +7,6 @@ use GuzzleHttp\Exception\RequestException;
 
 class AnthropicAIGateway
 {
-    private $client;
-
-    private $apiBaseUrl = 'https://api.anthropic.com';
-
-    public function __construct()
-    {
-        $this->client = new Client([
-            // Base URI is used with relative requests
-            'base_uri' => $this->apiBaseUrl,
-            // You can set any number of default request options.
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'x-api-key' => env('ANTHROPIC_API_KEY'), // Make sure to set your API key in your .env file
-                'anthropic-version' => '2023-06-01',
-                'anthropic-beta' => 'messages-2023-12-15',
-            ],
-        ]);
-    }
-
     public function createStreamed($params)
     {
         $client = new Client();
