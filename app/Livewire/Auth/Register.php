@@ -66,25 +66,18 @@ class Register extends ModalComponent
     }
 
     /**
-     * Resent verificaiton email to user.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * Resend verification email to user.
      */
     public function resend()
     {
         if (Auth::check()) {
             auth()->user()->sendEmailVerificationNotification();
             $this->alert('success', 'A fresh verification link has been sent to your email address.');
-        } else {
-
         }
-
     }
 
     public static function closeModalOnClickAway(): bool
     {
-
         return true;
     }
 
