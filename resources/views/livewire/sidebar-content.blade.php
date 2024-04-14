@@ -1,5 +1,5 @@
 <div class="flex flex-col w-full relative z-50 h-full">
-    <div class="fixed top-0 left-0 right-0 z-50 bg-black py-2 px-4">
+    <div class="fixed top-0 left-0 z-50 bg-black py-2 px-4 w-[259px]">
         <div class="flex justify-end">
             <a href="/" wire:navigate>
                 <button class="p-1.5 rounded-md text-white">
