@@ -57,37 +57,40 @@
 <script>
     function addCopyButtons(codeBlocks) {
         console.log('addCopyButtons() called');
-        console.log('Number of code blocks:', codeBlocks.length);
 
-        codeBlocks.forEach(function (codeBlock, blockIndex) {
-            console.log(`Processing code block ${blockIndex + 1}`);
+        if (codeBlocks && codeBlocks.length) {
+            console.log('Number of code blocks:', codeBlocks.length);
 
-            // Remove any existing "Copy" buttons
-            const existingCopyButton = codeBlock.querySelector('.copy-button');
-            if (existingCopyButton) {
-                console.log('Removing existing "Copy" button');
-                existingCopyButton.remove();
-            }
+            codeBlocks.forEach(function (codeBlock, blockIndex) {
+                console.log(`Processing code block ${blockIndex + 1}`);
 
-            // Add a new "Copy" button
-            const copyButton = document.createElement('button');
-            copyButton.innerText = 'Copy';
-            copyButton.classList.add('copy-button');
-            copyButton.addEventListener('click', function () {
-                const code = codeBlock.querySelector('code').innerText;
-                navigator.clipboard.writeText(code).then(function () {
-                    copyButton.innerText = 'Copied!';
-                    setTimeout(function () {
-                        copyButton.innerText = 'Copy';
-                    }, 2000);
-                }, function (err) {
-                    console.error('Failed to copy: ', err);
+                // Remove any existing "Copy" buttons
+                const existingCopyButton = codeBlock.querySelector('.copy-button');
+                if (existingCopyButton) {
+                    console.log('Removing existing "Copy" button');
+                    existingCopyButton.remove();
+                }
+
+                // Add a new "Copy" button
+                const copyButton = document.createElement('button');
+                copyButton.innerText = 'Copy';
+                copyButton.classList.add('copy-button');
+                copyButton.addEventListener('click', function () {
+                    const code = codeBlock.querySelector('code').innerText;
+                    navigator.clipboard.writeText(code).then(function () {
+                        copyButton.innerText = 'Copied!';
+                        setTimeout(function () {
+                            copyButton.innerText = 'Copy';
+                        }, 2000);
+                    }, function (err) {
+                        console.error('Failed to copy: ', err);
+                    });
                 });
-            });
 
-            codeBlock.appendChild(copyButton);
-            console.log('Added new "Copy" button');
-        });
+                codeBlock.appendChild(copyButton);
+                console.log('Added new "Copy" button');
+            });
+        }
     }
 
     function observeCodeBlocks() {
@@ -118,6 +121,12 @@
         const codeBlocks = document.querySelectorAll('.markdown-content pre.shiki');
         addCopyButtons(codeBlocks);
         observeCodeBlocks();
+    });
+
+    document.addEventListener('message-created', function () {
+        console.log('message-created event triggered');
+        const codeBlocks = document.querySelectorAll('.markdown-content pre.shiki');
+        addCopyButtons(codeBlocks);
     });
 </script>
 
