@@ -16,7 +16,8 @@
 </head>
 
 <body class="h-screen bg-black antialiased" x-cloak
-      x-data="{  sidebarOpen: window.innerWidth > 768, collapsed: false }">
+      x-data="{  sidebarOpen: window.innerWidth > 768, collapsed: false }"
+>
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
     <button class="z-[9001] absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[14px] mr-12"
@@ -53,6 +54,7 @@
 @livewire('wire-elements-modal')
 <x-livewire-alert::scripts/>
 
+@include('partials.copyblocks')
 
 </body>
 
