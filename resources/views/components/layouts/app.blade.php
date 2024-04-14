@@ -53,6 +53,37 @@
 @livewire('wire-elements-modal')
 <x-livewire-alert::scripts/>
 
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const markdownContents = document.querySelectorAll('.markdown-content');
+        console.log(markdownContents);
+
+        markdownContents.forEach(function (markdownContent) {
+            const codeBlocks = markdownContent.querySelectorAll('pre.shiki');
+
+            codeBlocks.forEach(function (codeBlock) {
+                const copyButton = document.createElement('button');
+                copyButton.innerText = 'Copy';
+                copyButton.classList.add('copy-button');
+                console.log("DID THIS WORK")
+                copyButton.addEventListener('click', function () {
+                    const code = codeBlock.querySelector('code').innerText;
+                    navigator.clipboard.writeText(code).then(function () {
+                        console.log('Copied to clipboard: ', code)
+                        copyButton.innerText = 'Copied!';
+                        setTimeout(function () {
+                            copyButton.innerText = 'Copy';
+                        }, 2000);
+                    }, function (err) {
+                        console.error('Failed to copy: ', err);
+                    });
+                });
+
+                codeBlock.appendChild(copyButton);
+            });
+        });
+    });
+</script>
 
 </body>
 
