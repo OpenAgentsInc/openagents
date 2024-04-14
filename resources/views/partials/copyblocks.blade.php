@@ -1,9 +1,8 @@
 <script>
-    function addCopyButton(codeBlock) {
-        console.log('addCopyButton() called with codeBlock', codeBlock);
+    // Probably horrible code but it works. XGH!
 
+    function addCopyButton(codeBlock) {
         if (!codeBlock) {
-            console.log("no codeblock so bye")
             return;
         }
 
@@ -27,17 +26,13 @@
             });
 
             codeBlock.appendChild(copyButton);
-            console.log('Added new "Copy" button');
         }
     }
 
     function processCodeBlocks() {
-        console.log('processCodeBlocks() called');
         const codeBlocks = document.querySelectorAll('.markdown-content pre.shiki');
-        console.log('Number of code blocks:', codeBlocks.length);
 
         codeBlocks.forEach(function (codeBlock, blockIndex) {
-            console.log(`Processing code block ${blockIndex + 1}`);
             addCopyButton(codeBlock);
         });
     }
@@ -66,13 +61,11 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-        console.log('DOMContentLoaded event triggered');
         processCodeBlocks();
         observeCodeBlocks();
     });
 
     window.addEventListener('message-created', function () {
-        console.log('message-created event triggered');
         setTimeout(function () {
             processCodeBlocks();
         }, 0);
