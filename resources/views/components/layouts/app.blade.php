@@ -16,7 +16,8 @@
 </head>
 
 <body class="h-screen bg-black antialiased" x-cloak
-      x-data="{  sidebarOpen: window.innerWidth > 768, collapsed: false }">
+      x-data="{  sidebarOpen: window.innerWidth > 768, collapsed: false }"
+      x-on:message-created.window="addCopyButtons()">
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
     <button class="z-[9001] absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[14px] mr-12"
@@ -54,34 +55,69 @@
 <x-livewire-alert::scripts/>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const markdownContents = document.querySelectorAll('.markdown-content');
-        console.log(markdownContents);
+    function addCopyButtons(codeBlocks) {
+        console.log('addCopyButtons() called');
+        console.log('Number of code blocks:', codeBlocks.length);
 
-        markdownContents.forEach(function (markdownContent) {
-            const codeBlocks = markdownContent.querySelectorAll('pre.shiki');
+        codeBlocks.forEach(function (codeBlock, blockIndex) {
+            console.log(`Processing code block ${blockIndex + 1}`);
 
-            codeBlocks.forEach(function (codeBlock) {
-                const copyButton = document.createElement('button');
-                copyButton.innerText = 'Copy';
-                copyButton.classList.add('copy-button');
-                console.log("DID THIS WORK")
-                copyButton.addEventListener('click', function () {
-                    const code = codeBlock.querySelector('code').innerText;
-                    navigator.clipboard.writeText(code).then(function () {
-                        console.log('Copied to clipboard: ', code)
-                        copyButton.innerText = 'Copied!';
-                        setTimeout(function () {
-                            copyButton.innerText = 'Copy';
-                        }, 2000);
-                    }, function (err) {
-                        console.error('Failed to copy: ', err);
-                    });
+            // Remove any existing "Copy" buttons
+            const existingCopyButton = codeBlock.querySelector('.copy-button');
+            if (existingCopyButton) {
+                console.log('Removing existing "Copy" button');
+                existingCopyButton.remove();
+            }
+
+            // Add a new "Copy" button
+            const copyButton = document.createElement('button');
+            copyButton.innerText = 'Copy';
+            copyButton.classList.add('copy-button');
+            copyButton.addEventListener('click', function () {
+                const code = codeBlock.querySelector('code').innerText;
+                navigator.clipboard.writeText(code).then(function () {
+                    copyButton.innerText = 'Copied!';
+                    setTimeout(function () {
+                        copyButton.innerText = 'Copy';
+                    }, 2000);
+                }, function (err) {
+                    console.error('Failed to copy: ', err);
                 });
+            });
 
-                codeBlock.appendChild(copyButton);
+            codeBlock.appendChild(copyButton);
+            console.log('Added new "Copy" button');
+        });
+    }
+
+    function observeCodeBlocks() {
+        const observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                if (mutation.type === 'childList') {
+                    const addedNodes = mutation.addedNodes;
+                    addedNodes.forEach(function (node) {
+                        if (node.nodeType === Node.ELEMENT_NODE && node.matches('.markdown-content pre.shiki')) {
+                            addCopyButtons([node]);
+                        }
+                    });
+                }
             });
         });
+
+        const observerOptions = {
+            childList: true,
+            subtree: true
+        };
+
+        const mainElement = document.querySelector('main');
+        observer.observe(mainElement, observerOptions);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log('DOMContentLoaded event triggered');
+        const codeBlocks = document.querySelectorAll('.markdown-content pre.shiki');
+        addCopyButtons(codeBlocks);
+        observeCodeBlocks();
     });
 </script>
 
