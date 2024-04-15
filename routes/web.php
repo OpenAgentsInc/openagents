@@ -6,6 +6,7 @@ use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
+use App\Livewire\Plugins\PluginRegistry;
 
 // CHAT
 Route::get('/', Chat::class)->name('home');
@@ -24,6 +25,10 @@ Route::get('/pro', [BillingController::class, 'pro'])->name('pro');
 Route::get('/blog', [StaticController::class, 'blog']);
 Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
+
+// PLUGIN REGISTRY
+Route::get('/plugins', PluginRegistry::class);
+
 
 // MISC
 Route::get('/changelog', [StaticController::class, 'changelog']);
