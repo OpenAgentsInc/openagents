@@ -20,7 +20,6 @@
         this.$refs.textarea.style.height = 'auto';
         let newHeight = this.$refs.textarea.scrollHeight;
         let maxHeight = this.viewportMaxHeight;
-        console.log('Updating with new height', newHeight, 'and max height', maxHeight);
 
         if (this.maxRows !== null) {
             let maxRowsHeight = this.maxRows * this.lineHeight() + this.scrollbarWidth();

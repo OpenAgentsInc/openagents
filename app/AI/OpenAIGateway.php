@@ -7,7 +7,7 @@ use Yethee\Tiktoken\EncoderProvider;
 
 class OpenAIGateway
 {
-    private OpenAI $client;
+    private OpenAI\Client $client;
 
     public function __construct()
     {
