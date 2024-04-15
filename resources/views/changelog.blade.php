@@ -15,25 +15,30 @@
                 <div class="mt-6 grid grid-cols-1 gap-12">
 
                     <x-pane title="April 15, 2024" borderColor="border-darkgray">
-                        <x-changelog-item>
+                        <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/267">
                             Added this changelog
                         </x-changelog-item>
-                        <x-changelog-item>
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/commit/f17ec9a31745009179d4dcb53e593a19d78c745e">
                             Fixed menu buttons
                         </x-changelog-item>
-                        <x-changelog-item>
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/267/commits/0feb663b9fb9b24f98f33aebef5cf53ddc1ac0ef">
                             Fixed OpenAI model bug
                         </x-changelog-item>
                     </x-pane>
 
                     <x-pane title="April 12, 2024" borderColor="border-darkgray">
-                        <x-changelog-item>
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/261"
+                                post="https://twitter.com/OpenAgentsInc/status/1778822995261141143"
+                        >
                             Added chat model Satoshi 7B
                         </x-changelog-item>
                     </x-pane>
 
                 </div>
-                <p class="text-sm">
+                <p class="text-sm text-center text-gray">
                     See our <a href="https://github.com/OpenAgentsInc/openagents/commits/main/" target="_blank">GitHub
                         commit history</a> for the full list of changes.
                 </p>
