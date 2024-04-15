@@ -20,7 +20,8 @@
 >
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
-    <div class="h-[54px] flex justify-between items-center z-[9001] absolute top-0 left-0 py-2 px-4 w-[259px]">
+    <div class="h-[54px] flex justify-between items-center absolute top-0 left-0 py-2 px-4 w-[259px]"
+         x-bind:class="{ 'z-[9001]': sidebarOpen, 'z-[1]': !sidebarOpen }">
         <button class="cursor-pointer text-white"
                 @click="sidebarOpen = !sidebarOpen">
             <x-icon.menu class="h-6 w-6"/>
@@ -61,7 +62,7 @@
     <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden hmmm"
          x-bind:style="`margin-left: ${sidebarOpen ? '0' : (window.innerWidth <= 768 ? '0' : '50px')}`"
     >
-        <main class="relative h-full w-full flex-1 overflow-auto transition-width">
+        <main class="relative h-full w-full flex-1 overflow-auto transition-width z-[1]">
             {{$slot}}
         </main>
     </div>
