@@ -26,6 +26,7 @@ Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
 
 // MISC
+Route::get('/changelog', [StaticController::class, 'changelog']);
 Route::get('/docs', [StaticController::class, 'docs']);
 Route::get('/terms', [StaticController::class, 'terms']);
 Route::get('/privacy', [StaticController::class, 'privacy']);
