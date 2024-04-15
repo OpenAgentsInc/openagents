@@ -1,13 +1,13 @@
 <div class="flex flex-col w-full relative z-50 h-full">
-    <div class="fixed top-0 left-0 z-50 bg-black py-2 px-4 w-[259px]">
-        <div class="flex justify-end">
-            <a href="/" wire:navigate>
-                <button class="p-1.5 rounded-md text-white">
-                    <x-icon.plus class="h-6 w-6"></x-icon.plus>
-                </button>
-            </a>
-        </div>
-    </div>
+    {{--    <div class="fixed top-0 left-0 z-50 py-2 px-4 w-[259px]">--}}
+    {{--        <div class="flex justify-end">--}}
+    {{--            <a href="/" wire:navigate>--}}
+    {{--                <button class="p-1.5 rounded-md text-white">--}}
+    {{--                    <x-icon.plus class="h-6 w-6"></x-icon.plus>--}}
+    {{--                </button>--}}
+    {{--            </a>--}}
+    {{--        </div>--}}
+    {{--    </div>--}}
 
     <div class="flex flex-col gap-2 mt-16 py-4 px-1" @thread_updated="$refresh">
         <ol>

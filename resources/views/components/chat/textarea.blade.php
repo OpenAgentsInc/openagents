@@ -43,7 +43,6 @@
         return this.$refs.textarea.offsetWidth - this.$refs.textarea.clientWidth;
     },
     resetHeight() {
-        console.log('trying to reset height')
         this.$refs.textarea.style.height = '48px';
         this.$refs.textarea.style.overflowY = 'hidden';
         this.isDisabled = true;
@@ -58,7 +57,7 @@
         @input="update(); isDisabled = inputVal.length === 0"
         placeholder="{{ $default }}"
         x-model="inputVal"
-        x-effect="console.log('inputVal:', inputVal); if (inputVal === '') resetHeight()"
+        x-effect="if (inputVal === '') resetHeight()"
         :rows="minRows"
             {{ $attributes->merge([
                 'class' => "resize-none flex w-full rounded-md border-2 bg-transparent px-3 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className transition-all duration-300 ease-in-out",
