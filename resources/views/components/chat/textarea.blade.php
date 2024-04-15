@@ -46,7 +46,8 @@
         x-ref="textarea"
         autocomplete="off"
         spellcheck="false"
-        @input="update(); inputVal = $event.target.value; isDisabled = inputVal.length === 0"
+        wire:ignore
+        @input="update(); inputVal = $event.target.value; isDisabled = inputVal.length === 0; $wire.set('message_input', inputVal)"
         placeholder="{{ $default }}"
         :rows="minRows"
             {{ $attributes->merge([
