@@ -20,26 +20,23 @@
 >
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
-    <button class="z-[9001] absolute top-0 left-0 cursor-pointer h-[28px] w-[28px] m-4 mt-[14px] mr-12"
-            @click="sidebarOpen = !sidebarOpen">
-        <x-icon.menu/>
-    </button>
-
-    <div class="fixed top-0 left-0 z-[9901] py-2 px-4 w-[259px]" x-show="sidebarOpen"
-         x-transition:enter="transition ease-out duration-200"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition ease-in duration-100"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-    >
-        <div class="flex justify-end z-[9901]">
-            <a href="/" wire:navigate>
-                <button class="p-1.5 rounded-md text-white">
-                    <x-icon.plus class="h-6 w-6"></x-icon.plus>
-                </button>
-            </a>
-        </div>
+    <div class="h-[54px] flex justify-between items-center z-[9001] absolute top-0 left-0 py-2 px-4 w-[259px]">
+        <button class="cursor-pointer text-white"
+                @click="sidebarOpen = !sidebarOpen">
+            <x-icon.menu class="h-6 w-6"/>
+        </button>
+        <a href="/" wire:navigate x-show="sidebarOpen"
+           x-transition:enter="transition ease-out duration-200 delay-200"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+        >
+            <button class="p-1.5 rounded-md text-white">
+                <x-icon.plus class="h-6 w-6"></x-icon.plus>
+            </button>
+        </a>
     </div>
 
 
