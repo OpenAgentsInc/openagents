@@ -30,6 +30,10 @@
                     </x-pane>
 
                 </div>
+                <p class="text-sm">
+                    See our <a href="https://github.com/OpenAgentsInc/openagents/commits/main/" target="_blank">GitHub
+                        commit history</a> for the full list of changes.
+                </p>
             </div>
         </div>
     </div>
