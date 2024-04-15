@@ -21,6 +21,9 @@
                         <x-changelog-item>
                             Fixed menu buttons
                         </x-changelog-item>
+                        <x-changelog-item>
+                            Fixed OpenAI model bug
+                        </x-changelog-item>
                     </x-pane>
 
                     <x-pane title="April 12, 2024" borderColor="border-darkgray">
