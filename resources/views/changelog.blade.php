@@ -15,12 +15,18 @@
                 <div class="mt-6 grid grid-cols-1 gap-12">
 
                     <x-pane title="April 15, 2024" borderColor="border-darkgray">
-                        <p class="mx-1 my-0 text-text">- Added this changelog</p>
-                        <p class="mx-1 my-0 text-text">- Fixed menu buttons</p>
+                        <x-changelog-item>
+                            Added this changelog
+                        </x-changelog-item>
+                        <x-changelog-item>
+                            Fixed menu buttons
+                        </x-changelog-item>
                     </x-pane>
 
                     <x-pane title="April 12, 2024" borderColor="border-darkgray">
-                        <p class="mx-1 my-0 text-text">- Added chat model Satoshi 7B</p>
+                        <x-changelog-item>
+                            Added chat model Satoshi 7B
+                        </x-changelog-item>
                     </x-pane>
 
                 </div>
