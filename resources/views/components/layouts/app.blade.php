@@ -25,7 +25,7 @@
         <x-icon.menu/>
     </button>
 
-    <div class="fixed top-0 left-0 z-50 py-2 px-4 w-[259px]" x-show="sidebarOpen"
+    <div class="fixed top-0 left-0 z-[9901] py-2 px-4 w-[259px]" x-show="sidebarOpen"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
@@ -33,7 +33,7 @@
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
     >
-        <div class="flex justify-end">
+        <div class="flex justify-end z-[9901]">
             <a href="/" wire:navigate>
                 <button class="p-1.5 rounded-md text-white">
                     <x-icon.plus class="h-6 w-6"></x-icon.plus>
