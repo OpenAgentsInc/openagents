@@ -135,6 +135,7 @@ class Chat extends Component
         $this->pending = true;
 
         // Call simpleRun after the next render
+        $this->dispatch('message-created');
         $this->js('$wire.simpleRun()');
     }
 
