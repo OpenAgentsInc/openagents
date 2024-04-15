@@ -7,21 +7,6 @@ use GuzzleHttp\Exception\RequestException;
 
 class PerplexityAIGateway
 {
-    private $client;
-
-    private $apiBaseUrl = 'https://api.perplexity.ai';
-
-    public function __construct()
-    {
-        $this->client = new Client([
-            'base_uri' => $this->apiBaseUrl,
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'x-api-key' => env('PERPLEXITY_API_KEY'), // Make sure to set your API key in your .env file
-            ],
-        ]);
-    }
-
     public function createStreamed($params)
     {
         $client = new Client();
