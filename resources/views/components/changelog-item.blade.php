@@ -1,0 +1,1 @@
+<p class="mx-1 my-[2px] text-text">&middot; {{ $slot }}</p>

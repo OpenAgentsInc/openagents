@@ -9,6 +9,11 @@ use Laravel\Jetstream\Jetstream;
 
 class StaticController extends Controller
 {
+    public function changelog(Request $request)
+    {
+        return view('changelog');
+    }
+
     public function blog(Request $request)
     {
         return view('blog');
