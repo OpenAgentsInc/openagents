@@ -24,6 +24,25 @@
             @click="sidebarOpen = !sidebarOpen">
         <x-icon.menu/>
     </button>
+
+    <div class="fixed top-0 left-0 z-50 py-2 px-4 w-[259px]" x-show="sidebarOpen"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+    >
+        <div class="flex justify-end">
+            <a href="/" wire:navigate>
+                <button class="p-1.5 rounded-md text-white">
+                    <x-icon.plus class="h-6 w-6"></x-icon.plus>
+                </button>
+            </a>
+        </div>
+    </div>
+
+
     <div class="flex-shrink-0 overflow-x-hidden sidebar"
          x-bind:class="{
             'sidebar-open': sidebarOpen,
