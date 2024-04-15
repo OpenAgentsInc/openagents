@@ -15,7 +15,10 @@
                 <div class="mt-6 grid grid-cols-1 gap-10">
 
                     <x-pane title="April 15, 2024" borderColor="border-darkgray">
-                        <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/267">
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/267"
+                                post="https://twitter.com/OpenAgentsInc/status/1779907555977769160"
+                        >
                             Added this changelog
                         </x-changelog-item>
                         <x-changelog-item
