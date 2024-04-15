@@ -14,19 +14,19 @@ class PluginRegistry extends Component
     {
         $this->plugins = [
             [
-                'name' => 'My Plugin',
+                'name' => 'Daniel Plugin',
                 'description' => 'A simple example of a plugin',
-                'author' => 'Me',
+                'author' => 'Daniel Ofosu',
             ],
             [
-                'name' => 'McDonald\'s Plugin',
+                'name' => 'McDonald Plugin',
                 'description' => 'A plugin from a company',
-                'author' => 'McDonald\'s Corporation',
+                'author' => 'McDonald Aladi',
             ],
             [
-                'name' => 'Riccardo\'s Plugin',
+                'name' => 'Riccardo Plugin',
                 'description' => 'A plugin from someone else',
-                'author' => 'Riccardo',
+                'author' => 'Riccardo Balbo',
             ],
         ];
 
