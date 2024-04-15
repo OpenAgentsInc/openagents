@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Nostr Relay Test</title>
+</head>
+
+<body>
+  <h1>Nostr Relay Test</h1>
+  <script>
+    // Create a new WebSocket connection to the Nostr relay
+    const socket = new WebSocket("wss://relay.wellorder.net");
+
+    socket.onopen = function (event) {
+      console.log("WebSocket connection established");
+
+      const filters = [{
+        kinds: [0, 1], // Request metadata and text note events
+        limit: 50
+      }];
+
+      const subscriptionId = "my_subscription";
+      const reqMessage = ["REQ", subscriptionId, ...filters];
+      socket.send(JSON.stringify(reqMessage));
+    };
+
+    socket.onmessage = function (event) {
+      console.log("Received message:", event.data);
+    };
+
+    socket.onerror = function (error) {
+      console.error("WebSocket error:", error);
+    };
+
+    socket.onclose = function (event) {
+      console.log("WebSocket connection closed");
+    };
+
+  </script>
+</body>
+
+</html>
