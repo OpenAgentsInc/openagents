@@ -44,7 +44,7 @@ class SimpleInferencer
                     break;
                 case 'mistral':
                     $client = new MistralAIGateway($httpClient);
-                    $inference = $client->chat()->createStreamed([
+                    $inference = $client->inference([
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $completionTokens,
