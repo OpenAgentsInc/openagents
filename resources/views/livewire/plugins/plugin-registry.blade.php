@@ -29,8 +29,8 @@
     </div> --}}
     @endauth
 
-    <div x-data="{ plugins: @entangle('plugins') }" class="mt-5 p-5">
-        <h1 class="text-3xl font-bold text-center mb-6">Plugin Registry</h1>
+    <div x-data="{ plugins: @entangle('plugins') }" class="mt-5 p-9">
+        <h1 class="text-3xl font-bold text-center mb-16">Plugin Registry</h1>
 
         <div class="my-5">
 
