@@ -102,7 +102,7 @@ class Models
         // SPIRIT OF SATOSHI
         'satoshi-7b' => [
             'name' => 'Satoshi 7B',
-            'gateway' => 'huggingface',
+            'gateway' => 'satoshi',
             'access' => 'guest',
             'max_tokens' => 2000,
         ],

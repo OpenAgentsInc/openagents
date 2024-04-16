@@ -20,9 +20,12 @@
                                 $userAccess = $this->getUserAccess();
                                 $indicator = $this->getModelIndicator($modelKey, $userAccess);
                                 $disabled = $indicator ? 'opacity-25' : '';
+                                $gateway = $modelName['gateway'];
+                                $imagePath = 'images/icons/' . $gateway . '.png';
                             @endphp
                             <a wire:click="selectModel('{{ $modelKey }}')"
                                class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
+                                <img src="{{ asset($imagePath) }}" alt="{{ $gateway }}" class="w-6 h-6">
                                 <div class="flex flex-col">
                                     <span class="text-indigo-50 my-0 text-sm">{{ $modelName["name"] }}</span>
                                 </div>
