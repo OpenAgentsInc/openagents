@@ -19,7 +19,7 @@
                                             <img src="{{ Auth::user()->profile_photo_path }}" alt="Profile"
                                                  class="mt-4 rounded-full w-[32px] h-[32px] object-cover">
                                         @else
-                                            {{ strtoupper(Auth::user()->name[0] ?? '-') }}
+                                            <x-icon.user class="w-[32px] h-[32px] mt-4"/>
                                         @endif
                                     </button>
                                     <div x-popover:panel x-cloak x-transition x-show="open"
