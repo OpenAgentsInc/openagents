@@ -21,7 +21,7 @@
     "openai-php/client": "^0.8.4",
     "pusher/pusher-php-server": "^7.2",
     "spatie/laravel-markdown": "^2.5",
-    "swentel/nostr-php": "^1.2",
+    "swentel/nostr-php": "dev-main",
     "wire-elements/modal": "^2.0",
     "yethee/tiktoken": "^0.3.0"
   },

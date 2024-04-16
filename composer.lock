@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "aa42d06f2cc808f5082235b5b14eaae5",
+    "content-hash": "94305996e010c7e80e107456c0024cd3",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -3849,28 +3849,28 @@
         },
         {
             "name": "phrity/net-stream",
-            "version": "1.3.0",
+            "version": "2.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/sirn-se/phrity-net-stream.git",
-                "reference": "9105931b65ad90c75f4885a40b268b0f65802e3e"
+                "reference": "c4f449005d00487cde8a29eaa2cda3d4508a8d07"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/sirn-se/phrity-net-stream/zipball/9105931b65ad90c75f4885a40b268b0f65802e3e",
-                "reference": "9105931b65ad90c75f4885a40b268b0f65802e3e",
+                "url": "https://api.github.com/repos/sirn-se/phrity-net-stream/zipball/c4f449005d00487cde8a29eaa2cda3d4508a8d07",
+                "reference": "c4f449005d00487cde8a29eaa2cda3d4508a8d07",
                 "shasum": ""
             },
             "require": {
-                "php": "^7.4 | ^8.0",
-                "phrity/util-errorhandler": "^1.0",
+                "php": "^8.0",
+                "phrity/util-errorhandler": "^1.1",
                 "psr/http-factory": "^1.0",
                 "psr/http-message": "^1.0 | ^2.0"
             },
             "require-dev": {
                 "php-coveralls/php-coveralls": "^2.0",
-                "phpunit/phpunit": "^9.0 | ^10.0",
-                "phrity/net-uri": "^1.1",
+                "phpunit/phpunit": "^9.0 | ^10.0 | ^11.0",
+                "phrity/net-uri": "^2.0",
                 "squizlabs/php_codesniffer": "^3.0"
             },
             "type": "library",
@@ -3903,33 +3903,38 @@
             ],
             "support": {
                 "issues": "https://github.com/sirn-se/phrity-net-stream/issues",
-                "source": "https://github.com/sirn-se/phrity-net-stream/tree/1.3.0"
+                "source": "https://github.com/sirn-se/phrity-net-stream/tree/2.0.0"
             },
-            "time": "2023-10-22T10:47:03+00:00"
+            "time": "2024-03-05T19:48:45+00:00"
         },
         {
             "name": "phrity/net-uri",
-            "version": "1.3.0",
+            "version": "2.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/sirn-se/phrity-net-uri.git",
-                "reference": "3f458e0c4d1ddc0e218d7a5b9420127c63925f43"
+                "reference": "472617470a23933f853b0bf42229bf6d801717e1"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/sirn-se/phrity-net-uri/zipball/3f458e0c4d1ddc0e218d7a5b9420127c63925f43",
-                "reference": "3f458e0c4d1ddc0e218d7a5b9420127c63925f43",
+                "url": "https://api.github.com/repos/sirn-se/phrity-net-uri/zipball/472617470a23933f853b0bf42229bf6d801717e1",
+                "reference": "472617470a23933f853b0bf42229bf6d801717e1",
                 "shasum": ""
             },
             "require": {
-                "php": "^7.4 | ^8.0",
+                "ext-mbstring": "*",
+                "php": "^8.0",
                 "psr/http-factory": "^1.0",
                 "psr/http-message": "^1.0 | ^2.0"
             },
             "require-dev": {
                 "php-coveralls/php-coveralls": "^2.0",
-                "phpunit/phpunit": "^9.0 | ^10.0",
+                "phpunit/phpunit": "^9.0 | ^10.0 | ^11.0",
+                "phrity/util-errorhandler": "^1.0",
                 "squizlabs/php_codesniffer": "^3.0"
+            },
+            "suggest": {
+                "ext-intl": "Enables IDN conversion for non-ASCII domains"
             },
             "type": "library",
             "autoload": {
@@ -3958,9 +3963,9 @@
             ],
             "support": {
                 "issues": "https://github.com/sirn-se/phrity-net-uri/issues",
-                "source": "https://github.com/sirn-se/phrity-net-uri/tree/1.3.0"
+                "source": "https://github.com/sirn-se/phrity-net-uri/tree/2.0.0"
             },
-            "time": "2023-08-21T10:33:06+00:00"
+            "time": "2024-03-03T12:30:15+00:00"
         },
         {
             "name": "phrity/util-errorhandler",
@@ -4015,36 +4020,36 @@
         },
         {
             "name": "phrity/websocket",
-            "version": "1.7.2",
+            "version": "2.2.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/sirn-se/websocket-php.git",
-                "reference": "7349a37c5a853ff0ae12c03fa59e8879e9dda486"
+                "reference": "46f8238cea052a270d49281b868386c264466372"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/sirn-se/websocket-php/zipball/7349a37c5a853ff0ae12c03fa59e8879e9dda486",
-                "reference": "7349a37c5a853ff0ae12c03fa59e8879e9dda486",
+                "url": "https://api.github.com/repos/sirn-se/websocket-php/zipball/46f8238cea052a270d49281b868386c264466372",
+                "reference": "46f8238cea052a270d49281b868386c264466372",
                 "shasum": ""
             },
             "require": {
-                "php": "^7.4 | ^8.0",
-                "phrity/net-stream": "^1.2",
-                "phrity/net-uri": "^1.2",
-                "phrity/util-errorhandler": "^1.0",
+                "php": "^8.1",
+                "phrity/net-stream": "^2.0",
+                "phrity/net-uri": "^2.0",
+                "phrity/util-errorhandler": "^1.1",
                 "psr/http-message": "^1.0 | ^2.0",
-                "psr/log": "^1.0 | ^2.0 | ^3.0"
+                "psr/log": "^1.0 | ^2.0"
             },
             "require-dev": {
                 "php-coveralls/php-coveralls": "^2.0",
-                "phpunit/phpunit": "^9.0 | ^10.0",
-                "phrity/net-mock": "^1.3",
+                "phpunit/phpunit": "^10.0 | ^11.0",
+                "phrity/net-mock": "^2.0",
                 "squizlabs/php_codesniffer": "^3.5"
             },
             "type": "library",
             "autoload": {
                 "psr-4": {
-                    "WebSocket\\": "lib/"
+                    "WebSocket\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -4070,9 +4075,9 @@
             ],
             "support": {
                 "issues": "https://github.com/sirn-se/websocket-php/issues",
-                "source": "https://github.com/sirn-se/websocket-php/tree/1.7.2"
+                "source": "https://github.com/sirn-se/websocket-php/tree/2.2.1"
             },
-            "time": "2023-11-04T12:09:42+00:00"
+            "time": "2024-04-13T10:13:22+00:00"
         },
         {
             "name": "pragmarx/google2fa",
@@ -4439,16 +4444,16 @@
         },
         {
             "name": "psr/log",
-            "version": "3.0.0",
+            "version": "2.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/php-fig/log.git",
-                "reference": "fe5ea303b0887d5caefd3d431c3e61ad47037001"
+                "reference": "ef29f6d262798707a9edd554e2b82517ef3a9376"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/php-fig/log/zipball/fe5ea303b0887d5caefd3d431c3e61ad47037001",
-                "reference": "fe5ea303b0887d5caefd3d431c3e61ad47037001",
+                "url": "https://api.github.com/repos/php-fig/log/zipball/ef29f6d262798707a9edd554e2b82517ef3a9376",
+                "reference": "ef29f6d262798707a9edd554e2b82517ef3a9376",
                 "shasum": ""
             },
             "require": {
@@ -4457,7 +4462,7 @@
             "type": "library",
             "extra": {
                 "branch-alias": {
-                    "dev-master": "3.x-dev"
+                    "dev-master": "2.0.x-dev"
                 }
             },
             "autoload": {
@@ -4483,9 +4488,9 @@
                 "psr-3"
             ],
             "support": {
-                "source": "https://github.com/php-fig/log/tree/3.0.0"
+                "source": "https://github.com/php-fig/log/tree/2.0.0"
             },
-            "time": "2021-07-14T16:46:02+00:00"
+            "time": "2021-07-14T16:41:46+00:00"
         },
         {
             "name": "psr/simple-cache",
@@ -4616,91 +4621,6 @@
                 "source": "https://github.com/bobthecow/psysh/tree/v0.12.3"
             },
             "time": "2024-04-02T15:57:53+00:00"
-        },
-        {
-            "name": "public-square/phpecc",
-            "version": "v0.1.2",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/public-square/phpecc.git",
-                "reference": "683178803e97406ad16a0ef811768eecdc6ef33e"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/public-square/phpecc/zipball/683178803e97406ad16a0ef811768eecdc6ef33e",
-                "reference": "683178803e97406ad16a0ef811768eecdc6ef33e",
-                "shasum": ""
-            },
-            "require": {
-                "ext-gmp": "*",
-                "fgrosse/phpasn1": "^2.0",
-                "php": "^8.0"
-            },
-            "replace": {
-                "mdanter/ecc": "1.0.0"
-            },
-            "require-dev": {
-                "phpunit/phpunit": "^6.0||^8.0||^9.0",
-                "squizlabs/php_codesniffer": "^2.0",
-                "symfony/yaml": "^2.6|^3.0"
-            },
-            "type": "library",
-            "autoload": {
-                "psr-4": {
-                    "Mdanter\\Ecc\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "Matyas Danter",
-                    "homepage": "http://matejdanter.com/",
-                    "role": "Author"
-                },
-                {
-                    "name": "Thibaud Fabre",
-                    "email": "thibaud@aztech.io",
-                    "homepage": "http://aztech.io",
-                    "role": "Maintainer"
-                },
-                {
-                    "name": "Thomas Kerin",
-                    "email": "afk11@users.noreply.github.com",
-                    "role": "Maintainer"
-                },
-                {
-                    "name": "Ology Newswire, Inc",
-                    "email": "protocol@vpsqr.com",
-                    "homepage": "https://vpsqr.com/",
-                    "role": "Maintainer"
-                }
-            ],
-            "description": "PHP Elliptic Curve Cryptography library",
-            "homepage": "https://github.com/public-square/phpecc",
-            "keywords": [
-                "Diffie",
-                "ECDSA",
-                "Hellman",
-                "curve",
-                "ecdh",
-                "elliptic",
-                "nistp192",
-                "nistp224",
-                "nistp256",
-                "nistp384",
-                "nistp521",
-                "phpecc",
-                "schnorr",
-                "secp256k1",
-                "secp256r1"
-            ],
-            "support": {
-                "source": "https://github.com/public-square/phpecc/tree/v0.1.2"
-            },
-            "time": "2022-10-13T14:39:58+00:00"
         },
         {
             "name": "pusher/pusher-php-server",
@@ -5456,16 +5376,16 @@
         },
         {
             "name": "swentel/nostr-php",
-            "version": "1.2.2",
+            "version": "dev-main",
             "source": {
                 "type": "git",
                 "url": "https://github.com/swentel/nostr-php.git",
-                "reference": "4f60bc6011edb8ee884d1aeea980d176b9543ea9"
+                "reference": "9d2832055c74b4f1ddb4173b9aaf7b88e9101bea"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/swentel/nostr-php/zipball/4f60bc6011edb8ee884d1aeea980d176b9543ea9",
-                "reference": "4f60bc6011edb8ee884d1aeea980d176b9543ea9",
+                "url": "https://api.github.com/repos/swentel/nostr-php/zipball/9d2832055c74b4f1ddb4173b9aaf7b88e9101bea",
+                "reference": "9d2832055c74b4f1ddb4173b9aaf7b88e9101bea",
                 "shasum": ""
             },
             "require": {
@@ -5473,14 +5393,15 @@
                 "ext-gmp": "*",
                 "ext-xml": "*",
                 "php": "^8.1",
-                "phrity/websocket": "^1.6",
-                "public-square/phpecc": "^0.1.0",
-                "simplito/elliptic-php": "^1.0"
+                "phrity/websocket": "^2.1",
+                "simplito/elliptic-php": "^1.0",
+                "uma/phpecc": "^0.1.3"
             },
             "require-dev": {
-                "friendsofphp/php-cs-fixer": "^3.35",
-                "phpunit/phpunit": "^10"
+                "friendsofphp/php-cs-fixer": "^3.51",
+                "phpunit/phpunit": "^10.5"
             },
+            "default-branch": true,
             "bin": [
                 "bin/nostr-php"
             ],
@@ -5494,13 +5415,28 @@
             "license": [
                 "GPL-2.0-or-later"
             ],
+            "authors": [
+                {
+                    "name": "Sebastian Hagens",
+                    "email": "info@sebastix.nl",
+                    "homepage": "https://sebastix.nl",
+                    "role": "Developer & maintainer"
+                },
+                {
+                    "name": "Kristof De Jaeger",
+                    "homepage": "https://realize.be",
+                    "role": "Original author"
+                }
+            ],
             "description": "Nostr helper library for PHP",
             "homepage": "https://github.com/swentel/nostr-php",
             "support": {
+                "chat": "https://t.me/nostr_php",
+                "issue": "https://github.com/swentel/nostr-php/issues",
                 "issues": "https://github.com/swentel/nostr-php/issues",
-                "source": "https://github.com/swentel/nostr-php/tree/1.2.2"
+                "source": "https://github.com/swentel/nostr-php/tree/main"
             },
-            "time": "2023-12-05T15:14:18+00:00"
+            "time": "2024-03-21T10:02:08+00:00"
         },
         {
             "name": "symfony/clock",
@@ -7935,6 +7871,91 @@
                 "source": "https://github.com/tijsverkoyen/CssToInlineStyles/tree/v2.2.7"
             },
             "time": "2023-12-08T13:03:43+00:00"
+        },
+        {
+            "name": "uma/phpecc",
+            "version": "v0.1.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/1ma/phpecc.git",
+                "reference": "a83dfa5fd6801fcc029364a555cec584d351c481"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/1ma/phpecc/zipball/a83dfa5fd6801fcc029364a555cec584d351c481",
+                "reference": "a83dfa5fd6801fcc029364a555cec584d351c481",
+                "shasum": ""
+            },
+            "require": {
+                "ext-gmp": "*",
+                "fgrosse/phpasn1": "^2.0",
+                "php": "^8.0"
+            },
+            "replace": {
+                "mdanter/ecc": "1.0.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^6.0||^8.0||^9.0",
+                "squizlabs/php_codesniffer": "^2.0",
+                "symfony/yaml": "^2.6|^3.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Mdanter\\Ecc\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Matyas Danter",
+                    "homepage": "http://matejdanter.com/",
+                    "role": "Author"
+                },
+                {
+                    "name": "Thibaud Fabre",
+                    "email": "thibaud@aztech.io",
+                    "homepage": "http://aztech.io",
+                    "role": "Maintainer"
+                },
+                {
+                    "name": "Thomas Kerin",
+                    "email": "afk11@users.noreply.github.com",
+                    "role": "Maintainer"
+                },
+                {
+                    "name": "Ology Newswire, Inc",
+                    "email": "protocol@vpsqr.com",
+                    "homepage": "https://vpsqr.com/",
+                    "role": "Maintainer"
+                }
+            ],
+            "description": "Temporary fork of public-square/phpecc",
+            "homepage": "https://github.com/1ma/phpecc",
+            "keywords": [
+                "Diffie",
+                "ECDSA",
+                "Hellman",
+                "curve",
+                "ecdh",
+                "elliptic",
+                "nistp192",
+                "nistp224",
+                "nistp256",
+                "nistp384",
+                "nistp521",
+                "phpecc",
+                "schnorr",
+                "secp256k1",
+                "secp256r1"
+            ],
+            "support": {
+                "source": "https://github.com/1ma/phpecc/tree/v0.1.3"
+            },
+            "time": "2024-02-27T15:58:47+00:00"
         },
         {
             "name": "vlucas/phpdotenv",
@@ -11696,7 +11717,9 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {
+        "swentel/nostr-php": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
