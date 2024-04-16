@@ -191,7 +191,6 @@ class MistralAIChat
 
         while (! $stream->eof()) {
             $line = $this->readLine($stream);
-            Log::info($line);
 
             if (! str_starts_with($line, 'data:')) {
                 continue;
