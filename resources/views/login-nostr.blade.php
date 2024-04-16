@@ -36,7 +36,7 @@
                         return
                     }
 
-                    status.innerHTML = "Authenticating with nostr extention...";
+                    status.innerHTML = "Authenticating with nostr extension...";
                     const pubkey = await window.nostr.getPublicKey();
                     const event = {
                         pubkey,
