@@ -26,7 +26,7 @@ class ModelSelector extends Component
 
         // If the user is not logged in, show the login modal for any model they don't have access to
         if ($userAccess === 'guest' && ! $this->hasModelAccess($model, $userAccess)) {
-            $this->dispatch('openModal', 'auth.register');
+            $this->dispatch('openModal', 'auth.join');
 
             return;
         }
