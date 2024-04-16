@@ -10,6 +10,14 @@
         </a>
     </div>
 
+    <div class="my-6">
+        <a href="/login/nostr" class="mt-6">
+            <x-secondary-button class="w-full flex justify-center gap-2 mb-0 h-[44px]">
+                <span class="">Continue with Nostr</span>
+            </x-secondary-button>
+        </a>
+    </div>
+
     <div class="text-center">
         <p class="mt-2 mb-0 text-sm text-gray">
             By continuing you agree to our
