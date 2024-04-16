@@ -76,7 +76,7 @@ class NostrAuthController extends Controller
         if (! $user) {
             $user = User::create([
                 'name' => substr($event->pubkey, 0, 8),
-                'email' => '',
+                'email' => substr($event->pubkey, 0, 8).'@notanemail.com',
             ]);
 
             NostrAccount::create([
