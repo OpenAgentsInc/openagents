@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BillingController;
+use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
@@ -11,9 +12,15 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 Route::get('/', Chat::class)->name('home');
 Route::get('/chat/{id}', Chat::class)->name('chat');
 
-// AUTH - SOCIAL
-Route::get('/login/x', [SocialAuthController::class, 'login_x']);
-Route::get('/callback/x', [SocialAuthController::class, 'login_x_callback']);
+Route::middleware('guest')->group(function () {
+    // AUTH - SOCIAL
+    Route::get('/login/x', [SocialAuthController::class, 'login_x']);
+    Route::get('/callback/x', [SocialAuthController::class, 'login_x_callback']);
+});
+
+// AUTH - NOSTR
+Route::get('/login/nostr', [NostrAuthController::class, 'client'])->name('loginnostrclient');
+Route::post('/login/nostr', [NostrAuthController::class, 'create'])->name('loginnostr');
 
 // BILLING
 Route::get('/subscription', [BillingController::class, 'stripe_billing_portal']);
@@ -33,6 +40,12 @@ Route::get('/privacy', [StaticController::class, 'privacy']);
 
 // Add GET logout route
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
+
+Route::get('/phpinfo', function () {
+    dd(phpinfo());
+});
+
+Route::get('/testing', [NostrAuthController::class, 'testing']);
 
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {

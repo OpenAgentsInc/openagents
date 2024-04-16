@@ -34,7 +34,7 @@
            x-transition:leave-start="opacity-100"
            x-transition:leave-end="opacity-0"
         >
-            <button class="p-1.5 rounded-md text-white">
+            <button class="p-1.5 pr-0 rounded-md text-white">
                 <x-icon.plus class="h-6 w-6"></x-icon.plus>
             </button>
         </a>

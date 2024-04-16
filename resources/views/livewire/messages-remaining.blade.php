@@ -17,7 +17,7 @@
         {{-- For guests (unauthenticated users) --}}
         You have <span class="text-white">{{ $remaining }}</span> free responses remaining.
         <a class="text-white underline cursor-pointer"
-           wire:click="$dispatch('openModal', { component: 'auth.register' })">
+           wire:click="$dispatch('openModal', { component: 'auth.join' })">
             Sign up to get 10 messages every day.
         </a>
     @endguest
