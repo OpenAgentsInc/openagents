@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::create('nostr_accounts', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('pubkey')->unique()->nullable();
             $table->timestamps();
         });
     }
