@@ -11,9 +11,15 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 Route::get('/', Chat::class)->name('home');
 Route::get('/chat/{id}', Chat::class)->name('chat');
 
-// AUTH - SOCIAL
-Route::get('/login/x', [SocialAuthController::class, 'login_x']);
-Route::get('/callback/x', [SocialAuthController::class, 'login_x_callback']);
+Route::middleware('guest')->group(function () {
+    // AUTH - NOSTR
+    Route::get('/login/nostr', [NostrAuthController::class, 'client'])->name('loginnostrclient');
+    Route::post('/login/nostr', [NostrAuthController::class, 'create'])->name('loginnostr');
+
+    // AUTH - SOCIAL
+    Route::get('/login/x', [SocialAuthController::class, 'login_x']);
+    Route::get('/callback/x', [SocialAuthController::class, 'login_x_callback']);
+});
 
 // BILLING
 Route::get('/subscription', [BillingController::class, 'stripe_billing_portal']);
