@@ -99,7 +99,7 @@
                                         the world's
                                         leading chat
                                         agents.</p>
-                                    <a wire:click="$dispatch('openModal', { component: 'auth.register' })"
+                                    <a wire:click="$dispatch('openModal', { component: 'auth.login' })"
                                        class="my-1 w-full">
                                         <x-button class="w-full justify-center font-medium">Sign up</x-button>
                                     </a>
