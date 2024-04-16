@@ -1,4 +1,4 @@
-<div class="bg-black text-white p-[32px]">
+<div class="bg-black text-white p-[32px]" x-data="{ hasNostr: typeof window.nostr !== 'undefined' }">
     <h2 class="block text-md md:text-xl lg:text-2xl text-center font-bold text-white">Join OpenAgents</h2>
 
     <div class="my-6">
@@ -10,7 +10,7 @@
         </a>
     </div>
 
-    <div class="my-6">
+    <div class="my-6" x-show="hasNostr" x-cloak>
         <a href="/login/nostr" class="mt-6">
             <x-secondary-button class="w-full flex justify-center gap-2 mb-0 h-[44px]">
                 <span class="">Continue with Nostr</span>
