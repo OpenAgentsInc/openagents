@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SendUsageReport extends Command
 {
@@ -21,6 +22,6 @@ class SendUsageReport extends Command
 
         $this->info($message);
 
-        //        Log::channel('slack')->info($message);
+        Log::channel('slack')->info($message);
     }
 }
