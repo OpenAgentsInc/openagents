@@ -16,6 +16,12 @@
 
                     <x-pane title="April 16, 2024" borderColor="border-darkgray">
                         <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/270"
+                        >
+                            Added Nostr login
+                        </x-changelog-item>
+
+                        <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/269"
                                 post="https://twitter.com/OpenAgentsInc/status/1780264061277540522"
                         >
