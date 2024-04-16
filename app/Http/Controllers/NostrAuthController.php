@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use swentel\nostr\Event\Event;
@@ -39,13 +38,16 @@ class NostrAuthController extends Controller
             return redirect('#error');
         }
 
-        // use existing user or create new with pubkey
-        $user = User::updateOrCreate(
-            ['nostr_pubkey' => $event->pubkey],
-            [
+        // Find a user with this pubkey
+        $user = NostrAccount::where('pubkey', $event->pubkey)->first();
+
+        // If user not found, create a new user
+        if (! $user) {
+            $user = NostrAccount::create([
+                'pubkey' => $event->pubkey,
                 'name' => $event->pubkey,
-            ]
-        );
+            ]);
+        }
 
         // Log in this user
         auth()->login($user, true);

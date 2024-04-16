@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BillingController;
+use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
