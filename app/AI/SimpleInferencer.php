@@ -3,10 +3,11 @@
 namespace App\AI;
 
 use App\Models\Thread;
+use GuzzleHttp\Client;
 
 class SimpleInferencer
 {
-    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction): array|string
+    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction): array
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
@@ -30,11 +31,11 @@ class SimpleInferencer
 
             // Adjust the max_tokens value for the completion
             $completionTokens = $maxTokens - $messageTokens;
-
+            $httpClient = new Client();
             switch ($gateway) {
                 case 'anthropic':
-                    $client = new AnthropicAIGateway();
-                    $inference = $client->createStreamed([
+                    $client = new AnthropicAIGateway($httpClient);
+                    $inference = $client->inference([
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $completionTokens,
@@ -42,7 +43,7 @@ class SimpleInferencer
                     ]);
                     break;
                 case 'mistral':
-                    $client = new MistralAIGateway();
+                    $client = new MistralAIGateway($httpClient);
                     $inference = $client->chat()->createStreamed([
                         'model' => $model,
                         'messages' => $messages,
@@ -86,14 +87,11 @@ class SimpleInferencer
                     ]);
                     break;
                 default:
-                    // Handle unknown gateway
                     dd("Unknown gateway: $gateway");
             }
         } else {
-            // Handle unknown model
             dd("Unknown model: $model");
         }
-
         return $inference;
     }
 }
