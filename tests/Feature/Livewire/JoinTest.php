@@ -1,9 +1,9 @@
 <?php
 
-use App\Livewire\Auth\Login;
+use App\Livewire\Auth\Join;
 use Livewire\Livewire;
 
 it('renders successfully', function () {
-    Livewire::test(Login::class)
+    Livewire::test(Join::class)
         ->assertStatus(200);
 });
