@@ -77,7 +77,7 @@ class SimpleInferencer
                         'model' => $model,
                     ]);
                     break;
-                case 'huggingface':
+                case 'satoshi':
                     $client = new HuggingfaceAIGateway();
                     $inference = $client->inference([
                         'model' => $model,
