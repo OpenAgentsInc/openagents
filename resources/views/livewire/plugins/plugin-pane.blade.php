@@ -7,7 +7,7 @@
             <i>"{{$this->plugin['description']}}"</i>
         </p>
 
-        <a href="{{$this->plugin['url']}}">
+        <a href="{{$this->plugin['url']}}" target="_blank">
             <b>Source code: </b>
             {{$this->plugin['url']}}
         </a>
