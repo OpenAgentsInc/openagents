@@ -1,5 +1,5 @@
 <div>
-    {{-- To attain knowledge, add things every day; To attain wisdom, subtract things every day. --}}
+   
     @auth
     <div class="relative z-[15]  p-4">
         <div x-data="{ open: false }" class="flex flex-row items-center justify-end">

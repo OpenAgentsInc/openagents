@@ -1,5 +1,5 @@
 <div class="m-16">
-    {{-- The whole world belongs to you. --}}
+
     <x-pane title="{{$this->plugin['name']}}">
 
         <p>
