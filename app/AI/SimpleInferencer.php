@@ -3,10 +3,11 @@
 namespace App\AI;
 
 use App\Models\Thread;
+use GuzzleHttp\Client;
 
 class SimpleInferencer
 {
-    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction): array|string
+    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction): array
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
@@ -30,11 +31,11 @@ class SimpleInferencer
 
             // Adjust the max_tokens value for the completion
             $completionTokens = $maxTokens - $messageTokens;
-
+            $httpClient = new Client();
             switch ($gateway) {
                 case 'anthropic':
-                    $client = new AnthropicAIGateway();
-                    $inference = $client->createStreamed([
+                    $client = new AnthropicAIGateway($httpClient);
+                    $inference = $client->inference([
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $completionTokens,
@@ -42,8 +43,8 @@ class SimpleInferencer
                     ]);
                     break;
                 case 'mistral':
-                    $client = new MistralAIGateway();
-                    $inference = $client->chat()->createStreamed([
+                    $client = new MistralAIGateway($httpClient);
+                    $inference = $client->inference([
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $completionTokens,
@@ -52,7 +53,7 @@ class SimpleInferencer
                     break;
                 case 'openai':
                     $client = new OpenAIGateway();
-                    $inference = $client->stream([
+                    $inference = $client->inference([
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $completionTokens,
@@ -60,20 +61,35 @@ class SimpleInferencer
                     ]);
                     break;
                 case 'perplexity':
-                    $client = new PerplexityAIGateway();
-                    $inference = $client->createStreamed([
+                    $client = new PerplexityAIGateway($httpClient);
+                    $inference = $client->inference([
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $completionTokens,
                         'stream_function' => $streamFunction,
                     ]);
                     break;
+                case 'cohere':
+                    $client = new CohereAIGateway($httpClient);
+                    $inference = $client->inference([
+                        'chat_history' => $messages,
+                        'message' => $prompt,
+                        'connectors' => [],
+                        'model' => $model,
+                    ]);
+                    break;
+                case 'satoshi':
+                    $client = new HuggingfaceAIGateway();
+                    $inference = $client->inference([
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $completionTokens,
+                    ]);
+                    break;
                 default:
-                    // Handle unknown gateway
                     dd("Unknown gateway: $gateway");
             }
         } else {
-            // Handle unknown model
             dd("Unknown model: $model");
         }
 

@@ -1,15 +1,19 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\AI;
 
 use OpenAI;
 use Yethee\Tiktoken\EncoderProvider;
 
-class OpenAIGateway
+class OpenAIGateway implements GatewayInterface
 {
-    public function __construct()
+    private object $client;
+
+    public function __construct(?object $client = null)
     {
-        $this->client = OpenAI::client(env('OPENAI_API_KEY'));
+        $this->client = $client ?? OpenAI::client(env('OPENAI_API_KEY'));
     }
 
     public function models()
@@ -22,7 +26,7 @@ class OpenAIGateway
         dd($ids);
     }
 
-    public function stream($params)
+    public function inference(array $params): array
     {
         $model = $params['model'];
         $messages = $params['messages'];

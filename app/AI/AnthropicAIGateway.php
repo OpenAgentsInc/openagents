@@ -1,35 +1,23 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\AI;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
-class AnthropicAIGateway
+class AnthropicAIGateway implements GatewayInterface
 {
-    private $client;
+    private Client $httpClient;
 
-    private $apiBaseUrl = 'https://api.anthropic.com';
-
-    public function __construct()
+    public function __construct(Client $httpClient)
     {
-        $this->client = new Client([
-            // Base URI is used with relative requests
-            'base_uri' => $this->apiBaseUrl,
-            // You can set any number of default request options.
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'x-api-key' => env('ANTHROPIC_API_KEY'), // Make sure to set your API key in your .env file
-                'anthropic-version' => '2023-06-01',
-                'anthropic-beta' => 'messages-2023-12-15',
-            ],
-        ]);
+        $this->httpClient = $httpClient;
     }
 
-    public function createStreamed($params)
+    public function inference(array $params): array
     {
-        $client = new Client();
-
         // If the role of the first message is 'system', remove that and set it as a separate variable
         $systemMessage = null;
         if ($params['messages'][0]['role'] === 'system') {
@@ -53,7 +41,7 @@ class AnthropicAIGateway
         }
 
         try {
-            $response = $client->post('https://api.anthropic.com/v1/messages', [
+            $response = $this->httpClient->post('https://api.anthropic.com/v1/messages', [
                 'json' => $data,
                 'stream' => true, // Important for handling streaming responses
                 'headers' => [
@@ -86,10 +74,7 @@ class AnthropicAIGateway
                 'output_tokens' => $outputTokens,
             ];
         } catch (RequestException $e) {
-            // Handle exception or error
             dd($e->getMessage());
-
-            return 'Error: '.$e->getMessage();
         }
     }
 

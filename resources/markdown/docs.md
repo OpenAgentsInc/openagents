@@ -54,7 +54,9 @@ For now this process is semi-manual.
    description for the plugin, 2) the link to the GitHub repo and 3) your
    [Lightning address](https://lightningaddress.com/)
 
-The first 100 developers to submit a plugin we add to OpenAgents will receive ₿1M each (~$730 USD as of 3/14).
+The first 100 developers to submit a plugin we add to OpenAgents will receive ₿1M each (~$600 USD as of 4/17).
+
+You can see previously submitted plugins [here](/plugins).
 
 ## API overview
 

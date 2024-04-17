@@ -24,14 +24,14 @@ class Models
             'access' => 'pro',
             'max_tokens' => 4096,
         ],
+
+        // OPENAI
         'gpt-3.5-turbo-16k' => [
             'name' => 'GPT-3.5 Turbo 16K',
             'gateway' => 'openai',
             'access' => 'user',
             'max_tokens' => 14000,
         ],
-
-        // OPENAI
         'gpt-4-turbo-preview' => [
             'name' => 'GPT-4 Turbo Preview',
             'gateway' => 'openai',
@@ -84,6 +84,29 @@ class Models
             'access' => 'pro',
             'max_tokens' => 4096,
         ],
+
+        // COHERE
+        'command-r' => [
+            'name' => 'Command-R',
+            'gateway' => 'cohere',
+            'access' => 'user',
+            'max_tokens' => 2000,
+        ],
+        'command-r-plus' => [
+            'name' => 'Command-R+',
+            'gateway' => 'cohere',
+            'access' => 'user',
+            'max_tokens' => 4000,
+        ],
+
+        // SPIRIT OF SATOSHI
+        'satoshi-7b' => [
+            'name' => 'Satoshi 7B',
+            'gateway' => 'satoshi',
+            'access' => 'guest',
+            'max_tokens' => 2000,
+        ],
+
     ];
 
     public static function getDefaultModel()

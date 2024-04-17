@@ -19,7 +19,7 @@
                                             <img src="{{ Auth::user()->profile_photo_path }}" alt="Profile"
                                                  class="mt-4 rounded-full w-[32px] h-[32px] object-cover">
                                         @else
-                                            {{ strtoupper(Auth::user()->name[0] ?? '-') }}
+                                            <x-icon.user class="w-[32px] h-[32px] mt-4"/>
                                         @endif
                                     </button>
                                     <div x-popover:panel x-cloak x-transition x-show="open"
@@ -99,7 +99,7 @@
                                         the world's
                                         leading chat
                                         agents.</p>
-                                    <a wire:click="$dispatch('openModal', { component: 'auth.register' })"
+                                    <a wire:click="$dispatch('openModal', { component: 'auth.join' })"
                                        class="my-1 w-full">
                                         <x-button class="w-full justify-center font-medium">Sign up</x-button>
                                     </a>
@@ -123,8 +123,11 @@
                                      min-rows="1"
                                      max-rows="12"
                                      wire:model="message_input"
+                                     wireModel="message_input"
+                                     wire:ignore
                                      onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
                                      class="flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white"/>
+
                     <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
                 </form>
                 <livewire:messages-remaining/>

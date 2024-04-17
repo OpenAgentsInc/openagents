@@ -36,6 +36,7 @@ class SocialTags extends Component
     protected function getTitle($currentPath)
     {
         $titles = [
+            'changelog' => 'OpenAgents Changelog',
             'launch' => 'One agent to rule them all',
             'goodbye-chatgpt' => 'Goodbye ChatGPT',
         ];
@@ -68,6 +69,7 @@ class SocialTags extends Component
     protected function getDescription($currentPath)
     {
         $descriptions = [
+            'changelog' => 'See what we been shippin',
             'launch' => "It's the coolest AI chat for launching your product. Literally 1000x better than the rest. Try it now or else.",
             'goodbye-chatgpt' => 'We now launch a chat interface that can replace day-to-day use of ChatGPT.',
         ];
