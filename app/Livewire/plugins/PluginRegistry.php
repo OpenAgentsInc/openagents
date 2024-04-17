@@ -6,8 +6,6 @@ use Livewire\Component;
 
 class PluginRegistry extends Component
 {
-
-
     public $plugins = [];
 
     public function mount()
@@ -33,9 +31,7 @@ class PluginRegistry extends Component
             ],
         ];
 
-
     }
-
 
     public function render()
     {
