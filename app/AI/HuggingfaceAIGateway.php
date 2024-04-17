@@ -1,10 +1,11 @@
 <?php
+declare(strict_types=1);
 
 namespace App\AI;
 
 use Illuminate\Support\Facades\Http;
 
-class HuggingfaceAIGateway
+class HuggingfaceAIGateway implements GatewayInterface
 {
     private $apiUrl = 'https://zub38q2qmtrdgl1x.us-east-1.aws.endpoints.huggingface.cloud';
 
@@ -15,7 +16,7 @@ class HuggingfaceAIGateway
         $this->apiKey = config('services.huggingface.api_key');
     }
 
-    public function inference($params)
+    public function inference(array $params): array
     {
         // dont care about params model cuz for now we only have one model, deployed at the api url
         $messages = $params['messages'];

@@ -1,16 +1,22 @@
 <?php
+declare(strict_types=1);
 
 namespace App\AI;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
-class AnthropicAIGateway
+class AnthropicAIGateway implements GatewayInterface
 {
-    public function createStreamed($params)
-    {
-        $client = new Client();
+    private Client $httpClient;
 
+    public function __construct(Client $httpClient)
+    {
+        $this->httpClient = $httpClient;
+    }
+
+    public function inference(array $params): array
+    {
         // If the role of the first message is 'system', remove that and set it as a separate variable
         $systemMessage = null;
         if ($params['messages'][0]['role'] === 'system') {
@@ -34,7 +40,7 @@ class AnthropicAIGateway
         }
 
         try {
-            $response = $client->post('https://api.anthropic.com/v1/messages', [
+            $response = $this->httpClient->post('https://api.anthropic.com/v1/messages', [
                 'json' => $data,
                 'stream' => true, // Important for handling streaming responses
                 'headers' => [
@@ -67,10 +73,7 @@ class AnthropicAIGateway
                 'output_tokens' => $outputTokens,
             ];
         } catch (RequestException $e) {
-            // Handle exception or error
             dd($e->getMessage());
-
-            return 'Error: '.$e->getMessage();
         }
     }
 
