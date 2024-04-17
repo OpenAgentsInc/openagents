@@ -1,10 +1,7 @@
 <?php
+declare(strict_types=1);
 
 use App\AI\MistralAIGateway;
-use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Response;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
 
 test('MistralAIGateway handles mistral responses correctly', function () {
     $prompt = 'What is the capital of France?';
@@ -36,25 +33,9 @@ test('MistralAIGateway handles mistral responses correctly', function () {
             ]
         ]
     ];
-    $mockResponse = array_map(function($data) {
-        return 'data: ' . json_encode($data);
-    }, $mockResponse);
-    $mockResponseStream = fopen('php://memory', 'r+');
-    fwrite(
-        $mockResponseStream,
-        \implode("\n", $mockResponse) . "\n"
-    );
-    rewind($mockResponseStream);
-    
-    $mock = new MockHandler([
-        new Response(200, [], $mockResponseStream)
-    ]);
-    
-    $handlerStack = HandlerStack::create($mock);
-    $httpClient = new Client(['handler' => $handlerStack]);
-    
+    $httpClient = mockGuzzleClient($mockResponse);
     $gateway = new MistralAIGateway($httpClient);
-    
+
     $result = $gateway->inference($parameters);
 
     expect($result)->toBeArray();

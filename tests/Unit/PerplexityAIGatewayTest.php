@@ -2,10 +2,6 @@
 declare(strict_types=1);
 
 use App\AI\PerplexityAIGateway;
-use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Response;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
 
 test('PerplexityAIGateway handles mistral responses correctly', function () {
     $prompt = 'What is the capital of France?';
@@ -34,25 +30,9 @@ test('PerplexityAIGateway handles mistral responses correctly', function () {
             ]
         ]
     ];
-    $mockResponse = array_map(function($data) {
-        return 'data: ' . json_encode($data);
-    }, $mockResponse);
-    $mockResponseStream = fopen('php://memory', 'r+');
-    fwrite(
-        $mockResponseStream,
-        \implode("\n", $mockResponse) . "\n"
-    );
-    rewind($mockResponseStream);
-    
-    $mock = new MockHandler([
-        new Response(200, [], $mockResponseStream)
-    ]);
-    
-    $handlerStack = HandlerStack::create($mock);
-    $httpClient = new Client(['handler' => $handlerStack]);
-    
+    $httpClient = mockGuzzleClient($mockResponse);
     $gateway = new PerplexityAIGateway($httpClient);
-    
+
     $result = $gateway->inference($parameters);
 
     expect($result)->toBeArray();

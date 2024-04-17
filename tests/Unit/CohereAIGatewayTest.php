@@ -2,10 +2,6 @@
 declare(strict_types=1);
 
 use App\AI\CohereAIGateway;
-use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Response;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
 
 test('CohereAIGateway handles mistral responses correctly', function () {
     $prompt = 'What is the capital of France?';
@@ -26,22 +22,9 @@ test('CohereAIGateway handles mistral responses correctly', function () {
             ]
         ]
     ];
-    $mockResponseStream = fopen('php://memory', 'r+');
-    fwrite(
-        $mockResponseStream,
-        json_encode($mockResponse) . "\n"
-    );
-    rewind($mockResponseStream);
-    
-    $mock = new MockHandler([
-        new Response(200, [], $mockResponseStream)
-    ]);
-    
-    $handlerStack = HandlerStack::create($mock);
-    $httpClient = new Client(['handler' => $handlerStack]);
-    
+    $httpClient = mockGuzzleClient($mockResponse);
     $gateway = new CohereAIGateway($httpClient);
-    
+
     $result = $gateway->inference($parameters);
 
     expect($result)->toBeArray();

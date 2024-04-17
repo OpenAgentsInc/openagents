@@ -1,12 +1,9 @@
 <?php
+declare(strict_types=1);
 
 use App\AI\AnthropicAIGateway;
-use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Response;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
 
-test('AnthropicAIGateway createStreamed handles stream correctly', function () {
+test('AnthropicAIGateway handles Claude responses correctly', function () {
     $prompt = 'What is the capital of France?';
     $inputTokens = 6;
     $answer = 'Capital of France is Paris.';
@@ -42,25 +39,9 @@ test('AnthropicAIGateway createStreamed handles stream correctly', function () {
             ]
         ]
     ];
-    $mockResponse = array_map(function($data) {
-        return 'data: ' . json_encode($data);
-    }, $mockResponse);
-    $mockResponseStream = fopen('php://memory', 'r+');
-    fwrite(
-        $mockResponseStream,
-        \implode("\n", $mockResponse) . "\n"
-    );
-    rewind($mockResponseStream);
-    
-    $mock = new MockHandler([
-        new Response(200, [], $mockResponseStream)
-    ]);
-    
-    $handlerStack = HandlerStack::create($mock);
-    $httpClient = new Client(['handler' => $handlerStack]);
-    
+    $httpClient = mockGuzzleClient($mockResponse);
     $gateway = new AnthropicAIGateway($httpClient);
-    
+
     $result = $gateway->inference($parameters);
 
     expect($result)->toBeArray();
@@ -68,4 +49,3 @@ test('AnthropicAIGateway createStreamed handles stream correctly', function () {
     expect($result['input_tokens'])->toEqual($inputTokens);
     expect($result['output_tokens'])->toEqual($outputTokens);
 });
-

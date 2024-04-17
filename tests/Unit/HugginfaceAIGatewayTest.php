@@ -23,7 +23,6 @@ test('CohereAIGateway handles mistral responses correctly', function () {
                     ->andReturn(new HttpPostMock($mockResponse));
 
     $gateway = new HuggingfaceAIGateway();
-    
     $result = $gateway->inference($parameters);
 
     expect($result)->toBeArray();
