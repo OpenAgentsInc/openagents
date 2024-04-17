@@ -1,16 +1,22 @@
 <?php
+declare(strict_types=1);
 
 namespace App\AI;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
-class CohereAIGateway
+class CohereAIGateway implements GatewayInterface
 {
-    public function chatWithHistory($params)
-    {
-        $client = new Client();
+    private Client $httpClient;
 
+    public function __construct(Client $httpClient)
+    {
+        $this->httpClient = $httpClient;
+    }
+
+    public function inference(array $params): array
+    {
         $data = [
             'message' => $params['message'],
             'model' => $params['model'] ?? 'command-r',
@@ -32,7 +38,7 @@ class CohereAIGateway
         }
 
         try {
-            $response = $client->post('https://api.cohere.ai/v1/chat', [
+            $response = $this->httpClient->post('https://api.cohere.ai/v1/chat', [
                 'json' => $data,
                 'headers' => [
                     'Content-Type' => 'application/json',
@@ -41,7 +47,7 @@ class CohereAIGateway
                 ],
             ]);
 
-            $responseData = json_decode($response->getBody(), true);
+            $responseData = json_decode($response->getBody()->getContents(), true);
 
             return [
                 'content' => $responseData['text'],
@@ -49,10 +55,7 @@ class CohereAIGateway
                 'input_tokens' => $responseData['meta']['tokens']['input_tokens'],
             ];
         } catch (RequestException $e) {
-            // Handle exception or error
             dd($e->getMessage());
-
-            return ['error' => $e->getMessage()];
         }
     }
 }

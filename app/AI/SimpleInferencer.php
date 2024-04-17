@@ -70,8 +70,8 @@ class SimpleInferencer
                     ]);
                     break;
                 case 'cohere':
-                    $client = new CohereAIGateway();
-                    $inference = $client->chatWithHistory([
+                    $client = new CohereAIGateway($httpClient);
+                    $inference = $client->inference([
                         'chat_history' => $messages,
                         'message' => $prompt,
                         'connectors' => [],
