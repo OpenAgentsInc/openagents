@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 use App\AI\OpenAIGateway;
@@ -12,20 +13,20 @@ test('OpenAIGateway handles OpenAI responses correctly', function () {
     $parameters = [
         'model' => 'gpt-3.5-turbo-16k',
         'messages' => [
-            ['role' => 'user', 'content' => $prompt]
+            ['role' => 'user', 'content' => $prompt],
         ],
         'stream_function' => function ($response) use ($answer) {
             expect($response['choices'][0]['delta']['content'])->toEqual($answer);
         },
-        'max_tokens' => 2000
+        'max_tokens' => 2000,
     ];
 
     $chatClient = new ChatClientMock([[
         'choices' => [[
             'delta' => [
-                'content' => $answer
-            ]
-        ]]
+                'content' => $answer,
+            ],
+        ]],
     ]]);
     $gateway = new OpenAIGateway($chatClient);
 

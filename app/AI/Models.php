@@ -107,10 +107,20 @@ class Models
             'max_tokens' => 2000,
         ],
 
+        // GREPTILE
+        'greptile' => [
+            'name' => 'Greptile: OA Codebase',
+            'gateway' => 'greptile',
+            'access' => 'user',
+            'max_tokens' => 2000,
+        ],
+
     ];
 
     public static function getDefaultModel()
     {
+        return 'greptile';
+
         // If user is not logged in, use Mistral Small.
         if (! auth()->check()) {
             return 'mistral-small-latest';

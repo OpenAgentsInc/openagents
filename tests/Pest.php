@@ -6,9 +6,9 @@ uses(
 )->in('Browser');
 
 use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -57,21 +57,22 @@ function mockGuzzleClient(array $mockResponse): Client
     if (isset($mockResponse['text'])) {
         fwrite(
             $mockResponseStream,
-            json_encode($mockResponse) . "\n"
+            json_encode($mockResponse)."\n"
         );
     } else {
-        $mockResponse = array_map(function($data) {
-            return 'data: ' . json_encode($data);
+        $mockResponse = array_map(function ($data) {
+            return 'data: '.json_encode($data);
         }, $mockResponse);
         fwrite(
             $mockResponseStream,
-            \implode("\n", $mockResponse) . "\n"
+            \implode("\n", $mockResponse)."\n"
         );
     }
     rewind($mockResponseStream);
     $mock = new MockHandler([
-        new Response(200, [], $mockResponseStream)
+        new Response(200, [], $mockResponseStream),
     ]);
     $handlerStack = HandlerStack::create($mock);
+
     return new Client(['handler' => $handlerStack]);
 }

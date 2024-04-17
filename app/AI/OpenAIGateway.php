@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\AI;
@@ -10,7 +11,7 @@ class OpenAIGateway implements GatewayInterface
 {
     private object $client;
 
-    public function __construct(object $client = null)
+    public function __construct(?object $client = null)
     {
         $this->client = $client ?? OpenAI::client(env('OPENAI_API_KEY'));
     }

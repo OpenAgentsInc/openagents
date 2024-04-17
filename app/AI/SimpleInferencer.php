@@ -86,12 +86,17 @@ class SimpleInferencer
                         'max_tokens' => $completionTokens,
                     ]);
                     break;
+                case 'greptile':
+                    $client = new GreptileGateway();
+                    $inference = $client->queryRepository($thread);
+                    break;
                 default:
                     dd("Unknown gateway: $gateway");
             }
         } else {
             dd("Unknown model: $model");
         }
+
         return $inference;
     }
 }
