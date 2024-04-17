@@ -22,6 +22,7 @@
                         </x-changelog-item>
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/274"
+                                post="https://twitter.com/OpenAgentsInc/status/1780722536126255568"
                         >
                             Added Greptile chat model for OpenAgents codebase
                         </x-changelog-item>
