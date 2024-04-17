@@ -53,7 +53,7 @@ class SimpleInferencer
                     break;
                 case 'openai':
                     $client = new OpenAIGateway();
-                    $inference = $client->stream([
+                    $inference = $client->inference([
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $completionTokens,
