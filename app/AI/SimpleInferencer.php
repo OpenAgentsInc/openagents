@@ -61,8 +61,8 @@ class SimpleInferencer
                     ]);
                     break;
                 case 'perplexity':
-                    $client = new PerplexityAIGateway();
-                    $inference = $client->createStreamed([
+                    $client = new PerplexityAIGateway($httpClient);
+                    $inference = $client->inference([
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $completionTokens,
