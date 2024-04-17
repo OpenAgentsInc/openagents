@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 use App\AI\CohereAIGateway;
@@ -10,7 +11,7 @@ test('CohereAIGateway handles mistral responses correctly', function () {
     $outputTokens = 5;
 
     $parameters = [
-        'message' => $prompt
+        'message' => $prompt,
     ];
 
     $mockResponse = [
@@ -18,9 +19,9 @@ test('CohereAIGateway handles mistral responses correctly', function () {
         'meta' => [
             'tokens' => [
                 'input_tokens' => $inputTokens,
-                'output_tokens' => $outputTokens
-            ]
-        ]
+                'output_tokens' => $outputTokens,
+            ],
+        ],
     ];
     $httpClient = mockGuzzleClient($mockResponse);
     $gateway = new CohereAIGateway($httpClient);

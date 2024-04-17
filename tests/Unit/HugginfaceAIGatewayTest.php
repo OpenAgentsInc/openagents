@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 use App\AI\HuggingfaceAIGateway;
@@ -10,17 +11,17 @@ test('CohereAIGateway handles mistral responses correctly', function () {
 
     $parameters = [
         'messages' => [
-            ['role' => 'user', 'content' => $prompt]
-        ]
+            ['role' => 'user', 'content' => $prompt],
+        ],
     ];
 
     $mockResponse = [[
-        'generated_text' => $answer
+        'generated_text' => $answer,
     ]];
 
     Http::shouldReceive('withHeaders')
-                    ->once()
-                    ->andReturn(new HttpPostMock($mockResponse));
+        ->once()
+        ->andReturn(new HttpPostMock($mockResponse));
 
     $gateway = new HuggingfaceAIGateway();
     $result = $gateway->inference($parameters);
@@ -56,4 +57,3 @@ class HttpPostMock
         };
     }
 }
-

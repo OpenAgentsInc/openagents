@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 use App\AI\PerplexityAIGateway;
@@ -12,23 +13,23 @@ test('PerplexityAIGateway handles mistral responses correctly', function () {
     $parameters = [
         'model' => 'sonar-small-online',
         'messages' => [
-            ['role' => 'user', 'content' => $prompt]
+            ['role' => 'user', 'content' => $prompt],
         ],
-        'max_tokens' => 2000
+        'max_tokens' => 2000,
     ];
 
     $mockResponse = [
         [
             'choices' => [[
                 'delta' => [
-                    'content' => $answer
-                ]
+                    'content' => $answer,
+                ],
             ]],
             'usage' => [
                 'prompt_tokens' => $inputTokens,
-                'completion_tokens' => $outputTokens
-            ]
-        ]
+                'completion_tokens' => $outputTokens,
+            ],
+        ],
     ];
     $httpClient = mockGuzzleClient($mockResponse);
     $gateway = new PerplexityAIGateway($httpClient);

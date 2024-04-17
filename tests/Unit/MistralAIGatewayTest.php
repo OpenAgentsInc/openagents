@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 use App\AI\MistralAIGateway;
@@ -12,26 +13,26 @@ test('MistralAIGateway handles mistral responses correctly', function () {
     $parameters = [
         'model' => 'mistral-small-latest',
         'messages' => [
-            ['role' => 'user', 'content' => $prompt]
+            ['role' => 'user', 'content' => $prompt],
         ],
         'stream_function' => function ($response) use ($answer) {
             expect($response)->toEqual($answer);
         },
-        'max_tokens' => 2000
+        'max_tokens' => 2000,
     ];
 
     $mockResponse = [
         [
             'choices' => [[
                 'delta' => [
-                    'content' => $answer
-                ]
+                    'content' => $answer,
+                ],
             ]],
             'usage' => [
                 'prompt_tokens' => $inputTokens,
-                'completion_tokens' => $outputTokens
-            ]
-        ]
+                'completion_tokens' => $outputTokens,
+            ],
+        ],
     ];
     $httpClient = mockGuzzleClient($mockResponse);
     $gateway = new MistralAIGateway($httpClient);
