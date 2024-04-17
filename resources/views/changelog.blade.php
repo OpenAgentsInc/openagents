@@ -20,6 +20,12 @@
                         >
                             Added plugin registry
                         </x-changelog-item>
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/274"
+                        >
+                            Added Greptile chat model for OpenAgents codebase
+                        </x-changelog-item>
+
                     </x-pane>
 
                     <x-pane title="April 16, 2024" borderColor="border-darkgray">
