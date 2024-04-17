@@ -1,22 +1,22 @@
 <?php
+declare(strict_types=1);
 
 namespace App\AI;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
-class PerplexityAIGateway
+class PerplexityAIGateway implements GatewayInterface
 {
-    public function createStreamed($params)
+    private Client $httpClient;
+
+    public function __construct(Client $httpClient)
     {
-        $client = new Client();
+        $this->httpClient = $httpClient;
+    }
 
-        // If the role of the first message is 'system', remove that and set it as a separate variable
-        //        $systemMessage = null;
-        //        if ($params['messages'][0]['role'] === 'system') {
-        //            $systemMessage = array_shift($params['messages'])['content'];
-        //        }
-
+    public function inference(array $params): array
+    {
         $data = [
             'model' => $params['model'],
             'messages' => $params['messages'],
@@ -44,25 +44,14 @@ class PerplexityAIGateway
         }
 
         try {
-
-            $response = $client->request('POST', 'https://api.perplexity.ai/chat/completions', [
+            $response = $this->httpClient->request('POST', 'https://api.perplexity.ai/chat/completions', [
                 'body' => json_encode($data),
-                //                'body' => '{"model":"mistral-7b-instruct","messages":[{"role":"system","content":"Be precise and concise."},{"role":"user","content":"How many stars are there in our galaxy?"}]}',
                 'headers' => [
                     'accept' => 'application/json',
                     'Authorization' => 'Bearer '.env('PERPLEXITY_API_KEY'),
                     'content-type' => 'application/json',
                 ],
             ]);
-
-            //            $response = $client->post('chat/completions', [
-            //                //                'json' => $data,
-            //                'stream' => true, // Important for handling streaming responses
-            //                'headers' => [
-            //                    'Content-Type' => 'application/json',
-            //                    'Authorization' => 'Bearer '.env('PERPLEXITY_API_KEY'), // Make sure to set your API key in your .env file
-            //                ],
-            //            ]);
 
             $stream = $response->getBody();
 
@@ -88,10 +77,7 @@ class PerplexityAIGateway
                 'output_tokens' => $outputTokens,
             ];
         } catch (RequestException $e) {
-            // Handle exception or error
             dd($e->getMessage());
-
-            return 'Error: '.$e->getMessage();
         }
     }
 
