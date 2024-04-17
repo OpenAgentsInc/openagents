@@ -24,7 +24,7 @@
                                 code="https://github.com/OpenAgentsInc/openagents/pull/274"
                                 post="https://twitter.com/OpenAgentsInc/status/1780722536126255568"
                         >
-                            Added Greptile chat model for OpenAgents codebase
+                            Added chat with OA codebase via Greptile
                         </x-changelog-item>
 
                     </x-pane>
