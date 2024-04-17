@@ -2,7 +2,9 @@
 
 namespace App\AI;
 
+use App\Models\Thread;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Session;
 
 class GreptileGateway
 {
@@ -49,37 +51,82 @@ class GreptileGateway
         }
     }
 
-    public function queryRepository($sessionId = '123345')
+    public function queryRepository($thread)
     {
-        $messages = [
-            'content' => 'Summarize this repo.',
-            'role' => 'user',
-        ];
+        $messages = self::getFormattedMessages($thread);
 
         $data = [
             'messages' => $messages,
             'repositories' => [
                 [
-                    'remote' => 'github',
                     'branch' => 'main',
                     'repository' => 'OpenAgentsInc/openagents',
                 ],
             ],
-            'sessionId' => $sessionId,
-            //            'stream' => true,
+            'sessionId' => Session::getId(),
         ];
 
         $response = Http::withHeaders([
             'Authorization' => 'Bearer '.$this->greptileApiKey,
             'Content-Type' => 'application/json',
             'X-GitHub-Token' => $this->githubToken,
-        ])->post($this->greptileBaseUrl.'/query', $data);
+        ])->timeout(90)->post($this->greptileBaseUrl.'/query', $data);
 
         if ($response->successful() && $response->body()) {
-            return $response->json();
+            $json = $response->json();
+
+            return [
+                'content' => $json['message'],
+                'output_tokens' => 0,
+                'input_tokens' => 0,
+            ];
+
         } else {
             // Handle error or empty response
             dd($response->body());
         }
+    }
+
+    private static function getFormattedMessages(Thread $thread)
+    {
+        $messages = [];
+        $userContent = '';
+        $prevRole = null;
+
+        foreach ($thread->messages()->orderBy('created_at', 'asc')->get() as $message) {
+            $role = $message->model !== null ? 'assistant' : 'user';
+            $content = strtolower(substr($message->body, 0, 11)) === 'data:image/' ? '<image>' : $message->body;
+
+            if ($role === 'user') {
+                $userContent .= ' '.$content;
+            } else {
+                if (! empty($userContent)) {
+                    $messages[] = [
+                        'id' => 'user-message-'.count($messages),
+                        'content' => trim($userContent),
+                        'role' => 'user',
+                    ];
+                    $userContent = '';
+                }
+
+                $messages[] = [
+                    'id' => 'assistant-message-'.count($messages),
+                    'content' => $content,
+                    'role' => 'assistant',
+                ];
+            }
+
+            $prevRole = $role;
+        }
+
+        if (! empty($userContent)) {
+            $messages[] = [
+                'id' => 'user-message-'.count($messages),
+                'content' => trim($userContent),
+                'role' => 'user',
+            ];
+        }
+
+        return $messages;
     }
 }
