@@ -32,6 +32,9 @@ Route::get('/blog', [StaticController::class, 'blog']);
 Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
 
+// PLUGIN REGISTRY
+Route::get('/plugins', [StaticController::class, 'plugins']);
+
 // MISC
 Route::get('/changelog', [StaticController::class, 'changelog']);
 Route::get('/docs', [StaticController::class, 'docs']);
