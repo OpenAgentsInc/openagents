@@ -16,6 +16,7 @@
                     <x-pane title="April 17, 2024" borderColor="border-darkgray">
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/273"
+                                post="https://twitter.com/OpenAgentsInc/status/1780642250411679938"
                         >
                             Added plugin registry
                         </x-changelog-item>
