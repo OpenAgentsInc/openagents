@@ -6,7 +6,6 @@ use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
-use App\Livewire\Plugins\PluginRegistry;
 
 // CHAT
 Route::get('/', Chat::class)->name('home');
@@ -27,8 +26,7 @@ Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
 
 // PLUGIN REGISTRY
-Route::get('/plugins', PluginRegistry::class);
-
+Route::get('/plugins', [StaticController::class, 'plugins']);
 
 // MISC
 Route::get('/changelog', [StaticController::class, 'changelog']);

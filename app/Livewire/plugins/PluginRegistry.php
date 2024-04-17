@@ -36,6 +36,5 @@ class PluginRegistry extends Component
     public function render()
     {
         return view('livewire.plugins.plugin-registry');
-
     }
 }
