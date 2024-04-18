@@ -5,6 +5,7 @@ use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
+use App\Livewire\PrismDashboard;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
@@ -34,6 +35,9 @@ Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
 
 // PLUGIN REGISTRY
 Route::get('/plugins', [StaticController::class, 'plugins']);
+
+// PAYMENTS
+Route::get('/prism', PrismDashboard::class)->name('prism');
 
 // MISC
 Route::get('/changelog', [StaticController::class, 'changelog']);
