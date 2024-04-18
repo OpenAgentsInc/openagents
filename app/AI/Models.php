@@ -5,6 +5,14 @@ namespace App\AI;
 class Models
 {
     public const MODELS = [
+        // LLAMA
+        'llama-3-70b' => [
+            'name' => 'Llama 3 70B',
+            'gateway' => 'meta',
+            'access' => 'guest',
+            'max_tokens' => 4096,
+        ],
+
         // MISTRAL
         'mistral-small-latest' => [
             'name' => 'Mistral Small',
