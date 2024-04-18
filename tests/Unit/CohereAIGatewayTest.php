@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use App\AI\CohereAIGateway;
 
-test('CohereAIGateway handles mistral responses correctly', function () {
+test('CohereAIGateway handles cohere responses correctly', function () {
     $prompt = 'What is the capital of France?';
     $inputTokens = 6;
     $answer = 'Capital of France is Paris.';

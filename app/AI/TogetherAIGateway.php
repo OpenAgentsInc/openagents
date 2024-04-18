@@ -20,17 +20,13 @@ class TogetherAIGateway implements GatewayInterface
     {
         $data = [
             'model' => $params['model'],
-            'messages' => [],
-        ];
-
-        if (isset($params['chat_history'])) {
-            foreach ($params['chat_history'] as $message) {
-                $data['messages'][] = [
+            'messages' => array_map(function ($message) {
+                return [
                     'role' => $message['role'],
                     'content' => $message['content'],
                 ];
-            }
-        }
+            }, $params['messages'])
+        ];
 
         try {
             $response = $this->httpClient->post('https://api.together.xyz/v1/chat/completions', [
