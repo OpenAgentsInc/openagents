@@ -19,17 +19,9 @@ class ReplicateAIGateway
             'stream' => true,
             'input' => [
                 'prompt' => $formattedMessages,
-                'prompt_template' => '',
+                'prompt_template' => "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
             ],
         ]);
-
-        //        $input = json_encode([
-        //            'stream' => true,
-        //            'input' => [
-        //                'prompt' => $prompt,
-        //                'prompt_template' => "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
-        //            ],
-        //        ]);
 
         $ch = curl_init('https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct/predictions');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -102,16 +94,24 @@ class ReplicateAIGateway
             $role = $message['role'];
             $content = $message['content'];
 
+            // Remove any invalid or unexpected characters from the content
+            $content = preg_replace('/[^[:print:]\n\r\t]/', '', $content);
+
             if ($role === 'system') {
-                $formattedMessages .= "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{$content}<|eot_id|>";
+                $formattedMessages .= "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{$content}\n<|eot_id|>";
             } elseif ($role === 'user') {
-                $formattedMessages .= "<|start_header_id|>user<|end_header_id|>\n\n{$content}<|eot_id|>";
+                $formattedMessages .= "<|start_header_id|>user<|end_header_id|>\n\n{$content}\n<|eot_id|>";
             } elseif ($role === 'assistant') {
-                $formattedMessages .= "<|start_header_id|>assistant<|end_header_id|>\n\n{$content}<|eot_id|>";
+                $formattedMessages .= "<|start_header_id|>assistant<|end_header_id|>\n\n{$content}\n<|eot_id|>";
             }
         }
 
-        $formattedMessages .= "<|start_header_id|>user<|end_header_id|>\n\n{$prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
+        // Remove any invalid or unexpected characters from the prompt
+        $prompt = preg_replace('/[^[:print:]\n\r\t]/', '', $prompt);
+
+        $formattedMessages .= "<|start_header_id|>user<|end_header_id|>\n\n{$prompt}\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
+
+        //        dd($formattedMessages);
 
         return $formattedMessages;
     }
