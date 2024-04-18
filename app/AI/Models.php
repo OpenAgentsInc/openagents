@@ -127,6 +127,8 @@ class Models
 
     public static function getDefaultModel()
     {
+        return 'llama-3-70b';
+
         // If user is not logged in, use Mistral Small.
         if (! auth()->check()) {
             return 'mistral-small-latest';

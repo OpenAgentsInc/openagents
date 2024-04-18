@@ -4,7 +4,6 @@ namespace App\AI;
 
 use App\Models\Thread;
 use GuzzleHttp\Client;
-use ReplicateAIGateway;
 
 class SimpleInferencer
 {
@@ -36,7 +35,7 @@ class SimpleInferencer
             switch ($gateway) {
                 case 'meta':
                     $client = new ReplicateAIGateway();
-                    $inference = $client->predict($prompt, $streamFunction);
+                    $inference = $client->predict($prompt, $streamFunction, $messages);
                     break;
                 case 'anthropic':
                     $client = new AnthropicAIGateway($httpClient);
