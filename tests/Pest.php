@@ -54,7 +54,7 @@ expect()->extend('toBeOne', function () {
 function mockGuzzleClient(array $mockResponse): Client
 {
     $mockResponseStream = fopen('php://memory', 'r+');
-    if (isset($mockResponse['text'])) {
+    if (isset($mockResponse['text']) || isset($mockResponse['choices'])) {
         fwrite(
             $mockResponseStream,
             json_encode($mockResponse)."\n"

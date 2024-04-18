@@ -37,8 +37,7 @@ class SimpleInferencer
                     $client = new TogetherAIGateway($httpClient);
                     $inference = $client->inference([
                         'model' => $model,
-                        'chat_history' => $messages,
-                        //                        'messages' => $messages,
+                        'messages' => $messages,
                         'max_tokens' => $completionTokens,
                         'stream_function' => $streamFunction,
                     ]);

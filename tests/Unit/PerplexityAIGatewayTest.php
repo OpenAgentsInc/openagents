@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use App\AI\PerplexityAIGateway;
 
-test('PerplexityAIGateway handles mistral responses correctly', function () {
+test('PerplexityAIGateway handles perplexity responses correctly', function () {
     $prompt = 'What is the capital of France?';
     $inputTokens = 6;
     $answer = 'Capital of France is Paris.';
