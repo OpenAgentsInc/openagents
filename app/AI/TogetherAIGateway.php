@@ -19,7 +19,7 @@ class TogetherAIGateway implements GatewayInterface
     public function inference(array $params): array
     {
         $data = [
-            'model' => 'META-LLAMA/LLAMA-3-70B-CHAT-HF', // $params['model'] ?? 'META-LLAMA/LLAMA-3-70B-CHAT-HF',
+            'model' => $params['model'],
             'messages' => [],
         ];
 

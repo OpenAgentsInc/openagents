@@ -6,10 +6,17 @@ class Models
 {
     public const MODELS = [
         // LLAMA
-        'llama-3-70b' => [
+        'meta-llama/llama-3-8b-chat-hf' => [
+            'name' => 'Llama 3 8B',
+            'gateway' => 'meta',
+            'access' => 'user',
+            'max_tokens' => 4096,
+        ],
+
+        'meta-llama/llama-3-70b-chat-hf' => [
             'name' => 'Llama 3 70B',
             'gateway' => 'meta',
-            'access' => 'guest',
+            'access' => 'pro',
             'max_tokens' => 4096,
         ],
 
@@ -127,8 +134,6 @@ class Models
 
     public static function getDefaultModel()
     {
-        return 'llama-3-70b';
-
         // If user is not logged in, use Mistral Small.
         if (! auth()->check()) {
             return 'mistral-small-latest';
