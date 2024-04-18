@@ -34,8 +34,14 @@ class SimpleInferencer
             $httpClient = new Client();
             switch ($gateway) {
                 case 'meta':
-                    $client = new ReplicateAIGateway();
-                    $inference = $client->predict($prompt, $streamFunction, $messages);
+                    $client = new TogetherAIGateway($httpClient);
+                    $inference = $client->inference([
+                        'model' => $model,
+                        'chat_history' => $messages,
+                        //                        'messages' => $messages,
+                        'max_tokens' => $completionTokens,
+                        'stream_function' => $streamFunction,
+                    ]);
                     break;
                 case 'anthropic':
                     $client = new AnthropicAIGateway($httpClient);
