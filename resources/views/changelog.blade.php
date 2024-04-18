@@ -11,8 +11,18 @@
 
             <h1 class="mt-12 text-center">Changelog</h1>
 
+
             <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
                 <div class="mt-6 grid grid-cols-1 gap-10">
+                    <x-pane title="April 18, 2024" borderColor="border-darkgray">
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/276"
+                                post="https://twitter.com/OpenAgentsInc/status/1781028741109444719"
+                        >
+                            Added Llama 3 8B and 70B chat models
+                        </x-changelog-item>
+                    </x-pane>
+
                     <x-pane title="April 17, 2024" borderColor="border-darkgray">
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/273"
@@ -26,7 +36,6 @@
                         >
                             Added chat with OA codebase via Greptile
                         </x-changelog-item>
-
                     </x-pane>
 
                     <x-pane title="April 16, 2024" borderColor="border-darkgray">
