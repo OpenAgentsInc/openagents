@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\AI\HuggingfaceAIGateway;
 use Illuminate\Support\Facades\Http;
 
-test('CohereAIGateway handles mistral responses correctly', function () {
+test('HugginfaceAIGateway handles satoshi responses correctly', function () {
     $prompt = 'What is the capital of France?';
     $answer = 'Capital of France is Paris.';
 
