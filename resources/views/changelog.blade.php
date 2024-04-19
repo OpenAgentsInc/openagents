@@ -18,6 +18,11 @@
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/280"
                         >
+                            Add Settings page; set default model
+                        </x-changelog-item>
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/280"
+                        >
                             Set last-used model when opening thread
                         </x-changelog-item>
                         <x-changelog-item
