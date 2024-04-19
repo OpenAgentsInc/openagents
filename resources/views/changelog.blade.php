@@ -14,6 +14,14 @@
 
             <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
                 <div class="mt-6 grid grid-cols-1 gap-10">
+                    <x-pane title="April 19, 2024" borderColor="border-darkgray">
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/276"
+                        >
+                            Improve AI thread titles
+                        </x-changelog-item>
+                    </x-pane>
+
                     <x-pane title="April 18, 2024" borderColor="border-darkgray">
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/276"
