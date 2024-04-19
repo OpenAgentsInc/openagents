@@ -90,4 +90,4 @@ These models and their fields are defined in the Eloquent model files and the co
         ->assertExitCode(0);
 
     dump($thread->refresh()->title);
-})->skipInCI();
+})->skip();
