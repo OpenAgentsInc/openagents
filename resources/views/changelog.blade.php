@@ -17,6 +17,7 @@
                     <x-pane title="April 19, 2024" borderColor="border-darkgray">
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/281"
+                                post="https://twitter.com/OpenAgentsInc/status/1781420567117402536"
                         >
                             Add Settings page; set default model
                         </x-changelog-item>
