@@ -30,7 +30,7 @@
                                 code="https://github.com/OpenAgentsInc/openagents/pull/276"
                                 post="https://twitter.com/OpenAgentsInc/status/1781333474852688099"
                         >
-                            Improve AI thread titles
+                            Improved AI thread titles
                         </x-changelog-item>
                     </x-pane>
 
@@ -137,7 +137,7 @@
                                 code="https://github.com/OpenAgentsInc/openagents/tree/e6ba003c4dfca4668a49527b1b268ea5d05b96ff"
                                 post="https://twitter.com/OpenAgentsInc/status/1777496991099998302"
                         >
-                            Launch new chat interface
+                            Launched new chat interface
                         </x-changelog-item>
                     </x-pane>
 
