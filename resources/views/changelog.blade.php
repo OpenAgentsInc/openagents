@@ -17,6 +17,7 @@
                     <x-pane title="April 19, 2024" borderColor="border-darkgray">
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/276"
+                                post="https://twitter.com/OpenAgentsInc/status/1781333474852688099"
                         >
                             Improve AI thread titles
                         </x-changelog-item>
