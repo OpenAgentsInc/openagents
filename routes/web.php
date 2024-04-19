@@ -6,6 +6,7 @@ use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
 use App\Livewire\PrismDashboard;
+use App\Livewire\Settings;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
@@ -22,6 +23,9 @@ Route::middleware('guest')->group(function () {
 // AUTH - NOSTR
 Route::get('/login/nostr', [NostrAuthController::class, 'client'])->name('loginnostrclient');
 Route::post('/login/nostr', [NostrAuthController::class, 'create'])->name('loginnostr');
+
+// SETTINGS
+Route::get('/settings', Settings::class)->name('settings');
 
 // BILLING
 Route::get('/subscription', [BillingController::class, 'stripe_billing_portal']);
