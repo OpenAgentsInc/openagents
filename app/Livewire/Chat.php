@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\AI\Models;
 use App\AI\SimpleInferencer;
 use App\Models\Thread;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -66,7 +67,7 @@ class Chat extends Component
             $this->selectedModel = $lastMessage['model'];
         } else {
             // Set the default model if no last message or model is found
-            $this->selectedModel = auth()->user()->default_model ?? Models::getDefaultModel();
+            $this->selectedModel = Auth::check() ? auth()->user()->getDefaultModelAttribute() : Models::getDefaultModel();
         }
     }
 

@@ -41,7 +41,7 @@
 
                     @if($pending)
                         <x-chat.messagestreaming
-                                :author="$author"></x-chat.messagestreaming>
+                                :author="$models[$selectedModel]['name']"></x-chat.messagestreaming>
                     @endif
 
                     @if ($showNoMoreMessages)
