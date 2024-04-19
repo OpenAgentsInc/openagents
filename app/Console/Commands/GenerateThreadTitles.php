@@ -17,6 +17,7 @@ class GenerateThreadTitles extends Command
     {
         $this->info('Generating thread titles...');
         $threads = Thread::where('title', 'New chat')
+            ->has('messages', '>', 1)
             ->latest()
             ->take(100)
             ->get();
