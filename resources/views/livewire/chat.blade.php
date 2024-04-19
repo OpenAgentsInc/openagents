@@ -1,7 +1,7 @@
 @php use App\AI\Models; @endphp
 <div role="presentation" tabindex="0" class="flex flex-col h-full min-h-screen">
     <div class="flex-1 overflow-hidden">
-        <x-chatbox>
+        <x-chatbox :autoscroll="auth()->check() ? auth()->user()->autoscroll : true">
             <div class="flex flex-col text-sm pb-9" style="">
                 <div class="h-[52px] sticky top-0 flex flex-row items-center justify-between z-10 px-5 bg-black">
                     <div class="absolute left-1/2 -translate-x-1/2"></div>
