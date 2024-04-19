@@ -69,9 +69,6 @@ class Chat extends Component
             // Set the default model if no last message or model is found
             $this->selectedModel = Models::getDefaultModel();
         }
-
-        // Right after setting the selectedModel
-        $this->js('$wire.announceSelectedModel()');
     }
 
     private function ensureThread()
@@ -117,12 +114,6 @@ class Chat extends Component
         } else {
             dd('what');
         }
-    }
-
-    public function announceSelectedModel()
-    {
-        // can't do this mount so
-        $this->dispatch('model-selected', $this->selectedModel);
     }
 
     #[On('no-more-messages')]

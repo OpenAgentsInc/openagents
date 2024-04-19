@@ -13,11 +13,23 @@ class ModelSelector extends Component
 
     public $formattedModel = '';
 
+    public $thread;
+
     public $models = Models::MODELS;
 
     public function mount()
     {
+        // Existing logic to set the default selected model
         $this->selectedModel = Models::getDefaultModel();
+
+        // New logic to adjust the selected model based on the thread context
+        if ($this->thread) {
+            $lastMessage = $this->thread->messages->last();
+            if ($lastMessage && ! empty($lastMessage->model)) {
+                $this->selectedModel = $lastMessage->model;
+            }
+        }
+
         $this->formattedModel = Models::getModelName($this->selectedModel);
     }
 
