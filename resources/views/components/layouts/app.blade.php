@@ -16,12 +16,10 @@
 </head>
 
 <body class="h-screen bg-black antialiased" x-cloak
-      x-data="{  sidebarOpen: window.innerWidth > 768, collapsed: false }"
->
+      x-data="{  sidebarOpen: false, collapsed: false }">
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
-    <div class="h-[54px] flex justify-between items-center absolute top-0 left-0 py-2 px-4 w-[259px]"
-         x-bind:class="{ 'z-[9001]': sidebarOpen, 'z-[1]': !sidebarOpen }">
+    <div class="h-[54px] flex justify-between items-center absolute top-0 left-0 py-2 px-4 w-[259px] z-[9001]">
         <button class="cursor-pointer text-white"
                 @click="sidebarOpen = !sidebarOpen">
             <x-icon.menu class="h-6 w-6"/>
