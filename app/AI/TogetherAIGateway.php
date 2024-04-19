@@ -25,7 +25,7 @@ class TogetherAIGateway implements GatewayInterface
                     'role' => $message['role'],
                     'content' => $message['content'],
                 ];
-            }, $params['messages'])
+            }, $params['messages']),
         ];
 
         try {
