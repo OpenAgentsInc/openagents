@@ -23,6 +23,7 @@
                         </x-changelog-item>
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/283"
+                                post="https://twitter.com/OpenAgentsInc/status/1781441149477236747"
                         >
                             Add autoscroll setting
                         </x-changelog-item>
