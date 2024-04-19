@@ -19,6 +19,8 @@ class GenerateThreadTitles extends Command
 
         // for now we gotta unfuck previous shit titles, so get threads where last updated more than 15 minutes ago
         $threads = Thread::where('updated_at', '<', now()->subMinutes(15))
+            // and where ID is less than 6195
+            ->where('id', '<', 6195)
             ->has('messages', '>', 1)
             ->latest()
             ->take(50)
