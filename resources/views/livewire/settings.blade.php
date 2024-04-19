@@ -28,7 +28,7 @@
                                 $gateway = $modelName['gateway'];
                                 $imagePath = 'images/icons/' . $gateway . '.png';
                             @endphp
-                            <a wire:click="setDefaultModel('{{ $modelKey }}')"
+                            <a wire:click="$action('{{ $modelKey }}')"
                                class="flex items-center gap-x-3.5 py-1 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }} cursor-pointer">
                                 <div class="flex items-center gap-x-3.5">
                                     <img src="{{ asset('images/icons/' . $modelName['gateway'] . '.png') }}"
