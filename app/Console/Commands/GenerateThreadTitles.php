@@ -16,10 +16,11 @@ class GenerateThreadTitles extends Command
     public function handle()
     {
         $this->info('Generating thread titles...');
-        $threads = Thread::where('title', 'New chat')
+        //        $threads = Thread::where('title', 'New chat')
+        $threads = Thread::where('user_id', 1)
             ->has('messages', '>', 1)
             ->latest()
-            ->take(100)
+            ->take(10)
             ->get();
 
         $httpClient = new Client();
