@@ -3,7 +3,6 @@
 namespace App\Livewire;
 
 use App\AI\Models;
-use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -65,40 +64,17 @@ class ModelSelector extends Component
 
     protected function getUserAccess()
     {
-        if (Auth::check() && Auth::user()->isPro()) {
-            return 'pro';
-        } elseif (Auth::check()) {
-            return 'user';
-        } else {
-            return 'guest';
-        }
+        return Models::getUserAccess();
     }
 
     protected function hasModelAccess($model, $userAccess)
     {
-        $modelDetails = Models::MODELS[$model] ?? null;
-
-        if ($modelDetails) {
-            $requiredAccess = $modelDetails['access'];
-            $accessLevels = ['guest', 'user', 'pro'];
-            $userAccessIndex = array_search($userAccess, $accessLevels);
-            $requiredAccessIndex = array_search($requiredAccess, $accessLevels);
-
-            return $userAccessIndex >= $requiredAccessIndex;
-        }
-
-        return false;
+        return Models::hasModelAccess($model, $userAccess);
     }
 
     protected function isProModelSelected($model)
     {
-        $modelDetails = Models::MODELS[$model] ?? null;
-
-        if ($modelDetails) {
-            return $modelDetails['access'] === 'pro';
-        }
-
-        return false;
+        return Models::isProModelSelected($model);
     }
 
     public function render()
@@ -108,23 +84,6 @@ class ModelSelector extends Component
 
     protected function getModelIndicator($model, $userAccess)
     {
-        $modelDetails = Models::MODELS[$model] ?? null;
-
-        if ($modelDetails) {
-            $requiredAccess = $modelDetails['access'];
-            $accessLevels = ['guest', 'user', 'pro'];
-            $userAccessIndex = array_search($userAccess, $accessLevels);
-            $requiredAccessIndex = array_search($requiredAccess, $accessLevels);
-
-            if ($userAccessIndex < $requiredAccessIndex) {
-                if ($requiredAccess === 'pro') {
-                    return 'Pro';
-                } else {
-                    return 'Join';
-                }
-            }
-        }
-
-        return '';
+        return Models::getModelIndicator($model, $userAccess);
     }
 }

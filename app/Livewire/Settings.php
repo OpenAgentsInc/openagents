@@ -3,7 +3,6 @@
 namespace App\Livewire;
 
 use App\AI\Models;
-use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
 class Settings extends Component
@@ -35,34 +34,11 @@ class Settings extends Component
 
     protected function getUserAccess()
     {
-        if (Auth::check() && Auth::user()->isPro()) {
-            return 'pro';
-        } elseif (Auth::check()) {
-            return 'user';
-        } else {
-            return 'guest';
-        }
+        return Models::getUserAccess();
     }
 
     protected function getModelIndicator($model, $userAccess)
     {
-        $modelDetails = Models::MODELS[$model] ?? null;
-
-        if ($modelDetails) {
-            $requiredAccess = $modelDetails['access'];
-            $accessLevels = ['guest', 'user', 'pro'];
-            $userAccessIndex = array_search($userAccess, $accessLevels);
-            $requiredAccessIndex = array_search($requiredAccess, $accessLevels);
-
-            if ($userAccessIndex < $requiredAccessIndex) {
-                if ($requiredAccess === 'pro') {
-                    return 'Pro';
-                } else {
-                    return 'Join';
-                }
-            }
-        }
-
-        return '';
+        return Models::getModelIndicator($model, $userAccess);
     }
 }

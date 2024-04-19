@@ -2,6 +2,8 @@
 
 namespace App\AI;
 
+use Illuminate\Support\Facades\Auth;
+
 class Models
 {
     public const MODELS = [
@@ -132,6 +134,44 @@ class Models
 
     ];
 
+    public static function getUserAccess()
+    {
+        if (Auth::check() && Auth::user()->isPro()) {
+            return 'pro';
+        } elseif (Auth::check()) {
+            return 'user';
+        } else {
+            return 'guest';
+        }
+    }
+
+    public static function hasModelAccess($model, $userAccess)
+    {
+        $modelDetails = self::MODELS[$model] ?? null;
+
+        if ($modelDetails) {
+            $requiredAccess = $modelDetails['access'];
+            $accessLevels = ['guest', 'user', 'pro'];
+            $userAccessIndex = array_search($userAccess, $accessLevels);
+            $requiredAccessIndex = array_search($requiredAccess, $accessLevels);
+
+            return $userAccessIndex >= $requiredAccessIndex;
+        }
+
+        return false;
+    }
+
+    public static function isProModelSelected($model)
+    {
+        $modelDetails = self::MODELS[$model] ?? null;
+
+        if ($modelDetails) {
+            return $modelDetails['access'] === 'pro';
+        }
+
+        return false;
+    }
+
     public static function getDefaultModel()
     {
         // If user is not logged in, use Mistral Small.
@@ -146,6 +186,28 @@ class Models
 
         // For authed non-Pro users, use Mistral Medium.
         return 'mistral-medium-latest';
+    }
+
+    public static function getModelIndicator($model, $userAccess)
+    {
+        $modelDetails = self::MODELS[$model] ?? null;
+
+        if ($modelDetails) {
+            $requiredAccess = $modelDetails['access'];
+            $accessLevels = ['guest', 'user', 'pro'];
+            $userAccessIndex = array_search($userAccess, $accessLevels);
+            $requiredAccessIndex = array_search($requiredAccess, $accessLevels);
+
+            if ($userAccessIndex < $requiredAccessIndex) {
+                if ($requiredAccess === 'pro') {
+                    return 'Pro';
+                } else {
+                    return 'Join';
+                }
+            }
+        }
+
+        return '';
     }
 
     public static function getModelName($model)
