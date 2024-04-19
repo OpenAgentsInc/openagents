@@ -66,7 +66,7 @@ class Chat extends Component
             $this->selectedModel = $lastMessage['model'];
         } else {
             // Set the default model if no last message or model is found
-            $this->selectedModel = Models::getDefaultModel();
+            $this->selectedModel = auth()->user()->default_model ?? Models::getDefaultModel();
         }
     }
 
