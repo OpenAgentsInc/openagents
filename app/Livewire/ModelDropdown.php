@@ -3,42 +3,30 @@
 namespace App\Livewire;
 
 use App\AI\Models;
-use Auth;
-use Livewire\Attributes\On;
 use Livewire\Component;
 
-class ModelSelector extends Component
+class ModelDropdown extends Component
 {
-    public $selectedModel = '';
+    public $selectedModel;
 
     public $formattedModel = '';
 
     public $models;
 
-    public $thread;
+    public $action;
 
-    public function mount()
+    public $isOpen = false;
+
+    public function mount($selectedModel, $models, $action)
     {
-        $this->models = Models::MODELS;
-
-        // Existing logic to set the default selected model
-        $this->selectedModel = Auth::check() ? auth()->user()->getDefaultModelAttribute() : Models::getDefaultModel();
-
-        // New logic to adjust the selected model based on the thread context
-        if ($this->thread) {
-            $lastMessage = $this->thread->messages->last();
-            if ($lastMessage && ! empty($lastMessage->model)) {
-                $this->selectedModel = $lastMessage->model;
-            }
-        }
-
+        $this->selectedModel = $selectedModel;
         $this->formattedModel = Models::getModelName($this->selectedModel);
+        $this->models = $models;
+        $this->action = $action;
     }
 
-    #[On('model-selected')]
     public function selectModel($model)
     {
-        dd("selected model: $model");
         $userAccess = $this->getUserAccess();
 
         // If the user is not logged in, show the login modal for any model they don't have access to
@@ -66,12 +54,12 @@ class ModelSelector extends Component
         }
     }
 
-    protected function getUserAccess()
+    public function getUserAccess()
     {
         return Models::getUserAccess();
     }
 
-    protected function hasModelAccess($model, $userAccess)
+    public function hasModelAccess($model, $userAccess)
     {
         return Models::hasModelAccess($model, $userAccess);
     }
@@ -81,13 +69,18 @@ class ModelSelector extends Component
         return Models::isProModelSelected($model);
     }
 
-    public function render()
+    public function toggleDropdown()
     {
-        return view('livewire.model-selector');
+        $this->isOpen = ! $this->isOpen;
     }
 
-    protected function getModelIndicator($model, $userAccess)
+    public function render()
     {
-        return Models::getModelIndicator($model, $userAccess);
+        return view('livewire.model-dropdown');
+    }
+
+    public function getModelIndicator($modelKey)
+    {
+        return Models::getModelIndicator($modelKey, $this->getUserAccess());
     }
 }

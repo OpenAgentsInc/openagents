@@ -33,7 +33,6 @@ class Chat extends Component
 
     public $selectedModel = '';
 
-    // Listen to select-model event
     #[On('select-model')]
     public function selectModel($model)
     {
