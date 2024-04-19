@@ -9,16 +9,13 @@ class Settings extends Component
 {
     public $formattedDefaultModel;
 
+    public $selectedModel;
+
     public $models = Models::MODELS;
 
     public function mount()
     {
-        $this->formattedDefaultModel = $this->getFormattedModelName(auth()->user()->default_model);
-    }
-
-    private function getFormattedModelName($modelKey)
-    {
-        return $this->models[$modelKey]['name'] ?? 'Unknown Model';
+        $this->selectedModel = auth()->user()->default_model;
     }
 
     public function setDefaultModel($modelKey)
