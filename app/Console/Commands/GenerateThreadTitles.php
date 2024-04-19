@@ -16,15 +16,18 @@ class GenerateThreadTitles extends Command
     public function handle()
     {
         $this->info('Generating thread titles...');
-        //        $threads = Thread::where('title', 'New chat')
-        $threads = Thread::where('user_id', 1)
+
+        // for now we gotta unfuck previous shit titles, so get threads where last updated more than 15 minutes ago
+        $threads = Thread::where('updated_at', '<', now()->subMinutes(15))
             ->has('messages', '>', 1)
             ->latest()
-            ->take(10)
+            ->take(50)
             ->get();
 
         $httpClient = new Client();
         $gateway = new CohereAIGateway($httpClient);
+
+        $saveCount = 0;
 
         foreach ($threads as $thread) {
             $summary = $this->summarizeConversation($thread, $gateway);
@@ -33,6 +36,7 @@ class GenerateThreadTitles extends Command
             if ($summary) {
                 $thread->title = $summary;
                 $thread->save();
+                $saveCount++;
                 $this->info("Thread {$thread->id} summarized: $summary");
             } else {
                 $this->error("Failed to summarize Thread {$thread->id}");
@@ -40,6 +44,9 @@ class GenerateThreadTitles extends Command
 
             sleep(0.5);
         }
+
+        // log how many we updated
+        $this->info("Updated {$saveCount} conversations");
     }
 
     protected function summarizeConversation($thread, $gateway)
