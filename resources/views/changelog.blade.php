@@ -19,7 +19,7 @@
                                 code="https://github.com/OpenAgentsInc/openagents/pull/281"
                                 post="https://twitter.com/OpenAgentsInc/status/1781420567117402536"
                         >
-                            Add Settings page; set default model
+                            Added Settings page with default model
                         </x-changelog-item>
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/280"
