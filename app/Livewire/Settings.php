@@ -10,16 +10,18 @@ class Settings extends Component
 {
     public $selectedModel;
 
+    public $autoscroll; // Add this line
+
     public $models = Models::MODELS;
 
     public function mount()
     {
-        // If not logged in, redirect to /
         if (! auth()->check()) {
             return redirect('/');
         }
 
         $this->selectedModel = auth()->user()->default_model ?? Models::getDefaultModel();
+        $this->autoscroll = auth()->user()->autoscroll; // Initialize autoscroll
     }
 
     #[On('select-model')]
@@ -29,18 +31,14 @@ class Settings extends Component
         $this->selectedModel = $modelKey;
     }
 
+    public function toggleAutoscroll() // Add this method
+    {
+        $this->autoscroll = ! $this->autoscroll;
+        auth()->user()->update(['autoscroll' => $this->autoscroll]);
+    }
+
     public function render()
     {
         return view('livewire.settings');
-    }
-
-    protected function getUserAccess()
-    {
-        return Models::getUserAccess();
-    }
-
-    protected function getModelIndicator($model, $userAccess)
-    {
-        return Models::getModelIndicator($model, $userAccess);
     }
 }

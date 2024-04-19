@@ -8,12 +8,14 @@ use Illuminate\View\Component;
 
 class Chatbox extends Component
 {
+    public $autoscroll;
+
     /**
      * Create a new component instance.
      */
-    public function __construct()
+    public function __construct($autoscroll = true)
     {
-        //
+        $this->autoscroll = $autoscroll;
     }
 
     /**
@@ -21,6 +23,8 @@ class Chatbox extends Component
      */
     public function render(): View|Closure|string
     {
-        return view('components.chatbox');
+        return view('components.chatbox', [
+            'autoscroll' => $this->autoscroll,
+        ]);
     }
 }
