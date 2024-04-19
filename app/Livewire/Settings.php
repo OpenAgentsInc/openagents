@@ -14,6 +14,11 @@ class Settings extends Component
 
     public function mount()
     {
+        // If not logged in, redirect to /
+        if (! auth()->check()) {
+            return redirect('/');
+        }
+
         $this->selectedModel = auth()->user()->default_model ?? Models::getDefaultModel();
     }
 
