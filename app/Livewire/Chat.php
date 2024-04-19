@@ -72,9 +72,6 @@ class Chat extends Component
 
         // Right after setting the selectedModel
         $this->js('$wire.announceSelectedModel()');
-        //        $this->dispatch('model-selected', $this->selectedModel);
-
-        //        dump($this->selectedModel);
     }
 
     private function ensureThread()
