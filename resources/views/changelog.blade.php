@@ -16,7 +16,7 @@
                 <div class="mt-6 grid grid-cols-1 gap-10">
                     <x-pane title="April 19, 2024" borderColor="border-darkgray">
                         <x-changelog-item
-                                code="https://github.com/OpenAgentsInc/openagents/pull/280"
+                                code="https://github.com/OpenAgentsInc/openagents/pull/281"
                         >
                             Add Settings page; set default model
                         </x-changelog-item>
