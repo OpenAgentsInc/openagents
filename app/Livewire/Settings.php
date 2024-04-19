@@ -3,25 +3,25 @@
 namespace App\Livewire;
 
 use App\AI\Models;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Settings extends Component
 {
-    public $formattedDefaultModel;
-
     public $selectedModel;
 
     public $models = Models::MODELS;
 
     public function mount()
     {
-        $this->selectedModel = auth()->user()->default_model;
+        $this->selectedModel = auth()->user()->default_model ?? Models::getDefaultModel();
     }
 
-    public function setDefaultModel($modelKey)
+    #[On('select-model')]
+    public function selectModel($modelKey)
     {
         auth()->user()->update(['default_model' => $modelKey]);
-        $this->formattedDefaultModel = $this->getFormattedModelName($modelKey);
+        $this->selectedModel = $modelKey;
     }
 
     public function render()
