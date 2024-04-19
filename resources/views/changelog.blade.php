@@ -22,6 +22,11 @@
                             Added Settings page with default model
                         </x-changelog-item>
                         <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/283"
+                        >
+                            Add autoscroll setting
+                        </x-changelog-item>
+                        <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/280"
                         >
                             Set last-used model when opening thread
