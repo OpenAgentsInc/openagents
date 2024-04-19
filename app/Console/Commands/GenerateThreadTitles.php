@@ -35,6 +35,8 @@ class GenerateThreadTitles extends Command
             } else {
                 $this->error("Failed to summarize Thread {$thread->id}");
             }
+
+            sleep(1);
         }
     }
 
