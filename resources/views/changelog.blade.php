@@ -44,7 +44,7 @@
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/278"
                         >
-                            Add AI titles to untitled threads
+                            Added AI titles to untitled threads
                         </x-changelog-item>
                     </x-pane>
 
