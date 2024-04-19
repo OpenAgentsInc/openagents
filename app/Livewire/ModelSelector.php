@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\AI\Models;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class ModelSelector extends Component
@@ -20,6 +21,7 @@ class ModelSelector extends Component
         $this->formattedModel = Models::getModelName($this->selectedModel);
     }
 
+    #[On('model-selected')]
     public function selectModel($model)
     {
         $userAccess = $this->getUserAccess();
