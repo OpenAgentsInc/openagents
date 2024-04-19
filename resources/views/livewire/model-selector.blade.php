@@ -1,7 +1,7 @@
 <ol class="ml-16 md:ml-0 lg:ms-3 flex items-center whitespace-nowrap" aria-label="Breadcrumb">
     <li class="text-sm font-semibold text-gray-800 truncate select-none" x-data="{ dropdown: false }"
         aria-current="page">
-        <div class="flex gap-2 items-center justify-center overflow-hidden" role="button" tabindex="0"
+        <div class="flex gap-1 items-center justify-center overflow-hidden" role="button" tabindex="0"
              @click="dropdown = !dropdown">
             <div class="flex flex-col">
                 <span class="my-0 text-[18px]">{{ $this->formattedModel }}</span>
@@ -24,7 +24,7 @@
                                 $imagePath = 'images/icons/' . $gateway . '.png';
                             @endphp
                             <a wire:click="selectModel('{{ $modelKey }}')"
-                               class="flex items-center gap-x-3.5 py-2 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
+                               class="flex items-center gap-x-3.5 py-1 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
                                 <img src="{{ asset($imagePath) }}" alt="{{ $gateway }}" class="w-6 h-6">
                                 <div class="flex flex-col">
                                     <span class="text-indigo-50 my-0 text-sm">{{ $modelName["name"] }}</span>
