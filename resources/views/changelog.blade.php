@@ -21,6 +21,11 @@
                         >
                             Added Llama 3 8B and 70B chat models
                         </x-changelog-item>
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/pull/278"
+                        >
+                            Add AI titles to untitled threads
+                        </x-changelog-item>
                     </x-pane>
 
                     <x-pane title="April 17, 2024" borderColor="border-darkgray">
