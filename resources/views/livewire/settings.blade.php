@@ -2,7 +2,8 @@
     <div class="max-w-3xl min-w-[600px]">
         <x-pane title="Default model">
             <div x-data="{ dropdown: false }" class="relative">
-                <div class="flex gap-1 items-center justify-center overflow-hidden cursor-pointer" role="button"
+                <div class="flex gap-1 items-center justify-center overflow-hidden cursor-pointer select-none"
+                     role="button"
                      tabindex="0"
                      @click="dropdown = !dropdown">
                     <div class="flex flex-col">
