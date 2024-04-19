@@ -15,15 +15,15 @@ test('TogetherAIGateway handles llama responses correctly', function () {
         'messages' => [[
             'role' => 'user',
             'content' => $prompt,
-            'foo' => 'bar'
-        ]]
+            'foo' => 'bar',
+        ]],
     ];
 
     $mockResponse = [
         'choices' => [[
             'message' => [
-                'content' => $answer
-            ]
+                'content' => $answer,
+            ],
         ]],
         'usage' => [
             'prompt_tokens' => $inputTokens,

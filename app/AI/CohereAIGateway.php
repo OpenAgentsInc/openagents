@@ -16,6 +16,33 @@ class CohereAIGateway implements GatewayInterface
         $this->httpClient = $httpClient;
     }
 
+    public function summarize(string $conversationText): ?string
+    {
+        $data = [
+            'message' => "What is a 3- to 5-word phrase that summarizes the following conversation? Capitalize the first letter of each word.:\n\n$conversationText",
+            'model' => 'command-r',
+            'temperature' => 0.3,
+            'max_tokens' => 10,
+        ];
+
+        try {
+            $response = $this->httpClient->post('https://api.cohere.ai/v1/chat', [
+                'json' => $data,
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'Authorization' => 'Bearer '.env('COHERE_API_KEY'),
+                    'accept' => 'application/json',
+                ],
+            ]);
+
+            $responseData = json_decode($response->getBody()->getContents(), true);
+
+            return $responseData['text'];
+        } catch (RequestException $e) {
+            dd($e->getMessage());
+        }
+    }
+
     public function inference(array $params): array
     {
         $data = [
