@@ -42,9 +42,6 @@ class Chat extends Component
 
     public function mount($id = null)
     {
-        // Set the default model
-        $this->selectedModel = Models::getDefaultModel();
-
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
             $thread = Thread::find($id);
@@ -63,6 +60,21 @@ class Chat extends Component
         // Set the thread and its messages
         $this->thread = $thread;
         $this->messages = $this->thread->messages->sortBy('created_at')->toArray();
+
+        // Set the selectedModel based on the last message of the thread
+        $lastMessage = end($this->messages);
+        if ($lastMessage && ! empty($lastMessage['model'])) {
+            $this->selectedModel = $lastMessage['model'];
+        } else {
+            // Set the default model if no last message or model is found
+            $this->selectedModel = Models::getDefaultModel();
+        }
+
+        // Right after setting the selectedModel
+        $this->js('$wire.announceSelectedModel()');
+        //        $this->dispatch('model-selected', $this->selectedModel);
+
+        //        dump($this->selectedModel);
     }
 
     private function ensureThread()
@@ -108,6 +120,12 @@ class Chat extends Component
         } else {
             dd('what');
         }
+    }
+
+    public function announceSelectedModel()
+    {
+        // can't do this mount so
+        $this->dispatch('model-selected', $this->selectedModel);
     }
 
     #[On('no-more-messages')]
