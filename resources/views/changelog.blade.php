@@ -38,6 +38,11 @@
                         >
                             Improved AI thread titles
                         </x-changelog-item>
+                        <x-changelog-item
+                                code="https://github.com/OpenAgentsInc/openagents/commit/8949f2ea6bb4982d1181740654ba9eef50650065"
+                        >
+                            Fixed sidebar button disappearing
+                        </x-changelog-item>
                     </x-pane>
 
                     <x-pane title="April 18, 2024" borderColor="border-darkgray">
