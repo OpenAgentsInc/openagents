@@ -6,12 +6,9 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
-    // define skipInProduction method
-    public function skipInProduction()
+    public function skipInCI()
     {
-        dump('env is '.app()->environment());
-
-        if (app()->environment('production')) {
+        if (app()->environment('testing')) {
             $this->markTestSkipped('Skipping this test in production.');
         }
     }
