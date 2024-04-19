@@ -1,6 +1,6 @@
 <div class="flex gap-1 items-center justify-center overflow-hidden" role="button" tabindex="0"
      @click="dropdown = !dropdown">
-    <div class="flex flex-col">
+    <div class="flex flex-col select-none">
         <span class="my-0 text-[18px]">{{ $formattedModel }}</span>
     </div>
 
@@ -9,7 +9,7 @@
             <x-icon.expand-down class="w-5 h-5"></x-icon.expand-down>
         </button>
         <div x-cloak x-show="dropdown" @click.away="dropdown = false"
-             class="mt-4 -ml-[125px] fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/25"
+             class="mt-3 -ml-[145px] fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/25"
              aria-labelledby="hs-dropdown-with-header">
             <div class="py-0 first:pt-0 last:pb-0 bg-black">
                 @foreach($models as $modelKey => $modelName)

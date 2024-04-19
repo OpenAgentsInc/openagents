@@ -12,12 +12,14 @@ class ModelSelector extends Component
 
     public $formattedModel = '';
 
-    public $thread;
+    public $models;
 
-    public $models = Models::MODELS;
+    public $thread;
 
     public function mount()
     {
+        $this->models = Models::MODELS;
+
         // Existing logic to set the default selected model
         $this->selectedModel = Models::getDefaultModel();
 
