@@ -21,7 +21,7 @@ class ModelSelector extends Component
         $this->models = Models::MODELS;
 
         // Existing logic to set the default selected model
-        $this->selectedModel = Models::getDefaultModel();
+        $this->selectedModel = auth()->user()->getDefaultModelAttribute();
 
         // New logic to adjust the selected model based on the thread context
         if ($this->thread) {
@@ -37,6 +37,7 @@ class ModelSelector extends Component
     #[On('model-selected')]
     public function selectModel($model)
     {
+        dd("selected model: $model");
         $userAccess = $this->getUserAccess();
 
         // If the user is not logged in, show the login modal for any model they don't have access to
