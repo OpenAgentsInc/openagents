@@ -13,6 +13,8 @@
     <x-social-tags/>
 
     <link rel="stylesheet" href="{{asset('vendor/swal-dark.min.css')}}">
+
+    @stack('styles')
 </head>
 
 <body class="h-screen bg-black antialiased" x-cloak
@@ -66,6 +68,8 @@
         </main>
     </div>
 </div>
+
+@stack('scripts')
 
 @livewire('wire-elements-modal')
 <x-livewire-alert::scripts/>
