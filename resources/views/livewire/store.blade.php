@@ -18,21 +18,28 @@
             variety
             of tasks.</p>
 
-        <!-- grid of two columns of cards -->
         <div class="grid grid-cols-2 gap-4 mt-4">
             @foreach($models as $modelKey => $modelDetails)
-                <div class="bg-darkgray p-4 rounded-lg">
-                    <h3 class="text-lg font-bold">{{ $modelDetails['name'] }}</h3>
-                    <p class="text-gray">Gateway: {{ $modelDetails['gateway'] }}</p>
-                    <p class="text-gray">Access: {{ $modelDetails['access'] }}</p>
-                    <p class="text-gray">Max Tokens: {{ $modelDetails['max_tokens'] }}</p>
-                    @php
-                        $userAccess = Models::getUserAccess();
-                        $indicator = Models::getModelIndicator($modelKey, $userAccess);
-                    @endphp
-                    @if($indicator)
-                        <span class="ml-auto text-gray-500">{{ $indicator }}</span>
-                    @endif
+                <div class="p-4 rounded-lg relative">
+                    <div class="absolute top-2 right-2">
+                        @php
+                            $userAccess = Models::getUserAccess();
+                            $indicator = Models::getModelIndicator($modelKey, $userAccess);
+                        @endphp
+                        @if($indicator)
+                            <span class="text-gray-500">{{ $indicator }}</span>
+                        @endif
+                    </div>
+                    <div class="flex">
+                        <div class="w-[80px] h-[80px]">
+                            <img src="{{ asset('images/icons/' . $modelDetails['gateway'] . '.png') }}"
+                                 alt="{{ $modelDetails['gateway'] }}" class="w-full h-full">
+                        </div>
+                        <div class="flex-1 pl-4">
+                            <h3 class="text-lg font-bold">{{ $modelDetails['name'] }}</h3>
+                            <span class="text-gray">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</span>
+                        </div>
+                    </div>
                 </div>
             @endforeach
         </div>
