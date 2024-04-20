@@ -19,6 +19,9 @@
         <div class="my-12"/>
 
         <x-pane title="Lightning Address">
+            <p class="mt-1 mb-4">Add a <a href="https://lightningaddress.com/"
+                                          target="_blank" class="text-white underline">Lightning Address</a> so you can
+                get paid.</p>
             <div class="flex flex-col">
                 <x-chat.input type="text" class="form-input" placeholder="example@getalby.com"
                               wire:model.defer="lightning_address"/>
