@@ -5,7 +5,7 @@
     </div>
 
     <div class="w-[768px] mx-auto">
-        <div class="text-center mt-24 p-[15px]">
+        <div class="text-center mt-[64px] p-[15px]">
             <h1>Who would you like to<br/>speak with today?</h1>
 
             <p class="text-gray">Discover, try, and create AI chat agents...<br/>
