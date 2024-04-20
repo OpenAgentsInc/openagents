@@ -8,6 +8,7 @@ class Store extends Component
 {
     public function render()
     {
-        return view('livewire.store');
+        return view('livewire.store')
+            ->layout('components.layouts.store');
     }
 }

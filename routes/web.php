@@ -7,6 +7,7 @@ use App\Http\Controllers\StaticController;
 use App\Livewire\Chat;
 use App\Livewire\PrismDashboard;
 use App\Livewire\Settings;
+use App\Livewire\Store;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
@@ -33,7 +34,7 @@ Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 Route::get('/pro', [BillingController::class, 'pro'])->name('pro');
 
 // STORE
-Route::get('/store');
+Route::get('/store', Store::class)->name('store');
 
 // PLUGIN REGISTRY
 Route::get('/plugins', [StaticController::class, 'plugins']);
