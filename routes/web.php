@@ -32,16 +32,19 @@ Route::get('/subscription', [BillingController::class, 'stripe_billing_portal'])
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 Route::get('/pro', [BillingController::class, 'pro'])->name('pro');
 
-// BLOG
-Route::get('/blog', [StaticController::class, 'blog']);
-Route::get('/launch', [StaticController::class, 'launch']);
-Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
+// STORE
+Route::get('/store');
 
 // PLUGIN REGISTRY
 Route::get('/plugins', [StaticController::class, 'plugins']);
 
 // PAYMENTS
 Route::get('/prism', PrismDashboard::class)->name('prism');
+
+// BLOG
+Route::get('/blog', [StaticController::class, 'blog']);
+Route::get('/launch', [StaticController::class, 'launch']);
+Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
 
 // MISC
 Route::get('/changelog', [StaticController::class, 'changelog']);
