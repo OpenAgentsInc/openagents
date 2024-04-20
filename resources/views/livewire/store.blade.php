@@ -1,12 +1,14 @@
 @php use App\AI\Models; @endphp
-<div>
+<div class="pb-24">
     <div class="px-4 py-2 flex flex-row justify-between">
-        <x-logomark size="2"/>
+        <a href="/" wire:navigate>
+            <x-logomark size="2"/>
+        </a>
         <x-login-buttons/>
     </div>
 
-    <div class="w-[768px] mx-auto">
-        <div class="text-center mt-[64px] p-[15px]">
+    <div class="w-[800px] mx-auto">
+        <div class="text-center mt-[48px] px-[15px]">
             <h1>Who would you like to<br/>speak with today?</h1>
 
             <p class="text-gray">Discover, try, and create AI chat agents...<br/>
@@ -21,14 +23,23 @@
         <div class="grid grid-cols-2 gap-4 mt-4">
             @foreach($models as $modelKey => $modelDetails)
                 <div class="p-4 rounded-lg relative">
-                    <div class="absolute top-2 right-2">
+                    <div class="absolute top-[18px] right-4">
                         @php
                             $userAccess = Models::getUserAccess();
-                            $indicator = Models::getModelIndicator($modelKey, $userAccess);
+                            $indicator = Models::isProModelSelected($modelKey) ? 'Pro' : 'Free';
                         @endphp
-                        @if($indicator)
-                            <span class="text-gray-500">{{ $indicator }}</span>
-                        @endif
+                        <span
+                                @if($indicator == 'Free')
+                                    class="bg-opacity-15 bg-white rounded-md px-2 py-1 text-green text-sm flex justify-center items-center w-[44px] h-[20px]"
+                                @elseif($indicator == 'Pro')
+                                    class="bg-opacity-15 bg-white rounded-md px-1 py-1 text-gray-500 text-sm flex justify-center items-center w-[56px] h-[20px]"
+                            @endif
+                        >
+                            @if($indicator == 'Pro')
+                                <x-icon.logo class="w-[12px] h-[12px] mr-[4px]"/>
+                            @endif
+                            {{ $indicator }}
+                        </span>
                     </div>
                     <div class="flex">
                         <div class="w-[80px] h-[80px]">
@@ -36,7 +47,7 @@
                                  alt="{{ $modelDetails['gateway'] }}" class="w-full h-full">
                         </div>
                         <div class="flex-1 pl-4">
-                            <h3 class="text-lg font-bold">{{ $modelDetails['name'] }}</h3>
+                            <h4 class="text-lg font-bold">{{ $modelDetails['name'] }}</h4>
                             <span class="text-gray">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</span>
                         </div>
                     </div>
