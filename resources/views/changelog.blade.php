@@ -17,6 +17,7 @@
                     <x-pane title="April 20, 2024" borderColor="border-darkgray">
                         <x-changelog-item
                                 code="https://github.com/OpenAgentsInc/openagents/pull/285"
+                                post="https://twitter.com/OpenAgentsInc/status/1781703101327757410"
                         >
                             Added setting for Lightning Address
                         </x-changelog-item>
