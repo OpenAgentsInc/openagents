@@ -7,7 +7,7 @@ use GuzzleHttp\Client;
 
 class SimpleInferencer
 {
-    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction): array
+    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, Client $httpClient = null): array
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
@@ -31,7 +31,10 @@ class SimpleInferencer
 
             // Adjust the max_tokens value for the completion
             $completionTokens = $maxTokens - $messageTokens;
-            $httpClient = new Client();
+
+            if (!$httpClient) {
+                $httpClient = new Client();
+            }
             switch ($gateway) {
                 case 'meta':
                     $client = new TogetherAIGateway($httpClient);
@@ -108,31 +111,6 @@ class SimpleInferencer
 
         return $inference;
     }
-}
-
-function get_previous_messages(Thread $thread)
-{
-    $messages = [];
-    $previous_role = null;
-
-    foreach ($thread->messages()->orderBy('created_at', 'asc')->get() as $message) {
-        // If model is not null, this is agent. Otherwise user
-        $role = $message->model !== null ? 'assistant' : 'user';
-
-        // Check if message content starts with "data:image/" -- but use actual method
-        $content = strtolower(substr($message->body, 0, 11)) === 'data:image/' ? '<image>' : $message->body;
-
-        // If the role is different from the previous role, add the message
-        if ($role !== $previous_role) {
-            $messages[] = [
-                'role' => $role,
-                'content' => $content,
-            ];
-            $previous_role = $role;
-        }
-    }
-
-    return $messages;
 }
 
 function get_truncated_messages(Thread $thread, int $maxTokens)
