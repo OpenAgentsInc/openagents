@@ -10,7 +10,9 @@ class Settings extends Component
 {
     public $selectedModel;
 
-    public $autoscroll; // Add this line
+    public $autoscroll;
+
+    public $lightning_address;
 
     public $models = Models::MODELS;
 
@@ -20,8 +22,19 @@ class Settings extends Component
             return redirect('/');
         }
 
+        $this->lightning_address = auth()->user()->lightning_address;
+
         $this->selectedModel = auth()->user()->default_model ?? Models::getDefaultModel();
         $this->autoscroll = auth()->user()->autoscroll; // Initialize autoscroll
+    }
+
+    public function updateLightningAddress()
+    {
+        $this->validate([
+            'lightning_address' => 'nullable|string',
+        ]);
+
+        auth()->user()->update(['lightning_address' => $this->lightning_address]);
     }
 
     #[On('select-model')]

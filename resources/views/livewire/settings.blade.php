@@ -15,5 +15,16 @@
                 </div>
             </div>
         </x-pane>
+
+        <div class="my-12"/>
+
+        <x-pane title="Lightning Address">
+            <div class="flex flex-col">
+                <input type="text" class="form-input" placeholder="Enter your Lightning Address"
+                       wire:model.defer="lightning_address">
+                <button class="btn mt-4" wire:click="updateLightningAddress">Save</button>
+            </div>
+        </x-pane>
+
     </div>
 </div>
