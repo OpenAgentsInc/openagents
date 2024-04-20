@@ -31,7 +31,7 @@ class Settings extends Component
     public function updateLightningAddress()
     {
         $this->validate([
-            'lightning_address' => 'nullable|string',
+            'lightning_address' => 'nullable|string|email',
         ]);
 
         auth()->user()->update(['lightning_address' => $this->lightning_address]);
