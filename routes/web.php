@@ -42,6 +42,7 @@ Route::get('/plugins', [StaticController::class, 'plugins']);
 // AGENT
 Route::get('/agents', App\Livewire\Agents\Index::class)->name('agents');
 Route::get('/agents/create', App\Livewire\Agents\Create::class)->name('agents.create');
+Route::get('/agents/{agent}/edit', App\Livewire\Agents\Edit::class)->name('agents.edit');
 
 // PAYMENTS
 Route::get('/prism', PrismDashboard::class)->name('prism');
@@ -50,6 +51,7 @@ Route::get('/prism', PrismDashboard::class)->name('prism');
 Route::get('/blog', [StaticController::class, 'blog']);
 Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
+
 
 
 // MISC
