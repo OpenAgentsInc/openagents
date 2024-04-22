@@ -5,6 +5,9 @@
         <table class="min-w-full table-fixed divide-y divide-offblack text-white">
             <thead>
             <tr>
+                <th>
+                    {{-- Checkbox--}}
+                </th>
                 <th class="p-2 text-left text-sm font-semibold text-gray">
                     <div>ID</div>
                 </th>
@@ -37,7 +40,14 @@
             <tbody class="divide-y divide-offblack bg-black text-gray">
             @foreach($users as $user)
                 <tr wire:key="{{ $user->id }}">
-                    <td class="whitespace-nowrap p-2 text-sm">{{ $user->id }}</td>
+                    <td class="whitespace-nowrap p-2 text-sm">
+                        <div class="flex items-center">
+                            <input type="checkbox"
+                                   class="text-offblack focus:ring-0 active:bg-offblack focus:bg-offblack checked:bg-offblack rounded bg-black border-offblack shadow"/>
+                        </div>
+                    </td>
+                    <td class=" whitespace-nowrap p-2 text-sm
+                            ">{{ $user->id }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->name }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->username }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->email }}</td>
