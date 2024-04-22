@@ -20,16 +20,13 @@ class Agent extends Model
         'user_id',
     ];
 
-
-
-
     public function getImageUrlAttribute()
     {
         if (is_null($this->image) || empty($this->image)) {  // Check if $this->image is null
             return url('/images/no-image.jpg'); // Return default URL if null
         }
         $imageData = json_decode($this->image, true); // Cast to array for access
-        if ($imageData && isset($imageData['url']) && !empty($imageData['url'])) {  // Check for non-empty URL
+        if ($imageData && isset($imageData['url']) && ! empty($imageData['url'])) {  // Check for non-empty URL
             return $imageData['url'];
         }
 

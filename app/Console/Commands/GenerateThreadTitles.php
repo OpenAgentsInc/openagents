@@ -10,7 +10,9 @@ use Illuminate\Console\Command;
 class GenerateThreadTitles extends Command
 {
     protected $signature = 'threads:title';
+
     protected $description = 'Generate thread titles';
+
     protected Client $httpClient;
 
     public function __construct(Client $httpClient)

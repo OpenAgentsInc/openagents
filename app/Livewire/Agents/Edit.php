@@ -2,48 +2,50 @@
 
 namespace App\Livewire\Agents;
 
-use App\Models\User;
 use App\Models\Agent;
-use Livewire\Component;
-use Livewire\WithFileUploads;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
-use Symfony\Component\HttpKernel\Exception\HttpException;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Edit extends Component
 {
-
-    use WithFileUploads, LivewireAlert;
+    use LivewireAlert, WithFileUploads;
 
     public $name;
+
     public $about;
+
     public $prompt;
+
     public $rag_prompt;
+
     public $is_public;
+
     public $files = [];
+
     public $image;
+
     public $message;
 
     public Agent $agent;
 
-    public function mount(){
+    public function mount()
+    {
 
         $user = auth()->user();
 
-        abort_if($user->id !== $this->agent->user_id,403,'permission denied').
-
-
+        abort_if($user->id !== $this->agent->user_id, 403, 'permission denied').
 
     $this->name = $this->agent->name;
-    $this->about = $this->agent->about;
-    $this->prompt = $this->agent->prompt;
-    $this->rag_prompt = $this->agent->rag_prompt;
-    $this->is_public = $this->agent->is_public;
-    $this->message = $this->agent->message;
+        $this->about = $this->agent->about;
+        $this->prompt = $this->agent->prompt;
+        $this->rag_prompt = $this->agent->rag_prompt;
+        $this->is_public = $this->agent->is_public;
+        $this->message = $this->agent->message;
 
-    // public $files = [];
-    // public $image;
+        // public $files = [];
+        // public $image;
 
     }
 
@@ -62,7 +64,6 @@ class Edit extends Component
         ];
     }
 
-
     public function submit()
     {
 
@@ -70,16 +71,13 @@ class Edit extends Component
 
         $agent = $this->agent;
 
-
-
         $this->validate();
-
 
         $saveimage = [];
 
         // Upload file
 
-        if ($this->image && !empty($this->image)) {
+        if ($this->image && ! empty($this->image)) {
 
             $oldimage = json_decode($this->agent->image);
 
@@ -99,7 +97,7 @@ class Edit extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'agents/profile/images/' . $filename . '_' . time() . '.' . $extension;
+            $filenametostore = 'agents/profile/images/'.$filename.'_'.time().'.'.$extension;
 
             // Upload File to public
             Storage::disk('s3')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
@@ -111,22 +109,20 @@ class Edit extends Component
             ];
         }
 
-
         $agent->name = $this->name;
         $agent->about = $this->about;
         $agent->prompt = $this->prompt;
         $agent->rag_prompt = $this->rag_prompt;
         $agent->is_public = $this->is_public;
         $agent->message = $this->message;
-        if($this->image){
+        if ($this->image) {
             $agent->image = json_encode($saveimage);
         }
 
         $agent->user_id = $user->id;
         $agent->save();
 
-
-        if (!empty($this->files)) {
+        if (! empty($this->files)) {
             foreach ($this->files as $file) {
                 // Get filename with extension
                 $filenamewithextension = $file->getClientOriginalName();
@@ -138,13 +134,12 @@ class Edit extends Component
                 $extension = $file->getClientOriginalExtension();
 
                 // Filename to store with directory
-                $filenametostore = 'agents/files/documents/' . $filename . '_' . time() . '.' . $extension;
+                $filenametostore = 'agents/files/documents/'.$filename.'_'.time().'.'.$extension;
 
                 // Upload File to s3
                 Storage::disk('s3')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
                 $url = Storage::disk('s3')->url($filenametostore);
-
 
                 $agent->documents()->create([
                     'name' => $filename,
@@ -159,7 +154,6 @@ class Edit extends Component
         $this->alert('success', 'Agent updated successfully');
 
     }
-
 
     public function render()
     {
