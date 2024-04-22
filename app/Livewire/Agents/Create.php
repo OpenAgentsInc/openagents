@@ -2,24 +2,30 @@
 
 namespace App\Livewire\Agents;
 
-use App\Models\User;
 use App\Models\Agent;
-use Livewire\Component;
-use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Create extends Component
 {
-    use WithFileUploads, LivewireAlert;
+    use LivewireAlert, WithFileUploads;
 
     public $name;
+
     public $about;
+
     public $prompt;
+
     public $rag_prompt;
+
     public $is_public = true;
+
     public $files = [];
+
     public $image;
+
     public $message;
 
     public function rules()
@@ -48,7 +54,7 @@ class Create extends Component
 
         // Upload file
 
-        if (!is_null($this->image) || !empty($this->image)) {
+        if (! is_null($this->image) || ! empty($this->image)) {
 
             // Get filename with extension
             $filenamewithextension = $this->image->getClientOriginalName();
@@ -60,7 +66,7 @@ class Create extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'agents/profile/images/' . $filename . '_' . time() . '.' . $extension;
+            $filenametostore = 'agents/profile/images/'.$filename.'_'.time().'.'.$extension;
 
             // Upload File to public
             Storage::disk('s3')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
@@ -78,7 +84,6 @@ class Create extends Component
             ];
         }
 
-
         $agent->name = $this->name;
         $agent->about = $this->about;
         $agent->prompt = $this->prompt;
@@ -89,8 +94,7 @@ class Create extends Component
         $agent->user_id = $user->id;
         $agent->save();
 
-
-        if (!empty($this->files)) {
+        if (! empty($this->files)) {
             foreach ($this->files as $file) {
                 // Get filename with extension
                 $filenamewithextension = $file->getClientOriginalName();
@@ -102,13 +106,12 @@ class Create extends Component
                 $extension = $file->getClientOriginalExtension();
 
                 // Filename to store with directory
-                $filenametostore = 'agents/files/documents/' . $filename . '_' . time() . '.' . $extension;
+                $filenametostore = 'agents/files/documents/'.$filename.'_'.time().'.'.$extension;
 
                 // Upload File to public
                 Storage::disk('s3')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
                 $url = Storage::disk('s3')->url($filenametostore);
-
 
                 $agent->documents()->create([
                     'name' => $filename,
@@ -120,16 +123,13 @@ class Create extends Component
             }
         }
 
-
         // session()->flash('message', 'Form submitted successfully!');
         $this->alert('success', 'Form submitted successfully');
-
 
         $this->reset(); // Reset form after successful submission
 
         return redirect()->route('agents');
     }
-
 
     public function render()
     {

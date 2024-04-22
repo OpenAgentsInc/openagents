@@ -25,7 +25,7 @@ test('can generate thread titles', function () {
 These models and their fields are defined in the Eloquent model files and the corresponding migration files in the Laravel application.']);
 
     $mockResponse = [
-        'text' => 'Data Models Overview But Lets Pretend It Is Longer Than 7 Words'
+        'text' => 'Data Models Overview But Lets Pretend It Is Longer Than 7 Words',
     ];
     $httpClient = mockGuzzleClient($mockResponse);
     $this->app->instance(Client::class, $httpClient);
