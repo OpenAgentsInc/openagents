@@ -62,9 +62,19 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->subscribed('default');
     }
 
+    public function isAdmin(): bool
+    {
+        return $this->username === 'AtlantisPleb';
+    }
+
     public function threads(): HasMany
     {
         return $this->hasMany(Thread::class);
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(Message::class);
     }
 
     public function socialAccounts(): HasMany
