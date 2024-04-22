@@ -72,7 +72,7 @@
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->is_pro ? "Yes" : "No" }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->dateForHumans() }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">
-                        <div class="flex items-center justify-end">
+                        <div class="flex items-center justify-end" @click.stop>
                             <x-admin.user-dropdown :user="$user"/>
                         </div>
                     </td>

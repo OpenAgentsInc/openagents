@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\User;
+use App\Services\PrismService;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -25,6 +26,12 @@ class Admin extends Component
         } else {
             $this->selectedUserIds[] = $id;
         }
+    }
+
+    public function payMultiple()
+    {
+        $prism = new PrismService();
+
     }
 
     public function deleteMultiple()
