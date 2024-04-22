@@ -55,8 +55,12 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $appends = [
         'profile_photo_url',
         'default_model',
-        'is_pro',
     ];
+
+    public function getIsProAttribute(): bool
+    {
+        return $this->isPro();
+    }
 
     public function isPro(): bool
     {
