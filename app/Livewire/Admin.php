@@ -33,12 +33,11 @@ class Admin extends Component
         $prism = new PrismService();
 
         $recipients = [];
-        $totalWeight = 0;
 
         foreach ($this->selectedUserIds as $userId) {
             $user = User::find($userId);
 
-            // If user doesn't have a lightning address, skip
+            // If user doesn't have a lightning address, go byebye
             if (! $user->lightning_address) {
                 $this->alert('error', $user->name.' does not have a lightning address');
 
@@ -61,7 +60,6 @@ class Admin extends Component
                 }
             }
             $recipients[] = [$user->prism_user_id, 1]; // assume equal weight for now
-            $totalWeight++;
         }
 
         if (empty($recipients)) {
@@ -71,10 +69,7 @@ class Admin extends Component
         }
 
         $amount = 50; // example amount in sats
-        $currency = 'SAT';
-
-        $response = $prism->sendPayment($amount, $currency, $recipients);
-        dump($response);
+        $response = $prism->sendPayment($amount, $recipients);
 
         if ($response['status'] === 'success') {
             $this->alert('success', 'Payment sent successfully');

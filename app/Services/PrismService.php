@@ -52,19 +52,20 @@ class PrismService
         return $response->json();
     }
 
-    public function sendPayment($amount, $currency, array $recipients)
+    public function sendPayment($amount, array $recipients)
     {
-        // Assuming $recipients is an array of lightning addresses
         $response = Http::withToken($this->apiKey)
             ->post("{$this->baseUrl}/payment/prism", [
                 //                'senderId' => '67c2cc15-d90f-4af5-b16f-06cebd9e8e5d', // atlantispleb
                 'senderId' => '68f5d9c3-9260-4fdc-b29f-8e5e8edcb849', // openagents
                 'amount' => $amount,
-                'currency' => $currency,
+                'currency' => 'SAT',
                 'prism' => $recipients,
             ]);
 
-        return $response->json();
+        $json = $response->json();
+
+        return $json;
     }
 
     public function getTransactionDetails($transactionId)
