@@ -50,12 +50,15 @@
             </thead>
             <tbody class="divide-y divide-offblack bg-black text-gray">
             @foreach($users as $user)
-                <tr wire:key="{{ $user->id }}">
+                <tr wire:key="{{ $user->id }}"
+                    class="select-none cursor-pointer hover:bg-offblack hover:bg-opacity-50 transition-colors duration-50 ease-in-out"
+                    @click="$refs.checkbox{{$user->id}}.checked=!$refs.checkbox{{$user->id}}.checked;  $dispatch('toggleUserId', { id: {{ $user->id }} })">
                     <td class="whitespace-nowrap p-2 text-sm">
                         <div class="flex items-center">
                             <input type="checkbox"
                                    wire:model="selectedUserIds"
                                    value="{{ $user->id }}"
+                                   x-ref="checkbox{{$user->id}}"
                                    class="text-offblack focus:ring-0 active:bg-offblack focus:bg-offblack checked:bg-offblack rounded bg-black border-offblack shadow"/>
                         </div>
                     </td>

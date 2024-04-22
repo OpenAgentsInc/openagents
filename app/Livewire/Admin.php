@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\User;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Admin extends Component
@@ -15,6 +16,16 @@ class Admin extends Component
     public $users;
 
     public $selectedUserIds = [];
+
+    #[On('toggleUserId')]
+    public function toggleUserId($id)
+    {
+        if (in_array($id, $this->selectedUserIds)) {
+            $this->selectedUserIds = array_diff($this->selectedUserIds, [$id]);
+        } else {
+            $this->selectedUserIds[] = $id;
+        }
+    }
 
     public function deleteMultiple()
     {
