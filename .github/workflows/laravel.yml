@@ -123,20 +123,15 @@ jobs:
                 // Join the failing tests with two new lines and wrap in a code block for markdown
                 message = `❌ Tests failed. Below are the details:\n\`\`\`\n${failingTests.join('\n\n')}\n\`\`\``;
               } else if (passingTests > 0) {
-                message = "✅ All tests passed!";
+                message = '';
               } else {
                 message = "⚠️ Error running tests. Logs:\n```\n" + testSummary + "\n```";
               }
             } else {
               message = "⚠️ No test summary file found.";
             }
-            
-            // Create the PR comment
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: message
-            });
+            if (message) {
+              core.setFailed(message);
+            }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
