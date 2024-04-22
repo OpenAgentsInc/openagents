@@ -11,6 +11,13 @@ class Admin extends Component
 
     public $users;
 
+    public $selectedUserIds = [];
+
+    public function deleteMultiple()
+    {
+        dd($this->selectedUserIds);
+    }
+
     public function delete($userId)
     {
         $user = User::find($userId);
