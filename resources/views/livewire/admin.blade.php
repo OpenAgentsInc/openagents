@@ -39,57 +39,7 @@
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->dateForHumans() }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">
                         <div class="flex items-center justify-end">
-                            <div x-data x-menu class="relative">
-                                <button x-menu:button
-                                        class="hover:bg-offblack flex items-center gap-2 p-1 rounded-md shadow">
-                                    <span>...</span>
-                                </button>
-
-                                <div
-                                        x-menu:items
-                                        x-transition.origin.top.right
-                                        class="absolute right-0 w-48 mt-2 z-10 origin-top-right bg-black border border-offblack divide-y divide-offblack rounded-md shadow-md py-1 outline-none"
-                                        x-cloak
-                                >
-                                    <a
-                                            x-menu:item
-                                            href="#edit"
-                                            :class="{
-                'bg-cyan-500/10 text-gray-900': $menuItem.isActive,
-                'text-gray-600': ! $menuItem.isActive,
-                'opacity-50 cursor-not-allowed': $menuItem.isDisabled,
-            }"
-                                            class="block w-full px-4 py-2 text-sm transition-colors"
-                                    >
-                                        Edit
-                                    </a>
-                                    <a
-                                            x-menu:item
-                                            href="#copy"
-                                            :class="{
-                'bg-cyan-500/10 text-gray-900': $menuItem.isActive,
-                'text-gray-600': ! $menuItem.isActive,
-                'opacity-50 cursor-not-allowed': $menuItem.isDisabled,
-            }"
-                                            class="block w-full px-4 py-2 text-sm transition-colors"
-                                    >
-                                        Copy
-                                    </a>
-                                    <a
-                                            x-menu:item
-                                            href="#delete"
-                                            :class="{
-                'bg-cyan-500/10 text-gray-900': $menuItem.isActive,
-                'text-gray-600': ! $menuItem.isActive,
-                'opacity-50 cursor-not-allowed': $menuItem.isDisabled,
-            }"
-                                            class="block w-full px-4 py-2 text-sm transition-colors"
-                                            disabled
-                                    >
-                                        Delete
-                                    </a>
-                                </div>
-                            </div>
+                            <x-admin.user-dropdown :user="$user"/>
                         </div>
                     </td>
                 </tr>
