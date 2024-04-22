@@ -15,6 +15,12 @@
                     <div>Username</div>
                 </th>
                 <th class="p-2 text-left text-sm font-semibold text-gray">
+                    <div>Email</div>
+                </th>
+                <th class="p-2 text-left text-sm font-semibold text-gray">
+                    <div>LN Address</div>
+                </th>
+                <th class="p-2 text-left text-sm font-semibold text-gray">
                     <div># Messages</div>
                 </th>
                 <th class="p-2 text-left text-sm font-semibold text-gray">
@@ -34,6 +40,8 @@
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->id }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->name }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->username }}</td>
+                    <td class="whitespace-nowrap p-2 text-sm">{{ $user->email }}</td>
+                    <td class="whitespace-nowrap p-2 text-sm">{{ $user->lightning_address }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->messages_count }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->is_pro ? "Yes" : "No" }}</td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $user->dateForHumans() }}</td>
