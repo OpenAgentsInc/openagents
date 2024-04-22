@@ -21,6 +21,11 @@
     </main>
 </div>
 
+@stack('scripts')
+
+@livewire('wire-elements-modal')
+<x-livewire-alert::scripts/>
+
 </body>
 
 </html>
