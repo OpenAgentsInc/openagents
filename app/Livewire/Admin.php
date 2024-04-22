@@ -3,21 +3,38 @@
 namespace App\Livewire;
 
 use App\Models\User;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
 
 class Admin extends Component
 {
+    use LivewireAlert;
+
     public $totalUsers;
 
     public $users;
 
-    public function delete($userId)
+    public $selectedUserIds = [];
+
+    public function deleteMultiple()
+    {
+        foreach ($this->selectedUserIds as $userId) {
+            $this->delete($userId, false);
+        }
+        $this->setUsers();
+        $this->alert('success', 'Deleted '.count($this->selectedUserIds).' users');
+        $this->selectedUserIds = [];
+    }
+
+    public function delete($userId, $set = true)
     {
         $user = User::find($userId);
         $user->messages()->delete();
         $user->threads()->delete();
         $user->delete();
-        $this->setUsers();
+        if ($set) {
+            $this->setUsers();
+        }
     }
 
     private function setUsers()
