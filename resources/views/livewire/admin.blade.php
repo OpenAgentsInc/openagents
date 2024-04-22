@@ -56,7 +56,7 @@
                     <td class="whitespace-nowrap p-2 text-sm">
                         <div class="flex items-center">
                             <input type="checkbox"
-                                   wire:model="selectedUserIds"
+                                   {{--                                   wire:model="selectedUserIds"--}}
                                    value="{{ $user->id }}"
                                    x-ref="checkbox{{$user->id}}"
                                    class="text-offblack focus:ring-0 active:bg-offblack focus:bg-offblack checked:bg-offblack rounded bg-black border-offblack shadow"/>
