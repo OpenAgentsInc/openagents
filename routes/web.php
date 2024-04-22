@@ -4,6 +4,7 @@ use App\Http\Controllers\BillingController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
+use App\Livewire\Admin;
 use App\Livewire\Chat;
 use App\Livewire\PrismDashboard;
 use App\Livewire\Settings;
@@ -55,6 +56,9 @@ Route::get('/privacy', [StaticController::class, 'privacy']);
 
 // Add GET logout route
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
+
+// ADMIN
+Route::get('/admin', Admin::class)->name('admin');
 
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {
