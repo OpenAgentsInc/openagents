@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\PrismMultiPayment;
+use App\Models\PrismSinglePayment;
 use Illuminate\Support\Facades\Http;
 
 class PrismService
@@ -67,7 +69,6 @@ class PrismService
 
         $prismMultiPayment = new PrismMultiPayment();
         $prismMultiPayment->prism_id = $response['prismId'];
-        // ... fill in the rest of the fields for PrismMultiPayment
         $prismMultiPayment->save();
 
         foreach ($response['payments'] as $payment) {
