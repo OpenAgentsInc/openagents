@@ -32,28 +32,54 @@ class Admin extends Component
     {
         $prism = new PrismService();
 
+        $recipients = [];
+        $totalWeight = 0;
+
         foreach ($this->selectedUserIds as $userId) {
             $user = User::find($userId);
 
-            // Does the user have a prism_id
-            if (! $user->prism_id) {
-                //                $this->alert('error', 'User '.$user->id.' does not have a prism_id');
+            // If user doesn't have a lightning address, skip
+            if (! $user->lightning_address) {
+                $this->alert('error', $user->name.' does not have a lightning address');
 
+                return;
+            }
+
+            // If the user doesn't have a prism user ID, let's make one for them
+            if (! $user->prism_user_id) {
                 // Create a user in Prism
                 $response = $prism->createUser($user->lightning_address);
 
-                dd($response);
-
                 if (isset($response['id'])) {
-                    $user->prism_id = $response['id'];
+                    $user->prism_user_id = $response['id'];
                     $user->save();
+                    $this->alert('success', 'Created user in Prism');
                 } else {
                     $this->alert('error', 'Failed to create user in Prism');
 
                     return;
                 }
-
             }
+            $recipients[] = [$user->prism_user_id, 1]; // assume equal weight for now
+            $totalWeight++;
+        }
+
+        if (empty($recipients)) {
+            $this->alert('error', 'No valid users');
+
+            return;
+        }
+
+        $amount = 50; // example amount in sats
+        $currency = 'SAT';
+
+        $response = $prism->sendPayment($amount, $currency, $recipients);
+        dump($response);
+
+        if ($response['status'] === 'success') {
+            $this->alert('success', 'Payment sent successfully');
+        } else {
+            $this->alert('error', 'Failed to send payment');
         }
 
     }
