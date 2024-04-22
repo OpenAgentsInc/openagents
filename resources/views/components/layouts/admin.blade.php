@@ -10,7 +10,6 @@
     @include('partials.analytics')
     <script defer src="https://unpkg.com/@alpinejs/ui@3.13.9-beta.0/dist/cdn.min.js"></script>
     <script defer src="https://unpkg.com/@alpinejs/focus@3.13.9/dist/cdn.min.js"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.13.9/dist/cdn.min.js"></script>
     <x-social-tags/>
 </head>
 
