@@ -65,6 +65,19 @@ class PrismService
 
         $json = $response->json();
 
+        $prismMultiPayment = new PrismMultiPayment();
+        $prismMultiPayment->prism_id = $response['prismId'];
+        // ... fill in the rest of the fields for PrismMultiPayment
+        $prismMultiPayment->save();
+
+        foreach ($response['payments'] as $payment) {
+            $prismSinglePayment = new PrismSinglePayment();
+            $prismSinglePayment->payment_id = $payment['id'];
+            $prismSinglePayment->prism_multi_payment_id = $prismMultiPayment->id;
+            // ... fill in the rest of the fields for PrismSinglePayment
+            $prismSinglePayment->save();
+        }
+
         return $json;
     }
 
