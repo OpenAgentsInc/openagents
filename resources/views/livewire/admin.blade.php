@@ -1,9 +1,15 @@
 <div class="p-12">
     <div class="flex flex-row justify-between">
         <h2 class="mb-4">Users ({{ $totalUsers }})</h2>
-        <form wire:submit="deleteMultiple" x-show="$wire.selectedUserIds.length > 0" x-cloak>
-            <x-secondary-button type="submit">Delete</x-secondary-button>
-        </form>
+        <div class="flex flex-row items-center" x-show="$wire.selectedUserIds.length > 0" x-cloak>
+            <div class="mr-8 text-gray">
+                <span x-text="$wire.selectedUserIds.length"></span>
+                <span> selected</span>
+            </div>
+            <form wire:submit="deleteMultiple">
+                <x-secondary-button type="submit">Delete</x-secondary-button>
+            </form>
+        </div>
     </div>
 
     <div class="flex flex-col gap-8">
