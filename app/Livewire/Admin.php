@@ -32,6 +32,30 @@ class Admin extends Component
     {
         $prism = new PrismService();
 
+        foreach ($this->selectedUserIds as $userId) {
+            $user = User::find($userId);
+
+            // Does the user have a prism_id
+            if (! $user->prism_id) {
+                //                $this->alert('error', 'User '.$user->id.' does not have a prism_id');
+
+                // Create a user in Prism
+                $response = $prism->createUser($user->lightning_address);
+
+                dd($response);
+
+                if (isset($response['id'])) {
+                    $user->prism_id = $response['id'];
+                    $user->save();
+                } else {
+                    $this->alert('error', 'Failed to create user in Prism');
+
+                    return;
+                }
+
+            }
+        }
+
     }
 
     public function deleteMultiple()

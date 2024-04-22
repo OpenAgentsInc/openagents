@@ -6,6 +6,9 @@
                 <span x-text="$wire.selectedUserIds.length"></span>
                 <span> selected</span>
             </div>
+            <form class="mr-6" wire:submit="payMultiple" wire:confirm="Confirm pay users?">
+                <x-secondary-button type="submit">Pay 50 sats</x-secondary-button>
+            </form>
             <form wire:submit="deleteMultiple" wire:confirm="Confirm delete users?">
                 <x-secondary-button type="submit">Delete</x-secondary-button>
             </form>
