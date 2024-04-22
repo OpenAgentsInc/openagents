@@ -56,12 +56,6 @@ Route::get('/privacy', [StaticController::class, 'privacy']);
 // Add GET logout route
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
-Route::get('/phpinfo', function () {
-    dd(phpinfo());
-});
-
-Route::get('/testing', [NostrAuthController::class, 'testing']);
-
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {
     return redirect('/');
