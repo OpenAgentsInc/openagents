@@ -16,6 +16,13 @@
                    class="block px-4 py-2 text-sm text-white hover:bg-white/20">
                     Settings
                 </a>
+                @if(Auth::user()->isAdmin())
+                    <a href="/admin"
+                       wire:navigate
+                       class="block px-4 py-2 text-sm text-white hover:bg-white/20">
+                        Admin
+                    </a>
+                @endif
                 <a href="/logout"
                    class="block px-4 py-2 text-sm text-white hover:bg-white/20">
                     Log out
