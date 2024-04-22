@@ -20,7 +20,6 @@ class Admin extends Component
         $this->totalUsers = User::count();
         $this->users = User::withCount('messages')
             ->latest()
-            ->take(50)
             ->get();
     }
 
