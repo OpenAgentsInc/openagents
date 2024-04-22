@@ -9,7 +9,6 @@ class AgentFile extends Model
 {
     use HasFactory;
 
-
     protected $fillable = [
         'name',
         'path',

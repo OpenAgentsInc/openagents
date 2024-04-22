@@ -7,7 +7,7 @@ use GuzzleHttp\Client;
 
 class SimpleInferencer
 {
-    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, Client $httpClient = null): array
+    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, ?Client $httpClient = null): array
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
@@ -32,7 +32,7 @@ class SimpleInferencer
             // Adjust the max_tokens value for the completion
             $completionTokens = $maxTokens - $messageTokens;
 
-            if (!$httpClient) {
+            if (! $httpClient) {
                 $httpClient = new Client();
             }
             switch ($gateway) {

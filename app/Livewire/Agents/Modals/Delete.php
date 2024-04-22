@@ -2,14 +2,13 @@
 
 namespace App\Livewire\Agents\Modals;
 
-use App\Models\Agent;
-use Livewire\Component;
 use App\Livewire\Agents\Index;
-use LivewireUI\Modal\ModalComponent;
+use App\Models\Agent;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use LivewireUI\Modal\ModalComponent;
 
-class Delete extends  ModalComponent
+class Delete extends ModalComponent
 {
     use LivewireAlert;
 
@@ -30,12 +29,12 @@ class Delete extends  ModalComponent
 
         $agent = Agent::with('documents')->find($this->agent_id);
 
-        if($agent->user_id !== auth()->user()->id){
+        if ($agent->user_id !== auth()->user()->id) {
 
             $this->alert('error', 'Permission Denied..');
             $this->closeModal();
 
-        }else{
+        } else {
             // Delete documents from storage and database
             $agent->documents->each(function ($document) {
                 Storage::disk($document->disk)->delete($document->path);
@@ -50,8 +49,6 @@ class Delete extends  ModalComponent
             $this->closeModal();
 
             $this->alert('success', 'Agent deleted successfully');
-
-
 
         }
 
