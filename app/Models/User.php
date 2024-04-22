@@ -57,6 +57,15 @@ class User extends Authenticatable implements MustVerifyEmail
         'default_model',
     ];
 
+    public function dateForHumans()
+    {
+        return $this->created_at->format(
+            $this->created_at->year === now()->year ?
+                'M d, g:i A' :
+                'M d Y, g:i A'
+        );
+    }
+
     public function getIsProAttribute(): bool
     {
         return $this->isPro();
