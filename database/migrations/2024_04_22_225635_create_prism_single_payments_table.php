@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('prism_single_payments', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('prism_multi_payment_id')->constrained();
             $table->string('prism_id'); // prismId from the response
             $table->string('payment_id'); // id from the payments array
             //            $table->integer('created_at'); // createdAt from the response

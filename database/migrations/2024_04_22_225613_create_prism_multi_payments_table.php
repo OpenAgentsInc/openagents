@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('prism_multi_payments', function (Blueprint $table) {
             $table->id();
+            $table->text('prism_id');
             $table->timestamps();
         });
     }

@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\User;
 use App\Services\PrismService;
+use Exception;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -68,13 +69,13 @@ class Admin extends Component
             return;
         }
 
-        $amount = 50; // example amount in sats
-        $response = $prism->sendPayment($amount, $recipients);
-
-        if ($response['status'] === 'success') {
+        try {
+            $amount = 50; // example amount in sats
+            $prism->sendPayment($amount, $recipients);
             $this->alert('success', 'Payment sent successfully');
-        } else {
+        } catch (Exception $e) {
             $this->alert('error', 'Failed to send payment');
+            dump($e->getMessage());
         }
 
     }

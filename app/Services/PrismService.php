@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\PrismMultiPayment;
 use App\Models\PrismSinglePayment;
+use Exception;
 use Illuminate\Support\Facades\Http;
 
 class PrismService
@@ -67,19 +68,48 @@ class PrismService
 
         $json = $response->json();
 
-        $prismMultiPayment = new PrismMultiPayment();
-        $prismMultiPayment->prism_id = $response['prismId'];
-        $prismMultiPayment->save();
-
-        foreach ($response['payments'] as $payment) {
-            $prismSinglePayment = new PrismSinglePayment();
-            $prismSinglePayment->payment_id = $payment['id'];
-            $prismSinglePayment->prism_multi_payment_id = $prismMultiPayment->id;
-            // ... fill in the rest of the fields for PrismSinglePayment
-            $prismSinglePayment->save();
+        if ($response->status() === 200) {
+            $this->savePrism($json);
+        } else {
+            dd($json);
         }
 
         return $json;
+    }
+
+    public function savePrism($prismResponse)
+    {
+        try {
+            $prismMultiPayment = new PrismMultiPayment();
+            $prismMultiPayment->prism_id = $prismResponse['prismId'];
+            $prismMultiPayment->save();
+
+            foreach ($prismResponse['payments'] as $payment) {
+                $prismSinglePayment = new PrismSinglePayment();
+                $prismSinglePayment->payment_id = $payment['id'];
+                $prismSinglePayment->prism_multi_payment_id = $prismMultiPayment->id;
+                $prismSinglePayment->prism_id = $prismResponse['prismId'];
+                $prismSinglePayment->expires_at = $payment['expiresAt'];
+                $prismSinglePayment->sender_id = $payment['senderId'];
+                $prismSinglePayment->receiver_id = $payment['receiverId'];
+                $prismSinglePayment->amount_msat = $payment['amountMsat'];
+                $prismSinglePayment->status = $payment['status'];
+                $prismSinglePayment->resolved_at = $payment['resolvedAt'];
+                $prismSinglePayment->resolved = $payment['resolved'];
+                $prismSinglePayment->prism_payment_id = $payment['prismPaymentId'];
+                $prismSinglePayment->bolt11 = $payment['bolt11'];
+                $prismSinglePayment->preimage = $payment['preimage'];
+                $prismSinglePayment->failure_code = $payment['failureCode'];
+                $prismSinglePayment->type = $payment['type'];
+                $prismSinglePayment->reason = $payment['reason'];
+                $prismSinglePayment->save();
+            }
+        } catch (Exception $e) {
+            // Log the error
+            dd($e->getMessage());
+            // Return a response indicating failure
+        }
+
     }
 
     public function getTransactionDetails($transactionId)
