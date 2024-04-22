@@ -6,7 +6,7 @@
                 <span x-text="$wire.selectedUserIds.length"></span>
                 <span> selected</span>
             </div>
-            <form wire:submit="deleteMultiple">
+            <form wire:submit="deleteMultiple" wire:confirm="Confirm delete users?">
                 <x-secondary-button type="submit">Delete</x-secondary-button>
             </form>
         </div>
