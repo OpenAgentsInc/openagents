@@ -17,6 +17,9 @@
                 <th class="p-3 text-left text-sm font-semibold text-gray">
                     <div># Messages</div>
                 </th>
+                <th class="p-3 text-left text-sm font-semibold text-gray">
+                    <div>Pro</div>
+                </th>
             </tr>
             </thead>
             <tbody class="divide-y divide-gray bg-black text-gray">
@@ -26,6 +29,7 @@
                     <td class="whitespace-nowrap p-3 text-sm">{{ $user->name }}</td>
                     <td class="whitespace-nowrap p-3 text-sm">{{ $user->username }}</td>
                     <td class="whitespace-nowrap p-3 text-sm">{{ $user->messages_count }}</td>
+                    <td class="whitespace-nowrap p-3 text-sm">{{ $user->is_pro ? "Yes" : "No" }}</td>
                 </tr>
             @endforeach
             </tbody>
