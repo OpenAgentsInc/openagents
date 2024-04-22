@@ -15,16 +15,21 @@ class Admin extends Component
 
     public function deleteMultiple()
     {
-        dd($this->selectedUserIds);
+        foreach ($this->selectedUserIds as $userId) {
+            $this->delete($userId, false);
+        }
+        $this->setUsers();
     }
 
-    public function delete($userId)
+    public function delete($userId, $set = true)
     {
         $user = User::find($userId);
         $user->messages()->delete();
         $user->threads()->delete();
         $user->delete();
-        $this->setUsers();
+        if ($set) {
+            $this->setUsers();
+        }
     }
 
     private function setUsers()
