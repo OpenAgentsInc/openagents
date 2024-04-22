@@ -102,12 +102,12 @@ class Edit extends Component
             $filenametostore = 'agents/profile/images/' . $filename . '_' . time() . '.' . $extension;
 
             // Upload File to public
-            Storage::disk('public')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
+            Storage::disk('s3')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
 
             $saveimage = [
-                'disk' => 'public',
+                'disk' => 's3',
                 'path' => $filenametostore,
-                'url' => Storage::disk('public')->url($filenametostore),
+                'url' => Storage::disk('s3')->url($filenametostore),
             ];
         }
 
@@ -140,17 +140,17 @@ class Edit extends Component
                 // Filename to store with directory
                 $filenametostore = 'agents/files/documents/' . $filename . '_' . time() . '.' . $extension;
 
-                // Upload File to public
-                Storage::disk('public')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
+                // Upload File to s3
+                Storage::disk('s3')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
-                $url = Storage::disk('public')->url($filenametostore);
+                $url = Storage::disk('s3')->url($filenametostore);
 
 
                 $agent->documents()->create([
                     'name' => $filename,
                     'path' => $filenametostore,
                     'url' => $url,
-                    'disk' => 'public',
+                    'disk' => 's3',
                     'type' => $file->getClientMimeType(),
                 ]);
             }
@@ -158,10 +158,6 @@ class Edit extends Component
 
         $this->alert('success', 'Agent updated successfully');
 
-
-        // $this->reset(); // Reset form after successful submission
-
-        // return redirect()->route('agents');
     }
 
 
