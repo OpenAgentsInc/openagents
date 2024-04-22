@@ -41,7 +41,7 @@
                         <div class="flex items-center justify-end">
                             <div x-data x-menu class="relative">
                                 <button x-menu:button
-                                        class="flex items-center gap-2 pl-5 pr-3 py-2.5 rounded-md shadow">
+                                        class="hover:bg-offblack flex items-center gap-2 p-1 rounded-md shadow">
                                     <span>...</span>
                                 </button>
 
