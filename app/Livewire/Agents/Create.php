@@ -63,12 +63,12 @@ class Create extends Component
             $filenametostore = 'agents/profile/images/' . $filename . '_' . time() . '.' . $extension;
 
             // Upload File to public
-            Storage::disk('public')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
+            Storage::disk('s3')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
 
             $saveimage = [
                 'disk' => 'public',
                 'path' => $filenametostore,
-                'url' => Storage::disk('public')->url($filenametostore),
+                'url' => Storage::disk('s3')->url($filenametostore),
             ];
         } else {
             $saveimage = [
@@ -105,16 +105,16 @@ class Create extends Component
                 $filenametostore = 'agents/files/documents/' . $filename . '_' . time() . '.' . $extension;
 
                 // Upload File to public
-                Storage::disk('public')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
+                Storage::disk('s3')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
-                $url = Storage::disk('public')->url($filenametostore);
+                $url = Storage::disk('s3')->url($filenametostore);
 
 
                 $agent->documents()->create([
                     'name' => $filename,
                     'path' => $filenametostore,
                     'url' => $url,
-                    'disk' => 'public',
+                    'disk' => 's3',
                     'type' => $file->getClientMimeType(),
                 ]);
             }
