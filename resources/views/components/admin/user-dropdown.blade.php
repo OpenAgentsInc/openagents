@@ -9,7 +9,7 @@
         <x-menu.close>
             <x-menu.item
                     wire:click="delete({{ $user->id }})"
-                    wire:confirm="Are you sure you want to delete this user?"
+                    wire:confirm="Are you sure you want to delete {{ $user->name }}?"
             >
                 Delete
             </x-menu.item>
