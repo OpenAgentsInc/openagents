@@ -11,16 +11,30 @@ class Admin extends Component
 
     public $users;
 
+    public function delete($userId)
+    {
+        $user = User::find($userId);
+        $user->messages()->delete();
+        $user->threads()->delete();
+        $user->delete();
+        $this->setUsers();
+    }
+
+    private function setUsers()
+    {
+        $this->users = User::withCount('messages')
+            ->latest()
+            ->get();
+        $this->totalUsers = User::count();
+    }
+
     public function mount()
     {
         if (! auth()->user() || ! auth()->user()->isAdmin()) {
             return redirect()->route('home');
         }
 
-        $this->totalUsers = User::count();
-        $this->users = User::withCount('messages')
-            ->latest()
-            ->get();
+        $this->setUsers();
     }
 
     public function render()
