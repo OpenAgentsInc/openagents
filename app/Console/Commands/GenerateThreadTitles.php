@@ -10,8 +10,14 @@ use Illuminate\Console\Command;
 class GenerateThreadTitles extends Command
 {
     protected $signature = 'threads:title';
-
     protected $description = 'Generate thread titles';
+    protected Client $httpClient;
+
+    public function __construct(Client $httpClient)
+    {
+        parent::__construct();
+        $this->httpClient = $httpClient;
+    }
 
     public function handle()
     {
@@ -23,8 +29,7 @@ class GenerateThreadTitles extends Command
             ->take(50)
             ->get();
 
-        $httpClient = new Client();
-        $gateway = new CohereAIGateway($httpClient);
+        $gateway = new CohereAIGateway($this->httpClient);
 
         $saveCount = 0;
 
