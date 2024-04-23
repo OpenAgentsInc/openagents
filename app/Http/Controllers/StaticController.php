@@ -9,6 +9,11 @@ use Laravel\Jetstream\Jetstream;
 
 class StaticController extends Controller
 {
+    public function explorer()
+    {
+        return view('explorer');
+    }
+
     public function plugins(Request $request)
     {
         $plugins = [
