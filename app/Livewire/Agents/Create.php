@@ -66,7 +66,7 @@ class Create extends Component
             Storage::disk('s3')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
 
             $saveimage = [
-                'disk' => 'public',
+                'disk' => 's3',
                 'path' => $filenametostore,
                 'url' => Storage::disk('s3')->url($filenametostore),
             ];
