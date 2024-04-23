@@ -47,6 +47,7 @@ Route::get('/agents/{agent}/edit', App\Livewire\Agents\Edit::class)->name('agent
 
 // PAYMENTS
 Route::get('/prism', PrismDashboard::class)->name('prism');
+Route::get('/explorer', [StaticController::class, 'explorer']);
 
 // BLOG
 Route::get('/blog', [StaticController::class, 'blog']);
