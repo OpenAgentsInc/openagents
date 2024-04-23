@@ -6,6 +6,7 @@ use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Livewire\Admin;
 use App\Livewire\Chat;
+use App\Livewire\Explorer;
 use App\Livewire\PrismDashboard;
 use App\Livewire\Settings;
 use App\Livewire\Store;
@@ -47,7 +48,7 @@ Route::get('/agents/{agent}/edit', App\Livewire\Agents\Edit::class)->name('agent
 
 // PAYMENTS
 Route::get('/prism', PrismDashboard::class)->name('prism');
-Route::get('/explorer', [StaticController::class, 'explorer']);
+Route::get('/explorer', Explorer::class)->name('explorer');
 
 // BLOG
 Route::get('/blog', [StaticController::class, 'blog']);
