@@ -1,10 +1,21 @@
 @php use App\AI\Models; @endphp
 <div class="pb-24">
-    <div class="px-4 py-2 flex flex-row justify-between">
-        <a href="/" wire:navigate>
+    <div class="px-4 flex flex-row justify-between">
+        <a href="/" class="mt-2" wire:navigate>
             <x-logomark size="2"/>
         </a>
-        <x-login-buttons/>
+        @auth
+            <div class="flex flex-row items-center gap-x-6">
+                <a href="{{ route('agents.create') }}" wire:navigate>
+                    <x-secondary-button class="mt-3">Create an agent</x-secondary-button>
+                </a>
+                <x-user-menu/>
+            </div>
+        @else
+            <div class="flex flex-row items-center">
+                <x-login-buttons/>
+            </div>
+        @endauth
     </div>
 
     <div class="w-[800px] mx-auto">
@@ -26,12 +37,12 @@
                         <div class="flex">
                             <div class="w-[80px] h-[80px]">
                                 <!-- Add agent icon or image here -->
-                                <img src="https://placekitten.com/200/200" alt="Agent" class="w-full h-full rounded">
+                                <img src="{{ $agent->image_url }}" alt="Agent" class="w-full h-full rounded">
 
                             </div>
                             <div class="flex-1 pl-4">
-                                <h4 class="text-lg font-bold">{{ $agent['title'] }}</h4>
-                                <span class="text-gray">{{ $agent['description'] }}</span>
+                                <h4 class="text-lg font-bold">{{ $agent['name'] }}</h4>
+                                <span class="text-gray">{{ $agent['about'] }}</span>
                             </div>
                         </div>
                     </div>

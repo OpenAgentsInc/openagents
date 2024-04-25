@@ -4,7 +4,7 @@ use App\Http\Controllers\BillingController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
-use App\Http\Controllers\Webhook\NostraHandlerController;
+use App\Http\Controllers\Webhook\NostrHandlerController;
 use App\Livewire\Admin;
 use App\Livewire\Chat;
 use App\Livewire\Explorer;
@@ -68,7 +68,7 @@ Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 Route::get('/admin', Admin::class)->name('admin');
 
 // Nostra Webhook
-Route::post('/webhook/nostra', [NostraHandlerController::class, 'handleEvent']);
+Route::post('/webhook/nostr', [NostrHandlerController::class, 'handleEvent']);
 
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {

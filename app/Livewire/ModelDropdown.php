@@ -7,9 +7,11 @@ use Livewire\Component;
 
 class ModelDropdown extends Component
 {
+    public $selectedAgent;
+
     public $selectedModel;
 
-    public $formattedModel = '';
+    public $formattedModelOrAgent = '';
 
     public $models;
 
@@ -19,10 +21,18 @@ class ModelDropdown extends Component
 
     public $showAgents = false;
 
-    public function mount($selectedModel, $models, $action, $showAgents = false)
+    public function mount($selectedAgent, $selectedModel, $models, $action, $showAgents = false)
     {
+        $this->selectedAgent = $selectedAgent;
         $this->selectedModel = $selectedModel;
-        $this->formattedModel = Models::getModelName($this->selectedModel);
+
+        // If selectedAgent is an array with >=3 elements, it means the user has selected an agent
+        if (is_array($selectedAgent) && count($selectedAgent) >= 3) {
+            $this->formattedModelOrAgent = $this->selectedAgent['title'];
+        } else {
+            $this->formattedModelOrAgent = Models::getModelName($this->selectedModel);
+        }
+
         $this->models = $models;
         $this->action = $action;
         $this->showAgents = $showAgents;
