@@ -1,10 +1,16 @@
 @php use App\AI\Models; @endphp
 <div class="pb-24">
-    <div class="px-4 py-2 flex flex-row justify-between">
-        <a href="/" wire:navigate>
+    <div class="px-4 flex flex-row justify-between">
+        <a href="/" class="mt-2" wire:navigate>
             <x-logomark size="2"/>
         </a>
-        <x-login-buttons/>
+        @auth
+            <x-user-menu/>
+        @else
+            <div class="flex flex-row items-center">
+                <x-login-buttons/>
+            </div>
+        @endauth
     </div>
 
     <div class="w-[800px] mx-auto">
