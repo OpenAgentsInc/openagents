@@ -3,10 +3,11 @@
 namespace App\Http\Controllers\Webhook;
 
 use App\Http\Controllers\Controller;
+use App\Models\NostrJob;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-class NostraHandlerController extends Controller
+class NostrHandlerController extends Controller
 {
     public function handleEvent(Request $request)
     {
@@ -37,8 +38,8 @@ class NostraHandlerController extends Controller
                     'content' => $content,
                 ];
 
-                // fetch the nostra job
-                $nostra_job = NostraJob::where('job_id', $job_id)->first();
+                // fetch the nostr job
+                $nostra_job = NostrJob::where('job_id', $job_id)->first();
                 if ($nostra_job) {
                     // update the model payload and content
                     $nostra_job->payload = $payload;
