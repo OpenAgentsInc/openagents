@@ -37,7 +37,7 @@
                         <div class="flex">
                             <div class="w-[80px] h-[80px]">
                                 <!-- Add agent icon or image here -->
-                                <img src="https://placekitten.com/200/200" alt="Agent" class="w-full h-full rounded">
+                                <img src="{{ $agent->image_url }}" alt="Agent" class="w-full h-full rounded">
 
                             </div>
                             <div class="flex-1 pl-4">
