@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\AI;
 
 use App\Models\Thread;
@@ -35,76 +37,43 @@ class SimpleInferencer
             if (! $httpClient) {
                 $httpClient = new Client();
             }
+            $params = [
+                'model' => $model,
+                'messages' => $messages,
+                'max_tokens' => $completionTokens,
+                'stream_function' => $streamFunction,
+            ];
             switch ($gateway) {
                 case 'meta':
                     $client = new TogetherAIGateway($httpClient);
-                    $inference = $client->inference([
-                        'model' => $model,
-                        'messages' => $messages,
-                        'max_tokens' => $completionTokens,
-                        'stream_function' => $streamFunction,
-                    ]);
                     break;
                 case 'anthropic':
                     $client = new AnthropicAIGateway($httpClient);
-                    $inference = $client->inference([
-                        'model' => $model,
-                        'messages' => $messages,
-                        'max_tokens' => $completionTokens,
-                        'stream_function' => $streamFunction,
-                    ]);
                     break;
                 case 'mistral':
                     $client = new MistralAIGateway($httpClient);
-                    $inference = $client->inference([
-                        'model' => $model,
-                        'messages' => $messages,
-                        'max_tokens' => $completionTokens,
-                        'stream_function' => $streamFunction,
-                    ]);
                     break;
                 case 'openai':
                     $client = new OpenAIGateway();
-                    $inference = $client->inference([
-                        'model' => $model,
-                        'messages' => $messages,
-                        'max_tokens' => $completionTokens,
-                        'stream_function' => $streamFunction,
-                    ]);
                     break;
                 case 'perplexity':
                     $client = new PerplexityAIGateway($httpClient);
-                    $inference = $client->inference([
-                        'model' => $model,
-                        'messages' => $messages,
-                        'max_tokens' => $completionTokens,
-                        'stream_function' => $streamFunction,
-                    ]);
                     break;
                 case 'cohere':
                     $client = new CohereAIGateway($httpClient);
-                    $inference = $client->inference([
-                        'chat_history' => $messages,
-                        'message' => $prompt,
-                        'connectors' => [],
-                        'model' => $model,
-                    ]);
+                    $params['message'] = $prompt;
                     break;
                 case 'satoshi':
                     $client = new HuggingfaceAIGateway();
-                    $inference = $client->inference([
-                        'model' => $model,
-                        'messages' => $messages,
-                        'max_tokens' => $completionTokens,
-                    ]);
                     break;
                 case 'greptile':
                     $client = new GreptileGateway();
-                    $inference = $client->queryRepository($thread);
+                    $params = $thread;
                     break;
                 default:
                     dd("Unknown gateway: $gateway");
             }
+            $inference = $client->inference($params);
         } else {
             dd("Unknown model: $model");
         }
@@ -117,7 +86,6 @@ function get_truncated_messages(Thread $thread, int $maxTokens)
 {
     $messages = [];
     $tokenCount = 0;
-    $prevRole = null;
     $userContent = '';
 
     foreach ($thread->messages()->orderBy('created_at', 'asc')->get() as $message) {
@@ -169,8 +137,6 @@ function get_truncated_messages(Thread $thread, int $maxTokens)
 
             $tokenCount += $messageTokens;
         }
-
-        $prevRole = $role;
     }
 
     if (! empty($userContent)) {
