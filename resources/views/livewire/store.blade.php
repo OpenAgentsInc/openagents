@@ -5,7 +5,12 @@
             <x-logomark size="2"/>
         </a>
         @auth
-            <x-user-menu/>
+            <div class="flex flex-row items-center gap-x-6">
+                <a href="{{ route('agents.create') }}" wire:navigate>
+                    <x-secondary-button class="mt-3">Create an agent</x-secondary-button>
+                </a>
+                <x-user-menu/>
+            </div>
         @else
             <div class="flex flex-row items-center">
                 <x-login-buttons/>
