@@ -49,8 +49,6 @@ class Chat extends Component
         if ($id) {
             $thread = Thread::find($id);
             if (! $thread || (auth()->check() && $thread->user_id !== auth()->id()) || (! auth()->check() && $thread->session_id !== session()->getId())) {
-                dd('not yours');
-
                 return $this->redirect('/', true);
             } else {
                 // Notify the sidebar component of the active thread
