@@ -33,6 +33,8 @@ class Chat extends Component
 
     public $selectedModel = '';
 
+    public $selectedAgent = '';
+
     #[On('select-model')]
     public function selectModel($model)
     {
@@ -70,6 +72,11 @@ class Chat extends Component
 
         // Set the selected model
         $this->selectedModel = Models::getModelForThread($this->thread);
+
+        // If the selectedAgent session var is set, use it
+        if (session()->has('selectedAgent')) {
+            $this->selectedAgent = session('selectedAgent');
+        }
     }
 
     private function ensureThread()
