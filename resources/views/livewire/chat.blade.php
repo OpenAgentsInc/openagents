@@ -10,7 +10,7 @@
                     @auth
                         <x-user-menu/>
                     @else
-                        <div class="flex flex-row items-center">
+                        <div class="mt-2 flex flex-row items-center">
                             <x-login-buttons/>
                         </div>
                     @endauth
