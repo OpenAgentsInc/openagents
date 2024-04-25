@@ -13,7 +13,8 @@
              aria-labelledby="hs-dropdown-with-header">
             <div class="py-0 first:pt-0 last:pb-0 bg-black">
                 @if($showAgents)
-                    <a class="py-2 mb-2 border-b border-offblack flex items-center gap-x-3.5 py-1 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
+                    <a href="/" wire:navigate
+                       class="py-2 mb-2 border-b border-offblack flex items-center gap-x-3.5 py-1 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
                         <x-icon.boxes class="w-5 h-5"></x-icon.boxes>
                         <div class="flex flex-col">
                             <span class="text-indigo-50 my-0 text-sm">Explore agents</span>
