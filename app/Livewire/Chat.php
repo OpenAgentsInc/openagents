@@ -45,6 +45,10 @@ class Chat extends Component
             session()->put('selectedModel', request()->query('model'));
         }
 
+        if (request()->query('agent')) {
+            session()->put('selectedAgent', request()->query('agent'));
+        }
+
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
             $thread = Thread::find($id);
