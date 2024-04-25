@@ -232,4 +232,18 @@ class Models
             return 'guest';
         }
     }
+
+    public static function getModelPicture($model)
+    {
+        $modelDetails = self::MODELS[$model] ?? null;
+
+        if ($modelDetails) {
+            $gateway = $modelDetails['gateway'];
+            $imagePath = 'images/icons/'.$gateway.'.png';
+
+            return url($imagePath);
+        }
+
+        return null;
+    }
 }

@@ -10,7 +10,7 @@
                     @auth
                         <x-user-menu/>
                     @else
-                        <div class="flex flex-row items-center">
+                        <div class="mt-2 flex flex-row items-center">
                             <x-login-buttons/>
                         </div>
                     @endauth
@@ -19,7 +19,7 @@
                     @if (count($messages) === 0)
                         <div class="w-full h-[70vh] flex flex-col justify-center">
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
-                                <x-logomark :size="2"></x-logomark>
+                                <x-logomark :size="1"></x-logomark>
                                 <h3 class="mt-[36px] text-center leading-relaxed">How can we help you today?</h3>
                                 <p class="pointer-events-auto select-auto mt-[30px] text-gray">Blog: <a
                                             class="underline" href="/goodbye-chatgpt" wire:navigate>Goodbye

@@ -1,6 +1,7 @@
 <div class="flex gap-1 items-center justify-center overflow-hidden" role="button" tabindex="0"
      @click="dropdown = !dropdown">
-    <div class="flex flex-col select-none">
+    <div class="flex flex-row gap-3 items-center select-none">
+        <img src="{{ $picture }}" class="w-6 h-6">
         <span class="my-0 text-[18px]">{{ $formattedModelOrAgent }}</span>
     </div>
 
