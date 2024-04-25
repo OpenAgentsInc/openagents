@@ -43,7 +43,7 @@
                 </div>
 
                 <div class="mt-5">
-                    <label for="about"> About</label>
+                    <label for="about">Description</label>
                     <x-textarea wire:model='about' placeholder="Add a short description about what this agent does"
                                 id="about" class="block mt-1 w-full"
                                 rows="1" min-rows="1" name="about" required/>
@@ -51,9 +51,9 @@
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
-                
+
                 <div class="mt-5">
-                    <label for="prompt"> Instructions</label>
+                    <label for="prompt">Instructions</label>
                     <x-textarea wire:model='prompt'
                                 placeholder="What does this agent do? How does it behave? What should it avoid doing?"
                                 id="about" class="block mt-1 w-full" rows="5" min-rows="5" name="prompt"
@@ -64,7 +64,7 @@
                 </div>
 
                 <div class="mt-5">
-                    <label for="message"> Welcome Message</label>
+                    <label for="message">Welcome Message</label>
                     <x-textarea wire:model='message' placeholder="How this agent starts conversations" id="message"
                                 class="block mt-1 w-full" rows="5" min-rows="5" name="message" required/>
                     @error('message')
@@ -72,16 +72,16 @@
                     @enderror
                 </div>
 
-                <div class="mt-5">
-                    <label for="rag_prompt"> RAG Prompt</label>
-                    <x-textarea wire:model='rag_prompt'
-                                placeholder="Add your RAG prompt?"
-                                id="rag_prompt" class="block mt-1 w-full" rows="5" min-rows="5" name="rag_prompt"
-                                required/>
-                    @error('rag_prompt')
-                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
-                    @enderror
-                </div>
+                {{--                <div class="mt-5">--}}
+                {{--                    <label for="rag_prompt">RAG Prompt</label>--}}
+                {{--                    <x-textarea wire:model='rag_prompt'--}}
+                {{--                                placeholder="Add your RAG prompt?"--}}
+                {{--                                id="rag_prompt" class="block mt-1 w-full" rows="5" min-rows="5" name="rag_prompt"--}}
+                {{--                                required/>--}}
+                {{--                    @error('rag_prompt')--}}
+                {{--                    <span class="text-red mt-2 text-xs">{{ $message }}</span>--}}
+                {{--                    @enderror--}}
+                {{--                </div>--}}
 
 
                 <div class="my-5">
@@ -97,12 +97,9 @@
                 </div>
 
                 <div class="mt-5 flex justify-end">
-
-
                     <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4">
                         Create Agent
                     </x-button>
-
                 </div>
             </form>
         </div>
