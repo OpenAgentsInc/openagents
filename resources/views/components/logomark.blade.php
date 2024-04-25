@@ -4,7 +4,7 @@
     // Map size numbers to exact SVG dimensions and corresponding font sizes
     $sizes = [
     1 => ['width' => '32px', 'height' => '32px', 'fontClass' => 'text-[40px]'], // Logo 32x32, font size 40
-    2 => ['width' => '25.6px', 'height' => '25.6px', 'fontClass' => 'text-[32px]'], // Logo 25.6x25.6, font size 32
+    2 => ['width' => '25.6px', 'height' => '25.6px', 'fontClass' => 'text-[20px]'], // Logo 25.6x25.6, font size 32
     3 => ['width' => '19.2px', 'height' => '19.2px', 'fontClass' => 'text-[24px]'], // Logo 19.2x19.2, font size 24
     4 => ['width' => '16px', 'height' => '16px', 'fontClass' => 'text-[20px]'], // Logo 16x16, font size 20
     5 => ['width' => '12.8px', 'height' => '12.8px', 'fontClass' => 'text-[16px]'], // Logo 12.8x12.8, font size 16
@@ -24,5 +24,5 @@
                 d="M16 0C15.0355 0 14.2468 0.783471 14.2468 1.75733V13.6814C14.2468 14.6553 15.0355 15.4388 16 15.4388C16.9645 15.4388 17.7532 14.6553 17.7532 13.6814V1.75733C17.7532 0.783471 16.9645 0 16 0Z"
                 fill="white"/>
     </svg>
-    <span class="{{ $selectedSize['fontClass'] }} ml-2 font-extrabold">OpenAgents</span>
+    <span class="{{ $selectedSize['fontClass'] }} ml-3 font-extrabold">OpenAgents</span>
 </div>

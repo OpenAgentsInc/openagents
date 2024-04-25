@@ -16,6 +16,7 @@ export default {
         extend: {
             fontFamily: {
                 mono: ['"JetBrains Mono"', ...defaultTheme.fontFamily.mono],
+                berkeley: ['"Berkeley Mono"', ...defaultTheme.fontFamily.mono]
             },
             colors: {
                 text: '#D7D8E5',

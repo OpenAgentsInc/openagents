@@ -4,9 +4,8 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Http\Resources\Json\ResourceCollection;
 
-class DocumentResource extends  JsonResource
+class DocumentResource extends JsonResource
 {
     /**
      * Transform the resource collection into an array.
@@ -18,7 +17,7 @@ class DocumentResource extends  JsonResource
         // return parent::toArray($request);
         return [
             'name' => $this->name,
-            'url' => $this->url
+            'url' => $this->url,
         ];
     }
 }

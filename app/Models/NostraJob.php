@@ -9,5 +9,5 @@ class NostraJob extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['payload','status','job_id','thread_id','content'];
+    protected $fillable = ['payload', 'status', 'job_id', 'thread_id', 'content'];
 }

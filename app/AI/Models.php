@@ -134,33 +134,6 @@ class Models
 
     ];
 
-    public static function getUserAccess()
-    {
-        if (Auth::check() && Auth::user()->isPro()) {
-            return 'pro';
-        } elseif (Auth::check()) {
-            return 'user';
-        } else {
-            return 'guest';
-        }
-    }
-
-    public static function hasModelAccess($model, $userAccess)
-    {
-        $modelDetails = self::MODELS[$model] ?? null;
-
-        if ($modelDetails) {
-            $requiredAccess = $modelDetails['access'];
-            $accessLevels = ['guest', 'user', 'pro'];
-            $userAccessIndex = array_search($userAccess, $accessLevels);
-            $requiredAccessIndex = array_search($requiredAccess, $accessLevels);
-
-            return $userAccessIndex >= $requiredAccessIndex;
-        }
-
-        return false;
-    }
-
     public static function isProModelSelected($model)
     {
         $modelDetails = self::MODELS[$model] ?? null;
@@ -170,22 +143,6 @@ class Models
         }
 
         return false;
-    }
-
-    public static function getDefaultModel()
-    {
-        // If user is not logged in, use Mistral Small.
-        if (! auth()->check()) {
-            return 'mistral-small-latest';
-        }
-
-        // If user is logged in and is Pro, use Mistral Large.
-        if (auth()->check() && auth()->user()->isPro()) {
-            return 'claude-3-sonnet-20240229';
-        }
-
-        // For authed non-Pro users, use Mistral Medium.
-        return 'mistral-medium-latest';
     }
 
     public static function getModelIndicator($model, $userAccess)
@@ -213,5 +170,66 @@ class Models
     public static function getModelName($model)
     {
         return self::MODELS[$model]['name'] ?? 'Unknown Model';
+    }
+
+    public static function getModelForThread($thread)
+    {
+        if ($thread) {
+            $lastMessage = $thread->messages->last();
+            if ($lastMessage && ! empty($lastMessage->model)) {
+                return $lastMessage->model;
+            }
+        }
+
+        if (session()->has('selectedModel')) {
+            $model = session('selectedModel');
+
+            return $model;
+        }
+
+        return self::getDefaultModel();
+    }
+
+    public static function getDefaultModel()
+    {
+        // If user is not logged in, use Mistral Small.
+        if (! auth()->check()) {
+            return 'mistral-small-latest';
+        }
+
+        // If user is logged in and is Pro, use Mistral Large.
+        if (auth()->check() && auth()->user()->isPro()) {
+            return 'claude-3-sonnet-20240229';
+        }
+
+        // For authed non-Pro users, use Mistral Medium.
+        return 'mistral-medium-latest';
+    }
+
+    public static function hasModelAccess($model, $userAccess)
+    {
+        $modelDetails = self::MODELS[$model] ?? null;
+
+        if ($modelDetails) {
+            $requiredAccess = $modelDetails['access'];
+            $accessLevels = ['guest', 'user', 'pro'];
+            $userAccessIndex = array_search($userAccess, $accessLevels);
+            $requiredAccessIndex = array_search($requiredAccess, $accessLevels);
+
+            return $userAccessIndex >= $requiredAccessIndex;
+        }
+
+        return false;
+    }
+
+    public static function getUserAccess()
+    {
+        if (Auth::check() && Auth::user()->isPro()) {
+            return 'pro';
+        } elseif (Auth::check()) {
+            return 'user';
+        } else {
+            return 'guest';
+        }
     }
 }
