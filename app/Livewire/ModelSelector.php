@@ -3,7 +3,6 @@
 namespace App\Livewire;
 
 use App\AI\Models;
-use Auth;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -21,16 +20,7 @@ class ModelSelector extends Component
     {
         $this->models = Models::MODELS;
 
-        // Existing logic to set the default selected model
-        $this->selectedModel = Auth::check() ? auth()->user()->getDefaultModelAttribute() : Models::getDefaultModel();
-
-        // New logic to adjust the selected model based on the thread context
-        if ($this->thread) {
-            $lastMessage = $this->thread->messages->last();
-            if ($lastMessage && ! empty($lastMessage->model)) {
-                $this->selectedModel = $lastMessage->model;
-            }
-        }
+        $this->selectedModel = Models::getModelForThread($this->thread);
 
         $this->formattedModel = Models::getModelName($this->selectedModel);
     }
