@@ -73,6 +73,8 @@ class ModelDropdown extends Component
             $this->formattedModelOrAgent = Models::getModelName($model);
             $this->dispatch('select-model', $model);
         }
+
+        $this->picture = Models::getModelPicture($this->selectedModel);
     }
 
     public function getUserAccess()

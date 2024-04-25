@@ -241,7 +241,7 @@ class Models
             $gateway = $modelDetails['gateway'];
             $imagePath = 'images/icons/'.$gateway.'.png';
 
-            return $imagePath;
+            return url($imagePath);
         }
 
         return null;
