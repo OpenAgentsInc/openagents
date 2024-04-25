@@ -17,7 +17,7 @@ return new class extends Migration
             $table->text('job_id')->nullable();
             $table->json('payload')->nullable();
             $table->longText('content')->nullable();
-            $table->char('status',25)->nullable();
+            $table->char('status', 25)->nullable();
             $table->timestamps();
         });
     }

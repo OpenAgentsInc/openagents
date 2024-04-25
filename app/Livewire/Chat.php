@@ -5,7 +5,6 @@ namespace App\Livewire;
 use App\AI\Models;
 use App\AI\SimpleInferencer;
 use App\Models\Thread;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -42,10 +41,16 @@ class Chat extends Component
 
     public function mount($id = null)
     {
+        if (request()->query('model')) {
+            session()->put('selectedModel', request()->query('model'));
+        }
+
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
             $thread = Thread::find($id);
             if (! $thread || (auth()->check() && $thread->user_id !== auth()->id()) || (! auth()->check() && $thread->session_id !== session()->getId())) {
+                dd('not yours');
+
                 return $this->redirect('/', true);
             } else {
                 // Notify the sidebar component of the active thread
@@ -61,14 +66,26 @@ class Chat extends Component
         $this->thread = $thread;
         $this->messages = $this->thread->messages->sortBy('created_at')->toArray();
 
-        // Set the selectedModel based on the last message of the thread
-        $lastMessage = end($this->messages);
-        if ($lastMessage && ! empty($lastMessage['model'])) {
-            $this->selectedModel = $lastMessage['model'];
-        } else {
-            // Set the default model if no last message or model is found
-            $this->selectedModel = Auth::check() ? auth()->user()->getDefaultModelAttribute() : Models::getDefaultModel();
-        }
+        // Set the selected model
+        $this->selectedModel = Models::getModelForThread($this->thread);
+        //
+        //        // Set the selectedModel based on the last message of the thread
+        //        $lastMessage = end($this->messages);
+        //        if ($lastMessage && ! empty($lastMessage['model'])) {
+        //            $this->selectedModel = $lastMessage['model'];
+        //        } elseif (session()->has('selectedModel')) {
+        //
+        //            $this->selectedModel = session()->get('selectedModel');
+        //            // And delete the session var
+        //
+        //            session()->forget('selectedModel');
+        //
+        //            // dispatch model-selected event
+        //            $this->dispatch('model-selected', $this->selectedModel);
+        //        } else {
+        //            // Set the default model if no last message or model is found
+        //            $this->selectedModel = Auth::check() ? auth()->user()->getDefaultModelAttribute() : Models::getDefaultModel();
+        //        }
     }
 
     private function ensureThread()
