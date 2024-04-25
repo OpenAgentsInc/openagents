@@ -18,6 +18,10 @@ class ModelSelector extends Component
         $this->models = Models::MODELS;
 
         $this->selectedModel = Models::getModelForThread($this->thread);
+
+        if (session()->has('selectedModel')) {
+            session()->forget('selectedModel');
+        }
     }
 
     public function render()
