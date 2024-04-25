@@ -17,12 +17,15 @@ class ModelDropdown extends Component
 
     public $isOpen = false;
 
-    public function mount($selectedModel, $models, $action)
+    public $showAgents = false;
+
+    public function mount($selectedModel, $models, $action, $showAgents = false)
     {
         $this->selectedModel = $selectedModel;
         $this->formattedModel = Models::getModelName($this->selectedModel);
         $this->models = $models;
         $this->action = $action;
+        $this->showAgents = $showAgents;
     }
 
     public function selectModel($model)
