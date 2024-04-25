@@ -68,24 +68,6 @@ class Chat extends Component
 
         // Set the selected model
         $this->selectedModel = Models::getModelForThread($this->thread);
-        //
-        //        // Set the selectedModel based on the last message of the thread
-        //        $lastMessage = end($this->messages);
-        //        if ($lastMessage && ! empty($lastMessage['model'])) {
-        //            $this->selectedModel = $lastMessage['model'];
-        //        } elseif (session()->has('selectedModel')) {
-        //
-        //            $this->selectedModel = session()->get('selectedModel');
-        //            // And delete the session var
-        //
-        //            session()->forget('selectedModel');
-        //
-        //            // dispatch model-selected event
-        //            $this->dispatch('model-selected', $this->selectedModel);
-        //        } else {
-        //            // Set the default model if no last message or model is found
-        //            $this->selectedModel = Auth::check() ? auth()->user()->getDefaultModelAttribute() : Models::getDefaultModel();
-        //        }
     }
 
     private function ensureThread()
