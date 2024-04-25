@@ -1,16 +1,17 @@
 <?php
 
+use App\Livewire\Chat;
+use App\Livewire\Admin;
+use App\Livewire\Store;
+use App\Livewire\Settings;
+use App\Livewire\PrismDashboard;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\StaticController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
-use App\Http\Controllers\StaticController;
-use App\Livewire\Admin;
-use App\Livewire\Chat;
 use App\Livewire\Explorer;
-use App\Livewire\PrismDashboard;
-use App\Livewire\Settings;
-use App\Livewire\Store;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Webhook\NostraHandlerController;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // CHAT
@@ -66,6 +67,11 @@ Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
 // ADMIN
 Route::get('/admin', Admin::class)->name('admin');
+
+
+
+// Nostra Webhook
+Route::post('/webhook/nostra',[NostraHandlerController::class,'handleEvent']);
 
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {
