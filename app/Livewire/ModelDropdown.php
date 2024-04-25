@@ -19,6 +19,8 @@ class ModelDropdown extends Component
 
     public $isOpen = false;
 
+    public $picture;
+
     public $showAgents = false;
 
     public function mount($selectedAgent, $selectedModel, $models, $action, $showAgents = false)
@@ -29,8 +31,11 @@ class ModelDropdown extends Component
         // If selectedAgent is an array with >=3 elements, it means the user has selected an agent
         if (is_array($selectedAgent) && count($selectedAgent) >= 3) {
             $this->formattedModelOrAgent = $this->selectedAgent['title'];
+            //            dd($this->selectedAgent);
+            $this->picture = $this->selectedAgent['image'];
         } else {
             $this->formattedModelOrAgent = Models::getModelName($this->selectedModel);
+            $this->picture = Models::getModelPicture($this->selectedModel);
         }
 
         $this->models = $models;
@@ -40,6 +45,9 @@ class ModelDropdown extends Component
 
     public function selectModel($model)
     {
+        $this->selectedAgent = '';
+        session()->forget('selectedAgent');
+
         $userAccess = $this->getUserAccess();
 
         // If the user is not logged in, show the login modal for any model they don't have access to
@@ -62,7 +70,7 @@ class ModelDropdown extends Component
         // If the user has access to the selected model, update the selected model
         if ($this->hasModelAccess($model, $userAccess)) {
             $this->selectedModel = $model;
-            $this->formattedModel = Models::getModelName($model);
+            $this->formattedModelOrAgent = Models::getModelName($model);
             $this->dispatch('select-model', $model);
         }
     }
