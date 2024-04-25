@@ -2,9 +2,13 @@
 
 namespace App\AI;
 
+use App\Models\Agent;
+use Illuminate\Database\Eloquent\Collection;
+use LaravelIdea\Helper\App\Models\_IH_Agent_C;
+
 class Agents
 {
-    public const AGENTS = [
+    public const DEMO_AGENTS = [
         '1' => [
             'id' => 1,
             'title' => 'Image Generator',
@@ -36,4 +40,9 @@ class Agents
             'description' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
         ],
     ];
+
+    public static function AGENTS(): _IH_Agent_C|Collection|array
+    {
+        return Agent::all();
+    }
 }

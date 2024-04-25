@@ -52,8 +52,9 @@ class Create extends Component
 
     public function submit()
     {
-
         $this->validate();
+
+        $disk = env('FILESYSTEM_DISK', 'local');
 
         $user = auth()->user();
         if (! $user) {
@@ -76,15 +77,15 @@ class Create extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'agents/profile/images/'.$filename.'_'.time().'.'.$extension;
+            $filenametostore = 'public/agents/profile/images/'.$filename.'_'.time().'.'.$extension;
 
             // Upload File to public
-            Storage::disk('s3')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
+            Storage::disk($disk)->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
 
             $saveimage = [
-                'disk' => 's3',
+                'disk' => $disk,
                 'path' => $filenametostore,
-                'url' => Storage::disk('s3')->url($filenametostore),
+                'url' => Storage::disk($disk)->url($filenametostore),
             ];
         } else {
             $saveimage = [
@@ -119,15 +120,15 @@ class Create extends Component
                 $filenametostore = 'agents/files/documents/'.$filename.'_'.time().'.'.$extension;
 
                 // Upload File to public
-                Storage::disk('s3')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
+                Storage::disk($disk)->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
-                $url = Storage::disk('s3')->url($filenametostore);
+                $url = Storage::disk($disk)->url($filenametostore);
 
                 $agent->documents()->create([
                     'name' => $filename,
                     'path' => $filenametostore,
                     'url' => $url,
-                    'disk' => 's3',
+                    'disk' => $disk,
                     'type' => $file->getClientMimeType(),
                 ]);
             }

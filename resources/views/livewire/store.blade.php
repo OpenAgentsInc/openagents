@@ -41,8 +41,8 @@
 
                             </div>
                             <div class="flex-1 pl-4">
-                                <h4 class="text-lg font-bold">{{ $agent['title'] }}</h4>
-                                <span class="text-gray">{{ $agent['description'] }}</span>
+                                <h4 class="text-lg font-bold">{{ $agent['name'] }}</h4>
+                                <span class="text-gray">{{ $agent['about'] }}</span>
                             </div>
                         </div>
                     </div>

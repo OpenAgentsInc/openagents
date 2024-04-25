@@ -10,7 +10,12 @@ class Store extends Component
 {
     public $models = Models::MODELS;
 
-    public $agents = Agents::AGENTS;
+    public $agents;
+
+    public function mount()
+    {
+        $this->agents = Agents::AGENTS();
+    }
 
     public function render()
     {
