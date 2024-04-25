@@ -51,7 +51,6 @@
 <textarea
         x-ref="textarea"
         autocomplete="off"
-        spellcheck="false"
         wire:ignore
         @input="update(); isDisabled = inputVal.length === 0"
         placeholder="{{ $default }}"
