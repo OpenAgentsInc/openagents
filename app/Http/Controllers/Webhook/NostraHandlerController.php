@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers\Webhook;
 
-
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use App\Http\Controllers\Controller;
 
 class NostraHandlerController extends Controller
 {
@@ -15,27 +14,27 @@ class NostraHandlerController extends Controller
 
         // Log::info("$job");
 
-
         $requestType = $data[0];
 
         if ($requestType == 'Job') {
             $payload = $data[1];
-            $status =  $payload["state"]["status"];
+            $status = $payload['state']['status'];
             if ($status == 2) {
                 // log the error
                 Log::error($data);
+
                 return [
                     'status' => 'success',
-                    'message' => 'error logged'
+                    'message' => 'error logged',
                 ];
             } elseif ($status == 3) {
 
                 $job_id = $payload['id'];
-                $content = $payload["result"]["content"];
+                $content = $payload['result']['content'];
                 $result = [
                     'payload' => $payload,
                     'job_id' => $job_id,
-                    'content' => $content
+                    'content' => $content,
                 ];
 
                 // fetch the nostra job
@@ -46,21 +45,19 @@ class NostraHandlerController extends Controller
                     $nostra_job->content = $content;
                     $nostra_job->save();
 
-
                     // Dispatch a job to the thread_id using websocket
-
 
                 }
 
                 return [
                     'status' => 'success',
                     'message' => 'data processed',
-                    'data' => $result
+                    'data' => $result,
                 ];
             } else {
                 return [
                     'status' => 'success',
-                    'message' => 'data skipped'
+                    'message' => 'data skipped',
                 ];
             }
         }

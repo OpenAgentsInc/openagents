@@ -15,7 +15,30 @@
                 on the world’s <span class="italic">openest</span> open AI platform.</p>
         </div>
 
-        <h2 class="font-bold">LLMs</h2>
+        <h2 class="font-bold mt-12">Chat Agents</h2>
+        <p class="text-gray">Chat Agents combine instructions, extra knowledge, and any LLM on OpenAgents to create
+            custom AI agents.</p>
+
+        <div class="grid grid-cols-2 gap-4 mt-4">
+            @foreach($agents as $agent)
+                <div class="p-4 rounded-lg relative">
+                    <div class="flex">
+                        <div class="w-[80px] h-[80px]">
+                            <!-- Add agent icon or image here -->
+                            <img src="https://placekitten.com/200/200" alt="Agent" class="w-full h-full rounded">
+
+                        </div>
+                        <div class="flex-1 pl-4">
+                            <h4 class="text-lg font-bold">{{ $agent['title'] }}</h4>
+                            <span class="text-gray">{{ $agent['description'] }}</span>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+
+        <h2 class="font-bold mt-12">LLMs</h2>
         <p class="text-gray">Large language models (LLMs) are general-purpose chat agents that can help with a wide
             variety
             of tasks.</p>

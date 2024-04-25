@@ -1,21 +1,22 @@
 <?php
 
-use App\Livewire\Chat;
-use App\Livewire\Admin;
-use App\Livewire\Store;
-use App\Livewire\Settings;
-use App\Livewire\PrismDashboard;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\StaticController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
-use App\Livewire\Explorer;
+use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\NostraHandlerController;
+use App\Livewire\Admin;
+use App\Livewire\Chat;
+use App\Livewire\Explorer;
+use App\Livewire\PrismDashboard;
+use App\Livewire\Settings;
+use App\Livewire\Store;
+use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // CHAT
-Route::get('/', Chat::class)->name('home');
+Route::get('/', Store::class)->name('home');
+//Route::get('/', Chat::class)->name('home');
 Route::get('/chat/{id}', Chat::class)->name('chat');
 
 Route::middleware('guest')->group(function () {
@@ -35,9 +36,6 @@ Route::get('/settings', Settings::class)->name('settings');
 Route::get('/subscription', [BillingController::class, 'stripe_billing_portal']);
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 Route::get('/pro', [BillingController::class, 'pro'])->name('pro');
-
-// STORE
-Route::get('/store', Store::class)->name('store');
 
 // PLUGIN REGISTRY
 Route::get('/plugins', [StaticController::class, 'plugins']);
@@ -68,10 +66,8 @@ Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 // ADMIN
 Route::get('/admin', Admin::class)->name('admin');
 
-
-
 // Nostra Webhook
-Route::post('/webhook/nostra',[NostraHandlerController::class,'handleEvent']);
+Route::post('/webhook/nostra', [NostraHandlerController::class, 'handleEvent']);
 
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {

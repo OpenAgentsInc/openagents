@@ -1,10 +1,9 @@
 <?php
 
-
-use Illuminate\Http\Request;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -19,50 +18,45 @@ return Application::configure(basePath: dirname(__DIR__))
             'webhook/nostra',
         ]);
     })
-    ->withExceptions(function ( Exceptions $exceptions) {
+    ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->render(function (TokenMismatchException $e, Request $request) {
 
-                if ($request->expectsJson()) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Token mismatch',
-                        'data' => null,
-                        'error' => 'Your session has expired. Please login and try again.',
-                    ], 419);
-                }
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Token mismatch',
+                    'data' => null,
+                    'error' => 'Your session has expired. Please login and try again.',
+                ], 419);
+            }
 
         });
 
-        $exceptions->render( function(NotFoundHttpException $e, Request $request){
-
+        $exceptions->render(function (NotFoundHttpException $e, Request $request) {
 
             if ($request->expectsJson()) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Resource not found',
-                    'data' => NULL,
+                    'data' => null,
                     'error' => 'The requested resource could not be found on this server.',
                 ], 404);
             }
         });
 
-
-        $exceptions->render( function(ModelNotFoundException $e, Request $request){
-
+        $exceptions->render(function (ModelNotFoundException $e, Request $request) {
 
             if ($request->expectsJson()) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'No record found',
-                    'data' => NULL,
+                    'data' => null,
                     'error' => 'No records found for the query',
                 ], 404);
             }
         });
 
-
-        $exceptions->render( function(QueryException $e, Request $request){
-
+        $exceptions->render(function (QueryException $e, Request $request) {
 
             if ($request->expectsJson()) {
                 return response()->json([
@@ -74,8 +68,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-
-        $exceptions->render( function(PDOException $e, Request $request){
+        $exceptions->render(function (PDOException $e, Request $request) {
             if ($request->expectsJson()) {
                 return response()->json([
                     'status' => 'error',
@@ -86,7 +79,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        $exceptions->render( function(MethodNotAllowedHttpException $e, Request $request){
+        $exceptions->render(function (MethodNotAllowedHttpException $e, Request $request) {
             if ($request->expectsJson()) {
                 return response()->json([
                     'status' => 'error',
@@ -96,7 +89,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 ], 405);
             }
         });
-
 
     })
     ->create();
