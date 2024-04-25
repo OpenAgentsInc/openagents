@@ -21,7 +21,7 @@ class ModelSelector extends Component
     public function mount()
     {
         $this->models = Models::MODELS;
-        $this->agents = Agents::AGENTS;
+        $this->agents = Agents::AGENTS();
 
         $this->selectedModel = Models::getModelForThread($this->thread);
 
