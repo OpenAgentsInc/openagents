@@ -2,7 +2,8 @@
     <div class="max-w-3xl min-w-[600px]">
         <h3 class="mb-16 font-bold text-3xl text-center select-none">Settings</h3>
         <x-pane title="Default model for new chats">
-            <livewire:model-dropdown :selected-model="$this->selectedModel" :models="$models" action="setDefaultModel"/>
+            <livewire:model-dropdown :selected-agent="[]" :selected-model="$this->selectedModel" :models="$models"
+                                     action="setDefaultModel"/>
         </x-pane>
 
         <div class="my-12"/>

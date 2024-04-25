@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('nostra_jobs', function (Blueprint $table) {
+        Schema::create('nostr_jobs', function (Blueprint $table) {
             $table->id();
             $table->bigInteger('thread_id')->nullable();
             $table->text('job_id')->nullable();

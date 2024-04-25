@@ -7,7 +7,9 @@ export default defineConfig(({command}) => {
 
     // dev environment
     if (command === 'serve') {
-        Object.assign(alias, {'/fonts': path.resolve(__dirname, 'public/fonts')});
+        Object.assign(alias, {
+            '/fonts': path.resolve(__dirname, 'public/fonts'),
+        });
     }
 
     return {

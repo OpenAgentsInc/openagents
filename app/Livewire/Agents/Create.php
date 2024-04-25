@@ -28,13 +28,20 @@ class Create extends Component
 
     public $message;
 
+    public function mount()
+    {
+        if (! auth()->check()) {
+            return redirect('/');
+        }
+    }
+
     public function rules()
     {
         return [
             'name' => 'required|string|max:255',
             'about' => 'required|string',
             'prompt' => 'required|string',
-            'rag_prompt' => 'nullable|string',
+            //            'rag_prompt' => 'nullable|string',
             'message' => 'required|string',
             'is_public' => 'required|boolean',
             'files' => 'nullable|array',
@@ -45,10 +52,14 @@ class Create extends Component
 
     public function submit()
     {
-
         $this->validate();
 
+        $disk = env('FILESYSTEM_DISK', 'local');
+
         $user = auth()->user();
+        if (! $user) {
+            return redirect('/');
+        }
 
         $agent = new Agent();
 
@@ -66,15 +77,15 @@ class Create extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'agents/profile/images/'.$filename.'_'.time().'.'.$extension;
+            $filenametostore = 'public/agents/profile/images/'.$filename.'_'.time().'.'.$extension;
 
             // Upload File to public
-            Storage::disk('s3')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
+            Storage::disk($disk)->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
 
             $saveimage = [
-                'disk' => 's3',
+                'disk' => $disk,
                 'path' => $filenametostore,
-                'url' => Storage::disk('s3')->url($filenametostore),
+                'url' => Storage::disk($disk)->url($filenametostore),
             ];
         } else {
             $saveimage = [
@@ -87,7 +98,7 @@ class Create extends Component
         $agent->name = $this->name;
         $agent->about = $this->about;
         $agent->prompt = $this->prompt;
-        $agent->rag_prompt = $this->rag_prompt;
+        $agent->rag_prompt = 'placeholder'; // $this->rag_prompt;
         $agent->is_public = $this->is_public;
         $agent->message = $this->message;
         $agent->image = json_encode($saveimage);
@@ -109,15 +120,15 @@ class Create extends Component
                 $filenametostore = 'agents/files/documents/'.$filename.'_'.time().'.'.$extension;
 
                 // Upload File to public
-                Storage::disk('s3')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
+                Storage::disk($disk)->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
-                $url = Storage::disk('s3')->url($filenametostore);
+                $url = Storage::disk($disk)->url($filenametostore);
 
                 $agent->documents()->create([
                     'name' => $filename,
                     'path' => $filenametostore,
                     'url' => $url,
-                    'disk' => 's3',
+                    'disk' => $disk,
                     'type' => $file->getClientMimeType(),
                 ]);
             }

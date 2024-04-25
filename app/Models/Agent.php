@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class Agent extends Model
 {
@@ -27,7 +28,21 @@ class Agent extends Model
         }
         $imageData = json_decode($this->image, true); // Cast to array for access
         if ($imageData && isset($imageData['url']) && ! empty($imageData['url'])) {  // Check for non-empty URL
-            return $imageData['url'];
+            $url = $imageData['url'];
+
+            // If it starts with "/storage" then it's a local file and we need to resolve the path
+            if (strpos($url, '/storage') === 0) {
+                //                dd($url);
+                // But first remove the /storage at the beginning
+                $url = substr($url, 9);
+
+                return url(Storage::url($url));
+            } else {
+                return $url;
+
+            }
+
+            //            return $imageData['url'];
         }
 
         return url('/images/no-image.jpg'); // Return default URL if no image data or empty URL

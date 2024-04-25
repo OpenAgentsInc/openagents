@@ -1,7 +1,7 @@
 <div class="flex gap-1 items-center justify-center overflow-hidden" role="button" tabindex="0"
      @click="dropdown = !dropdown">
     <div class="flex flex-col select-none">
-        <span class="my-0 text-[18px]">{{ $formattedModel }}</span>
+        <span class="my-0 text-[18px]">{{ $formattedModelOrAgent }}</span>
     </div>
 
     <div class="relative flex-1 text-right bg-black">
