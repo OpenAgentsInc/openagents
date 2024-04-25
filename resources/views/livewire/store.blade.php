@@ -21,7 +21,7 @@
 
         <div class="grid grid-cols-2 gap-4 mt-4">
             @foreach($agents as $agent)
-                <a href="/chat" wire:navigate>
+                <a href="/chat?agent={{ $agent["id"] }}" wire:navigate>
                     <div class="p-4 rounded-lg relative">
                         <div class="flex">
                             <div class="w-[80px] h-[80px]">

@@ -33,6 +33,8 @@ class Chat extends Component
 
     public $selectedModel = '';
 
+    public $selectedAgent = '';
+
     #[On('select-model')]
     public function selectModel($model)
     {
@@ -45,12 +47,14 @@ class Chat extends Component
             session()->put('selectedModel', request()->query('model'));
         }
 
+        if (request()->query('agent')) {
+            session()->put('selectedAgent', request()->query('agent'));
+        }
+
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
             $thread = Thread::find($id);
             if (! $thread || (auth()->check() && $thread->user_id !== auth()->id()) || (! auth()->check() && $thread->session_id !== session()->getId())) {
-                dd('not yours');
-
                 return $this->redirect('/', true);
             } else {
                 // Notify the sidebar component of the active thread
@@ -68,6 +72,11 @@ class Chat extends Component
 
         // Set the selected model
         $this->selectedModel = Models::getModelForThread($this->thread);
+
+        // If the selectedAgent session var is set, use it
+        if (session()->has('selectedAgent')) {
+            $this->selectedAgent = session('selectedAgent');
+        }
     }
 
     private function ensureThread()

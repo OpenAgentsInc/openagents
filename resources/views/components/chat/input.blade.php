@@ -9,7 +9,6 @@
 <div class="relative" x-data="{ inputVal: '', isDisabled: true }">
     <input
             autocomplete="off"
-            spellcheck="false"
             type="{{ $type }}"
             @input="inputVal = $event.target.value; isDisabled = inputVal.length === 0"
             {{ $attributes->merge([

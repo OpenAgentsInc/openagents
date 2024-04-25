@@ -44,7 +44,6 @@
 <textarea
         x-ref="textarea"
         autocomplete="off"
-        spellcheck="false"
         @input="update(); inputVal = $event.target.value; isDisabled = inputVal.length === 0"
         placeholder="{{ $placeholder }}"
         :rows="minRows"
