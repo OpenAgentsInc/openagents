@@ -26,7 +26,7 @@
                 @click="sidebarOpen = !sidebarOpen">
             <x-icon.menu class="h-6 w-6"/>
         </button>
-        <a href="/" wire:navigate x-show="sidebarOpen"
+        <a href="/chat" wire:navigate x-show="sidebarOpen"
            x-transition:enter="transition ease-out duration-200 delay-200"
            x-transition:enter-start="opacity-0"
            x-transition:enter-end="opacity-100"
