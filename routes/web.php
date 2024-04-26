@@ -57,8 +57,7 @@ Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
 
 //GRPC NOSTR
-Route::get('/send-signed-event', [NostrGrpcController::class, 'sendSignedEvent']);
-Route::get('/request-job', [NostrGrpcController::class, 'requestJob']);
+Route::get('/request-job', [NostrGrpcController::class, 'handleJobRequest']);
 
 // MISC
 Route::get('/changelog', [StaticController::class, 'changelog']);
