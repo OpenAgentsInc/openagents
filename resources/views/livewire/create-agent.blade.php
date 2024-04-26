@@ -1,3 +1,3 @@
 <div>
-    {{-- Stop trying to control. --}}
+    <h1>Create agent</h1>
 </div>

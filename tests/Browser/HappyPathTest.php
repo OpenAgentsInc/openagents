@@ -8,26 +8,22 @@ test('happy path', function () {
 
         // Homepage loads and shows title and Join button
         $browser
-            ->move(100, 100)
-            ->resize(1500, 1000)
+            ->move(150, 50)
+            ->resize(1400, 1000)
             ->visit('/')
             ->assertSee('OpenAgents')
             ->assertSee('Who would you')
             ->assertSee('Join');
 
+        // Mock a login
         $browser->loginAs(User::factory()->create());
 
+        // Can click on Create Agent and go to new create page
         $browser->visit('/')
             ->assertSee('Create an agent')
             ->click('@create-agent')
-            ->assertPathIs('/create');
-
-        // Mock a login
-
-        //            ->typeSlowly('#message-input', 'Who are you?', 50)
-        //            ->script("document.getElementById('send-message').click();");
-
-        // Lets see if we get an answer
-        //        $browser->waitForText('artificial intelligence');
+            ->waitForText('Create agent')
+            ->assertPathIs('/create')
+            ->pause(3000);
     });
 });
