@@ -7,8 +7,7 @@ use App\Grpc\nostr\JobParam;
 use App\Grpc\nostr\PoolConnectorClient;
 use App\Grpc\nostr\RpcRequestJob;
 use Grpc\ChannelCredentials;
-use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
+use Exception;
 use Illuminate\Support\Facades\Log;
 
 class NostrService
