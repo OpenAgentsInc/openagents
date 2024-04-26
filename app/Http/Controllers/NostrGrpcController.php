@@ -159,7 +159,7 @@ class NostrGrpcController extends Controller
             $opts = [
                 'credentials' => ChannelCredentials::createSsl(),
             ];
-            $hostname = 'openagents.forkforge.net:5000';
+            $hostname = 'oa.forkforge.net:5000';
             $res = new PoolConnectorClient($hostname, $opts);
             // $response->sendSignedEvent($requestEvent);
             $metadata = [];
