@@ -9,6 +9,7 @@
   "license": "MIT",
   "require": {
     "php": "^8.2",
+    "grpc/grpc": "^1.43.0",
     "jantinnerezo/livewire-alert": "^3.0",
     "laravel/cashier": "^15.3",
     "laravel/framework": "^11.0",

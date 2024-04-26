@@ -1,17 +1,18 @@
 <?php
 
+use App\Livewire\Chat;
+use App\Livewire\Admin;
+use App\Livewire\Store;
+use App\Livewire\Explorer;
+use App\Livewire\Settings;
+use App\Livewire\PrismDashboard;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\StaticController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\NostrAuthController;
+use App\Http\Controllers\NostrGrpcController;
 use App\Http\Controllers\SocialAuthController;
-use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\NostrHandlerController;
-use App\Livewire\Admin;
-use App\Livewire\Chat;
-use App\Livewire\Explorer;
-use App\Livewire\PrismDashboard;
-use App\Livewire\Settings;
-use App\Livewire\Store;
-use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // CHAT
@@ -54,6 +55,10 @@ Route::get('/explorer', Explorer::class)->name('explorer');
 Route::get('/blog', [StaticController::class, 'blog']);
 Route::get('/launch', [StaticController::class, 'launch']);
 Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
+
+//GRPC NOSTR
+Route::get('/send-signed-event', [NostrGrpcController::class, 'sendSignedEvent']);
+Route::get('/request-job', [NostrGrpcController::class, 'requestJob']);
 
 // MISC
 Route::get('/changelog', [StaticController::class, 'changelog']);
