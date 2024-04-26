@@ -77,7 +77,7 @@ The event template is compiled with the following params:
 
 
 ![NVIDIA-RAG-diagram-scaled](https://github.com/OpenAgentsInc/openagents/assets/93095163/fa848c08-2c02-47bf-a8bd-93053a5e22bd)
-![source](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
+[source](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
 
 
 The above is a representation of a RAG Agent pipeline.
