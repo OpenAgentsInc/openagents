@@ -26,7 +26,7 @@ class NostrGrpcController extends Controller
         $requestJob->setRunOn('openagents/embeddings');
 
         // Set the expireAfter field (e.g., 10 minutes from now)
-        $requestJob->setExpireAfter($expiresAt);
+        $requestJob->setExpireAfter($expiresAt->timestamp);
 
         $inputs = [];
 
@@ -95,14 +95,12 @@ class NostrGrpcController extends Controller
         $Jobres = $res->requestJob($requestJob, $metadata, $options);
         $result = $Jobres->wait();
         $status = $result[1]->code;
+
         if ($status !== 0) {
             throw new Exception($result[1]->details);
         }
-        // get the thread_id and job_id to nostrJob model
-        $job_id = $result[0]->id;
 
-        // return $result;
-        return $job_id;
+        return $result[0]->getId();
     }
 
     public function handleJobRequest(Request $request)
