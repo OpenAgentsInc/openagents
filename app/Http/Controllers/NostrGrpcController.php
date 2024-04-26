@@ -19,7 +19,7 @@ use Grpc\Internal\InterceptorChannel;
 class NostrGrpcController extends Controller
 {
 
-    public function requestContext($poolAddress, $query, $documents = [], $k = 1, $max_tokens = 512, $overlap = 128)
+    public function requestContext($poolAddress, $query, $documents = [], $k = 1, $max_tokens = 512, $overlap = 128, $encryptFor = "")
     {
 
         $currentime =  now();
@@ -84,9 +84,11 @@ class NostrGrpcController extends Controller
         // Set the outputFormat field
         $requestJob->setOutputFormat('application/json');
 
-
-
-
+        // encrypt for a specific provider
+        if ($encryptFor != null) {
+            $requestJob->setEncrypted(true);
+            $requestJob->setRequestProvider($encryptFor);
+        }
 
         $opts = [
             'credentials' => \Grpc\ChannelCredentials::createSsl(),
