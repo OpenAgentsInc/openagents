@@ -4,25 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Grpc\nostr\JobInput;
 use App\Grpc\nostr\JobParam;
-use Illuminate\Http\Request;
+use App\Grpc\nostr\PoolConnectorClient;
 use App\Grpc\nostr\RpcRequestJob;
+use Exception;
+use Grpc\ChannelCredentials;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
-use Google\Protobuf\Internal\GPBType;
-use App\Grpc\nostr\PoolConnectorClient;
-use Google\Protobuf\Internal\RepeatedField;
-use App\Grpc\nostr\RpcSendSignedEventRequest;
-use Grpc\Internal\InterceptorChannel;
-
-
 
 class NostrGrpcController extends Controller
 {
-
-    public function requestContext($poolAddress, $query, $documents = [], $k = 1, $max_tokens = 512, $overlap = 128, $encryptFor = "")
+    public function requestContext($poolAddress, $query, $documents = [], $k = 1, $max_tokens = 512, $overlap = 128, $encryptFor = '')
     {
-
-        $currentime =  now();
+        $currentime = now();
         $expiresAt = $currentime->addMinutes(10);
 
         // Create a new instance of RpcRequestJob
@@ -32,7 +26,7 @@ class NostrGrpcController extends Controller
         $requestJob->setRunOn('openagents/embeddings');
 
         // Set the expireAfter field (e.g., 10 minutes from now)
-        $requestJob->setExpireAfter($expiresAt);
+        $requestJob->setExpireAfter($expiresAt->timestamp);
 
         $inputs = [];
 
@@ -48,13 +42,11 @@ class NostrGrpcController extends Controller
             }
         }
 
-
         $inputq = new JobInput();
         $inputq->setData($query);
         $inputq->setType('text');
         $inputq->setMarker('query');
         $inputs[] = $inputq;
-
 
         $requestJob->setInput($inputs);
 
@@ -75,7 +67,6 @@ class NostrGrpcController extends Controller
         $param4->setKey('k');
         $param4->setValue(["$k"]);
 
-
         // Set the RepeatedField to the 'param' field of the requestJob message
         $requestJob->setParam([$param1, $param2, $param3, $param4]);
 
@@ -95,7 +86,7 @@ class NostrGrpcController extends Controller
         }
 
         $opts = [
-            'credentials' => \Grpc\ChannelCredentials::createSsl(),
+            'credentials' => ChannelCredentials::createSsl(),
         ];
         $hostname = $poolAddress;
         $res = new PoolConnectorClient($hostname, $opts);
@@ -104,20 +95,16 @@ class NostrGrpcController extends Controller
         $Jobres = $res->requestJob($requestJob, $metadata, $options);
         $result = $Jobres->wait();
         $status = $result[1]->code;
+
         if ($status !== 0) {
-            throw new \Exception($result[1]->details);
+            throw new Exception($result[1]->details);
         }
-        // get the thread_id and job_id to nostrJob model
-        $job_id = $result[0]->id;
 
-        // return $result;
-        return $job_id;
+        return $result[0]->getId();
     }
-
 
     public function handleJobRequest(Request $request)
     {
-
 
         // Create a new instance of RpcRequestJob
         $requestJob = new RpcRequestJob();
@@ -139,7 +126,6 @@ class NostrGrpcController extends Controller
         $input1->setType('text');
         $input2->setMarker('passage');
 
-
         $requestJob->setInput([$input1, $input2]);
 
         // Set the param field
@@ -155,7 +141,6 @@ class NostrGrpcController extends Controller
         $param3->setKey('quantize');
         $param3->setValue(['true']);
 
-
         // Set the RepeatedField to the 'param' field of the requestJob message
         $requestJob->setParam([$param1, $param2, $param3]);
 
@@ -168,14 +153,11 @@ class NostrGrpcController extends Controller
         // Set the outputFormat field
         $requestJob->setOutputFormat('application/json');
 
-
-
-
         try {
             $opts = [
-                'credentials' => \Grpc\ChannelCredentials::createSsl(),
+                'credentials' => ChannelCredentials::createSsl(),
             ];
-            $hostname = "openagents.forkforge.net:5000";
+            $hostname = 'oa.forkforge.net:5000';
             $res = new PoolConnectorClient($hostname, $opts);
             // $response->sendSignedEvent($requestEvent);
             $metadata = [];
@@ -184,7 +166,7 @@ class NostrGrpcController extends Controller
             $result = $Jobres->wait();
             $status = $result[1]->code;
             if ($status !== 0) {
-                throw new \Exception($result[1]->details);
+                throw new Exception($result[1]->details);
             }
             // get the thread_id and job_id to nostrJob model
             $job_id = $result[0]->id;
@@ -193,7 +175,7 @@ class NostrGrpcController extends Controller
 
             // return $result[1]->code;
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error($e);
         }
     }
