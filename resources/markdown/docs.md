@@ -55,7 +55,7 @@ As the user save the Agent build, they can evoke it (semantic routes) and intera
 
 On the back-end, the Agent will send an event template to the [Nostr implementation](https://github.com/OpenAgentsInc/openagents/wiki/Nostr-integration) for the execution.
 
-The communication between the OpenAgents platform Laravel codebase and Nostr are performed through a [gRPC client](https://github.com/OpenAgentsInc/openagents/wiki/Agent-Builder-MVP-Spec#laravel---grpc-connection) intermediary.
+The communication between the OpenAgents platform Laravel codebase and Nostr are performed through a [gRPC client](https://github.com/OpenAgentsInc/openagents/wiki/Agent-Builder-MVP-Spec#laravel---grpc-connection) intermediary (OpenAgents gRPC Client documentation [here](https://openagentsinc.github.io/openagents-grpc-proto/__default.html#service-PoolConnector)).
 
 The event template is compiled with the following params:
 
