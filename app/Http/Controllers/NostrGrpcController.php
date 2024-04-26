@@ -34,14 +34,16 @@ class NostrGrpcController extends Controller
         // Set the expireAfter field (e.g., 10 minutes from now)
         $requestJob->setExpireAfter($expiresAt);
 
-        $inputs = [];
-        // Set the input field
-        foreach ($documents as $document) {
-            $input = new JobInput();
-            $input->setData($document);
-            $input->setType('url');
-            $input->setMarker('passage');
-            $inputs[] = $input;
+        if ($documents != []) {
+            $inputs = [];
+            // Set the input field
+            foreach ($documents as $document) {
+                $input = new JobInput();
+                $input->setData($document);
+                $input->setType('url');
+                $input->setMarker('passage');
+                $inputs[] = $input;
+            }
         }
 
 
