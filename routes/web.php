@@ -21,6 +21,8 @@ Route::get('/', Store::class)->name('home');
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat');
 
+Route::get('/create', [StaticController::class, 'create']);
+
 Route::middleware('guest')->group(function () {
     // AUTH - SOCIAL
     Route::get('/login/x', [SocialAuthController::class, 'login_x']);

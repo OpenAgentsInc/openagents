@@ -6,8 +6,8 @@
         </a>
         @auth
             <div class="flex flex-row items-center gap-x-6">
-                <a href="{{ route('agents.create') }}" wire:navigate>
-                    <x-secondary-button class="mt-3">Create an agent</x-secondary-button>
+                <a href="/create" wire:navigate>
+                    <x-secondary-button class="mt-3" dusk="create-agent">Create an agent</x-secondary-button>
                 </a>
                 <x-user-menu/>
             </div>
