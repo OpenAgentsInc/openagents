@@ -39,9 +39,12 @@ It is under active development. All code is open source under AGPL3 [here](https
 * **Node** - An individual task within a flow
 * **Plugin** - A WebAssembly binary extending agent functionality
 
+
 ## How This Works (MVP v1 - RAG Agent)
 
+
 ![f1](https://github.com/OpenAgentsInc/openagents/assets/93095163/a747fc54-2473-4311-8d08-066a1639962b)
+
 
 The user builds the Agent from the Agent Builder UI (MVP version in the img).
 
@@ -49,9 +52,9 @@ The user provides name and description of what the agent does, and the specific 
 
 As the user save the Agent build, they can evoke it (semantic routes) and interact with it via Chat UI.
 
-On the back-end, the Agent will send an event template to the ![Nostr implementation](https://github.com/OpenAgentsInc/openagents/wiki/Nostr-integration) for the execution.
+On the back-end, the Agent will send an event template to the [Nostr implementation](https://github.com/OpenAgentsInc/openagents/wiki/Nostr-integration) for the execution.
 
-The communication between the OpenAgents platform Laravel codebase and Nostr are performed through a ![gRPC client](https://github.com/OpenAgentsInc/openagents/wiki/Agent-Builder-MVP-Spec#laravel---grpc-connection) intermediary.
+The communication between the OpenAgents platform Laravel codebase and Nostr are performed through a [gRPC client](https://github.com/OpenAgentsInc/openagents/wiki/Agent-Builder-MVP-Spec#laravel---grpc-connection) intermediary.
 
 The event template is compiled with the following params:
 
@@ -69,22 +72,25 @@ The event template is compiled with the following params:
 
 * `encryptFor` = encrypt for a specific provider, so it can see it’s content
 
+
 ### RAG Agent Pipeline
+
 
 ![NVIDIA-RAG-diagram-scaled](https://github.com/OpenAgentsInc/openagents/assets/93095163/fa848c08-2c02-47bf-a8bd-93053a5e22bd)
 ![source](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
+
 
 The above is a representation of a RAG Agent pipeline.
 
 OpenAgents' RAG Agent handle these phases with the following plugins/standalone nodes:
 
-* Retrieve Document: ![Openagents Document Retrieval Node](https://github.com/riccardobl/openagents-document-retrieval)
+* Retrieve Document: [Openagents Document Retrieval Node](https://github.com/riccardobl/openagents-document-retrieval)
 
-* Embedding model: ![Openagents Embeddings Node](https://github.com/riccardobl/openagents-embeddings)
+* Embedding model: [Openagents Embeddings Node](https://github.com/riccardobl/openagents-embeddings)
 
-* Vector DB: ![Openagents Search Node](https://github.com/riccardobl/openagents-search)
+* Vector DB: [Openagents Search Node](https://github.com/riccardobl/openagents-search)
 
-These three nodes are coordinated by the ![RAG Coordinator](https://github.com/riccardobl/openagents-rag-coordinator-plugin) Extism ![plugin](https://github.com/OpenAgentsInc/openagents/wiki/Plugins).
+These three nodes are coordinated by the [RAG Coordinator](https://github.com/riccardobl/openagents-rag-coordinator-plugin) Extism [plugin](https://github.com/OpenAgentsInc/openagents/wiki/Plugins).
 
 ## Getting paid for agent upgrades
 
