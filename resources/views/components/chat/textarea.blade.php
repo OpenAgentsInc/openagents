@@ -29,11 +29,18 @@
         if (newHeight > maxHeight) {
             this.$refs.textarea.style.height = `${maxHeight}px`;
             this.$refs.textarea.style.overflowY = 'auto';
+        } else if (this.minRows === 1) {
+            this.$refs.textarea.style.height = '48px';
+            this.$refs.textarea.style.overflowY = 'hidden';
         } else if (newHeight <= this.minRows * this.lineHeight()) {
-            this.$refs.textarea.style.height = `${Math.max(48, this.minRows * this.lineHeight())}px`; // Update this line
+            this.$refs.textarea.style.height = `${Math.max(48, this.minRows * this.lineHeight())}px`;
             this.$refs.textarea.style.overflowY = 'hidden';
         } else {
-            this.$refs.textarea.style.height = `${newHeight}px`;
+            let textareaStyles = getComputedStyle(this.$refs.textarea);
+            let padding = parseFloat(textareaStyles.paddingTop) + parseFloat(textareaStyles.paddingBottom);
+            let border = parseFloat(textareaStyles.borderTopWidth) + parseFloat(textareaStyles.borderBottomWidth);
+            let contentHeight = newHeight - padding - border;
+            this.$refs.textarea.style.height = `${Math.max(48, contentHeight)}px`;
             this.$refs.textarea.style.overflowY = 'hidden';
         }
 
