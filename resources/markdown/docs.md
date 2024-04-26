@@ -43,7 +43,8 @@ It is under active development. All code is open source under AGPL3 [here](https
 ## How This Works (MVP v1 - RAG Agent)
 
 
-![f1](https://github.com/OpenAgentsInc/openagents/assets/93095163/a747fc54-2473-4311-8d08-066a1639962b)
+![f1 (2)](https://github.com/OpenAgentsInc/openagents/assets/93095163/390342ec-c7cb-4483-a671-995eb6daac7a)
+
 
 
 The user builds the Agent from the Agent Builder UI (MVP version in the img).
