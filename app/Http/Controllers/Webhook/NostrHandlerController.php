@@ -39,12 +39,12 @@ class NostrHandlerController extends Controller
                 ];
 
                 // fetch the nostr job
-                $nostra_job = NostrJob::where('job_id', $job_id)->first();
-                if ($nostra_job) {
+                $nostr_job = NostrJob::where('job_id', $job_id)->first();
+                if ($nostr_job) {
                     // update the model payload and content
-                    $nostra_job->payload = $payload;
-                    $nostra_job->content = $content;
-                    $nostra_job->save();
+                    $nostr_job->payload = $payload;
+                    $nostr_job->content = $content;
+                    $nostr_job->save();
 
                     // Dispatch a job to the thread_id using websocket
 
