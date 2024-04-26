@@ -29,15 +29,10 @@
         if (newHeight > maxHeight) {
             this.$refs.textarea.style.height = `${maxHeight}px`;
             this.$refs.textarea.style.overflowY = 'auto';
-            console.log('1- Setting height to ', maxHeight);
         } else {
-            console.log('newHeight', newHeight);
-            console.log('minRows', this.minRows);
-            console.log('lineHeight', this.lineHeight());
             newHeight = Math.max(newHeight, this.minRows * this.lineHeight());
             this.$refs.textarea.style.height = `${newHeight}px`;
             this.$refs.textarea.style.overflowY = 'hidden';
-            console.log('2- Setting height to ', newHeight);
         }
     },
     lineHeight() {
