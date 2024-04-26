@@ -6,7 +6,8 @@ use App\Grpc\nostr\JobInput;
 use App\Grpc\nostr\JobParam;
 use App\Grpc\nostr\PoolConnectorClient;
 use App\Grpc\nostr\RpcRequestJob;
-use Google\Protobuf\Internal\RepeatedField;
+use Exception;
+use Grpc\ChannelCredentials;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
@@ -15,7 +16,6 @@ class NostrGrpcController extends Controller
 {
     public function requestContext($poolAddress, $query, $documents = [], $k = 1, $max_tokens = 512, $overlap = 128, $encryptFor = '')
     {
-
         $currentime = now();
         $expiresAt = $currentime->addMinutes(10);
 
@@ -86,7 +86,7 @@ class NostrGrpcController extends Controller
         }
 
         $opts = [
-            'credentials' => \Grpc\ChannelCredentials::createSsl(),
+            'credentials' => ChannelCredentials::createSsl(),
         ];
         $hostname = $poolAddress;
         $res = new PoolConnectorClient($hostname, $opts);
@@ -96,7 +96,7 @@ class NostrGrpcController extends Controller
         $result = $Jobres->wait();
         $status = $result[1]->code;
         if ($status !== 0) {
-            throw new \Exception($result[1]->details);
+            throw new Exception($result[1]->details);
         }
         // get the thread_id and job_id to nostrJob model
         $job_id = $result[0]->id;
@@ -157,7 +157,7 @@ class NostrGrpcController extends Controller
 
         try {
             $opts = [
-                'credentials' => \Grpc\ChannelCredentials::createSsl(),
+                'credentials' => ChannelCredentials::createSsl(),
             ];
             $hostname = 'openagents.forkforge.net:5000';
             $res = new PoolConnectorClient($hostname, $opts);
@@ -168,7 +168,7 @@ class NostrGrpcController extends Controller
             $result = $Jobres->wait();
             $status = $result[1]->code;
             if ($status !== 0) {
-                throw new \Exception($result[1]->details);
+                throw new Exception($result[1]->details);
             }
             // get the thread_id and job_id to nostrJob model
             $job_id = $result[0]->id;
@@ -177,7 +177,7 @@ class NostrGrpcController extends Controller
 
             // return $result[1]->code;
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error($e);
         }
     }
