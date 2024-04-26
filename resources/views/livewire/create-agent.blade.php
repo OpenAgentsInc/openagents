@@ -3,7 +3,7 @@
         <form wire:submit.prevent="submit">
             <div class="flex flex-col gap-y-[32px]">
 
-                {{--                <h3 class="font-bold">New Agent</h3>--}}
+                <h3 class="font-bold text-center">Create Agent</h3>
 
                 <div>
                     <x-label for="description">Name</x-label>
