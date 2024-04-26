@@ -9,7 +9,7 @@
                 <x-chat.textarea id="description" class="block mt-1 w-full" type="text" name="description"
                                  wire:model='description'
                                  min-rows="4"
-                                 required placeholder="Add a short description about what this agent does."/>
+                                 required default="Add a short description about what this agent does."/>
             </div>
 
             <div class="mt-5">
@@ -17,7 +17,7 @@
                 <x-chat.textarea id="description" class="block mt-1 w-full" type="text" name="instructions"
                                  wire:model='instructions'
                                  min-rows="1"
-                                 required placeholder="Add a short description about what this agent does."/>
+                                 required default="Add a short description about what this agent does."/>
             </div>
 
         </form>

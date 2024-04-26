@@ -40,7 +40,7 @@
             let padding = parseFloat(textareaStyles.paddingTop) + parseFloat(textareaStyles.paddingBottom);
             let border = parseFloat(textareaStyles.borderTopWidth) + parseFloat(textareaStyles.borderBottomWidth);
             let contentHeight = newHeight - padding - border;
-            this.$refs.textarea.style.height = `${Math.max(48, contentHeight)}px`;
+            this.$refs.textarea.style.height = `${Math.max(48, contentHeight + padding + border)}px`; // Add padding and border to contentHeight
             this.$refs.textarea.style.overflowY = 'hidden';
         }
 
