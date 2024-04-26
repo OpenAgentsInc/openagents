@@ -30,7 +30,7 @@
             this.$refs.textarea.style.height = `${maxHeight}px`;
             this.$refs.textarea.style.overflowY = 'auto';
         } else {
-            newHeight = Math.max(newHeight, 48);
+            newHeight = Math.max(newHeight, this.minRows * this.lineHeight());
             this.$refs.textarea.style.height = `${newHeight}px`;
             this.$refs.textarea.style.overflowY = 'hidden';
         }
@@ -56,10 +56,9 @@
         placeholder="{{ $default }}"
         x-model="inputVal"
         x-effect="if (inputVal === '') resetHeight()"
-        :rows="minRows"
-            {{ $attributes->merge([
-                'class' => "resize-none flex w-full rounded-md border-2 bg-transparent px-3 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className transition-all duration-300 ease-in-out",
-            ]) }}
+        {{ $attributes->merge([
+            'class' => "resize-none flex w-full rounded-md border-2 bg-transparent px-3 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className transition-all duration-300 ease-in-out",
+        ]) }}
     ></textarea>
 
     @if($showIcon && $iconName)
