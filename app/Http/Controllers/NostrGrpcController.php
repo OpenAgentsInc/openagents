@@ -79,7 +79,6 @@ class NostrGrpcController extends Controller
             $opts = [
                 'credentials' => ChannelCredentials::createInsecure(),
             ];
-            $opts = null;
             $hostname = "openagents.forkforge.net:5000";
             $response = new poolConnectorClient($hostname, $opts, $channel = null);
             // $response->sendSignedEvent($requestEvent);
