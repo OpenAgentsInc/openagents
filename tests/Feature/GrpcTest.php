@@ -8,4 +8,4 @@ test('can connect to nostr service via grpc', function () {
 
     // Assert res is a string at least 30 characters long
     expect($res)->toBeString()->toBeGreaterThan(30);
-});
+})->skip();

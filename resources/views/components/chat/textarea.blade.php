@@ -30,7 +30,7 @@
             this.$refs.textarea.style.height = `${maxHeight}px`;
             this.$refs.textarea.style.overflowY = 'auto';
         } else {
-            newHeight = Math.max(newHeight, 48);
+            newHeight = Math.max(newHeight, this.minRows * this.lineHeight());
             this.$refs.textarea.style.height = `${newHeight}px`;
             this.$refs.textarea.style.overflowY = 'hidden';
         }
@@ -42,11 +42,14 @@
         return this.$refs.textarea.offsetWidth - this.$refs.textarea.clientWidth;
     },
     resetHeight() {
-        this.$refs.textarea.style.height = '48px';
+        this.$refs.textarea.style.height = `${this.minRows * this.lineHeight()}px`;
         this.$refs.textarea.style.overflowY = 'hidden';
         this.isDisabled = true;
     }
-}" x-init="update()" wire:key="{{ $wireModel }}"
+}" x-init="$nextTick(() => {
+    $refs.textarea.style.height = `${minRows * lineHeight()}px`;
+    update();
+})" wire:key="{{ $wireModel }}"
 >
 <textarea
         x-ref="textarea"
