@@ -18,11 +18,7 @@ use Grpc\Internal\InterceptorChannel;
 
 class NostrGrpcController extends Controller
 {
-    private $poolConnectorClient;
-    public function __construct()
-    {
-        $this->poolConnectorClient = PoolConnectorClient::class;
-    }
+
 
     public function sendSignedEvent(Request $request)
     {
@@ -40,13 +36,16 @@ class NostrGrpcController extends Controller
         // Set the input field
         $input1 = new JobInput();
         $input1->setData('What is the color of the fox?');
+        $input1->setType('text');
         $input1->setMarker('query');
 
         $input2 = new JobInput();
         $input2->setData('The quick brown fox jumps over the lazy dog.');
+        $input1->setType('text');
         $input2->setMarker('passage');
 
-        $requestJob->setInput(new RepeatedField(GPBType::MESSAGE, JobInput::class, [$input1, $input2]));
+
+        $requestJob->setInput([$input1, $input2]);
 
         // Set the param field
         $param1 = new JobParam();
@@ -61,50 +60,47 @@ class NostrGrpcController extends Controller
         $param3->setKey('quantize');
         $param3->setValue(['true']);
 
-        $requestJob->setParam(new RepeatedField(GPBType::MESSAGE, JobParam::class, [$param1, $param2, $param3]));
+
+        // Set the RepeatedField to the 'param' field of the requestJob message
+        $requestJob->setParam([$param1, $param2, $param3]);
 
         // Set the description field
         $requestJob->setDescription('Embedding generation job');
 
         // Set the kind field (optional)
-        $requestJob->setKind(1);
+        $requestJob->setKind(5003);
 
         // Set the outputFormat field
-        $requestJob->setOutputFormat('json');
+        $requestJob->setOutputFormat('application/json');
 
 
 
 
         try {
             $opts = [
-                'credentials' => ChannelCredentials::createInsecure(),
+                'credentials' => \Grpc\ChannelCredentials::createSsl(),
             ];
             $hostname = "openagents.forkforge.net:5000";
-            $response = new poolConnectorClient($hostname, $opts, $channel = null);
+            $res = new PoolConnectorClient($hostname, $opts);
             // $response->sendSignedEvent($requestEvent);
             $metadata = [];
             $options = [];
-            $response->requestJob($requestJob);
-            return $response;
-            // Handle successful response (e.g., return success message)
+            $Jobres = $res->requestJob($requestJob,$metadata,$options);
+            $result = $Jobres->wait();
+            $status = $result[1]->code;
+            if($status !== 0){
+                throw new \Exception($result[1]->details);
+            }
+            // get the thread_id and job_id to nostrJob model
+            $job_id = $result[0]->id;
+
+            return $result;
+
+            // return $result[1]->code;
+
         } catch (\Exception $e) {
             Log::error($e);
-            // Handle gRPC errors (log or return error message)
         }
     }
 
-    public function requestJob(Request $request)
-    {
-
-        // Create the gRPC request object (might be empty)
-        $requestObject = new \RpcRequestJob();
-
-        // Call requestJob on the client and handle response
-        try {
-            $response = $this->poolConnectorClient->requestJob($requestObject);
-            // Handle successful response (e.g., return job data)
-        } catch (\Exception $e) {
-            // Handle gRPC errors (log or return error message)
-        }
-    }
 }
