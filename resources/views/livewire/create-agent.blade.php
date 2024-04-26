@@ -4,11 +4,12 @@
 
             <h3 class="font-bold">New Agent</h3>
 
+
             <div class="mt-5">
                 <label for="description">Description</label>
                 <x-chat.textarea id="description" class="block mt-1 w-full" type="text" name="description"
                                  wire:model='description'
-                                 min-rows="4"
+                                 min-rows="3"
                                  required default="Add a short description about what this agent does."/>
             </div>
 
@@ -16,8 +17,9 @@
                 <label for="instructions">Instructions</label>
                 <x-chat.textarea id="description" class="block mt-1 w-full" type="text" name="instructions"
                                  wire:model='instructions'
-                                 min-rows="1"
-                                 required default="Add a short description about what this agent does."/>
+                                 min-rows="6"
+                                 required
+                                 default="What does this agent do? How does it behave? What should it avoid doing?"/>
             </div>
 
         </form>
