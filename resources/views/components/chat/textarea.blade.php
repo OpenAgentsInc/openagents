@@ -16,38 +16,37 @@
     minRows: @js($minRows),
     maxRows: @js($maxRows),
     viewportMaxHeight: window.innerHeight * 0.95,
-    update() {
-        this.$refs.textarea.style.height = 'auto';
-        let newHeight = this.$refs.textarea.scrollHeight;
-        let maxHeight = this.viewportMaxHeight;
+        update() {
+            this.$refs.textarea.style.height = 'auto';
+            let newHeight = this.$refs.textarea.scrollHeight;
+            let maxHeight = this.viewportMaxHeight;
 
-        if (this.maxRows !== null) {
-            let maxRowsHeight = this.maxRows * this.lineHeight() + this.scrollbarWidth();
-            maxHeight = Math.min(maxHeight, maxRowsHeight);
-        }
+            if (this.maxRows !== null) {
+                let maxRowsHeight = this.maxRows * this.lineHeight() + this.scrollbarWidth();
+                maxHeight = Math.min(maxHeight, maxRowsHeight);
+            }
 
-        if (newHeight > maxHeight) {
-            this.$refs.textarea.style.height = `${maxHeight}px`;
-            this.$refs.textarea.style.overflowY = 'auto';
-        } else if (this.minRows === 1) {
-            this.$refs.textarea.style.height = '48px';
-            this.$refs.textarea.style.overflowY = 'hidden';
-        } else if (newHeight <= this.minRows * this.lineHeight()) {
-            this.$refs.textarea.style.height = `${Math.max(48, this.minRows * this.lineHeight())}px`;
-            this.$refs.textarea.style.overflowY = 'hidden';
-        } else {
-            let textareaStyles = getComputedStyle(this.$refs.textarea);
-            let padding = parseFloat(textareaStyles.paddingTop) + parseFloat(textareaStyles.paddingBottom);
-            let border = parseFloat(textareaStyles.borderTopWidth) + parseFloat(textareaStyles.borderBottomWidth);
-            let contentHeight = newHeight - padding - border;
-            this.$refs.textarea.style.height = `${Math.max(48, contentHeight + padding + border)}px`; // Add padding and border to contentHeight
-            this.$refs.textarea.style.overflowY = 'hidden';
-        }
-
-        console.log('Setting height to', this.$refs.textarea.style.height);
-    },
+            if (newHeight > maxHeight) {
+                this.$refs.textarea.style.height = `${maxHeight}px`;
+                this.$refs.textarea.style.overflowY = 'auto';
+            } else if (this.minRows === 1) {
+                this.$refs.textarea.style.height = '48px';
+                this.$refs.textarea.style.overflowY = 'hidden';
+            } else if (newHeight <= this.minRows * this.lineHeight()) {
+                this.$refs.textarea.style.height = `${Math.max(48, this.minRows * this.lineHeight())}px`;
+                this.$refs.textarea.style.overflowY = 'hidden';
+            } else {
+                let textareaStyles = getComputedStyle(this.$refs.textarea);
+                let padding = parseFloat(textareaStyles.paddingTop) + parseFloat(textareaStyles.paddingBottom);
+                let border = parseFloat(textareaStyles.borderTopWidth) + parseFloat(textareaStyles.borderBottomWidth);
+                let contentHeight = newHeight - padding - border;
+                this.$refs.textarea.style.height = `${Math.max(48, contentHeight)}px`;
+                this.$refs.textarea.style.overflowY = 'hidden';
+            }
+        },
     lineHeight() {
-        return parseFloat(getComputedStyle(this.$refs.textarea).lineHeight);
+        return 48;
+        // return parseFloat(getComputedStyle(this.$refs.textarea).lineHeight);
     },
     scrollbarWidth() {
         return this.$refs.textarea.offsetWidth - this.$refs.textarea.clientWidth;
