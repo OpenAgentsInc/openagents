@@ -20,7 +20,7 @@
 
     <div class="w-[800px] mx-auto">
         <div class="text-center mt-[48px] px-[15px]">
-            <h1>Who would you like to<br/>speak with today?</h1>
+            <h1>How can we help you today?</h1>
 
             <p class="text-gray">Discover, try, and create AI chat agents...<br/>
                 on the world’s <span class="italic">openest</span> open AI platform.</p>

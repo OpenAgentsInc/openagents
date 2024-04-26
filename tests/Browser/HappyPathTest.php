@@ -12,7 +12,7 @@ test('happy path', function () {
             ->resize(1400, 1000)
             ->visit('/')
             ->assertSee('OpenAgents')
-            ->assertSee('Who would you')
+            ->assertSee('How can we help you')
             ->assertSee('Join');
 
         // Mock a login
@@ -22,8 +22,14 @@ test('happy path', function () {
         $browser->visit('/')
             ->assertSee('Create an agent')
             ->click('@create-agent')
-            ->waitForText('Create agent')
+            ->waitForText('New Agent')
             ->assertPathIs('/create')
-            ->pause(3000);
+            ->pause(1500)
+
+            ->typeSlowly('name', 'Yo Momma')
+            ->pause(50)
+            ->typeSlowly('description', 'does cool shit')
+            ->pause(50)
+            ->typeSlowly('instructions', 'your mom');
     });
 });

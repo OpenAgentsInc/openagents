@@ -6,6 +6,8 @@ use Livewire\Component;
 
 class CreateAgent extends Component
 {
+    public $name;
+
     public $description;
 
     public $instructions;
