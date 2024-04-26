@@ -29,11 +29,15 @@
         if (newHeight > maxHeight) {
             this.$refs.textarea.style.height = `${maxHeight}px`;
             this.$refs.textarea.style.overflowY = 'auto';
+        } else if (newHeight <= this.minRows * this.lineHeight()) {
+            this.$refs.textarea.style.height = `${Math.max(48, this.minRows * this.lineHeight())}px`; // Update this line
+            this.$refs.textarea.style.overflowY = 'hidden';
         } else {
-            newHeight = Math.max(newHeight, this.minRows * this.lineHeight());
             this.$refs.textarea.style.height = `${newHeight}px`;
             this.$refs.textarea.style.overflowY = 'hidden';
         }
+
+        console.log('Setting height to', this.$refs.textarea.style.height);
     },
     lineHeight() {
         return parseFloat(getComputedStyle(this.$refs.textarea).lineHeight);
@@ -46,7 +50,7 @@
         this.$refs.textarea.style.overflowY = 'hidden';
         this.isDisabled = true;
     }
-}" x-init="update()" wire:key="{{ $wireModel }}"
+}" x-init="update();" wire:key="{{ $wireModel }}"
 >
 <textarea
         x-ref="textarea"

@@ -12,6 +12,13 @@
                                  required placeholder="Add a short description about what this agent does."/>
             </div>
 
+            <div class="mt-5">
+                <label for="instructions">Instructions</label>
+                <x-chat.textarea id="description" class="block mt-1 w-full" type="text" name="instructions"
+                                 wire:model='instructions'
+                                 min-rows="1"
+                                 required placeholder="Add a short description about what this agent does."/>
+            </div>
 
         </form>
     </div>

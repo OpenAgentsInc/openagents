@@ -8,6 +8,8 @@ class CreateAgent extends Component
 {
     public $description;
 
+    public $instructions;
+
     public function render()
     {
         return view('livewire.create-agent');
