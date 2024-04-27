@@ -1,18 +1,16 @@
 <?php
-namespace App\Services;
 
+namespace App\Services;
 
 use App\Grpc\nostr\JobInput;
 use App\Grpc\nostr\JobParam;
 use App\Grpc\nostr\PoolConnectorClient;
 use App\Grpc\nostr\RpcRequestJob;
-use Grpc\ChannelCredentials;
 use Exception;
-use Illuminate\Support\Facades\Log;
+use Grpc\ChannelCredentials;
 
 class NostrService
 {
-
     public function requestContext($poolAddress, $query, $documents = [], $k = 1, $max_tokens = 512, $overlap = 128, $encryptFor = '')
     {
         $currentime = now();

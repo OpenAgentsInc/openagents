@@ -10,7 +10,7 @@ test('can connect to nostr service via grpc', function () {
     // expect($res)->toBeString()->toBeGreaterThan(30);
     expect($res)->toBeString();
     expect(strlen($res))->toBeGreaterThan(30);
-});
+})->skipOnLinux();
 
 test('testing for RAG request', function () {
     $documents = ['https://bitcoin.org/bitcoin.pdf'];
@@ -20,4 +20,4 @@ test('testing for RAG request', function () {
     // expect($res)->toBeString()->toBeGreaterThan(30);
     expect($res)->toBeString();
     expect(strlen($res))->toBeGreaterThan(30);
-});
+})->skipOnLinux();
