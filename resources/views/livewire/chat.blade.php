@@ -44,13 +44,7 @@
                                 :author="$models[$selectedModel]['name']"></x-chat.messagestreaming>
                     @endif
 
-                    <div class="h-16 w-full">
-                        @if($images)
-                            @foreach($images as $image)
-                                <img src="{{ $image->temporaryUrl() }}" alt="Image to upload"/>
-                            @endforeach
-                        @endif
-                    </div>
+
 
                     @if ($showNoMoreMessages)
                         @auth
@@ -100,6 +94,18 @@
 
             @else
                 <form wire:submit.prevent="sendMessage">
+
+                    <div class="sm:w-[584px] lg:w-[768px] mx-auto">
+                        @if($images)
+                            <div class="absolute bottom-[90px] left-[20%] right-[20%] flex flex-wrap justify-center">
+                                @foreach($images as $image)
+                                    <img src="{{ $image->temporaryUrl() }}" alt="Image to upload"
+                                         class="w-[160px] h-[160px] object-cover border-2 border-darkgray m-2">
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+
                     <x-chat.textarea id="message-input" minRows="1" default="Message OpenAgents..."
                                      :showIcon="true"
                                      iconName="send"
