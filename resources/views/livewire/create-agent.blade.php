@@ -32,9 +32,22 @@
                                      default="What does this agent do? How does it behave? What should it avoid doing?"/>
                 </div>
 
+                <div>
+                    <x-label for="knowledge">Knowledge</x-label>
+                    <div class="mt-1 border-2 border-darkgray rounded-md">
+                        @error('files.*')
+                        <span class="error">{{ $message }}</span>
+                        @enderror
+                        <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
+                                    imagePreviewMaxHeight="300"
+                                    acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
+                                    allowFileSizeValidation maxFileSize="10MB"
+                        />
+                    </div>
+                </div>
 
                 <div class="w-full text-center">
-                    <x-button>Create</x-button>
+                    <x-button>Create Agent</x-button>
                 </div>
 
 

@@ -1,7 +1,7 @@
 <div
-    wire:ignore
-    x-data
-    x-init="() => {
+        wire:ignore
+        x-data
+        x-init="() => {
         const post = FilePond.create($refs.{{ $attributes->get('ref') ?? 'input' }});
         post.setOptions({
             allowMultiple: {{ $attributes->has('multiple') ? 'true' : 'false' }},
@@ -22,13 +22,14 @@
         });
     }"
 >
-    <input type="file" x-ref="{{ $attributes->get('ref') ?? 'input' }}" />
+    <input type="file" x-ref="{{ $attributes->get('ref') ?? 'input' }}"/>
 </div>
 
 @push('styles')
     @once
         <link href="https://unpkg.com/filepond/dist/filepond.css" rel="stylesheet">
-        <link href="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css" rel="stylesheet">
+        <link href="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css"
+              rel="stylesheet">
     @endonce
 @endpush
 
