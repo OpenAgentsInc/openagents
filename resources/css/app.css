@@ -36,6 +36,11 @@
 
 .filepond--root {
     @apply bg-black;
+    margin-bottom: 0px !important;
+}
+
+.filepond--file {
+    @apply font-mono;
 }
 
 .filepond--hopper {
