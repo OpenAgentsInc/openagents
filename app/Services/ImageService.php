@@ -1,5 +1,7 @@
 <?php
 
+namespace App\Services;
+
 class ImageService
 {
     public function addImageToThread($image, $thread)
@@ -9,7 +11,6 @@ class ImageService
 
         // Encode the image contents to base64
         $imageBase64 = base64_encode($imageContents);
-        dd($imageBase64);
 
         //        // Save the image to the storage disk
         //        $path = $image->store('public/images');
