@@ -42,7 +42,8 @@
         return this.$refs.textarea.offsetWidth - this.$refs.textarea.clientWidth;
     },
     resetHeight() {
-        this.$refs.textarea.style.height = `${this.minRows * this.lineHeight()}px`;
+        const minHeight = Math.max(this.minRows * this.lineHeight(), 48);
+        this.$refs.textarea.style.height = `${minHeight}px`;
         this.$refs.textarea.style.overflowY = 'hidden';
         this.isDisabled = true;
     }
