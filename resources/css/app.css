@@ -9,6 +9,79 @@
     outline: none;
 }
 
+
+.filepond--credits {
+    display: none;
+}
+
+.filepond--panel {
+    background-color: black !important;
+}
+
+.filepond--panel[data-scalable='true'] {
+    background-color: black !important;
+}
+
+.filepond--drop-label {
+    @apply font-mono bg-black ;
+}
+
+.filepond--drip {
+    background-color: black !important;
+}
+
+.filepond--panel-root {
+    @apply font-mono;
+}
+
+.filepond--root {
+    @apply bg-black;
+    margin-bottom: 0px !important;
+}
+
+.filepond--file {
+    @apply font-mono;
+}
+
+.filepond--hopper {
+    @apply bg-black;
+}
+
+.filepond--item-panel {
+    @apply bg-black;
+}
+
+.filepond--list.filepond--list {
+    padding-top: 30px;
+}
+
+[data-filepond-item-state='processing-complete'] .filepond--item-panel {
+    background-color: #000;
+}
+
+[data-filepond-item-state*='invalid'] .filepond--item-panel,
+[data-filepond-item-state*='error'] .filepond--item-panel {
+    background-color: #000;
+}
+
+.filepond--drip-blob {
+    background: #000 !important;
+}
+
+.filepond--drop-label {
+    color: #777A81 !important;
+}
+
+.filepond--label-action {
+    text-decoration-color: #000 !important;
+}
+
+.filepond--panel-root {
+    background-color: #000 !important;
+    margin-bottom: 0px !important;
+}
+
+
 /**
  * ==============================================
  * Dot Flashing
