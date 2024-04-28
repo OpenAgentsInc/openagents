@@ -27,7 +27,7 @@ class UpdatePrismStatuses extends Command
             $wat = $prismService->getTransactionDetails($payment->payment_id);
 
             // If status is different than the one we have, update it
-            if ($wat['status'] !== $payment->status) {
+            if (is_array($wat) && isset($wat['status']) && ($wat['status'] !== $payment->status)) {
                 $this->info('Updating payment '.$payment->payment_id.' to status '.$wat['status']);
                 $payment->update(['status' => $wat['status']]);
             }
