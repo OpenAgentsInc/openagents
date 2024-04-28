@@ -44,6 +44,8 @@
                                 :author="$models[$selectedModel]['name']"></x-chat.messagestreaming>
                     @endif
 
+
+
                     @if ($showNoMoreMessages)
                         @auth
                             @if (count($messages) === 0)
@@ -92,6 +94,18 @@
 
             @else
                 <form wire:submit.prevent="sendMessage">
+
+                    <div class="sm:w-[584px] lg:w-[768px] mx-auto">
+                        @if($images)
+                            <div class="absolute bottom-[90px] left-[20%] right-[20%] flex flex-wrap justify-center">
+                                @foreach($images as $image)
+                                    <img src="{{ $image->temporaryUrl() }}" alt="Image to upload"
+                                         class="w-[160px] h-[160px] object-cover border-2 border-darkgray m-2">
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+
                     <x-chat.textarea id="message-input" minRows="1" default="Message OpenAgents..."
                                      :showIcon="true"
                                      iconName="send"
@@ -102,7 +116,6 @@
                                      wire:ignore
                                      onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
                                      class="flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white"/>
-
                     <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
                 </form>
                 <livewire:messages-remaining/>

@@ -74,7 +74,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isPro(): bool
     {
-        return $this->subscribed('default');
+        return env('APP_ENV') === 'local' || $this->subscribed('default');
     }
 
     public function isAdmin(): bool
