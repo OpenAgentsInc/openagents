@@ -156,6 +156,7 @@ class Chat extends Component
         // Clear the input
         $this->message_input = '';
         $this->pending = true;
+        $this->images = [];
 
         // Call simpleRun after the next render
         $this->dispatch('message-created');
@@ -209,7 +210,7 @@ class Chat extends Component
     {
         if (! empty($this->images_to_upload)) {
             $imageService = new ImageService();
-            foreach ($this->images as $image) {
+            foreach ($this->images_to_upload as $image) {
                 $imageService->addImageToThread($image, $this->thread);
             }
             $this->images_to_upload = [];
