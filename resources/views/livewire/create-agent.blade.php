@@ -34,7 +34,7 @@
 
                 <div>
                     <x-label for="knowledge">Knowledge</x-label>
-                    <div class="mt-1">
+                    <div class="mt-1 border-2 border-darkgray rounded-md">
                         @error('files.*')
                         <span class="error">{{ $message }}</span>
                         @enderror
@@ -47,7 +47,7 @@
                 </div>
 
                 <div class="w-full text-center">
-                    <x-button>Create</x-button>
+                    <x-button>Create Agent</x-button>
                 </div>
 
 

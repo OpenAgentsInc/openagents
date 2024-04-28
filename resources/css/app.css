@@ -23,7 +23,7 @@
 }
 
 .filepond--drop-label {
-    @apply rounded-md font-mono bg-black border-2 border-darkgray;
+    @apply font-mono bg-black ;
 }
 
 .filepond--drip {
@@ -31,7 +31,7 @@
 }
 
 .filepond--panel-root {
-    @apply rounded-md font-mono;
+    @apply font-mono;
 }
 
 .filepond--root {
@@ -46,8 +46,8 @@
     @apply bg-black;
 }
 
-.filepond--root .filepond--list-scroller {
-    margin-top: 30px !important;
+.filepond--list.filepond--list {
+    padding-top: 30px;
 }
 
 [data-filepond-item-state='processing-complete'] .filepond--item-panel {
@@ -97,6 +97,7 @@
 
 .filepond--panel-root {
     background-color: #000 !important;
+    margin-bottom: 0px !important;
 }
 
 .filepond--progress-indicator {
