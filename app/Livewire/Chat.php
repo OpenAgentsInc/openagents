@@ -8,9 +8,14 @@ use App\Models\Thread;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
+    use WithFileUploads;
+
+    public $images = [];
+
     // Whether to show the "no more messages" message
     public $showNoMoreMessages = false;
 
@@ -136,6 +141,8 @@ class Chat extends Component
         // Save this input even after we clear the form this variable is tied to
         $this->input = $this->message_input;
 
+        $this->handleImageInput();
+
         // Append the message to the chat
         $this->messages[] = [
             'body' => $this->input,
@@ -151,6 +158,27 @@ class Chat extends Component
         // Call simpleRun after the next render
         $this->dispatch('message-created');
         $this->js('$wire.simpleRun()');
+    }
+
+    private function handleImageInput()
+    {
+        $imageDataArray = [];
+
+        // Handle file upload
+        if (! empty($this->images)) {
+            foreach ($this->images as $image) {
+                // Read the image file contents
+                $imageContents = $image->get();
+
+                // Encode the image contents to base64
+                $imageBase64 = base64_encode($imageContents);
+
+                // Collect the base64-encoded images
+                $imageDataArray[] = $imageBase64;
+            }
+        }
+
+        dd($imageDataArray);
     }
 
     public function simpleRun()

@@ -63,7 +63,9 @@
             {{ $attributes->merge([
                 'class' => "resize-none flex w-full rounded-md border-2 bg-transparent px-3 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className transition-all duration-300 ease-in-out",
             ]) }}
-    ></textarea>
+    >
+    {{ $slot }}
+</textarea>
 
     @if($showIcon && $iconName)
         <button
