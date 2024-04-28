@@ -46,6 +46,10 @@
     @apply bg-black;
 }
 
+.filepond--root .filepond--list-scroller {
+    margin-top: 30px !important;
+}
+
 [data-filepond-item-state='processing-complete'] .filepond--item-panel {
     background-color: #000;
 }
