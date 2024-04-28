@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI;
 
+use Exception;
 use OpenAI;
 use Yethee\Tiktoken\EncoderProvider;
 
@@ -55,9 +56,14 @@ class OpenAIGateway implements GatewayInterface
 
         // Calculate input tokens by extracting the content from the messages and counting # of tokens (approximation)
         $content = '';
-        foreach ($messages as $messagetocount) {
-            $content .= $messagetocount['content'].' ';
+        try {
+            foreach ($messages as $messagetocount) {
+                $content .= $messagetocount['content'].' ';
+            }
+        } catch (Exception $e) {
+            $content = '';
         }
+
         $inputTokens = $encoder->encode($content);
 
         return [

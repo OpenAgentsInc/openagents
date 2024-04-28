@@ -38,7 +38,11 @@ class ModelDropdown extends Component
             $this->picture = Models::getModelPicture($this->selectedModel);
         }
 
-        $this->models = $models;
+        // Filter out 'hidden' models - if access is 'hidden'
+        $this->models = collect($models)->filter(function ($model) {
+            return $model['access'] !== 'hidden';
+        })->toArray();
+
         $this->action = $action;
         $this->showAgents = $showAgents;
     }

@@ -132,6 +132,14 @@ class Models
             'max_tokens' => 2000,
         ],
 
+        // VISION
+        'gpt-4-vision-preview' => [
+            'name' => 'GPT-4 Vision Preview',
+            'gateway' => 'openai',
+            'access' => 'hidden',
+            'max_tokens' => 4000,
+        ],
+
     ];
 
     public static function isProModelSelected($model)
