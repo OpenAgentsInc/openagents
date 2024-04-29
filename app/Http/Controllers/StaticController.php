@@ -35,6 +35,12 @@ class StaticController extends Controller
                 'author' => 'Riccardo Balbo',
                 'url' => 'https://github.com/riccardobl/openagents-plugins-kv',
             ],
+            [
+                'name' => 'Fact Checker Plugin',
+                'description' => 'A plugin to check a given statement using Google Fact Check Tools.',
+                'author' => 'Svemir Brkic',
+                'url' => 'https://github.com/svemir/openagents-plugins-factcheck',
+            ],
         ];
 
         return view('plugins', ['plugins' => $plugins]);
