@@ -36,6 +36,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'autoscroll',
         'lightning_address',
         'prism_user_id',
+        'credit',
     ];
 
     /**
