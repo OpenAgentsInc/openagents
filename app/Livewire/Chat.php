@@ -127,8 +127,6 @@ class Chat extends Component
             $this->dispatch('thread-update');
 
             return $this->redirect('/chat/'.$this->thread->id, true);
-        } else {
-            dd('what');
         }
     }
 
