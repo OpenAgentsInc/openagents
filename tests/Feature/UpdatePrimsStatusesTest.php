@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\PrismSinglePayment;
-use Mockery;
 use Mockery\MockInterface;
 
 it('updates Prism payment status', function () {
