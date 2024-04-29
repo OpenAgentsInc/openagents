@@ -31,3 +31,24 @@ test('testing for RAG request', function () {
     expect($res)->toBeString();
     expect(strlen($res))->toBeGreaterThan(30);
 })->skipOnLinux();
+
+
+test('testing for RAG request warm up for the node server', function () {
+    $documents = ['https://bitcoin.org/bitcoin.pdf'];
+
+    $res  = (new NostrService())
+    ->poolAddress('oa.forkforge.net:5000')
+    ->query('Who is satoshi')
+    ->documents($documents)
+    ->k(1)
+    ->maxTokens(512)
+    ->overlap(256)
+    ->encryptFor('')
+    ->warmUp(true)
+    ->cacheDurationhint('-1')
+    ->execute();
+    // Assert res is a string at least 30 characters long
+    // expect($res)->toBeString()->toBeGreaterThan(30);
+    expect($res)->toBeString();
+    expect(strlen($res))->toBeGreaterThan(30);
+})->skipOnLinux();

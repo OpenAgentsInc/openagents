@@ -19,6 +19,8 @@ class NostrService
     protected $max_tokens = 512;
     protected $overlap = 128;
     protected $encryptFor = '';
+    protected $warmUp = false;
+    protected $cacheDuration = '-1';
 
 
 
@@ -64,6 +66,21 @@ class NostrService
         return $this;
     }
 
+
+    public function warmUp($warmUp)
+    {
+        $this->warmUp = $warmUp;
+        return $this;
+    }
+
+
+    public function cacheDurationhint($cacheDuration)
+    {
+        $this->cacheDuration = $cacheDuration;
+        return $this;
+    }
+
+
     public function execute()
     {
         // Your method implementation here...
@@ -101,7 +118,13 @@ class NostrService
         $param4 = new JobParam();
         $param4->setKey('k')->setValue(["$this->k"]);
 
-        $requestJob->setParam([$param1, $param2, $param3, $param4]);
+        $param5 =  new JobParam();
+        $param5->setKey('cache-duration-hint')->setValue(["$this->cacheDuration"]);
+
+        $param6 =  new JobParam();
+        $param6->setKey('warm-up')->setValue(["$this->warmUp"]);
+
+        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6]);
 
         $requestJob->setDescription('RAG pipeline');
         $requestJob->setKind(5003);
