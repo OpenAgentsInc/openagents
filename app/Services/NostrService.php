@@ -11,81 +11,132 @@ use Grpc\ChannelCredentials;
 
 class NostrService
 {
-    public function requestContext($poolAddress, $query, $documents = [], $k = 1, $max_tokens = 512, $overlap = 128, $encryptFor = '')
+
+    protected $poolAddress;
+    protected $query;
+    protected $documents = [];
+    protected $k = 1;
+    protected $max_tokens = 512;
+    protected $overlap = 128;
+    protected $encryptFor = '';
+    protected $warmUp = false;
+    protected $cacheDuration = '-1';
+
+
+
+    public function poolAddress($poolAddress)
     {
+        $this->poolAddress = $poolAddress;
+        return $this;
+    }
+
+    public function query($query)
+    {
+        $this->query = $query;
+        return $this;
+    }
+
+    public function documents($documents)
+    {
+        $this->documents = $documents;
+        return $this;
+    }
+
+    public function k($k)
+    {
+        $this->k = $k;
+        return $this;
+    }
+
+    public function maxTokens($maxTokens)
+    {
+        $this->max_tokens = $maxTokens;
+        return $this;
+    }
+
+    public function overlap($overlap)
+    {
+        $this->overlap = $overlap;
+        return $this;
+    }
+
+    public function encryptFor($encryptFor)
+    {
+        $this->encryptFor = $encryptFor;
+        return $this;
+    }
+
+
+    public function warmUp($warmUp)
+    {
+        $this->warmUp = $warmUp;
+        return $this;
+    }
+
+
+    public function cacheDurationhint($cacheDuration)
+    {
+        $this->cacheDuration = $cacheDuration;
+        return $this;
+    }
+
+
+    public function execute()
+    {
+        // Your method implementation here...
+
         $currentime = now();
         $expiresAt = $currentime->addMinutes(10);
 
-        // Create a new instance of RpcRequestJob
         $requestJob = new RpcRequestJob();
 
-        // Set the runOn field
         $requestJob->setRunOn('openagents/embeddings');
-
-        // Set the expireAfter field (e.g., 10 minutes from now)
         $requestJob->setExpireAfter($expiresAt->timestamp);
 
         $inputs = [];
-
-        if ($documents != []) {
-
-            // Set the input field
-            foreach ($documents as $document) {
-                $input = new JobInput();
-                $input->setData($document);
-                $input->setType('url');
-                $input->setMarker('passage');
-                $inputs[] = $input;
-            }
+        foreach ($this->documents as $document) {
+            $input = new JobInput();
+            $input->setData($document)->setType('url')->setMarker('passage');
+            $inputs[] = $input;
         }
 
         $inputq = new JobInput();
-        $inputq->setData($query);
-        $inputq->setType('text');
-        $inputq->setMarker('query');
+        $inputq->setData($this->query)->setType('text')->setMarker('query');
         $inputs[] = $inputq;
 
         $requestJob->setInput($inputs);
 
-        // Set the param field
         $param1 = new JobParam();
-        $param1->setKey('max-tokens');
-        $param1->setValue(["$max_tokens"]);
+        $param1->setKey('max-tokens')->setValue(["$this->max_tokens"]);
 
         $param2 = new JobParam();
-        $param2->setKey('overlap');
-        $param2->setValue(["$overlap"]);
+        $param2->setKey('overlap')->setValue(["$this->overlap"]);
 
         $param3 = new JobParam();
-        $param3->setKey('quantize');
-        $param3->setValue(['true']);
+        $param3->setKey('quantize')->setValue(['true']);
 
         $param4 = new JobParam();
-        $param4->setKey('k');
-        $param4->setValue(["$k"]);
+        $param4->setKey('k')->setValue(["$this->k"]);
 
-        // Set the RepeatedField to the 'param' field of the requestJob message
-        $requestJob->setParam([$param1, $param2, $param3, $param4]);
+        $param5 =  new JobParam();
+        $param5->setKey('cache-duration-hint')->setValue(["$this->cacheDuration"]);
 
-        // Set the description field
+        $param6 =  new JobParam();
+        $param6->setKey('warm-up')->setValue(["$this->warmUp"]);
+
+        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6]);
+
         $requestJob->setDescription('RAG pipeline');
-
-        // Set the kind field (optional)
         $requestJob->setKind(5003);
-
-        // Set the outputFormat field
         $requestJob->setOutputFormat('application/json');
 
-        // encrypt for a specific provider
-        if ($encryptFor != null) {
+        if ($this->encryptFor != null) {
             $requestJob->setEncrypted(true);
-            $requestJob->setRequestProvider($encryptFor);
+            $requestJob->setRequestProvider($this->encryptFor);
         }
 
-        $opts = [
-            'credentials' => ChannelCredentials::createSsl(),
-        ];
-        $hostname = $poolAddress;
+        $opts = ['credentials' => ChannelCredentials::createSsl()];
+        $hostname = $this->poolAddress;
         $res = new PoolConnectorClient($hostname, $opts);
         $metadata = [];
         $options = [];
@@ -99,4 +150,7 @@ class NostrService
 
         return $result[0]->getId();
     }
+
+
+
 }
