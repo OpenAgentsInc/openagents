@@ -1,5 +1,8 @@
 <div class="flex flex-col w-full relative z-50 h-full">
     <div class="flex flex-col gap-2 mt-16 py-4 px-1" @thread_updated="$refresh">
+        <div>
+            <livewire:sidebar-switcher />
+          </div>
         <ol>
             @foreach($threads as $thread)
                 <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
