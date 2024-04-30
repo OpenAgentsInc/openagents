@@ -1,4 +1,4 @@
-# User quick guide - How to Build an Agent
+# How to Build an Agent - Quick Tutorial
 
 ![f1 (2)](https://github.com/OpenAgentsInc/openagents/assets/93095163/390342ec-c7cb-4483-a671-995eb6daac7a)
 
