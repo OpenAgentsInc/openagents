@@ -1,7 +1,7 @@
 <div>
     {{-- The Master doesn't talk, he acts. --}}
     @php use App\AI\Models; @endphp
-    <div class="max-h-[600px] max-w-[900px]:  overflow-y-scroll">
+    <div class="max-h-[600px] lg:max-h-900 max-w-[900px]:  overflow-y-scroll">
         <div class=" mx-auto ">
             <div class="text-center mt-[48px] px-[15px]">
                 <h1>How can we help you today?</h1>
