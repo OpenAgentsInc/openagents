@@ -1,3 +1,17 @@
+#User quick guide - How to Build an Agent
+
+![f1 (2)](https://github.com/OpenAgentsInc/openagents/assets/93095163/390342ec-c7cb-4483-a671-995eb6daac7a)
+
+1) You can build your Agent using the Agent Builder page (in the figure).
+
+2) During preparation, give your Agent a name and provide a brief description of what it's supposed to do.
+
+3) Then enter the "Instructions" that the Agent must follow to execute the work you want it to carry out. You can think of this field as an initial prompt for your agent.
+
+4) In the "Knowledge" section, click "Upload files" to provide the information needed to specialize to your agent. The currently supported formats are URL, PDF and plain text.
+
+5) When you are finished with the configuration, click "Save". The Agent will be available in the sidebar on the OpenAgents chat screen.
+
 # Developer documentation
 
 OpenAgents.com is a platform for building and commercializing AI agents using shared databases of skills and knowledge.
@@ -41,11 +55,6 @@ It is under active development. All code is open source under AGPL3 [here](https
 
 
 ## How This Works (MVP v1 - RAG Agent)
-
-
-![f1 (2)](https://github.com/OpenAgentsInc/openagents/assets/93095163/390342ec-c7cb-4483-a671-995eb6daac7a)
-
-
 
 The user builds the Agent from the Agent Builder UI (MVP version in the img).
 
