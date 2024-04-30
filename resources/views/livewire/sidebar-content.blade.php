@@ -1,11 +1,38 @@
 <div class="flex flex-col w-full relative z-50 h-full">
-    <div class="flex flex-col gap-2 mt-16 py-4 px-1" @thread_updated="$refresh">
-        <ol>
-            @foreach($threads as $thread)
-                <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
-            @endforeach
-        </ol>
+
+    <div class="gap-2 mt-16 my-5">
+        <div x-data="{ currentPage: 'chat' }">
+            <ul class="flex  items-center gap-4 my-5 px-2 justify-center text-white bg-[#262626] py-1 w-full text-center rounded-xl">
+              <li role="button"  @click.prevent="currentPage = 'chat'" class="p-2 w-full rounded-lg" :class="{ 'bg-black p-2 font-bold': currentPage === 'chat' }">
+                Chat
+              </li>
+              <li role="button"  @click.prevent="currentPage = 'index'" class="p-2 w-full rounded-lg" :class="{ 'bg-black  font-bold': currentPage === 'index' }">
+                Agents
+              </li>
+            </ul>
+            <div x-show="currentPage === 'chat'">
+                <div class="flex flex-col gap-2 mt-10 py-4 px-1" @thread_updated="$refresh">
+                    <ol>
+                        @foreach($threads as $thread)
+                            <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
+                        @endforeach
+                    </ol>
+                </div>
+            </div>
+            <div x-show="currentPage === 'index'">
+                <div class="flex flex-col gap-2 mt-10 py-4 px-1" @thread_updated="$refresh">
+                    <ol>
+                        @foreach($threads as $thread)
+                            <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
+                        @endforeach
+                    </ol>
+                </div>
+            </div>
+          </div>
     </div>
+
+
+
 
     <div class="flex flex-col gap-2 py-2 px-1 mt-auto">
         <ol>
