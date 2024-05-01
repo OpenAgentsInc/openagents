@@ -113,6 +113,7 @@
                                      max-rows="12"
                                      wire:model="message_input"
                                      wireModel="message_input"
+                                     :image-upload="auth()->check() && auth()->user()->isPro"
                                      wire:ignore
                                      onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
                                      class="flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white"/>
