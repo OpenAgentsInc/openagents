@@ -35,8 +35,13 @@
                     @foreach($messages as $message)
                         @php
                             $author = !empty($message['model']) ? $models[$message['model']]["name"] : 'You';
+                            $promptClass = $author === 'You' ? 'prompt' : '';
                         @endphp
-                        <x-chat.message :author="$author" :message="$message['body']"></x-chat.message>
+                        <x-chat.message
+                            :author="$author"
+                            :message="$message['body']"
+                            :promptClass="$promptClass"
+                        ></x-chat.message>
                     @endforeach
 
                     @if($pending)

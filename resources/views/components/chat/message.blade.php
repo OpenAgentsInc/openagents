@@ -22,7 +22,7 @@
                             <img class="mt-6" src="{{ $message }}" alt="Embedded Image">
                         @else
                             <x-markdown
-                                    class="text-md text-text markdown-content">{!! $message !!}</x-markdown>
+                                    class="text-md text-text markdown-content {{ $promptClass }}">{!! $message !!}</x-markdown>
                         @endif
 
                     </div>
