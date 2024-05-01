@@ -68,7 +68,7 @@ class SimpleInferencer
                     break;
                 case 'greptile':
                     $client = new GreptileGateway();
-                    $params = $thread;
+                    $params = ['thread' => $thread];
                     break;
                 default:
                     dd("Unknown gateway: $gateway");

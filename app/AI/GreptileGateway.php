@@ -6,7 +6,7 @@ use App\Models\Thread;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Session;
 
-class GreptileGateway
+class GreptileGateway implements GatewayInterface
 {
     private $greptileApiKey;
 
@@ -51,9 +51,9 @@ class GreptileGateway
         }
     }
 
-    public function queryRepository($thread)
+    public function inference(array $params): array
     {
-        $messages = self::getFormattedMessages($thread);
+        $messages = self::getFormattedMessages($params['thread']);
 
         $data = [
             'messages' => $messages,
