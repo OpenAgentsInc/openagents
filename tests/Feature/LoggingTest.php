@@ -12,9 +12,9 @@ test('sends a log entry to OpenObserve', function () {
 
     // Create an instance of the OpenObserve logger
     $logger = new OpenObserveLogger([
-        'baseUrl' => config('openobserve.base_url'),
-        'org' => config('openobserve.org'),
-        'stream' => config('openobserve.stream'),
+        'baseUrl' => 'https://pool.openagents.com:5080',
+        'org' => 'default',
+        'stream' => 'logs',
         'batchSize' => 1,
         'flushInterval' => 1000,
     ]);
