@@ -180,22 +180,19 @@ class Chat extends Component
         $output = SimpleInferencer::inference($this->input, $this->selectedModel, $this->thread, $this->getStreamingCallback());
 
         // Append the response to the chat
-        $this->messages[] = [
+        $message = [
             'body' => $output['content'],
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
         ];
+        $this->messages[] = $message;
 
         // Save the agent's response to the thread
-        $this->thread->messages()->create([
-            'body' => $output['content'],
-            'session_id' => $sessionId,
-            'model' => $this->selectedModel,
-            'user_id' => auth()->id() ?? null,
+        $this->thread->messages()->create(array_merge($message, [
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
-        ]);
+        ]));
 
         // Reset pending status and scroll to the latest message
         $this->pending = false;
