@@ -102,6 +102,7 @@ function get_truncated_messages(Thread $thread, int $maxTokens)
                 $userContent .= ' '.$message->body;
             }
         } else {
+            $userContent = trim($userContent);
             if (! empty($userContent)) {
                 $messageTokens = ceil(str_word_count($userContent) / 3);
 
@@ -111,7 +112,7 @@ function get_truncated_messages(Thread $thread, int $maxTokens)
 
                 $messages[] = [
                     'role' => 'user',
-                    'content' => trim($userContent),
+                    'content' => $userContent,
                 ];
 
                 $tokenCount += $messageTokens;
@@ -121,7 +122,11 @@ function get_truncated_messages(Thread $thread, int $maxTokens)
             if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
                 $content = '<image>';
             } else {
-                $content = $message->body;
+                $content = trim($message->body);
+                if (empty($content)) {
+                    // Some LLMs return a 400 error if they receive blank content
+                    continue;
+                }
             }
 
             $messageTokens = ceil(str_word_count($content) / 3);
