@@ -63,27 +63,6 @@
                     @enderror
                 </div>
 
-                <div class="mt-5">
-                    <label for="message">Welcome Message</label>
-                    <x-textarea wire:model='message' placeholder="How this agent starts conversations" id="message"
-                                class="block mt-1 w-full" rows="5" min-rows="5" name="message" required/>
-                    @error('message')
-                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
-                    @enderror
-                </div>
-
-                {{--                <div class="mt-5">--}}
-                {{--                    <label for="rag_prompt">RAG Prompt</label>--}}
-                {{--                    <x-textarea wire:model='rag_prompt'--}}
-                {{--                                placeholder="Add your RAG prompt?"--}}
-                {{--                                id="rag_prompt" class="block mt-1 w-full" rows="5" min-rows="5" name="rag_prompt"--}}
-                {{--                                required/>--}}
-                {{--                    @error('rag_prompt')--}}
-                {{--                    <span class="text-red mt-2 text-xs">{{ $message }}</span>--}}
-                {{--                    @enderror--}}
-                {{--                </div>--}}
-
-
                 <div class="my-5">
                     <label for="files"> Knowledge</label>
                     <div class="mt-1 border-2 border-darkgray rounded-md">
