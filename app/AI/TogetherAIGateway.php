@@ -40,9 +40,9 @@ class TogetherAIGateway implements GatewayInterface
             $responseData = json_decode($response->getBody()->getContents(), true);
 
             return [
-                'content' => $responseData['choices'][0]['message']['content'],
-                'output_tokens' => $responseData['usage']['completion_tokens'],
-                'input_tokens' => $responseData['usage']['prompt_tokens'],
+                'content' => $responseData['choices'][0]['message']['content'] ?? '',
+                'output_tokens' => $responseData['usage']['completion_tokens'] ?? 0,
+                'input_tokens' => $responseData['usage']['prompt_tokens'] ?? 0,
             ];
         } catch (RequestException $e) {
             dd($e->getMessage());

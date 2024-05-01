@@ -76,7 +76,7 @@ class GreptileGateway implements GatewayInterface
             $json = $response->json();
 
             return [
-                'content' => $json['message'],
+                'content' => $json['message'] ?? '',
                 'output_tokens' => 0,
                 'input_tokens' => 0,
             ];
