@@ -8,7 +8,6 @@ use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\NostrHandlerController;
 use App\Livewire\Admin;
 use App\Livewire\Chat;
-use App\Livewire\CreateAgent;
 use App\Livewire\Explorer;
 use App\Livewire\PrismDashboard;
 use App\Livewire\Settings;
@@ -21,8 +20,6 @@ Route::get('/', Store::class)->name('home');
 //Route::get('/', Chat::class)->name('home');
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat');
-
-Route::get('/create', CreateAgent::class)->name('create');
 
 Route::middleware('guest')->group(function () {
     // AUTH - SOCIAL
@@ -47,7 +44,7 @@ Route::get('/plugins', [StaticController::class, 'plugins']);
 
 // AGENT
 Route::get('/agents', App\Livewire\Agents\Index::class)->name('agents');
-Route::get('/agents/create', App\Livewire\Agents\Create::class)->name('agents.create');
+Route::get('/create', App\Livewire\Agents\Create::class)->name('agents.create');
 Route::get('/agents/{agent}/edit', App\Livewire\Agents\Edit::class)->name('agents.edit');
 
 // PAYMENTS
