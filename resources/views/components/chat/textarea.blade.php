@@ -16,6 +16,7 @@
     minRows: @js($minRows),
     maxRows: @js($maxRows),
     viewportMaxHeight: window.innerHeight * 0.95,
+    promptIndex: -1,
     update() {
         this.$refs.textarea.style.height = 'auto';
         let newHeight = this.$refs.textarea.scrollHeight;
@@ -46,6 +47,28 @@
         this.$refs.textarea.style.height = `${minHeight}px`;
         this.$refs.textarea.style.overflowY = 'hidden';
         this.isDisabled = true;
+    },
+    reusePreviousPrompt(event) {
+        const prompts = document.getElementsByClassName('prompt');
+        --this.promptIndex;
+        if (this.promptIndex < 0) {
+            this.promptIndex = prompts.length - 1;
+        }
+        this.setInputFromPrompt(prompts);
+    },
+    reuseNextPrompt(event) {
+        const prompts = document.getElementsByClassName('prompt');
+        ++this.promptIndex;
+        if (this.promptIndex >= prompts.length) {
+            this.promptIndex = 0;
+        }
+        this.setInputFromPrompt(prompts);
+    },
+    setInputFromPrompt(prompts) {
+        if (prompts[this.promptIndex]) {
+            event.target.value = prompts[this.promptIndex].textContent.trim();
+            this.update();
+        }
     }
 }" x-init="$nextTick(() => {
     $refs.textarea.style.height = `${minRows * lineHeight()}px`;
@@ -61,6 +84,8 @@
         x-model="inputVal"
         x-effect="if (inputVal === '') resetHeight()"
         :rows="minRows"
+        @keyup.alt.up.prevent="reusePreviousPrompt"
+        @keyup.alt.down.prevent="reuseNextPrompt"
     {{ $attributes->merge([
         'class' => "resize-none flex w-full rounded-md border-2 bg-transparent px-4 py-[0.65rem] pl-10 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white " . ($hasError ? 'border-red' : 'border-[#3D3E42]') . " $className transition-all duration-300 ease-in-out",
     ]) }}
