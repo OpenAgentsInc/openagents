@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Webhook;
 
-use App\Http\Controllers\Controller;
 use App\Models\NostrJob;
 use Illuminate\Http\Request;
+use App\Events\NostrJobReady;
 use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
 
 class NostrHandlerController extends Controller
 {
@@ -47,7 +48,7 @@ class NostrHandlerController extends Controller
                     $nostr_job->save();
 
                     // Dispatch a job to the thread_id using websocket
-
+                    NostrJobReady::dispatch($nostr_job->id);
                 }
 
                 return [
