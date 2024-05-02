@@ -68,8 +68,8 @@ class Chat extends Component
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
         }
-
-        $this->selectedAgent = Agent::first()->id;
+        $agent = Agent::first();
+        $this->selectedAgent = $agent ? $agent->id : null;
         if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
         }
@@ -164,7 +164,7 @@ class Chat extends Component
             'sender' => 'You',
             'user_id' => auth()->id(), // Add user_id if logged in
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
-            'agent_id' => $this->selectedAgent ? $this->selectedAgent : null,
+            'agent_id' => $this->selectedAgent ?: null,
         ];
 
         // Clear the input
@@ -174,7 +174,7 @@ class Chat extends Component
 
         // Call simpleRun after the next render
         $this->dispatch('message-created');
-        if ($this->selectedAgent == '') {
+        if (! $this->selectedAgent) {
             $this->js('$wire.simpleRun()');
         } else {
             $this->js('$wire.ragRun()');
@@ -255,7 +255,7 @@ class Chat extends Component
                 'body' => $this->input,
                 'session_id' => $sessionId,
                 'user_id' => auth()->id() ?? null,
-                'agent_id' => $this->selectedAgent ? $this->selectedAgent : null,
+                'agent_id' => $this->selectedAgent ?: null,
             ]);
 
             $nostrRag = new NostrRag(); // Generate history
@@ -287,7 +287,7 @@ class Chat extends Component
             $nostr_job->thread_id = $this->thread->id;
             $nostr_job->save();
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             Log::error($e);
         }
 
