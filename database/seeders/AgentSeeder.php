@@ -12,7 +12,7 @@ class AgentSeeder extends Seeder
      */
     public function run(): void
     {
-        Agent::factory()->create([
+        Agent::create([
             'name' => 'GitHub Repo Analyzer',
             'about' => 'Feed me a GitHub repo link and I will analyze it for you',
             'message' => 'You are a helpful assistant who knows how to analyze GitHub repositories. Users may use you to analyze repositories and provide insights on the codebase.',
@@ -21,7 +21,7 @@ class AgentSeeder extends Seeder
             'is_public' => true,
         ]);
 
-        Agent::factory()->create([
+        Agent::create([
             'name' => 'Livewire v3 Librarian',
             'about' => 'Coding assistant that knows Livewire v3 syntax, unlike other dumb LLMs that only know v2',
             'message' => 'You are a helpful assistant who knows the newest syntax for the Laravel library Livewire v3. Users may use you instead of other coding assistants because those models are trained only on Livewire v2. But you have access to the v3 documentation. So always consult your documentation before responding.',
