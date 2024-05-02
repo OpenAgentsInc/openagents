@@ -10,7 +10,7 @@
             <x-icon.expand-down class="w-5 h-5"></x-icon.expand-down>
         </button>
         <div x-cloak x-show="dropdown" @click.away="dropdown = false"
-             class="mt-3 -ml-[125px] fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/25 overflow-y-scroll sm:overflow-x-hidden max-h-80 sm:max-h-auto"
+             class="mt-3 -ml-[125px] fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/25 overflow-y-scroll overflow-x-hidden max-h-[80vh] sm:max-h-screen"
              aria-labelledby="hs-dropdown-with-header">
             <div class="py-0 first:pt-0 last:pb-0 bg-black">
                 @if($showAgents)
@@ -30,7 +30,7 @@
                         $gateway = $modelName['gateway'];
                         $imagePath = 'images/icons/' . $gateway . '.png';
                     @endphp
-                    <a wire:click="selectModel('{{ $modelKey }}')"
+                    <a wire:click="selectModel('{{ $modelKey }}')" x-data x-tooltip.raw="{{ $modelName["description"] }}"
                        class="flex items-center gap-x-3.5 py-1 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
                         <img src="{{ asset($imagePath) }}" alt="{{ $gateway }}" class="w-6 h-6">
                         <div class="flex flex-col">
