@@ -30,4 +30,10 @@ return [
     'huggingface' => [
         'api_key' => env('HUGGINGFACE_API_KEY'),
     ],
+    'openai' => [
+        'api_key' => env('OPENAI_API_KEY'),
+    ],
+    'nostr' => [
+        'pool' => env('NOSTR_POOL'),
+    ],
 ];

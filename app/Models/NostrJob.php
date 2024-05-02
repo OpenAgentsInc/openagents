@@ -9,5 +9,10 @@ class NostrJob extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['payload', 'status', 'job_id', 'thread_id', 'content'];
+    protected $fillable = ['payload', 'status', 'job_id', 'thread_id', 'content', 'agent_id'];
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
+    }
 }

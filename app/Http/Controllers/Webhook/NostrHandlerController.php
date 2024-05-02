@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Webhook;
 
+use App\Events\NostrJobReady;
 use App\Http\Controllers\Controller;
 use App\Models\NostrJob;
+use App\Services\OpenObserveLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -13,7 +15,15 @@ class NostrHandlerController extends Controller
     {
         $data = $request->all();
 
-        // Log::info("$job");
+        $logger = new OpenObserveLogger([
+            'baseUrl' => 'https://pool.openagents.com:5080',
+            'org' => 'default',
+            'stream' => 'logs',
+            'batchSize' => 1,
+            'flushInterval' => 1000,
+        ]);
+        $logger->log('info', 'Event received');
+        $logger->log('info', json_encode($data));
 
         $requestType = $data[0];
 
@@ -47,7 +57,7 @@ class NostrHandlerController extends Controller
                     $nostr_job->save();
 
                     // Dispatch a job to the thread_id using websocket
-
+                    NostrJobReady::dispatch($nostr_job->id);
                 }
 
                 return [

@@ -74,7 +74,7 @@ Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 // ADMIN
 Route::get('/admin', Admin::class)->name('admin');
 
-// Nostra Webhook
+// Nostr Webhook
 Route::post('/webhook/nostr', [NostrHandlerController::class, 'handleEvent']);
 
 // Catch-all redirect to the homepage
