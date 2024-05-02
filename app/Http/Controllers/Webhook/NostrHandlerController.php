@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Webhook;
 
+use App\Events\NostrJobReady;
+use App\Http\Controllers\Controller;
 use App\Models\NostrJob;
 use App\Services\OpenObserveLogger;
 use Illuminate\Http\Request;
-use App\Events\NostrJobReady;
 use Illuminate\Support\Facades\Log;
-use App\Http\Controllers\Controller;
 
 class NostrHandlerController extends Controller
 {

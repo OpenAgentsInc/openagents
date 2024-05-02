@@ -3,20 +3,20 @@
 namespace App\Livewire;
 
 use App\AI\Models;
-use App\AI\NostrRag;
-use App\Models\Agent;
-use App\Models\Thread;
-use Livewire\Component;
-use App\Models\NostrJob;
-use App\Models\AgentFile;
 use App\AI\NostrInference;
-use Livewire\Attributes\On;
+use App\AI\NostrRag;
 use App\AI\SimpleInferencer;
-use Livewire\WithFileUploads;
+use App\Models\Agent;
+use App\Models\AgentFile;
+use App\Models\NostrJob;
+use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\NostrService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\On;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
@@ -69,7 +69,7 @@ class Chat extends Component
             session()->put('selectedModel', request()->query('model'));
         }
 
-        $this->selectedAgent =  Agent::first()->id;
+        $this->selectedAgent = Agent::first()->id;
         if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
         }
@@ -164,7 +164,7 @@ class Chat extends Component
             'sender' => 'You',
             'user_id' => auth()->id(), // Add user_id if logged in
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
-            'agent_id' => $this->selectedAgent ? $this->selectedAgent : null
+            'agent_id' => $this->selectedAgent ? $this->selectedAgent : null,
         ];
 
         // Clear the input
@@ -174,11 +174,11 @@ class Chat extends Component
 
         // Call simpleRun after the next render
         $this->dispatch('message-created');
-       if($this->selectedAgent == ''){
-        $this->js('$wire.simpleRun()');
-       }else{
-        $this->js('$wire.ragRun()');
-       }
+        if ($this->selectedAgent == '') {
+            $this->js('$wire.simpleRun()');
+        } else {
+            $this->js('$wire.ragRun()');
+        }
 
     }
 
@@ -222,7 +222,6 @@ class Chat extends Component
         $this->dispatch('message-created');
     }
 
-
     private function handleImageInput()
     {
         if (! empty($this->images_to_upload)) {
@@ -245,65 +244,60 @@ class Chat extends Component
         };
     }
 
-    public function ragRun(){
+    public function ragRun()
+    {
 
-       try{
-        $sessionId = auth()->check() ? null : Session::getId();
+        try {
+            $sessionId = auth()->check() ? null : Session::getId();
 
-        // Save user message to the thread
-        $this->thread->messages()->create([
-            'body' => $this->input,
-            'session_id' => $sessionId,
-            'user_id' => auth()->id() ?? null,
-            'agent_id' => $this->selectedAgent ? $this->selectedAgent : null
-        ]);
+            // Save user message to the thread
+            $this->thread->messages()->create([
+                'body' => $this->input,
+                'session_id' => $sessionId,
+                'user_id' => auth()->id() ?? null,
+                'agent_id' => $this->selectedAgent ? $this->selectedAgent : null,
+            ]);
 
-        $nostrRag = new NostrRag();// Generate history
-        $query = $nostrRag->history($this->thread)->summary();
+            $nostrRag = new NostrRag(); // Generate history
+            $query = $nostrRag->history($this->thread)->summary();
 
+            $documents = AgentFile::where('agent_id', $this->selectedAgent)->pluck('url')->toArray();
 
+            // send to nostra
 
-        $documents = AgentFile::where('agent_id',$this->selectedAgent)->pluck('url')->toArray();
+            $pool = config('services.nostr.pool');
 
-        // send to nostra
+            $job_id = (new NostrService())
+                ->poolAddress($pool)
+                ->query($query)
+                ->documents($documents)
+                ->k(1)
+                ->maxTokens(2048)
+                ->overlap(256)
+                ->warmUp(false)
+                ->cacheDurationhint('-1')
+                ->encryptFor('')
+                ->execute();
 
-        $pool = config('services.nostr.pool');
+            // Save to DB
+            $nostr_job = new NostrJob();
+            $nostr_job->agent_id = $this->selectedAgent;
+            $nostr_job->job_id = $job_id;
+            $nostr_job->status = 'pending';
+            $nostr_job->thread_id = $this->thread->id;
+            $nostr_job->save();
 
-        $job_id  = (new NostrService())
-        ->poolAddress($pool)
-        ->query($query)
-        ->documents($documents)
-        ->k(1)
-        ->maxTokens(2048)
-        ->overlap(256)
-        ->warmUp(false)
-        ->cacheDurationhint('-1')
-        ->encryptFor('')
-        ->execute();
-
-
-        // Save to DB
-        $nostr_job = new NostrJob();
-        $nostr_job->agent_id = $this->selectedAgent;
-        $nostr_job->job_id = $job_id;
-        $nostr_job->status = 'pending';
-        $nostr_job->thread_id = $this->thread->id;
-        $nostr_job->save();
-
-
-
-
-       }catch(Exception $e){
+        } catch (Exception $e) {
             Log::error($e);
-       }
+        }
 
     }
 
     #[On('echo:threads.{thread.id},NostrJobReady')]
-    public function process_nostr($event){
+    public function process_nostr($event)
+    {
 
-
-        $this->selectedModel =  'mistral-small-latest';
+        $this->selectedModel = 'mistral-small-latest';
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
 
@@ -336,8 +330,6 @@ class Chat extends Component
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
     }
-
-
 
     public function render()
     {
