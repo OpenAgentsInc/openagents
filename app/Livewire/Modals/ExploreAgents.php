@@ -4,12 +4,10 @@ namespace App\Livewire\Modals;
 
 use App\AI\Agents;
 use App\AI\Models;
-use Livewire\Component;
 use App\Vendors\WireElements\Modal\ModalComponent;
 
 class ExploreAgents extends ModalComponent
 {
-
     public $models = Models::MODELS;
 
     public $agents;
@@ -26,7 +24,6 @@ class ExploreAgents extends ModalComponent
     {
         return 'explore';
     }
-
 
     public function render()
     {

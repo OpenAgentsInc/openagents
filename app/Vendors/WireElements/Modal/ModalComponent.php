@@ -3,8 +3,6 @@
 namespace App\Vendors\WireElements\Modal;
 
 use InvalidArgumentException;
-use Livewire\Component;
-use LivewireUI\Modal\Contracts\ModalComponent as Contract;
 use LivewireUI\Modal\ModalComponent as BaseModalComponent;
 
 abstract class ModalComponent extends BaseModalComponent

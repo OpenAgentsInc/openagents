@@ -35,5 +35,5 @@ return [
     ],
     'nostr' => [
         'pool' => env('NOSTR_POOL'),
-    ]
+    ],
 ];

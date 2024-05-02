@@ -15,7 +15,7 @@ class Models
             'max_tokens' => 4096,
             'description' => 'Llama 3 8B is a language model by Meta,
                              optimized for efficient deployment on consumer-size GPUs,
-                             and excels in various natural language processing tasks.'
+                             and excels in various natural language processing tasks.',
         ],
 
         'meta-llama/llama-3-70b-chat-hf' => [
@@ -24,7 +24,7 @@ class Models
             'access' => 'pro',
             'max_tokens' => 4096,
             'description' => 'Llama 3 70B is a larger language model by Meta,
-                              designed for complex tasks, and excels in various natural language processing tasks.'
+                              designed for complex tasks, and excels in various natural language processing tasks.',
         ],
 
         // MISTRAL
@@ -34,7 +34,7 @@ class Models
             'access' => 'guest',
             'max_tokens' => 2000,
             'description' => 'Mistral-Small is a balanced, efficient language model offering high
-                                 performance across various tasks with lower latency'
+                                 performance across various tasks with lower latency',
         ],
         'mistral-medium-latest' => [
             'name' => 'Mistral Medium',
@@ -43,15 +43,15 @@ class Models
             'max_tokens' => 2000,
             'description' => 'Mistral Medium is an AI model by Mistral,
                               ideal for tasks requiring moderate reasoning like data extraction,
-                               summarizing documents, or writing emails'
+                               summarizing documents, or writing emails',
         ],
         'mistral-large-latest' => [
             'name' => 'Mistral Large',
             'gateway' => 'mistral',
             'access' => 'pro',
             'max_tokens' => 4096,
-            'description' => "Mistral Large is Mistral AI’s flagship model,
-                              excelling in complex tasks requiring large reasoning capabilities or high specialization"
+            'description' => 'Mistral Large is Mistral AI’s flagship model,
+                              excelling in complex tasks requiring large reasoning capabilities or high specialization',
         ],
 
         // OPENAI
@@ -61,31 +61,31 @@ class Models
             'access' => 'user',
             'max_tokens' => 14000,
             'description' => 'GPT-3.5 Turbo 16K is an OpenAI language model with the same capabilities as the standard GPT-3.5 Turbo
-                              but with a larger context window of 16,384 tokens, leading to better predictions'
+                              but with a larger context window of 16,384 tokens, leading to better predictions',
         ],
         'gpt-4-turbo-preview' => [
             'name' => 'GPT-4 Turbo Preview',
             'gateway' => 'openai',
             'access' => 'user',
             'max_tokens' => 2000,
-            'description' => "GPT-4 Turbo Preview is OpenAI’s latest model, offering advanced reasoning,
-                              a 128k context window, and cost-effective token usage"
+            'description' => 'GPT-4 Turbo Preview is OpenAI’s latest model, offering advanced reasoning,
+                              a 128k context window, and cost-effective token usage',
         ],
         'gpt-4-turbo-2024-04-09' => [
             'name' => 'GPT-4 Turbo 2024-04-09',
             'gateway' => 'openai',
             'access' => 'user',
             'max_tokens' => 2000,
-            'description' => "GPT-4 Turbo 2024-04-09 is OpenAI’s latest model with vision capabilities.
-                             It has a context window of 128,000 tokens and its training data is up to date until December 2023"
+            'description' => 'GPT-4 Turbo 2024-04-09 is OpenAI’s latest model with vision capabilities.
+                             It has a context window of 128,000 tokens and its training data is up to date until December 2023',
         ],
         'gpt-4' => [
             'name' => 'GPT-4',
             'gateway' => 'openai',
             'access' => 'pro',
             'max_tokens' => 4096,
-            'description' => "GPT-4 is OpenAI’s advanced AI model, excelling in complex tasks, creative writing, image analysis,
-                                 and long-form content creation with improved safety and factual accuracy."
+            'description' => 'GPT-4 is OpenAI’s advanced AI model, excelling in complex tasks, creative writing, image analysis,
+                                 and long-form content creation with improved safety and factual accuracy.',
         ],
 
         // ANTHROPIC
@@ -94,23 +94,23 @@ class Models
             'gateway' => 'anthropic',
             'access' => 'guest',
             'max_tokens' => 4096,
-            'description' => "Haiku is Anthropic’s compact model, designed for instant responsiveness and seamless AI experiences, released on March 7, 2024."
+            'description' => 'Haiku is Anthropic’s compact model, designed for instant responsiveness and seamless AI experiences, released on March 7, 2024.',
         ],
         'claude-3-sonnet-20240229' => [
             'name' => 'Claude Sonnet',
             'gateway' => 'anthropic',
             'access' => 'user',
             'max_tokens' => 4096,
-            'description' => "Claude 3 Sonnet is Anthropic’s balanced AI model,
-                                excelling in reasoning, multilingual tasks, and visual interpretation, released on February 29, 2024."
+            'description' => 'Claude 3 Sonnet is Anthropic’s balanced AI model,
+                                excelling in reasoning, multilingual tasks, and visual interpretation, released on February 29, 2024.',
         ],
         'claude-3-opus-20240229' => [
             'name' => 'Claude Opus',
             'gateway' => 'anthropic',
             'access' => 'pro',
             'max_tokens' => 4096,
-            'description' => "Claude 3 Opus, released on February 29, 2024, is Anthropic’s most powerful model,
-                             excelling in highly complex tasks and demonstrating fluency and human-like understanding"
+            'description' => 'Claude 3 Opus, released on February 29, 2024, is Anthropic’s most powerful model,
+                             excelling in highly complex tasks and demonstrating fluency and human-like understanding',
         ],
 
         // PERPLEXITY
@@ -119,16 +119,16 @@ class Models
             'gateway' => 'perplexity',
             'access' => 'user',
             'max_tokens' => 2000,
-            'description' => "Sonar Small Online is a 7B parameter model by Perplexity,
-                              designed for chat completion tasks with a context length of 12,000 tokens"
+            'description' => 'Sonar Small Online is a 7B parameter model by Perplexity,
+                              designed for chat completion tasks with a context length of 12,000 tokens',
         ],
         'sonar-medium-online' => [
             'name' => 'Sonar Medium Online',
             'gateway' => 'perplexity',
             'access' => 'pro',
             'max_tokens' => 4096,
-            'description' => "Sonar Medium Online is a search-enhanced model by Perplexity,
-                                 surpassing earlier models in cost-efficiency, speed, and performance"
+            'description' => 'Sonar Medium Online is a search-enhanced model by Perplexity,
+                                 surpassing earlier models in cost-efficiency, speed, and performance',
         ],
 
         // COHERE
@@ -137,15 +137,15 @@ class Models
             'gateway' => 'cohere',
             'access' => 'user',
             'max_tokens' => 2000,
-            'description' => ""
+            'description' => '',
         ],
         'command-r-plus' => [
             'name' => 'Command-R+',
             'gateway' => 'cohere',
             'access' => 'user',
             'max_tokens' => 4000,
-            'description' => "Command R+ is Cohere’s newest large language model, optimized for conversational interaction
-                                 and long-context tasks"
+            'description' => 'Command R+ is Cohere’s newest large language model, optimized for conversational interaction
+                                 and long-context tasks',
         ],
 
         // SPIRIT OF SATOSHI
@@ -154,9 +154,9 @@ class Models
             'gateway' => 'satoshi',
             'access' => 'guest',
             'max_tokens' => 2000,
-            'description' => "Satoshi 7B, developed by LaierTwoLabsInc,
+            'description' => 'Satoshi 7B, developed by LaierTwoLabsInc,
                               is a 7-billion parameter language model fine-tuned on Bitcoin principles, technology, culture,
-                                 Austrian economics, and non-woke political perspectives."
+                                 Austrian economics, and non-woke political perspectives.',
         ],
 
         // GREPTILE
@@ -165,9 +165,9 @@ class Models
             'gateway' => 'greptile',
             'access' => 'user',
             'max_tokens' => 2000,
-            'description' => "Greptile is an AI platform that enables developers to search and understand complex codebases
+            'description' => 'Greptile is an AI platform that enables developers to search and understand complex codebases
                                          in natural language,
-                                         enhancing productivity"
+                                         enhancing productivity',
         ],
 
         // VISION
@@ -176,8 +176,8 @@ class Models
             'gateway' => 'openai',
             'access' => 'hidden',
             'max_tokens' => 4000,
-            'description' => "GPT-4 Turbo with Vision is an OpenAI model that analyzes images and provides textual responses,
-                                enhancing both visual understanding and natural language processing."
+            'description' => 'GPT-4 Turbo with Vision is an OpenAI model that analyzes images and provides textual responses,
+                                enhancing both visual understanding and natural language processing.',
         ],
 
     ];

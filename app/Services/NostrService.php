@@ -11,75 +11,86 @@ use Grpc\ChannelCredentials;
 
 class NostrService
 {
-
     protected $poolAddress;
+
     protected $query;
+
     protected $documents = [];
+
     protected $k = 1;
+
     protected $max_tokens = 512;
+
     protected $overlap = 128;
+
     protected $encryptFor = '';
+
     protected $warmUp = false;
+
     protected $cacheDuration = '-1';
-
-
 
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;
+
         return $this;
     }
 
     public function query($query)
     {
         $this->query = $query;
+
         return $this;
     }
 
     public function documents($documents)
     {
         $this->documents = $documents;
+
         return $this;
     }
 
     public function k($k)
     {
         $this->k = $k;
+
         return $this;
     }
 
     public function maxTokens($maxTokens)
     {
         $this->max_tokens = $maxTokens;
+
         return $this;
     }
 
     public function overlap($overlap)
     {
         $this->overlap = $overlap;
+
         return $this;
     }
 
     public function encryptFor($encryptFor)
     {
         $this->encryptFor = $encryptFor;
+
         return $this;
     }
-
 
     public function warmUp($warmUp)
     {
         $this->warmUp = $warmUp;
+
         return $this;
     }
-
 
     public function cacheDurationhint($cacheDuration)
     {
         $this->cacheDuration = $cacheDuration;
+
         return $this;
     }
-
 
     public function execute()
     {
@@ -118,10 +129,10 @@ class NostrService
         $param4 = new JobParam();
         $param4->setKey('k')->setValue(["$this->k"]);
 
-        $param5 =  new JobParam();
+        $param5 = new JobParam();
         $param5->setKey('cache-duration-hint')->setValue(["$this->cacheDuration"]);
 
-        $param6 =  new JobParam();
+        $param6 = new JobParam();
         $param6->setKey('warm-up')->setValue(["$this->warmUp"]);
 
         $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6]);
@@ -150,7 +161,4 @@ class NostrService
 
         return $result[0]->getId();
     }
-
-
-
 }

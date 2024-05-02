@@ -5,21 +5,21 @@ namespace App\Events;
 use App\Models\NostrJob;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class NostrJobReady  implements ShouldBroadcast
+class NostrJobReady implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public $job;
+
     /**
      * Create a new event instance.
      */
-    public function __construct( NostrJob $job)
+    public function __construct(NostrJob $job)
     {
         $this->job = $job;
     }

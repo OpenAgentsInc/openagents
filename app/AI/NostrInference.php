@@ -16,17 +16,16 @@ class NostrInference
 
         if ($modelDetails) {
 
-
             $gateway = $modelDetails['gateway'];
             $maxTokens = $modelDetails['max_tokens'];
             $thread = Thread::find($job->thread_id);
-            $agent =  Agent::find($job->agent_id);
+            $agent = Agent::find($job->agent_id);
             $context = $job->content;
 
             $preprompt = 'You can use the following CONTEXT to help you answer the user\'s questions.';
             $context = $context;
 
-            $prompt = $agent->prompt . "\n" . $preprompt . "\n" . $context;
+            $prompt = $agent->prompt."\n".$preprompt."\n".$context;
 
             $messages = [
                 [
