@@ -4,18 +4,23 @@ declare(strict_types=1);
 
 namespace App\AI;
 
-use App\Models\Thread;
 use OpenAI;
+use App\Models\Agent;
+use App\Models\Thread;
+use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Http;
+use GuzzleHttp\Exception\RequestException;
 
 class NostrRag
 {
+
+
     private $url = 'https://api.groq.com/openai/v1/chat/completions';
-
     protected $messages;
-
     protected $agent_id;
-
     protected $prompt;
+
+
 
     public function history(Thread $thread, int $maxTokens = 2000)
     {
@@ -34,10 +39,10 @@ class NostrRag
                 if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
                     $userContent .= ' <image>';
                 } else {
-                    $userContent .= ' '.$message->body;
+                    $userContent .= ' ' . $message->body;
                 }
             } else {
-                if (! empty($userContent)) {
+                if (!empty($userContent)) {
                     $messageTokens = ceil(str_word_count($userContent) / 3);
 
                     if ($tokenCount + $messageTokens > $maxTokens) {
@@ -74,7 +79,7 @@ class NostrRag
             }
         }
 
-        if (! empty($userContent)) {
+        if (!empty($userContent)) {
             $messageTokens = ceil(str_word_count($userContent) / 3);
 
             if ($tokenCount + $messageTokens <= $maxTokens) {
@@ -93,26 +98,29 @@ class NostrRag
     public function send()
     {
 
+
         $ApiKey = config('services.openai.api_key');
-        $response = OpenAI::client($ApiKey)->chat()->create([
+        $response =  OpenAI::client($ApiKey)->chat()->create([
             'model' => 'gpt-3.5-turbo',
             'messages' => [
-                ['role' => 'system', 'content' => $this->prompt],
+                ['role' => 'system', 'content' => $this->prompt]
             ],
             'max_tokens' => 2048,
-            'temperature' => 0.5,
+            'temperature' => 0.5
         ]);
 
         return $response->choices[0]->message->content ?? '';
 
+
     }
+
 
     public function summary()
     {
 
         // Convert the messages array into a string
         $chatHistory = implode("\n", array_map(function ($message) {
-            return $message['role'].': '.$message['content'];
+            return $message['role'] . ': ' . $message['content'];
         }, $this->messages));
 
         // Construct the prompt with the chat history
@@ -124,11 +132,18 @@ class NostrRag
 
         FULLY QUALIFIED QUESTION: ";
 
+
+
+
+
         $this->prompt = $content;
+
 
         $data = $this->send();
 
         return $data;
 
+
     }
+
 }

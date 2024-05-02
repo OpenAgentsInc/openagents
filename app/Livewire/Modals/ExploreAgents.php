@@ -5,7 +5,7 @@ namespace App\Livewire\Modals;
 use App\AI\Agents;
 use App\AI\Models;
 use Livewire\Component;
-use LivewireUI\Modal\ModalComponent;
+use App\Vendors\WireElements\Modal\ModalComponent;
 
 class ExploreAgents extends ModalComponent
 {
@@ -24,7 +24,7 @@ class ExploreAgents extends ModalComponent
      */
     public static function modalMaxWidth(): string
     {
-        return '7xl';
+        return 'explore';
     }
 
 

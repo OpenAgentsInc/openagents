@@ -1,8 +1,10 @@
 import './bootstrap';
 import {webln} from "@getalby/sdk";
 import Swal from 'sweetalert2/dist/sweetalert2.js';
+import Tooltip from "@ryangjchandler/alpine-tooltip";
 
 window.Swal = Swal;
+
 
 async function experiment() {
     const weblnProvider = webln.NostrWebLNProvider.withNewSecret()
@@ -18,4 +20,9 @@ async function experiment() {
 
     weblnProvider.close();
 }
+
+
+Alpine.plugin(Tooltip.defaultProps({
+  theme: 'openagent',
+}));
 
