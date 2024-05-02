@@ -18,6 +18,8 @@
     maxRows: @js($maxRows),
     viewportMaxHeight: window.innerHeight * 0.95,
     promptIndex: -1,
+    draftPrompt: '',
+    promptHistory: [],
     update() {
         this.$refs.textarea.style.height = 'auto';
         let newHeight = this.$refs.textarea.scrollHeight;
@@ -50,24 +52,35 @@
         this.isDisabled = true;
     },
     reusePreviousPrompt(event) {
-        const prompts = document.getElementsByClassName('prompt');
+        this.setupPromptHistory();
         --this.promptIndex;
         if (this.promptIndex < 0) {
-            this.promptIndex = prompts.length - 1;
+            this.promptIndex = this.promptHistory.length - 1;
         }
-        this.setInputFromPrompt(prompts);
+        this.setInputFromPrompt();
     },
     reuseNextPrompt(event) {
-        const prompts = document.getElementsByClassName('prompt');
+        this.setupPromptHistory();
         ++this.promptIndex;
-        if (this.promptIndex >= prompts.length) {
+        if (this.promptIndex >= this.promptHistory.length) {
             this.promptIndex = 0;
         }
-        this.setInputFromPrompt(prompts);
+        this.setInputFromPrompt();
     },
-    setInputFromPrompt(prompts) {
-        if (prompts[this.promptIndex]) {
-            event.target.value = prompts[this.promptIndex].textContent.trim();
+    setupPromptHistory() {
+        this.promptHistory = [];
+        const prompts = document.getElementsByClassName('prompt');
+        for (let i = 0; i < prompts.length; i++) {
+            this.promptHistory.push(prompts[i].textContent.trim());
+        }
+        if (this.draftPrompt === '') {
+            this.draftPrompt = this.$refs.textarea.value;
+        }
+        this.promptHistory.push(this.draftPrompt);
+    },
+    setInputFromPrompt() {
+        if (this.promptHistory[this.promptIndex]) {
+            this.$refs.textarea.value = this.promptHistory[this.promptIndex];
             this.update();
         }
     }
