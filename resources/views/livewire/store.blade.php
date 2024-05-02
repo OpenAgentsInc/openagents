@@ -30,7 +30,7 @@
         <p class="text-gray">Chat Agents combine instructions, extra knowledge, and any LLM on OpenAgents to create
             custom AI agents.</p>
 
-        <div class="grid grid-cols-2 gap-4 mt-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             @foreach($agents as $agent)
                 <a href="/chat?agent={{ $agent["id"] }}" wire:navigate>
                     <div class="p-4 rounded-lg relative">
@@ -56,7 +56,7 @@
             variety
             of tasks.</p>
 
-        <div class="grid grid-cols-2 gap-4 mt-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             @foreach($models as $modelKey => $modelDetails)
                 <a href="/chat?model={{ $modelKey }}" wire:navigate>
                     <div class="p-4 rounded-lg relative">
