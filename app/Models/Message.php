@@ -9,5 +9,10 @@ class Message extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['body', 'user_id', 'agent_id', 'session_id', 'model', 'input_tokens', 'output_tokens'];
+    protected $fillable = ['body', 'user_id', 'agent_id', 'session_id', 'model', 'input_tokens', 'output_tokens', 'agent_id'];
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
+    }
 }
