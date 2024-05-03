@@ -25,6 +25,8 @@ class NostrHandlerController extends Controller
         $logger->log('info', 'Event received');
         $logger->log('info', json_encode($data));
 
+        Log::channel('slack')->info(json_encode($data));
+
         $requestType = $data[0];
 
         if ($requestType == 'Job') {
