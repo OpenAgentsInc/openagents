@@ -34,11 +34,13 @@ class NostrHandlerController extends Controller
             $extractedData = [
                 'status' => $payload['state']['status'],
                 'kind' => $payload['kind'],
-                'tags' => [],
             ];
 
-            foreach ($payload['tags'] as $tag) {
-                $extractedData['tags'][$tag[0]] = $tag[1];
+            if (isset($payload['tags'])) {
+                $extractedData['tags'] = [];
+                foreach ($payload['tags'] as $tag) {
+                    $extractedData['tags'][$tag[0]] = $tag[1];
+                }
             }
 
             Log::channel('slack')->info(json_encode($extractedData));
