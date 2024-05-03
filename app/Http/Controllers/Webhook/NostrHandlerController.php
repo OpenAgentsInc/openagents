@@ -47,7 +47,8 @@ class NostrHandlerController extends Controller
 
             if ($status == 2) {
                 // log the error
-                Log::error($data);
+                //                Log::error($data);
+                Log::channel('slack')->error(json_encode($extractedData));
 
                 return [
                     'status' => 'success',
