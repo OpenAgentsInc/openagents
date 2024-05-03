@@ -36,6 +36,7 @@
                 <div class="mt-5">
                     <label for="name">Name</label>
                     <x-input id="name" class="block mt-1 w-full " type="text" name="name" wire:model='name'
+                             dusk="name"
                              required placeholder="Name your agent"/>
                     @error('name')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
@@ -46,6 +47,7 @@
                     <label for="about">Description</label>
                     <x-textarea wire:model='about' placeholder="Add a short description about what this agent does"
                                 id="about" class="block mt-1 w-full"
+                                dusk="description"
                                 rows="1" min-rows="1" name="about" required/>
                     @error('about')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
@@ -56,6 +58,7 @@
                     <label for="prompt">Instructions</label>
                     <x-textarea wire:model='prompt'
                                 placeholder="What does this agent do? How does it behave? What should it avoid doing?"
+                                dusk="instructions"
                                 id="about" class="block mt-1 w-full" rows="5" min-rows="5" name="prompt"
                                 required/>
                     @error('prompt')
@@ -77,7 +80,8 @@
                 </div>
 
                 <div class="mt-5 flex justify-end">
-                    <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4">
+                    <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4"
+                              dusk="create-agent-button">
                         Create Agent
                     </x-button>
                 </div>
