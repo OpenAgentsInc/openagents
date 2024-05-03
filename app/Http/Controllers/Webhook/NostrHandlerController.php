@@ -7,7 +7,6 @@ use App\Http\Controllers\Controller;
 use App\Models\NostrJob;
 use App\Services\OpenObserveLogger;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class NostrHandlerController extends Controller
 {
@@ -43,12 +42,12 @@ class NostrHandlerController extends Controller
                 }
             }
 
-            Log::channel('slack')->info(json_encode($extractedData));
+            //            Log::channel('slack')->info(json_encode($extractedData));
 
             if ($status == 2) {
                 // log the error
                 //                Log::error($data);
-                Log::channel('slack')->error(json_encode($extractedData));
+                //                Log::channel('slack')->error(json_encode($extractedData));
 
                 return [
                     'status' => 'success',
