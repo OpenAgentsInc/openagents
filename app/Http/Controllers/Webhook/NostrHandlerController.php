@@ -25,13 +25,24 @@ class NostrHandlerController extends Controller
         $logger->log('info', 'Event received');
         $logger->log('info', json_encode($data));
 
-        Log::channel('slack')->info(json_encode($data));
+        $logData = $data;
 
-        $requestType = $data[0];
-
-        if ($requestType == 'Job') {
-            $payload = $data[1];
+        if ($logData[0] == 'Job') {
+            $payload = $logData[1];
             $status = $payload['state']['status'];
+
+            $extractedData = [
+                'status' => $payload['state']['status'],
+                'kind' => $payload['kind'],
+                'tags' => [],
+            ];
+
+            foreach ($payload['tags'] as $tag) {
+                $extractedData['tags'][$tag[0]] = $tag[1];
+            }
+
+            Log::channel('slack')->info(json_encode($extractedData));
+
             if ($status == 2) {
                 // log the error
                 Log::error($data);
