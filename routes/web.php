@@ -19,7 +19,7 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 Route::get('/', Store::class)->name('home');
 //Route::get('/', Chat::class)->name('home');
 Route::get('/chat', Chat::class)->name('chat');
-Route::get('/chat/{id}', Chat::class)->name('chat');
+Route::get('/chat/{id}', Chat::class)->name('chat.id');
 
 Route::middleware('guest')->group(function () {
     // AUTH - SOCIAL
