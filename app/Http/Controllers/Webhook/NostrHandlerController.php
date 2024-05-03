@@ -72,7 +72,7 @@ class NostrHandlerController extends Controller
                     $nostr_job->save();
 
                     // Dispatch a job to the thread_id using websocket
-                    NostrJobReady::dispatch($nostr_job->id);
+                    NostrJobReady::dispatch($nostr_job);
                 }
 
                 return [
