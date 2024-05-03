@@ -44,15 +44,15 @@ class Create extends Component
             //            'rag_prompt' => 'nullable|string',
             'message' => 'required|string',
             'is_public' => 'required|boolean',
-            'files' => 'nullable|array',
-            'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
-            'image' => 'nullable|image|max:2048',
+            //            'files' => 'nullable|array',
+            //            'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
+            //            'image' => 'nullable|image|max:2048',
         ];
     }
 
     public function submit()
     {
-        $this->validate();
+        //        $this->validate();
 
         $disk = env('FILESYSTEM_DISK', 'local');
 
@@ -139,7 +139,12 @@ class Create extends Component
 
         $this->reset(); // Reset form after successful submission
 
-        return redirect()->route('agents');
+        //        return redirect()->route('agents');
+
+        // Redirect to a new chat with this agent - similar to this <a href="/chat?agent={{ $agent["id"] }}" wire:navigate>
+        //        return redirect()->route('chat', [], false)->withQuery(['agent' => $agent->id]);
+        return redirect("/chat?agent={$agent->id}");
+
     }
 
     public function render()
