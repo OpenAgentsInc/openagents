@@ -17,7 +17,7 @@ class UpdatePrismStatuses extends Command
         // Fetch all PrismSinglePayments where status is 'sending'
         $payments = PrismSinglePayment::where('status', 'sending')->get();
 
-        dump('Updating '.$payments->count().' payments...');
+        //        dump('Updating '.$payments->count().' payments...');
 
         $prismService = new PrismService();
 
