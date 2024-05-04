@@ -122,6 +122,7 @@ class Chat extends Component
                 'description' => $agent->about,
                 'instructions' => $agent->message,
             ];
+            $this->selectedModel = '';
         } else {
             dd('Agent not found');
             $this->selectedAgent = null;
@@ -137,11 +138,14 @@ class Chat extends Component
             if (auth()->check()) {
                 $recentThread = Thread::where('user_id', auth()->id())
                     ->whereDoesntHave('messages')
+                    // and where the agent_id is the current agent
+                    ->where('agent_id', '===', $this->selectedAgent['id'])
                     ->latest()
                     ->first();
             } else {
                 $recentThread = Thread::where('session_id', Session::getId())
                     ->whereDoesntHave('messages')
+                    ->where('agent_id', '===', $this->selectedAgent['id'])
                     ->latest()
                     ->first();
             }
