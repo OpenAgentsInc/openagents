@@ -420,7 +420,7 @@ class Chat extends Component
         $this->dispatch('message-created');
     }
 
-    #[On('echo:rags.{rag.id},AgentRagReady')]
+    #[On('echo:agent_jobs.{selectedAgent},AgentRagReady')]
     public function process_agent_rag($event){
         $agent = Agent::find($event['agent_id']);
         if($agent){

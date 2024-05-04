@@ -15,14 +15,14 @@ class AgentRagReady implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $rag;
+    public $agentJob;
 
     /**
      * Create a new event instance.
      */
-    public function __construct(AgentJob $rag)
+    public function __construct(AgentJob $agentJob)
     {
-        $this->rag = $rag;
+        $this->agentJob = $agentJob;
     }
 
     /**
@@ -32,6 +32,6 @@ class AgentRagReady implements ShouldBroadcast
      */
     public function broadcastOn()
     {
-        return new Channel('rags'.$this->rag->id);
+        return new Channel('agent_jobs.' . $this->agentJob->id);
     }
 }
