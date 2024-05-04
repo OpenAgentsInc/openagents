@@ -96,6 +96,16 @@ class ModelDropdown extends Component
         return Models::isProModelSelected($model);
     }
 
+    public function createAgent()
+    {
+        $userAccess = $this->getUserAccess();
+        if ($userAccess === 'guest') {
+            $this->dispatch('openModal', 'auth.join');
+        } elseif ($this->getUserAccess() !== 'pro') {
+            $this->dispatch('openModal', 'modals.upgrade');
+        }
+    }
+
     public function toggleDropdown()
     {
         $this->isOpen = ! $this->isOpen;

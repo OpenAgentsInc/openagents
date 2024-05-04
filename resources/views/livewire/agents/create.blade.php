@@ -1,7 +1,6 @@
 <div>
     {{-- Stop trying to control. --}}
-
-
+    
     <div class="mt-10 p-5 y-5 mx-auto max-w-5xl">
         <h1 class="text-md md:text-3xl font-bold my-6 md:mb-10 text-center">Agent Builder</h1>
         <div class="my-5 mx-auto max-w-[534px]">

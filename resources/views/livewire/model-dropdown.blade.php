@@ -18,9 +18,8 @@
                         $userAccess = $this->getUserAccess();
                         $disabled = $userAccess != 'pro' ? 'opacity-25' : '';
                     @endphp
-                    <a wire:navigate
+                    <a wire:click="createAgent"
                        @if($userAccess == 'pro')
-                           href="{{ route('agents.create') }}"
                        @else
                            x-data
                        x-tooltip.raw="Upgrade to Pro to create agents"
