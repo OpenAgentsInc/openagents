@@ -49,11 +49,26 @@
 
                             $promptClass = $author === 'You' ? 'prompt' : '';
                         @endphp
+                        <div class="pl-[50px]">
+                            @php
+                                // If $message['agent'] is set, dump the agent's image URL
+                                $image = null;
+                                if (isset($message['agent'])) {
+                                    $agent = $message['agent'];
+                                    if (isset($agent['image_url'])) {
+                                        $image = $agent['image_url'];
+                                    } else if (isset($agent['image'])) {
+                                        $image = $agent['image'];
+                                    }
+                                }
+                            @endphp
+
+                        </div>
                         <x-chat.message
                                 :author="$author"
                                 :message="$message['body']"
                                 :promptClass="$promptClass"
-                                :agent-image="$message['agent']['image_url'] ?? null"
+                                :agent-image="$image"
                         ></x-chat.message>
                     @endforeach
 
@@ -61,10 +76,12 @@
                         @php
                             // If there's a selected agent, use agent name, otherwise use $models[$selectedModel]['name']
                             $author = $selectedAgent ? $selectedAgent['name'] : $models[$selectedModel]['name'];
+                            $image = $selectedAgent ? $selectedAgent['image'] : null;
                         @endphp
 
                         <x-chat.messagestreaming
-                                :author="$author"></x-chat.messagestreaming>
+                                :author="$author"
+                                :agent-image="$image"></x-chat.messagestreaming>
                     @endif
 
 
