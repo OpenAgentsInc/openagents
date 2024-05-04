@@ -36,8 +36,9 @@ class ProcessAgentRag implements ShouldQueue
 
         // send to nostra
 
-        $pool = config('services.nostr.pool');
+        $pool = config('nostr.pool');
         $query = "";
+        $encrypt =  config('nostr.encrypt');
 
         $job_id = (new NostrService())
             ->poolAddress($pool)
@@ -49,7 +50,7 @@ class ProcessAgentRag implements ShouldQueue
             ->quantize(false)
             ->warmUp(true)
             ->cacheDurationhint('-1')
-            ->encryptFor('')
+            ->encryptFor($encrypt)
             ->execute();
 
             $existing  = AgentJob::where('agent_id',$this->agent->id)->first();

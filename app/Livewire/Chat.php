@@ -354,7 +354,8 @@ class Chat extends Component
 
             // send to nostra
 
-            $pool = config('services.nostr.pool');
+            $pool = config('nostr.pool');
+            $encrypt =  config('nostr.encrypt');
 
             $job_id = (new NostrService())
                 ->poolAddress($pool)
@@ -365,7 +366,7 @@ class Chat extends Component
                 ->overlap(256)
                 ->warmUp(false)
                 ->cacheDurationhint('-1')
-                ->encryptFor('')
+                ->encryptFor($encrypt)
                 ->execute();
 
             // Save to DB

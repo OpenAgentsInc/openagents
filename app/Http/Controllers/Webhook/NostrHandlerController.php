@@ -16,6 +16,14 @@ class NostrHandlerController extends Controller
     {
         $data = $request->all();
 
+        $secret = $request->query('secret');
+        $main_secret = config('nostr.webhook_secret');
+
+        if ($secret !== $main_secret) {
+            return response()->json(['error' => 'Invalid token'], 403);
+        }
+
+
         $logger = new OpenObserveLogger([
             'baseUrl' => 'https://pool.openagents.com:5080',
             'org' => 'default',
