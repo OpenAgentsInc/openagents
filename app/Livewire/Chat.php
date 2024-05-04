@@ -55,6 +55,7 @@ class Chat extends Component
     public function selectModel($model)
     {
         $this->selectedModel = $model;
+        $this->selectedAgent = '';
     }
 
     public function mount($id = null)
