@@ -33,7 +33,6 @@ class ModelSelector extends Component
         // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
         $lastMessage = end($messages);
         if (! empty($lastMessage['agent_id'])) {
-
             $this->selectedAgent = [
                 'id' => $lastMessage['agent_id'],
                 'name' => $lastMessage['agent']['name'],
@@ -47,6 +46,7 @@ class ModelSelector extends Component
                 'name' => $this->thread->agent->name,
                 'description' => $this->thread->agent->about,
                 'instructions' => $this->thread->agent->prompt,
+                'image' => $this->thread->agent->image_url,
             ];
         } elseif (session()->has('agent')) {
             // If the selectedAgent session var is set, use it
