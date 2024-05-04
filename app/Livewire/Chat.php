@@ -244,6 +244,7 @@ class Chat extends Component
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
+            'agent' => $this->selectedAgent,
         ];
         $this->messages[] = $message;
 
@@ -391,8 +392,6 @@ class Chat extends Component
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
-            'agent_id' => $this->selectedAgent['id'] ?? null,
-            'agent' => $this->selectedAgent,
         ];
 
         // Save the agent's response to the thread

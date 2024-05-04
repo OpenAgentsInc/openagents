@@ -36,7 +36,7 @@
                         @php
                             // If message has an agent_id, use agent name, otherwise use 'You'
                             if (!empty($message['agent_id'])) {
-                                $author = $message['agent']['name'] ?? "wat";
+                                $author = $message['agent']['name'] ?? "You"; // hacky but whatever
                             } else {
                                 $author = 'You';
                             }
