@@ -23,6 +23,10 @@ class ModelSelector extends Component
         $this->models = Models::MODELS;
         $this->agents = Agents::AGENTS();
 
+        if (! $this->thread) {
+            return;
+        }
+
         $messages = $this->thread->messages()
             ->with(['agent' => function ($query) {
                 $query->select('id', 'name', 'about', 'prompt', 'image_url');
