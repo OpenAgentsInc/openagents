@@ -98,12 +98,22 @@ class Chat extends Component
         $this->thread = $thread;
         $this->messages = $this->thread->messages->sortBy('created_at')->toArray();
 
-        // Set the selected model
-        $this->selectedModel = Models::getModelForThread($this->thread);
-
-        // If the selectedAgent session var is set, use it
-        if (session()->has('agent')) {
+        // If the thread has an agent, set the selected agent
+        if (! empty($this->thread->agent_id)) {
+            $this->selectedAgent = [
+                'id' => $this->thread->agent_id,
+                'name' => $this->thread->agent->name,
+                'description' => $this->thread->agent->about,
+                'instructions' => $this->thread->agent->message,
+            ];
+            //            dd($this->selectedAgent);
+            //            $this->selectedModel = '';
+        } elseif (session()->has('agent')) {
+            // If the selectedAgent session var is set, use it
             $this->selectedAgent = session('selectedAgent');
+        } else {
+            // Set the selected model
+            $this->selectedModel = Models::getModelForThread($this->thread);
         }
     }
 
