@@ -14,6 +14,10 @@
                         <div class="m-[1px] w-[28px] p-[2px] border border-darkgray rounded">
                             <img src="{{ $agentImage }}" alt="Agent Image">
                         </div>
+                    @elseif ($modelImage)
+                        <div class="m-[1px] w-[28px] p-[2px] ">
+                            <img src="{{ $modelImage }}" alt="Model Image">
+                        </div>
                     @else
                         <div class="m-[1px] w-[28px] p-[5px] border border-darkgray rounded">
                             <x-icon name="logo" class=""/>
