@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\AI\Models;
+use App\Models\Agent;
 use Livewire\Component;
 
 class ModelDropdown extends Component
@@ -22,6 +23,8 @@ class ModelDropdown extends Component
     public $picture;
 
     public $showAgents = false;
+
+    public $agents = [];
 
     public function mount($selectedAgent, $selectedModel, $models, $action, $showAgents = false)
     {
@@ -45,6 +48,29 @@ class ModelDropdown extends Component
 
         $this->action = $action;
         $this->showAgents = $showAgents;
+
+        // If user is authed, grab their 5 most recent agents
+        if (auth()->check()) {
+            $this->agents = auth()->user()->agents()->orderBy('created_at', 'desc')->limit(5)->get()->append('image_url')->toArray();
+        }
+    }
+
+    public function selectAgent($agent)
+    {
+        $this->dispatch('select-agent', $agent);
+        $agent = Agent::find($agent);
+        $this->selectedAgent = [
+            'id' => $agent->id,
+            'name' => $agent->name,
+            'description' => $agent->about,
+            'instructions' => $agent->message,
+        ];
+
+        $this->formattedModelOrAgent = $agent->name;
+        $this->picture = $agent->image_url;
+
+        $this->selectedModel = '';
+        session()->forget('selectedModel');
     }
 
     public function selectModel($model)
