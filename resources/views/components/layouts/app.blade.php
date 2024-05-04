@@ -22,7 +22,7 @@
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
 
-    <div class="h-[54px] z-[9998] flex justify-between items-center absolute top-0 left-0 py-2 px-4 w-[259px]">
+    <div class="h-[54px] flex justify-between items-center absolute top-0 left-0 py-2 px-4 w-[259px]">
         <button class="cursor-pointer text-white z-[9999]"
                 @click="sidebarOpen = !sidebarOpen">
             <x-icon.menu class="h-6 w-6"/>
