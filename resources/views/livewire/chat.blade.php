@@ -38,15 +38,20 @@
                             $promptClass = $author === 'You' ? 'prompt' : '';
                         @endphp
                         <x-chat.message
-                            :author="$author"
-                            :message="$message['body']"
-                            :promptClass="$promptClass"
+                                :author="$author"
+                                :message="$message['body']"
+                                :promptClass="$promptClass"
                         ></x-chat.message>
                     @endforeach
 
                     @if($pending)
+                        @php
+                            // If there's a selected agent, use agent name, otherwise use $models[$selectedModel]['name']
+                            $author = $selectedAgent ? $selectedAgent->name : $models[$selectedModel]['name'];
+                        @endphp
+
                         <x-chat.messagestreaming
-                                :author="$models[$selectedModel]['name']"></x-chat.messagestreaming>
+                                :author="$author"></x-chat.messagestreaming>
                     @endif
 
 
