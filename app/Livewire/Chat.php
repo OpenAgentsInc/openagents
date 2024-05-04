@@ -12,6 +12,7 @@ use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\NostrService;
+use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\On;
@@ -177,8 +178,24 @@ class Chat extends Component
         if (! $this->selectedAgent) {
             $this->js('$wire.simpleRun()');
         } else {
-            $this->js('$wire.ragRun()');
+            // $this->js('$wire.ragRun()');
+            $this->js('$wire.runAgentWithoutRag()');
         }
+    }
+
+    public function runAgentWithoutRag()
+    {
+        // Until RAG is working we'll just pass the agent info to the model
+
+        $user_input = $this->input;
+
+        $this->input = "Respond to the following user input but talk like a pirate: \"$user_input\"";
+
+        $this->selectedModel = 'meta-llama/llama-3-70b-chat-hf';
+
+        $this->js('$wire.simpleRun()');
+
+        //        $this->selectedModel = '';
 
     }
 
@@ -287,7 +304,7 @@ class Chat extends Component
             $nostr_job->thread_id = $this->thread->id;
             $nostr_job->save();
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error($e);
         }
 
