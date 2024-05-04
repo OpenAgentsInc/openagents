@@ -23,22 +23,42 @@ class ModelSelector extends Component
         $this->models = Models::MODELS;
         $this->agents = Agents::AGENTS();
 
-        $this->selectedModel = Models::getModelForThread($this->thread);
-
-        if (session()->has('selectedModel')) {
-            session()->forget('selectedModel');
-        }
-
-        if (session()->has('selectedAgent')) {
-            $agent = $this->agents->find(session('selectedAgent'));
+        if (! empty($this->thread->agent_id)) {
             $this->selectedAgent = [
-                'id' => $agent->id,
-                'title' => $agent->name,
-                'description' => $agent->about,
-                'image' => $agent->image_url,
+                'id' => $this->thread->agent_id,
+                'name' => $this->thread->agent->name,
+                'description' => $this->thread->agent->about,
+                'instructions' => $this->thread->agent->message,
+                'image' => $this->thread->agent->image_url,
             ];
-            session()->forget('selectedAgent');
+            //            dd($this->selectedAgent);
+            //            $this->selectedModel = '';
+        } elseif (session()->has('agent')) {
+            // If the selectedAgent session var is set, use it
+            $this->selectedAgent = session('selectedAgent');
+        } else {
+            // Set the selected model
+            $this->selectedModel = Models::getModelForThread($this->thread);
         }
+
+        //        $this->selectedModel = Models::getModelForThread($this->thread);
+
+        //        if (session()->has('selectedModel')) {
+        //            session()->forget('selectedModel');
+        //        }
+        //
+        //        if (session()->has('selectedAgent')) {
+        //            $agent = $this->agents->find(session('selectedAgent'));
+        //
+        //            $this->selectedAgent = [
+        //                'id' => $agent->id,
+        //                'title' => $agent->name,
+        //                'description' => $agent->about,
+        //                'image' => $agent->image_url,
+        //            ];
+        //
+        //            session()->forget('selectedAgent');
+        //        }
     }
 
     public function render()

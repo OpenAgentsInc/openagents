@@ -23,6 +23,11 @@ class Thread extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
+    }
+
     public function scopeWhereSessionId($query, $sessionId)
     {
         return $query->where('session_id', $sessionId);
