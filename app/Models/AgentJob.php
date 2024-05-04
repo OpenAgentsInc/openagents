@@ -9,5 +9,5 @@ class AgentJob extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['is_rag_ready','agent_id','job_id'];
+    protected $fillable = ['is_rag_ready', 'agent_id', 'job_id'];
 }

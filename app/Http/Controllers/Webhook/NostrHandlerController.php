@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Webhook;
 
-use App\Models\AgentJob;
-use App\Models\NostrJob;
-use Illuminate\Http\Request;
 use App\Events\AgentRagReady;
 use App\Events\NostrJobReady;
-use App\Services\OpenObserveLogger;
 use App\Http\Controllers\Controller;
+use App\Models\AgentJob;
+use App\Models\NostrJob;
+use App\Services\OpenObserveLogger;
+use Illuminate\Http\Request;
 
 class NostrHandlerController extends Controller
 {
@@ -22,7 +22,6 @@ class NostrHandlerController extends Controller
         if ($secret !== $main_secret) {
             return response()->json(['error' => 'Invalid token'], 403);
         }
-
 
         $logger = new OpenObserveLogger([
             'baseUrl' => 'https://pool.openagents.com:5080',
@@ -101,18 +100,17 @@ class NostrHandlerController extends Controller
         }
     }
 
+    public function ProcessAgent($job_id)
+    {
+        $agentJob = AgentJob::where('job_id', $job_id)->first();
 
-    public function ProcessAgent($job_id){
-        $agentJob = AgentJob::where('job_id',$job_id)->first();
-
-        if($agentJob){
+        if ($agentJob) {
             $agentJob->is_rag_ready = true;
             $agentJob->save();
 
             $agent = Agent::find($agentJob->agent_id);
             $agent->is_rag_ready = true;
             $agent->save();
-
 
             AgentRagReady::dispatch($agentJob);
 

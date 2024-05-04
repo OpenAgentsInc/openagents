@@ -3,19 +3,18 @@
 namespace App\Jobs;
 
 use App\Models\Agent;
-use App\Models\AgentJob;
 use App\Models\AgentFile;
-use Illuminate\Bus\Queueable;
+use App\Models\AgentJob;
 use App\Services\NostrService;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 
 class ProcessAgentRag implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
 
     protected $agent;
 
@@ -37,8 +36,8 @@ class ProcessAgentRag implements ShouldQueue
         // send to nostra
 
         $pool = config('nostr.pool');
-        $query = "";
-        $encrypt =  config('nostr.encrypt');
+        $query = '';
+        $encrypt = config('nostr.encrypt');
 
         $job_id = (new NostrService())
             ->poolAddress($pool)
@@ -53,13 +52,12 @@ class ProcessAgentRag implements ShouldQueue
             ->encryptFor($encrypt)
             ->execute();
 
-            $existing  = AgentJob::where('agent_id',$this->agent->id)->first();
+        $existing = AgentJob::where('agent_id', $this->agent->id)->first();
 
-
-            $rag = $existing ? $existing : new AgentJob();
-            $rag->job_id = $job_id;
-            $rag->agent_id = $this->agent->id;
-            $rag->is_rag_ready = false;
-            $rag->save();
+        $rag = $existing ? $existing : new AgentJob();
+        $rag->job_id = $job_id;
+        $rag->agent_id = $this->agent->id;
+        $rag->is_rag_ready = false;
+        $rag->save();
     }
 }

@@ -2,15 +2,12 @@
 
 namespace App\Livewire\Agents;
 
-use App\Models\Agent;
-use Livewire\Component;
-use App\Models\AgentJob;
-use App\Models\AgentFile;
 use App\Jobs\ProcessAgentRag;
-use Livewire\WithFileUploads;
-use App\Services\NostrService;
+use App\Models\Agent;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Create extends Component
 {
@@ -34,7 +31,7 @@ class Create extends Component
 
     public function mount()
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             return redirect('/');
         }
     }
@@ -61,7 +58,7 @@ class Create extends Component
         $disk = env('FILESYSTEM_DISK', 'local');
 
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             return redirect('/');
         }
 
@@ -69,7 +66,7 @@ class Create extends Component
 
         // Upload file
 
-        if (!is_null($this->image) || !empty($this->image)) {
+        if (! is_null($this->image) || ! empty($this->image)) {
 
             // Get filename with extension
             $filenamewithextension = $this->image->getClientOriginalName();
@@ -81,7 +78,7 @@ class Create extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'public/agents/profile/images/' . $filename . '_' . time() . '.' . $extension;
+            $filenametostore = 'public/agents/profile/images/'.$filename.'_'.time().'.'.$extension;
 
             // Upload File to public
             Storage::disk($disk)->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
@@ -110,7 +107,7 @@ class Create extends Component
         $agent->is_rag_ready = false;
         $agent->save();
 
-        if (!empty($this->files)) {
+        if (! empty($this->files)) {
             foreach ($this->files as $file) {
                 // Get filename with extension
                 $filenamewithextension = $file->getClientOriginalName();
@@ -122,7 +119,7 @@ class Create extends Component
                 $extension = $file->getClientOriginalExtension();
 
                 // Filename to store with directory
-                $filenametostore = 'agents/files/documents/' . $filename . '_' . time() . '.' . $extension;
+                $filenametostore = 'agents/files/documents/'.$filename.'_'.time().'.'.$extension;
 
                 // Upload File to public
                 Storage::disk($disk)->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
@@ -140,10 +137,9 @@ class Create extends Component
 
             // Send documents to Nostr for RAG
 
-             ProcessAgentRag::dispatch($agent);
+            ProcessAgentRag::dispatch($agent);
 
         }
-
 
         // session()->flash('message', 'Form submitted successfully!');
         //        $this->alert('success', 'Form submitted successfully');
