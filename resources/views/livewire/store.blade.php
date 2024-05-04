@@ -18,7 +18,7 @@
         @endauth
     </div>
 
-    <div class="w-[800px] mx-auto">
+    <div class="w-full p-4 sm:w-[600px] md:w-[800px] lg:w-[900px] mx-auto">
         <div class="text-center mt-[48px] px-[15px]">
             <h1>How can we help you today?</h1>
 
@@ -79,13 +79,13 @@
                         </span>
                         </div>
                         <div class="flex">
-                            <div class="w-[80px] h-[80px]">
+                            <div class="w-[50px] h-[50px] sm:w-[80px] sm:h-[80px]">
                                 <img src="{{ asset('images/icons/' . $modelDetails['gateway'] . '.png') }}"
                                      alt="{{ $modelDetails['gateway'] }}" class="w-full h-full">
                             </div>
                             <div class="flex-1 pl-4">
-                                <h4 class="text-lg font-bold">{{ $modelDetails['name'] }}</h4>
-                                <span class="text-gray">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.</span>
+                                <h4 class="text-md md:text-lg font-bold">{{ $modelDetails['name'] }}</h4>
+                                <span class="text-gray">{{ $modelDetails['description'] }}</span>
                             </div>
                         </div>
                     </div>
