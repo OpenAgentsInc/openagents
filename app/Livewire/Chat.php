@@ -102,6 +102,7 @@ class Chat extends Component
                 'name' => $lastMessage['agent']['name'],
                 'description' => $lastMessage['agent']['about'],
                 'instructions' => $lastMessage['agent']['prompt'],
+                'image' => $lastMessage['agent']['image_url'],
             ];
         } elseif (! empty($this->thread->agent_id)) {
             $this->selectedAgent = [
@@ -109,6 +110,7 @@ class Chat extends Component
                 'name' => $this->thread->agent->name,
                 'description' => $this->thread->agent->about,
                 'instructions' => $this->thread->agent->prompt,
+                'image' => $this->thread->agent->image_url,
             ];
         } elseif (session()->has('agent')) {
             // If the selectedAgent session var is set, use it
@@ -119,6 +121,7 @@ class Chat extends Component
                 'name' => $agent->name,
                 'description' => $agent->about,
                 'instructions' => $agent->prompt,
+                'image' => $agent->image_url,
             ];
         } else {
             // Set the selected model
@@ -136,6 +139,7 @@ class Chat extends Component
                 'name' => $agent->name,
                 'description' => $agent->about,
                 'instructions' => $agent->prompt,
+                'image' => $agent->image_url,
             ];
             $this->selectedModel = '';
         } else {
@@ -216,6 +220,17 @@ class Chat extends Component
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
             'agent_id' => $this->selectedAgent ?: null,
         ];
+
+        if (! empty($this->selectedAgent['id'])) {
+            $agent = Agent::find($this->selectedAgent['id']);
+            $this->selectedAgent = [
+                'id' => $agent->id,
+                'name' => $agent->name,
+                'description' => $agent->about,
+                'instructions' => $agent->prompt,
+                'image' => $agent->image_url,
+            ];
+        }
 
         // Clear the input
         $this->message_input = '';
