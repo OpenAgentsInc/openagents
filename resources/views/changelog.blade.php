@@ -16,6 +16,13 @@
                 <div class="mt-6 grid grid-cols-1 gap-10">
                     <x-pane title="May 3, 2024" borderColor="border-darkgray">
                         <x-changelog-item>
+                            [Pro] Create chat agent with custom prompt
+                        </x-changelog-item>
+                        <x-changelog-item post="https://twitter.com/OpenAgentsInc/status/1784666308405084363"
+                        >
+                            [Pro] Image input
+                        </x-changelog-item>
+                        <x-changelog-item>
                             Various UI improvements
                         </x-changelog-item>
                     </x-pane>
