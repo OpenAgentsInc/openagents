@@ -53,6 +53,7 @@
                             @php
                                 // If $message['agent'] is set, dump the agent's image URL
                                 $image = null;
+                                $model_image = null;
                                 if (isset($message['agent'])) {
                                     $agent = $message['agent'];
                                     if (isset($agent['image_url'])) {
@@ -60,7 +61,13 @@
                                     } else if (isset($agent['image'])) {
                                         $image = $agent['image'];
                                     }
+                                } else if (isset($message['model'])) {
+                                // Use the model image
+                                    // First get the gateway
+                                    $gateway = $models[$message['model']]['gateway'];
+                                    $model_image = asset('images/icons/' . $gateway . '.png');
                                 }
+
                             @endphp
 
                         </div>
@@ -69,6 +76,7 @@
                                 :message="$message['body']"
                                 :promptClass="$promptClass"
                                 :agent-image="$image"
+                                :model-image="$model_image"
                         ></x-chat.message>
                     @endforeach
 
@@ -77,11 +85,16 @@
                             // If there's a selected agent, use agent name, otherwise use $models[$selectedModel]['name']
                             $author = $selectedAgent ? $selectedAgent['name'] : $models[$selectedModel]['name'];
                             $image = $selectedAgent ? $selectedAgent['image'] : null;
+
+                            $model_image = $selectedModel ? asset('images/icons/' . $models[$selectedModel]['gateway'] . '.png') : null;
+
                         @endphp
 
                         <x-chat.messagestreaming
                                 :author="$author"
-                                :agent-image="$image"></x-chat.messagestreaming>
+                                :agent-image="$image"
+                                :model-image="$model_image">
+                        </x-chat.messagestreaming>
                     @endif
 
 
