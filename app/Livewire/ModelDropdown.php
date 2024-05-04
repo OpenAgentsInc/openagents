@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\AI\Models;
+use App\Models\Agent;
 use Livewire\Component;
 
 class ModelDropdown extends Component
@@ -23,6 +24,8 @@ class ModelDropdown extends Component
 
     public $showAgents = false;
 
+    public $agents = [];
+
     public function mount($selectedAgent, $selectedModel, $models, $action, $showAgents = false)
     {
         $this->selectedAgent = $selectedAgent;
@@ -31,7 +34,6 @@ class ModelDropdown extends Component
         // If selectedAgent is an array with >=3 elements, it means the user has selected an agent
         if (is_array($selectedAgent) && count($selectedAgent) >= 3) {
             $this->formattedModelOrAgent = $this->selectedAgent['name'];
-            //            dd($this->selectedAgent);
             $this->picture = $this->selectedAgent['image'];
         } else {
             $this->formattedModelOrAgent = Models::getModelName($this->selectedModel);
@@ -45,6 +47,29 @@ class ModelDropdown extends Component
 
         $this->action = $action;
         $this->showAgents = $showAgents;
+
+        // If user is authed, grab their 5 most recent agents
+        if (auth()->check()) {
+            $this->agents = auth()->user()->agents()->orderBy('created_at', 'desc')->limit(5)->get()->append('image_url')->toArray();
+        }
+    }
+
+    public function selectAgent($agent)
+    {
+        $this->dispatch('select-agent', $agent);
+        $agent = Agent::find($agent);
+        $this->selectedAgent = [
+            'id' => $agent->id,
+            'name' => $agent->name,
+            'description' => $agent->about,
+            'instructions' => $agent->message,
+        ];
+
+        $this->formattedModelOrAgent = $agent->name;
+        $this->picture = $agent->image_url;
+
+        $this->selectedModel = '';
+        session()->forget('selectedModel');
     }
 
     public function selectModel($model)
@@ -94,6 +119,18 @@ class ModelDropdown extends Component
     protected function isProModelSelected($model)
     {
         return Models::isProModelSelected($model);
+    }
+
+    public function createAgent()
+    {
+        $userAccess = $this->getUserAccess();
+        if ($userAccess === 'guest') {
+            $this->dispatch('openModal', 'auth.join');
+        } elseif ($this->getUserAccess() !== 'pro') {
+            $this->dispatch('openModal', 'modals.upgrade');
+        } else {
+            $this->redirect(route('agents.create'), true);
+        }
     }
 
     public function toggleDropdown()

@@ -10,6 +10,8 @@ class Agent extends Model
 {
     use HasFactory;
 
+    protected $appends = ['image_url'];
+
     protected $fillable = [
         'name',
         'image',
@@ -24,7 +26,9 @@ class Agent extends Model
     public function getImageUrlAttribute()
     {
         if (is_null($this->image) || empty($this->image)) {  // Check if $this->image is null
-            return url('/images/no-image.jpg'); // Return default URL if null
+            //            dd('null for image for agent'.$this->name);
+
+            return url('/images/sqlogo.png'); // Return default URL if null
         }
         $imageData = json_decode($this->image, true); // Cast to array for access
         if ($imageData && isset($imageData['url']) && ! empty($imageData['url'])) {  // Check for non-empty URL
@@ -45,7 +49,7 @@ class Agent extends Model
             //            return $imageData['url'];
         }
 
-        return url('/images/no-image.jpg'); // Return default URL if no image data or empty URL
+        return url('/images/sqlogo.png'); // Return default URL if no image data or empty URL
     }
 
     public function documents()

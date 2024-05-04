@@ -91,7 +91,7 @@ class Create extends Component
             $saveimage = [
                 'disk' => null,
                 'path' => null,
-                'url' => url('/images/no-image.jpg'),
+                'url' => url('/images/sqlogo.png'),
             ];
         }
 
