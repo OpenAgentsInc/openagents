@@ -3,22 +3,21 @@
 namespace App\Livewire;
 
 use App\AI\Models;
-use App\AI\NostrRag;
-use App\Models\Agent;
-use App\Models\Thread;
-use Livewire\Component;
-use App\Models\NostrJob;
-use App\Models\AgentFile;
 use App\AI\NostrInference;
-use Livewire\Attributes\On;
+use App\AI\NostrRag;
 use App\AI\SimpleInferencer;
-use App\Events\AgentRagReady;
-use Livewire\WithFileUploads;
+use App\Models\Agent;
+use App\Models\AgentFile;
+use App\Models\NostrJob;
+use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\NostrService;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\On;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
@@ -68,14 +67,12 @@ class Chat extends Component
         if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
             $agent = Agent::find(request()->query('agent'));
-            if($agent){
+            if ($agent) {
                 $this->pending = $agent->is_rag_ready;
                 $this->selectedAgent = $agent ? $agent->id : null;
             }
 
         }
-
-
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
@@ -386,7 +383,7 @@ class Chat extends Component
             // send to nostra
 
             $pool = config('nostr.pool');
-            $encrypt =  config('nostr.encrypt');
+            $encrypt = config('nostr.encrypt');
 
             $job_id = (new NostrService())
                 ->poolAddress($pool)
@@ -454,10 +451,11 @@ class Chat extends Component
     }
 
     #[On('echo:agent_jobs.{selectedAgent},AgentRagReady')]
-    public function process_agent_rag($event){
+    public function process_agent_rag($event)
+    {
         $agent = Agent::find($event['agent_id']);
-        if($agent){
-            if($this->selectedAgent['id'] == $agent->id && $agent->is_rag_ready){
+        if ($agent) {
+            if ($this->selectedAgent['id'] == $agent->id && $agent->is_rag_ready) {
                 $this->pending = false;
             }
         }

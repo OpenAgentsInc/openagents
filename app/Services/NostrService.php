@@ -31,9 +31,6 @@ class NostrService
 
     protected $quantize = true;
 
-
-
-
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;
@@ -69,10 +66,10 @@ class NostrService
         return $this;
     }
 
-
     public function quantize($quantize)
     {
         $this->quantize = $quantize;
+
         return $this;
     }
 
@@ -162,8 +159,9 @@ class NostrService
             'credentials' => ChannelCredentials::createSsl(),
             'update_metadata' => function ($metaData) {
                 $metaData['authorization'] = [config('nostr.node_token')];
+
                 return $metaData;
-            }
+            },
         ];
         $hostname = $this->poolAddress;
         $res = new PoolConnectorClient($hostname, $opts);

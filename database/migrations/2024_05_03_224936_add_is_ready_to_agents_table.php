@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('agents', function (Blueprint $table) {
-           $table->boolean('is_rag_ready')->default('true');
+            $table->boolean('is_rag_ready')->default(true);
         });
     }
 
