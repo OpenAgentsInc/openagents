@@ -31,12 +31,14 @@ class ModelSelector extends Component
 
         if (session()->has('selectedAgent')) {
             $agent = $this->agents->find(session('selectedAgent'));
+
             $this->selectedAgent = [
                 'id' => $agent->id,
                 'title' => $agent->name,
                 'description' => $agent->about,
                 'image' => $agent->image_url,
             ];
+
             session()->forget('selectedAgent');
         }
     }

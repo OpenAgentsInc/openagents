@@ -47,7 +47,7 @@
                     @if($pending)
                         @php
                             // If there's a selected agent, use agent name, otherwise use $models[$selectedModel]['name']
-                            $author = $selectedAgent ? $selectedAgent->name : $models[$selectedModel]['name'];
+                            $author = $selectedAgent ? $selectedAgent['name'] : $models[$selectedModel]['name'];
                         @endphp
 
                         <x-chat.messagestreaming

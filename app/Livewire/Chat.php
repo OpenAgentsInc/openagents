@@ -57,22 +57,22 @@ class Chat extends Component
         $this->selectedModel = $model;
     }
 
-    #[On('select-agent')]
-    public function selectAgent($agent)
-    {
-        $this->selectedAgent = $agent;
-    }
-
     public function mount($id = null)
     {
-
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
         }
-        $agent = Agent::first();
-        $this->selectedAgent = $agent ? $agent->id : null;
+
+        //        if ($agent) {
+        //            $this->selectAgent($agent->id);
+        //        } else {
+        //            $this->selectedAgent = null;
+        //        }
+
         if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
+
+            $this->selectAgent(request()->query('agent')); // ?
         }
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
@@ -83,6 +83,10 @@ class Chat extends Component
             } else {
                 // Notify the sidebar component of the active thread
                 $this->dispatch('active-thread', $id);
+
+                // see if this thread has an agent
+                //                dd($thread->agent_id);
+
             }
         } else {
             $this->ensureThread();
@@ -100,6 +104,23 @@ class Chat extends Component
         // If the selectedAgent session var is set, use it
         if (session()->has('agent')) {
             $this->selectedAgent = session('selectedAgent');
+        }
+    }
+
+    #[On('select-agent')]
+    public function selectAgent($agentId)
+    {
+        $agent = Agent::find($agentId);
+        if ($agent) {
+            $this->selectedAgent = [
+                'id' => $agent->id,
+                'name' => $agent->name,
+                'description' => $agent->about,
+                'instructions' => $agent->message,
+            ];
+        } else {
+            dd('Agent not found');
+            $this->selectedAgent = null;
         }
     }
 
@@ -136,6 +157,11 @@ class Chat extends Component
 
             if (auth()->check()) {
                 $data['user_id'] = auth()->id();
+            }
+
+            // If selected agent, set agent_id
+            if ($this->selectedAgent) {
+                $data['agent_id'] = $this->selectedAgent['id'];
             }
 
             $thread = Thread::create($data);
