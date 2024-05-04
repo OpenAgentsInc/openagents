@@ -5,7 +5,7 @@
 
 
 
-    <div class="mt-10 p-5 y-5 mx-auto max-w-5xl">
+    <div class="mt-10 p-5 y-5 mx-auto w-full max-w-5xl md:max-w-[800px] lg:max-w-5xl">
         <div class="flex flex-col md:flex-row md:items-center md:gap-4 border-b py-4">
             <div class="order-2 flex-1">
                 <h1 class="text-[25px] md:text-3xl font-bold">{{ $agent->name }}</h1>
@@ -92,7 +92,7 @@
 
                 <div class="my-6 block">
                     <label for="files"> Documents</label>
-
+                    <div class="mt-1 border-2 border-darkgray rounded-md">
                     @error('files.*')
                         <span class="error">{{ $message }}</span>
                     @enderror
@@ -100,6 +100,7 @@
                         imagePreviewMaxHeight="300"
                         acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
                         allowFileSizeValidation maxFileSize="10MB" />
+                    </div>
                 </div>
 
                 <div class="my-5 rounded border border-gray p-3">
@@ -107,7 +108,7 @@
                         wire:model='is_public' />
                 </div>
 
-                <div class="mt-5 flex justify-end">
+                <div class="mt-5 w-full text-center">
                     <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4">
                         Update Agent
                     </x-button>

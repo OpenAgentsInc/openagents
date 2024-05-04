@@ -3,21 +3,22 @@
 namespace App\Livewire;
 
 use App\AI\Models;
-use App\AI\NostrInference;
 use App\AI\NostrRag;
-use App\AI\SimpleInferencer;
 use App\Models\Agent;
-use App\Models\AgentFile;
-use App\Models\NostrJob;
 use App\Models\Thread;
+use Livewire\Component;
+use App\Models\NostrJob;
+use App\Models\AgentFile;
+use App\AI\NostrInference;
+use Livewire\Attributes\On;
+use App\AI\SimpleInferencer;
+use App\Events\AgentRagReady;
+use Livewire\WithFileUploads;
 use App\Services\ImageService;
 use App\Services\NostrService;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
-use Livewire\Attributes\On;
-use Livewire\Component;
-use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
@@ -66,9 +67,15 @@ class Chat extends Component
 
         if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
+            $agent = Agent::find(request()->query('agent'));
+            if($agent){
+                $this->pending = $agent->is_rag_ready;
+                $this->selectedAgent = $agent ? $agent->id : null;
+            }
 
-            $this->selectAgent(request()->query('agent'));
         }
+
+
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
@@ -219,7 +226,7 @@ class Chat extends Component
             'sender' => 'You',
             'user_id' => auth()->id(), // Add user_id if logged in
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
-            'agent_id' => $this->selectedAgent ?: null,
+            'agent_id' => $this->selectedAgent['id'] ?: null,
         ];
 
         if (! empty($this->selectedAgent['id'])) {
@@ -368,17 +375,18 @@ class Chat extends Component
                 'body' => $this->input,
                 'session_id' => $sessionId,
                 'user_id' => auth()->id() ?? null,
-                'agent_id' => $this->selectedAgent ?: null,
+                'agent_id' => $this->selectedAgent['id'] ? $this->selectedAgent['id'] : null,
             ]);
 
             $nostrRag = new NostrRag(); // Generate history
             $query = $nostrRag->history($this->thread)->summary();
 
-            $documents = AgentFile::where('agent_id', $this->selectedAgent)->pluck('url')->toArray();
+            $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
             // send to nostra
 
-            $pool = config('services.nostr.pool');
+            $pool = config('nostr.pool');
+            $encrypt =  config('nostr.encrypt');
 
             $job_id = (new NostrService())
                 ->poolAddress($pool)
@@ -389,12 +397,12 @@ class Chat extends Component
                 ->overlap(256)
                 ->warmUp(false)
                 ->cacheDurationhint('-1')
-                ->encryptFor('')
+                ->encryptFor($encrypt)
                 ->execute();
 
             // Save to DB
             $nostr_job = new NostrJob();
-            $nostr_job->agent_id = $this->selectedAgent;
+            $nostr_job->agent_id = $this->selectedAgent['id'];
             $nostr_job->job_id = $job_id;
             $nostr_job->status = 'pending';
             $nostr_job->thread_id = $this->thread->id;
@@ -433,6 +441,7 @@ class Chat extends Component
             'session_id' => $sessionId,
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
+            'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : null,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
         ]);
@@ -442,6 +451,16 @@ class Chat extends Component
 
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
+    }
+
+    #[On('echo:agent_jobs.{selectedAgent},AgentRagReady')]
+    public function process_agent_rag($event){
+        $agent = Agent::find($event['agent_id']);
+        if($agent){
+            if($this->selectedAgent['id'] == $agent->id && $agent->is_rag_ready){
+                $this->pending = false;
+            }
+        }
     }
 
     public function render()

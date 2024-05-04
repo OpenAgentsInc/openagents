@@ -1,7 +1,7 @@
 <div>
     {{-- If your happiness depends on money, you will never be happy with yourself. --}}
 
-    <div class="max-w-screen-xl mx-auto my-24 px-4 pt-4 md:px-8">
+    <div class="max-w-screen-xl mx-auto my-14 px-4 pt-4 md:px-8">
         <div class="items-center justify-between gap-x-1 py-4 border-b md:flex">
             <div class="md:max-w-md lg:max-w-lg">
                 <h3 class="text-gray-800 text-2xl font-bold">
@@ -55,6 +55,9 @@
                                     alt="{{$agent->name}}">
                                 <div>
                                     <span class="block text-gray-800 font-semibold">{{ $agent->name }}</span>
+                                    <span class="inline-flex items-center my-1 px-1 py-1 {{ $agent->is_rag_ready ? 'bg-white' : 'bg-yellow-500'}}  text-black  text-xs font-bold rounded-md">
+                                        {{ $agent->is_rag_ready ? 'Ready' : 'Building '}}
+                                      </span>
                                 </div>
                             </div>
                             <div class="items-center gap-1.5 pr-2  group-hover:flex">

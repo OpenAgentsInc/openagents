@@ -33,7 +33,4 @@ return [
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
     ],
-    'nostr' => [
-        'pool' => env('NOSTR_POOL'),
-    ],
 ];

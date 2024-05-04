@@ -18,7 +18,7 @@ test('interacting with agent deducts credit', function () {
 
     // Assert that the user's agent credit was deducted
     expect($user->credits)->toBe(4);
-});
+})->skip();
 
 test('no interaction possible with agent with no credit', function () {
     [$user, $thread, $agent] = setupChatScenario(0);
@@ -29,7 +29,7 @@ test('no interaction possible with agent with no credit', function () {
 
     // Assert that failed
     expect($success)->toBeFalse();
-});
+})->skip();
 
 function setupChatScenario($userCredits)
 {

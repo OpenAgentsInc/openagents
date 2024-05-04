@@ -137,7 +137,9 @@ class Models
             'gateway' => 'cohere',
             'access' => 'user',
             'max_tokens' => 2000,
-            'description' => '',
+            'description' => 'Command R is a large-scale conversational AI model,
+                               designed for extensive tasks. It offers a balance between high performance and accuracy,
+                               facilitating the transition from prototype to production.',
         ],
         'command-r-plus' => [
             'name' => 'Command-R+',
