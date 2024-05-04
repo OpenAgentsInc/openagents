@@ -11,13 +11,14 @@ use App\Livewire\Chat;
 use App\Livewire\Explorer;
 use App\Livewire\PrismDashboard;
 use App\Livewire\Settings;
-use App\Livewire\Store;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // CHAT
-Route::get('/', Store::class)->name('home');
-//Route::get('/', Chat::class)->name('home');
+Route::get('/', function () {
+    return redirect()->route('chat');
+})->name('home');
+
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
 
