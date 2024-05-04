@@ -21,6 +21,7 @@
       x-data="{ sidebarOpen: window.innerWidth > 768, collapsed: false }">
 
 <div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
+
     <div class="h-[54px] flex justify-between items-center absolute top-0 left-0 py-2 px-4 w-[259px]">
         <button class="cursor-pointer text-white z-[9999]"
                 @click="sidebarOpen = !sidebarOpen">
@@ -52,7 +53,7 @@
             <div class="flex h-full min-h-0 flex-col">
                 <div class="relative h-full w-full flex-1 items-start">
                     <div class="flex h-full w-full flex-col px-1 pb-3.5">
-                        <div class="flex-col flex-1 transition-opacity duration-500 overflow-y-auto">
+                        <div class="pt-[54px] flex-col flex-1 transition-opacity duration-500 overflow-y-auto">
                             <livewire:layouts.sidebar-content/>
                         </div>
                     </div>

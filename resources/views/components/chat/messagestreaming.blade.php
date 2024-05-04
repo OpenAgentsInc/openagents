@@ -3,9 +3,19 @@
         <div
                 class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[800px]">
             <div class="flex-shrink-0 flex flex-col relative items-end">
-                <div class="m-[1px] w-[28px] p-[5px] border border-darkgray rounded">
-                    <x-icon name="logo" class=""/>
-                </div>
+                @if ($agentImage)
+                    <div class="m-[1px] w-[28px] p-[2px] border border-darkgray rounded">
+                        <img src="{{ $agentImage }}" alt="Agent Image">
+                    </div>
+                @elseif ($modelImage)
+                    <div class="m-[1px] w-[28px] p-[2px] ">
+                        <img src="{{ $modelImage }}" alt="Model Image">
+                    </div>
+                @else
+                    <div class="m-[1px] w-[28px] p-[5px] border border-darkgray rounded">
+                        <x-icon name="logo" class=""/>
+                    </div>
+                @endif
             </div>
             <div class="relative flex w-full flex-col">
                 <span class="mb-1 font-semibold select-none text-white">{{ $author }}</span>

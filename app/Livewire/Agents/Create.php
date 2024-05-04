@@ -95,7 +95,7 @@ class Create extends Component
             $saveimage = [
                 'disk' => null,
                 'path' => null,
-                'url' => url('/images/no-image.jpg'),
+                'url' => url('/images/sqlogo.png'),
             ];
         }
 
@@ -144,9 +144,11 @@ class Create extends Component
 
         }
 
-        $this->alert('success', 'Form submitted successfully');
 
-        $this->reset(); // Reset form after successful submission
+        // session()->flash('message', 'Form submitted successfully!');
+        //        $this->alert('success', 'Form submitted successfully');
+
+        //        $this->reset(); // Reset form after successful submission
 
         //        return redirect()->route('agents');
 

@@ -1,7 +1,6 @@
 <div>
     {{-- Stop trying to control. --}}
 
-
     <div class="mt-10 p-5 y-5 mx-auto w-full max-w-5xl md:max-w-[800px]">
         <h1 class="text-md md:text-3xl font-bold my-6 md:mb-10 text-center">Create an agent</h1>
         <div class="my-5 mx-auto max-w-5xl">
@@ -48,7 +47,7 @@
                     <x-textarea wire:model='about' placeholder="Add a short description about what this agent does"
                                 id="about" class="block mt-1 w-full"
                                 dusk="description"
-                                rows="1" min-rows="1" name="about" required/>
+                                min-rows="3" name="about" required/>
                     @error('about')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
@@ -59,20 +58,21 @@
                     <x-textarea wire:model='prompt'
                                 placeholder="What does this agent do? How does it behave? What should it avoid doing?"
                                 dusk="instructions"
-                                id="about" class="block mt-1 w-full" rows="5" min-rows="5" name="prompt"
+                                id="about" class="block mt-1 w-full" min-rows="3" name="prompt"
                                 required/>
                     @error('prompt')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
 
-                <div class="my-5">
-                    <label for="files"> Knowledge</label>
+                <div class="my-5 opacity-[40%] select-none pointer-events-none">
+                    <label for="files"> Knowledge (Coming soon)</label>
                     <div class="mt-1 border-2 border-darkgray rounded-md">
                         @error('files.*')
                         <span class="error">{{ $message }}</span>
                         @enderror
                         <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
+                                    disabled
                                     imagePreviewMaxHeight="300"
                                     acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
                                     allowFileSizeValidation maxFileSize="10MB"/>

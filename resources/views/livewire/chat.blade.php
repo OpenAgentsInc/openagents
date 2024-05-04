@@ -35,18 +35,48 @@
                     @foreach($messages as $message)
                         @php
                             // If message has an agent_id, use agent name, otherwise use 'You'
-                            if (!empty($message['agent_id'])) {
-                                $author = $message['agent']['name'] ?? "You"; // hacky but whatever
-                            } else {
-                                $author = 'You';
+                            try {
+                                if (!empty($message['agent_id'])) {
+                                    $author = $message['agent']['name'] ?? "You"; // hacky but whatever
+                                } else if (!empty($message['model']) && $message['model'] === null) {
+                                    $author = "You";
+                                } else {
+                                    $author = $models[$message['model']]['name'] ?? "You"; // ?
+                                }
+                            } catch (Exception $e) {
+                                $author = "You";
                             }
 
                             $promptClass = $author === 'You' ? 'prompt' : '';
                         @endphp
+                        <div class="pl-[50px]">
+                            @php
+                                // If $message['agent'] is set, dump the agent's image URL
+                                $image = null;
+                                $model_image = null;
+                                if (isset($message['agent'])) {
+                                    $agent = $message['agent'];
+                                    if (isset($agent['image_url'])) {
+                                        $image = $agent['image_url'];
+                                    } else if (isset($agent['image'])) {
+                                        $image = $agent['image'];
+                                    }
+                                } else if (isset($message['model'])) {
+                                // Use the model image
+                                    // First get the gateway
+                                    $gateway = $models[$message['model']]['gateway'];
+                                    $model_image = asset('images/icons/' . $gateway . '.png');
+                                }
+
+                            @endphp
+
+                        </div>
                         <x-chat.message
                                 :author="$author"
                                 :message="$message['body']"
                                 :promptClass="$promptClass"
+                                :agent-image="$image"
+                                :model-image="$model_image"
                         ></x-chat.message>
                     @endforeach
 
@@ -54,10 +84,17 @@
                         @php
                             // If there's a selected agent, use agent name, otherwise use $models[$selectedModel]['name']
                             $author = $selectedAgent ? $selectedAgent['name'] : $models[$selectedModel]['name'];
+                            $image = $selectedAgent ? $selectedAgent['image'] : null;
+
+                            $model_image = $selectedModel ? asset('images/icons/' . $models[$selectedModel]['gateway'] . '.png') : null;
+
                         @endphp
 
                         <x-chat.messagestreaming
-                                :author="$author"></x-chat.messagestreaming>
+                                :author="$author"
+                                :agent-image="$image"
+                                :model-image="$model_image">
+                        </x-chat.messagestreaming>
                     @endif
 
 
