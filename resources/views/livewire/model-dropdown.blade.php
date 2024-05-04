@@ -18,15 +18,14 @@
                         $userAccess = $this->getUserAccess();
                         $disabled = $userAccess != 'pro' ? 'opacity-25' : '';
                     @endphp
-                    <a wire:navigate
+                    <a wire:click="createAgent"
                        @if($userAccess == 'pro')
-                           href="{{ route('agents.create') }}"
                        @else
                            x-data
                        x-tooltip.raw="Upgrade to Pro to create agents"
                        @endif
-                       class="py-2 w-full mb-2 border-b border-offblack flex items-center gap-x-3.5 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
-                        <x-icon.agent-white class="w-5 h-5"></x-icon.agent-white>
+                       class="py-1 w-full flex items-center gap-x-3.5 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
+                        <x-icon.agent-white class="w-6 h-6"></x-icon.agent-white>
                         <div class="flex flex-col">
                             <span class="my-0 text-sm">Create agent</span>
                         </div>
@@ -34,6 +33,18 @@
                             <span class="ml-auto text-gray-500">Pro</span>
                         @endif
                     </a>
+                    @foreach($agents as $agent)
+                        <a wire:click="selectAgent('{{ $agent["id"] }}')"
+                           x-data
+                           x-tooltip.raw="{{ $agent["about"] }}"
+                           class="flex items-center gap-x-3.5 py-1 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
+                            <img src="{{ $agent["image_url"] }}" alt="{{ $agent["name"] }}" class="w-6 h-6">
+                            <div class="flex flex-col">
+                                <span class="text-indigo-50 my-0 text-sm">{{ $agent["name"] }}</span>
+                            </div>
+                        </a>
+                    @endforeach
+                    <div class="py-2 w-full mb-2 border-b border-offblack"></div>
                 @endif
                 @foreach($models as $modelKey => $modelName)
                     @php

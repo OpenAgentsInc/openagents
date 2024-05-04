@@ -83,6 +83,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->username === 'AtlantisPleb';
     }
 
+    public function agents(): HasMany
+    {
+        return $this->hasMany(Agent::class);
+    }
+
     public function threads(): HasMany
     {
         return $this->hasMany(Thread::class);
