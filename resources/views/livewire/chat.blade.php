@@ -34,7 +34,15 @@
 
                     @foreach($messages as $message)
                         @php
-                            $author = !empty($message['model']) ? $models[$message['model']]["name"] : 'You';
+                            // If message has an agent_id, use agent name, otherwise use 'You'
+                            if (!empty($message['agent_id'])) {
+//dd($message);
+                                $author = $message['agent']['name'];
+                            } else {
+                                $author = 'You';
+                            }
+
+//                            $author = !empty($message['model']) ? $models[$message['model']]["name"] : 'You';
                             $promptClass = $author === 'You' ? 'prompt' : '';
                         @endphp
                         <x-chat.message
