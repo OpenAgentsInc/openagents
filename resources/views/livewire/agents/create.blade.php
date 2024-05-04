@@ -1,6 +1,6 @@
 <div>
     {{-- Stop trying to control. --}}
-    
+
     <div class="mt-10 p-5 y-5 mx-auto max-w-5xl">
         <h1 class="text-md md:text-3xl font-bold my-6 md:mb-10 text-center">Agent Builder</h1>
         <div class="my-5 mx-auto max-w-[534px]">
@@ -65,13 +65,14 @@
                     @enderror
                 </div>
 
-                <div class="my-5">
-                    <label for="files"> Knowledge</label>
+                <div class="my-5 opacity-[40%] select-none pointer-events-none">
+                    <label for="files"> Knowledge (Coming soon)</label>
                     <div class="mt-1 border-2 border-darkgray rounded-md">
                         @error('files.*')
                         <span class="error">{{ $message }}</span>
                         @enderror
                         <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
+                                    disabled
                                     imagePreviewMaxHeight="300"
                                     acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
                                     allowFileSizeValidation maxFileSize="10MB"/>
