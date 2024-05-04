@@ -206,7 +206,7 @@ class Chat extends Component
             'sender' => 'You',
             'user_id' => auth()->id(), // Add user_id if logged in
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
-            'agent_id' => $this->selectedAgent ?: null,
+            'agent_id' => $this->selectedAgent['id'] ?: null,
         ];
 
         // Clear the input
@@ -344,13 +344,13 @@ class Chat extends Component
                 'body' => $this->input,
                 'session_id' => $sessionId,
                 'user_id' => auth()->id() ?? null,
-                'agent_id' => $this->selectedAgent ?: null,
+                'agent_id' => $this->selectedAgent['id'] ?: null,
             ]);
 
             $nostrRag = new NostrRag(); // Generate history
             $query = $nostrRag->history($this->thread)->summary();
 
-            $documents = AgentFile::where('agent_id', $this->selectedAgent)->pluck('url')->toArray();
+            $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
             // send to nostra
 
@@ -370,7 +370,7 @@ class Chat extends Component
 
             // Save to DB
             $nostr_job = new NostrJob();
-            $nostr_job->agent_id = $this->selectedAgent;
+            $nostr_job->agent_id = $this->selectedAgent['id'];
             $nostr_job->job_id = $job_id;
             $nostr_job->status = 'pending';
             $nostr_job->thread_id = $this->thread->id;
@@ -409,6 +409,7 @@ class Chat extends Component
             'session_id' => $sessionId,
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
+            'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : Null,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
         ]);
@@ -424,7 +425,7 @@ class Chat extends Component
     public function process_agent_rag($event){
         $agent = Agent::find($event['agent_id']);
         if($agent){
-            if($this->selectedAgent == $agent->id && $agent->is_rag_ready){
+            if($this->selectedAgent['id'] == $agent->id && $agent->is_rag_ready){
                 $this->pending = false;
             }
         }
