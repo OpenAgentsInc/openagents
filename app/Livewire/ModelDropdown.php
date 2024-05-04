@@ -128,6 +128,8 @@ class ModelDropdown extends Component
             $this->dispatch('openModal', 'auth.join');
         } elseif ($this->getUserAccess() !== 'pro') {
             $this->dispatch('openModal', 'modals.upgrade');
+        } else {
+            $this->redirect(route('agents.create'), true);
         }
     }
 
