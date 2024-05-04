@@ -135,9 +135,9 @@ class Create extends Component
         }
 
         // session()->flash('message', 'Form submitted successfully!');
-        $this->alert('success', 'Form submitted successfully');
+        //        $this->alert('success', 'Form submitted successfully');
 
-        $this->reset(); // Reset form after successful submission
+        //        $this->reset(); // Reset form after successful submission
 
         //        return redirect()->route('agents');
 

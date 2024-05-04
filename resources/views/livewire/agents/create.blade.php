@@ -47,7 +47,7 @@
                     <x-textarea wire:model='about' placeholder="Add a short description about what this agent does"
                                 id="about" class="block mt-1 w-full"
                                 dusk="description"
-                                rows="1" min-rows="1" name="about" required/>
+                                min-rows="3" name="about" required/>
                     @error('about')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
@@ -58,7 +58,7 @@
                     <x-textarea wire:model='prompt'
                                 placeholder="What does this agent do? How does it behave? What should it avoid doing?"
                                 dusk="instructions"
-                                id="about" class="block mt-1 w-full" rows="5" min-rows="5" name="prompt"
+                                id="about" class="block mt-1 w-full" min-rows="3" name="prompt"
                                 required/>
                     @error('prompt')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>

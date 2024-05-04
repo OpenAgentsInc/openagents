@@ -8,9 +8,18 @@
                         <x-icon name="user" class=""/>
                     </div>
                 @else
-                    <div class="m-[1px] w-[28px] p-[5px] border border-darkgray rounded">
-                        <x-icon name="logo" class=""/>
-                    </div>
+
+                    <!-- if the message author is agent, show their image here -->
+                    @if ($agentImage)
+                        <div class="m-[1px] w-[28px] p-[2px] border border-darkgray rounded">
+                            <img src="{{ $agentImage }}" alt="Agent Image">
+                        </div>
+                    @else
+                        <div class="m-[1px] w-[28px] p-[5px] border border-darkgray rounded">
+                            <x-icon name="logo" class=""/>
+                        </div>
+                    @endif
+
                 @endif
             </div>
             <div class="relative flex w-full flex-col">

@@ -108,7 +108,7 @@ class Chat extends Component
                 'id' => $this->thread->agent_id,
                 'name' => $this->thread->agent->name,
                 'description' => $this->thread->agent->about,
-                'instructions' => $this->thread->agent->message,
+                'instructions' => $this->thread->agent->prompt,
             ];
         } elseif (session()->has('agent')) {
             // If the selectedAgent session var is set, use it
@@ -118,7 +118,7 @@ class Chat extends Component
                 'id' => $agent->id,
                 'name' => $agent->name,
                 'description' => $agent->about,
-                'instructions' => $agent->message,
+                'instructions' => $agent->prompt,
             ];
         } else {
             // Set the selected model
@@ -135,7 +135,7 @@ class Chat extends Component
                 'id' => $agent->id,
                 'name' => $agent->name,
                 'description' => $agent->about,
-                'instructions' => $agent->message,
+                'instructions' => $agent->prompt,
             ];
             $this->selectedModel = '';
         } else {
