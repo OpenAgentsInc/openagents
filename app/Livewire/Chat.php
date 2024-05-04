@@ -94,8 +94,16 @@ class Chat extends Component
 
         $this->messages = $messages;
 
-        // If the thread has an agent, set the selected agent
-        if (! empty($this->thread->agent_id)) {
+        // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
+        $lastMessage = end($messages);
+        if (! empty($lastMessage['agent_id'])) {
+            $this->selectedAgent = [
+                'id' => $lastMessage['agent_id'],
+                'name' => $lastMessage['agent']['name'],
+                'description' => $lastMessage['agent']['about'],
+                'instructions' => $lastMessage['agent']['prompt'],
+            ];
+        } elseif (! empty($this->thread->agent_id)) {
             $this->selectedAgent = [
                 'id' => $this->thread->agent_id,
                 'name' => $this->thread->agent->name,

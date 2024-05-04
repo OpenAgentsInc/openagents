@@ -34,7 +34,6 @@ class ModelDropdown extends Component
         // If selectedAgent is an array with >=3 elements, it means the user has selected an agent
         if (is_array($selectedAgent) && count($selectedAgent) >= 3) {
             $this->formattedModelOrAgent = $this->selectedAgent['name'];
-            //            dd($this->selectedAgent);
             $this->picture = $this->selectedAgent['image'];
         } else {
             $this->formattedModelOrAgent = Models::getModelName($this->selectedModel);

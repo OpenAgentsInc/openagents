@@ -10,6 +10,8 @@ class Agent extends Model
 {
     use HasFactory;
 
+    protected $appends = ['image_url'];
+
     protected $fillable = [
         'name',
         'image',

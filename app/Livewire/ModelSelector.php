@@ -23,16 +23,31 @@ class ModelSelector extends Component
         $this->models = Models::MODELS;
         $this->agents = Agents::AGENTS();
 
-        if (! empty($this->thread->agent_id)) {
+        $messages = $this->thread->messages()
+            ->with(['agent' => function ($query) {
+                $query->select('id', 'name', 'about', 'prompt', 'image_url');
+            }])
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->toArray();
+        // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
+        $lastMessage = end($messages);
+        if (! empty($lastMessage['agent_id'])) {
+
+            $this->selectedAgent = [
+                'id' => $lastMessage['agent_id'],
+                'name' => $lastMessage['agent']['name'],
+                'description' => $lastMessage['agent']['about'],
+                'instructions' => $lastMessage['agent']['prompt'],
+                'image' => $lastMessage['agent']['image_url'],
+            ];
+        } elseif (! empty($this->thread->agent_id)) {
             $this->selectedAgent = [
                 'id' => $this->thread->agent_id,
                 'name' => $this->thread->agent->name,
                 'description' => $this->thread->agent->about,
-                'instructions' => $this->thread->agent->message,
-                'image' => $this->thread->agent->image_url,
+                'instructions' => $this->thread->agent->prompt,
             ];
-            //            dd($this->selectedAgent);
-            //            $this->selectedModel = '';
         } elseif (session()->has('agent')) {
             // If the selectedAgent session var is set, use it
             $this->selectedAgent = session('selectedAgent');
@@ -40,25 +55,6 @@ class ModelSelector extends Component
             // Set the selected model
             $this->selectedModel = Models::getModelForThread($this->thread);
         }
-
-        //        $this->selectedModel = Models::getModelForThread($this->thread);
-
-        //        if (session()->has('selectedModel')) {
-        //            session()->forget('selectedModel');
-        //        }
-        //
-        //        if (session()->has('selectedAgent')) {
-        //            $agent = $this->agents->find(session('selectedAgent'));
-        //
-        //            $this->selectedAgent = [
-        //                'id' => $agent->id,
-        //                'title' => $agent->name,
-        //                'description' => $agent->about,
-        //                'image' => $agent->image_url,
-        //            ];
-        //
-        //            session()->forget('selectedAgent');
-        //        }
     }
 
     public function render()
