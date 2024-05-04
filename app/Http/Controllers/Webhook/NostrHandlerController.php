@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Webhook;
 
-use App\Events\NostrJobReady;
-use App\Http\Controllers\Controller;
+use App\Models\AgentJob;
 use App\Models\NostrJob;
-use App\Services\OpenObserveLogger;
 use Illuminate\Http\Request;
+use App\Events\AgentRagReady;
+use App\Events\NostrJobReady;
+use App\Services\OpenObserveLogger;
+use App\Http\Controllers\Controller;
 
 class NostrHandlerController extends Controller
 {
@@ -75,6 +77,8 @@ class NostrHandlerController extends Controller
                     NostrJobReady::dispatch($nostr_job);
                 }
 
+                $this->ProcessAgent($job_id);
+
                 return [
                     'status' => 'success',
                     'message' => 'data processed',
@@ -86,6 +90,24 @@ class NostrHandlerController extends Controller
                     'message' => 'data skipped',
                 ];
             }
+        }
+    }
+
+
+    public function ProcessAgent($job_id){
+        $job = AgentJob::where('job_id',$job_id)->first();
+
+        if($job){
+            $job->is_rag_ready = true;
+            $job->save();
+
+            $agent = Agent::find($job->agent_id);
+            $agent->is_rag_ready = true;
+            $agent->save();
+
+
+            AgentRagReady::dispatch($job);
+
         }
     }
 }
