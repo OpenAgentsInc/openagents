@@ -17,7 +17,7 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 // CHAT
 Route::get('/', function () {
     return redirect()->route('chat');
-});
+})->name('home');
 
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
