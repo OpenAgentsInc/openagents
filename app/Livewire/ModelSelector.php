@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\AI\Agents;
 use App\AI\Models;
+use App\Models\Agent;
 use Livewire\Component;
 
 class ModelSelector extends Component
@@ -28,15 +29,14 @@ class ModelSelector extends Component
         }
 
         $messages = $this->thread->messages()
-            ->with(['agent' => function ($query) {
-                $query->select('id', 'name', 'about', 'prompt');
-            }])
+            ->with('agent:image,id,name,about,prompt')
             ->orderBy('created_at', 'asc')
             ->get()
             ->toArray();
 
         // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
         $lastMessage = end($messages);
+
         if (! empty($lastMessage['agent_id'])) {
             $this->selectedAgent = [
                 'id' => $lastMessage['agent_id'],
@@ -56,7 +56,15 @@ class ModelSelector extends Component
 
         } elseif (session()->has('agent')) {
             // If the selectedAgent session var is set, use it
-            $this->selectedAgent = session('selectedAgent');
+            $agentId = session('agent');
+            $agent = Agent::find($agentId);
+            $this->selectedAgent = [
+                'id' => $agent->id,
+                'name' => $agent->name,
+                'description' => $agent->about,
+                'instructions' => $agent->prompt,
+                'image' => $agent->image_url,
+            ];
         } else {
             // Set the selected model
             $this->selectedModel = Models::getModelForThread($this->thread);
