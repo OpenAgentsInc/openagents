@@ -29,6 +29,11 @@ class NostrService
 
     protected $cacheDuration = '-1';
 
+    protected $quantize = true;
+
+
+
+
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;
@@ -61,6 +66,13 @@ class NostrService
     {
         $this->max_tokens = $maxTokens;
 
+        return $this;
+    }
+
+
+    public function quantize($quantize)
+    {
+        $this->quantize = $quantize;
         return $this;
     }
 

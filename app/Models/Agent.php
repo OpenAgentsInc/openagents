@@ -19,6 +19,7 @@ class Agent extends Model
         'rag_prompt',
         'is_public',
         'user_id',
+        'is_rag_ready'
     ];
 
     public function getImageUrlAttribute()

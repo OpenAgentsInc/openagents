@@ -2,9 +2,9 @@
     {{-- Stop trying to control. --}}
 
 
-    <div class="mt-10 p-5 y-5 mx-auto max-w-5xl">
-        <h1 class="text-md md:text-3xl font-bold my-6 md:mb-10 text-center">Agent Builder</h1>
-        <div class="my-5 mx-auto max-w-[534px]">
+    <div class="mt-10 p-5 y-5 mx-auto w-full max-w-5xl md:max-w-[800px]">
+        <h1 class="text-md md:text-3xl font-bold my-6 md:mb-10 text-center">Create an agent</h1>
+        <div class="my-5 mx-auto max-w-5xl">
             <form wire:submit.prevent="submit">
 
                 <div class="col-span-full flex items-center gap-x-8 my-5">
@@ -79,7 +79,7 @@
                     </div>
                 </div>
 
-                <div class="mt-5 flex justify-end">
+                <div class="mt-5 w-full text-center">
                     <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4"
                               dusk="create-agent-button">
                         Create Agent
