@@ -22,14 +22,12 @@
         <p class="mt-2 mb-0 text-sm text-gray">
             By continuing you agree to our
             <a class="text-white decoration-2 hover:underline font-medium dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600"
-               href="/terms" target="_blank">
-                Terms of Service
-            </a>
+               href="/terms" target="_blank">Terms of Service</a>
             and
             <a class="text-white decoration-2 hover:underline font-medium dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600"
                href="/privacy" target="_blank">
-                Privacy Policy.
-            </a>
+                Privacy Policy
+            </a>.
         </p>
     </div>
 </div>
