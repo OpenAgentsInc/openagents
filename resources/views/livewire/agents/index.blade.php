@@ -55,6 +55,9 @@
                                     alt="{{$agent->name}}">
                                 <div>
                                     <span class="block text-gray-800 font-semibold">{{ $agent->name }}</span>
+                                    <span class="inline-flex items-center px-2 py-1 {{ $agent->is_rag_ready ? 'bg-white' : 'bg-yellow-500'}}  text-black  text-xs font-bold rounded-md">
+                                        {{ $agent->is_rag_ready ? 'Ready' : 'Building '}}
+                                      </span>
                                 </div>
                             </div>
                             <div class="items-center gap-1.5 pr-2  group-hover:flex">
