@@ -210,7 +210,6 @@ class Chat extends Component
         // Call simpleRun after the next render
         $this->dispatch('message-created');
         if (! $this->selectedAgent) {
-            dd('wtf');
             $this->js('$wire.simpleRun()');
         } else {
             // $this->js('$wire.ragRun()');
