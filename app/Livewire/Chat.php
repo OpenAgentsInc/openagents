@@ -63,16 +63,10 @@ class Chat extends Component
             session()->put('selectedModel', request()->query('model'));
         }
 
-        //        if ($agent) {
-        //            $this->selectAgent($agent->id);
-        //        } else {
-        //            $this->selectedAgent = null;
-        //        }
-
         if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
 
-            $this->selectAgent(request()->query('agent')); // ?
+            $this->selectAgent(request()->query('agent'));
         }
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
@@ -83,10 +77,6 @@ class Chat extends Component
             } else {
                 // Notify the sidebar component of the active thread
                 $this->dispatch('active-thread', $id);
-
-                // see if this thread has an agent
-                //                dd($thread->agent_id);
-
             }
         } else {
             $this->ensureThread();
@@ -106,8 +96,6 @@ class Chat extends Component
                 'description' => $this->thread->agent->about,
                 'instructions' => $this->thread->agent->message,
             ];
-            //            dd($this->selectedAgent);
-            //            $this->selectedModel = '';
         } elseif (session()->has('agent')) {
             // If the selectedAgent session var is set, use it
             $this->selectedAgent = session('selectedAgent');
