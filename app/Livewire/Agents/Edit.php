@@ -4,10 +4,11 @@ namespace App\Livewire\Agents;
 
 use App\Jobs\ProcessAgentRag;
 use App\Models\Agent;
+use Livewire\Component;
+use App\Jobs\ProcessAgentRag;
+use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
-use Livewire\Component;
-use Livewire\WithFileUploads;
 
 class Edit extends Component
 {
