@@ -9,7 +9,7 @@
         </div>
     </div>
 
-    <div class="flex flex-col gap-2 py-2 px-1 mt-auto border-t border-offblack">
+    <div class="text-gray flex flex-col gap-2 py-2 px-1 mt-auto border-t border-offblack">
         <ol>
             <li>
                 <div class="relative z-[15]">
@@ -84,7 +84,7 @@
                 @endpro
                 <li>
                     <div class="relative z-[15]">
-                        <div class="flex flex-row group pt-3 px-3 text-gray text-xs">
+                        <div class="flex flex-row group pt-3 px-3 text-gray opacity-75 text-xs">
                             <a href="/terms" class="flex items-center">
                                 <div class="relative grow overflow-hidden whitespace-nowrap">
                                     Terms
