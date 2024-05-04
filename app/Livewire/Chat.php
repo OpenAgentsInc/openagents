@@ -112,7 +112,14 @@ class Chat extends Component
             ];
         } elseif (session()->has('agent')) {
             // If the selectedAgent session var is set, use it
-            $this->selectedAgent = session('selectedAgent');
+            $agentId = session('agent');
+            $agent = Agent::find($agentId);
+            $this->selectedAgent = [
+                'id' => $agent->id,
+                'name' => $agent->name,
+                'description' => $agent->about,
+                'instructions' => $agent->message,
+            ];
         } else {
             // Set the selected model
             $this->selectedModel = Models::getModelForThread($this->thread);
