@@ -1,14 +1,15 @@
 <div class="flex flex-col w-full relative z-50 h-full">
-
-    <div class="flex flex-col gap-2 mt-10 py-4 px-1" @thread_updated="$refresh">
-        <ol>
-            @foreach($threads as $thread)
-                <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
-            @endforeach
-        </ol>
+    <div class="flex-1 overflow-y-auto">
+        <div class="flex flex-col gap-2 mt-10 py-4 px-1" @thread_updated="$refresh">
+            <ol>
+                @foreach($threads as $thread)
+                    <livewire:sidebar-thread :thread="$thread" :key="$thread->id"/>
+                @endforeach
+            </ol>
+        </div>
     </div>
 
-    <div class="flex flex-col gap-2 py-2 px-1 mt-auto">
+    <div class="flex flex-col gap-2 py-2 px-1 mt-auto border-t border-offblack">
         <ol>
             <li>
                 <div class="relative z-[15]">
