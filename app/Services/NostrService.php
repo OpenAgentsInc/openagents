@@ -158,7 +158,13 @@ class NostrService
             $requestJob->setRequestProvider($this->encryptFor);
         }
 
-        $opts = ['credentials' => ChannelCredentials::createSsl()];
+        $opts = [
+            'credentials' => ChannelCredentials::createSsl(),
+            'update_metadata' => function ($metaData) {
+                $metaData['authorization'] = [config('nostr.node_token')];
+                return $metaData;
+            }
+        ];
         $hostname = $this->poolAddress;
         $res = new PoolConnectorClient($hostname, $opts);
         $metadata = [];
