@@ -35,7 +35,6 @@ class ModelSelector extends Component
             ->get()
             ->toArray();
 
-        //        dd($messages);
         // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
         $lastMessage = end($messages);
         if (! empty($lastMessage['agent_id'])) {
@@ -46,7 +45,6 @@ class ModelSelector extends Component
                 'instructions' => $lastMessage['agent']['prompt'],
                 'image' => $lastMessage['agent']['image_url'],
             ];
-            dd($this->selectedAgent);
         } elseif (! empty($this->thread->agent_id)) {
             $this->selectedAgent = [
                 'id' => $this->thread->agent_id,
