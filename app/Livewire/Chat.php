@@ -344,7 +344,7 @@ class Chat extends Component
                 'body' => $this->input,
                 'session_id' => $sessionId,
                 'user_id' => auth()->id() ?? null,
-                'agent_id' => $this->selectedAgent['id'] ?: null,
+                'agent_id' => $this->selectedAgent['id'] ? $this->selectedAgent['id'] : null,
             ]);
 
             $nostrRag = new NostrRag(); // Generate history
@@ -409,7 +409,7 @@ class Chat extends Component
             'session_id' => $sessionId,
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
-            'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : Null,
+            'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : null,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
         ]);
