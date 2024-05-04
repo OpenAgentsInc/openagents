@@ -29,6 +29,11 @@ class NostrService
 
     protected $cacheDuration = '-1';
 
+    protected $quantize = true;
+
+
+
+
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;
@@ -61,6 +66,13 @@ class NostrService
     {
         $this->max_tokens = $maxTokens;
 
+        return $this;
+    }
+
+
+    public function quantize($quantize)
+    {
+        $this->quantize = $quantize;
         return $this;
     }
 
@@ -146,7 +158,13 @@ class NostrService
             $requestJob->setRequestProvider($this->encryptFor);
         }
 
-        $opts = ['credentials' => ChannelCredentials::createSsl()];
+        $opts = [
+            'credentials' => ChannelCredentials::createSsl(),
+            'update_metadata' => function ($metaData) {
+                $metaData['authorization'] = [config('nostr.node_token')];
+                return $metaData;
+            }
+        ];
         $hostname = $this->poolAddress;
         $res = new PoolConnectorClient($hostname, $opts);
         $metadata = [];
