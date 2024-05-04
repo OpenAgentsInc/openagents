@@ -29,11 +29,13 @@ class ModelSelector extends Component
 
         $messages = $this->thread->messages()
             ->with(['agent' => function ($query) {
-                $query->select('id', 'name', 'about', 'prompt', 'image_url');
+                $query->select('id', 'name', 'about', 'prompt');
             }])
             ->orderBy('created_at', 'asc')
             ->get()
             ->toArray();
+
+        //        dd($messages);
         // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
         $lastMessage = end($messages);
         if (! empty($lastMessage['agent_id'])) {
@@ -44,6 +46,7 @@ class ModelSelector extends Component
                 'instructions' => $lastMessage['agent']['prompt'],
                 'image' => $lastMessage['agent']['image_url'],
             ];
+            dd($this->selectedAgent);
         } elseif (! empty($this->thread->agent_id)) {
             $this->selectedAgent = [
                 'id' => $this->thread->agent_id,
@@ -52,6 +55,7 @@ class ModelSelector extends Component
                 'instructions' => $this->thread->agent->prompt,
                 'image' => $this->thread->agent->image_url,
             ];
+
         } elseif (session()->has('agent')) {
             // If the selectedAgent session var is set, use it
             $this->selectedAgent = session('selectedAgent');

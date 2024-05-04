@@ -53,6 +53,7 @@
                                 :author="$author"
                                 :message="$message['body']"
                                 :promptClass="$promptClass"
+                                :agent-image="$message['agent']['image_url'] ?? null"
                         ></x-chat.message>
                     @endforeach
 
