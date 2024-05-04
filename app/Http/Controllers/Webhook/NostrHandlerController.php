@@ -95,18 +95,18 @@ class NostrHandlerController extends Controller
 
 
     public function ProcessAgent($job_id){
-        $job = AgentJob::where('job_id',$job_id)->first();
+        $agentJob = AgentJob::where('job_id',$job_id)->first();
 
-        if($job){
-            $job->is_rag_ready = true;
-            $job->save();
+        if($agentJob){
+            $agentJob->is_rag_ready = true;
+            $agentJob->save();
 
-            $agent = Agent::find($job->agent_id);
+            $agent = Agent::find($agentJob->agent_id);
             $agent->is_rag_ready = true;
             $agent->save();
 
 
-            AgentRagReady::dispatch($job);
+            AgentRagReady::dispatch($agentJob);
 
         }
     }
