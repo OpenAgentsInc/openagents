@@ -1,5 +1,7 @@
 <div class="flex gap-1 items-center justify-center overflow-hidden" role="button" tabindex="0"
-     @click="dropdown = !dropdown">
+     @click="dropdown = !dropdown"
+     dusk="model-dropdown"
+>
     <div class="flex flex-row gap-3 items-center select-none">
         <img src="{{ $picture }}" class="w-6 h-6">
         <span class="my-0 text-[18px]">{{ $formattedModelOrAgent }}</span>
@@ -11,7 +13,8 @@
         </button>
         <div x-cloak x-show="dropdown" @click.away="dropdown = false"
              class="mt-3 -ml-[125px] fixed z-[50] divide-y divide-white/15 min-w-60 shadow-md rounded-lg p-2 bg-black border border-white/25 overflow-y-scroll overflow-x-hidden max-h-[80vh] sm:max-h-screen"
-             aria-labelledby="hs-dropdown-with-header">
+             aria-labelledby="hs-dropdown-with-header"
+        >
             <div class="py-0 first:pt-0 last:pb-0 bg-black">
                 @if($showAgents)
                     @php
@@ -19,6 +22,7 @@
                         $disabled = $userAccess != 'pro' ? 'opacity-25' : '';
                     @endphp
                     <a wire:click="createAgent"
+                       dusk="create-agent"
                        @if($userAccess == 'pro')
                        @else
                            x-data
