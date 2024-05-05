@@ -233,7 +233,7 @@ class Chat extends Component
             'sender' => 'You',
             'user_id' => auth()->id(), // Add user_id if logged in
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
-            'agent_id' => $this->selectedAgent['id'] ?: null,
+            'agent_id' => $this->selectedAgent['id'] ?? null,
         ];
 
         if (! empty($this->selectedAgent['id'])) {
@@ -460,16 +460,16 @@ class Chat extends Component
         $this->dispatch('message-created');
     }
 
-    #[On('echo:agent_jobs.{selectedAgent.id},AgentRagReady')] // ??
-    public function process_agent_rag($event)
-    {
-        $agent = Agent::find($event['agent_id']);
-        if ($agent) {
-            if ($this->selectedAgent['id'] == $agent->id && $agent->is_rag_ready) {
-                $this->pending = false;
-            }
-        }
-    }
+    //    #[On('echo:agent_jobs.{selectedAgent.id},AgentRagReady')] // ??
+    //    public function process_agent_rag($event)
+    //    {
+    //        $agent = Agent::find($event['agent_id']);
+    //        if ($agent) {
+    //            if ($this->selectedAgent['id'] == $agent->id && $agent->is_rag_ready) {
+    //                $this->pending = false;
+    //            }
+    //        }
+    //    }
 
     public function render()
     {
