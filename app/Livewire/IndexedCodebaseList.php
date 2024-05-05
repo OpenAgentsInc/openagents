@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\AI\GreptileGateway;
 use Livewire\Component;
 
 class IndexedCodebaseList extends Component
@@ -12,6 +13,11 @@ class IndexedCodebaseList extends Component
         if (! auth()->check() || ! auth()->user()->isPro()) {
             return redirect('/');
         }
+
+        $gateway = new GreptileGateway();
+        $info = $gateway->getRepository();
+
+        dd($info);
     }
 
     public function render()
