@@ -33,8 +33,6 @@ class ProcessAgentRag implements ShouldQueue
     {
         $documents = AgentFile::where('agent_id', $this->agent->id)->pluck('url')->toArray();
 
-        // send to nostra
-
         $pool = config('nostr.pool');
         $query = '';
         $encrypt = config('nostr.encrypt');
@@ -48,7 +46,7 @@ class ProcessAgentRag implements ShouldQueue
             ->overlap(256)
             ->quantize(false)
             ->warmUp(true)
-            ->cacheDurationhint('-1')
+            ->cacheDurationhint(-1)
             ->encryptFor($encrypt)
             ->execute();
 
