@@ -50,9 +50,9 @@ test('can interact with paid indexer agent', function () {
             ->waitForRoute('chat.id', ['id' => $threadId])
             ->assertSee('OA Codebase Indexer')
             ->waitFor('@message-input')
-            ->type('@message-input', 'Summarize this codebase')
+            ->type('@message-input', 'Have you indexed this repo? https://github.com/OpenAgentsInc/openagents')
             ->click('@send-message-button')
             ->pause(90000)
-            ->screenshot('indexer-test');
+            ->screenshot('indexer-test2');
     });
 });

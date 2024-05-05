@@ -9,6 +9,7 @@ use App\Http\Controllers\Webhook\NostrHandlerController;
 use App\Livewire\Admin;
 use App\Livewire\Chat;
 use App\Livewire\Explorer;
+use App\Livewire\IndexedCodebaseList;
 use App\Livewire\PrismDashboard;
 use App\Livewire\Settings;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +40,9 @@ Route::get('/settings', Settings::class)->name('settings');
 Route::get('/subscription', [BillingController::class, 'stripe_billing_portal']);
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 Route::get('/pro', [BillingController::class, 'pro'])->name('pro');
+
+// CODEBASE INDEXES
+Route::get('/codebases', IndexedCodebaseList::class);
 
 // PLUGIN REGISTRY
 Route::get('/plugins', [StaticController::class, 'plugins']);
