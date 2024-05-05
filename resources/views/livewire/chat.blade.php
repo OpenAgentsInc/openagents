@@ -24,6 +24,12 @@
                                 <p class="pointer-events-auto select-auto mt-[30px] text-gray">Blog: <a
                                             class="underline" href="/goodbye-chatgpt" wire:navigate>Goodbye
                                         ChatGPT</a></p>
+
+                                <p class="pointer-events-auto select-auto mt-[10px] text-gray">Video: <a
+                                            class="underline"
+                                            href="https://twitter.com/OpenAgentsInc/status/1786675616437190707"
+                                            target="_blank">Agent Builder</a></p>
+
                             </div>
                         </div>
                     @endif
