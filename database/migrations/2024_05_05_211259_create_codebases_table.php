@@ -13,6 +13,15 @@ return new class extends Migration
     {
         Schema::create('codebases', function (Blueprint $table) {
             $table->id();
+            $table->string('repository');
+            $table->string('remote');
+            $table->string('branch');
+            $table->boolean('private');
+            $table->string('status');
+            $table->integer('files_processed');
+            $table->integer('num_files');
+            $table->json('sample_questions')->nullable();
+            $table->string('sha');
             $table->timestamps();
         });
     }
