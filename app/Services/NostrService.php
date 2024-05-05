@@ -27,35 +27,31 @@ class NostrService
 
     protected $warmUp = false;
 
-    protected $cacheDuration = '-1';
+    protected $cacheDuration = -1;
 
     protected $quantize = true;
 
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;
-
         return $this;
     }
 
     public function query($query)
     {
         $this->query = $query;
-
         return $this;
     }
 
     public function documents($documents)
     {
         $this->documents = $documents;
-
         return $this;
     }
 
     public function k($k)
     {
         $this->k = $k;
-
         return $this;
     }
 
@@ -69,7 +65,6 @@ class NostrService
     public function quantize($quantize)
     {
         $this->quantize = $quantize;
-
         return $this;
     }
 
@@ -90,27 +85,24 @@ class NostrService
     public function warmUp($warmUp)
     {
         $this->warmUp = $warmUp;
-
         return $this;
     }
 
     public function cacheDurationhint($cacheDuration)
     {
         $this->cacheDuration = $cacheDuration;
-
         return $this;
     }
 
     public function execute()
     {
-        // Your method implementation here...
 
         $currentime = now();
         $expiresAt = $currentime->addMinutes(10);
 
         $requestJob = new RpcRequestJob();
 
-        $requestJob->setRunOn('openagents/embeddings');
+        $requestJob->setRunOn('openagents/extism-runtime');
         $requestJob->setExpireAfter($expiresAt->timestamp);
 
         $inputs = [];
@@ -133,7 +125,7 @@ class NostrService
         $param2->setKey('overlap')->setValue(["$this->overlap"]);
 
         $param3 = new JobParam();
-        $param3->setKey('quantize')->setValue(['true']);
+        $param3->setKey('quantize')->setValue(["$this->quantize"]);
 
         $param4 = new JobParam();
         $param4->setKey('k')->setValue(["$this->k"]);
@@ -144,7 +136,10 @@ class NostrService
         $param6 = new JobParam();
         $param6->setKey('warm-up')->setValue(["$this->warmUp"]);
 
-        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6]);
+        $param7 = new JobParam();
+        $param7->setKey('main')->setValue(["https://github.com/OpenAgentsInc/openagents-rag-coordinator-plugin/releases/download/v0.2/rag.wasm"]);
+
+        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7]);
 
         $requestJob->setDescription('RAG pipeline');
         $requestJob->setKind(5003);
@@ -156,10 +151,9 @@ class NostrService
         }
 
         $opts = [
-            'credentials' => ChannelCredentials::createSsl(),
+            'credentials' => config('nostr.pool_ssl')?ChannelCredentials::createSsl():ChannelCredentials::createInsecure(),
             'update_metadata' => function ($metaData) {
                 $metaData['authorization'] = [config('nostr.node_token')];
-
                 return $metaData;
             },
         ];
@@ -167,8 +161,8 @@ class NostrService
         $res = new PoolConnectorClient($hostname, $opts);
         $metadata = [];
         $options = [];
-        $Jobres = $res->requestJob($requestJob, $metadata, $options);
-        $result = $Jobres->wait();
+        $jobres = $res->requestJob($requestJob, $metadata, $options);
+        $result = $jobres->wait();
         $status = $result[1]->code;
 
         if ($status !== 0) {
