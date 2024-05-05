@@ -247,6 +247,11 @@ class Models
             return 'mistral-small-latest';
         }
 
+        // If user is logged in and has default_model attribute, use that.
+        if (auth()->user()->default_model) {
+            return auth()->user()->default_model;
+        }
+
         // If user is logged in and is Pro, use Mistral Large.
         if (auth()->check() && auth()->user()->isPro()) {
             return 'claude-3-sonnet-20240229';
