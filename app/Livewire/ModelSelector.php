@@ -54,9 +54,9 @@ class ModelSelector extends Component
                 'image' => $this->thread->agent->image_url,
             ];
 
-        } elseif (session()->has('agent')) {
+        } elseif (session()->has('selectedAgent')) {
             // If the selectedAgent session var is set, use it
-            $agentId = session('agent');
+            $agentId = session('selectedAgent');
             $agent = Agent::find($agentId);
             $this->selectedAgent = [
                 'id' => $agent->id,

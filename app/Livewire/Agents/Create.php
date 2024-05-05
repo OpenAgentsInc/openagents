@@ -150,6 +150,9 @@ class Create extends Component
 
         // Redirect to a new chat with this agent - similar to this <a href="/chat?agent={{ $agent["id"] }}" wire:navigate>
         //        return redirect()->route('chat', [], false)->withQuery(['agent' => $agent->id]);
+
+        session()->put('agent', $agent->id);
+
         return redirect("/chat?agent={$agent->id}");
     }
 
