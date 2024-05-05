@@ -53,6 +53,20 @@
                     </div>
                 </div>
             </li>
+            <li>
+                <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                        <a class="flex items-center gap-2 py-2"
+                           target="_blank"
+                           href="https://github.com/OpenAgentsInc/openagents"
+                        >
+                            <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
+                                Source code
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </li>
             @pro
             <li>
                 <div class="relative z-[15]">
