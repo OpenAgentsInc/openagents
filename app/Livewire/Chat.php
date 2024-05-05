@@ -49,13 +49,13 @@ class Chat extends Component
 
     public $selectedModel = '';
 
-    public $selectedAgent = '';
+    public $selectedAgent = [];
 
     #[On('select-model')]
     public function selectModel($model)
     {
         $this->selectedModel = $model;
-        $this->selectedAgent = '';
+        $this->selectedAgent = [];
     }
 
     public function mount($id = null)
@@ -68,16 +68,25 @@ class Chat extends Component
             session()->put('selectedAgent', request()->query('agent'));
             $agent = Agent::find(request()->query('agent'));
             if ($agent) {
-                $this->pending = $agent->is_rag_ready;
-                $this->selectedAgent = $agent ? $agent->id : null;
-            }
 
+                $this->pending = $agent->is_rag_ready;
+                //                $this-> $agent ? $agent->id : null;
+                $this->selectedAgent = [
+                    'id' => $agent->id,
+                    'name' => $agent->name,
+                    'description' => $agent->about,
+                    'instructions' => $agent->prompt,
+                    'image' => $agent->image_url,
+                ];
+            }
         }
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
+
             $thread = Thread::find($id);
             if (! $thread || (auth()->check() && $thread->user_id !== auth()->id()) || (! auth()->check() && $thread->session_id !== session()->getId())) {
+
                 return $this->redirect('/', true);
             } else {
                 // Notify the sidebar component of the active thread
@@ -134,27 +143,9 @@ class Chat extends Component
         }
     }
 
-    #[On('select-agent')]
-    public function selectAgent($agentId)
-    {
-        $agent = Agent::find($agentId);
-        if ($agent) {
-            $this->selectedAgent = [
-                'id' => $agent->id,
-                'name' => $agent->name,
-                'description' => $agent->about,
-                'instructions' => $agent->prompt,
-                'image' => $agent->image_url,
-            ];
-            $this->selectedModel = '';
-        } else {
-            dd('Agent not found');
-            $this->selectedAgent = null;
-        }
-    }
-
     private function ensureThread()
     {
+
         if (empty($this->thread)) {
             // Check if the user or guest has a recent thread with no messages
             $recentThread = null;
@@ -163,13 +154,13 @@ class Chat extends Component
                 $recentThread = Thread::where('user_id', auth()->id())
                     ->whereDoesntHave('messages')
                     // and where the agent_id is the current agent
-                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
+//                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
             } else {
                 $recentThread = Thread::where('session_id', Session::getId())
                     ->whereDoesntHave('messages')
-                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
+//                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
             }
@@ -201,6 +192,25 @@ class Chat extends Component
             $this->dispatch('thread-update');
 
             return $this->redirect('/chat/'.$this->thread->id, true);
+        }
+    }
+
+    #[On('select-agent')]
+    public function selectAgent($agentId)
+    {
+        $agent = Agent::find($agentId);
+        if ($agent) {
+            $this->selectedAgent = [
+                'id' => $agent->id,
+                'name' => $agent->name,
+                'description' => $agent->about,
+                'instructions' => $agent->prompt,
+                'image' => $agent->image_url,
+            ];
+            $this->selectedModel = '';
+        } else {
+            dd('Agent not found');
+            $this->selectedAgent = null;
         }
     }
 
@@ -450,7 +460,7 @@ class Chat extends Component
         $this->dispatch('message-created');
     }
 
-    #[On('echo:agent_jobs.{selectedAgent},AgentRagReady')]
+    #[On('echo:agent_jobs.{selectedAgent.id},AgentRagReady')] // ??
     public function process_agent_rag($event)
     {
         $agent = Agent::find($event['agent_id']);
