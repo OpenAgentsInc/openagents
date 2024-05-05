@@ -325,7 +325,7 @@ class Chat extends Component
         return function ($response) {
             $token = $response['choices'][0]['delta']['content'] ?? '';
             $this->stream(
-                to: 'streamtext',
+                to: 'streamtext'.$this->thread->id,
                 content: $token
             );
         };
