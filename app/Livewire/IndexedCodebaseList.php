@@ -16,7 +16,7 @@ class IndexedCodebaseList extends Component
             return redirect('/');
         }
 
-        $this->codebases = Codebase::all()->toArray();
+        $this->codebases = Codebase::all();
     }
 
     public function render()
