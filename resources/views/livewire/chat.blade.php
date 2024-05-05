@@ -87,13 +87,13 @@
                             $image = $selectedAgent ? $selectedAgent['image'] : null;
 
                             $model_image = $selectedModel ? asset('images/icons/' . $models[$selectedModel]['gateway'] . '.png') : null;
-
                         @endphp
 
                         <x-chat.messagestreaming
                                 :author="$author"
                                 :agent-image="$image"
-                                :model-image="$model_image">
+                                :model-image="$model_image"
+                                :thread="$thread->id">
                         </x-chat.messagestreaming>
                     @endif
 
