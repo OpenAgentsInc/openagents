@@ -7,9 +7,17 @@ use App\Models\User;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use swentel\nostr\Event\Event;
 
 class NostrAuthController extends Controller
 {
+
+    private function verifyEvent($json){
+        $event = new Event();
+        $isValid = $event->verify($json);
+        return $isValid;
+    }
+
     public function testing()
     {
         $text = '
@@ -25,12 +33,14 @@ class NostrAuthController extends Controller
 
         $event = json_decode($text);
 
-        var_dump(secp256k1_nostr_verify($event->pubkey, $event->id, $event->sig));
+       
+
+        var_dump($this->verifyEvent(json_encode($event)));
 
         // Mangle last half-byte of the signature on purpose
         $event->sig[127] = 'e';
 
-        var_dump(secp256k1_nostr_verify($event->pubkey, $event->id, $event->sig));
+        var_dump($this->verifyEvent(json_encode($event)));
     }
 
     public function create(Request $request): RedirectResponse
@@ -58,7 +68,7 @@ class NostrAuthController extends Controller
         }
 
         // Verify the signature using the secp256k1_nostr extension
-        $isValid = secp256k1_nostr_verify($event->pubkey, $event->id, $event->sig);
+        $isValid = $this->verifyEvent($eventJson);
         if (! $isValid) {
             return redirect('#error')->with('error', 'Invalid event signature');
         }
