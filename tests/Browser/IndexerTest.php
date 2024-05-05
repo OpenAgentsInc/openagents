@@ -52,7 +52,7 @@ test('can interact with paid indexer agent', function () {
             ->waitFor('@message-input')
             ->type('@message-input', 'Summarize this codebase')
             ->click('@send-message-button')
-            ->pause(25000)
-            ->screenshot('noice');
+            ->pause(90000)
+            ->screenshot('indexer-test');
     });
 });

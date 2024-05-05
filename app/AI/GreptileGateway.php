@@ -34,6 +34,35 @@ class GreptileGateway implements GatewayInterface
         return $response->json();
     }
 
+    public function search($input)
+    {
+        $data = [
+            'query' => $input,
+            'repositories' => [
+                [
+                    'branch' => 'main',
+                    'repository' => 'OpenAgentsInc/openagents',
+                ],
+            ],
+            'sessionId' => Session::getId(),
+        ];
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->greptileApiKey,
+            'Content-Type' => 'application/json',
+            'X-GitHub-Token' => $this->githubToken,
+        ])->timeout(120)->post($this->greptileBaseUrl.'/search', $data);
+
+        if ($response->successful() && $response->body()) {
+            $json = $response->json();
+
+            return json_encode($json);
+        } else {
+            // Handle error or empty response
+            dd($response->body());
+        }
+    }
+
     public function getRepository($repositoryId = 'github:main:OpenAgentsInc/openagents')
     {
         $encodedRepositoryId = rawurlencode($repositoryId);
