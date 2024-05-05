@@ -26,11 +26,13 @@ test('happy path', function () {
 
         // Can click on Create Agent and go to new create page
         $browser->visit('/')
-            ->assertSee('Create an agent')
+            ->waitFor('@model-dropdown')
+            ->click('@model-dropdown')
+            ->waitFor('@create-agent')
             ->click('@create-agent')
             ->waitForRoute('agents.create')
             ->assertPathIs('/create')
-            ->pause(1500)
+            ->waitFor('@name')
 
             // Can fill out the form to create an agent
             ->type('@name', 'Agent Breeder')
@@ -51,6 +53,7 @@ test('happy path', function () {
         // User is redirected to chat with the agent
         $browser
             ->waitForRoute('chat.id', ['id' => $threadId])
+            ->pause(5000)
             ->assertSee('Agent Breeder');
     });
 });
