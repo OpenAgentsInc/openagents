@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\AI\Models;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -106,14 +105,6 @@ class User extends Authenticatable implements MustVerifyEmail
     public function nostrAccount(): HasOne
     {
         return $this->hasOne(NostrAccount::class);
-    }
-
-    /**
-     * Get the default model for the user.
-     */
-    public function getDefaultModelAttribute(): ?string
-    {
-        return $this->attributes['default_model'] ?? Models::getDefaultModel();
     }
 
     /**
