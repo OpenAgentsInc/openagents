@@ -4,6 +4,11 @@
             <h2 class="mb-4 font-bold">Codebases ({{ count($codebases) }})</h2>
         </div>
 
+        <form wire:submit.prevent="indexRepo()" class="flex flex-row w-[500px]">
+            <x-input type="text" class="w-full" placeholder="Add GitHub link to index" wire:model="index_link"/>
+            <x-button type="submit" class="ml-4">Index</x-button>
+        </form>
+
         <div class="flex flex-col gap-8 mt-6">
             <table class="min-w-full table-fixed divide-y divide-offblack text-white">
                 <thead>
