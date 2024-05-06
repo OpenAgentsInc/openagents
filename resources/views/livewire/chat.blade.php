@@ -27,6 +27,7 @@
                                          class="w-[100px] h-[100px] rounded-full object-cover">
                                     <h3 class="mt-4">{{ $selectedAgent['name'] }}</h3>
                                     <p class="text-[14px] text-gray mb-0">{{ $selectedAgent['description'] }}</p>
+                                    <p class="text-[14px] text-gray mb-0">{{ json_encode($selectedAgent['capabilities']) }}</p>
                                 </div>
                             </div>
                         </div>

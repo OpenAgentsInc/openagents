@@ -75,13 +75,7 @@ class Chat extends Component
 
                 $this->pending = $agent->is_rag_ready;
                 //                $this-> $agent ? $agent->id : null;
-                $this->selectedAgent = [
-                    'id' => $agent->id,
-                    'name' => $agent->name,
-                    'description' => $agent->about,
-                    'instructions' => $agent->prompt,
-                    'image' => $agent->image_url,
-                ];
+                $this->selectedAgent = $this->getSelectedAgentArray($agent);
             }
         }
 
@@ -115,36 +109,26 @@ class Chat extends Component
         // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
         $lastMessage = end($messages);
         if (! empty($lastMessage['agent_id'])) {
-            $this->selectedAgent = [
-                'id' => $lastMessage['agent_id'],
-                'name' => $lastMessage['agent']['name'],
-                'description' => $lastMessage['agent']['about'],
-                'instructions' => $lastMessage['agent']['prompt'],
-                'image' => $lastMessage['agent']['image_url'],
-            ];
+            $this->selectedAgent = $this->getSelectedAgentFromMessage($lastMessage);
         } elseif (! empty($this->thread->agent_id)) {
-            $this->selectedAgent = [
-                'id' => $this->thread->agent_id,
-                'name' => $this->thread->agent->name,
-                'description' => $this->thread->agent->about,
-                'instructions' => $this->thread->agent->prompt,
-                'image' => $this->thread->agent->image_url,
-            ];
+            $this->selectedAgent = $this->getSelectedAgentFromThread();
         } elseif (session()->has('agent')) {
-            // If the selectedAgent session var is set, use it
-            $agentId = session('agent');
-            $agent = Agent::find($agentId);
-            $this->selectedAgent = [
-                'id' => $agent->id,
-                'name' => $agent->name,
-                'description' => $agent->about,
-                'instructions' => $agent->prompt,
-                'image' => $agent->image_url,
-            ];
+            $this->selectedAgent = $this->getSelectedAgentFromSession();
         } else {
-            // Set the selected model
             $this->selectedModel = Models::getModelForThread($this->thread);
         }
+    }
+
+    private function getSelectedAgentArray($agent)
+    {
+        return [
+            'id' => $agent->id,
+            'name' => $agent->name,
+            'description' => $agent->about,
+            'instructions' => $agent->prompt,
+            'image' => $agent->image_url,
+            'capabilities' => json_decode($agent->capabilities, true),
+        ];
     }
 
     private function ensureThread()
@@ -197,6 +181,45 @@ class Chat extends Component
 
             return $this->redirect('/chat/'.$this->thread->id, true);
         }
+    }
+
+    private function getSelectedAgentFromMessage($message)
+    {
+        return [
+            'id' => $message['agent_id'],
+            'name' => $message['agent']['name'],
+            'description' => $message['agent']['about'],
+            'instructions' => $message['agent']['prompt'],
+            'image' => $message['agent']['image_url'],
+            'capabilities' => json_decode($message['agent']['capabilities'], true),
+        ];
+    }
+
+    private function getSelectedAgentFromThread()
+    {
+        return [
+            'id' => $this->thread->agent_id,
+            'name' => $this->thread->agent->name,
+            'description' => $this->thread->agent->about,
+            'instructions' => $this->thread->agent->prompt,
+            'image' => $this->thread->agent->image_url,
+            'capabilities' => json_decode($this->thread->agent->capabilities, true),
+        ];
+    }
+
+    private function getSelectedAgentFromSession()
+    {
+        $agentId = session('agent');
+        $agent = Agent::find($agentId);
+
+        return [
+            'id' => $agent->id,
+            'name' => $agent->name,
+            'description' => $agent->about,
+            'instructions' => $agent->prompt,
+            'image' => $agent->image_url,
+            'capabilities' => json_decode($agent->capabilities, true),
+        ];
     }
 
     #[On('select-agent')]
