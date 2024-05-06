@@ -9,6 +9,7 @@ use App\AI\NostrRag;
 use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\AgentFile;
+use App\Models\Codebase;
 use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
@@ -51,6 +52,8 @@ class Chat extends Component
     public $selectedModel = '';
 
     public $selectedAgent = [];
+
+    public $codebases = [];
 
     #[On('select-model')]
     public function selectModel($model)
@@ -314,18 +317,20 @@ class Chat extends Component
 
     public function handleCodebaseContext()
     {
-        // Return if text does not include the word 'index'
-        if (strpos($this->input, 'index') === false) {
+        // If we're not in env local, return
+        if (app()->environment() !== 'local') {
             return;
         }
 
-        // Return if we're not in an agent
-        //        if (! $this->selectedAgent) {
+        // Return if text does not include the word 'index'
+        //        if (strpos($this->input, 'index') === false) {
         //            return;
         //        }
 
         $client = new GreptileGateway();
-        $results = $client->search($this->input);
+        $results = $client->search($this->input, Codebase::all());
+
+        //        dd($results);
 
         $this->input .= "\n\n"."Use these code results as context:\n".$results;
     }

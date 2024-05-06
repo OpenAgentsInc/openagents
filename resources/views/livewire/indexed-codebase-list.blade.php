@@ -42,7 +42,7 @@
                 <tbody class="divide-y divide-offblack bg-black text-gray">
                 @foreach($codebases as $codebase)
                     <tr wire:key="{{ $codebase->id }}"
-                        class="select-none cursor-pointer hover:bg-offblack hover:bg-opacity-50 transition-colors duration-50 ease-in-out">
+                        class="cursor-pointer hover:bg-offblack hover:bg-opacity-50 transition-colors duration-50 ease-in-out">
                         <td class="whitespace-nowrap p-2 text-sm">{{ $codebase->repository }}</td>
                         <td class="whitespace-nowrap p-2 text-sm">{{ $codebase->branch }}</td>
                         <td class="whitespace-nowrap p-2 text-sm">{{ $codebase->remote }}</td>

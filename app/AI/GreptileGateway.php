@@ -34,16 +34,30 @@ class GreptileGateway implements GatewayInterface
         return $response->json();
     }
 
-    public function search($input)
+    public function search($input, $codebases = [])
     {
+        // Build the repositories array from $codebases
+        $repositories = [];
+        foreach ($codebases as $codebase) {
+            $repositories[] = [
+                'branch' => $codebase->branch,
+                'repository' => $codebase->repository,
+                'remote' => 'github',
+            ];
+        }
+
+        // If no codebases are provided, use the default repository
+        if (empty($repositories)) {
+            $repositories[] = [
+                'branch' => 'main',
+                'repository' => 'OpenAgentsInc/openagents',
+                'remote' => 'github',
+            ];
+        }
+
         $data = [
             'query' => $input,
-            'repositories' => [
-                [
-                    'branch' => 'main',
-                    'repository' => 'OpenAgentsInc/openagents',
-                ],
-            ],
+            'repositories' => $repositories,
             'sessionId' => Session::getId(),
         ];
 
