@@ -158,13 +158,13 @@ class Chat extends Component
                 $recentThread = Thread::where('user_id', auth()->id())
                     ->whereDoesntHave('messages')
                     // and where the agent_id is the current agent
-//                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
+                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
             } else {
                 $recentThread = Thread::where('session_id', Session::getId())
                     ->whereDoesntHave('messages')
-//                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
+                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
             }
