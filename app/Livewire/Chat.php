@@ -94,22 +94,17 @@ class Chat extends Component
     {
         if (empty($this->thread)) {
             // Check if the user or guest has a recent thread with no messages
-            $recentThread = null;
 
             if (auth()->check()) {
                 $recentThread = Thread::where('user_id', auth()->id())
                     ->whereDoesntHave('messages')
-                    // and where the agent_id is the current agent
-                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
             } else {
                 $recentThread = Thread::where('session_id', Session::getId())
                     ->whereDoesntHave('messages')
-//                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
-                dd($recentThread);
             }
 
             if ($recentThread) {
