@@ -11,6 +11,20 @@
 
     <div class="text-gray flex flex-col gap-2 py-2 px-1 mt-auto border-t border-offblack">
         <ol>
+            @pro
+            {{--            <li>--}}
+            {{--                <div class="relative z-[15]">--}}
+            {{--                    <div class="group relative rounded-lg active:opacity-90 px-3">--}}
+            {{--                        <a href="/codebases" wire:navigate class="flex items-center gap-2 py-2">--}}
+            {{--                            <div--}}
+            {{--                                    class="relative grow overflow-hidden whitespace-nowrap" @class(['text-white' => $highlightCodebases])>--}}
+            {{--                                Codebases--}}
+            {{--                            </div>--}}
+            {{--                        </a>--}}
+            {{--                    </div>--}}
+            {{--                </div>--}}
+            {{--            </li>--}}
+            @endpro
             <li>
                 <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">

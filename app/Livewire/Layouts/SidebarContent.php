@@ -11,6 +11,8 @@ class SidebarContent extends Component
 {
     public $threads = [];
 
+    public $highlightCodebases = false;
+
     public function mount()
     {
         $this->refreshThreads();
@@ -34,6 +36,24 @@ class SidebarContent extends Component
         $threads = auth()->user()->threads()->orderBy('created_at', 'desc')->get();
 
         return $threads ? $threads : collect();
+    }
+
+    #[On('select-model')]
+    public function modelSelected()
+    {
+        $this->highlightCodebases = false;
+    }
+
+    #[On('select-agent')]
+    public function agentSelected()
+    {
+        $this->highlightCodebases = false;
+    }
+
+    #[On('codebase-agent-selected')]
+    public function codebaseAgentSelected($id)
+    {
+        $this->highlightCodebases = true;
     }
 
     public function render()

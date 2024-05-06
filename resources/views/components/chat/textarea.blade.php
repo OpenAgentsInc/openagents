@@ -112,8 +112,8 @@
                 :disabled="isDisabled"
                 class="absolute bottom-[10px] right-[10px] text-black shadow rounded"
                 :class="isDisabled ? 'bg-gray' : 'bg-white hover:bg-white/90'"
+                dusk="send-message-button"
         >
-            {{-- Assuming <x-icon> is a component you have for rendering icons --}}
             <x-icon :name="$iconName" class="w-[24px] h-[24px] m-0.5 flex flex-col justify-center items-center"/>
         </button>
     @endif

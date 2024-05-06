@@ -17,6 +17,8 @@ class Create extends Component
 
     public $about;
 
+    public $codebase_search;
+
     public $prompt;
 
     public $rag_prompt;
@@ -99,6 +101,11 @@ class Create extends Component
         $agent->name = $this->name;
         $agent->about = $this->about;
         $agent->prompt = $this->prompt;
+
+        if ($this->codebase_search) {
+            $agent->capabilities = json_encode(['codebase_search' => true]);
+        }
+
         $agent->rag_prompt = 'placeholder'; // $this->rag_prompt;
         $agent->is_public = $this->is_public;
         $agent->message = $this->message;

@@ -2,16 +2,19 @@
 
 namespace App\Livewire;
 
-use App\AI\Models;
+use App\AI\GreptileGateway;
 use App\AI\NostrInference;
 use App\AI\NostrRag;
 use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\AgentFile;
+use App\Models\Codebase;
 use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\NostrService;
+use App\Services\SharedContextService;
+use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
@@ -21,42 +24,52 @@ use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
-    use WithFileUploads;
+    use SelectedModelOrAgentTrait, WithFileUploads;
 
     public $images = [];
 
     public $images_to_upload = [];
 
-    // Whether to show the "no more messages" message
     public $showNoMoreMessages = false;
 
     public $waitingForStream = false;
 
-    // User input from chat form
+    // Whether to show the "no more messages" message
     public $message_input = '';
 
-    // The saved input
     public $input = '';
 
-    // The thread we're chatting in
+    // User input from chat form
     public Thread $thread;
 
-    // The messages we render on the page
+    // The saved input
     public $messages = [];
 
-    // Whether we're waiting for a response
+    // The thread we're chatting in
     public $pending = false;
 
-    public $selectedModel = '';
+    // The messages we render on the page
+    public $codebases = [];
 
-    public $selectedAgent = [];
+    // Shared context for model/agent selection
+    protected SharedContextService $context;
 
-    #[On('select-model')]
-    public function selectModel($model)
+    public function boot(SharedContextService $sharedContextService): void
     {
-        $this->selectedModel = $model;
-        $this->selectedAgent = [];
+        $this->context = $sharedContextService;
     }
+
+    //    public function getSelectedAgentProperty()
+    //    {
+    //        return $this->context->getSelectedAgent();
+    //    }
+
+    //    #[On('select-model')]
+    //    public function selectModel($model)
+    //    {
+    //        $this->selectedModel = $model;
+    //        $this->selectedAgent = [];
+    //    }
 
     public function mount($id = null)
     {
@@ -71,13 +84,7 @@ class Chat extends Component
 
                 $this->pending = $agent->is_rag_ready;
                 //                $this-> $agent ? $agent->id : null;
-                $this->selectedAgent = [
-                    'id' => $agent->id,
-                    'name' => $agent->name,
-                    'description' => $agent->about,
-                    'instructions' => $agent->prompt,
-                    'image' => $agent->image_url,
-                ];
+                $this->selectedAgent = $this->getSelectedAgentArray($agent);
             }
         }
 
@@ -108,39 +115,22 @@ class Chat extends Component
 
         $this->messages = $messages;
 
-        // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
-        $lastMessage = end($messages);
-        if (! empty($lastMessage['agent_id'])) {
-            $this->selectedAgent = [
-                'id' => $lastMessage['agent_id'],
-                'name' => $lastMessage['agent']['name'],
-                'description' => $lastMessage['agent']['about'],
-                'instructions' => $lastMessage['agent']['prompt'],
-                'image' => $lastMessage['agent']['image_url'],
-            ];
-        } elseif (! empty($this->thread->agent_id)) {
-            $this->selectedAgent = [
-                'id' => $this->thread->agent_id,
-                'name' => $this->thread->agent->name,
-                'description' => $this->thread->agent->about,
-                'instructions' => $this->thread->agent->prompt,
-                'image' => $this->thread->agent->image_url,
-            ];
-        } elseif (session()->has('agent')) {
-            // If the selectedAgent session var is set, use it
-            $agentId = session('agent');
-            $agent = Agent::find($agentId);
-            $this->selectedAgent = [
-                'id' => $agent->id,
-                'name' => $agent->name,
-                'description' => $agent->about,
-                'instructions' => $agent->prompt,
-                'image' => $agent->image_url,
-            ];
-        } else {
-            // Set the selected model
-            $this->selectedModel = Models::getModelForThread($this->thread);
-        }
+        $this->setModelOrAgentForThread($this->thread);
+
+        //        $this->context->initializeAgentAndModelContext($this->thread);
+
+    }
+
+    private function getSelectedAgentArray($agent)
+    {
+        return [
+            'id' => $agent->id,
+            'name' => $agent->name,
+            'description' => $agent->about,
+            'instructions' => $agent->prompt,
+            'image' => $agent->image_url,
+            'capabilities' => json_decode($agent->capabilities, true),
+        ];
     }
 
     private function ensureThread()
@@ -154,13 +144,13 @@ class Chat extends Component
                 $recentThread = Thread::where('user_id', auth()->id())
                     ->whereDoesntHave('messages')
                     // and where the agent_id is the current agent
-//                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
+                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
             } else {
                 $recentThread = Thread::where('session_id', Session::getId())
                     ->whereDoesntHave('messages')
-//                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
+                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
             }
@@ -212,6 +202,12 @@ class Chat extends Component
             dd('Agent not found');
             $this->selectedAgent = null;
         }
+
+        // If the agent has Codebase capability, fetch the codebases
+        if ($agent->hasCapability('codebase_search')) {
+            // Dispatch an event to notify the sidebar component of the active agent & selected codebases
+            $this->dispatch('codebase-agent-selected', $agent->id);
+        }
     }
 
     #[On('no-more-messages')]
@@ -236,17 +232,6 @@ class Chat extends Component
             'agent_id' => $this->selectedAgent['id'] ?? null,
         ];
 
-        if (! empty($this->selectedAgent['id'])) {
-            $agent = Agent::find($this->selectedAgent['id']);
-            $this->selectedAgent = [
-                'id' => $agent->id,
-                'name' => $agent->name,
-                'description' => $agent->about,
-                'instructions' => $agent->prompt,
-                'image' => $agent->image_url,
-            ];
-        }
-
         // Clear the input
         $this->message_input = '';
         $this->pending = true;
@@ -264,6 +249,9 @@ class Chat extends Component
 
     public function runAgentWithoutRag()
     {
+        // Attach any context necessary from querying the codebase
+        $this->handleCodebaseContext();
+
         // Until RAG is working we'll just pass the agent info to the model
         $user_input = $this->input;
         $this->input = "You are an AI agent on OpenAgents.com. \n\n Your name is {$this->selectedAgent['name']}. \n\n Your description is: {$this->selectedAgent['description']}. \n\n Your instructions are: {$this->selectedAgent['instructions']}. \n\n Respond to the following user input: \"$user_input\"";
@@ -306,7 +294,24 @@ class Chat extends Component
 
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
+    }
 
+    public function handleCodebaseContext()
+    {
+        // If we're not in env local, return
+        if (app()->environment() !== 'local') {
+            return;
+        }
+
+        // Return if text does not include the word 'index'
+        //        if (strpos($this->input, 'index') === false) {
+        //            return;
+        //        }
+
+        $client = new GreptileGateway();
+        $results = $client->search($this->input, Codebase::all());
+
+        $this->input .= "\n\n"."Use these code results as context:\n".$results;
     }
 
     private function handleImageInput()
@@ -460,6 +465,11 @@ class Chat extends Component
         $this->dispatch('message-created');
     }
 
+    public function render()
+    {
+        return view('livewire.chat');
+    }
+
     //    #[On('echo:agent_jobs.{selectedAgent.id},AgentRagReady')] // ??
     //    public function process_agent_rag($event)
     //    {
@@ -471,8 +481,4 @@ class Chat extends Component
     //        }
     //    }
 
-    public function render()
-    {
-        return view('livewire.chat');
-    }
 }
