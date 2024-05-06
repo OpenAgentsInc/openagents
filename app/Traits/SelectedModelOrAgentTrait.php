@@ -3,7 +3,9 @@
 namespace App\Traits;
 
 use App\AI\Models;
+use App\Models\Agent;
 use App\Models\Thread;
+use Livewire\Attributes\On;
 
 trait SelectedModelOrAgentTrait
 {
@@ -11,9 +13,37 @@ trait SelectedModelOrAgentTrait
 
     public $selectedAgent = [];
 
+    #[On('select-model')]
+    public function selectedModel($model)
+    {
+        $this->selectedModel = $model;
+        $this->selectedAgent = [];
+    }
+
+    #[On('select-agent')]
+    public function selectedAgent($id)
+    {
+        $this->selectedAgent = $this->getSelectedAgentFromId($id);
+    }
+
+    private function getSelectedAgentFromId($id)
+    {
+        $agent = Agent::find($id);
+
+        return [
+            'id' => $agent->id,
+            'name' => $agent->name,
+            'description' => $agent->about,
+            'instructions' => $agent->prompt,
+            'image' => $agent->image_url,
+            'capabilities' => json_decode($agent->capabilities, true),
+        ];
+    }
+
     public function setSelectedModel($model)
     {
         $this->selectedModel = $model;
+        dd("set it to $model");
     }
 
     public function setModelOrAgentForThread(Thread $thread)
@@ -41,5 +71,44 @@ trait SelectedModelOrAgentTrait
         if ($this->selectedAgent && optional($this->selectedAgent['capabilities'])['codebase_search']) {
             $this->dispatch('codebase-agent-selected', $this->selectedAgent['id']);
         }
+    }
+
+    private function getSelectedAgentFromMessage($message)
+    {
+        return [
+            'id' => $message['agent_id'],
+            'name' => $message['agent']['name'],
+            'description' => $message['agent']['about'],
+            'instructions' => $message['agent']['prompt'],
+            'image' => $message['agent']['image_url'],
+            'capabilities' => json_decode($message['agent']['capabilities'], true),
+        ];
+    }
+
+    private function getSelectedAgentFromThread()
+    {
+        return [
+            'id' => $this->thread->agent_id,
+            'name' => $this->thread->agent->name,
+            'description' => $this->thread->agent->about,
+            'instructions' => $this->thread->agent->prompt,
+            'image' => $this->thread->agent->image_url,
+            'capabilities' => json_decode($this->thread->agent->capabilities, true),
+        ];
+    }
+
+    private function getSelectedAgentFromSession()
+    {
+        $agentId = session('agent');
+        $agent = Agent::find($agentId);
+
+        return [
+            'id' => $agent->id,
+            'name' => $agent->name,
+            'description' => $agent->about,
+            'instructions' => $agent->prompt,
+            'image' => $agent->image_url,
+            'capabilities' => json_decode($agent->capabilities, true),
+        ];
     }
 }

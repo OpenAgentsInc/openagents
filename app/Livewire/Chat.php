@@ -232,17 +232,6 @@ class Chat extends Component
             'agent_id' => $this->selectedAgent['id'] ?? null,
         ];
 
-        if (! empty($this->selectedAgent['id'])) {
-            $agent = Agent::find($this->selectedAgent['id']);
-            $this->selectedAgent = [
-                'id' => $agent->id,
-                'name' => $agent->name,
-                'description' => $agent->about,
-                'instructions' => $agent->prompt,
-                'image' => $agent->image_url,
-            ];
-        }
-
         // Clear the input
         $this->message_input = '';
         $this->pending = true;
@@ -321,8 +310,6 @@ class Chat extends Component
 
         $client = new GreptileGateway();
         $results = $client->search($this->input, Codebase::all());
-
-        //        dd($results);
 
         $this->input .= "\n\n"."Use these code results as context:\n".$results;
     }
@@ -483,30 +470,6 @@ class Chat extends Component
         return view('livewire.chat');
     }
 
-    private function getSelectedAgentFromMessage($message)
-    {
-        return [
-            'id' => $message['agent_id'],
-            'name' => $message['agent']['name'],
-            'description' => $message['agent']['about'],
-            'instructions' => $message['agent']['prompt'],
-            'image' => $message['agent']['image_url'],
-            'capabilities' => json_decode($message['agent']['capabilities'], true),
-        ];
-    }
-
-    private function getSelectedAgentFromThread()
-    {
-        return [
-            'id' => $this->thread->agent_id,
-            'name' => $this->thread->agent->name,
-            'description' => $this->thread->agent->about,
-            'instructions' => $this->thread->agent->prompt,
-            'image' => $this->thread->agent->image_url,
-            'capabilities' => json_decode($this->thread->agent->capabilities, true),
-        ];
-    }
-
     //    #[On('echo:agent_jobs.{selectedAgent.id},AgentRagReady')] // ??
     //    public function process_agent_rag($event)
     //    {
@@ -518,18 +481,4 @@ class Chat extends Component
     //        }
     //    }
 
-    private function getSelectedAgentFromSession()
-    {
-        $agentId = session('agent');
-        $agent = Agent::find($agentId);
-
-        return [
-            'id' => $agent->id,
-            'name' => $agent->name,
-            'description' => $agent->about,
-            'instructions' => $agent->prompt,
-            'image' => $agent->image_url,
-            'capabilities' => json_decode($agent->capabilities, true),
-        ];
-    }
 }

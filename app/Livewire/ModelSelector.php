@@ -12,8 +12,6 @@ class ModelSelector extends Component
 
     public $models;
 
-    public $agents;
-
     public $thread;
 
     public function mount()
