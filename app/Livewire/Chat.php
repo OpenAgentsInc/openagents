@@ -216,6 +216,12 @@ class Chat extends Component
             dd('Agent not found');
             $this->selectedAgent = null;
         }
+
+        // If the agent has Codebase capability, fetch the codebases
+        if ($agent->hasCapability('codebase_search')) {
+            // Dispatch an event to notify the sidebar component of the active agent & selected codebases
+            $this->dispatch('codebase-agent-selected', $agent->id);
+        }
     }
 
     #[On('no-more-messages')]

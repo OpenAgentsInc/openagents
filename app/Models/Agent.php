@@ -62,4 +62,18 @@ class Agent extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function hasCapability($capability)
+    {
+        // Agent has JSON blob in "capabilities" field
+        $capabilities = json_decode($this->capabilities, true);
+
+        // If capabilities is null, return false
+        if (is_null($capabilities)) {
+            return false;
+        }
+
+        // If the capability is in the array, return true
+        return in_array($capability, $capabilities);
+    }
 }

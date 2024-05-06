@@ -36,6 +36,12 @@ class SidebarContent extends Component
         return $threads ? $threads : collect();
     }
 
+    #[On('codebase-agent-selected')]
+    public function codebaseAgentSelected($id)
+    {
+        dd('nice'.$id);
+    }
+
     public function render()
     {
         return view('livewire.sidebar-content');

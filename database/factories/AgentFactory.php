@@ -19,6 +19,7 @@ class AgentFactory extends Factory
     public function definition(): array
     {
         return [
+            'name' => $this->faker->name,
             'user_id' => User::factory(),
         ];
     }
