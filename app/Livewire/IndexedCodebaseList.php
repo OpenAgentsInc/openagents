@@ -27,7 +27,7 @@ class IndexedCodebaseList extends Component
         $parts = explode('/', $this->index_link);
         $reponameandowner = $parts[count($parts) - 2].'/'.$parts[count($parts) - 1];
 
-        $repositoryId = 'github:master:'.$reponameandowner;
+        $repositoryId = 'github:main:'.$reponameandowner;
         //        $repositoryId = 'github:main:'.$reponameandowner;
         //        dd($repositoryId);
 

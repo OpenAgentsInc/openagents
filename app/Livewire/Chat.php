@@ -14,6 +14,7 @@ use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\NostrService;
+use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
@@ -23,7 +24,7 @@ use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
-    use WithFileUploads;
+    use SelectedModelOrAgentTrait, WithFileUploads;
 
     public $images = [];
 
@@ -48,10 +49,6 @@ class Chat extends Component
 
     // Whether we're waiting for a response
     public $pending = false;
-
-    public $selectedModel = '';
-
-    public $selectedAgent = [];
 
     public $codebases = [];
 
@@ -114,8 +111,14 @@ class Chat extends Component
             $this->selectedAgent = $this->getSelectedAgentFromThread();
         } elseif (session()->has('agent')) {
             $this->selectedAgent = $this->getSelectedAgentFromSession();
+            session()->forget('agent');
         } else {
             $this->selectedModel = Models::getModelForThread($this->thread);
+        }
+
+        // If the agent has codebase capability, fire an event to notify the sidebar component of the active agent & selected codebases
+        if ($this->selectedAgent && optional($this->selectedAgent['capabilities'])['codebase_search']) {
+            $this->dispatch('codebase-agent-selected', $this->selectedAgent['id']);
         }
     }
 
