@@ -75,9 +75,9 @@
                                     allowFileSizeValidation maxFileSize="10MB"/>
                     </div>
                 </div>
-                
-                <div class="my-5 ">
-                    <label for="capabilities">Capabilities</label>
+
+                <div class="my-5 opacity-[40%] select-none pointer-events-none">
+                    <label for="capabilities">Capabilities (Coming soon)</label>
                     <div class="mt-1">
                         <label class="inline-flex items-center">
                             <input type="checkbox" wire:model="codebase_search"

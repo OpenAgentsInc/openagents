@@ -81,7 +81,7 @@ trait SelectedModelOrAgentTrait
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
             'image' => $message['agent']['image_url'],
-            'capabilities' => json_decode($message['agent']['capabilities'], true),
+            'capabilities' => json_decode($message['agent']['capabilities'] ?? '[]', true),
         ];
     }
 
