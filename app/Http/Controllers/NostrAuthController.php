@@ -11,10 +11,11 @@ use swentel\nostr\Event\Event;
 
 class NostrAuthController extends Controller
 {
-
-    private function verifyEvent($json){
+    private function verifyEvent($json)
+    {
         $event = new Event();
         $isValid = $event->verify($json);
+
         return $isValid;
     }
 
@@ -32,8 +33,6 @@ class NostrAuthController extends Controller
 }';
 
         $event = json_decode($text);
-
-       
 
         var_dump($this->verifyEvent(json_encode($event)));
 

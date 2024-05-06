@@ -13,7 +13,6 @@ use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\NostrService;
-use App\Services\SharedContextService;
 use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
 use Illuminate\Support\Facades\Log;
@@ -48,29 +47,6 @@ class Chat extends Component
     // The thread we're chatting in
     public $pending = false;
 
-    // The messages we render on the page
-    public $codebases = [];
-
-    // Shared context for model/agent selection
-    protected SharedContextService $context;
-
-    public function boot(SharedContextService $sharedContextService): void
-    {
-        $this->context = $sharedContextService;
-    }
-
-    //    public function getSelectedAgentProperty()
-    //    {
-    //        return $this->context->getSelectedAgent();
-    //    }
-
-    //    #[On('select-model')]
-    //    public function selectModel($model)
-    //    {
-    //        $this->selectedModel = $model;
-    //        $this->selectedAgent = [];
-    //    }
-
     public function mount($id = null)
     {
         if (request()->query('model')) {
@@ -81,19 +57,15 @@ class Chat extends Component
             session()->put('selectedAgent', request()->query('agent'));
             $agent = Agent::find(request()->query('agent'));
             if ($agent) {
-
                 $this->pending = $agent->is_rag_ready;
-                //                $this-> $agent ? $agent->id : null;
                 $this->selectedAgent = $this->getSelectedAgentArray($agent);
             }
         }
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
-
             $thread = Thread::find($id);
             if (! $thread || (auth()->check() && $thread->user_id !== auth()->id()) || (! auth()->check() && $thread->session_id !== session()->getId())) {
-
                 return $this->redirect('/', true);
             } else {
                 // Notify the sidebar component of the active thread
@@ -116,26 +88,10 @@ class Chat extends Component
         $this->messages = $messages;
 
         $this->setModelOrAgentForThread($this->thread);
-
-        //        $this->context->initializeAgentAndModelContext($this->thread);
-
-    }
-
-    private function getSelectedAgentArray($agent)
-    {
-        return [
-            'id' => $agent->id,
-            'name' => $agent->name,
-            'description' => $agent->about,
-            'instructions' => $agent->prompt,
-            'image' => $agent->image_url,
-            'capabilities' => json_decode($agent->capabilities, true),
-        ];
     }
 
     private function ensureThread()
     {
-
         if (empty($this->thread)) {
             // Check if the user or guest has a recent thread with no messages
             $recentThread = null;
@@ -150,9 +106,10 @@ class Chat extends Component
             } else {
                 $recentThread = Thread::where('session_id', Session::getId())
                     ->whereDoesntHave('messages')
-                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
+//                    ->where('agent_id', '===', $this->selectedAgent['id'] ?? 0)
                     ->latest()
                     ->first();
+                dd($recentThread);
             }
 
             if ($recentThread) {

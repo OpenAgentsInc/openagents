@@ -34,24 +34,28 @@ class NostrService
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;
+
         return $this;
     }
 
     public function query($query)
     {
         $this->query = $query;
+
         return $this;
     }
 
     public function documents($documents)
     {
         $this->documents = $documents;
+
         return $this;
     }
 
     public function k($k)
     {
         $this->k = $k;
+
         return $this;
     }
 
@@ -65,6 +69,7 @@ class NostrService
     public function quantize($quantize)
     {
         $this->quantize = $quantize;
+
         return $this;
     }
 
@@ -85,12 +90,14 @@ class NostrService
     public function warmUp($warmUp)
     {
         $this->warmUp = $warmUp;
+
         return $this;
     }
 
     public function cacheDurationhint($cacheDuration)
     {
         $this->cacheDuration = $cacheDuration;
+
         return $this;
     }
 
@@ -137,7 +144,7 @@ class NostrService
         $param6->setKey('warm-up')->setValue(["$this->warmUp"]);
 
         $param7 = new JobParam();
-        $param7->setKey('main')->setValue(["https://github.com/OpenAgentsInc/openagents-rag-coordinator-plugin/releases/download/v0.2/rag.wasm"]);
+        $param7->setKey('main')->setValue(['https://github.com/OpenAgentsInc/openagents-rag-coordinator-plugin/releases/download/v0.2/rag.wasm']);
 
         $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7]);
 
@@ -151,9 +158,10 @@ class NostrService
         }
 
         $opts = [
-            'credentials' => config('nostr.pool_ssl')?ChannelCredentials::createSsl():ChannelCredentials::createInsecure(),
+            'credentials' => config('nostr.pool_ssl') ? ChannelCredentials::createSsl() : ChannelCredentials::createInsecure(),
             'update_metadata' => function ($metaData) {
                 $metaData['authorization'] = [config('nostr.node_token')];
+
                 return $metaData;
             },
         ];
