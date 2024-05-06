@@ -27,11 +27,12 @@
                                          class="w-[100px] h-[100px] rounded-full object-cover">
                                     <h3 class="mt-4">{{ $selectedAgent['name'] }}</h3>
                                     <p class="text-[14px] text-gray mb-0">{{ $selectedAgent['description'] }}</p>
-                                    <p class="text-[14px] text-gray mb-0">{{ json_encode($selectedAgent['capabilities']) }}</p>
+                                    @if (!empty($selectedAgent['capabilities']))
+                                        <p class="text-[14px] text-gray mb-0">{{ json_encode($selectedAgent['capabilities']) }}</p>
+                                    @endif
                                 </div>
                             </div>
                         </div>
-
                     @elseif (count($messages) === 0)
                         <div class="w-full h-[70vh] flex flex-col justify-center">
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
@@ -49,6 +50,7 @@
                             </div>
                         </div>
                     @endif
+
 
                     @php
                         $models = Models::MODELS;
