@@ -2,7 +2,6 @@
 
 namespace App\Livewire;
 
-use App\AI\Agents;
 use App\AI\Models;
 use App\Traits\SelectedModelOrAgentTrait;
 use Livewire\Component;
@@ -20,7 +19,6 @@ class ModelSelector extends Component
     public function mount()
     {
         $this->models = Models::MODELS;
-        $this->agents = Agents::AGENTS();
 
         if (! $this->thread) {
             return;
