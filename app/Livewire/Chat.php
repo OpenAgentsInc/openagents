@@ -3,7 +3,6 @@
 namespace App\Livewire;
 
 use App\AI\GreptileGateway;
-use App\AI\Models;
 use App\AI\NostrInference;
 use App\AI\NostrRag;
 use App\AI\SimpleInferencer;
@@ -14,6 +13,7 @@ use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\NostrService;
+use App\Services\SharedContextService;
 use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
 use Illuminate\Support\Facades\Log;
@@ -30,34 +30,46 @@ class Chat extends Component
 
     public $images_to_upload = [];
 
-    // Whether to show the "no more messages" message
     public $showNoMoreMessages = false;
 
     public $waitingForStream = false;
 
-    // User input from chat form
+    // Whether to show the "no more messages" message
     public $message_input = '';
 
-    // The saved input
     public $input = '';
 
-    // The thread we're chatting in
+    // User input from chat form
     public Thread $thread;
 
-    // The messages we render on the page
+    // The saved input
     public $messages = [];
 
-    // Whether we're waiting for a response
+    // The thread we're chatting in
     public $pending = false;
 
+    // The messages we render on the page
     public $codebases = [];
 
-    #[On('select-model')]
-    public function selectModel($model)
+    // Shared context for model/agent selection
+    protected SharedContextService $context;
+
+    public function boot(SharedContextService $sharedContextService): void
     {
-        $this->selectedModel = $model;
-        $this->selectedAgent = [];
+        $this->context = $sharedContextService;
     }
+
+    //    public function getSelectedAgentProperty()
+    //    {
+    //        return $this->context->getSelectedAgent();
+    //    }
+
+    //    #[On('select-model')]
+    //    public function selectModel($model)
+    //    {
+    //        $this->selectedModel = $model;
+    //        $this->selectedAgent = [];
+    //    }
 
     public function mount($id = null)
     {
@@ -103,23 +115,10 @@ class Chat extends Component
 
         $this->messages = $messages;
 
-        // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
-        $lastMessage = end($messages);
-        if (! empty($lastMessage['agent_id'])) {
-            $this->selectedAgent = $this->getSelectedAgentFromMessage($lastMessage);
-        } elseif (! empty($this->thread->agent_id)) {
-            $this->selectedAgent = $this->getSelectedAgentFromThread();
-        } elseif (session()->has('agent')) {
-            $this->selectedAgent = $this->getSelectedAgentFromSession();
-            session()->forget('agent');
-        } else {
-            $this->selectedModel = Models::getModelForThread($this->thread);
-        }
+        $this->setModelOrAgentForThread($this->thread);
 
-        // If the agent has codebase capability, fire an event to notify the sidebar component of the active agent & selected codebases
-        if ($this->selectedAgent && optional($this->selectedAgent['capabilities'])['codebase_search']) {
-            $this->dispatch('codebase-agent-selected', $this->selectedAgent['id']);
-        }
+        //        $this->context->initializeAgentAndModelContext($this->thread);
+
     }
 
     private function getSelectedAgentArray($agent)
@@ -184,45 +183,6 @@ class Chat extends Component
 
             return $this->redirect('/chat/'.$this->thread->id, true);
         }
-    }
-
-    private function getSelectedAgentFromMessage($message)
-    {
-        return [
-            'id' => $message['agent_id'],
-            'name' => $message['agent']['name'],
-            'description' => $message['agent']['about'],
-            'instructions' => $message['agent']['prompt'],
-            'image' => $message['agent']['image_url'],
-            'capabilities' => json_decode($message['agent']['capabilities'], true),
-        ];
-    }
-
-    private function getSelectedAgentFromThread()
-    {
-        return [
-            'id' => $this->thread->agent_id,
-            'name' => $this->thread->agent->name,
-            'description' => $this->thread->agent->about,
-            'instructions' => $this->thread->agent->prompt,
-            'image' => $this->thread->agent->image_url,
-            'capabilities' => json_decode($this->thread->agent->capabilities, true),
-        ];
-    }
-
-    private function getSelectedAgentFromSession()
-    {
-        $agentId = session('agent');
-        $agent = Agent::find($agentId);
-
-        return [
-            'id' => $agent->id,
-            'name' => $agent->name,
-            'description' => $agent->about,
-            'instructions' => $agent->prompt,
-            'image' => $agent->image_url,
-            'capabilities' => json_decode($agent->capabilities, true),
-        ];
     }
 
     #[On('select-agent')]
@@ -518,6 +478,35 @@ class Chat extends Component
         $this->dispatch('message-created');
     }
 
+    public function render()
+    {
+        return view('livewire.chat');
+    }
+
+    private function getSelectedAgentFromMessage($message)
+    {
+        return [
+            'id' => $message['agent_id'],
+            'name' => $message['agent']['name'],
+            'description' => $message['agent']['about'],
+            'instructions' => $message['agent']['prompt'],
+            'image' => $message['agent']['image_url'],
+            'capabilities' => json_decode($message['agent']['capabilities'], true),
+        ];
+    }
+
+    private function getSelectedAgentFromThread()
+    {
+        return [
+            'id' => $this->thread->agent_id,
+            'name' => $this->thread->agent->name,
+            'description' => $this->thread->agent->about,
+            'instructions' => $this->thread->agent->prompt,
+            'image' => $this->thread->agent->image_url,
+            'capabilities' => json_decode($this->thread->agent->capabilities, true),
+        ];
+    }
+
     //    #[On('echo:agent_jobs.{selectedAgent.id},AgentRagReady')] // ??
     //    public function process_agent_rag($event)
     //    {
@@ -529,8 +518,18 @@ class Chat extends Component
     //        }
     //    }
 
-    public function render()
+    private function getSelectedAgentFromSession()
     {
-        return view('livewire.chat');
+        $agentId = session('agent');
+        $agent = Agent::find($agentId);
+
+        return [
+            'id' => $agent->id,
+            'name' => $agent->name,
+            'description' => $agent->about,
+            'instructions' => $agent->prompt,
+            'image' => $agent->image_url,
+            'capabilities' => json_decode($agent->capabilities, true),
+        ];
     }
 }
