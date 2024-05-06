@@ -16,7 +16,24 @@
                     @endauth
                 </div>
                 <div class="xl:-ml-[50px] pt-8 chat">
-                    @if (count($messages) === 0)
+                    @if ((count($messages) === 0) && $selectedAgent)
+                        <div class="w-full h-[70vh] flex flex-col justify-center">
+                            <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                                <p class="text-[16px] text-gray">Now speaking with...</p>
+
+                                <div class="border border-darkgray rounded p-4">
+                                    <img src="{{ $selectedAgent['image'] }}"
+                                         alt="{{ $selectedAgent['name'] }}"
+                                         class="w-[100px] h-[100px] rounded-full object-cover">
+                                    <h3 class="mt-4">{{ $selectedAgent['name'] }}</h3>
+                                    <p class="text-[14px] text-gray mb-0">{{ $selectedAgent['description'] }}</p>
+                                    @if (!empty($selectedAgent['capabilities']))
+                                        <p class="text-[14px] text-gray mb-0">{{ json_encode($selectedAgent['capabilities']) }}</p>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    @elseif (count($messages) === 0)
                         <div class="w-full h-[70vh] flex flex-col justify-center">
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                 <x-logomark :size="1"></x-logomark>
@@ -33,6 +50,7 @@
                             </div>
                         </div>
                     @endif
+
 
                     @php
                         $models = Models::MODELS;
@@ -174,6 +192,7 @@
                                      wireModel="message_input"
                                      :image-upload="auth()->check() && auth()->user()->isPro"
                                      wire:ignore
+                                     dusk="message-input"
                                      onkeydown="if(event.keyCode == 13 && !event.shiftKey) { event.preventDefault(); document.getElementById('send-message').click(); }"
                                      class="flex h-[48px] w-full rounded-md border-2 bg-transparent p-3 pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white"/>
                     <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
