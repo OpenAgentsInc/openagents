@@ -16,7 +16,22 @@
                     @endauth
                 </div>
                 <div class="xl:-ml-[50px] pt-8 chat">
-                    @if (count($messages) === 0)
+                    @if ($selectedAgent)
+                        <div class="w-full h-[70vh] flex flex-col justify-center">
+                            <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                                <p class="text-[16px] text-gray">Now speaking with...</p>
+
+                                <div class="border border-darkgray rounded p-4">
+                                    <img src="{{ $selectedAgent['image'] }}"
+                                         alt="{{ $selectedAgent['name'] }}"
+                                         class="w-[100px] h-[100px] rounded-full object-cover">
+                                    <h3 class="mt-4">{{ $selectedAgent['name'] }}</h3>
+                                    <p class="text-[14px] text-gray mb-0">{{ $selectedAgent['description'] }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                    @elseif (count($messages) === 0)
                         <div class="w-full h-[70vh] flex flex-col justify-center">
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                 <x-logomark :size="1"></x-logomark>
