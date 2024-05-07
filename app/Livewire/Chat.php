@@ -5,21 +5,21 @@ namespace App\Livewire;
 use App\AI\GreptileGateway;
 use App\AI\NostrInference;
 use App\AI\NostrRag;
+use App\AI\SimpleInferencer;
+use App\Events\AgentRagReady;
 use App\Models\Agent;
 use App\Models\AgentFile;
 use App\Models\Codebase;
 use App\Models\Thread;
-use Livewire\Component;
-use Livewire\Attributes\On;
-use App\AI\SimpleInferencer;
-use App\Events\AgentRagReady;
-use Livewire\WithFileUploads;
 use App\Services\ImageService;
 use App\Services\NostrService;
 use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\On;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
@@ -62,8 +62,6 @@ class Chat extends Component
                 $this->selectedAgent = $this->getSelectedAgentArray($agent);
             }
         }
-
-
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
