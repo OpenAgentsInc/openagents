@@ -2,12 +2,13 @@
 
 namespace App\Livewire\Agents;
 
-use App\Jobs\ProcessAgentRag;
+
 use App\Models\Agent;
+use Livewire\Component;
+use App\Jobs\ProcessAgentRag;
+use Livewire\WithFileUploads;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
-use Livewire\Component;
-use Livewire\WithFileUploads;
 
 class Edit extends Component
 {
@@ -88,6 +89,8 @@ class Edit extends Component
                 Storage::disk($disk)->delete($path);
             }
 
+            $disk = config('filesystems.default');
+
             // Get filename with extension
             $filenamewithextension = $this->image->getClientOriginalName();
 
@@ -124,6 +127,8 @@ class Edit extends Component
         $agent->save();
 
         if (! empty($this->files)) {
+            $disk = config('documents.disk');
+
             foreach ($this->files as $file) {
                 // Get filename with extension
                 $filenamewithextension = $file->getClientOriginalName();
@@ -138,15 +143,15 @@ class Edit extends Component
                 $filenametostore = 'agents/files/documents/'.$filename.'_'.time().'.'.$extension;
 
                 // Upload File to s3
-                Storage::disk('s3')->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
+                Storage::disk($disk)->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
-                $url = Storage::disk('s3')->url($filenametostore);
+                $url = Storage::disk($disk)->url($filenametostore);
 
                 $agent->documents()->create([
                     'name' => $filename,
                     'path' => $filenametostore,
                     'url' => $url,
-                    'disk' => 's3',
+                    'disk' => $disk,
                     'type' => $file->getClientMimeType(),
                 ]);
             }

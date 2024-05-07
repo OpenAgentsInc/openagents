@@ -5,21 +5,21 @@ namespace App\Livewire;
 use App\AI\GreptileGateway;
 use App\AI\NostrInference;
 use App\AI\NostrRag;
-use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\AgentFile;
 use App\Models\Codebase;
-use App\Models\NostrJob;
 use App\Models\Thread;
+use Livewire\Component;
+use Livewire\Attributes\On;
+use App\AI\SimpleInferencer;
+use App\Events\AgentRagReady;
+use Livewire\WithFileUploads;
 use App\Services\ImageService;
 use App\Services\NostrService;
 use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
-use Livewire\Attributes\On;
-use Livewire\Component;
-use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
@@ -49,6 +49,7 @@ class Chat extends Component
 
     public function mount($id = null)
     {
+
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
         }
@@ -61,6 +62,8 @@ class Chat extends Component
                 $this->selectedAgent = $this->getSelectedAgentArray($agent);
             }
         }
+
+
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
@@ -416,6 +419,16 @@ class Chat extends Component
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
     }
+
+    // #[On('echo:rags.{rag.id},AgentRagReady')]
+    // public function process_agent_rag($event){
+    //     $agent = Agent::find($event['agent_id']);
+    //     if($agent){
+    //         if($this->selectedAgent == $agent->id && $agent->is_rag_ready){
+    //             $this->pending = false;
+    //         }
+    //     }
+    // }
 
     public function render()
     {
