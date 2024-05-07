@@ -33,9 +33,6 @@ class NostrService
 
     protected $quantize = true;
 
-
-
-
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;

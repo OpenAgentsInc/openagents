@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Webhook;
 
-use App\Models\AgentJob;
-use App\Models\NostrJob;
-use Illuminate\Http\Request;
 use App\Events\AgentRagReady;
 use App\Events\NostrJobReady;
-use App\Services\OpenObserveLogger;
 use App\Http\Controllers\Controller;
+use App\Models\AgentJob;
+use App\Models\NostrJob;
+use App\Services\OpenObserveLogger;
+use Illuminate\Http\Request;
 
 class NostrHandlerController extends Controller
 {

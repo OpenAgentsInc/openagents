@@ -5,8 +5,8 @@ namespace App\Livewire;
 use App\AI\Models;
 use App\Models\Agent;
 use App\Models\Message;
-use Livewire\Component;
 use Illuminate\Support\Facades\Session;
+use Livewire\Component;
 
 class ModelDropdown extends Component
 {
@@ -96,7 +96,7 @@ class ModelDropdown extends Component
         $userAccess = $this->getUserAccess();
 
         // If the user is not logged in, show the login modal for any model they don't have access to
-        if ($userAccess === 'guest' && !$this->hasModelAccess($model, $userAccess)) {
+        if ($userAccess === 'guest' && ! $this->hasModelAccess($model, $userAccess)) {
             $this->dispatch('openModal', 'auth.join');
 
             return;
@@ -151,7 +151,7 @@ class ModelDropdown extends Component
 
     public function toggleDropdown()
     {
-        $this->isOpen = !$this->isOpen;
+        $this->isOpen = ! $this->isOpen;
     }
 
     public function render()
@@ -164,13 +164,12 @@ class ModelDropdown extends Component
         return Models::getModelIndicator($modelKey, $this->getUserAccess());
     }
 
-
     public function getRecentAgent()
     {
         if (auth()->check()) {
-            $user_id =   auth()->user()->id;
+            $user_id = auth()->user()->id;
         } else {
-            $user_id =   Session::getId();
+            $user_id = Session::getId();
         }
 
         // Get the two most recent unique agents
@@ -199,13 +198,12 @@ class ModelDropdown extends Component
                     'name' => $message->agent->name,
                     'description' => $message->agent->about,
                     'instructions' => $message->agent->message,
-                    'image' => $message->agent->image_url
+                    'image' => $message->agent->image_url,
                 ];
             }
         }
 
         // dd($agents);
-
 
         return $agents;
     }
