@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\AI\Models;
 use App\Models\Agent;
+use App\Models\Message;
 use Livewire\Component;
 use Illuminate\Support\Facades\Session;
 
@@ -73,19 +74,19 @@ class ModelDropdown extends Component
         session()->forget('selectedModel');
     }
 
-    public function selectAgent($agent_id){
-        $agent = Agent::find($agent_id);
-        if($agent){
-            $this->selectedAgent = [
-                'id' => $agent->id,
-                'name' => $agent->name,
-                'description' => $agent->about,
-                'instructions' => $agent->message,
-                'image' => $agent->image_url
-            ];
-            $this->dispatch('select-model', $agent_id);
-        }
-    }
+    // public function selectAgent($agent_id){
+    //     $agent = Agent::find($agent_id);
+    //     if($agent){
+    //         $this->selectedAgent = [
+    //             'id' => $agent->id,
+    //             'name' => $agent->name,
+    //             'description' => $agent->about,
+    //             'instructions' => $agent->message,
+    //             'image' => $agent->image_url
+    //         ];
+    //         $this->dispatch('select-model', $agent_id);
+    //     }
+    // }
 
     public function selectModel($model)
     {
@@ -167,13 +168,13 @@ class ModelDropdown extends Component
     public function getRecentAgent()
     {
         $user_id =  auth()->check() ? auth()->id : Session::getId();
-        // Get the three most recent unique agents
+        // Get the two most recent unique agents
         $messages = Message::where('user_id', $user_id)->orWhere('session_id')
             ->where('agent_id', '!=', null)
             ->select('agent_id')
             ->distinct()
             ->orderBy('created_at', 'desc')
-            ->take(3)
+            ->take(2)
             ->with('agent')
             // ->pluck('agent_id')
             ->get();
