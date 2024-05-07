@@ -51,17 +51,17 @@ class Create extends Component
             //            'rag_prompt' => 'nullable|string',
             'message' => 'required|string',
             'is_public' => 'required|boolean',
-            //            'files' => 'nullable|array',
-            //            'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
-            //            'image' => 'nullable|image|max:2048',
+            'files' => 'nullable|array',
+            'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
+            'image' => 'nullable|image|max:2048',
         ];
     }
 
     public function submit()
     {
-        //        $this->validate();
+            //    $this->validate();
 
-        $disk = env('FILESYSTEM_DISK', 'local');
+        $disk = config('documents.disk');
 
         $user = auth()->user();
         if (!$user) {
@@ -84,7 +84,7 @@ class Create extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'public/agents/profile/images/' . $filename . '_' . time() . '.' . $extension;
+            $filenametostore = 'agents/profile/images/' . $filename . '_' . time() . '.' . $extension;
 
             // Upload File to public
             Storage::disk($disk)->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
