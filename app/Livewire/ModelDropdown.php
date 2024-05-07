@@ -167,24 +167,30 @@ class ModelDropdown extends Component
 
     public function getRecentAgent()
     {
-        if( auth()->check()){
+        if (auth()->check()) {
             $user_id =   auth()->user()->id;
-        }else{
+        } else {
             $user_id =   Session::getId();
         }
 
         // Get the two most recent unique agents
-        $messages = Message::where('user_id', $user_id)->orWhere('session_id',$user_id)
-            ->where('agent_id', '!=', null)
-            ->select('agent_id')
-            ->distinct()
-            ->orderBy('created_at', 'desc')
-            ->take(2)
+        $messages = Message::whereExists(function ($query) {
+            $query->selectRaw(1)
+                ->from('agents')
+                ->whereColumn('agents.id', 'messages.agent_id');
+        })
+            ->where(function ($query) use ($user_id) {
+                $query->where('user_id', $user_id)
+                    ->orWhere('session_id', $user_id);
+            })
+            ->latest()
             ->with('agent')
-            // ->pluck('agent_id')
+            ->select('agent_id')
+            ->take(2)
             ->get();
 
         $agents = [];
+        // dd($messages);
 
         if ($messages) {
             foreach ($messages as $message) {
