@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use Laravel\Jetstream\Jetstream;
+use Livewire;
 
 class StaticController extends Controller
 {
@@ -46,23 +47,16 @@ class StaticController extends Controller
         return view('plugins', ['plugins' => $plugins]);
     }
 
-    public function changelog(Request $request)
-    {
-        return view('changelog');
-    }
-
-    public function blog(Request $request)
-    {
-        return view('blog');
-    }
-
     public function goodbye(Request $request)
     {
         $policyFile = Jetstream::localizedMarkdownPath('goodbye-chatgpt.md');
+        $markdown = Str::markdown(file_get_contents($policyFile));
 
-        return view('policy', [
-            'policy' => Str::markdown(file_get_contents($policyFile)),
-        ]);
+        return Livewire::component('markdown-page', ['markdownContent' => $markdown]);
+
+        //        return view('policy', [
+        //            'policy' => Str::markdown(file_get_contents($policyFile)),
+        //        ]);
     }
 
     public function docs(Request $request)

@@ -12,6 +12,7 @@ use App\Livewire\Changelog;
 use App\Livewire\Chat;
 use App\Livewire\Explorer;
 use App\Livewire\IndexedCodebaseList;
+use App\Livewire\MarkdownPage;
 use App\Livewire\PrismDashboard;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
@@ -61,17 +62,17 @@ Route::get('/explorer', Explorer::class)->name('explorer');
 
 // BLOG
 Route::get('/blog', Blog::class);
-Route::get('/launch', [StaticController::class, 'launch']);
-Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
+Route::get('/launch', MarkdownPage::class);
+Route::get('/goodbye-chatgpt', MarkdownPage::class);
 
 //GRPC NOSTR
 Route::get('/request-job', [NostrGrpcController::class, 'handleJobRequest']);
 
 // MISC
 Route::get('/changelog', Changelog::class);
-Route::get('/docs', [StaticController::class, 'docs']);
-Route::get('/terms', [StaticController::class, 'terms']);
-Route::get('/privacy', [StaticController::class, 'privacy']);
+Route::get('/docs', MarkdownPage::class);
+Route::get('/terms', MarkdownPage::class);
+Route::get('/privacy', MarkdownPage::class);
 
 // Add GET logout route
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
