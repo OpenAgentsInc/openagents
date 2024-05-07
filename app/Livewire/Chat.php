@@ -5,7 +5,6 @@ namespace App\Livewire;
 use App\AI\GreptileGateway;
 use App\AI\NostrInference;
 use App\AI\NostrRag;
-use App\Models\User;
 use App\Models\Agent;
 use App\Models\AgentFile;
 use App\Models\Codebase;
@@ -20,7 +19,6 @@ use App\Services\NostrService;
 use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 
 class Chat extends Component
@@ -51,7 +49,7 @@ class Chat extends Component
 
     public function mount($id = null)
     {
-        Auth::user(User::first());
+
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
         }
