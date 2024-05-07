@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\AI\Models;
 use App\Models\Agent;
 use Livewire\Component;
+use Illuminate\Support\Facades\Session;
 
 class ModelDropdown extends Component
 {
@@ -72,6 +73,20 @@ class ModelDropdown extends Component
         session()->forget('selectedModel');
     }
 
+    public function selectAgent($agent_id){
+        $agent = Agent::find($agent_id);
+        if($agent){
+            $this->selectedAgent = [
+                'id' => $agent->id,
+                'name' => $agent->name,
+                'description' => $agent->about,
+                'instructions' => $agent->message,
+                'image' => $agent->image_url
+            ];
+            $this->dispatch('select-model', $agent_id);
+        }
+    }
+
     public function selectModel($model)
     {
         $this->selectedAgent = '';
@@ -80,7 +95,7 @@ class ModelDropdown extends Component
         $userAccess = $this->getUserAccess();
 
         // If the user is not logged in, show the login modal for any model they don't have access to
-        if ($userAccess === 'guest' && ! $this->hasModelAccess($model, $userAccess)) {
+        if ($userAccess === 'guest' && !$this->hasModelAccess($model, $userAccess)) {
             $this->dispatch('openModal', 'auth.join');
 
             return;
@@ -135,7 +150,7 @@ class ModelDropdown extends Component
 
     public function toggleDropdown()
     {
-        $this->isOpen = ! $this->isOpen;
+        $this->isOpen = !$this->isOpen;
     }
 
     public function render()
@@ -146,5 +161,40 @@ class ModelDropdown extends Component
     public function getModelIndicator($modelKey)
     {
         return Models::getModelIndicator($modelKey, $this->getUserAccess());
+    }
+
+
+    public function getRecentAgent()
+    {
+        $user_id =  auth()->check() ? auth()->id : Session::getId();
+        // Get the three most recent unique agents
+        $messages = Message::where('user_id', $user_id)->orWhere('session_id')
+            ->where('agent_id', '!=', null)
+            ->select('agent_id')
+            ->distinct()
+            ->orderBy('created_at', 'desc')
+            ->take(3)
+            ->with('agent')
+            // ->pluck('agent_id')
+            ->get();
+
+        $agents = [];
+
+        if ($messages) {
+            foreach ($messages as $message) {
+                $agents[] = [
+                    'id' => $message->agent->id,
+                    'name' => $message->agent->name,
+                    'description' => $message->agent->about,
+                    'instructions' => $message->agent->message,
+                    'image' => $message->agent->image_url
+                ];
+            }
+        }
+
+        // dd($agents);
+
+
+        return $agents;
     }
 }
