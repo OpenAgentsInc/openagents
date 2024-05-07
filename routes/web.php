@@ -7,10 +7,14 @@ use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\NostrHandlerController;
 use App\Livewire\Admin;
+use App\Livewire\Blog;
+use App\Livewire\Changelog;
 use App\Livewire\Chat;
 use App\Livewire\Explorer;
 use App\Livewire\IndexedCodebaseList;
+use App\Livewire\MarkdownPage;
 use App\Livewire\PrismDashboard;
+use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
@@ -39,7 +43,7 @@ Route::get('/settings', Settings::class)->name('settings');
 // BILLING
 Route::get('/subscription', [BillingController::class, 'stripe_billing_portal']);
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
-Route::get('/pro', [BillingController::class, 'pro'])->name('pro');
+Route::get('/pro', ProWelcome::class)->name('pro');
 
 // CODEBASE INDEXES
 Route::get('/codebases', IndexedCodebaseList::class);
@@ -57,18 +61,18 @@ Route::get('/prism', PrismDashboard::class)->name('prism');
 Route::get('/explorer', Explorer::class)->name('explorer');
 
 // BLOG
-Route::get('/blog', [StaticController::class, 'blog']);
-Route::get('/launch', [StaticController::class, 'launch']);
-Route::get('/goodbye-chatgpt', [StaticController::class, 'goodbye']);
+Route::get('/blog', Blog::class);
+Route::get('/launch', MarkdownPage::class);
+Route::get('/goodbye-chatgpt', MarkdownPage::class);
 
 //GRPC NOSTR
 Route::get('/request-job', [NostrGrpcController::class, 'handleJobRequest']);
 
 // MISC
-Route::get('/changelog', [StaticController::class, 'changelog']);
-Route::get('/docs', [StaticController::class, 'docs']);
-Route::get('/terms', [StaticController::class, 'terms']);
-Route::get('/privacy', [StaticController::class, 'privacy']);
+Route::get('/changelog', Changelog::class);
+Route::get('/docs', MarkdownPage::class);
+Route::get('/terms', MarkdownPage::class);
+Route::get('/privacy', MarkdownPage::class);
 
 // Add GET logout route
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);

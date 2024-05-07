@@ -36,6 +36,7 @@
                         @else
                             <x-markdown
                                     class="text-md text-text markdown-content {{ $promptClass }}">{!! $message !!}</x-markdown>
+                            <div class="dot-flashing opacity-0"></div>
                         @endif
 
                     </div>

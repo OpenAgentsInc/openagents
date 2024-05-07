@@ -6,39 +6,39 @@
 @tailwind utilities;
 
 
-
-
-
 /* This will remove the default browser outline for all elements */
 *:focus {
     outline: none;
 }
 
 .markdown-content {
-  line-height: normal !important;
-  margin-top: 0.7rem !important;
+    line-height: 1.6em !important;
+    margin-top: 0.7rem !important;
 }
 
 .tippy-box[data-theme~='openagent'] {
-  background-color: black 0.3;
-  border-radius: 10px;
-  border:0.1px thin #a9a9a9;
-  color: white;
+    background-color: black 0.3;
+    border-radius: 10px;
+    border: 0.1px thin #a9a9a9;
+    color: white;
 
 }
 
 
 .tippy-box[data-theme~='openagent'][data-placement^='top'] > .tippy-arrow::before {
-  border-top-color: #a9a9a9;
+    border-top-color: #a9a9a9;
 }
+
 .tippy-box[data-theme~='openagent'][data-placement^='bottom'] > .tippy-arrow::before {
-  border-bottom-color: #a9a9a9;
+    border-bottom-color: #a9a9a9;
 }
+
 .tippy-box[data-theme~='openagent'][data-placement^='left'] > .tippy-arrow::before {
-  border-left-color: #a9a9a9;
+    border-left-color: #a9a9a9;
 }
+
 .tippy-box[data-theme~='openagent'][data-placement^='right'] > .tippy-arrow::before {
-  border-right-color: #a9a9a9;
+    border-right-color: #a9a9a9;
 }
 
 

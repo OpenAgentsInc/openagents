@@ -14,13 +14,20 @@
 
     <link rel="stylesheet" href="{{asset('vendor/swal-dark.min.css')}}">
 
+    <style>
+        html, body {
+            overflow: hidden; /* Hide scroll bars */
+            height: 100%; /* Set the body height to 100% */
+        }
+    </style>
+
     @stack('styles')
 </head>
 
-<body class="h-screen bg-black antialiased" x-cloak
+<body class="h-full bg-black antialiased" x-cloak
       x-data="{ sidebarOpen: window.innerWidth > 768, collapsed: false }">
 
-<div class="relative z-0 flex h-full w-full overflow-hidden min-h-screen">
+<div class="relative z-0 flex h-full w-full overflow-hidden">
 
     <div class="h-[54px] flex justify-between items-center absolute top-0 left-0 py-2 px-4 w-[259px]">
         <button class="cursor-pointer text-white z-[9999]"
@@ -43,7 +50,7 @@
     </div>
 
 
-    <div class="flex-shrink-0 overflow-x-hidden sidebar"
+    <div class="flex-shrink-0 overflow-x-hidden sidebar fixed h-full"
          x-bind:class="{
             'sidebar-open': sidebarOpen,
             'sidebar-closed': !sidebarOpen
@@ -62,7 +69,7 @@
         </div>
     </div>
     <div class="relative flex h-full max-w-full flex-1 flex-col overflow-hidden hmmm"
-         x-bind:style="`margin-left: ${sidebarOpen ? '0' : (window.innerWidth <= 768 ? '0' : '50px')}`"
+         x-bind:style="`margin-left: ${sidebarOpen ? '260px' : (window.innerWidth <= 768 ? '0' : '50px')}`"
     >
         <main class="relative h-full w-full flex-1 overflow-auto transition-width z-[1]">
             {{$slot}}
