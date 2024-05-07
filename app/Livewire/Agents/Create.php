@@ -2,7 +2,7 @@
 
 namespace App\Livewire\Agents;
 
-use App\Jobs\ProcessAgentRag;
+
 use App\Models\Agent;
 use Livewire\Component;
 use App\Models\AgentJob;
