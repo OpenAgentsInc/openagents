@@ -9,6 +9,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class AnthropicAIGateway implements GatewayInterface
 {
+    use StreamingTrait;
+
     private Client $httpClient;
 
     public function __construct(Client $httpClient)
@@ -28,7 +30,7 @@ class AnthropicAIGateway implements GatewayInterface
             'model' => $params['model'],
             'messages' => $params['messages'],
             'max_tokens' => $params['max_tokens'],
-            'stream' => true, // Ensure this is true for streaming
+            'stream' => $params['stream'] ?? true,
             'system' => $systemMessage ?? 'You are a helpful assistant.',
         ];
 
@@ -51,49 +53,31 @@ class AnthropicAIGateway implements GatewayInterface
                     'anthropic-beta' => 'messages-2023-12-15',
                 ],
             ]);
-
-            $stream = $response->getBody();
-
-            $content = '';
-            $inputTokens = null;
-            $outputTokens = null;
-
-            foreach ($this->readStream($stream) as $event) {
-                if ($event['type'] === 'content_block_delta' && isset($event['delta']['text'])) {
-                    $content .= $event['delta']['text'];
-                } elseif ($event['type'] === 'message_start' && isset($event['message']['usage']['input_tokens'])) {
-                    $inputTokens = $event['message']['usage']['input_tokens'];
-                } elseif ($event['type'] === 'message_delta' && isset($event['usage']['output_tokens'])) {
-                    $outputTokens = $event['usage']['output_tokens'];
-                }
+            if ($data['stream']) {
+                return $this->extractFromStream($response, $params['stream_function']);
             }
+            $responseData = json_decode($response->getBody()->getContents(), true);
 
             return [
-                'content' => $content,
-                'input_tokens' => $inputTokens,
-                'output_tokens' => $outputTokens,
+                'content' => $responseData['content'][0]['text'],
+                'output_tokens' => $responseData['usage']['output_tokens'],
+                'input_tokens' => $responseData['usage']['input_tokens'],
             ];
         } catch (RequestException $e) {
             dd($e->getMessage());
         }
     }
 
-    private function readStream($stream)
+    // Overriden from StreamingTrait
+    protected function extractTokens(array $event, callable $streamFunction)
     {
-        $buffer = '';
-        while (! $stream->eof()) {
-            $buffer .= $stream->read(1024);
-            while (($pos = strpos($buffer, "\n")) !== false) {
-                $line = substr($buffer, 0, $pos);
-                $buffer = substr($buffer, $pos + 1);
-
-                if (str_starts_with($line, 'data: ')) {
-                    $data = json_decode(trim(substr($line, 5)), true);
-                    if ($data) {
-                        yield $data;
-                    }
-                }
-            }
+        if ($event['type'] === 'content_block_delta' && isset($event['delta']['text'])) {
+            $this->data['content'] .= $event['delta']['text'];
+            $streamFunction($event['delta']['text']);
+        } elseif ($event['type'] === 'message_start' && isset($event['message']['usage']['input_tokens'])) {
+            $this->data['input_tokens'] = $event['message']['usage']['input_tokens'];
+        } elseif ($event['type'] === 'message_delta' && isset($event['usage']['output_tokens'])) {
+            $this->data['output_tokens'] = $event['usage']['output_tokens'];
         }
     }
 }

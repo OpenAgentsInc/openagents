@@ -9,6 +9,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class TogetherAIGateway implements GatewayInterface
 {
+    use StreamingTrait;
+
     private Client $httpClient;
 
     public function __construct(Client $httpClient)
@@ -20,6 +22,7 @@ class TogetherAIGateway implements GatewayInterface
     {
         $data = [
             'model' => $params['model'],
+            'stream' => $params['stream'] ?? true,
             'messages' => array_map(function ($message) {
                 return [
                     'role' => $message['role'],
@@ -36,7 +39,9 @@ class TogetherAIGateway implements GatewayInterface
                     'Authorization' => 'Bearer '.env('TOGETHER_API_KEY'),
                 ],
             ]);
-
+            if ($data['stream']) {
+                return $this->extractFromStream($response, $params['stream_function']);
+            }
             $responseData = json_decode($response->getBody()->getContents(), true);
 
             return [

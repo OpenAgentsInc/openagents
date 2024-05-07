@@ -16,7 +16,7 @@ test('OpenAIGateway handles OpenAI responses correctly', function () {
             ['role' => 'user', 'content' => $prompt],
         ],
         'stream_function' => function ($response) use ($answer) {
-            expect($response['choices'][0]['delta']['content'])->toEqual($answer);
+            expect($response)->toEqual($answer);
         },
         'max_tokens' => 2000,
     ];
