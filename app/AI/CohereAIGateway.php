@@ -9,6 +9,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class CohereAIGateway implements GatewayInterface
 {
+    use StreamingTrait;
+
     private Client $httpClient;
 
     public function __construct(Client $httpClient)
@@ -48,7 +50,7 @@ class CohereAIGateway implements GatewayInterface
         $data = [
             'message' => $params['message'],
             'model' => $params['model'] ?? 'command-r',
-            'stream' => $params['stream'] ?? false,
+            'stream' => $params['stream'] ?? true,
             'preamble' => $params['preamble'] ?? null,
             'chat_history' => [],
             'conversation_id' => $params['conversation_id'] ?? null,
@@ -74,7 +76,9 @@ class CohereAIGateway implements GatewayInterface
                     'accept' => 'application/json',
                 ],
             ]);
-
+            if ($data['stream']) {
+                return $this->extractFromStream($response, $params['stream_function']);
+            }
             $responseData = json_decode($response->getBody()->getContents(), true);
 
             return [
@@ -84,6 +88,18 @@ class CohereAIGateway implements GatewayInterface
             ];
         } catch (RequestException $e) {
             dd($e->getMessage());
+        }
+    }
+
+    // Overriden from StreamingTrait
+    protected function extractTokens(array $event, callable $streamFunction)
+    {
+        if ($event['event_type'] === 'text-generation') {
+            $this->data['content'] .= $event['text'];
+            $streamFunction($event['text']);
+        } elseif ($event['event_type'] === 'stream-end') {
+            $this->data['input_tokens'] = $event['response']['meta']['tokens']['input_tokens'];
+            $this->data['output_tokens'] = $event['response']['meta']['tokens']['output_tokens'];
         }
     }
 }

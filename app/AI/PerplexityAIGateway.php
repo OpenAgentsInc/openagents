@@ -9,6 +9,8 @@ use GuzzleHttp\Exception\RequestException;
 
 class PerplexityAIGateway implements GatewayInterface
 {
+    use StreamingTrait;
+
     private Client $httpClient;
 
     public function __construct(Client $httpClient)
@@ -21,7 +23,7 @@ class PerplexityAIGateway implements GatewayInterface
         $data = [
             'model' => $params['model'],
             'messages' => $params['messages'],
-            'stream' => true, // Ensure this is true for streaming
+            'stream' => $params['stream'] ?? true,
         ];
 
         // Add optional parameters if provided
@@ -53,51 +55,18 @@ class PerplexityAIGateway implements GatewayInterface
                     'content-type' => 'application/json',
                 ],
             ]);
-
-            $stream = $response->getBody();
-
-            $content = '';
-            $inputTokens = null;
-            $outputTokens = null;
-
-            foreach ($this->readStream($stream) as $event) {
-                if (isset($event['choices'][0]['delta']['content'])) {
-                    $content .= $event['choices'][0]['delta']['content'];
-                }
-                if (isset($event['usage']['prompt_tokens'])) {
-                    $inputTokens = $event['usage']['prompt_tokens'];
-                }
-                if (isset($event['usage']['completion_tokens'])) {
-                    $outputTokens = $event['usage']['completion_tokens'];
-                }
+            if ($data['stream']) {
+                return $this->extractFromStream($response, $params['stream_function']);
             }
+            $responseData = json_decode($response->getBody()->getContents(), true);
 
             return [
-                'content' => $content,
-                'input_tokens' => $inputTokens,
-                'output_tokens' => $outputTokens,
+                'content' => $responseData['choices'][0]['message']['content'] ?? '',
+                'output_tokens' => $responseData['usage']['completion_tokens'] ?? 0,
+                'input_tokens' => $responseData['usage']['prompt_tokens'] ?? 0,
             ];
         } catch (RequestException $e) {
             dd($e->getMessage());
-        }
-    }
-
-    private function readStream($stream)
-    {
-        $buffer = '';
-        while (! $stream->eof()) {
-            $buffer .= $stream->read(1024);
-            while (($pos = strpos($buffer, "\n")) !== false) {
-                $line = substr($buffer, 0, $pos);
-                $buffer = substr($buffer, $pos + 1);
-
-                if (str_starts_with($line, 'data: ')) {
-                    $data = json_decode(trim(substr($line, 5)), true);
-                    if ($data) {
-                        yield $data;
-                    }
-                }
-            }
         }
     }
 }
