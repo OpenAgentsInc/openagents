@@ -99,9 +99,7 @@ class MistralAIGateway implements GatewayInterface
                 $content = $chunk['content'];
                 $inputTokens = $chunk['input_tokens'];
                 $outputTokens += $chunk['output_tokens'];
-
-                // Call the stream function with the updated content
-                $streamFunction($content);
+                $streamFunction($content, replace: true);
             }
 
             return [

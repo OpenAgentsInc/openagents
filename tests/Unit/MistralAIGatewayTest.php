@@ -15,7 +15,7 @@ test('MistralAIGateway handles mistral responses correctly', function () {
         'messages' => [
             ['role' => 'user', 'content' => $prompt],
         ],
-        'stream_function' => function ($response) use ($answer) {
+        'stream_function' => function ($response, $replace) use ($answer) {
             expect($response)->toEqual($answer);
         },
         'max_tokens' => 2000,

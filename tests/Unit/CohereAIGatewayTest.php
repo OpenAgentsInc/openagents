@@ -12,6 +12,7 @@ test('CohereAIGateway handles cohere responses correctly', function () {
 
     $parameters = [
         'message' => $prompt,
+        'stream' => false,
     ];
 
     $mockResponse = [

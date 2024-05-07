@@ -279,11 +279,11 @@ class Chat extends Component
 
     private function getStreamingCallback()
     {
-        return function ($response) {
-            $token = $response['choices'][0]['delta']['content'] ?? '';
+        return function ($content, bool $replace = false) {
             $this->stream(
                 to: 'streamtext'.$this->thread->id,
-                content: $token
+                content: $content,
+                replace: $replace,
             );
         };
     }

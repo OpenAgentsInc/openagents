@@ -16,6 +16,10 @@ test('PerplexityAIGateway handles perplexity responses correctly', function () {
             ['role' => 'user', 'content' => $prompt],
         ],
         'max_tokens' => 2000,
+        'stream_function' => function ($response) use ($answer) {
+            expect($response)->toEqual($answer);
+        },
+        'stream' => true,
     ];
 
     $mockResponse = [

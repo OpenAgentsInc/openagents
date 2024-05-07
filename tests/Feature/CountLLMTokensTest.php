@@ -30,7 +30,7 @@ test('LLM inference counts tokens for the Message model', function () {
     ];
     $httpClient = mockGuzzleClient($mockResponse);
 
-    $streamFunction = function ($chunk) {
+    $streamFunction = function ($chunk, $replace) {
         $this->assertIsString($chunk);
     };
     $result = SimpleInferencer::inference($prompt, $model, $thread, $streamFunction, $httpClient);

@@ -17,6 +17,10 @@ test('TogetherAIGateway handles llama responses correctly', function () {
             'content' => $prompt,
             'foo' => 'bar',
         ]],
+        'stream_function' => function ($response) use ($answer) {
+            expect($response)->toEqual($answer);
+        },
+        'stream' => false,
     ];
 
     $mockResponse = [

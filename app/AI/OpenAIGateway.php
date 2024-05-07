@@ -32,7 +32,7 @@ class OpenAIGateway implements GatewayInterface
         $model = $params['model'];
         $messages = $params['messages'];
         $max_tokens = $params['max_tokens'];
-        $stream_function = $params['stream_function'];
+        $streamFunction = $params['stream_function'];
 
         $message = '';
 
@@ -43,8 +43,9 @@ class OpenAIGateway implements GatewayInterface
         ]);
 
         foreach ($stream as $response) {
-            $stream_function($response);
-            $message .= $response['choices'][0]['delta']['content'] ?? '';
+            $content = $response['choices'][0]['delta']['content'] ?? '';
+            $streamFunction($content);
+            $message .= $content;
         }
 
         // OpenAI doesn't return token counts during streams (wtf) - https://github.com/openai-php/client/issues/186#issuecomment-2033185221
