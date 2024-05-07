@@ -1,4 +1,4 @@
-<x-blog-layout>
+<x-static-layout>
     <div class="flex">
         <div class="mx-auto">
             <div id="nostr-login-status">Loading...</div>
@@ -59,4 +59,4 @@
             }, 25)
         }
     </script>
-</x-blog-layout>
+</x-static-layout>

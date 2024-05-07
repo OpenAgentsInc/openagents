@@ -23,5 +23,4 @@
 
 @include('partials.twitter')
 
-<script src="https://player.vimeo.com/api/player.js"></script>
 </html>

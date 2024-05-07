@@ -1,4 +1,4 @@
-<x-blog-layout>
+<x-static-layout>
     <div class="pt-4 pb-24 bg-gray-100 dark:bg-gray-900">
         <div class="flex flex-col items-center pt-6 sm:pt-0">
             <a href="/" wire:navigate class="mt-12">
@@ -190,4 +190,4 @@
             </div>
         </div>
     </div>
-</x-blog-layout>
+</x-static-layout>
