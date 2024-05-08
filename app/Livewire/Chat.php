@@ -52,12 +52,14 @@ class Chat extends Component
             session()->put('selectedModel', request()->query('model'));
         }
 
-        if (request()->query('agent')) {)
+        // User clicked a link to chat with a specific agent. We need to redirect to the thread with the agent selected.
+        if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
             $agent = Agent::find(request()->query('agent'));
             if ($agent) {
-                $this->pending = $agent->is_rag_ready;
-                $this->selectedAgent = $this->getSelectedAgentFromId($agent->id);
+                $this->ensureThread();
+                //                $this->pending = $agent->is_rag_ready;
+                //                $this->selectedAgent = $this->getSelectedAgentFromId($agent->id);
             }
         }
 

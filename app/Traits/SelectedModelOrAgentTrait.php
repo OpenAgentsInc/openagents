@@ -54,6 +54,10 @@ trait SelectedModelOrAgentTrait
             $this->selectedAgent = $this->getSelectedAgentFromMessage($lastMessage);
         } elseif (! empty($this->thread->agent_id)) {
             $this->selectedAgent = $this->getSelectedAgentFromThread();
+        } elseif (session()->has('selectedAgent')) {
+            $this->selectedAgent = $this->getSelectedAgentFromId(session()->get('selectedAgent'));
+            session()->put('agent', $this->selectedAgent['id']);
+            session()->forget('selectedAgent');
         } elseif (session()->has('agent')) {
             $this->selectedAgent = $this->getSelectedAgentFromSession();
             session()->forget('agent');
