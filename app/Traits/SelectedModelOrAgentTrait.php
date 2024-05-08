@@ -85,13 +85,18 @@ trait SelectedModelOrAgentTrait
 
     private function getSelectedAgentFromThread()
     {
+        $capabilities = [];
+        if (is_string($this->thread->agent->capabilities)) {
+            $capabilities = json_decode($this->thread->agent->capabilities, true);
+        }
+
         return [
             'id' => $this->thread->agent_id,
             'name' => $this->thread->agent->name,
             'description' => $this->thread->agent->about,
             'instructions' => $this->thread->agent->prompt,
             'image' => $this->thread->agent->image_url,
-            'capabilities' => json_decode($this->thread->agent->capabilities, true),
+            'capabilities' => $capabilities,
         ];
     }
 
@@ -99,6 +104,10 @@ trait SelectedModelOrAgentTrait
     {
         $agentId = session('agent');
         $agent = Agent::find($agentId);
+        $capabilities = [];
+        if (is_string($agent->capabilities)) {
+            $capabilities = json_decode($agent->capabilities, true);
+        }
 
         return [
             'id' => $agent->id,
@@ -106,7 +115,7 @@ trait SelectedModelOrAgentTrait
             'description' => $agent->about,
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
-            'capabilities' => json_decode($agent->capabilities, true),
+            'capabilities' => $capabilities,
         ];
     }
 }
