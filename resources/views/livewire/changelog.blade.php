@@ -26,7 +26,7 @@
 
                 <x-pane title="May 6, 2024" borderColor="border-darkgray">
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/341">
-                        Improve model streaming
+                        Improved model streaming
                     </x-changelog-item>
                 </x-pane>
 
