@@ -1,22 +1,5 @@
 @php use App\AI\Models; @endphp
 <div class="pb-24">
-    <div class="px-4 flex flex-row justify-between">
-        <a href="/" class="mt-2" wire:navigate>
-            <x-logomark size="2"/>
-        </a>
-        @auth
-            <div class="flex flex-row items-center gap-x-6">
-                <a href="/create" wire:navigate>
-                    <x-secondary-button class="mt-3" dusk="create-agent">Create an agent</x-secondary-button>
-                </a>
-                <x-user-menu/>
-            </div>
-        @else
-            <div class="mt-2 flex flex-row items-center">
-                <x-login-buttons/>
-            </div>
-        @endauth
-    </div>
 
     <div class="w-full p-4 sm:w-[600px] md:w-[800px] lg:w-[900px] mx-auto">
         <div class="text-center mt-[48px] px-[15px]">
@@ -51,47 +34,47 @@
         </div>
 
 
-        <h2 class="font-bold mt-12">LLMs</h2>
-        <p class="text-gray">Large language models (LLMs) are general-purpose chat agents that can help with a wide
-            variety
-            of tasks.</p>
+        {{--        <h2 class="font-bold mt-12">LLMs</h2>--}}
+        {{--        <p class="text-gray">Large language models (LLMs) are general-purpose chat agents that can help with a wide--}}
+        {{--            variety--}}
+        {{--            of tasks.</p>--}}
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-            @foreach($models as $modelKey => $modelDetails)
-                <a href="/chat?model={{ $modelKey }}" wire:navigate>
-                    <div class="p-4 rounded-lg relative">
-                        <div class="absolute top-[18px] right-4">
-                            @php
-                                $userAccess = Models::getUserAccess();
-                                $indicator = Models::isProModelSelected($modelKey) ? 'Pro' : 'Free';
-                            @endphp
-                            <span
-                                    @if($indicator == 'Free')
-                                        class="bg-opacity-15 bg-white rounded-md px-2 py-1 text-green text-sm flex justify-center items-center w-[44px] h-[20px]"
-                                    @elseif($indicator == 'Pro')
-                                        class="bg-opacity-15 bg-white rounded-md px-1 py-1 text-gray-500 text-sm flex justify-center items-center w-[56px] h-[20px]"
-                            @endif
-                        >
-                            @if($indicator == 'Pro')
-                                    <x-icon.logo class="w-[12px] h-[12px] mr-[4px]"/>
-                                @endif
-                                {{ $indicator }}
-                        </span>
-                        </div>
-                        <div class="flex">
-                            <div class="w-[50px] h-[50px] sm:w-[80px] sm:h-[80px]">
-                                <img src="{{ asset('images/icons/' . $modelDetails['gateway'] . '.png') }}"
-                                     alt="{{ $modelDetails['gateway'] }}" class="w-full h-full">
-                            </div>
-                            <div class="flex-1 pl-4">
-                                <h4 class="text-md md:text-lg font-bold">{{ $modelDetails['name'] }}</h4>
-                                <span class="text-gray">{{ $modelDetails['description'] }}</span>
-                            </div>
-                        </div>
-                    </div>
-                </a>
-            @endforeach
-        </div>
+        {{--        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">--}}
+        {{--            @foreach($models as $modelKey => $modelDetails)--}}
+        {{--                <a href="/chat?model={{ $modelKey }}" wire:navigate>--}}
+        {{--                    <div class="p-4 rounded-lg relative">--}}
+        {{--                        <div class="absolute top-[18px] right-4">--}}
+        {{--                            @php--}}
+        {{--                                $userAccess = Models::getUserAccess();--}}
+        {{--                                $indicator = Models::isProModelSelected($modelKey) ? 'Pro' : 'Free';--}}
+        {{--                            @endphp--}}
+        {{--                            <span--}}
+        {{--                                    @if($indicator == 'Free')--}}
+        {{--                                        class="bg-opacity-15 bg-white rounded-md px-2 py-1 text-green text-sm flex justify-center items-center w-[44px] h-[20px]"--}}
+        {{--                                    @elseif($indicator == 'Pro')--}}
+        {{--                                        class="bg-opacity-15 bg-white rounded-md px-1 py-1 text-gray-500 text-sm flex justify-center items-center w-[56px] h-[20px]"--}}
+        {{--                            @endif--}}
+        {{--                        >--}}
+        {{--                            @if($indicator == 'Pro')--}}
+        {{--                                    <x-icon.logo class="w-[12px] h-[12px] mr-[4px]"/>--}}
+        {{--                                @endif--}}
+        {{--                                {{ $indicator }}--}}
+        {{--                        </span>--}}
+        {{--                        </div>--}}
+        {{--                        <div class="flex">--}}
+        {{--                            <div class="w-[50px] h-[50px] sm:w-[80px] sm:h-[80px]">--}}
+        {{--                                <img src="{{ asset('images/icons/' . $modelDetails['gateway'] . '.png') }}"--}}
+        {{--                                     alt="{{ $modelDetails['gateway'] }}" class="w-full h-full">--}}
+        {{--                            </div>--}}
+        {{--                            <div class="flex-1 pl-4">--}}
+        {{--                                <h4 class="text-md md:text-lg font-bold">{{ $modelDetails['name'] }}</h4>--}}
+        {{--                                <span class="text-gray">{{ $modelDetails['description'] }}</span>--}}
+        {{--                            </div>--}}
+        {{--                        </div>--}}
+        {{--                    </div>--}}
+        {{--                </a>--}}
+        {{--            @endforeach--}}
+        {{--        </div>--}}
 
     </div>
 </div>

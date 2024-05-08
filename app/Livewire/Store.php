@@ -2,8 +2,8 @@
 
 namespace App\Livewire;
 
-use App\AI\Agents;
 use App\AI\Models;
+use App\Models\Agent;
 use Livewire\Component;
 
 class Store extends Component
@@ -14,7 +14,7 @@ class Store extends Component
 
     public function mount()
     {
-        $this->agents = Agents::AGENTS();
+        $this->agents = Agent::all();
     }
 
     public function render()
