@@ -21,7 +21,7 @@
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                 <p class="text-[16px] text-gray">Now speaking with...</p>
 
-                                <div class="border border-darkgray rounded p-4">
+                                <div class="max-w-[400px] border border-darkgray rounded p-4">
                                     <img src="{{ $selectedAgent['image'] }}"
                                          alt="{{ $selectedAgent['name'] }}"
                                          class="w-[100px] h-[100px] rounded-full object-cover">

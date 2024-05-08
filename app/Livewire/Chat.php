@@ -254,6 +254,13 @@ class Chat extends Component
             return;
         }
 
+        //        dd($this->selectedAgent['capabilities']);
+
+        // If this agent doesn't have codebase capability, return - check if the array includes "codebase_search"
+        if (! $this->selectedAgent || ! $this->selectedAgent['capabilities'] || ! in_array('codebase_search', $this->selectedAgent['capabilities'])) {
+            return;
+        }
+
         // Return if text does not include the word 'index'
         //        if (strpos($this->input, 'index') === false) {
         //            return;
