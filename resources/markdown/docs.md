@@ -6,11 +6,14 @@
 
 2) During preparation, give your Agent a name and provide a brief description of what it's supposed to do.
 
-3) Then enter the "Instructions" that the Agent must follow to execute the work you want it to carry out. You can think of this field as an initial prompt for your agent.
+3) Then enter the "Instructions" that the Agent must follow to execute the work you want it to carry out. You can think
+   of this field as an initial prompt for your agent.
 
-4) In the "Knowledge" section, click "Upload files" to provide the information needed to specialize to your agent. The currently supported formats are URL, PDF and plain text.
+4) In the "Knowledge" section, click "Upload files" to provide the information needed to specialize to your agent. The
+   currently supported formats are URL, PDF and plain text.
 
-5) When you are finished with the configuration, click "Save". The Agent will be available in the sidebar on the OpenAgents chat screen.
+5) When you are finished with the configuration, click "Save". The Agent will be available in the sidebar on the
+   OpenAgents chat screen.
 
 # Developer documentation
 
@@ -53,18 +56,22 @@ It is under active development. All code is open source under AGPL3 [here](https
 * **Node** - An individual task within a flow
 * **Plugin** - A WebAssembly binary extending agent functionality
 
-
 ## How This Works (MVP v1 - RAG Agent)
 
 The user builds the Agent from the Agent Builder UI (MVP version in the img).
 
-The user provides name and description of what the agent does, and the specific parameters it needs to operate, that are "Instructions" and "Knowledge".
+The user provides name and description of what the agent does, and the specific parameters it needs to operate, that
+are "Instructions" and "Knowledge".
 
 As the user save the Agent build, they can evoke it (semantic routes) and interact with it via Chat UI.
 
-On the back-end, the Agent will send an event template to the [Nostr implementation](https://github.com/OpenAgentsInc/openagents/wiki/Nostr-integration) for the execution.
+On the back-end, the Agent will send an event template to
+the [Nostr implementation](https://github.com/OpenAgentsInc/openagents/wiki/Nostr-integration) for the execution.
 
-The communication between the OpenAgents platform Laravel codebase and Nostr are performed through a [gRPC client](https://github.com/OpenAgentsInc/openagents/wiki/Agent-Builder-MVP-Spec#laravel---grpc-connection) intermediary (OpenAgents gRPC Client documentation [here](https://openagentsinc.github.io/openagents-grpc-proto/__default.html#service-PoolConnector)).
+The communication between the OpenAgents platform Laravel codebase and Nostr are performed through
+a [gRPC client](https://github.com/OpenAgentsInc/openagents/wiki/Agent-Builder-MVP-Spec#laravel---grpc-connection)
+intermediary (OpenAgents gRPC Client
+documentation [here](https://openagentsinc.github.io/openagents-grpc-proto/__default.html#service-PoolConnector)).
 
 The event template is compiled with the following params:
 
@@ -72,7 +79,7 @@ The event template is compiled with the following params:
 
 * `query` = the LLM generated rag query from the user input ("Instructions") + chat history (**Thread**)
 
-* `documents` =  knowledge files as array of URLs (**File**)
+* `documents` = knowledge files as array of URLs (**File**)
 
 * `k` = how many chunks to return
 
@@ -82,13 +89,10 @@ The event template is compiled with the following params:
 
 * `encryptFor` = encrypt for a specific provider, so it can see it’s content
 
-
 ### RAG Agent Pipeline
-
 
 ![NVIDIA-RAG-diagram-scaled](https://github.com/OpenAgentsInc/openagents/assets/93095163/fa848c08-2c02-47bf-a8bd-93053a5e22bd)
 [source](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
-
 
 The above is a representation of a RAG Agent pipeline.
 
@@ -100,7 +104,9 @@ OpenAgents' RAG Agent handle these phases with the following plugins/standalone 
 
 * Vector DB: [Openagents Search Node](https://github.com/riccardobl/openagents-search)
 
-These three nodes are coordinated by the [RAG Coordinator](https://github.com/riccardobl/openagents-rag-coordinator-plugin) Extism [plugin](https://github.com/OpenAgentsInc/openagents/wiki/Plugins).
+These three nodes are coordinated by
+the [RAG Coordinator](https://github.com/riccardobl/openagents-rag-coordinator-plugin)
+Extism [plugin](https://github.com/OpenAgentsInc/openagents/wiki/Plugins).
 
 ## Getting paid for agent upgrades
 
@@ -131,4 +137,4 @@ You can watch a video introducing it here:
 
 
 To get early access, [DM us on X](https://twitter.com/OpenAgentsInc) (@OpenAgentsInc) with how you'd like to use the
-API. We'll start sending invites in late March.
+API. We'll send invites on a rolling basis.
