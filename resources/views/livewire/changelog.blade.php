@@ -9,6 +9,10 @@
         <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div class="mt-6 grid grid-cols-1 gap-10">
                 <x-pane title="May 8, 2024" borderColor="border-darkgray">
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/348"
+                                      post="https://twitter.com/OpenAgentsInc/status/1788264789828882573">
+                        Added featured agents
+                    </x-changelog-item>
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/347">
                         Fixed error on agent create
                     </x-changelog-item>
