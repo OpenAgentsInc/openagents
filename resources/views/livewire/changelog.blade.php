@@ -12,7 +12,7 @@
 
                 <x-pane title="May 7, 2024" borderColor="border-darkgray">
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/345"
-                                      docs="https://twitter.com/OpenAgentsInc/status/1788044800010162328">
+                                      post="https://twitter.com/OpenAgentsInc/status/1788044800010162328">
                         Added Llama3 via Groq
                     </x-changelog-item>
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/344">
