@@ -52,7 +52,7 @@ class Chat extends Component
             session()->put('selectedModel', request()->query('model'));
         }
 
-        if (request()->query('agent')) {
+        if (request()->query('agent')) {)
             session()->put('selectedAgent', request()->query('agent'));
             $agent = Agent::find(request()->query('agent'));
             if ($agent) {

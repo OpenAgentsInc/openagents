@@ -40,12 +40,6 @@ trait SelectedModelOrAgentTrait
         ];
     }
 
-    public function setSelectedModel($model)
-    {
-        $this->selectedModel = $model;
-        dd("set it to $model");
-    }
-
     public function setModelOrAgentForThread(Thread $thread)
     {
         $messages = $this->thread->messages()
