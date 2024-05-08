@@ -8,7 +8,11 @@
 
         <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div class="mt-6 grid grid-cols-1 gap-10">
-
+                <x-pane title="May 8, 2024" borderColor="border-darkgray">
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/347">
+                        Fixed error on agent create
+                    </x-changelog-item>
+                </x-pane>
 
                 <x-pane title="May 7, 2024" borderColor="border-darkgray">
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/345"
