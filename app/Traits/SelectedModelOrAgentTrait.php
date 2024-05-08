@@ -40,12 +40,6 @@ trait SelectedModelOrAgentTrait
         ];
     }
 
-    public function setSelectedModel($model)
-    {
-        $this->selectedModel = $model;
-        dd("set it to $model");
-    }
-
     public function setModelOrAgentForThread(Thread $thread)
     {
         $messages = $this->thread->messages()
@@ -60,6 +54,10 @@ trait SelectedModelOrAgentTrait
             $this->selectedAgent = $this->getSelectedAgentFromMessage($lastMessage);
         } elseif (! empty($this->thread->agent_id)) {
             $this->selectedAgent = $this->getSelectedAgentFromThread();
+        } elseif (session()->has('selectedAgent')) {
+            $this->selectedAgent = $this->getSelectedAgentFromId(session()->get('selectedAgent'));
+            session()->put('agent', $this->selectedAgent['id']);
+            session()->forget('selectedAgent');
         } elseif (session()->has('agent')) {
             $this->selectedAgent = $this->getSelectedAgentFromSession();
             session()->forget('agent');
