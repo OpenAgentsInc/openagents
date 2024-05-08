@@ -88,7 +88,7 @@ class Edit extends Component
                 Storage::disk($disk)->delete($path);
             }
 
-            $disk = config('filesystems.default');
+            $disk = config('filesystems.media_disk');
 
             // Get filename with extension
             $filenamewithextension = $this->image->getClientOriginalName();
@@ -100,15 +100,17 @@ class Edit extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'agents/profile/images/'.$filename.'_'.time().'.'.$extension;
+            $filenametostore = '/agents/images/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
 
             // Upload File to public
-            Storage::disk('s3')->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
+            Storage::disk($disk)->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
+
+            $url = Storage::disk($disk)->url($filenametostore);
 
             $saveimage = [
-                'disk' => 's3',
+                'disk' => $disk,
                 'path' => $filenametostore,
-                'url' => Storage::disk('s3')->url($filenametostore),
+                'url' => $url,
             ];
         }
 
@@ -125,8 +127,8 @@ class Edit extends Component
         $agent->user_id = $user->id;
         $agent->save();
 
-        if (! empty($this->files)) {
-            $disk = config('documents.disk');
+        if (!empty($this->files)) {
+            $disk = config('documents.disk'); // Assuming you are using the 'public' disk
 
             foreach ($this->files as $file) {
                 // Get filename with extension
@@ -139,12 +141,14 @@ class Edit extends Component
                 $extension = $file->getClientOriginalExtension();
 
                 // Filename to store with directory
-                $filenametostore = 'agents/files/documents/'.$filename.'_'.time().'.'.$extension;
+                $filenametostore = 'agents/files/' . $filename . '_' . time() . '.' . $extension;
 
-                // Upload File to s3
+                // Upload File to public disk
                 Storage::disk($disk)->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
+                // Generate URL without the "storage" part
                 $url = Storage::disk($disk)->url($filenametostore);
+
 
                 $agent->documents()->create([
                     'name' => $filename,
@@ -156,7 +160,6 @@ class Edit extends Component
             }
 
             // Send documents to Nostr for RAG
-
             ProcessAgentRag::dispatch($agent);
         }
 
