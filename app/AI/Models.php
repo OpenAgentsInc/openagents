@@ -27,6 +27,26 @@ class Models
                               designed for complex tasks, and excels in various natural language processing tasks.',
         ],
 
+        // GROQ
+        'llama3-8b-8192' => [
+            'name' => 'Llama 3 8B 8192',
+            'gateway' => 'groq',
+            'access' => 'user',
+            'max_tokens' => 8192,
+            'description' => 'Llama 3 8B is a language model by Meta,
+                             optimized for efficient deployment on consumer-size GPUs,
+                             and excels in various natural language processing tasks.',
+        ],
+
+        'llama3-70b-8192' => [
+            'name' => 'Llama 3 70B 8192',
+            'gateway' => 'groq',
+            'access' => 'pro',
+            'max_tokens' => 8192,
+            'description' => 'Llama 3 70B is a larger language model by Meta,
+                              designed for complex tasks, and excels in various natural language processing tasks.',
+        ],
+
         // MISTRAL
         'mistral-small-latest' => [
             'name' => 'Mistral Small',
