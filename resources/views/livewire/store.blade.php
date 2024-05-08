@@ -3,6 +3,7 @@
         <x-logomark :size="1"></x-logomark>
         <h3 class="mt-[36px] text-center leading-relaxed">How can we help you today?</h3>
 
+
         @if (count($agents) > 0)
             <div class="md:w-[800px] border border-offblack p-8 mt-12 rounded">
                 <div>
@@ -11,7 +12,10 @@
                         on
                         OpenAgents to
                         create
-                        custom AI agents.</p>
+                        custom AI agents. Watch our <a
+                                class="text-white select-auto pointer-events-auto hover:underline"
+                                href="https://twitter.com/OpenAgentsInc/status/1786675616437190707"
+                                target="_blank">Agent Builder video</a> to learn more.</p>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
