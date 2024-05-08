@@ -5,7 +5,7 @@
 
 
         @if (count($agents) > 0)
-            <div class="md:w-[800px] border border-offblack p-8 mt-12 rounded">
+            <div class="hidden sm:block md:w-[800px] border border-offblack p-8 mt-12 rounded">
                 <div>
                     <h4 class="font-bold">Featured Agents</h4>
                     <p class="text-gray leading-relaxed">Chat Agents combine instructions, extra knowledge, and any LLM
