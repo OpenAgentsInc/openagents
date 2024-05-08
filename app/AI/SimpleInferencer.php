@@ -47,6 +47,9 @@ class SimpleInferencer
                 case 'meta':
                     $client = new TogetherAIGateway($httpClient);
                     break;
+                case 'groq':
+                    $client = new GroqAIGateway($httpClient);
+                    break;
                 case 'anthropic':
                     $client = new AnthropicAIGateway($httpClient);
                     break;
