@@ -4,7 +4,7 @@
         <h3 class="mt-[36px] text-center leading-relaxed">How can we help you today?</h3>
 
         @if (count($agents) > 0)
-            <div class="border border-offblack p-8 mt-12 rounded">
+            <div class="md:w-[800px] border border-offblack p-8 mt-12 rounded">
                 <div>
                     <h4 class="font-bold">Featured Agents</h4>
                     <p class="text-gray leading-relaxed">Chat Agents combine instructions, extra knowledge, and any LLM
@@ -17,10 +17,11 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
 
                     @foreach($agents as $agent)
-                        <a class="pointer-events-auto select-auto" href="/chat?agent={{ $agent["id"] }}" wire:navigate>
+                        <a class="pointer-events-auto select-auto" href="/chat?agent={{ $agent["id"] }}"
+                           wire:navigate>
                             <div class="p-4 rounded-lg relative">
                                 <div class="flex">
-                                    <div class="w-[80px] h-[80px]">
+                                    <div class="mt-1 w-[20px] h-[20px] sm:w-[60px] sm:h-[60px]">
                                         <!-- Add agent icon or image here -->
                                         <img src="{{ $agent->image_url }}" alt="Agent" class="w-full h-full rounded">
 
