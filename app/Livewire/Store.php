@@ -14,7 +14,11 @@ class Store extends Component
 
     public function mount()
     {
-        $this->agents = Agent::all();
+        // Only grab the latest 2 agents
+        //        $this->agents = Agent::latest()->take(2)->get();
+
+        // Grab the agents where featured is true
+        $this->agents = Agent::where('featured', true)->get();
     }
 
     public function render()

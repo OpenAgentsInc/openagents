@@ -21,7 +21,7 @@
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                 <p class="text-[16px] text-gray">Now speaking with...</p>
 
-                                <div class="border border-darkgray rounded p-4">
+                                <div class="max-w-[400px] border border-darkgray rounded p-4">
                                     <img src="{{ $selectedAgent['image'] }}"
                                          alt="{{ $selectedAgent['name'] }}"
                                          class="w-[100px] h-[100px] rounded-full object-cover">
@@ -34,22 +34,8 @@
                             </div>
                         </div>
                     @elseif (count($messages) === 0)
-                        {{--                        <livewire:store/>--}}
-                        <div class="w-full h-[70vh] flex flex-col justify-center">
-                            <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
-                                <x-logomark :size="1"></x-logomark>
-                                <h3 class="mt-[36px] text-center leading-relaxed">How can we help you today?</h3>
-                                <p class="pointer-events-auto select-auto mt-[30px] text-gray">Blog: <a
-                                            class="underline" href="/goodbye-chatgpt" wire:navigate>Goodbye
-                                        ChatGPT</a></p>
+                        <livewire:store/>
 
-                                <p class="pointer-events-auto select-auto mt-[10px] text-gray">Video: <a
-                                            class="underline"
-                                            href="https://twitter.com/OpenAgentsInc/status/1786675616437190707"
-                                            target="_blank">Agent Builder</a></p>
-
-                            </div>
-                        </div>
                     @endif
 
 

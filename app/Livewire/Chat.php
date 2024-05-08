@@ -52,12 +52,14 @@ class Chat extends Component
             session()->put('selectedModel', request()->query('model'));
         }
 
+        // User clicked a link to chat with a specific agent. We need to redirect to the thread with the agent selected.
         if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
             $agent = Agent::find(request()->query('agent'));
             if ($agent) {
-                $this->pending = $agent->is_rag_ready;
-                $this->selectedAgent = $this->getSelectedAgentFromId($agent->id);
+                $this->ensureThread();
+                //                $this->pending = $agent->is_rag_ready;
+                //                $this->selectedAgent = $this->getSelectedAgentFromId($agent->id);
             }
         }
 
@@ -251,6 +253,13 @@ class Chat extends Component
     {
         // If we're not in env local, return
         if (app()->environment() !== 'local') {
+            return;
+        }
+
+        //        dd($this->selectedAgent['capabilities']);
+
+        // If this agent doesn't have codebase capability, return - check if the array includes "codebase_search"
+        if (! $this->selectedAgent || ! $this->selectedAgent['capabilities'] || ! in_array('codebase_search', $this->selectedAgent['capabilities'])) {
             return;
         }
 
