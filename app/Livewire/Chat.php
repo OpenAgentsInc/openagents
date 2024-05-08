@@ -6,7 +6,6 @@ use App\AI\GreptileGateway;
 use App\AI\NostrInference;
 use App\AI\NostrRag;
 use App\AI\SimpleInferencer;
-use App\Events\AgentRagReady;
 use App\Models\Agent;
 use App\Models\AgentFile;
 use App\Models\Codebase;
@@ -49,7 +48,6 @@ class Chat extends Component
 
     public function mount($id = null)
     {
-
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
         }
@@ -59,7 +57,7 @@ class Chat extends Component
             $agent = Agent::find(request()->query('agent'));
             if ($agent) {
                 $this->pending = $agent->is_rag_ready;
-                $this->selectedAgent = $this->getSelectedAgentArray($agent);
+                $this->selectedAgent = $this->getSelectedAgentFromId($agent->id);
             }
         }
 

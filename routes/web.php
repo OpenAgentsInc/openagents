@@ -19,6 +19,8 @@ use App\Livewire\Settings;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
+//Route::get('/', Store::class)->name('store');
+
 // CHAT
 Route::get('/', function () {
     return redirect()->route('chat');
