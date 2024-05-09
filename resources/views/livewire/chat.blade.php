@@ -6,7 +6,6 @@
                 <div class="h-[52px] sticky top-0 flex flex-row items-center justify-between z-10 px-5 bg-black">
                     <div class="absolute left-1/2 -translate-x-1/2"></div>
                     <livewire:model-selector :thread="$thread"/>
-
                     @auth
                         <x-user-menu/>
                     @else
@@ -22,7 +21,6 @@
                         <div class="w-full h-[70vh] flex flex-col justify-center">
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                 <p class="text-[16px] text-gray">Now speaking with...</p>
-
                                 <div class="max-w-[400px] border border-darkgray rounded p-4">
                                     <img src="{{ $selectedAgent['image'] }}" alt="{{ $selectedAgent['name'] }}"
                                          class="w-[100px] h-[100px] rounded-full object-cover">
@@ -37,16 +35,13 @@
                         </div>
                     @elseif (count($messages) === 0 && $selectedModel)
                         <div class="w-full h-[70vh] flex flex-col justify-center">
-                            <div
-                                    class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                            <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
                                 <p class="text-[16px] text-gray">Now speaking with...</p>
-
                                 <div class="max-w-[400px] border border-darkgray rounded p-4">
                                     @php
                                         $modelDetail = Models::MODELS[$selectedModel];
                                         $userAccess = Models::getUserAccess($selectedModel);
                                         $indicator = Models::isProModelSelected($selectedModel) ? 'Pro' : 'Free';
-
                                     @endphp
                                     <img src="{{ Models::getModelPicture($selectedModel) }}"
                                          alt="{{ $modelDetail['name'] }}"
@@ -71,11 +66,7 @@
                                 </div>
                             </div>
                         </div>
-                    @elseif (count($messages) === 0)
-                        <livewire:store/>
-
                     @endif
-
 
                     @php
                         $models = Models::MODELS;
