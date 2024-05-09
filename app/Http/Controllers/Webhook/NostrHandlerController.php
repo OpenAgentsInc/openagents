@@ -43,9 +43,6 @@ class NostrHandlerController extends Controller
                 'kind' => $payload['kind'],
             ];
 
-            $logger->log('info', 'Event received: Job');
-            $logger->log('info', json_encode($payload));
-
             if (isset($payload['tags'])) {
                 $extractedData['tags'] = [];
                 foreach ($payload['tags'] as $tag) {
@@ -56,8 +53,7 @@ class NostrHandlerController extends Controller
             //            Log::channel('slack')->info(json_encode($extractedData));
 
             if ($status == 2) {
-                $logger->log('info', 'Event with status 2');
-                $logger->log('info', json_encode($payload));
+                $logger->log('info', 'Event with status 2: '.json_encode($payload));
                 // log the error
                 //                Log::error($data);
                 //                Log::channel('slack')->error(json_encode($extractedData));
@@ -68,8 +64,7 @@ class NostrHandlerController extends Controller
                 ];
             } elseif ($status == 3) {
 
-                $logger->log('info', 'Event with status 3');
-                $logger->log('info', json_encode($payload));
+                $logger->log('info', 'Event with status 3: '.json_encode($payload));
 
                 $job_id = $payload['id'];
                 $content = $payload['result']['content'];
@@ -91,7 +86,7 @@ class NostrHandlerController extends Controller
                     NostrJobReady::dispatch($nostr_job);
                 }
 
-                $this->ProcessAgent($job_id);
+                $this->processAgent($job_id);
 
                 return [
                     'status' => 'success',
@@ -99,6 +94,8 @@ class NostrHandlerController extends Controller
                     'data' => $result,
                 ];
             } else {
+                $logger->log('info', 'Event with status something else: '.json_encode($payload));
+
                 return [
                     'status' => 'success',
                     'message' => 'data skipped',
@@ -107,7 +104,7 @@ class NostrHandlerController extends Controller
         }
     }
 
-    public function ProcessAgent($job_id)
+    public function processAgent($job_id)
     {
         $agentJob = AgentJob::where('job_id', $job_id)->first();
 
