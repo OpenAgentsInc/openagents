@@ -95,6 +95,8 @@ Route::get('/log', function () {
         'flushInterval' => 1000,
     ]);
     $logger->log('info', 'TEST LOG RECEIVED');
+
+    return response()->json(['ok' => true]);
 });
 
 // Catch-all redirect to the homepage
