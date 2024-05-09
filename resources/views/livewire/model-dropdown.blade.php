@@ -14,22 +14,12 @@
              aria-labelledby="hs-dropdown-with-header">
             <div class="py-0 first:pt-0 last:pb-0 bg-black">
                 @if ($showAgents)
-                    @php
-                        $userAccess = $this->getUserAccess();
-                        $disabled = $userAccess != 'pro' ? 'opacity-25' : '';
-                    @endphp
                     <a wire:click="createAgent" dusk="create-agent"
-                       @if ($userAccess == 'pro') @else
-                           x-data
-                       x-tooltip.raw="Upgrade to Pro to create agents" @endif
-                       class="py-1 w-full flex items-center gap-x-3.5 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
+                       class="py-1 w-full flex items-center gap-x-3.5 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
                         <x-icon.agent-white class="w-6 h-6"></x-icon.agent-white>
                         <div class="flex flex-col">
                             <span class="my-0 text-sm">Create agent</span>
                         </div>
-                        @if ($userAccess != 'pro')
-                            <span class="ml-auto text-gray-500">Pro</span>
-                        @endif
                     </a>
                     @foreach ($agents as $agent)
                         <a wire:click="selectAgent('{{ $agent['id'] }}')" x-data x-tooltip.raw="{{ $agent['about'] }}"
@@ -42,29 +32,6 @@
                     @endforeach
                     <div class="py-2 w-full mb-2 border-b border-offblack"></div>
                 @endif
-
-
-
-                {{--                @if ($this->getRecentAgent())--}}
-
-                {{--                    <div class="text-left py-1 px-3 mb-1">--}}
-                {{--                        <small class="text-gray">Recents</small>--}}
-                {{--                    </div>--}}
-
-                {{--                    @forelse ($this->getRecentAgent() as $agent)--}}
-                {{--                        <a wire:click="selectAgent('{{ $agent['id'] }}')" x-data--}}
-                {{--                           x-tooltip.raw="{{ $agent['description'] }}"--}}
-                {{--                           class="flex items-center gap-x-3.5 py-1 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">--}}
-                {{--                            <img src="{{ $agent['image'] }}" alt="{{ $agent['name'] }}" class="w-6 h-6">--}}
-                {{--                            <div class="flex flex-col">--}}
-                {{--                                <span class="text-indigo-50 my-0 text-sm">{{ $agent['name'] }}</span>--}}
-                {{--                            </div>--}}
-                {{--                        </a>--}}
-                {{--                    @empty--}}
-                {{--                    @endforelse--}}
-                {{--                    <hr class="text-gray my-1"/>--}}
-                {{--                @endif--}}
-
 
                 @foreach ($models as $modelKey => $modelName)
                     @php
