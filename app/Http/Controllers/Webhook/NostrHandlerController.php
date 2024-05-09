@@ -15,6 +15,16 @@ class NostrHandlerController extends Controller
 {
     public function handleEvent(Request $request)
     {
+        $logger = new OpenObserveLogger([
+            'baseUrl' => 'https://pool.openagents.com:5080',
+            'org' => 'default',
+            'stream' => 'logs',
+            'batchSize' => 1,
+            'flushInterval' => 1000,
+        ]);
+
+        $logger->log('info', 'EVENT RECEIVED - CHECKING AGAINST SECRET');
+
         $data = $request->all();
 
         $secret = $request->query('secret');
@@ -24,13 +34,6 @@ class NostrHandlerController extends Controller
             return response()->json(['error' => 'Invalid token'], 403);
         }
 
-        $logger = new OpenObserveLogger([
-            'baseUrl' => 'https://pool.openagents.com:5080',
-            'org' => 'default',
-            'stream' => 'logs',
-            'batchSize' => 1,
-            'flushInterval' => 1000,
-        ]);
         $logger->log('info', 'Event received');
         $logger->log('info', json_encode($data));
 
