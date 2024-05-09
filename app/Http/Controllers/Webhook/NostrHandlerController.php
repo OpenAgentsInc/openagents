@@ -44,6 +44,7 @@ class NostrHandlerController extends Controller
             ];
 
             $logger->log('info', 'Event received: Job');
+            $logger->log('info', json_encode($payload));
 
             if (isset($payload['tags'])) {
                 $extractedData['tags'] = [];
