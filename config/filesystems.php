@@ -14,6 +14,7 @@ return [
     */
 
     'default' => env('FILESYSTEM_DISK', 'local'),
+    'media_disk' => env('FILESYSTEM_MEDIA_DISK', 'public'),
 
     /*
     |--------------------------------------------------------------------------
@@ -39,7 +40,7 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/storage',
+            'url' => env('APP_URL') . '/storage',
             'visibility' => 'public',
             'throw' => false,
         ],
@@ -58,11 +59,20 @@ return [
 
         'documents' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/documents',
+            'root' => storage_path('app/public/documents'), // Set the root path for the files
+            'url' => env('APP_URL') . '/documents', // Define the URL prefix you want
             'visibility' => 'public',
             'throw' => false,
         ],
+
+        'media' => [
+            'driver' => 'local',
+            'root' => storage_path('app/public/media'), // Set the root path for the files
+            'url' => env('APP_URL') . '/media', // Define the URL prefix you want
+            'visibility' => 'public',
+            'throw' => false,
+        ],
+
 
     ],
 
