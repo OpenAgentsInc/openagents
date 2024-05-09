@@ -36,7 +36,7 @@ trait SelectedModelOrAgentTrait
             'description' => $agent->about,
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
-            'capabilities' => json_decode($agent->capabilities, true),
+            'capabilities' => $this->safeDecode($agent->capabilities),
         ];
     }
 
@@ -79,24 +79,19 @@ trait SelectedModelOrAgentTrait
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
             'image' => $message['agent']['image_url'],
-            'capabilities' => json_decode($message['agent']['capabilities'] ?? '[]', true),
+            'capabilities' => $this->safeDecode($message['agent']['capabilities']),
         ];
     }
 
     private function getSelectedAgentFromThread()
     {
-        $capabilities = [];
-        if (is_string($this->thread->agent->capabilities)) {
-            $capabilities = json_decode($this->thread->agent->capabilities, true);
-        }
-
         return [
             'id' => $this->thread->agent_id,
             'name' => $this->thread->agent->name,
             'description' => $this->thread->agent->about,
             'instructions' => $this->thread->agent->prompt,
             'image' => $this->thread->agent->image_url,
-            'capabilities' => $capabilities,
+            'capabilities' => $this->safeDecode($this->thread->agent->capabilities),
         ];
     }
 
@@ -104,10 +99,6 @@ trait SelectedModelOrAgentTrait
     {
         $agentId = session('agent');
         $agent = Agent::find($agentId);
-        $capabilities = [];
-        if (is_string($agent->capabilities)) {
-            $capabilities = json_decode($agent->capabilities, true);
-        }
 
         return [
             'id' => $agent->id,
@@ -115,7 +106,12 @@ trait SelectedModelOrAgentTrait
             'description' => $agent->about,
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
-            'capabilities' => $capabilities,
+            'capabilities' => $this->safeDecode($agent->capabilities),
         ];
+    }
+
+    private function safeDecode($json)
+    {
+        return is_string($json) ? json_decode($json, true) : [];
     }
 }
