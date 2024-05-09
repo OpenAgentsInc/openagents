@@ -23,9 +23,9 @@ class NostrHandlerController extends Controller
             'flushInterval' => 1000,
         ]);
 
-        $logger->log('info', 'EVENT RECEIVED - CHECKING AGAINST SECRET');
-
+        $logger->log('info', 'EVENT RECEIVED');
         $data = $request->all();
+        $logger->log('info', json_encode($data));
 
         $secret = $request->query('secret');
         $main_secret = config('nostr.webhook_secret');
