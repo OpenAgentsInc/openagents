@@ -79,7 +79,7 @@ trait SelectedModelOrAgentTrait
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
             'image' => $message['agent']['image_url'],
-            'capabilities' => $this->safeDecode($message['agent']['capabilities']),
+            'capabilities' => $this->safeDecode($message['agent']['capabilities'] ?? null),
         ];
     }
 
