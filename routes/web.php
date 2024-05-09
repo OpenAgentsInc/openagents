@@ -16,6 +16,7 @@ use App\Livewire\MarkdownPage;
 use App\Livewire\PrismDashboard;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
+use App\Services\OpenObserveLogger;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
@@ -84,6 +85,17 @@ Route::get('/admin', Admin::class)->name('admin');
 
 // Nostr Webhook
 Route::post('/webhook/nostr', [NostrHandlerController::class, 'handleEvent']);
+
+Route::get('/log', function () {
+    $logger = new OpenObserveLogger([
+        'baseUrl' => 'https://pool.openagents.com:5080',
+        'org' => 'default',
+        'stream' => 'logs',
+        'batchSize' => 1,
+        'flushInterval' => 1000,
+    ]);
+    $logger->log('info', 'TEST LOG RECEIVED');
+});
 
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {
