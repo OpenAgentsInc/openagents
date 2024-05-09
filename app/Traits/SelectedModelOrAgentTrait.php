@@ -13,11 +13,15 @@ trait SelectedModelOrAgentTrait
 
     public $selectedAgent = [];
 
+    // Track if a selection has been made by user
+    public $hasSelection = false;
+
     #[On('select-model')]
     public function selectedModel($model)
     {
         $this->selectedModel = $model;
         $this->selectedAgent = [];
+        $this->hasSelection = true;
     }
 
     #[On('select-agent')]
@@ -38,6 +42,11 @@ trait SelectedModelOrAgentTrait
             'image' => $agent->image_url,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];
+    }
+
+    private function safeDecode($json)
+    {
+        return is_string($json) ? json_decode($json, true) : [];
     }
 
     public function setModelOrAgentForThread(Thread $thread)
@@ -108,10 +117,5 @@ trait SelectedModelOrAgentTrait
             'image' => $agent->image_url,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];
-    }
-
-    private function safeDecode($json)
-    {
-        return is_string($json) ? json_decode($json, true) : [];
     }
 }

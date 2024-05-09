@@ -139,11 +139,18 @@ class Chat extends Component
         }
     }
 
+    //    #[On('select-model')]
+    //    public function selectModel()
+    //    {
+    //        dd('did we?');
+    //    }
+
     #[On('select-agent')]
     public function selectAgent($agentId)
     {
         $agent = Agent::find($agentId);
         if ($agent) {
+            $this->hasSelection = true;
             $this->selectedAgent = [
                 'id' => $agent->id,
                 'name' => $agent->name,
