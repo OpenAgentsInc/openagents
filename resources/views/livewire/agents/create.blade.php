@@ -63,7 +63,7 @@
                 </div>
 
                 <div class="mt-5 select-none">
-                    <label for="files"> Knowledge (Coming soon)</label>
+                    <label for="files"> Knowledge</label>
                     <div class="mt-1 border-2 border-darkgray rounded-md">
                         @error('files.*')
                         <span class="error">{{ $message }}</span>
