@@ -405,13 +405,11 @@ class Chat extends Component
     #[On('echo:threads.{thread.id},NostrJobReady')]
     public function process_nostr($event)
     {
-        dd($event);
-
         $this->selectedModel = 'mistral-small-latest';
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
 
-        $job = NostrJob::where('thread_id', $this->thread->id)->find($event['id']);
+        $job = NostrJob::where('thread_id', $this->thread->id)->find($event['job']['id']);
 
         // Simply do it
         $output = NostrInference::inference($this->selectedModel, $job, $this->getStreamingCallback());
