@@ -14,12 +14,21 @@
              aria-labelledby="hs-dropdown-with-header">
             <div class="py-0 first:pt-0 last:pb-0 bg-black">
                 @if ($showAgents)
+                    @php
+                        $disabled = auth()->check() ? '' : 'opacity-25';
+                    @endphp
                     <a wire:click="createAgent" dusk="create-agent"
-                       class="py-1 w-full flex items-center gap-x-3.5 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15">
+                       @if (!auth()->check())
+                           x-data x-tooltip.raw="Log in or sign up to create agents"
+                       @endif
+                       class="py-1 w-full flex items-center gap-x-3.5 px-3 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 text-gray-400 hover:text-gray-400 hover:bg-white/15 {{ $disabled }}">
                         <x-icon.agent-white class="w-6 h-6"></x-icon.agent-white>
                         <div class="flex flex-col">
                             <span class="my-0 text-sm">Create agent</span>
                         </div>
+                        @if (!auth()->check())
+                            <span class="ml-auto text-gray-500">Join</span>
+                        @endif
                     </a>
                     @foreach ($agents as $agent)
                         <a wire:click="selectAgent('{{ $agent['id'] }}')" x-data x-tooltip.raw="{{ $agent['about'] }}"
