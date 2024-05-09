@@ -28,6 +28,7 @@ trait SelectedModelOrAgentTrait
     public function selectedAgent($id)
     {
         $this->selectedAgent = $this->getSelectedAgentFromId($id);
+        $this->hasSelection = true;
     }
 
     private function getSelectedAgentFromId($id)

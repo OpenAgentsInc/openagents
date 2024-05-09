@@ -61,6 +61,7 @@ class Chat extends Component
         // User clicked a link to chat with a specific agent. We need to redirect to the thread with the agent selected.
         if (request()->query('agent')) {
             session()->put('selectedAgent', request()->query('agent'));
+            session()->put('redirecting-with-selection', true);
             $agent = Agent::find(request()->query('agent'));
             if ($agent) {
                 $this->ensureThread();
@@ -117,7 +118,6 @@ class Chat extends Component
             if ($recentThread) {
                 $this->thread = $recentThread;
                 $this->dispatch('thread-update');
-                session()->put('redirecting-with-selection', true);
 
                 return $this->redirect('/chat/'.$this->thread->id, true);
             }
@@ -140,7 +140,7 @@ class Chat extends Component
             $thread = Thread::create($data);
             $this->thread = $thread;
             $this->dispatch('thread-update');
-            session()->put('redirecting-with-selection', true);
+            //            session()->put('redirecting-with-selection', true);
 
             return $this->redirect('/chat/'.$this->thread->id, true);
         }
