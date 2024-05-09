@@ -62,14 +62,13 @@
                     @enderror
                 </div>
 
-                <div class="mt-5 opacity-[40%] select-none pointer-events-none">
+                <div class="mt-5 select-none">
                     <label for="files"> Knowledge (Coming soon)</label>
                     <div class="mt-1 border-2 border-darkgray rounded-md">
                         @error('files.*')
                         <span class="error">{{ $message }}</span>
                         @enderror
                         <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
-                                    disabled
                                     imagePreviewMaxHeight="300"
                                     acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
                                     allowFileSizeValidation maxFileSize="10MB"/>

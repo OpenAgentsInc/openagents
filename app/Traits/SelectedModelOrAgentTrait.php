@@ -36,7 +36,7 @@ trait SelectedModelOrAgentTrait
             'description' => $agent->about,
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
-            'capabilities' => json_decode($agent->capabilities, true),
+            'capabilities' => $this->safeDecode($agent->capabilities),
         ];
     }
 
@@ -79,7 +79,7 @@ trait SelectedModelOrAgentTrait
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
             'image' => $message['agent']['image_url'],
-            'capabilities' => json_decode($message['agent']['capabilities'] ?? '[]', true),
+            'capabilities' => $this->safeDecode($message['agent']['capabilities'] ?? null),
         ];
     }
 
@@ -91,7 +91,7 @@ trait SelectedModelOrAgentTrait
             'description' => $this->thread->agent->about,
             'instructions' => $this->thread->agent->prompt,
             'image' => $this->thread->agent->image_url,
-            'capabilities' => json_decode($this->thread->agent->capabilities, true),
+            'capabilities' => $this->safeDecode($this->thread->agent->capabilities),
         ];
     }
 
@@ -106,7 +106,12 @@ trait SelectedModelOrAgentTrait
             'description' => $agent->about,
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
-            'capabilities' => json_decode($agent->capabilities, true),
+            'capabilities' => $this->safeDecode($agent->capabilities),
         ];
+    }
+
+    private function safeDecode($json)
+    {
+        return is_string($json) ? json_decode($json, true) : [];
     }
 }
