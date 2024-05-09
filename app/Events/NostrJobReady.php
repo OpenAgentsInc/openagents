@@ -37,7 +37,7 @@ class NostrJobReady implements ShouldBroadcast
     public function broadcastOn()
     {
         return [
-            new Channel('threads'.$this->job->thread_id),
+            new Channel('threads.'.$this->job->thread_id),
         ];
     }
 }
