@@ -25,7 +25,7 @@ class NostrService
 
     protected $encryptFor = '';
 
-    protected $warmUp = false;
+    protected bool $warmUp = false;
 
     protected $cacheDuration = -1;
 
@@ -66,7 +66,7 @@ class NostrService
         return $this;
     }
 
-    public function quantize($quantize)
+    public function quantize(bool $quantize)
     {
         $this->quantize = $quantize;
 
@@ -87,7 +87,7 @@ class NostrService
         return $this;
     }
 
-    public function warmUp($warmUp)
+    public function warmUp(bool $warmUp)
     {
         $this->warmUp = $warmUp;
 
@@ -132,7 +132,7 @@ class NostrService
         $param2->setKey('overlap')->setValue(["$this->overlap"]);
 
         $param3 = new JobParam();
-        $param3->setKey('quantize')->setValue(["$this->quantize"]);
+        $param3->setKey('quantize')->setValue([$this->quantize ? 'true' : 'false']);
 
         $param4 = new JobParam();
         $param4->setKey('k')->setValue(["$this->k"]);
@@ -141,7 +141,7 @@ class NostrService
         $param5->setKey('cache-duration-hint')->setValue(["$this->cacheDuration"]);
 
         $param6 = new JobParam();
-        $param6->setKey('warm-up')->setValue(["$this->warmUp"]);
+        $param6->setKey('warm-up')->setValue([$this->warmUp ? 'true' : 'false']);
 
         $param7 = new JobParam();
         $param7->setKey('main')->setValue(['https://github.com/OpenAgentsInc/openagents-rag-coordinator-plugin/releases/download/v0.2/rag.wasm']);

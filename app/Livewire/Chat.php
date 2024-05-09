@@ -9,6 +9,7 @@ use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\AgentFile;
 use App\Models\Codebase;
+use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\NostrService;
@@ -195,8 +196,8 @@ class Chat extends Component
         if (! $this->selectedAgent) {
             $this->js('$wire.simpleRun()');
         } else {
-            // $this->js('$wire.ragRun()');
-            $this->js('$wire.runAgentWithoutRag()');
+            $this->js('$wire.ragRun()');
+            //$this->js('$wire.runAgentWithoutRag()');
         }
     }
 
