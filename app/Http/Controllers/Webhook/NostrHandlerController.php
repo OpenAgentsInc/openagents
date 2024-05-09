@@ -77,6 +77,9 @@ class NostrHandlerController extends Controller
                 // fetch the nostr job
                 $nostr_job = NostrJob::where('job_id', $job_id)->first();
                 if ($nostr_job) {
+
+                    $logger->log('info', 'Found NostrJob: '.$job_id);
+
                     // update the model payload and content
                     // $nostr_job->payload = $payload;
                     $nostr_job->content = $content;
@@ -84,6 +87,8 @@ class NostrHandlerController extends Controller
 
                     // Dispatch a job to the thread_id using websocket
                     NostrJobReady::dispatch($nostr_job);
+                } else {
+                    $logger->log('info', 'NostrJob not found: '.$job_id);
                 }
 
                 $this->processAgent($job_id);
@@ -94,7 +99,7 @@ class NostrHandlerController extends Controller
                     'data' => $result,
                 ];
             } else {
-                $logger->log('info', 'Event with status something else: '.json_encode($payload));
+                $logger->log('info', 'Event with status '.$status.': '.json_encode($payload));
 
                 return [
                     'status' => 'success',
