@@ -11,7 +11,7 @@
                 <h1 class="text-[25px] md:text-3xl font-bold">{{ $agent->name }}</h1>
                 <h5 class="text-sm font-semibold">Edit agent</h5>
             </div>
-            <a href="{{route('agents')}}" wire:navigate class="order-1 mb-4 md:mb-0 md:text-left">
+            <a href="{{ route('agents') }}" wire:navigate class="order-1 mb-4 md:mb-0 md:text-left">
                 <h3 class="text-[16px] text-gray">&larr; Back</h3>
             </a>
         </div>
@@ -92,14 +92,17 @@
 
                 <div class="my-6 block">
                     <label for="files"> Documents</label>
+                    <div class="my-2 text-neutral-400 text-sm font-normal font-['JetBrains Mono']">If you upload files
+                        under Knowledge, conversations with your Agent may include its contents.</div>
+                        @livewire('agents.partials.documents',['agent_id' => $agent->id])
                     <div class="mt-1 border-2 border-darkgray rounded-md">
-                    @error('files.*')
-                        <span class="error">{{ $message }}</span>
-                    @enderror
-                    <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
-                        imagePreviewMaxHeight="300"
-                        acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
-                        allowFileSizeValidation maxFileSize="10MB" />
+                        @error('files.*')
+                            <span class="error">{{ $message }}</span>
+                        @enderror
+                        <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
+                            imagePreviewMaxHeight="300"
+                            acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
+                            allowFileSizeValidation maxFileSize="10MB" />
                     </div>
                 </div>
 

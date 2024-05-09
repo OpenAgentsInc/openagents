@@ -38,6 +38,7 @@ class Edit extends Component
 
         abort_if($user->id !== $this->agent->user_id, 403, 'permission denied').
 
+
     $this->name = $this->agent->name;
         $this->about = $this->agent->about;
         $this->prompt = $this->agent->prompt;
