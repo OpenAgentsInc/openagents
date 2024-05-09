@@ -57,7 +57,7 @@ class Create extends Component
     {
         //    $this->validate();
 
-        $disk = config('documents.disk');
+
 
         $user = auth()->user();
         if (! $user) {
@@ -70,6 +70,8 @@ class Create extends Component
 
         if (! is_null($this->image) || ! empty($this->image)) {
 
+            $disk = config('filesystems.media_disk');
+
             // Get filename with extension
             $filenamewithextension = $this->image->getClientOriginalName();
 
@@ -80,7 +82,7 @@ class Create extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'agents/profile/images/'.$filename.'_'.time().'.'.$extension;
+            $filenametostore = 'agents/profile/images/' . str($filename)->slug()->toString() . '_' . time() . '.' . $extension;
 
             // Upload File to public
             Storage::disk($disk)->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
@@ -114,7 +116,8 @@ class Create extends Component
         $agent->is_rag_ready = false;
         $agent->save();
 
-        if (! empty($this->files)) {
+        if (!empty($this->files)) {
+            $disk = config('documents.disk');
             foreach ($this->files as $file) {
                 // Get filename with extension
                 $filenamewithextension = $file->getClientOriginalName();
@@ -126,12 +129,13 @@ class Create extends Component
                 $extension = $file->getClientOriginalExtension();
 
                 // Filename to store with directory
-                $filenametostore = 'agents/files/documents/'.$filename.'_'.time().'.'.$extension;
+                $filenametostore = 'agents/files/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
 
                 // Upload File to public
                 Storage::disk($disk)->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
                 $url = Storage::disk($disk)->url($filenametostore);
+
 
                 $agent->documents()->create([
                     'name' => $filename,
@@ -148,15 +152,7 @@ class Create extends Component
 
         }
 
-        // session()->flash('message', 'Form submitted successfully!');
-        //        $this->alert('success', 'Form submitted successfully');
 
-        //        $this->reset(); // Reset form after successful submission
-
-        //        return redirect()->route('agents');
-
-        // Redirect to a new chat with this agent - similar to this <a href="/chat?agent={{ $agent["id"] }}" wire:navigate>
-        //        return redirect()->route('chat', [], false)->withQuery(['agent' => $agent->id]);
 
         session()->put('agent', $agent->id);
 

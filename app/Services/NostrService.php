@@ -29,9 +29,7 @@ class NostrService
 
     protected $cacheDuration = -1;
 
-    protected $quantize = true;
-
-    protected $quantize = true;
+    protected bool $quantize = true;
 
     public function poolAddress($poolAddress)
     {
