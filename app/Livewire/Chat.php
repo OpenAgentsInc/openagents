@@ -405,6 +405,8 @@ class Chat extends Component
     #[On('echo:threads.{thread.id},NostrJobReady')]
     public function process_nostr($event)
     {
+        dd($event);
+
         $this->selectedModel = 'mistral-small-latest';
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
