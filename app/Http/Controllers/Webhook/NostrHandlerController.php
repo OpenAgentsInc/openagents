@@ -23,21 +23,14 @@ class NostrHandlerController extends Controller
             'flushInterval' => 1000,
         ]);
 
-        $logger->log('info', 'EVENT RECEIVED');
         $data = $request->all();
-        $logger->log('info', json_encode($data));
 
         $secret = $request->query('secret');
         $main_secret = config('nostr.webhook_secret');
 
-        $logger->log('info', 'RECEIVED SECRET: '.$secret);
-
         if ($secret !== $main_secret) {
             return response()->json(['error' => 'Invalid token'], 403);
         }
-
-        $logger->log('info', 'Event received');
-        $logger->log('info', json_encode($data));
 
         $logData = $data;
 
@@ -49,6 +42,8 @@ class NostrHandlerController extends Controller
                 'status' => $payload['state']['status'],
                 'kind' => $payload['kind'],
             ];
+
+            $logger->log('info', 'Event received: Job');
 
             if (isset($payload['tags'])) {
                 $extractedData['tags'] = [];
