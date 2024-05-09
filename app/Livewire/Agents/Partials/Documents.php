@@ -2,14 +2,13 @@
 
 namespace App\Livewire\Agents\Partials;
 
-use Livewire\Component;
 use App\Models\AgentFile;
-use Livewire\Attributes\On;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\On;
+use Livewire\Component;
 
 class Documents extends Component
 {
-
     public $agent_id;
 
     public function mount($agent_id)
@@ -20,7 +19,7 @@ class Documents extends Component
     #[Computed]
     public function documents()
     {
-        return AgentFile::with('agent')->where('agent_id',$this->agent_id)->get();
+        return AgentFile::with('agent')->where('agent_id', $this->agent_id)->get();
     }
 
     #[On('document_deleted')]
@@ -28,7 +27,6 @@ class Documents extends Component
     {
         $this->documents();
     }
-
 
     public function render()
     {
