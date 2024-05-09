@@ -56,6 +56,8 @@ class NostrHandlerController extends Controller
             //            Log::channel('slack')->info(json_encode($extractedData));
 
             if ($status == 2) {
+                $logger->log('info', 'Event with status 2');
+                $logger->log('info', json_encode($payload));
                 // log the error
                 //                Log::error($data);
                 //                Log::channel('slack')->error(json_encode($extractedData));
@@ -65,6 +67,9 @@ class NostrHandlerController extends Controller
                     'message' => 'error logged',
                 ];
             } elseif ($status == 3) {
+
+                $logger->log('info', 'Event with status 3');
+                $logger->log('info', json_encode($payload));
 
                 $job_id = $payload['id'];
                 $content = $payload['result']['content'];
