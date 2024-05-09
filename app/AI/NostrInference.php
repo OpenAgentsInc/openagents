@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI;
 
+use App\Models\Agent;
 use App\Models\NostrJob;
 use App\Models\Thread;
 use GuzzleHttp\Client;
