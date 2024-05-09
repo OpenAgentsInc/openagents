@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Webhook;
 use App\Events\AgentRagReady;
 use App\Events\NostrJobReady;
 use App\Http\Controllers\Controller;
+use App\Models\Agent;
 use App\Models\AgentJob;
 use App\Models\NostrJob;
 use App\Services\OpenObserveLogger;
