@@ -49,10 +49,6 @@ class Chat extends Component
 
     public function mount($id = null)
     {
-        if (session()->get('redirecting-with-selection')) {
-            $this->hasSelection = true;
-            session()->forget('redirecting-with-selection');
-        }
 
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
@@ -83,6 +79,11 @@ class Chat extends Component
             $this->ensureThread();
 
             return;
+        }
+
+        if (session()->get('redirecting-with-selection')) {
+            $this->hasSelection = true;
+            session()->forget('redirecting-with-selection');
         }
 
         // Set the thread and its messages
