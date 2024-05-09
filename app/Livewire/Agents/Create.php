@@ -57,8 +57,6 @@ class Create extends Component
     {
         //    $this->validate();
 
-
-
         $user = auth()->user();
         if (! $user) {
             return redirect('/');
@@ -82,7 +80,7 @@ class Create extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'agents/profile/images/' . str($filename)->slug()->toString() . '_' . time() . '.' . $extension;
+            $filenametostore = 'agents/profile/images/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
 
             // Upload File to public
             Storage::disk($disk)->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
@@ -116,7 +114,7 @@ class Create extends Component
         $agent->is_rag_ready = false;
         $agent->save();
 
-        if (!empty($this->files)) {
+        if (! empty($this->files)) {
             $disk = config('documents.disk');
             foreach ($this->files as $file) {
                 // Get filename with extension
@@ -136,7 +134,6 @@ class Create extends Component
 
                 $url = Storage::disk($disk)->url($filenametostore);
 
-
                 $agent->documents()->create([
                     'name' => $filename,
                     'path' => $filenametostore,
@@ -151,8 +148,6 @@ class Create extends Component
             ProcessAgentRag::dispatch($agent);
 
         }
-
-
 
         session()->put('agent', $agent->id);
 

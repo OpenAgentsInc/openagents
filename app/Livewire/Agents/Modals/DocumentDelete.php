@@ -2,12 +2,11 @@
 
 namespace App\Livewire\Agents\Modals;
 
-use Livewire\Component;
-use App\Models\AgentFile;
-use LivewireUI\Modal\ModalComponent;
-use Illuminate\Support\Facades\Storage;
 use App\Livewire\Agents\Partials\Documents;
+use App\Models\AgentFile;
+use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use LivewireUI\Modal\ModalComponent;
 
 class DocumentDelete extends ModalComponent
 {

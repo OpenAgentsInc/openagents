@@ -38,7 +38,6 @@ class Edit extends Component
 
         abort_if($user->id !== $this->agent->user_id, 403, 'permission denied').
 
-
     $this->name = $this->agent->name;
         $this->about = $this->agent->about;
         $this->prompt = $this->agent->prompt;
@@ -128,7 +127,7 @@ class Edit extends Component
         $agent->user_id = $user->id;
         $agent->save();
 
-        if (!empty($this->files)) {
+        if (! empty($this->files)) {
             $disk = config('documents.disk'); // Assuming you are using the 'public' disk
 
             foreach ($this->files as $file) {
@@ -142,14 +141,13 @@ class Edit extends Component
                 $extension = $file->getClientOriginalExtension();
 
                 // Filename to store with directory
-                $filenametostore = 'agents/files/' . $filename . '_' . time() . '.' . $extension;
+                $filenametostore = 'agents/files/'.$filename.'_'.time().'.'.$extension;
 
                 // Upload File to public disk
                 Storage::disk($disk)->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
 
                 // Generate URL without the "storage" part
                 $url = Storage::disk($disk)->url($filenametostore);
-
 
                 $agent->documents()->create([
                     'name' => $filename,
