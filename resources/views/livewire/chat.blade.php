@@ -15,7 +15,7 @@
                     @endauth
                 </div>
                 <div class="xl:-ml-[50px] pt-8 chat">
-                    @if(!$hasSelection)
+                    @if(count($messages) === 0 && !$hasSelection)
                         <livewire:store/>
                     @elseif (count($messages) === 0 && $selectedAgent)
                         <div class="w-full h-[70vh] flex flex-col justify-center">
