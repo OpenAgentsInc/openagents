@@ -30,6 +30,8 @@ class NostrHandlerController extends Controller
         $secret = $request->query('secret');
         $main_secret = config('nostr.webhook_secret');
 
+        $logger->log('info', 'RECEIVED SECRET: '.$secret);
+
         if ($secret !== $main_secret) {
             return response()->json(['error' => 'Invalid token'], 403);
         }
