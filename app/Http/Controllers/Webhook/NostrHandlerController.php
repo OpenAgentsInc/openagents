@@ -77,7 +77,7 @@ class NostrHandlerController extends Controller
                 $nostr_job = NostrJob::where('job_id', $job_id)->first();
                 if ($nostr_job) {
                     // update the model payload and content
-                    $nostr_job->payload = $payload;
+                    // $nostr_job->payload = $payload;
                     $nostr_job->content = $content;
                     $nostr_job->save();
 
