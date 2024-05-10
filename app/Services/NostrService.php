@@ -8,6 +8,7 @@ use App\Grpc\nostr\PoolConnectorClient;
 use App\Grpc\nostr\RpcRequestJob;
 use Exception;
 use Grpc\ChannelCredentials;
+use Illuminate\Support\Facades\Log;
 
 class NostrService
 {
@@ -166,16 +167,26 @@ class NostrService
             },
         ];
         $hostname = $this->poolAddress;
-        $res = new PoolConnectorClient($hostname, $opts);
-        $metadata = [];
-        $options = [];
-        $jobres = $res->requestJob($requestJob, $metadata, $options);
-        $result = $jobres->wait();
-        $status = $result[1]->code;
 
-        if ($status !== 0) {
-            throw new Exception($result[1]->details);
+        Log::debug("Connecting to $hostname with options ".json_encode($opts));
+        $client = new PoolConnectorClient($hostname, $opts);
+        try{
+            $metadata = [];
+            $options = [];
+            $jobres = $client->requestJob($requestJob, $metadata, $options);
+            $result = $jobres->wait();
+            $status = $result[1]->code;
+            if ($status !== 0) {
+                throw new Exception($result[1]->details);
+            }
+        } catch (Exception $e) {
+            Log::error("Error in requestJob: ".$e->getMessage());
+            throw $e;
+        } finally{
+            $client->close();
         }
+
+
 
         return $result[0]->getId();
     }

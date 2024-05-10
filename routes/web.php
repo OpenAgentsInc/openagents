@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\NostrAuthController;
-use App\Http\Controllers\NostrGrpcController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\NostrHandlerController;
@@ -70,8 +69,6 @@ Route::get('/blog', Blog::class);
 Route::get('/launch', MarkdownPage::class);
 Route::get('/goodbye-chatgpt', MarkdownPage::class);
 
-//GRPC NOSTR
-Route::get('/request-job', [NostrGrpcController::class, 'handleJobRequest']);
 
 // MISC
 Route::get('/changelog', Changelog::class);
