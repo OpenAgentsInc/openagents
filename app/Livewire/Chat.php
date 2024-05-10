@@ -371,7 +371,7 @@ class Chat extends Component
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
-            // send to nostra
+            // send to nostr
 
             $pool = config('nostr.pool');
             $encrypt = config('nostr.encrypt');
@@ -380,11 +380,8 @@ class Chat extends Component
                 ->poolAddress($pool)
                 ->query($query)
                 ->documents($documents)
-                ->k(1)
-                ->maxTokens(2048)
-                ->overlap(256)
                 ->warmUp(false)
-                ->cacheDurationhint('-1')
+                ->cacheDurationhint(-1)
                 ->encryptFor($encrypt)
                 ->execute();
 
