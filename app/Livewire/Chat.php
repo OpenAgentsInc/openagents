@@ -211,8 +211,21 @@ class Chat extends Component
         if (! $this->selectedAgent) {
             $this->js('$wire.simpleRun()');
         } else {
-            $this->js('$wire.ragRun()');
-            //$this->js('$wire.runAgentWithoutRag()');
+            $agent =  Agent::find($this->selectedAgent["id"]);
+            $isRagReady = $agent->is_rag_ready;
+            if(!$isRagReady){
+                Log::debug('RAG not ready. Skip for now...');
+                $this->js('$wire.runAgentWithoutRag()');
+            }else {
+                $docCount = AgentFile::where('agent_id', $this->selectedAgent['id'])->count();
+                if($docCount > 0){
+                    Log::debug('RAG Run');
+                    $this->js('$wire.ragRun()');
+                } else {
+                    Log::debug('No document, skip RAG');
+                    $this->js('$wire.runAgentWithoutRag()');
+                }
+            }
         }
     }
 
@@ -371,7 +384,7 @@ class Chat extends Component
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
-            // send to nostra
+            // send to nostr
 
             $pool = config('nostr.pool');
             $encrypt = config('nostr.encrypt');
@@ -380,11 +393,8 @@ class Chat extends Component
                 ->poolAddress($pool)
                 ->query($query)
                 ->documents($documents)
-                ->k(1)
-                ->maxTokens(2048)
-                ->overlap(256)
                 ->warmUp(false)
-                ->cacheDurationhint('-1')
+                ->cacheDurationhint(-1)
                 ->encryptFor($encrypt)
                 ->execute();
 
