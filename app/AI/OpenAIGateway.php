@@ -31,7 +31,6 @@ class OpenAIGateway implements GatewayInterface
     {
         $model = $params['model'];
         $messages = $params['messages'];
-        $max_tokens = $params['max_tokens'];
         $streamFunction = $params['stream_function'];
 
         $message = '';
@@ -39,7 +38,6 @@ class OpenAIGateway implements GatewayInterface
         $stream = $this->client->chat()->createStreamed([
             'model' => $model,
             'messages' => $messages,
-            'max_tokens' => $max_tokens,
         ]);
 
         foreach ($stream as $response) {
