@@ -214,15 +214,15 @@ class Chat extends Component
             $agent =  Agent::find($this->selectedAgent["id"]);
             $isRagReady = $agent->is_rag_ready;
             if(!$isRagReady){
-                Log::debug('RAG not ready. Skip for now...');
+                // Log::debug('RAG not ready. Skip for now...');
                 $this->js('$wire.runAgentWithoutRag()');
             }else {
                 $docCount = AgentFile::where('agent_id', $this->selectedAgent['id'])->count();
                 if($docCount > 0){
-                    Log::debug('RAG Run');
+                    // Log::debug('RAG Run');
                     $this->js('$wire.ragRun()');
                 } else {
-                    Log::debug('No document, skip RAG');
+                    // Log::debug('No document, skip RAG');
                     $this->js('$wire.runAgentWithoutRag()');
                 }
             }

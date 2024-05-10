@@ -168,7 +168,7 @@ class NostrService
         ];
         $hostname = $this->poolAddress;
 
-        Log::debug("Connecting to $hostname with options ".json_encode($opts));
+        //Log::debug("Connecting to $hostname with options ".json_encode($opts));
         $client = new PoolConnectorClient($hostname, $opts);
         try{
             $metadata = [];
