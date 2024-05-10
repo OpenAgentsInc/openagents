@@ -16,7 +16,7 @@
                 </div>
                 <div class="xl:-ml-[50px] pt-8 chat">
                     @if(count($messages) === 0 && !$hasSelection)
-                        <livewire:store/>
+                        <livewire:featured-agents/>
                     @elseif (count($messages) === 0 && $selectedAgent)
                         <div class="w-full h-[70vh] flex flex-col justify-center">
                             <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
