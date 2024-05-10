@@ -1,5 +1,6 @@
-<div>
-    {{-- Close your eyes. Count to one. That is how long forever feels. --}}
-
-    <livewire:featured-agents/>
+<div class="w-full h-[70vh] flex flex-col justify-center">
+    <div class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+        <h1>Agent Store</h1>
+        <livewire:featured-agents/>
+    </div>
 </div>

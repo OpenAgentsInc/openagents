@@ -4,11 +4,13 @@
             <div>
                 <div class="flex justify-between items-center">
                     <h4 class="font-bold">Featured Agents</h4>
-                    <a href="/store"
-                       wire:navigate
-                       class="pointer-events-auto select-auto border border-white text-white font-bold py-2 px-4 rounded">
-                        Explore the Agent Store &rarr;
-                    </a>
+                    @if (request()->path() !== 'store')
+                        <a href="/store"
+                           wire:navigate
+                           class="pointer-events-auto select-auto border border-white text-white font-bold py-2 px-4 rounded">
+                            Explore the Agent Store &rarr;
+                        </a>
+                    @endif
                 </div>
                 <p class="text-gray leading-relaxed">Chat Agents combine instructions, extra knowledge, and any LLM
                     on OpenAgents to create custom AI agents. Watch our <a
