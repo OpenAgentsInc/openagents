@@ -170,7 +170,7 @@ class NostrService
 
         //Log::debug("Connecting to $hostname with options ".json_encode($opts));
         $client = new PoolConnectorClient($hostname, $opts);
-        try{
+        try {
             $metadata = [];
             $options = [];
             $jobres = $client->requestJob($requestJob, $metadata, $options);
@@ -180,13 +180,11 @@ class NostrService
                 throw new Exception($result[1]->details);
             }
         } catch (Exception $e) {
-            Log::error("Error in requestJob: ".$e->getMessage());
+            Log::error('Error in requestJob: '.$e->getMessage());
             throw $e;
-        } finally{
+        } finally {
             $client->close();
         }
-
-
 
         return $result[0]->getId();
     }
