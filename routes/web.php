@@ -69,7 +69,6 @@ Route::get('/blog', Blog::class);
 Route::get('/launch', MarkdownPage::class);
 Route::get('/goodbye-chatgpt', MarkdownPage::class);
 
-
 // MISC
 Route::get('/changelog', Changelog::class);
 Route::get('/docs', MarkdownPage::class);
