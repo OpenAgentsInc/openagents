@@ -2,14 +2,11 @@
 
 namespace App\Livewire;
 
-use App\AI\Models;
 use App\Models\Agent;
 use Livewire\Component;
 
 class FeaturedAgents extends Component
 {
-    public $models = Models::MODELS;
-
     public $agents;
 
     public function mount()
