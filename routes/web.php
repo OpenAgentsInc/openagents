@@ -16,11 +16,10 @@ use App\Livewire\MarkdownPage;
 use App\Livewire\PrismDashboard;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
+use App\Livewire\Store;
 use App\Services\OpenObserveLogger;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
-
-//Route::get('/', Store::class)->name('store');
 
 // CHAT
 Route::get('/', function () {
@@ -29,6 +28,9 @@ Route::get('/', function () {
 
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
+
+// STORE
+Route::get('/store', Store::class)->name('store');
 
 Route::middleware('guest')->group(function () {
     // AUTH - SOCIAL
