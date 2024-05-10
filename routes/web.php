@@ -67,6 +67,7 @@ Route::get('/explorer', Explorer::class)->name('explorer');
 Route::get('/blog', Blog::class);
 Route::get('/launch', MarkdownPage::class);
 Route::get('/goodbye-chatgpt', MarkdownPage::class);
+Route::get('/introducing-the-agent-store', MarkdownPage::class);
 
 //GRPC NOSTR
 Route::get('/request-job', [NostrGrpcController::class, 'handleJobRequest']);
