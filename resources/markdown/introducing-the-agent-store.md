@@ -10,7 +10,7 @@ The Agent Store is live now at [openagents.com](https://openagents.com) and we i
 
 - Explore agents: [openagents.com/store](https://openagents.com/store)
 - Build agents: [openagents.com/create](https://openagents.com/create)
-- Read the docs: [openagents.com/docs](https://openagents.com/docs)
+- Read the docs: [docs.openagents.com](https://docs.openagents.com)
 
 ## Don't believe us
 
@@ -37,3 +37,9 @@ where creators earn recurring revenue streams, no matter where they are in the w
 We began this
 
 We haven't even launched and we've already paid more developers than they have.
+
+OpenAI has paid zero developers.
+
+We excite about:
+
+- Open version of Devin - connect that to ____ 
