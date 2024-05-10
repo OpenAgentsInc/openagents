@@ -211,14 +211,14 @@ class Chat extends Component
         if (! $this->selectedAgent) {
             $this->js('$wire.simpleRun()');
         } else {
-            $agent =  Agent::find($this->selectedAgent["id"]);
+            $agent = Agent::find($this->selectedAgent['id']);
             $isRagReady = $agent->is_rag_ready;
-            if(!$isRagReady){
+            if (! $isRagReady) {
                 // Log::debug('RAG not ready. Skip for now...');
                 $this->js('$wire.runAgentWithoutRag()');
-            }else {
+            } else {
                 $docCount = AgentFile::where('agent_id', $this->selectedAgent['id'])->count();
-                if($docCount > 0){
+                if ($docCount > 0) {
                     // Log::debug('RAG Run');
                     $this->js('$wire.ragRun()');
                 } else {
@@ -251,8 +251,9 @@ class Chat extends Component
             'user_id' => auth()->id() ?? null,
         ]);
 
-        // Simply do it
-        $output = SimpleInferencer::inference($this->input, 'command-r-plus', $this->thread, $this->getStreamingCallback());
+        $model = auth()->user()->isPro() ? 'meta-llama/llama-3-70b-chat-hf' : 'meta-llama/llama-3-8b-chat-hf';
+
+        $output = SimpleInferencer::inference($this->input, $model, $this->thread, $this->getStreamingCallback());
 
         // Append the response to the chat
         $message = [
@@ -415,7 +416,7 @@ class Chat extends Component
     #[On('echo:threads.{thread.id},NostrJobReady')]
     public function process_nostr($event)
     {
-        $this->selectedModel = 'mistral-small-latest';
+        $this->selectedModel = 'meta-llama/llama-3-8b-chat-hf';
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
 
