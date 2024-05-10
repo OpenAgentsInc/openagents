@@ -76,4 +76,16 @@ class Agent extends Model
         // If the capability is in the array, return true
         return in_array($capability, $capabilities);
     }
+
+    // In Agent.php
+
+    public function getUniqueUsersCountAttribute()
+    {
+        return $this->threads()->distinct('user_id')->count('user_id');
+    }
+
+    public function threads()
+    {
+        return $this->hasMany(Thread::class);
+    }
 }
