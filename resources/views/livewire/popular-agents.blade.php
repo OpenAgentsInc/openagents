@@ -3,17 +3,9 @@
         <div class="hidden sm:block md:w-[800px] border border-offblack p-8 mt-12 rounded">
             <div>
                 <div class="flex justify-between items-center">
-                    <h4 class="font-bold">Popular Agents</h4>
-                    @if (request()->path() !== 'store')
-                        <a href="/store"
-                           wire:navigate
-                           class="pointer-events-auto select-auto border border-white text-white font-bold py-2 px-4 rounded">
-                            Explore the Agent Store &rarr;
-                        </a>
-                    @endif
+                    <h4 class="font-bold">Trending</h4>
                 </div>
-                <p class="text-gray leading-relaxed">These are the most popular agents on OpenAgents, ranked by a
-                    combination of unique users and total threads. Chat with them to see why they're so popular!</p>
+                <p class="text-gray leading-relaxed">The most popular agents from our community</p>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
