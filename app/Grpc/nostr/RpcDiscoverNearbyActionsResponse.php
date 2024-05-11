@@ -9,14 +9,14 @@ use Google\Protobuf\Internal\RepeatedField;
 use Google\Protobuf\Internal\GPBUtil;
 
 /**
- * Generated from protobuf message <code>RpcDiskListFilesResponse</code>
+ * Generated from protobuf message <code>RpcDiscoverNearbyActionsResponse</code>
  */
-class RpcDiskListFilesResponse extends \Google\Protobuf\Internal\Message
+class RpcDiscoverNearbyActionsResponse extends \Google\Protobuf\Internal\Message
 {
     /**
-     * Generated from protobuf field <code>repeated string files = 1;</code>
+     * Generated from protobuf field <code>repeated string actions = 1;</code>
      */
-    private $files;
+    private $actions;
 
     /**
      * Constructor.
@@ -24,7 +24,7 @@ class RpcDiskListFilesResponse extends \Google\Protobuf\Internal\Message
      * @param array $data {
      *     Optional. Data for populating the Message object.
      *
-     *     @type array<string>|\Google\Protobuf\Internal\RepeatedField $files
+     *     @type array<string>|\Google\Protobuf\Internal\RepeatedField $actions
      * }
      */
     public function __construct($data = NULL) {
@@ -33,23 +33,23 @@ class RpcDiskListFilesResponse extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * Generated from protobuf field <code>repeated string files = 1;</code>
+     * Generated from protobuf field <code>repeated string actions = 1;</code>
      * @return \Google\Protobuf\Internal\RepeatedField
      */
-    public function getFiles()
+    public function getActions()
     {
-        return $this->files;
+        return $this->actions;
     }
 
     /**
-     * Generated from protobuf field <code>repeated string files = 1;</code>
+     * Generated from protobuf field <code>repeated string actions = 1;</code>
      * @param array<string>|\Google\Protobuf\Internal\RepeatedField $var
      * @return $this
      */
-    public function setFiles($var)
+    public function setActions($var)
     {
         $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::STRING);
-        $this->files = $arr;
+        $this->actions = $arr;
 
         return $this;
     }

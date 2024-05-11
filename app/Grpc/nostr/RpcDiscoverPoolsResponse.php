@@ -9,14 +9,14 @@ use Google\Protobuf\Internal\RepeatedField;
 use Google\Protobuf\Internal\GPBUtil;
 
 /**
- * Generated from protobuf message <code>RpcDiskListFilesResponse</code>
+ * Generated from protobuf message <code>RpcDiscoverPoolsResponse</code>
  */
-class RpcDiskListFilesResponse extends \Google\Protobuf\Internal\Message
+class RpcDiscoverPoolsResponse extends \Google\Protobuf\Internal\Message
 {
     /**
-     * Generated from protobuf field <code>repeated string files = 1;</code>
+     * Generated from protobuf field <code>repeated string pools = 1;</code>
      */
-    private $files;
+    private $pools;
 
     /**
      * Constructor.
@@ -24,7 +24,7 @@ class RpcDiskListFilesResponse extends \Google\Protobuf\Internal\Message
      * @param array $data {
      *     Optional. Data for populating the Message object.
      *
-     *     @type array<string>|\Google\Protobuf\Internal\RepeatedField $files
+     *     @type array<string>|\Google\Protobuf\Internal\RepeatedField $pools
      * }
      */
     public function __construct($data = NULL) {
@@ -33,23 +33,23 @@ class RpcDiskListFilesResponse extends \Google\Protobuf\Internal\Message
     }
 
     /**
-     * Generated from protobuf field <code>repeated string files = 1;</code>
+     * Generated from protobuf field <code>repeated string pools = 1;</code>
      * @return \Google\Protobuf\Internal\RepeatedField
      */
-    public function getFiles()
+    public function getPools()
     {
-        return $this->files;
+        return $this->pools;
     }
 
     /**
-     * Generated from protobuf field <code>repeated string files = 1;</code>
+     * Generated from protobuf field <code>repeated string pools = 1;</code>
      * @param array<string>|\Google\Protobuf\Internal\RepeatedField $var
      * @return $this
      */
-    public function setFiles($var)
+    public function setPools($var)
     {
         $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::STRING);
-        $this->files = $arr;
+        $this->pools = $arr;
 
         return $this;
     }
