@@ -37,6 +37,7 @@
                                     <div>
                                         <p>Threads: {{ $agent->thread_count }},
                                             Users: {{ $agent->unique_users_count }}</p>
+                                        <p>By: {{ $agent->creator_username }}</p>
                                     </div>
                                 </div>
                             </div>
