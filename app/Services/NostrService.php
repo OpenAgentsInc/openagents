@@ -9,6 +9,7 @@ use App\Grpc\nostr\RpcRequestJob;
 use Exception;
 use Grpc\ChannelCredentials;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Uid\Uuid;
 
 class NostrService
 {
@@ -151,6 +152,8 @@ class NostrService
 
         $requestJob->setDescription('RAG pipeline');
         $requestJob->setKind(5003);
+        $uuid = Uuid::v4()->toRfc4122();
+        $requestJob->setUserId($uuid);
         $requestJob->setOutputFormat('application/json');
 
         if ($this->encryptFor != null) {
