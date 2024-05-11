@@ -10,7 +10,7 @@ class Agent extends Model
 {
     use HasFactory;
 
-    protected $appends = ['image_url', 'thread_count'];
+    protected $appends = ['image_url', 'thread_count', 'unique_users_count'];
 
     protected $fillable = [
         'name',
@@ -89,9 +89,14 @@ class Agent extends Model
 
     // In Agent.php
 
+    //    public function getUniqueUsersCountAttribute()
+    //    {
+    //        return $this->threads()->distinct('user_id')->count('user_id');
+    //    }
+
     public function getUniqueUsersCountAttribute()
     {
-        return $this->threads()->distinct('user_id')->count('user_id');
+        return $this->messages()->distinct('user_id')->count('user_id');
     }
 
     public function threads()
