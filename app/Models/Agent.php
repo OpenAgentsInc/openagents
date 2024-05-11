@@ -10,7 +10,7 @@ class Agent extends Model
 {
     use HasFactory;
 
-    protected $appends = ['image_url', 'thread_count', 'unique_users_count'];
+    protected $appends = ['image_url', 'thread_count', 'unique_users_count', 'creator_username'];
 
     protected $fillable = [
         'name',
@@ -23,6 +23,11 @@ class Agent extends Model
         'user_id',
         'is_rag_ready',
     ];
+
+    public function getCreatorUsernameAttribute()
+    {
+        return $this->user->username;
+    }
 
     public function getImageUrlAttribute()
     {
