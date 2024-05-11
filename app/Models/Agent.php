@@ -26,7 +26,7 @@ class Agent extends Model
 
     public function getCreatorUsernameAttribute()
     {
-        return $this->user->username;
+        return $this->user->username ?? 'Unknown';
     }
 
     public function getImageUrlAttribute()
