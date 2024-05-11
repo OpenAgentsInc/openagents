@@ -53,11 +53,11 @@ class NostrAuthController extends Controller
         $event = json_decode($eventJson);
 
         // Check if it's a good authentication event
-        if (! (
+        if (! (is_object($event) && (
             $event->kind == 27235 &&
             $event->tags == [['u', 'https://openagents.com/login/nostr'], ['method', 'POST']] &&
             $event->content == ''
-        )) {
+        ))) {
             return redirect('#error')->with('error', 'Invalid event format');
         }
 

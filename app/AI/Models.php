@@ -204,7 +204,7 @@ class Models
 
     ];
 
-    public static function isProModelSelected($model)
+    public static function isProModelSelected($model): bool
     {
         $modelDetails = self::MODELS[$model] ?? null;
 
@@ -215,7 +215,7 @@ class Models
         return false;
     }
 
-    public static function getModelIndicator($model, $userAccess)
+    public static function getModelIndicator($model, $userAccess): string
     {
         $modelDetails = self::MODELS[$model] ?? null;
 
@@ -228,21 +228,21 @@ class Models
             if ($userAccessIndex < $requiredAccessIndex) {
                 if ($requiredAccess === 'pro') {
                     return 'Pro';
-                } else {
-                    return 'Join';
                 }
+
+                return 'Join';
             }
         }
 
         return '';
     }
 
-    public static function getModelName($model)
+    public static function getModelName($model): string
     {
         return self::MODELS[$model]['name'] ?? 'Unknown Model';
     }
 
-    public static function getModelForThread($thread)
+    public static function getModelForThread($thread): string
     {
         if ($thread) {
             $lastMessage = $thread->messages->last();
@@ -252,15 +252,13 @@ class Models
         }
 
         if (session()->has('selectedModel')) {
-            $model = session('selectedModel');
-
-            return $model;
+            return session('selectedModel');
         }
 
         return self::getDefaultModel();
     }
 
-    public static function getDefaultModel()
+    public static function getDefaultModel(): string
     {
         // If user is not logged in, use Mistral Small.
         if (! auth()->check()) {
@@ -272,7 +270,7 @@ class Models
             return auth()->user()->default_model;
         }
 
-        // If user is logged in and is Pro, use Mistral Large.
+        // If user is logged in and is Pro, use Claude Sonnet.
         if (auth()->check() && auth()->user()->isPro()) {
             return 'claude-3-sonnet-20240229';
         }
@@ -281,7 +279,7 @@ class Models
         return 'mistral-medium-latest';
     }
 
-    public static function hasModelAccess($model, $userAccess)
+    public static function hasModelAccess($model, $userAccess): bool
     {
         $modelDetails = self::MODELS[$model] ?? null;
 
@@ -297,18 +295,20 @@ class Models
         return false;
     }
 
-    public static function getUserAccess()
+    public static function getUserAccess(): string
     {
-        if (Auth::check() && Auth::user()->isPro()) {
-            return 'pro';
-        } elseif (Auth::check()) {
+        if (Auth::check()) {
+            if (Auth::user()->isPro()) {
+                return 'pro';
+            }
+
             return 'user';
-        } else {
-            return 'guest';
         }
+
+        return 'guest';
     }
 
-    public static function getModelPicture($model)
+    public static function getModelPicture($model): ?string
     {
         $modelDetails = self::MODELS[$model] ?? null;
 

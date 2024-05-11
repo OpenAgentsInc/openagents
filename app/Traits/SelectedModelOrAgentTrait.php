@@ -9,15 +9,15 @@ use Livewire\Attributes\On;
 
 trait SelectedModelOrAgentTrait
 {
-    public $selectedModel = '';
+    public string $selectedModel = '';
 
-    public $selectedAgent = [];
+    public array $selectedAgent = [];
 
     // Track if a selection has been made by user
-    public $hasSelection = false;
+    public bool $hasSelection = false;
 
     #[On('select-model')]
-    public function selectedModel($model)
+    public function selectedModel($model): void
     {
         $this->selectedModel = $model;
         $this->selectedAgent = [];
@@ -25,13 +25,13 @@ trait SelectedModelOrAgentTrait
     }
 
     #[On('select-agent')]
-    public function selectedAgent($id)
+    public function selectedAgent($id): void
     {
         $this->selectedAgent = $this->getSelectedAgentFromId($id);
         $this->hasSelection = true;
     }
 
-    private function getSelectedAgentFromId($id)
+    private function getSelectedAgentFromId($id): array
     {
         $agent = Agent::find($id);
 
@@ -50,7 +50,7 @@ trait SelectedModelOrAgentTrait
         return is_string($json) ? json_decode($json, true) : [];
     }
 
-    public function setModelOrAgentForThread(Thread $thread)
+    public function setModelOrAgentForThread(Thread $thread): void
     {
         $messages = $this->thread->messages()
             ->with('agent:image,id,name,about,prompt')
@@ -81,7 +81,7 @@ trait SelectedModelOrAgentTrait
         }
     }
 
-    private function getSelectedAgentFromMessage($message)
+    private function getSelectedAgentFromMessage($message): array
     {
         return [
             'id' => $message['agent_id'],
@@ -93,7 +93,7 @@ trait SelectedModelOrAgentTrait
         ];
     }
 
-    private function getSelectedAgentFromThread()
+    private function getSelectedAgentFromThread(): array
     {
         return [
             'id' => $this->thread->agent_id,
@@ -105,7 +105,7 @@ trait SelectedModelOrAgentTrait
         ];
     }
 
-    private function getSelectedAgentFromSession()
+    private function getSelectedAgentFromSession(): array
     {
         $agentId = session('agent');
         $agent = Agent::find($agentId);
