@@ -32,8 +32,8 @@
                                     <h4 class="text-lg font-bold">{{ $agent['name'] }}</h4>
                                     <span class="text-gray">{{ $agent['about'] }}</span>
                                     <div>
-                                        <p>Unique Threads: {{ $agent->unique_threads_count }}</p>
-                                        <p>Unique Users: {{ $agent->unique_users_count }}</p>
+                                        <p>Unique Threads: {{ $agent->thread_count }}</p>
+                                        {{--                                        <p>Unique Users: {{ $agent->unique_users_count }}</p>--}}
                                     </div>
                                 </div>
                             </div>

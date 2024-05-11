@@ -10,7 +10,7 @@ class Agent extends Model
 {
     use HasFactory;
 
-    protected $appends = ['image_url'];
+    protected $appends = ['image_url', 'thread_count'];
 
     protected $fillable = [
         'name',
@@ -63,6 +63,16 @@ class Agent extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function getThreadCount()
+    {
+        return $this->messages()->distinct('thread_id')->count('thread_id');
+    }
+
+    public function messages()
+    {
+        return $this->hasMany(Message::class);
+    }
+
     public function hasCapability($capability)
     {
         // Agent has JSON blob in "capabilities" field
@@ -87,5 +97,10 @@ class Agent extends Model
     public function threads()
     {
         return $this->hasMany(Thread::class);
+    }
+
+    public function getThreadCountAttribute()
+    {
+        return $this->messages()->distinct('thread_id')->count('thread_id');
     }
 }

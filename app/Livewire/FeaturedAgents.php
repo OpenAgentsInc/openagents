@@ -18,11 +18,15 @@ class FeaturedAgents extends Component
 
     public function mount()
     {
-        $this->agents = Agent::withCount(['threads as unique_threads_count'])
-            ->get()
-            ->each(function ($agent) {
-                $agent->unique_users_count = $agent->getUniqueUsersCountAttribute();
-            });
+        $this->agents = Agent::all();
+
+        //        $this->agents = Agent::withCount(['threads as unique_threads_count'])
+        //            ->get()
+        //            ->each(function ($agent) {
+        //                $agent->unique_users_count = $agent->getUniqueUsersCountAttribute();
+        //            });
+
+        //        dd($this->agents);
     }
 
     public function render()
