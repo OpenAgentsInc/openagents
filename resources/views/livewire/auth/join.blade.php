@@ -27,7 +27,7 @@
             <a class="text-white decoration-2 hover:underline font-medium dark:focus:outline-none dark:focus:ring-1 dark:focus:ring-gray-600"
                href="/privacy" target="_blank">
                 Privacy Policy
-            </a>.
+            </a>
         </p>
     </div>
 </div>
