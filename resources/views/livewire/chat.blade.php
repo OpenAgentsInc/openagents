@@ -71,18 +71,25 @@
                             // If message has an agent_id, use agent name, otherwise use 'You'
                             // dd($message);
                             try {
-                                if (!empty($message['agent_id']) &&  !empty($message['input_tokens']) &&  !empty($message['output_tokens'])) {
+                                if (
+                                    !empty($message['agent_id']) &&
+                                    !empty($message['input_tokens']) &&
+                                    !empty($message['output_tokens'])
+                                ) {
                                     $author = $message['agent']['name']; // hacky but whatever
                                 }
                                 // elseif (!empty($message['agent_id']) && empty($message['model']) &&  !empty($message['input_tokens']) &&  !empty($message['output_tokens'])) {
                                 //     $author = $message['agent']['name']; // hacky but whatever
                                 // }
-                                elseif (!empty($message['model']) && empty($message['agent_id'])  &&  !empty($message['input_tokens']) &&  !empty($message['output_tokens'])) {
+                                elseif (
+                                    !empty($message['model']) &&
+                                    empty($message['agent_id']) &&
+                                    !empty($message['input_tokens']) &&
+                                    !empty($message['output_tokens'])
+                                ) {
                                     $author = $models[$message['model']]['name'] ?? 'You'; // ?
-                                }
-                                else{
+                                } else {
                                     $author = 'You';
-
                                 }
                             } catch (Exception $e) {
                                 $author = 'You';
@@ -94,21 +101,21 @@
                         <div class="pl-[50px]">
                             @php
                                 // If $message['agent'] is set, dump the agent's image URL
-                                        $image = null;
-                                        $model_image = null;
-                                        if (isset($message['agent'])) {
-                                            $agent = $message['agent'];
-                                            if (isset($agent['image_url'])) {
-                                                $image = $agent['image_url'];
-                                            } elseif (isset($agent['image'])) {
-                                                $image = $agent['image'];
-                                            }
-                                        } elseif (isset($message['model'])) {
-                                            // Use the model image
-                                            // First get the gateway
-                                            $gateway = $models[$message['model']]['gateway'];
-                                            $model_image = asset('images/icons/' . $gateway . '.png');
-                                                                        }
+$image = null;
+$model_image = null;
+if (isset($message['agent'])) {
+    $agent = $message['agent'];
+    if (isset($agent['image_url'])) {
+        $image = $agent['image_url'];
+    } elseif (isset($agent['image'])) {
+        $image = $agent['image'];
+    }
+} elseif (isset($message['model'])) {
+    // Use the model image
+    // First get the gateway
+    $gateway = $models[$message['model']]['gateway'];
+    $model_image = asset('images/icons/' . $gateway . '.png');
+                                }
 
                             @endphp
 
@@ -120,12 +127,11 @@
                     @if ($pending)
                         @php
                             // If there's a selected agent, use agent name, otherwise use $models[$selectedModel]['name']
-$author = $selectedAgent ? $selectedAgent['name'] : $models[$selectedModel]['name'];
-$image = $selectedAgent ? $selectedAgent['image'] : null;
+                            $author = $selectedAgent ? $selectedAgent['name'] : $models[$selectedModel]['name'];
+                            $image = $selectedAgent ? $selectedAgent['image'] : null;
 
-$model_image = $selectedModel
-    ? asset('images/icons/' . $models[$selectedModel]['gateway'] . '.png')
-                                : null;
+                            $model_image = $selectedModel
+                                ? asset('images/icons/' . $models[$selectedModel]['gateway'] . '.png') : null;
                         @endphp
 
                         <x-chat.messagestreaming :author="$author" :agent-image="$image" :model-image="$model_image"
