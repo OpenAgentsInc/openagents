@@ -55,8 +55,8 @@
                                     alt="{{$agent->name}}">
                                 <div>
                                     <span class="block text-gray-800 font-semibold">{{ $agent->name }}</span>
-                                    <span class="inline-flex items-center my-1 px-1 py-1 {{ $agent->is_rag_ready ? 'bg-white' : 'bg-yellow-500'}}  text-black  text-xs font-bold rounded-md">
-                                        {{ $agent->is_rag_ready ? 'Ready' : 'Building '}}
+                                    <span class="inline-flex items-center my-1 px-1 py-1 {{ $agent->is_rag_ready == false && $agent->created_at->diffInMinutes() > 30 ? 'bg-red text-white' : ($agent->is_rag_ready ? 'bg-white text-black' : 'bg-yellow-500 text-black') }}    text-xs font-bold rounded-md">
+                                        {{ $agent->is_rag_ready == false && $agent->created_at->diffInMinutes() > 30 ? 'Error' : ($agent->is_rag_ready ? 'Active' : 'Building') }}
                                       </span>
                                 </div>
                             </div>

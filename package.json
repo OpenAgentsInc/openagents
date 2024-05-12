@@ -22,6 +22,10 @@
         "@ryangjchandler/alpine-tooltip": "^2.0.0",
         "@sweetalert2/theme-dark": "^5.0.16",
         "@sweetalert2/themes": "^5.0.16",
+        "filepond": "^4.31.1",
+        "filepond-plugin-file-validate-size": "^2.2.8",
+        "filepond-plugin-file-validate-type": "^1.2.9",
+        "filepond-plugin-image-preview": "^4.6.12",
         "shiki": "^1.1.7",
         "sweetalert2": "^11.10.7",
         "tippy.js": "^6.3.7"
