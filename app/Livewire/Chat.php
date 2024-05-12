@@ -165,10 +165,12 @@ class Chat extends Component
                 'description' => $agent->about,
                 'instructions' => $agent->prompt,
                 'image' => $agent->image_url,
+                'is_rag_ready' =>  $agent->is_rag_ready,
+                'created_at' => $agent->created_at
             ];
             $this->selectedModel = '';
         } else {
-            dd('Agent not found');
+            // dd('Agent not found');
             $this->selectedAgent = null;
         }
 
@@ -199,7 +201,13 @@ class Chat extends Component
             'user_id' => auth()->id(), // Add user_id if logged in
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
             'agent_id' => $this->selectedAgent['id'] ?? null,
+            'agent' => $this->selectedAgent,
+            'model' => !$this->selectedAgent ? $this->selectedModel : null,
+            'input_tokens' => null,
+            'output_tokens' => null,
         ];
+
+
 
         // Clear the input
         $this->message_input = '';
@@ -251,18 +259,25 @@ class Chat extends Component
             'user_id' => auth()->id() ?? null,
         ]);
 
-        $model = auth()->user()->isPro() ? 'meta-llama/llama-3-70b-chat-hf' : 'meta-llama/llama-3-8b-chat-hf';
+        if(auth()->check()){
+            $model = auth()->user()->isPro() ? 'meta-llama/llama-3-70b-chat-hf' : 'meta-llama/llama-3-8b-chat-hf';
+        }else{
+            $model = 'meta-llama/llama-3-8b-chat-hf';
+        }
+
 
         $output = SimpleInferencer::inference($this->input, $model, $this->thread, $this->getStreamingCallback());
 
         // Append the response to the chat
         $message = [
             'agent_id' => $this->selectedAgent['id'],
+            'agent' =>  $this->selectedAgent,
             'body' => $output['content'],
-            'model' => $this->selectedModel,
-            'user_id' => auth()->id() ?? null,
+            'model' => null,
+            'user_id' =>  null,
             'session_id' => $sessionId,
-            'agent' => $this->selectedAgent,
+            'input_tokens' => $output['input_tokens'],
+            'output_tokens' => $output['output_tokens'],
         ];
         $this->messages[] = $message;
 
@@ -339,6 +354,8 @@ class Chat extends Component
             'body' => $this->input,
             'session_id' => $sessionId,
             'user_id' => auth()->id() ?? null,
+            'input_tokens' => null,
+            'output_tokens' => null,
         ]);
 
         // Simply do it
@@ -350,6 +367,10 @@ class Chat extends Component
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
+            'agent_id' => null,
+            'agent' => null,
+            'input_tokens' => $output['input_tokens'],
+            'output_tokens' => $output['output_tokens'],
         ];
         $this->messages[] = $message;
 
@@ -431,6 +452,10 @@ class Chat extends Component
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
+            'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : null,
+            'agent' =>  $this->selectedAgent,
+            'input_tokens' => $output['input_tokens'],
+            'output_tokens' => $output['output_tokens'],
         ];
 
         // Save the agent's response to the thread
