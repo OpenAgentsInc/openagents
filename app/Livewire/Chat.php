@@ -165,8 +165,8 @@ class Chat extends Component
                 'description' => $agent->about,
                 'instructions' => $agent->prompt,
                 'image' => $agent->image_url,
-                'is_rag_ready' =>  $agent->is_rag_ready,
-                'created_at' => $agent->created_at
+                'is_rag_ready' => $agent->is_rag_ready,
+                'created_at' => $agent->created_at,
             ];
             $this->selectedModel = '';
         } else {
@@ -202,12 +202,10 @@ class Chat extends Component
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
             'agent_id' => $this->selectedAgent['id'] ?? null,
             'agent' => $this->selectedAgent,
-            'model' => !$this->selectedAgent ? $this->selectedModel : null,
+            'model' => ! $this->selectedAgent ? $this->selectedModel : null,
             'input_tokens' => null,
             'output_tokens' => null,
         ];
-
-
 
         // Clear the input
         $this->message_input = '';
@@ -259,22 +257,21 @@ class Chat extends Component
             'user_id' => auth()->id() ?? null,
         ]);
 
-        if(auth()->check()){
+        if (auth()->check()) {
             $model = auth()->user()->isPro() ? 'meta-llama/llama-3-70b-chat-hf' : 'meta-llama/llama-3-8b-chat-hf';
-        }else{
+        } else {
             $model = 'meta-llama/llama-3-8b-chat-hf';
         }
-
 
         $output = SimpleInferencer::inference($this->input, $model, $this->thread, $this->getStreamingCallback());
 
         // Append the response to the chat
         $message = [
             'agent_id' => $this->selectedAgent['id'],
-            'agent' =>  $this->selectedAgent,
+            'agent' => $this->selectedAgent,
             'body' => $output['content'],
             'model' => null,
-            'user_id' =>  null,
+            'user_id' => null,
             'session_id' => $sessionId,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
@@ -453,7 +450,7 @@ class Chat extends Component
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
             'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : null,
-            'agent' =>  $this->selectedAgent,
+            'agent' => $this->selectedAgent,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
         ];
