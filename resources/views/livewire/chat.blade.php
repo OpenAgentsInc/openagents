@@ -69,7 +69,6 @@
                     @foreach ($messages as $message)
                         @php
                             // If message has an agent_id, use agent name, otherwise use 'You'
-                            // dd($message);
                             try {
                                 if (
                                     !empty($message['agent_id']) &&
@@ -77,20 +76,17 @@
                                     !empty($message['output_tokens'])
                                 ) {
                                     $author = $message['agent']['name']; // hacky but whatever
-                                }
-
-                                elseif (
+                                } elseif (
                                     !empty($message['model']) &&
                                     empty($message['agent_id']) &&
-                                    !empty($message['input_tokens']) &&
-                                    !empty($message['output_tokens'])
+                                    is_numeric($message['output_tokens'])
                                 ) {
-                                    $author = $models[$message['model']]['name'] ?? 'You'; // ?
+                                    $author = $models[$message['model']]['name'] ?? 'Model';
                                 } else {
                                     $author = 'You';
                                 }
                             } catch (Exception $e) {
-                                $author = 'You';
+                                $author = 'Unknown';
                                 dd($e);
                             }
 
