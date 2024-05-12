@@ -23,9 +23,11 @@ class GroqAIGateway implements GatewayInterface
         $data = [
             'model' => $params['model'],
             'messages' => $params['messages'],
-            'max_tokens' => $params['max_tokens'],
             'stream' => $params['stream'] ?? true,
         ];
+        if (isset($params['max_tokens'])) {
+            $data['max_tokens'] = $params['max_tokens'];
+        }
 
         try {
             $response = $this->httpClient->post('https://api.groq.com/openai/v1/chat/completions', [

@@ -147,12 +147,6 @@ class Chat extends Component
         }
     }
 
-    //    #[On('select-model')]
-    //    public function selectModel()
-    //    {
-    //        dd('did we?');
-    //    }
-
     #[On('select-agent')]
     public function selectAgent($agentId)
     {
@@ -165,8 +159,8 @@ class Chat extends Component
                 'description' => $agent->about,
                 'instructions' => $agent->prompt,
                 'image' => $agent->image_url,
-                'is_rag_ready' =>  $agent->is_rag_ready,
-                'created_at' => $agent->created_at
+                'is_rag_ready' => $agent->is_rag_ready,
+                'created_at' => $agent->created_at,
             ];
             $this->selectedModel = '';
         } else {
@@ -202,12 +196,10 @@ class Chat extends Component
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
             'agent_id' => $this->selectedAgent['id'] ?? null,
             'agent' => $this->selectedAgent,
-            'model' => !$this->selectedAgent ? $this->selectedModel : null,
+            'model' => ! $this->selectedAgent ? $this->selectedModel : null,
             'input_tokens' => null,
             'output_tokens' => null,
         ];
-
-
 
         // Clear the input
         $this->message_input = '';
@@ -253,28 +245,27 @@ class Chat extends Component
         $sessionId = auth()->check() ? null : Session::getId();
 
         // Save user message to the thread
-        $this->thread->messages()->create([
+        $userMessage = $this->thread->messages()->create([
             'body' => $user_input,
             'session_id' => $sessionId,
             'user_id' => auth()->id() ?? null,
         ]);
 
-        if(auth()->check()){
+        if (auth()->check()) {
             $model = auth()->user()->isPro() ? 'meta-llama/llama-3-70b-chat-hf' : 'meta-llama/llama-3-8b-chat-hf';
-        }else{
+        } else {
             $model = 'meta-llama/llama-3-8b-chat-hf';
         }
-
 
         $output = SimpleInferencer::inference($this->input, $model, $this->thread, $this->getStreamingCallback());
 
         // Append the response to the chat
         $message = [
             'agent_id' => $this->selectedAgent['id'],
-            'agent' =>  $this->selectedAgent,
+            'agent' => $this->selectedAgent,
             'body' => $output['content'],
             'model' => null,
-            'user_id' =>  null,
+            'user_id' => null,
             'session_id' => $sessionId,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
@@ -282,10 +273,10 @@ class Chat extends Component
         $this->messages[] = $message;
 
         // Save the agent's response to the thread
-        $this->thread->messages()->create(array_merge($message, [
-            'input_tokens' => $output['input_tokens'],
-            'output_tokens' => $output['output_tokens'],
-        ]));
+        $this->thread->messages()->create($message);
+
+        // Update the original user message with the input tokens
+        $userMessage->update(['input_tokens' => $output['prompt_tokens']]);
 
         // Reset pending status and scroll to the latest message
         $this->pending = false;
@@ -350,7 +341,7 @@ class Chat extends Component
         $sessionId = auth()->check() ? null : Session::getId();
 
         // Save user message to the thread
-        $this->thread->messages()->create([
+        $userMessage = $this->thread->messages()->create([
             'body' => $this->input,
             'session_id' => $sessionId,
             'user_id' => auth()->id() ?? null,
@@ -375,10 +366,10 @@ class Chat extends Component
         $this->messages[] = $message;
 
         // Save the agent's response to the thread
-        $this->thread->messages()->create(array_merge($message, [
-            'input_tokens' => $output['input_tokens'],
-            'output_tokens' => $output['output_tokens'],
-        ]));
+        $this->thread->messages()->create($message);
+
+        // Update the original user message with the input tokens
+        $userMessage->update(['input_tokens' => $output['prompt_tokens']]);
 
         // Reset pending status and scroll to the latest message
         $this->pending = false;
@@ -447,27 +438,20 @@ class Chat extends Component
         $output = NostrInference::inference($this->selectedModel, $job, $this->getStreamingCallback());
 
         // Append the response to the chat
-        $this->messages[] = [
+        $message = [
             'body' => $output['content'],
             'model' => $this->selectedModel,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
             'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : null,
-            'agent' =>  $this->selectedAgent,
+            'agent' => $this->selectedAgent,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
         ];
+        $this->messages[] = $message;
 
         // Save the agent's response to the thread
-        $this->thread->messages()->create([
-            'body' => $output['content'],
-            'session_id' => $sessionId,
-            'model' => $this->selectedModel,
-            'user_id' => auth()->id() ?? null,
-            'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : null,
-            'input_tokens' => $output['input_tokens'],
-            'output_tokens' => $output['output_tokens'],
-        ]);
+        $this->thread->messages()->create($message);
 
         // Reset pending status and scroll to the latest message
         $this->pending = false;

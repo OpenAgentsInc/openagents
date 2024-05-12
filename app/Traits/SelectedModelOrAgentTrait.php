@@ -41,7 +41,7 @@ trait SelectedModelOrAgentTrait
             'description' => $agent->about,
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
-            'is_rag_ready' =>  $agent->is_rag_ready,
+            'is_rag_ready' => $agent->is_rag_ready,
             'created_at' => $agent->created_at,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];
@@ -91,8 +91,8 @@ trait SelectedModelOrAgentTrait
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
             'image' => $message['agent']['image_url'],
-             'is_rag_ready' =>  $message['agent']['is_rag_ready'],
-             'created_at' => $message['agent']['created_at'],
+            'is_rag_ready' => $message['agent']['is_rag_ready'],
+            'created_at' => $message['agent']['created_at'],
             'capabilities' => $this->safeDecode($message['agent']['capabilities'] ?? null),
         ];
     }
@@ -105,8 +105,8 @@ trait SelectedModelOrAgentTrait
             'description' => $this->thread->agent->about,
             'instructions' => $this->thread->agent->prompt,
             'image' => $this->thread->agent->image_url,
-            'is_rag_ready' =>  $this->thread->agent->is_rag_ready,
-            'created_at' =>  $this->thread->agent->created_at,
+            'is_rag_ready' => $this->thread->agent->is_rag_ready,
+            'created_at' => $this->thread->agent->created_at,
             'capabilities' => $this->safeDecode($this->thread->agent->capabilities),
         ];
     }
@@ -122,8 +122,8 @@ trait SelectedModelOrAgentTrait
             'description' => $agent->about,
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
-            'is_rag_ready' =>  $agent->is_rag_ready,
-            'created_at' =>  $agent->created_at,
+            'is_rag_ready' => $agent->is_rag_ready,
+            'created_at' => $agent->created_at,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];
     }

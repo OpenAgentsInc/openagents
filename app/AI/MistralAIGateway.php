@@ -67,7 +67,6 @@ class MistralAIGateway implements GatewayInterface
         $apiKey = env('MISTRAL_API_KEY');
         $model = $params['model'];
         $messages = $params['messages'];
-        $maxTokens = $params['max_tokens'];
         $streamFunction = $params['stream_function'];
         $temperature = $params['temperature'] ?? 0.7;
         $topP = $params['top_p'] ?? 1;
@@ -75,11 +74,13 @@ class MistralAIGateway implements GatewayInterface
         $data = [
             'model' => $model,
             'messages' => $messages,
-            'max_tokens' => $maxTokens,
             'temperature' => $temperature,
             'top_p' => $topP,
             'stream' => true, // Ensure this is true for streaming
         ];
+        if (isset($params['max_tokens'])) {
+            $data['max_tokens'] = $params['max_tokens'];
+        }
 
         try {
             $response = $this->httpClient->post($url, [
