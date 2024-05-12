@@ -69,6 +69,7 @@
                     @foreach ($messages as $message)
                         @php
                             // If message has an agent_id, use agent name, otherwise use 'You'
+                            // dd($message);
                             try {
                                 if (
                                     !empty($message['agent_id']) &&
@@ -85,6 +86,10 @@
                                 } else {
                                     $author = 'You';
                                 }
+                                else{
+                                    $author = 'You';
+
+                                }
                             } catch (Exception $e) {
                                 $author = 'Unknown';
                                 dd($e);
@@ -95,21 +100,21 @@
                         <div class="pl-[50px]">
                             @php
                                 // If $message['agent'] is set, dump the agent's image URL
-$image = null;
-$model_image = null;
-if (isset($message['agent'])) {
-    $agent = $message['agent'];
-    if (isset($agent['image_url'])) {
-        $image = $agent['image_url'];
-    } elseif (isset($agent['image'])) {
-        $image = $agent['image'];
-    }
-} elseif (isset($message['model'])) {
-    // Use the model image
-    // First get the gateway
-    $gateway = $models[$message['model']]['gateway'];
-    $model_image = asset('images/icons/' . $gateway . '.png');
-                                }
+                                        $image = null;
+                                        $model_image = null;
+                                        if (isset($message['agent'])) {
+                                            $agent = $message['agent'];
+                                            if (isset($agent['image_url'])) {
+                                                $image = $agent['image_url'];
+                                            } elseif (isset($agent['image'])) {
+                                                $image = $agent['image'];
+                                            }
+                                        } elseif (isset($message['model'])) {
+                                            // Use the model image
+                                            // First get the gateway
+                                            $gateway = $models[$message['model']]['gateway'];
+                                            $model_image = asset('images/icons/' . $gateway . '.png');
+                                                                        }
 
                             @endphp
 
