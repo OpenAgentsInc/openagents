@@ -1,5 +1,7 @@
 @import url("/node_modules/@sweetalert2/themes/dark/dark.css");
 @import '/node_modules/tippy.js/dist/tippy.css';
+@import '/node_modules/filepond/dist/filepond.min.css';
+@import '/node_modules/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
 @tailwind base;
 @tailwind components;
