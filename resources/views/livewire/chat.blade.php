@@ -78,9 +78,7 @@
                                 ) {
                                     $author = $message['agent']['name']; // hacky but whatever
                                 }
-                                // elseif (!empty($message['agent_id']) && empty($message['model']) &&  !empty($message['input_tokens']) &&  !empty($message['output_tokens'])) {
-                                //     $author = $message['agent']['name']; // hacky but whatever
-                                // }
+
                                 elseif (
                                     !empty($message['model']) &&
                                     empty($message['agent_id']) &&
