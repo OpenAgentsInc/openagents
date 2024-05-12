@@ -6,33 +6,32 @@ namespace App\AI;
 
 use App\Models\Thread;
 use GuzzleHttp\Client;
+use Yethee\Tiktoken\Encoder;
+use Yethee\Tiktoken\EncoderProvider;
 
 class SimpleInferencer
 {
+    private static int $remainingTokens = 0;
+
+    private static int $promptTokens = 0;
+
+    private static Encoder $encoder;
+
     public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, ?Client $httpClient = null): array
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
         if ($modelDetails) {
             $gateway = $modelDetails['gateway'];
-            $maxTokens = $modelDetails['max_tokens'];
+            self::$remainingTokens = $modelDetails['max_tokens'];
 
             $messages = [
                 [
                     'role' => 'system',
                     'content' => 'You are a helpful assistant.',
-                    // 'content' => 'You are a helpful assistant on OpenAgents.com. Answer the inquiry from the user.',
                 ],
-                ...get_truncated_messages($thread, $maxTokens),
+                ...self::getTruncatedMessages($thread),
             ];
-
-            // Calculate the approximate number of tokens in the messages
-            $messageTokens = array_sum(array_map(function ($message) {
-                return ceil(str_word_count($message['content']) / 3);
-            }, $messages));
-
-            // Adjust the max_tokens value for the completion
-            $completionTokens = $maxTokens - $messageTokens;
 
             if (! $httpClient) {
                 $httpClient = new Client();
@@ -40,7 +39,7 @@ class SimpleInferencer
             $params = [
                 'model' => $model,
                 'messages' => $messages,
-                'max_tokens' => $completionTokens,
+                'max_tokens' => self::$remainingTokens,
                 'stream_function' => $streamFunction,
             ];
             switch ($gateway) {
@@ -81,82 +80,69 @@ class SimpleInferencer
             dd("Unknown model: $model");
         }
 
+        // remember prompt tokens so we do not recalculate
+        if (count($messages) === 2 && $inference['input_tokens']) {
+            $inference['prompt_tokens'] = $inference['input_tokens'];
+        } else {
+            $inference['prompt_tokens'] = self::$promptTokens;
+        }
+
         return $inference;
     }
-}
 
-function get_truncated_messages(Thread $thread, int $maxTokens)
-{
-    $messages = [];
-    $tokenCount = 0;
-    $userContent = '';
+    public static function getTruncatedMessages(Thread $thread): array
+    {
+        $provider = new EncoderProvider();
+        self::$encoder = $provider->getForModel('gpt-4');
 
-    foreach ($thread->messages()->orderBy('created_at', 'asc')->get() as $message) {
-        if ($message->model !== null) {
-            $role = 'assistant';
-        } else {
-            $role = 'user';
+        $messages = [];
+
+        foreach ($thread->messages()->orderBy('created_at', 'desc')->get() as $message) {
+            $role = is_null($message->model) ? 'user' : 'assistant';
+
+            self::addMessage($role, $message, $messages);
+
+            if (self::$remainingTokens <= 0) {
+                break;
+            }
         }
 
-        if ($role === 'user') {
-            if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
-                $userContent .= ' <image>';
-            } else {
-                $userContent .= ' '.$message->body;
-            }
-        } else {
-            $userContent = trim($userContent);
-            if (! empty($userContent)) {
-                $messageTokens = ceil(str_word_count($userContent) / 3);
-
-                if ($tokenCount + $messageTokens > $maxTokens) {
-                    break; // Stop adding messages if the remaining context is not enough
-                }
-
-                $messages[] = [
-                    'role' => 'user',
-                    'content' => $userContent,
-                ];
-
-                $tokenCount += $messageTokens;
-                $userContent = '';
-            }
-
-            if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
-                $content = '<image>';
-            } else {
-                $content = trim($message->body);
-                if (empty($content)) {
-                    // Some LLMs return a 400 error if they receive blank content
-                    continue;
-                }
-            }
-
-            $messageTokens = ceil(str_word_count($content) / 3);
-
-            if ($tokenCount + $messageTokens > $maxTokens) {
-                break; // Stop adding messages if the remaining context is not enough
-            }
-
-            $messages[] = [
-                'role' => 'assistant',
-                'content' => $content,
-            ];
-
-            $tokenCount += $messageTokens;
-        }
+        return $messages;
     }
 
-    if (! empty($userContent)) {
-        $messageTokens = ceil(str_word_count($userContent) / 3);
+    private static function addMessage(string $role, mixed $message, array &$messages): void
+    {
+        if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
+            $content = '<image>';
+        } else {
+            $content = trim($message->body) ?: '<blank>';
+        }
+        $messageTokens = $role === 'user' ? $message->input_tokens : $message->output_tokens;
+        if (! $messageTokens) {
+            $messageTokens = count(self::$encoder->encode($content));
+        }
 
-        if ($tokenCount + $messageTokens <= $maxTokens) {
-            $messages[] = [
-                'role' => 'user',
-                'content' => trim($userContent),
-            ];
+        // if this is the first message then it is the prompt
+        if (count($messages) === 0) {
+            self::$promptTokens = $messageTokens;
+        }
+
+        if ($messageTokens <= self::$remainingTokens || ($role === 'user')) {
+            self::$remainingTokens -= $messageTokens;
+            if (self::$remainingTokens < 0) {
+                self::$remainingTokens = 0;
+            }
+
+            if (count($messages) && $messages[0]['role'] === $role) {
+                if (! str_contains($messages[0]['content'], $content)) {
+                    $messages[0]['content'] = $messages[0]['content']."\n".$content;
+                }
+            } else {
+                array_unshift($messages, [
+                    'role' => $role,
+                    'content' => $content,
+                ]);
+            }
         }
     }
-
-    return $messages;
 }
