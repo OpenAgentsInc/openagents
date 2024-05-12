@@ -31,11 +31,12 @@ trait StreamingTrait
             $this->data['content'] .= $event['choices'][0]['delta']['content'];
             $streamFunction($event['choices'][0]['delta']['content']);
         }
-        if (isset($event['usage']['prompt_tokens'])) {
-            $this->data['input_tokens'] = $event['usage']['prompt_tokens'];
+        $usage = $event['usage'] ?? $event['x_groq']['usage'] ?? [];
+        if (isset($usage['prompt_tokens'])) {
+            $this->data['input_tokens'] = $usage['prompt_tokens'];
         }
-        if (isset($event['usage']['completion_tokens'])) {
-            $this->data['output_tokens'] = $event['usage']['completion_tokens'];
+        if (isset($usage['completion_tokens'])) {
+            $this->data['output_tokens'] = $usage['completion_tokens'];
         }
     }
 
