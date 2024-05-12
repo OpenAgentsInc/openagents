@@ -9,9 +9,9 @@
 
                 <div>
                     <h3 class="mt-4">{{ $selectedAgent['name'] }}</h3>
-                    <span class="inline-flex items-center my-1 px-1 py-1 {{$selectedAgent['is_rag_ready'] ? 'bg-white' : 'bg-yellow-500'}}  text-black  text-xs font-bold rounded-md">
-                        {{$selectedAgent['is_rag_ready'] ? 'Ready' : 'Building '}}
-                      </span>
+                    <span class="inline-flex items-center my-1 px-1 py-1 {{ $selectedAgent['is_rag_ready'] == false && $selectedAgent['created_at']->diffInMinutes() > 30 ? 'bg-red text-white' : ($selectedAgent['is_rag_ready'] ? 'bg-white text-black' : 'bg-yellow-500 text-black') }}    text-xs font-bold rounded-md">
+                        {{ $selectedAgent['is_rag_ready'] == false && $selectedAgent['created_at']->diffInMinutes() > 30 ? 'Error' : ($selectedAgent['is_rag_ready'] ? 'Ready' : 'Building') }}
+                    </span>
                 </div>
                 <p class="text-[14px] text-gray mb-0">{{ $selectedAgent['description'] }}</p>
                 @if (!empty($selectedAgent['capabilities']))

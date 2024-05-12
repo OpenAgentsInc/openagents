@@ -166,6 +166,7 @@ class Chat extends Component
                 'instructions' => $agent->prompt,
                 'image' => $agent->image_url,
                 'is_rag_ready' =>  $agent->is_rag_ready,
+                'created_at' => $agent->created_at
             ];
             $this->selectedModel = '';
         } else {
