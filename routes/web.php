@@ -97,6 +97,11 @@ Route::get('/log', function () {
     return response()->json(['ok' => true]);
 });
 
+// For now redirect /create to /build
+Route::get('/create', function () {
+    return redirect()->route('agents.create');
+});
+
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {
     return redirect('/');
