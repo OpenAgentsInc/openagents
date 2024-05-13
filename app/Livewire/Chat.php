@@ -201,6 +201,8 @@ class Chat extends Component
             'output_tokens' => null,
         ];
 
+
+
         // Clear the input
         $this->message_input = '';
         $this->pending = true;

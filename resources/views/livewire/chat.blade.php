@@ -69,6 +69,7 @@
                     @foreach ($messages as $message)
                         @php
                             // If message has an agent_id, use agent name, otherwise use 'You'
+                            // dd($message);
                             try {
                                 if (
                                     !empty($message['agent_id']) &&
@@ -83,6 +84,9 @@
                                 ) {
                                     $author = $models[$message['model']]['name'] ?? 'Model';
                                 } else {
+                                    $author = 'You';
+                                }
+                                else{
                                     $author = 'You';
                                 }
                             } catch (Exception $e) {
