@@ -74,7 +74,9 @@ Route::get('/request-job', [NostrGrpcController::class, 'handleJobRequest']);
 
 // MISC
 Route::get('/changelog', Changelog::class);
-Route::get('/docs', MarkdownPage::class);
+Route::get('/docs', function () {
+    return redirect('https://docs.openagents.com');
+});
 Route::get('/terms', MarkdownPage::class);
 Route::get('/privacy', MarkdownPage::class);
 

@@ -11,8 +11,8 @@
                 <a href="/introducing-the-agent-store" wire:navigate class="no-underline">
                     <x-pane title="Introducing the Agent Store" subtitle="May 13, 2024">
                         <p class="mx-1 my-0 text-text">
-                            We launch the Agent Store, a marketplace for AI agents where creators of agents and plugins
-                            get paid.
+                            We introduce the Agent Store, a marketplace for AI agents with revenue sharing. Open beta
+                            begins now, available globally.
                         </p>
                     </x-pane>
                 </a>
