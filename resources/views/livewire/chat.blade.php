@@ -83,8 +83,6 @@
                                     is_numeric($message['output_tokens'])
                                 ) {
                                     $author = $models[$message['model']]['name'] ?? 'Model';
-                                } else {
-                                    $author = 'You';
                                 }
                                 else{
                                     $author = 'You';
