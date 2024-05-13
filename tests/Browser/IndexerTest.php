@@ -29,7 +29,7 @@ test('can interact with paid indexer agent', function () {
             ->waitFor('@create-agent')
             ->click('@create-agent')
             ->waitForRoute('agents.create')
-            ->assertPathIs('/build')
+            ->assertPathIs('/create')
             ->waitFor('@name')
 
             // Can fill out the form to create an agent

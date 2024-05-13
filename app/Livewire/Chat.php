@@ -252,9 +252,9 @@ class Chat extends Component
         ]);
 
         if (auth()->check()) {
-            $model = auth()->user()->isPro() ? 'meta-llama/llama-3-70b-chat-hf' : 'meta-llama/llama-3-8b-chat-hf';
+            $model = auth()->user()->isPro() ? 'command-r-plus' : 'command-r';
         } else {
-            $model = 'meta-llama/llama-3-8b-chat-hf';
+            $model = 'command-r';
         }
 
         $output = SimpleInferencer::inference($this->input, $model, $this->thread, $this->getStreamingCallback());
