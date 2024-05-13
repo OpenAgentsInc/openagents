@@ -12,6 +12,7 @@ class Card extends Component
     {
         $this->selectedAgent = $selectedAgent;
     }
+
     public function render()
     {
         return view('livewire.agents.partials.card');

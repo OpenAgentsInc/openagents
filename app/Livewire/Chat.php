@@ -201,8 +201,6 @@ class Chat extends Component
             'output_tokens' => null,
         ];
 
-
-
         // Clear the input
         $this->message_input = '';
         $this->pending = true;
@@ -253,11 +251,13 @@ class Chat extends Component
             'user_id' => auth()->id() ?? null,
         ]);
 
-        if (auth()->check()) {
-            $model = auth()->user()->isPro() ? 'command-r-plus' : 'command-r';
-        } else {
-            $model = 'command-r';
-        }
+        $model = 'command-r-plus';
+
+        //        if (auth()->check()) {
+        //            $model = auth()->user()->isPro() ? 'command-r-plus' : 'command-r';
+        //        } else {
+        //            $model = 'command-r';
+        //        }
 
         $output = SimpleInferencer::inference($this->input, $model, $this->thread, $this->getStreamingCallback());
 
