@@ -57,7 +57,7 @@ Route::get('/plugins', [StaticController::class, 'plugins']);
 
 // AGENT
 Route::get('/agents', App\Livewire\Agents\Index::class)->name('agents');
-Route::get('/create', App\Livewire\Agents\Create::class)->name('agents.create');
+Route::get('/build', App\Livewire\Agents\Create::class)->name('agents.create');
 Route::get('/agents/{agent}/edit', App\Livewire\Agents\Edit::class)->name('agents.edit');
 
 // PAYMENTS
