@@ -27,7 +27,9 @@ class OpenObserveLogger
         $logEntry = [
             'level' => $level,
             '_timestamp' => $timestamp ?? now()->timestamp * 1000,
-            'message' => $message,
+            'log' => $message,
+            'appName' => "OpenAgents Laravel",
+            "appVersion" => "1.0",
         ];
 
         if (isset($this->options['meta'])) {
