@@ -57,7 +57,7 @@ Route::get('/plugins', [StaticController::class, 'plugins']);
 
 // AGENT
 Route::get('/agents', App\Livewire\Agents\Index::class)->name('agents');
-Route::get('/build', App\Livewire\Agents\Create::class)->name('agents.create');
+Route::get('/create', App\Livewire\Agents\Create::class)->name('agents.create');
 Route::get('/agents/{agent}/edit', App\Livewire\Agents\Edit::class)->name('agents.edit');
 
 // PAYMENTS
@@ -95,11 +95,6 @@ Route::get('/log', function () {
     $logger->log('info', 'TEST LOG RECEIVED');
 
     return response()->json(['ok' => true]);
-});
-
-// For now redirect /create to /build
-Route::get('/create', function () {
-    return redirect()->route('agents.create');
 });
 
 // Catch-all redirect to the homepage
