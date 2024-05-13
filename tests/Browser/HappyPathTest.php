@@ -31,7 +31,7 @@ test('happy path', function () {
             ->waitFor('@create-agent')
             ->click('@create-agent')
             ->waitForRoute('agents.create')
-            ->assertPathIs('/create')
+            ->assertPathIs('/build')
             ->waitFor('@name')
 
             // Can fill out the form to create an agent
