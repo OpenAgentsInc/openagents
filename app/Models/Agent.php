@@ -31,6 +31,10 @@ class Agent extends Model
 
     public function getCreatorUsernameAttribute()
     {
+        if (! $this->user) {
+            return 'Unknown';
+        }
+
         // If there's a user, return the username, otherwise assume Nostr user and use name
         return $this->user->username ?? $this->user->name;
     }
