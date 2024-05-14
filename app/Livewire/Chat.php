@@ -48,7 +48,7 @@ class Chat extends Component
     public $pending = false;
 
     // The thread we're chatting in
-    private $logger;
+    public $logger;
 
     public function mount($id = null)
     {
