@@ -7,7 +7,7 @@
     <div x-popover
          class="group relative rounded-lg active:opacity-90 px-3 {{ $classes }}"
     ><a
-                href="/chat/{{ $thread->id }}" class="flex items-center gap-2 py-2" wire:navigate>
+                href="/chat/{{ $thread->id }}" class="flex items-center gap-2 py-1" wire:navigate>
             <div class="relative grow overflow-hidden whitespace-nowrap">
                 {{ $thread->title }}
             </div>
