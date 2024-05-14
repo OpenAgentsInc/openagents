@@ -13,11 +13,9 @@ use App\Livewire\Agents\Profile;
 use App\Livewire\Blog;
 use App\Livewire\Changelog;
 use App\Livewire\Chat;
-use App\Livewire\Explorer;
 use App\Livewire\IndexedCodebaseList;
 use App\Livewire\Logs;
 use App\Livewire\MarkdownPage;
-use App\Livewire\PrismDashboard;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
 use App\Livewire\Store;
@@ -65,10 +63,6 @@ Route::get('/codebases', IndexedCodebaseList::class);
 
 // PLUGIN REGISTRY
 Route::get('/plugins', [StaticController::class, 'plugins']);
-
-// PAYMENTS
-Route::get('/prism', PrismDashboard::class)->name('prism');
-Route::get('/explorer', Explorer::class)->name('explorer');
 
 // BLOG
 Route::get('/blog', Blog::class);
