@@ -31,8 +31,8 @@ class Agent extends Model
 
     public function getCreatorUsernameAttribute()
     {
-        // If there's a user, return the username, otherwise assume Nostr user and truncate their pubkey
-        return $this->user->username ?? substr($this->user->pubkey, 0, 8).'...';
+        // If there's a user, return the username, otherwise assume Nostr user and use name
+        return $this->user->username ?? $this->user->name;
     }
 
     public function getImageUrlAttribute()
