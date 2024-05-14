@@ -19,7 +19,8 @@ class SocialAuthController extends Controller
     {
         $socialUser = Socialite::driver('twitter')->user();
         // Check if user already exists in your database based on their email
-        $user = User::where('email', $socialUser->email)->first();
+        $alternativeEmail = $socialUser->nickname.'@fakeemail.com';
+        $user = User::where('email', $socialUser->email)->orWhere('email',$alternativeEmail)->first();
         $sessionId = Session::getId(); // Get the current session ID
 
         if (! $user) {

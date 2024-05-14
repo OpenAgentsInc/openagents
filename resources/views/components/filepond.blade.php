@@ -18,11 +18,12 @@
             allowFileTypeValidation: {{ $attributes->has('allowFileTypeValidation') ? 'true' : 'false' }},
             acceptedFileTypes: {!! $attributes->get('acceptedFileTypes') ?? 'null' !!},
             allowFileSizeValidation: {{ $attributes->has('allowFileSizeValidation') ? 'true' : 'false' }},
-            maxFileSize: {!! $attributes->has('maxFileSize') ? "'".$attributes->get('maxFileSize')."'" : 'null' !!}
+            maxFileSize: {!! $attributes->has('maxFileSize') ? "'".$attributes->get('maxFileSize')."'" : 'null' !!},
+            fileValidateTypeLabelExpectedTypesMap: {!! $attributes->has('allowFileTypeValidation') ? $attributes->get('fileValidateTypeLabelExpectedTypesMap') : 'null' !!},
+            fileValidateTypeLabelExpectedTypes: 'Expects {allButLastType} or {lastType}'
         });
     }"
 >
     <input type="file" x-ref="{{ $attributes->get('ref') ?? 'input' }}"/>
 </div>
-
 
