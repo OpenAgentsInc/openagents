@@ -2,28 +2,27 @@
 
 namespace App\AI;
 
-use App\Models\Thread;
 use GuzzleHttp\Client;
 
 class ImageInferencer
 {
-    public static function multimodalInference(string $input, ?string $model, Thread $thread, callable $streamFunction, ?Client $httpClient = null): array
+    public static function multimodalInference(string $input, ?string $model, callable $streamFunction, ?Client $httpClient = null): array
     {
         $decodedInput = json_decode($input, true);
 
         if (json_last_error() === JSON_ERROR_NONE && isset($decodedInput['images'])) {
             $text = $decodedInput['text'] ?? '';
-            $images = $decodedInput['images'] ?? [];
+            $images = $decodedInput['images'] ?: [];
 
             $inputForModel = [
                 'text' => $text,
-                'image_url' => $images[0] ?? null, // Example: Taking the first image for simplicity
+                'image_url' => $images[0] ?? null, // Taking the first image for simplicity
             ];
 
-            $messages = self::prepareMultiModalInference($inputForModel, $thread);
+            $messages = self::prepareMultiModalInference($inputForModel);
         } else {
             $text = $input;
-            $messages = self::prepareTextInference($text, $thread);
+            $messages = self::prepareTextInference($text);
         }
 
         if (! $model) {
@@ -60,7 +59,7 @@ class ImageInferencer
         return $inference;
     }
 
-    private static function prepareMultiModalInference($input, Thread $thread)
+    private static function prepareMultiModalInference($input): array
     {
         $systemMessage = [
             'role' => 'system',
@@ -92,16 +91,14 @@ class ImageInferencer
         return [$systemMessage, $userMessage];
     }
 
-    private static function prepareTextInference($text, Thread $thread)
+    private static function prepareTextInference($text): array
     {
-        $messages = [
+        return [
             [
                 'role' => 'system',
                 'content' => 'You are a helpful assistant.',
             ],
             ['role' => 'user', 'content' => $text],
         ];
-
-        return $messages;
     }
 }

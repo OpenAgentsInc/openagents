@@ -6,7 +6,7 @@ use App\AI\ImageInferencer;
 
 class ImageService
 {
-    public function addImageToThread($image, $thread)
+    public function getImageDescription($image, $thread): string
     {
         // Read the image file contents
         $imageContents = $image->get();
@@ -30,20 +30,12 @@ class ImageService
         };
 
         // Use the ImageInferencer to get a summary of the image
-        $inference = ImageInferencer::multimodalInference($input, $model, $thread, $streamFunction);
+        $inference = ImageInferencer::multimodalInference($input, $model, $streamFunction);
 
         // Extract the summary from the inference response
 
         $summary = "The user has uploaded an image: `$originalFilename` which shows the following:\n\n";
-        $summary .= $inference['content'];
 
-        // Create a new message with the summary
-        $thread->messages()->create([
-            'body' => $summary,
-            'session_id' => $thread->session_id,
-            'model' => 'gpt-4o', // 'gpt-4-vision-preview',
-            'user_id' => auth()->id() ?? null,
-            //            'hidden' => true,
-        ]);
+        return $summary.$inference['content'];
     }
 }
