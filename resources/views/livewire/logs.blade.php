@@ -22,7 +22,12 @@
             @foreach($logs as $log)
                 <tr>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $log->id }}</td>
-                    <td class="whitespace-nowrap p-2 text-sm">{{ json_encode($log->data) }}</td>
+                    <td class="whitespace-nowrap p-2 text-sm">
+                            <?php
+                            $data = json_decode($log->data);
+                            echo trim(json_encode($data, JSON_PRETTY_PRINT));
+                            ?>
+                    </td>
                     <td class="whitespace-nowrap p-2 text-sm">{{ $log->created_at }}</td>
                 </tr>
             @endforeach
