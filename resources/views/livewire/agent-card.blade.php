@@ -15,13 +15,13 @@
         <p class="text-gray text-base">{{ $agent['about'] }}</p>
     </div>
 
-    <div class="mt-4 flex justify-end items-center">
+    <div class="text-gray mt-4 gap-x-4 flex justify-end items-center">
         <div class="flex items-center">
-            <i class="fas fa-comments mr-2"></i>
+            <x-icon.chats class="w-4 h-4 mr-1"/>
             <span>{{ $agent->thread_count }}</span>
         </div>
         <div class="flex items-center">
-            <i class="fas fa-user mr-2"></i>
+            <x-icon.user class="w-4 h-4 mr-1"/>
             <span>{{ $agent->unique_users_count }}</span>
         </div>
     </div>
