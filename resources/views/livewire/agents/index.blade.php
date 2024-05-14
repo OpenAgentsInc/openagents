@@ -1,21 +1,15 @@
 <div>
-    {{-- If your happiness depends on money, you will never be happy with yourself. --}}
-
     <div class="max-w-screen-xl mx-auto my-14 px-4 pt-4 md:px-8">
-        <div class="items-center justify-between gap-x-1 py-4 border-b md:flex">
+        <div class="items-center justify-between gap-x-1 py-4 border-b border-offblack md:flex">
             <div class="md:max-w-md lg:max-w-lg">
                 <h3 class="text-gray-800 text-2xl font-bold">
-                    Agents
+                    All Agents
                 </h3>
-                <p class="text-gray-600 mt-2 text-sm">
-                    Empower your workflow with cutting-edge AI Agents,
-                    powered by state-of-the-art technology.
-                </p>
             </div>
             <div class="mt-6 sm:mt-0 w-auto">
-                <div class="flex gap-2 rounded-md shadow-sm  w-auto lg:w-[300px]">
+                <div class="flex gap-2 rounded-md shadow-sm  w-auto lg:w-[350px]">
                     <div class="relative flex-grow focus-within:z-10">
-                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <div class="text-darkgray pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                             <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor"
                                  aria-hidden="true">
                                 <path fill-rule="evenodd"
@@ -23,10 +17,9 @@
                                       clip-rule="evenodd"></path>
                             </svg>
                         </div>
-
                         <input type="search" name="search" id="search"
-                               class="w-full text-darkgray rounded border-0 py-1.5 pl-10 text-sm leading-6 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-gray sm:block"
-                               placeholder="Search agent" wire:model.live='search'>
+                               class="bg-black w-full text-darkgray rounded border-0 py-1.5 pl-10 text-sm leading-6 text-gray-900 ring-1 ring-darkgray ring-inset ring-gray-300 placeholder:text-darkgray focus:ring-2 focus:ring-inset focus:ring-gray sm:block"
+                               placeholder="Search agents" wire:model.live='search'/>
                     </div>
                     <a href="{{ route('agents.create') }}" type="button" wire:navigate
                        class="relative sm:-ml-px inline-flex items-center gap-x-1 sm:gap-x-1.5 rounded px-3 py-2 text-xs sm:text-sm sm:font-semibold text-gray-900 ring-1 ring-inset ring-gray/50 hover:bg-gray/50">
@@ -34,66 +27,68 @@
                              stroke="currentColor" class="w-5 h-5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6"/>
                         </svg>
-                        New
+                        Create
                     </a>
                 </div>
             </div>
         </div>
     </div>
 
-
-    <div class="py-12 mb-1 px-4 md:px-8 sm:px-7 max-w-screen-xl mx-auto">
-        <ul class="grid gap-6 md:grid-cols-2 lg:grid-cols-3" @agent_deleted="$refresh">
+    <div class="py-6 mb-1 px-4 md:px-8 sm:px-7 max-w-screen-xl mx-auto">
+        <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3" @agent_deleted="$refresh">
             @forelse ($this->agents as $agent)
-                <li class="bg-gray-700  border border-gray p-4 rounded-xl">
-                    <figure>
-                        <div class="flex justify-between items-center">
-                            <div class="flex items-center gap-x-4">
-                                <img src="{{ $agent->image_url }}" class="w-14 h-14 object-cover rounded-full"
-                                     alt="{{$agent->name}}">
-                                <div>
-                                    <span class="block text-gray-800 font-semibold">{{ $agent->name }}</span>
-                                    <span class="inline-flex items-center my-1 px-1 py-1 {{ $agent->is_rag_ready == false && $agent->created_at->diffInMinutes() > 30 ? 'bg-red text-white' : ($agent->is_rag_ready ? 'bg-white text-black' : 'bg-yellow-500 text-black') }}    text-xs font-bold rounded-md">
-                                        {{ $agent->is_rag_ready == false && $agent->created_at->diffInMinutes() > 30 ? 'Error' : ($agent->is_rag_ready ? 'Active' : 'Learning') }}
-                                      </span>
-                                </div>
-                            </div>
-                            <div class="items-center gap-1.5 pr-2  group-hover:flex">
-                                @auth
-                                    @if ($agent->user_id == auth()->user()->id)
-                                        <div x-data="{ isOpen: false }" class="relative flex-1 text-right">
-                                            <button @click="isOpen = !isOpen"
-                                                    class="p-1.5 rounded-md text-gray hover:bg-[#262626]">
-                                                <x-icon.dots role='button' class="w-4 h-4"></x-icon.dots>
-                                            </button>
-                                            <div x-show="isOpen" @click.away="isOpen = false"
-                                                 class="absolute z-10 top-12 right-0 w-64 rounded-lg bg-black border border-gray shadow-md  text-sm text-gray">
-                                                <div class="p-2 text-left">
-                                                    <a href="{{ route('agents.edit', ['agent' => $agent]) }}"
-                                                       wire:navigate
-                                                       class="block w-full p-2 text-left rounded-md hover:text-white  hover:bg-[#262626] duration-150"
-                                                       rel="nofollow">Edit</a>
-                                                    <a role="button"
-                                                       x-on:click="Livewire.dispatch('openModal', { component: 'agents.modals.delete', arguments: { agent: {{ $agent->id }} } })"
-                                                       class="block w-full p-2 text-left rounded-md text-red hover:bg-[#262626] duration-150"
-                                                       rel="nofollow">Delete</a>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    @endif
-                                @endauth
+                <livewire:agent-card :agent="$agent" :key="$agent->id"/>
+
+                {{--                <li class="border border-offblack p-4 rounded-xl">--}}
 
 
-                            </div>
-                        </div>
-                        <blockquote>
-                            <p class="mt-6 text-gray-700">
-                                {{ substr($agent->about, 0, 100) }}{{ strlen($agent->about) > 100 ? '...' : '' }}
+                {{--                    <div class="flex justify-between items-center">--}}
+                {{--                        <div class="flex items-center gap-x-4">--}}
+                {{--                            <img src="{{ $agent->image_url }}" class="w-14 h-14 object-cover rounded-full"--}}
+                {{--                                 alt="{{$agent->name}}">--}}
+                {{--                            <div>--}}
+                {{--                                <span class="block text-gray-800 font-semibold">{{ $agent->name }}</span>--}}
+                {{--                                <span class="inline-flex items-center my-1 px-1 py-1 {{ $agent->is_rag_ready == false && $agent->created_at->diffInMinutes() > 30 ? 'bg-red text-white' : ($agent->is_rag_ready ? 'bg-white text-black' : 'bg-yellow-500 text-black') }}    text-xs font-bold rounded-md">--}}
+                {{--                                        {{ $agent->is_rag_ready == false && $agent->created_at->diffInMinutes() > 30 ? 'Error' : ($agent->is_rag_ready ? 'Active' : 'Learning') }}--}}
+                {{--                                      </span>--}}
+                {{--                            </div>--}}
+                {{--                        </div>--}}
+                {{--                        <div class="items-center gap-1.5 pr-2  group-hover:flex">--}}
+                {{--                            @auth--}}
+                {{--                                @if ($agent->user_id == auth()->user()->id)--}}
+                {{--                                    <div x-data="{ isOpen: false }" class="relative flex-1 text-right">--}}
+                {{--                                        <button @click="isOpen = !isOpen"--}}
+                {{--                                                class="p-1.5 rounded-md text-gray hover:bg-[#262626]">--}}
+                {{--                                            <x-icon.dots role='button' class="w-4 h-4"></x-icon.dots>--}}
+                {{--                                        </button>--}}
+                {{--                                        <div x-show="isOpen" @click.away="isOpen = false"--}}
+                {{--                                             class="absolute z-10 top-12 right-0 w-64 rounded-lg bg-black border border-gray shadow-md  text-sm text-gray">--}}
+                {{--                                            <div class="p-2 text-left">--}}
+                {{--                                                <a href="{{ route('agents.edit', ['agent' => $agent]) }}"--}}
+                {{--                                                   wire:navigate--}}
+                {{--                                                   class="block w-full p-2 text-left rounded-md hover:text-white  hover:bg-[#262626] duration-150"--}}
+                {{--                                                   rel="nofollow">Edit</a>--}}
+                {{--                                                <a role="button"--}}
+                {{--                                                   x-on:click="Livewire.dispatch('openModal', { component: 'agents.modals.delete', arguments: { agent: {{ $agent->id }} } })"--}}
+                {{--                                                   class="block w-full p-2 text-left rounded-md text-red hover:bg-[#262626] duration-150"--}}
+                {{--                                                   rel="nofollow">Delete</a>--}}
+                {{--                                            </div>--}}
+                {{--                                        </div>--}}
+                {{--                                    </div>--}}
+                {{--                                @endif--}}
+                {{--                            @endauth--}}
+                {{--                        </div>--}}
+                {{--                    </div>--}}
+                {{--                    <blockquote>--}}
+                {{--                        <p class="mt-6 text-gray-700">--}}
+                {{--                            {{ substr($agent->about, 0, 100) }}{{ strlen($agent->about) > 100 ? '...' : '' }}--}}
 
-                            </p>
-                        </blockquote>
-                    </figure>
-                </li>
+                {{--                        </p>--}}
+                {{--                    </blockquote>--}}
+
+
+                {{--                </li>--}}
+
             @empty
 
                 <div class="col-span-full my-auto mx-auto ">
@@ -109,6 +104,6 @@
                     </div>
                 </div>
             @endforelse
-        </ul>
+        </div>
     </div>
 </div>
