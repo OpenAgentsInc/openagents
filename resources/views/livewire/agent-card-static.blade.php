@@ -37,7 +37,7 @@
             <p class="text-sm text-gray leading-none">From: {{ $agent->creator_username }}</p>
         </div>
         <img class="w-5 h-5 rounded-full mx-4" src="{{ $agent->creator_picture }}"
-             alt="Avatar of {{ $agent->user->username }}">
+             alt="Avatar of {{ $agent->creator_username }}">
     </div>
     <div class="flex-grow">
         <p class="text-sm text-text my-1">{{ $agent['about'] }}</p>
