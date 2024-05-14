@@ -20,7 +20,7 @@ class PopularAgents extends Component
             ->orderByDesc(function ($query) {
                 $query->select(DB::raw('unique_users_count * 3 + thread_count'));
             })
-            ->limit(6)
+            ->limit(10)
             ->get();
     }
 
