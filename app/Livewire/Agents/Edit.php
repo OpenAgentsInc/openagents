@@ -58,7 +58,7 @@ class Edit extends Component
             'about' => 'required|string',
             'prompt' => 'required|string',
             'rag_prompt' => 'nullable|string',
-            'message' => 'required|string',
+            //            'message' => 'required|string',
             'is_public' => 'required|boolean',
             'files' => 'nullable|array',
             'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
