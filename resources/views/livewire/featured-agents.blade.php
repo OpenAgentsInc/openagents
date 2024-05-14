@@ -22,7 +22,7 @@
                 @endif
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+            <div class="z-10 grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
                 @foreach($agents as $agent)
                     <livewire:agent-card :agent="$agent" :key="$agent['id']"/>
                 @endforeach

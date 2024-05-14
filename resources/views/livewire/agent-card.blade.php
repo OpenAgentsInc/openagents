@@ -1,4 +1,7 @@
-<div class="border border-offblack rounded-lg p-4 flex flex-col leading-normal">
+<a class="z-[9000] select-auto pointer-events-auto border border-offblack hover:border-darkgray rounded-lg p-4 flex flex-col leading-normal"
+   href="/chat?agent={{ $agent->id }}"
+   wire:navigate
+>
     <div class="mt-1 mb-4 w-[20px] h-[20px] sm:w-[60px] sm:h-[60px]">
         <img src="{{ $agent->image_url }}" alt="Agent" class="w-full h-full rounded">
     </div>
@@ -29,4 +32,4 @@
             <span>{{ $agent->unique_users_count }}</span>
         </div>
     </div>
-</div>
+</a>
