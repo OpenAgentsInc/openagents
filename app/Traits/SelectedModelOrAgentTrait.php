@@ -91,8 +91,8 @@ trait SelectedModelOrAgentTrait
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
             'image' => $message['agent']['image_url'],
-            'is_rag_ready' => $message['agent']['is_rag_ready'] ?? false,
-            'created_at' => $message['agent']['created_at'],
+            'is_rag_ready' => $message['agent']['is_rag_ready'],
+            'created_at' => $message['agent']['updated_at'],
             'capabilities' => $this->safeDecode($message['agent']['capabilities'] ?? null),
         ];
     }

@@ -219,7 +219,7 @@ class Chat extends Component
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
             'agent_id' => $this->selectedAgent['id'] ?? null,
             'agent' => $this->selectedAgent,
-            'model' => $this->selectedAgent ? null : $this->selectedModel,
+            'model' => !$this->selectedAgent ? $this->selectedModel : null,
             'input_tokens' => null,
             'output_tokens' => null,
         ];
