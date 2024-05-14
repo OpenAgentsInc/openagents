@@ -52,7 +52,6 @@ class Chat extends Component
 
     public function mount($id = null)
     {
-
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
         }
@@ -68,6 +67,8 @@ class Chat extends Component
                 //                $this->selectedAgent = $this->getSelectedAgentFromId($agent->id);
             }
         }
+
+        $this->logger = new LocalLogger();
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
@@ -101,7 +102,6 @@ class Chat extends Component
 
         $this->setModelOrAgentForThread($this->thread);
 
-        $this->logger = new LocalLogger();
     }
 
     private function ensureThread()
