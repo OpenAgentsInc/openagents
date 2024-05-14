@@ -11,7 +11,7 @@ class FeaturedAgents extends Component
 
     public function mount()
     {
-        $this->agents = Agent::where('featured', true)->get();
+        $this->agents = Agent::where('featured', true)->limit(2)->get();
     }
 
     public function render()
