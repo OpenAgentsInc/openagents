@@ -48,7 +48,6 @@ class Chat extends Component
     public $pending = false;
 
     // The thread we're chatting in
-    public $logger;
 
     public function mount($id = null)
     {
@@ -67,8 +66,6 @@ class Chat extends Component
                 //                $this->selectedAgent = $this->getSelectedAgentFromId($agent->id);
             }
         }
-
-        $this->logger = new LocalLogger();
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
@@ -236,7 +233,8 @@ class Chat extends Component
 
     public function runAgentWithoutRag()
     {
-        $this->logger->log("Running agent without RAG. Input: {$this->input}");
+        $logger = new LocalLogger();
+        $logger->log("Running agent without RAG. Input: {$this->input}");
 
         // Attach any context necessary from querying the codebase
         $this->handleCodebaseContext();
@@ -389,7 +387,8 @@ class Chat extends Component
 
     public function ragRun()
     {
-        $this->logger->log("Running agent with RAG. Input: {$this->input}");
+        $logger = new LocalLogger();
+        $logger->log("Running agent with RAG. Input: {$this->input}");
 
         try {
             $sessionId = auth()->check() ? null : Session::getId();
