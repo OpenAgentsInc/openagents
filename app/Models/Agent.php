@@ -24,9 +24,15 @@ class Agent extends Model
         'is_rag_ready',
     ];
 
+    public function getCreatorPictureAttribute()
+    {
+        return $this->user->profile_photo_path ?? 'https://placekitten.com/200/200';
+    }
+
     public function getCreatorUsernameAttribute()
     {
-        return $this->user->username ?? 'Unknown';
+        // If there's a user, return the username, otherwise assume Nostr user and truncate their pubkey
+        return $this->user->username ?? substr($this->user->pubkey, 0, 8).'...';
     }
 
     public function getImageUrlAttribute()
