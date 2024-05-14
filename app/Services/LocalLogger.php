@@ -6,12 +6,10 @@ use App\Models\Log;
 
 class LocalLogger
 {
-    public function log($message)
+    public function log($object)
     {
         $log = [
-            'data' => json_encode([
-                'message' => $message,
-            ]),
+            'data' => json_encode($object),
         ];
 
         Log::create($log);
