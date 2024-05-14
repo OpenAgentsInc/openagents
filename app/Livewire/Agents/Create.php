@@ -111,7 +111,7 @@ class Create extends Component
         $agent->message = $this->message;
         $agent->image = json_encode($saveimage);
         $agent->user_id = $user->id;
-        $agent->is_rag_ready =  !empty($this->files) ? false : true;
+        $agent->is_rag_ready = ! empty($this->files) ? false : true;
         $agent->save();
 
         if (! empty($this->files)) {
@@ -149,11 +149,9 @@ class Create extends Component
 
             $this->alert('success', 'Agent training process has now begin ..');
 
-
         }
 
         $this->alert('success', 'Agent created successfully..');
-
 
         session()->put('agent', $agent->id);
 
