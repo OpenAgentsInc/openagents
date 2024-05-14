@@ -11,6 +11,7 @@ use App\Livewire\Changelog;
 use App\Livewire\Chat;
 use App\Livewire\Explorer;
 use App\Livewire\IndexedCodebaseList;
+use App\Livewire\Logs;
 use App\Livewire\MarkdownPage;
 use App\Livewire\PrismDashboard;
 use App\Livewire\ProWelcome;
@@ -27,6 +28,8 @@ Route::get('/', function () {
 
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
+
+Route::get('/logs', Logs::class)->name('logs');
 
 // STORE
 Route::get('/store', Store::class)->name('store');
