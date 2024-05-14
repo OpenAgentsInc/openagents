@@ -90,8 +90,12 @@ class SimpleInferencer
         return $inference;
     }
 
-    public static function getTruncatedMessages(Thread $thread): array
+    public static function getTruncatedMessages(Thread $thread, ?int $maxTokens = null): array
     {
+        if ($maxTokens) {
+            self::$remainingTokens = $maxTokens;
+        }
+
         $provider = new EncoderProvider();
         self::$encoder = $provider->getForModel('gpt-4');
 
