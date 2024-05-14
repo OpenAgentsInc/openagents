@@ -178,7 +178,7 @@ class Chat extends Component
     }
 
     #[On('no-more-messages')]
-    public function noMoreMessages()
+    public function noMoreMessages(): void
     {
         // Redirect to homepage
         $this->showNoMoreMessages = true;
@@ -198,7 +198,7 @@ class Chat extends Component
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
             'agent_id' => $this->selectedAgent['id'] ?? null,
             'agent' => $this->selectedAgent,
-            'model' => ! $this->selectedAgent ? $this->selectedModel : null,
+            'model' => $this->selectedAgent ? null : $this->selectedModel,
             'input_tokens' => null,
             'output_tokens' => null,
         ];
@@ -231,7 +231,7 @@ class Chat extends Component
         }
     }
 
-    public function runAgentWithoutRag()
+    public function runAgentWithoutRag(): void
     {
         $logger = new LocalLogger();
         $logger->log("Running agent without RAG. Input: {$this->input}");
@@ -296,7 +296,7 @@ class Chat extends Component
         $this->dispatch('message-created');
     }
 
-    public function handleCodebaseContext()
+    public function handleCodebaseContext(): void
     {
         // If we're not in env local, return
         if (app()->environment() !== 'local') {
@@ -409,7 +409,7 @@ class Chat extends Component
                 'body' => $this->input,
                 'session_id' => $sessionId,
                 'user_id' => auth()->id() ?? null,
-                'agent_id' => $this->selectedAgent['id'] ? $this->selectedAgent['id'] : null,
+                'agent_id' => $this->selectedAgent['id'] ?? null,
             ]);
 
             $nostrRag = new NostrRag(); // Generate history

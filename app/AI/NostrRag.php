@@ -9,97 +9,25 @@ use OpenAI;
 
 class NostrRag
 {
-    private $url = 'https://api.groq.com/openai/v1/chat/completions';
+    protected array $messages;
 
-    protected $messages;
+    protected string $prompt;
 
-    protected $agent_id;
-
-    protected $prompt;
-
-    public function history(Thread $thread, int $maxTokens = 2000)
+    public function history(Thread $thread, int $maxTokens = 14000): NostrRag
     {
-        $messages = [];
-        $tokenCount = 0;
-        $userContent = '';
-
-        foreach ($thread->messages()->orderBy('created_at', 'asc')->get() as $message) {
-            if ($message->model !== null) {
-                $role = 'assistant';
-            } else {
-                $role = 'user';
-            }
-
-            if ($role === 'user') {
-                if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
-                    $userContent .= ' <image>';
-                } else {
-                    $userContent .= ' '.$message->body;
-                }
-            } else {
-                if (! empty($userContent)) {
-                    $messageTokens = ceil(str_word_count($userContent) / 3);
-
-                    if ($tokenCount + $messageTokens > $maxTokens) {
-                        break; // Stop adding messages if the remaining context is not enough
-                    }
-
-                    $messages[] = [
-                        'role' => 'user',
-                        'content' => trim($userContent),
-                    ];
-
-                    $tokenCount += $messageTokens;
-                    $userContent = '';
-                }
-
-                if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
-                    $content = '<image>';
-                } else {
-                    $content = $message->body;
-                }
-
-                $messageTokens = ceil(str_word_count($content) / 3);
-
-                if ($tokenCount + $messageTokens > $maxTokens) {
-                    break; // Stop adding messages if the remaining context is not enough
-                }
-
-                $messages[] = [
-                    'role' => 'assistant',
-                    'content' => $content,
-                ];
-
-                $tokenCount += $messageTokens;
-            }
-        }
-
-        if (! empty($userContent)) {
-            $messageTokens = ceil(str_word_count($userContent) / 3);
-
-            if ($tokenCount + $messageTokens <= $maxTokens) {
-                $messages[] = [
-                    'role' => 'user',
-                    'content' => trim($userContent),
-                ];
-            }
-        }
-
-        $this->messages = $messages;
+        $this->messages = SimpleInferencer::getTruncatedMessages($thread, $maxTokens);
 
         return $this;
     }
 
     public function send()
     {
-
-        $ApiKey = config('services.openai.api_key');
-        $response = OpenAI::client($ApiKey)->chat()->create([
-            'model' => 'gpt-3.5-turbo',
+        $apiKey = config('services.openai.api_key');
+        $response = OpenAI::client($apiKey)->chat()->create([
+            'model' => 'gpt-3.5-turbo-16k',
             'messages' => [
                 ['role' => 'system', 'content' => $this->prompt],
             ],
-            'max_tokens' => 2048,
             'temperature' => 0.5,
         ]);
 
@@ -109,15 +37,14 @@ class NostrRag
 
     public function summary()
     {
-
         // Convert the messages array into a string
         $chatHistory = implode("\n", array_map(function ($message) {
             return $message['role'].': '.$message['content'];
         }, $this->messages));
 
         // Construct the prompt with the chat history
-        $content = "Given the following chat history between user and assistant, \
-        answer with a fully qualified standalone and short question that summarizes the user's question. \
+        $content = "Given the following chat history between user and assistant,
+        answer with a fully qualified standalone and short question that summarizes the user's question.
 
         CHAT HISTORY:
         $chatHistory
@@ -126,9 +53,6 @@ class NostrRag
 
         $this->prompt = $content;
 
-        $data = $this->send();
-
-        return $data;
-
+        return $this->send();
     }
 }
