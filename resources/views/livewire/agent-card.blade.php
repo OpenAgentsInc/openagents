@@ -15,7 +15,11 @@
         <p class="text-gray text-base">{{ $agent['about'] }}</p>
     </div>
 
-    <div class="text-gray mt-4 gap-x-4 flex justify-end items-center">
+    <div class="text-gray mt-4 gap-x-6 flex justify-end items-center">
+        <div class="flex items-center">
+            <x-icon.bitcoin class="w-4 h-4 mr-1"/>
+            <span>{{ $agent->sats_earned ?? 0 }}</span>
+        </div>
         <div class="flex items-center">
             <x-icon.chats class="w-4 h-4 mr-1"/>
             <span>{{ $agent->thread_count }}</span>
