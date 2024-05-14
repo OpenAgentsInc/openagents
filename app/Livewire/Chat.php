@@ -12,6 +12,7 @@ use App\Models\Codebase;
 use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
+use App\Services\LocalLogger;
 use App\Services\NostrService;
 use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
@@ -33,19 +34,21 @@ class Chat extends Component
 
     public $waitingForStream = false;
 
-    // Whether to show the "no more messages" message
     public $message_input = '';
 
+    // Whether to show the "no more messages" message
     public $input = '';
 
-    // User input from chat form
     public Thread $thread;
 
-    // The saved input
+    // User input from chat form
     public $messages = [];
 
-    // The thread we're chatting in
+    // The saved input
     public $pending = false;
+
+    // The thread we're chatting in
+    private $logger;
 
     public function mount($id = null)
     {
@@ -97,6 +100,8 @@ class Chat extends Component
         $this->messages = $messages;
 
         $this->setModelOrAgentForThread($this->thread);
+
+        $this->logger = new LocalLogger();
     }
 
     private function ensureThread()
@@ -231,6 +236,8 @@ class Chat extends Component
 
     public function runAgentWithoutRag()
     {
+        $this->logger->log("Running agent without RAG. Input: {$this->input}");
+
         // Attach any context necessary from querying the codebase
         $this->handleCodebaseContext();
 
@@ -382,6 +389,7 @@ class Chat extends Component
 
     public function ragRun()
     {
+        $this->logger->log("Running agent with RAG. Input: {$this->input}");
 
         try {
             $sessionId = auth()->check() ? null : Session::getId();
@@ -430,7 +438,8 @@ class Chat extends Component
     #[On('echo:threads.{thread.id},NostrJobReady')]
     public function process_nostr($event)
     {
-        $this->selectedModel = 'meta-llama/llama-3-8b-chat-hf';
+        $this->selectedModel = 'command-r-plus';
+
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
 
