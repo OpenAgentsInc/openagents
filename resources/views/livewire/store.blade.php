@@ -5,8 +5,13 @@
             knowledge, and any LLM on OpenAgents.</p>
         <div class="select-auto pointer-events-auto">
             <div class="flex flex-row items-end justify-end">
-                <a href="{{ route('agents.create') }}">
-                    <x-button class="mt-4">Create Agent</x-button>
+                <a href="{{ route('agents.create') }}" type="button" wire:navigate
+                   class="mt-6 relative sm:-ml-px inline-flex items-center gap-x-1 sm:gap-x-1.5 rounded px-3 py-2 text-xs sm:text-sm sm:font-semibold text-gray-900 ring-1 ring-inset ring-gray/50 hover:bg-gray/50">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                         stroke="currentColor" class="w-5 h-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6"/>
+                    </svg>
+                    Create Agent
                 </a>
             </div>
             <livewire:featured-agents/>
