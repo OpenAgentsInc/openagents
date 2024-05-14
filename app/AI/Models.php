@@ -99,6 +99,13 @@ class Models
             'description' => 'GPT-4 Turbo 2024-04-09 is OpenAI’s latest model with vision capabilities.
                              It has a context window of 128,000 tokens and its training data is up to date until December 2023',
         ],
+        'gpt-4o' => [
+            'name' => 'GPT-4o',
+            'gateway' => 'openai',
+            'access' => 'user',
+            'max_tokens' => 2000,
+            'description' => "OpenAI's 'most advanced, multimodal flagship model that’s cheaper and faster than GPT-4 Turbo.'",
+        ],
         'gpt-4' => [
             'name' => 'GPT-4',
             'gateway' => 'openai',
