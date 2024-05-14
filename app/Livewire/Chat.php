@@ -199,12 +199,12 @@ class Chat extends Component
             //                return; // or exit(); or throw new Exception('Action stopped due to Learning or Error state.');
             //            }
 
-            if ($this->selectedAgent['is_rag_ready'] ? 'Ready' : 'Learning') {
-
-                $this->alert('warning', 'Agent is still training..');
-
-                return;
-            }
+            //            if ($this->selectedAgent['is_rag_ready'] ? 'Ready' : 'Learning') {
+            //
+            //                $this->alert('warning', 'Agent is still training..');
+            //
+            //                return;
+            //            }
         }
 
         // Save this input even after we clear the form this variable is tied to
