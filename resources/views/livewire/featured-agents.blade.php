@@ -35,7 +35,7 @@
                                     <h4 class="text-lg font-bold">{{ $agent['name'] }}</h4>
                                     <div>
                                         <span class="inline-flex items-center my-1 px-1 py-1 {{ $agent['is_rag_ready'] == false && $agent['created_at']->diffInMinutes() > 30 ? 'bg-red text-white' : ($agent['is_rag_ready'] ? 'bg-white text-black' : 'bg-yellow-500 text-black') }}    text-xs font-bold rounded-md">
-                                            {{ $agent['is_rag_ready'] == false && $agent['created_at']->diffInMinutes() > 30 ? 'Error' : ($agent['is_rag_ready'] ? 'Ready' : 'Building') }}
+                                            {{ $agent['is_rag_ready'] == false && $agent['created_at']->diffInMinutes() > 30 ? 'Error' : ($agent['is_rag_ready'] ? 'Ready' : 'Learning') }}
                                         </span>
                                     </div>
 
