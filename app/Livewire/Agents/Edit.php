@@ -2,13 +2,13 @@
 
 namespace App\Livewire\Agents;
 
-use App\Models\Agent;
-use Livewire\Component;
 use App\Jobs\ProcessAgentRag;
-use Livewire\WithFileUploads;
-use Illuminate\Support\Facades\Storage;
 use App\Livewire\Agents\Partials\Documents;
+use App\Models\Agent;
+use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Edit extends Component
 {
@@ -125,7 +125,7 @@ class Edit extends Component
             $agent->image = json_encode($saveimage);
         }
 
-        $agent->is_rag_ready =  !empty($this->files) ? false : true;
+        $agent->is_rag_ready = ! empty($this->files) ? false : true;
         $agent->user_id = $user->id;
         $agent->save();
 
@@ -169,14 +169,9 @@ class Edit extends Component
 
             $this->alert('warning', 'Agent learning process has now begin ..');
 
-
-
-
         }
 
         $this->alert('success', 'Agent updated successfully');
-
-
 
     }
 
