@@ -3,18 +3,19 @@
         <a href="/" wire:navigate class="mt-12">
             <x-icon.logo class="w-20 h-20 text-white"/>
         </a>
-        
+
         <h1 class="mt-12 text-center">OpenAgents Blog</h1>
 
         <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div class="mt-6 grid grid-cols-1 gap-12">
-                {{--                    <a href="/to-the-agent-store" wire:navigate class="no-underline">--}}
-                {{--                        <x-pane title="To the Agent Store!" subtitle="May 4, 2024">--}}
-                {{--                            <p class="mx-1 my-0 text-text">--}}
-                {{--                                We introduce the Agent Builder and detail our roadmap to the Agent Store.--}}
-                {{--                            </p>--}}
-                {{--                        </x-pane>--}}
-                {{--                    </a>--}}
+                <a href="/introducing-the-agent-store" wire:navigate class="no-underline">
+                    <x-pane title="Introducing the Agent Store" subtitle="May 13, 2024">
+                        <p class="mx-1 my-0 text-text">
+                            We introduce the Agent Store, a marketplace for AI agents with revenue sharing. Open beta
+                            begins now, available globally.
+                        </p>
+                    </x-pane>
+                </a>
 
                 <a href="/goodbye-chatgpt" wire:navigate class="no-underline">
                     <x-pane title="Goodbye ChatGPT" subtitle="April 9, 2024">
