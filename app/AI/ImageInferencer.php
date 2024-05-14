@@ -27,6 +27,7 @@ class ImageInferencer
         }
 
         if (! $model) {
+            //            $model = 'gpt-4o';
             $model = 'gpt-4-vision-preview';
         }
 
