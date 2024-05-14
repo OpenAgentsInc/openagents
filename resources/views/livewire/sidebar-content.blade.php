@@ -14,13 +14,12 @@
             <li>
                 <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">
-                        <a class="flex items-center gap-2 py-1"
-                           wire:navigate
-                           href="/store"
-                        >
-                            <div class="hover:text-white select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
+                        <a class="hover:text-white flex flex-row items-center gap-2 py-1" wire:navigate
+                           href="/store">
+                            <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
                                 Agent Store
                             </div>
+                            <div class="text-xs text-gray opacity-50">Beta</div>
                         </a>
                     </div>
                 </div>
