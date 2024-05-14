@@ -189,19 +189,21 @@ class Chat extends Component
     public function sendMessage(): void
     {
 
-        if(!empty($this->selectedAgent)){
+        if (! empty($this->selectedAgent)) {
             // Check if the action should be stopped
             if ($this->selectedAgent['is_rag_ready'] == false && $this->selectedAgent['created_at']->diffInMinutes() > 30) {
-               // Stop the action
-               // You can either return from a function, exit the script, throw an exception, etc., depending on the context
-               $this->alert('error', 'Agent is not available for interactions');
-               return; // or exit(); or throw new Exception('Action stopped due to Learning or Error state.');
-           }elseif($this->selectedAgent['is_rag_ready'] == false){
+                // Stop the action
+                // You can either return from a function, exit the script, throw an exception, etc., depending on the context
+                $this->alert('error', 'Agent is not available for interactions');
 
-               $this->alert('warning', 'Agent is still training..');
-               return;
-           }
-       }
+                return; // or exit(); or throw new Exception('Action stopped due to Learning or Error state.');
+            } elseif ($this->selectedAgent['is_rag_ready'] == false) {
+
+                $this->alert('warning', 'Agent is still training..');
+
+                return;
+            }
+        }
 
         // Save this input even after we clear the form this variable is tied to
         $this->input = $this->message_input;
@@ -219,8 +221,6 @@ class Chat extends Component
             'input_tokens' => null,
             'output_tokens' => null,
         ];
-
-
 
         // Clear the input
         $this->message_input = '';
