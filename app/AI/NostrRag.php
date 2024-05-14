@@ -9,8 +9,6 @@ use OpenAI;
 
 class NostrRag
 {
-    private $url = 'https://api.groq.com/openai/v1/chat/completions';
-
     protected $messages;
 
     protected $agent_id;
@@ -116,8 +114,8 @@ class NostrRag
         }, $this->messages));
 
         // Construct the prompt with the chat history
-        $content = "Given the following chat history between user and assistant, \
-        answer with a fully qualified standalone and short question that summarizes the user's question. \
+        $content = "Given the following chat history between user and assistant,
+        answer with a fully qualified standalone and short question that summarizes the user's question.
 
         CHAT HISTORY:
         $chatHistory
@@ -126,9 +124,7 @@ class NostrRag
 
         $this->prompt = $content;
 
-        $data = $this->send();
-
-        return $data;
+        return $this->send();
 
     }
 }
