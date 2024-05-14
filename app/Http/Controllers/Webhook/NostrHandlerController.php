@@ -118,11 +118,11 @@ class NostrHandlerController extends Controller
             $agentJob->save();
 
             $agent = Agent::find($agentJob->agent_id);
-            $agent->is_rag_ready = true;
-            $agent->save();
-
-            AgentRagReady::dispatch($agentJob);
-
+            if ($agent) {
+                $agent->is_rag_ready = true;
+                $agent->save();
+                AgentRagReady::dispatch($agentJob);
+            }
         }
     }
 }

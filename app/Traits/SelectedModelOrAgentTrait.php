@@ -62,7 +62,7 @@ trait SelectedModelOrAgentTrait
 
         // If the thread has a last message with an agent or otherwise has an agent, set the selected agent
         $lastMessage = end($messages);
-        if (! empty($lastMessage['agent_id'])) {
+        if (! empty($lastMessage['agent_id']) && ! empty($lastMessage['agent'])) {
             $this->selectedAgent = $this->getSelectedAgentFromMessage($lastMessage);
         } elseif (! empty($this->thread->agent_id)) {
             $this->selectedAgent = $this->getSelectedAgentFromThread();
@@ -91,7 +91,7 @@ trait SelectedModelOrAgentTrait
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
             'image' => $message['agent']['image_url'],
-            'is_rag_ready' => $message['agent']['is_rag_ready'],
+            'is_rag_ready' => $message['agent']['is_rag_ready'] ?? false,
             'created_at' => $message['agent']['created_at'],
             'capabilities' => $this->safeDecode($message['agent']['capabilities'] ?? null),
         ];
