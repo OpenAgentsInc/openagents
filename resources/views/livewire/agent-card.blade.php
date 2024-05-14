@@ -1,4 +1,4 @@
-<a class="z-[9000] select-auto pointer-events-auto border border-offblack hover:border-darkgray rounded-lg p-4 flex flex-col leading-normal"
+<a class="select-auto pointer-events-auto border border-offblack hover:border-darkgray rounded-lg p-4 flex flex-col leading-normal"
    href="/chat?agent={{ $agent->id }}"
    wire:navigate
 >
