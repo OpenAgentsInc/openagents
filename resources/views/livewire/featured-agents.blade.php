@@ -1,6 +1,6 @@
 <div>
     @if (count($agents) > 0)
-        <div class="hidden sm:block md:w-[800px] border border-offblack p-8 mt-12 rounded">
+        <div class="hidden sm:block md:w-[800px] p-8 mt-6">
             <div>
                 <div class="flex justify-between items-center">
                     <h4 class="font-bold">Featured</h4>
@@ -22,7 +22,7 @@
                 @endif
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
                 @foreach($agents as $agent)
                     <livewire:agent-card :agent="$agent" :key="$agent['id']"/>
                 @endforeach

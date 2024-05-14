@@ -1,6 +1,6 @@
 <div>
     @if (count($agents) > 0)
-        <div class="hidden sm:block md:w-[800px] border border-offblack p-8 mt-12 rounded">
+        <div class="hidden sm:block md:w-[800px] p-8 mt-12">
             <div>
                 <div class="flex justify-between items-center">
                     <h4 class="font-bold">Trending</h4>
