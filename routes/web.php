@@ -17,19 +17,17 @@ use App\Livewire\PrismDashboard;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
 use App\Livewire\Store;
-use App\Services\OpenObserveLogger;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
-// CHAT
+// HOME
 Route::get('/', function () {
     return redirect()->route('chat');
 })->name('home');
 
+// CHAT
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
-
-Route::get('/logs', Logs::class)->name('logs');
 
 // STORE
 Route::get('/store', Store::class)->name('store');
@@ -78,27 +76,15 @@ Route::get('/docs', MarkdownPage::class);
 Route::get('/terms', MarkdownPage::class);
 Route::get('/privacy', MarkdownPage::class);
 
-// Add GET logout route
-Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
-
 // ADMIN
 Route::get('/admin', Admin::class)->name('admin');
+Route::get('/logs', Logs::class)->name('logs');
 
 // Nostr Webhook
 Route::post('/webhook/nostr', [NostrHandlerController::class, 'handleEvent']);
 
-Route::get('/log', function () {
-    $logger = new OpenObserveLogger([
-        'baseUrl' => 'https://pool.openagents.com:5080',
-        'org' => 'default',
-        'stream' => 'logs',
-        'batchSize' => 1,
-        'flushInterval' => 1000,
-    ]);
-    $logger->log('info', 'TEST LOG RECEIVED');
-
-    return response()->json(['ok' => true]);
-});
+// Logout via GET not just POST
+Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
 // Catch-all redirect to the homepage
 Route::get('/{any}', function () {
