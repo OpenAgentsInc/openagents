@@ -18,6 +18,7 @@
         <p class="text-sm text-text my-1">{{ $agent['about'] }}</p>
     </div>
 
+
     <div class="text-gray mt-4 gap-x-6 flex justify-end items-center">
         <div class="flex items-center">
             <x-icon.bitcoin class="w-4 h-4 mr-1"/>
