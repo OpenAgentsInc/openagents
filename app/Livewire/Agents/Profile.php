@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Livewire;
+namespace App\Livewire\Agents;
 
 use Livewire\Component;
 
-class AgentProfile extends Component
+class Profile extends Component
 {
     public function render()
     {

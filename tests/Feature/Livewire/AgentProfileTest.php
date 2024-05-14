@@ -1,6 +1,6 @@
 <?php
 
-use App\Livewire\AgentProfile;
+use App\Livewire\Agents\AgentProfile;
 use Livewire\Livewire;
 
 it('renders successfully', function () {

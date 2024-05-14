@@ -6,6 +6,10 @@ use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\NostrHandlerController;
 use App\Livewire\Admin;
+use App\Livewire\Agents\Create;
+use App\Livewire\Agents\Edit;
+use App\Livewire\Agents\Index;
+use App\Livewire\Agents\Profile;
 use App\Livewire\Blog;
 use App\Livewire\Changelog;
 use App\Livewire\Chat;
@@ -28,6 +32,12 @@ Route::get('/', function () {
 // CHAT
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
+
+// AGENTS
+Route::get('/agents', Index::class)->name('agents');
+Route::get('/create', Create::class)->name('agents.create');
+Route::get('/agents/{agent}', Profile::class)->name('agents.profile');
+Route::get('/agents/{agent}/edit', Edit::class)->name('agents.edit');
 
 // STORE
 Route::get('/store', Store::class)->name('store');
@@ -55,11 +65,6 @@ Route::get('/codebases', IndexedCodebaseList::class);
 
 // PLUGIN REGISTRY
 Route::get('/plugins', [StaticController::class, 'plugins']);
-
-// AGENT
-Route::get('/agents', App\Livewire\Agents\Index::class)->name('agents');
-Route::get('/create', App\Livewire\Agents\Create::class)->name('agents.create');
-Route::get('/agents/{agent}/edit', App\Livewire\Agents\Edit::class)->name('agents.edit');
 
 // PAYMENTS
 Route::get('/prism', PrismDashboard::class)->name('prism');
