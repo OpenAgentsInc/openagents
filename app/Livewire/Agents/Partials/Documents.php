@@ -23,6 +23,7 @@ class Documents extends Component
     }
 
     #[On('document_deleted')]
+    #[On('document_updated')]
     public function index()
     {
         $this->documents();
