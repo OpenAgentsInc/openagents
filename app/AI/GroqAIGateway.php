@@ -38,16 +38,8 @@ class GroqAIGateway implements GatewayInterface
                 ],
             ]);
 
-            if ($data['stream']) {
-                return $this->extractFromStream($response, $params['stream_function']);
-            }
-            $responseData = json_decode($response->getBody()->getContents(), true);
+            return $this->extractData($response, $data['stream'], $params['stream_function']);
 
-            return [
-                'content' => $responseData['choices'][0]['message']['content'] ?? '',
-                'output_tokens' => $responseData['usage']['completion_tokens'] ?? 0,
-                'input_tokens' => $responseData['usage']['prompt_tokens'] ?? 0,
-            ];
         } catch (RequestException $e) {
             dd($e->getMessage());
         }

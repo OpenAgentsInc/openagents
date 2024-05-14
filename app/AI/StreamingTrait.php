@@ -4,9 +4,25 @@ declare(strict_types=1);
 
 namespace App\AI;
 
+use Psr\Http\Message\ResponseInterface;
+
 trait StreamingTrait
 {
     private array $data = [];
+
+    protected function extractData(ResponseInterface $response, bool $stream, callable $streamFunction): array
+    {
+        if ($stream) {
+            return $this->extractFromStream($response, $streamFunction);
+        }
+        $responseData = json_decode($response->getBody()->getContents(), true);
+
+        return [
+            'content' => $responseData['choices'][0]['message']['content'] ?? '',
+            'output_tokens' => $responseData['usage']['completion_tokens'] ?? 0,
+            'input_tokens' => $responseData['usage']['prompt_tokens'] ?? 0,
+        ];
+    }
 
     protected function extractFromStream($response, callable $streamFunction): array
     {
