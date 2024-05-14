@@ -259,14 +259,15 @@ class Chat extends Component
         $this->handleCodebaseContext();
 
         // Until RAG is working we'll just pass the agent info to the model
-        $user_input = $this->handleImageInput()."Respond to the following user input: \"{$this->input}\"";
+        $imageInput = $this->handleImageInput();
+        $userInput = $this->input;
 
         $this->input = implode("\n\n", [
             'You are an AI agent on OpenAgents.com.',
             "Your name is {$this->selectedAgent['name']}.",
             "Your description is: {$this->selectedAgent['description']}",
             "Your instructions are: {$this->selectedAgent['instructions']}.",
-            $user_input,
+            $imageInput."Respond to the following user input: \"$userInput\"",
         ]);
 
         // Authenticate user session or proceed without it
@@ -274,7 +275,7 @@ class Chat extends Component
 
         // Save user message to the thread
         $userMessage = $this->thread->messages()->create([
-            'body' => $user_input,
+            'body' => $imageInput.$userInput,
             'session_id' => $sessionId,
             'user_id' => auth()->id() ?? null,
         ]);
