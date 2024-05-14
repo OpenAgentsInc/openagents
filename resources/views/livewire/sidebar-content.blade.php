@@ -16,6 +16,20 @@
                     <div class="group relative rounded-lg active:opacity-90 px-3">
                         <a class="flex items-center gap-2 py-1"
                            wire:navigate
+                           href="/store"
+                        >
+                            <div class="hover:text-white select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
+                                Agent Store
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </li>
+            <li>
+                <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                        <a class="flex items-center gap-2 py-1"
+                           wire:navigate
                            href="/blog"
                         >
                             <div class="hover:text-white select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
@@ -45,7 +59,7 @@
                         <a class="hover:text-white flex flex-row items-center gap-2 py-1" target="_blank"
                            href="https://docs.openagents.com">
                             <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
-                                Docs & Guides
+                                Docs & guides
                             </div>
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                  stroke-linecap="round" stroke-linejoin="round">
@@ -57,8 +71,6 @@
                     </div>
                 </div>
             </li>
-
-
             <li>
                 <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">
