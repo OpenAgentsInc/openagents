@@ -42,7 +42,7 @@ trait SelectedModelOrAgentTrait
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,
-            'created_at' => $agent->created_at,
+            'created_at' => $agent->updated_at,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];
     }
@@ -55,7 +55,7 @@ trait SelectedModelOrAgentTrait
     public function setModelOrAgentForThread(Thread $thread): void
     {
         $messages = $this->thread->messages()
-            ->with('agent:image,id,name,about,prompt,is_rag_ready,created_at')
+            ->with('agent:image,id,name,about,prompt,is_rag_ready,created_at,updated_at')
             ->orderBy('created_at', 'asc')
             ->get()
             ->toArray();
@@ -106,7 +106,7 @@ trait SelectedModelOrAgentTrait
             'instructions' => $this->thread->agent->prompt,
             'image' => $this->thread->agent->image_url,
             'is_rag_ready' => $this->thread->agent->is_rag_ready,
-            'created_at' => $this->thread->agent->created_at,
+            'created_at' => $this->thread->agent->updated_at,
             'capabilities' => $this->safeDecode($this->thread->agent->capabilities),
         ];
     }
@@ -123,7 +123,7 @@ trait SelectedModelOrAgentTrait
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,
-            'created_at' => $agent->created_at,
+            'created_at' => $agent->updated_at,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];
     }
