@@ -93,11 +93,10 @@ class NostrRag
 
         $ApiKey = config('services.openai.api_key');
         $response = OpenAI::client($ApiKey)->chat()->create([
-            'model' => 'gpt-3.5-turbo',
+            'model' => 'gpt-3.5-turbo-16k',
             'messages' => [
                 ['role' => 'system', 'content' => $this->prompt],
             ],
-            'max_tokens' => 2048,
             'temperature' => 0.5,
         ]);
 
