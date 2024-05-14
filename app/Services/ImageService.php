@@ -41,7 +41,7 @@ class ImageService
         $thread->messages()->create([
             'body' => $summary,
             'session_id' => $thread->session_id,
-            'model' => 'gpt-4-vision-preview',
+            'model' => 'gpt-4o', // 'gpt-4-vision-preview',
             'user_id' => auth()->id() ?? null,
             //            'hidden' => true,
         ]);
