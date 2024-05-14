@@ -189,7 +189,7 @@ class Chat extends Component
     public function sendMessage(): void
     {
 
-        if (! empty($this->selectedAgent)) {
+        if(!empty($this->selectedAgent)){
             // Check if the action should be stopped
             if ($this->selectedAgent['is_rag_ready'] == false && $this->selectedAgent['created_at']->diffInMinutes() > 30) {
                 // Stop the action
