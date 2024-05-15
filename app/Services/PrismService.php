@@ -1,115 +1,124 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Services;
 
-use App\Models\User;
-use App\Services\LocalLogger;
-use App\Services\PrismService;
+use App\Models\PrismMultiPayment;
+use App\Models\PrismSinglePayment;
 use Exception;
-use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Http;
 
-class PayAgentCreators extends Command
+class PrismService
 {
-    protected $signature = 'payout';
+    protected $baseUrl = 'https://api.makeprisms.com/v0';
 
-    protected $description = 'Pays agent creators';
+    protected $apiKey; // Assume you've stored your API key somewhere secure
 
-    protected $prismService;
-
-    public function __construct(PrismService $prismService)
+    public function __construct()
     {
-        parent::__construct();
-        $this->prismService = $prismService;
+        $this->apiKey = env('PRISM_API_KEY');
     }
 
-    public function handle()
+    public function createUser($lnAddress = null, $nwcConnection = null)
     {
-        $this->info('Paying agent creators.');
-        $totalPayout = 100000; // Total payout in sats
+        $payload = [];
 
-        // Get all users who have agents and a lightning address, excluding developers
-        $users = User::whereIn('id', function ($query) {
-            $query->select('user_id')
-                ->from('agents')
-                ->whereNotNull('lightning_address')
-                ->whereNotIn('lightning_address', ['atlantispleb@getalby.com', 'svemir@coinos.io'])
-                ->groupBy('user_id');
-        })->get();
-
-        $this->info('Found '.$users->count().' users with agents and lightning addresses (excluding developers).');
-
-        $minPayout = 10000; // Minimum payout for users who created an agent
-        $remainingPayout = $users->count() > 0 ? $totalPayout - ($users->count() * $minPayout) : 0; // Remaining payout after minimum payouts
-
-        $this->payUsers($users, $minPayout, $remainingPayout);
-    }
-
-    public function payUsers($users, $minPayout, $remainingPayout)
-    {
-        $totalScores = 0;
-        $paymentDetails = [];
-
-        foreach ($users as $user) {
-            if (! $this->hasPrismUser($user)) {
-                $this->createPrismUser($user);
-            }
-
-            $threadCount = $user->agents->sum('thread_count');
-            $uniqueUsersCount = $user->agents->sum('unique_users_count');
-            $totalScore = $threadCount + $uniqueUsersCount * 3;
-
-            $totalScores += $totalScore;
-
-            $paymentDetails[] = [
-                'userId' => $user->prism_user_id,
-                'lightningAddress' => $user->lightning_address,
-                'score' => $totalScore,
-                'minPayout' => $minPayout,
-            ];
-
-            $this->info('Prepared payment for '.$user->name.' (Score: '.$totalScore.')');
+        if (! is_null($lnAddress)) {
+            $payload['lnAddress'] = $lnAddress;
         }
 
-        // Calculate each user's payout and their relative weight
-        $payments = [];
-        foreach ($paymentDetails as $details) {
-            $payout = $details['minPayout'];
-            if ($totalScores > 0 && $remainingPayout > 0) {
-                $scorePercentage = $details['score'] / $totalScores;
-                $payout += $remainingPayout * $scorePercentage;
-            }
-
-            $relativeWeight = $payout / $totalPayout;
-            $payments[] = [$details['userId'], $relativeWeight];
-        }
-
-        // Send batch payments
-        $this->prismService->sendPayment($totalPayout, $payments);
-    }
-
-    protected function hasPrismUser(User $user)
-    {
-        // Check if the user has an associated Prism user
-        return ! empty($user->prism_user_id);
-    }
-
-    /**
-     * @throws Exception
-     */
-    protected function createPrismUser(User $user)
-    {
-        // Use the PrismService to create a Prism user
-        $prismUser = $this->prismService->createUser($user->lightning_address);
-
-        $logger = new LocalLogger();
-        $logger->log('Created Prism user: '.json_encode($prismUser));
-
-        if (isset($prismUser['id'])) {
-            $user->prism_user_id = $prismUser['id'];
-            $user->save();
+        if (! is_null($nwcConnection)) {
+            // Assuming $nwcConnection is an array with the necessary fields
+            $payload['nwcConnection'] = $nwcConnection;
         } else {
-            // throw exception
-            throw new Exception('Failed to create Prism user for '.$user->name);
+            // Use the NWC_URL from .env if no nwcConnection is explicitly passed
+            $nwcUrl = env('NWC_URL');
+            $payload['nwcConnection'] = [
+                'nwcUrl' => $nwcUrl,
+                'connectorType' => 'nwc.alby',
+                'connectorName' => 'bitcoin-connect',
+            ];
         }
+
+        $response = Http::withToken($this->apiKey)
+            ->post("{$this->baseUrl}/user", $payload);
+
+        return $response->json();
+    }
+
+    public function updateUserLnAddress($userId, $lightningAddress)
+    {
+        $response = Http::withToken($this->apiKey)
+            ->patch("{$this->baseUrl}/user/{$userId}", [
+                'lnAddress' => $lightningAddress,
+            ]);
+
+        return $response->json();
+    }
+
+    public function sendPayment($amount, array $recipients)
+    {
+        $response = Http::withToken($this->apiKey)
+            ->post("{$this->baseUrl}/payment/prism", [
+                //                'senderId' => '67c2cc15-d90f-4af5-b16f-06cebd9e8e5d', // atlantispleb
+                'senderId' => '68f5d9c3-9260-4fdc-b29f-8e5e8edcb849', // openagents
+                'amount' => $amount,
+                'currency' => 'SAT',
+                'prism' => $recipients,
+            ]);
+
+        $json = $response->json();
+
+        if ($response->status() === 200) {
+            $this->savePrism($json);
+        } else {
+            dd($json);
+        }
+
+        return $json;
+    }
+
+    public function savePrism($prismResponse)
+    {
+        try {
+            $prismMultiPayment = new PrismMultiPayment();
+            $prismMultiPayment->prism_id = $prismResponse['prismId'];
+            $prismMultiPayment->save();
+
+            foreach ($prismResponse['payments'] as $payment) {
+                $prismSinglePayment = new PrismSinglePayment();
+                $prismSinglePayment->payment_id = $payment['id'];
+                $prismSinglePayment->prism_multi_payment_id = $prismMultiPayment->id;
+                $prismSinglePayment->prism_id = $prismResponse['prismId'];
+                $prismSinglePayment->expires_at = $payment['expiresAt'];
+                $prismSinglePayment->sender_id = $payment['senderId'];
+                $prismSinglePayment->receiver_id = $payment['receiverId'];
+                $prismSinglePayment->amount_msat = $payment['amountMsat'];
+                $prismSinglePayment->status = $payment['status'];
+                $prismSinglePayment->resolved_at = $payment['resolvedAt'];
+                $prismSinglePayment->resolved = $payment['resolved'];
+                $prismSinglePayment->prism_payment_id = $payment['prismPaymentId'];
+                $prismSinglePayment->bolt11 = $payment['bolt11'];
+                $prismSinglePayment->preimage = $payment['preimage'];
+                $prismSinglePayment->failure_code = $payment['failureCode'];
+                $prismSinglePayment->type = $payment['type'];
+                $prismSinglePayment->reason = $payment['reason'];
+                $prismSinglePayment->save();
+            }
+        } catch (Exception $e) {
+            // Log the error
+            dd($e->getMessage());
+            // Return a response indicating failure
+        }
+
+    }
+
+    public function getTransactionDetails($transactionId)
+    {
+        // Replace with the actual endpoint for fetching transaction details
+        // Assuming the endpoint follows the pattern /transaction/{transactionId}
+        $response = Http::withToken($this->apiKey)
+            ->get("{$this->baseUrl}/payment/{$transactionId}");
+
+        return $response->json();
     }
 }
