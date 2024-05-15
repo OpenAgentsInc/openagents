@@ -79,7 +79,7 @@ class PayAgentCreators extends Command
             // Add this user to the batch payment array
             $payments[] = [
                 'userId' => $user->prism_user_id,
-                'relativeWeight' => $payout, // In Prism API, relativeWeight is treated as the payout here
+                'relativeWeight' => $payout, // relativeWeight is treated as the payout here
             ];
         }
 
@@ -104,9 +104,10 @@ class PayAgentCreators extends Command
         $logger = new LocalLogger();
         $logger->log('Created Prism user: '.json_encode($prismUser));
 
-        if (isset($prismUser['userId'])) {
-            $user->prism_user_id = $prismUser['userId'];
+        if (isset($prismUser['id'])) {
+            $user->prism_user_id = $prismUser['id'];
             $user->save();
+            $this->info('Created user in Prism for '.$user->name);
         } else {
             // Throw exception
             throw new Exception('Failed to create Prism user for '.$user->name);
