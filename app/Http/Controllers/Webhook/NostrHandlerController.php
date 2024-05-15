@@ -73,18 +73,16 @@ class NostrHandlerController extends Controller
                 $nostr_job = NostrJob::where('job_id', $job_id)->first();
                 if ($nostr_job) {
 
-                    $logger->log('info', 'Found NostrJob: '.$job_id.' propagating content of length '.strlen($content));
-                    $logger->log('info', 'Propagating content '.$content);
-
-                    // update the model payload and content
-                    // $nostr_job->payload = $payload;
                     $nostr_job->content = $content;
                     $nostr_job->save();
+
+                    $logger->log('info', 'Found NostrJob '.$job_id.' on thread '.$nostr_job->thread_id. ', propagating content of length '.strlen($content));
+                    $logger->log('info', 'Propagating content '.$content);
 
                     // Dispatch a job to the thread_id using websocket
                     NostrJobReady::dispatch($nostr_job);
                 } else {
-                    $logger->log('info', 'NostrJob not found: '.$job_id);
+                    $logger->log('fine', 'NostrJob not found: '.$job_id);
                 }
 
                 $this->processAgent($job_id);
