@@ -25,9 +25,9 @@ class NostrHandlerController extends Controller
         $secret = $request->query('secret');
         $main_secret = config('nostr.webhook_secret');
 
-        if ($secret !== $main_secret) {
-            return response()->json(['error' => 'Invalid token'], 403);
-        }
+        // if ($secret !== $main_secret) {
+        //     return response()->json(['error' => 'Invalid token'], 403);
+        // }
 
         $logData = $data;
 
