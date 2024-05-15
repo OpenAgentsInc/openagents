@@ -54,7 +54,6 @@ class ProcessNostrRagReady implements ShouldQueue
 
         try {
             // Retry logic to check for the NostrJob
-            // Retry logic to check for the NostrJob
             $retryCount = 0;
             $maxRetries = 5;
             $retryInterval = 2; // seconds
