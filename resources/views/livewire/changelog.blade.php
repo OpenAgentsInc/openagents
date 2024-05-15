@@ -14,7 +14,7 @@
                         Added the Agent Store
                     </x-changelog-item>
                     <x-changelog-item>
-                        Allow all users to create agents
+                        Allow all users to create agents with knowledge
                     </x-changelog-item>
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/378">
                         Added GPT-4o as chat model
