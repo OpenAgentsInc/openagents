@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Webhook;
 
-use App\Http\Controllers\Controller;
-use App\Jobs\NostrRagReady;
-use App\Services\OpenObserveLogger;
 use Illuminate\Http\Request;
+use App\Jobs\ProcessNostrRagReady;
+use App\Jobs\ProcessAgentRagStatus;
+use App\Services\OpenObserveLogger;
+use App\Http\Controllers\Controller;
 
 class NostrHandlerController extends Controller
 {
@@ -24,9 +25,9 @@ class NostrHandlerController extends Controller
         $secret = $request->query('secret');
         $main_secret = config('nostr.webhook_secret');
 
-        if ($secret !== $main_secret) {
-            return response()->json(['error' => 'Invalid token'], 403);
-        }
+        // if ($secret !== $main_secret) {
+        //     return response()->json(['error' => 'Invalid token'], 403);
+        // }
 
         $logData = $data;
 
@@ -66,7 +67,10 @@ class NostrHandlerController extends Controller
                 ];
 
                 // Dispatch the job
-                NostrRagReady::dispatch($job_id, $content, $payload);
+                ProcessNostrRagReady::dispatch($job_id, $content, $payload)->onQueue('default')->delay(now()->addSeconds(2));
+
+
+                ProcessAgentRagStatus::dispatch($job_id)->onQueue('default')->delay(now()->addSeconds(2));
 
                 return [
                     'status' => 'success',
