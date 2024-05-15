@@ -57,6 +57,7 @@ class NostrRagReady implements ShouldQueue
         while ($retryCount < $maxRetries) {
             $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
             if ($nostr_job) {
+                $logger->log('info', 'Job not found: '.$this->job_id.' retrying in '.$retryInterval.' seconds... '.$retryCount.'/'.$maxRetries);
                 break;
             }
             $retryCount++;
