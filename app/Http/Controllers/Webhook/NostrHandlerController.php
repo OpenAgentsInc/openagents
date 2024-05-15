@@ -49,7 +49,7 @@ class NostrHandlerController extends Controller
             //            Log::channel('slack')->info(json_encode($extractedData));
 
             if ($status == 2) {
-                $logger->log('info', 'Event with status 2: '.json_encode($payload));
+                // $logger->log('info', 'Event with status 2: '.json_encode($payload));
                 // log the error
                 //                Log::error($data);
                 //                Log::channel('slack')->error(json_encode($extractedData));
@@ -74,8 +74,8 @@ class NostrHandlerController extends Controller
                 $nostr_job = NostrJob::where('job_id', $job_id)->first();
                 if ($nostr_job) {
 
-                    $logger->log('info', 'Found NostrJob: '.$job_id);
-                    $logger->log('info', 'Received content ' .$content);
+                    $logger->log('info', 'Found NostrJob: '.$job_id. ' propagating content of length '.strlen($content));
+                    $logger->log('info', 'Propagating content ' .$content);
 
                     // update the model payload and content
                     // $nostr_job->payload = $payload;
@@ -96,7 +96,7 @@ class NostrHandlerController extends Controller
                     'data' => $result,
                 ];
             } else {
-                $logger->log('info', 'Event with unknown status '.$status.': '.json_encode($payload));
+                // $logger->log('info', 'Event with unknown status '.$status.': '.json_encode($payload));
 
                 return [
                     'status' => 'success',
