@@ -2,17 +2,17 @@
 
 namespace App\Jobs;
 
-use App\Events\AgentRagReady;
-use App\Events\NostrJobReady;
 use App\Models\Agent;
 use App\Models\AgentJob;
 use App\Models\NostrJob;
-use App\Services\OpenObserveLogger;
+use App\Events\AgentRagReady;
+use App\Events\NostrJobReady;
 use Illuminate\Bus\Queueable;
+use App\Services\OpenObserveLogger;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 
 class NostrRagReady implements ShouldQueue
 {
@@ -57,7 +57,6 @@ class NostrRagReady implements ShouldQueue
         while ($retryCount < $maxRetries) {
             $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
             if ($nostr_job) {
-                $logger->log('info', 'Job not found: '.$this->job_id.' retrying in '.$retryInterval.' seconds... '.$retryCount.'/'.$maxRetries);
                 break;
             }
             $retryCount++;
@@ -78,7 +77,7 @@ class NostrRagReady implements ShouldQueue
                 $logger->log('fine', 'NostrJob already processed: '.$this->job_id);
             }
         } else {
-            $logger->log('fine', 'NostrJob not found: '.$this->job_id);
+            $logger->log('info', 'NostrJob not found: '.$this->job_id);
 
             $this->processAgent($this->job_id);
         }
