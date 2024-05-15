@@ -65,15 +65,18 @@ class NostrRagReady implements ShouldQueue
         }
 
         if ($nostr_job) {
+            if(!$nostr_job->content){ // only once
+                $nostr_job->content = $this->content;
+                $nostr_job->save();
 
-            $nostr_job->content = $this->content;
-            $nostr_job->save();
+                $logger->log('info', 'Found NostrJob: '.$this->job_id.' on thread '.$nostr_job->thread_id.' propagating content of length '.strlen($this->content));
+                $logger->log('info', 'Propagating content '.$this->content);
 
-            $logger->log('info', 'Found NostrJob: '.$this->job_id.' on thread '.$nostr_job->thread_id.' propagating content of length '.strlen($this->content));
-            $logger->log('info', 'Propagating content '.$this->content);
-
-            // Dispatch a job to the thread_id using websocket
-            NostrJobReady::dispatch($nostr_job);
+                // Dispatch a job to the thread_id using websocket
+                NostrJobReady::dispatch($nostr_job);
+            }else{
+                $logger->log('fine', 'NostrJob already processed: '.$this->job_id);
+            }
         } else {
             $logger->log('fine', 'NostrJob not found: '.$this->job_id);
 
