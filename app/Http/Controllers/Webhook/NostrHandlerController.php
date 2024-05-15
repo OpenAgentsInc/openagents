@@ -65,10 +65,10 @@ class NostrHandlerController extends Controller
                     'content' => $content,
                 ];
 
-                // add the job here
-                usleep(500000);
+
                 // Dispatch the job
                 NostrRagReady::dispatch($job_id, $content, $payload);
+
 
                 return [
                     'status' => 'success',

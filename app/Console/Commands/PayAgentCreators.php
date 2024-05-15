@@ -14,37 +14,43 @@ class PayAgentCreators extends Command
     public function handle()
     {
         $this->info('Paying agent creators.');
-        $multiplier = 5000;
+        $totalPayout = 100000; // Total payout in sats
 
-        /**
-         * SELECT users.*
-         * FROM users
-         * JOIN agents ON users.id = agents.user_id
-         * WHERE users.lightning_address IS NOT NULL;
-         * */
-
-        // Get all users who have agents and have a lightning address
+        // Get all users who have agents and have a lightning address, excluding developers
         $users = User::whereIn('id', function ($query) {
             $query->select('user_id')
                 ->from('agents')
                 ->whereNotNull('lightning_address')
+                ->whereNotIn('lightning_address', ['atlantispleb@getalby.com', 'svemir@coinos.io'])
                 ->groupBy('user_id');
         })->get();
 
-        $this->info('Found '.$users->count().' users with agents and lightning addresses.');
+        $this->info('Found '.$users->count().' users with agents and lightning addresses (excluding developers).');
 
-        // Loop through each user
+        $minPayout = 10000; // Minimum payout for users who created an agent
+        $remainingPayout = $totalPayout - ($users->count() * $minPayout); // Remaining payout after minimum payouts
+
         foreach ($users as $user) {
             $this->info('Paying '.$user->name.' to Lightning Address '.$user->lightning_address.'...');
 
-            // Get the thread_count and unique_users_count of all agents of this user
-            $thread_count = $user->agents->sum('thread_count');
-            $unique_users_count = $user->agents->sum('unique_users_count');
+            $threadCount = $user->agents->sum('thread_count');
+            $uniqueUsersCount = $user->agents->sum('unique_users_count');
+            $totalScore = $threadCount + $uniqueUsersCount * 3;
 
-            // Calculate the total amount to pay
-            $total_score = $thread_count + $unique_users_count * 3;
-            $sats_payout = $total_score * $multiplier;
-            $this->info('Total score: '.$total_score.' | Payout: '.$sats_payout.' sats');
+            $payout = $minPayout;
+
+            if ($totalScore > 0 && $remainingPayout > 0) {
+                $scorePercentage = $totalScore / $users->sum(function ($user) {
+                    $threadCount = $user->agents->sum('thread_count');
+                    $uniqueUsersCount = $user->agents->sum('unique_users_count');
+
+                    return $threadCount + $uniqueUsersCount * 3;
+                });
+
+                $payout += $remainingPayout * $scorePercentage;
+            }
+
+            $this->info('Total score: '.$totalScore.' | Payout: '.$payout.' sats');
         }
     }
 }

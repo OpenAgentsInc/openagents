@@ -29,7 +29,7 @@ class NostrInference
             'flushInterval' => 1000,
             'jobId' => $job->job_id,
         ]);
-        $logger->log('finer', 'Using Augmented prompt '.$prompt);
+        $logger->log('info', 'Using Augmented prompt '.$prompt);
 
         return SimpleInferencer::inference($prompt, $model, $thread, $streamFunction, $httpClient);
     }
