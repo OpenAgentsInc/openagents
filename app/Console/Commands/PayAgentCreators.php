@@ -39,13 +39,21 @@ class PayAgentCreators extends Command
         $this->info('Found '.$users->count().' users with agents and lightning addresses (excluding developers).');
 
         $minPayout = 10000; // Minimum payout for users who created an agent
-        $remainingPayout = $totalPayout - ($users->count() * $minPayout); // Remaining payout after minimum payouts
+        $remainingPayout = max(0, $totalPayout - ($users->count() * $minPayout)); // Remaining payout after minimum payouts
 
         $this->payUsers($users, $minPayout, $remainingPayout);
     }
 
     public function payUsers($users, $minPayout, $remainingPayout)
     {
+        $payments = [];
+        $totalWeightedScore = $users->sum(function ($user) {
+            $threadCount = $user->agents->sum('thread_count');
+            $uniqueUsersCount = $user->agents->sum('unique_users_count');
+
+            return $threadCount + $uniqueUsersCount * 3;
+        });
+
         foreach ($users as $user) {
             // Check if the user has an associated Prism user
             if (! $this->hasPrismUser($user)) {
@@ -53,7 +61,7 @@ class PayAgentCreators extends Command
                 $this->createPrismUser($user);
             }
 
-            $this->info('Paying '.$user->name.' to Lightning Address '.$user->lightning_address.'...');
+            $this->info('Preparing payment for '.$user->name.' to Lightning Address '.$user->lightning_address.'...');
 
             $threadCount = $user->agents->sum('thread_count');
             $uniqueUsersCount = $user->agents->sum('unique_users_count');
@@ -62,21 +70,21 @@ class PayAgentCreators extends Command
             $payout = $minPayout;
 
             if ($totalScore > 0 && $remainingPayout > 0) {
-                $scorePercentage = $totalScore / $users->sum(function ($user) {
-                    $threadCount = $user->agents->sum('thread_count');
-                    $uniqueUsersCount = $user->agents->sum('unique_users_count');
-
-                    return $threadCount + $uniqueUsersCount * 3;
-                });
-
+                $scorePercentage = $totalScore / $totalWeightedScore;
                 $payout += $remainingPayout * $scorePercentage;
             }
 
-            $this->info('Total score: '.$totalScore.' | Payout: '.$payout.' sats');
+            $this->info('Total score: '.$totalScore.' | Payout: '.number_format($payout, 2).' sats');
 
-            // Proceed with the payment logic
-            $this->payUser($user, $payout);
+            // Add this user to the batch payment array
+            $payments[] = [
+                'userId' => $user->prism_user_id,
+                'relativeWeight' => $payout, // In Prism API, relativeWeight is treated as the payout here
+            ];
         }
+
+        // Send batch payments
+        $this->prismService->sendPayment($totalPayout, $payments);
     }
 
     protected function hasPrismUser(User $user)
@@ -96,23 +104,12 @@ class PayAgentCreators extends Command
         $logger = new LocalLogger();
         $logger->log('Created Prism user: '.json_encode($prismUser));
 
-        if (isset($prismUser['id'])) {
-            $user->prism_user_id = $prismUser['id'];
+        if (isset($prismUser['userId'])) {
+            $user->prism_user_id = $prismUser['userId'];
             $user->save();
         } else {
-            // throw exception
+            // Throw exception
             throw new Exception('Failed to create Prism user for '.$user->name);
         }
-    }
-
-    protected function payUser(User $user, $payout)
-    {
-        // Implement the payment logic using the Prism service
-        $recipient = [
-            'lnAddress' => $user->lightning_address,
-            'amount' => $payout,
-        ];
-
-        $this->prismService->sendPayment($payout, [$recipient]);
     }
 }
