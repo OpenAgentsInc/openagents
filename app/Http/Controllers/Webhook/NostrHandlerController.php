@@ -38,10 +38,6 @@ class NostrHandlerController extends Controller
             $payload = $logData[1];
             $status = $payload['state']['status'];
 
-            $extractedData = [
-                'status' => $payload['state']['status'],
-                'kind' => $payload['kind'],
-            ];
 
             if (isset($payload['tags'])) {
                 $extractedData['tags'] = [];
@@ -79,6 +75,7 @@ class NostrHandlerController extends Controller
                 if ($nostr_job) {
 
                     $logger->log('info', 'Found NostrJob: '.$job_id);
+                    $logger->log('info', 'Received content ' .$content);
 
                     // update the model payload and content
                     // $nostr_job->payload = $payload;
@@ -99,7 +96,7 @@ class NostrHandlerController extends Controller
                     'data' => $result,
                 ];
             } else {
-                $logger->log('info', 'Event with status '.$status.': '.json_encode($payload));
+                $logger->log('info', 'Event with unknown status '.$status.': '.json_encode($payload));
 
                 return [
                     'status' => 'success',
