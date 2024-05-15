@@ -41,10 +41,10 @@ class PayAgentCreators extends Command
         $minPayout = 10000; // Minimum payout for users who created an agent
         $remainingPayout = max(0, $totalPayout - ($users->count() * $minPayout)); // Remaining payout after minimum payouts
 
-        $this->payUsers($users, $minPayout, $remainingPayout);
+        $this->payUsers($users, $minPayout, $remainingPayout, $totalPayout);
     }
 
-    public function payUsers($users, $minPayout, $remainingPayout)
+    public function payUsers($users, $minPayout, $remainingPayout, $totalPayout)
     {
         $payments = [];
         $totalWeightedScore = $users->sum(function ($user) {
