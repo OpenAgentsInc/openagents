@@ -106,9 +106,9 @@ class ProcessNostrRagReady implements ShouldQueue
      *
      * @return void
      */
-    public function failed(\Exception $exception)
-    {
-        // Handle failure logic, like logging
-        $this->logger->log('critical', 'NostrJob not found within retries: ' . $this->job_id);
-    }
+    // public function failed(\Exception $exception)
+    // {
+    //     // Handle failure logic, like logging
+    //     $this->logger->log('critical', 'NostrJob not found within retries: ' . $this->job_id);
+    // }
 }
