@@ -70,13 +70,9 @@
                                     acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
                                     fileValidateTypeLabelExpectedTypesMap="{{ json_encode([
                             'application/pdf' => '.pdf',
-//                            'application/msword' => '.doc',
-//                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => '.docx',
-//                            'application/vnd.ms-excel' => '.xls',
-//                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => '.xlsx',
-//                            'text/csv' => '.csv',
                             'text/plain' => '.txt',
-                            'text/markdown' => '.md'
+                            'text/markdown' => '.md',
+                            'text/html' => '.html'
                         ]) }}"
                                     allowFileSizeValidation maxFileSize="10MB"/>
 

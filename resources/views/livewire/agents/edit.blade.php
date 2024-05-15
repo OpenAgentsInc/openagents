@@ -105,7 +105,8 @@
                                     fileValidateTypeLabelExpectedTypesMap="{{ json_encode([
                             'application/pdf' => '.pdf',
                             'text/plain' => '.txt',
-                            'text/markdown' => '.md'
+                            'text/markdown' => '.md',
+                            'text/html' => '.html'
                             ]) }}"
                                     allowFileSizeValidation maxFileSize="10MB"/>
                     </div>
