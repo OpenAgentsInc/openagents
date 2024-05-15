@@ -65,10 +65,8 @@ class NostrHandlerController extends Controller
                     'content' => $content,
                 ];
 
-
                 // Dispatch the job
                 NostrRagReady::dispatch($job_id, $content, $payload);
-
 
                 return [
                     'status' => 'success',
