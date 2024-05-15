@@ -2,17 +2,17 @@
 
 namespace App\Jobs;
 
-use App\Events\AgentRagReady;
-use App\Events\NostrJobReady;
 use App\Models\Agent;
 use App\Models\AgentJob;
 use App\Models\NostrJob;
-use App\Services\OpenObserveLogger;
+use App\Events\AgentRagReady;
+use App\Events\NostrJobReady;
 use Illuminate\Bus\Queueable;
+use App\Services\OpenObserveLogger;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 
 class NostrRagReady implements ShouldQueue
 {
@@ -57,7 +57,6 @@ class NostrRagReady implements ShouldQueue
         while ($retryCount < $maxRetries) {
             $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
             if ($nostr_job) {
-                $logger->log('info', 'Job not found: '.$this->job_id.' retrying in '.$retryInterval.' seconds... '.$retryCount.'/'.$maxRetries);
                 break;
             }
             $retryCount++;
@@ -69,16 +68,18 @@ class NostrRagReady implements ShouldQueue
                 $nostr_job->content = $this->content;
                 $nostr_job->save();
 
-                $logger->log('info', 'Found NostrJob: '.$this->job_id.' on thread '.$nostr_job->thread_id.' propagating content of length '.strlen($this->content));
-                $logger->log('info', 'Propagating content '.$this->content);
+            $logger->log('info', 'Found NostrJob: '.$this->job_id.' propagating content of length '.strlen($this->content));
+            $logger->log('info', 'Propagating content '.$this->content);
 
-                // Dispatch a job to the thread_id using websocket
-                NostrJobReady::dispatch($nostr_job);
-            } else {
-                $logger->log('fine', 'NostrJob already processed: '.$this->job_id);
-            }
+            // update the model payload and content
+            // $nostr_job->payload = $payload;
+            $nostr_job->content = $this->content;
+            $nostr_job->save();
+
+            // Dispatch a job to the thread_id using websocket
+            NostrJobReady::dispatch($nostr_job);
         } else {
-            $logger->log('fine', 'NostrJob not found: '.$this->job_id);
+            $logger->log('info', 'NostrJob not found: '.$this->job_id);
 
             $this->processAgent($this->job_id);
         }
