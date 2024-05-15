@@ -16,6 +16,7 @@ use App\Services\LocalLogger;
 use App\Services\NostrService;
 use App\Traits\SelectedModelOrAgentTrait;
 use Exception;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
@@ -189,7 +190,7 @@ class Chat extends Component
     public function sendMessage(): void
     {
 
-        if(!empty($this->selectedAgent)){
+        if (! empty($this->selectedAgent)) {
             // Check if the action should be stopped
             if ($this->selectedAgent['is_rag_ready'] == false && $this->selectedAgent['created_at']->diffInMinutes() > 30) {
                 // Stop the action
@@ -221,8 +222,6 @@ class Chat extends Component
             'input_tokens' => null,
             'output_tokens' => null,
         ];
-
-
 
         // Clear the input
         $this->message_input = '';
@@ -424,6 +423,8 @@ class Chat extends Component
         $logger->log("Running agent with RAG. Input: {$this->input}");
 
         try {
+            DB::beginTransaction();
+
             $sessionId = auth()->check() ? null : Session::getId();
 
             // Save user message to the thread
@@ -452,16 +453,21 @@ class Chat extends Component
                 ->cacheDurationhint(-1)
                 ->encryptFor($encrypt)
                 ->execute();
-
-            // Save to DB
-            $nostr_job = new NostrJob();
-            $nostr_job->agent_id = $this->selectedAgent['id'];
-            $nostr_job->job_id = $job_id;
-            $nostr_job->status = 'pending';
-            $nostr_job->thread_id = $this->thread->id;
-            $nostr_job->save();
+            if (! empty($job_id)) {
+                // Save to DB
+                $nostr_job = new NostrJob();
+                $nostr_job->agent_id = $this->selectedAgent['id'];
+                $nostr_job->job_id = $job_id;
+                $nostr_job->status = 'pending';
+                $nostr_job->thread_id = $this->thread->id;
+                $nostr_job->save();
+            }
+            DB::commit();
         } catch (Exception $e) {
+            DB::rollBack();
+            $this->alert('error', 'An Error occurred, please try again later');
             Log::error($e);
+
         }
     }
 
