@@ -7,8 +7,8 @@ namespace App\AI;
 use App\Models\Agent;
 use App\Models\NostrJob;
 use App\Models\Thread;
-use GuzzleHttp\Client;
 use App\Services\OpenObserveLogger;
+use GuzzleHttp\Client;
 
 class NostrInference
 {
