@@ -65,7 +65,7 @@ class NostrRagReady implements ShouldQueue
         }
 
         if ($nostr_job) {
-            if(!$nostr_job->content){ // only once
+            if (! $nostr_job->content) { // only once
                 $nostr_job->content = $this->content;
                 $nostr_job->save();
 
@@ -74,7 +74,7 @@ class NostrRagReady implements ShouldQueue
 
                 // Dispatch a job to the thread_id using websocket
                 NostrJobReady::dispatch($nostr_job);
-            }else{
+            } else {
                 $logger->log('fine', 'NostrJob already processed: '.$this->job_id);
             }
         } else {
