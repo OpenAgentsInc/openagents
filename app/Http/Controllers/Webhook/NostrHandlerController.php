@@ -38,7 +38,6 @@ class NostrHandlerController extends Controller
             $payload = $logData[1];
             $status = $payload['state']['status'];
 
-
             if (isset($payload['tags'])) {
                 $extractedData['tags'] = [];
                 foreach ($payload['tags'] as $tag) {
@@ -74,8 +73,8 @@ class NostrHandlerController extends Controller
                 $nostr_job = NostrJob::where('job_id', $job_id)->first();
                 if ($nostr_job) {
 
-                    $logger->log('info', 'Found NostrJob: '.$job_id. ' propagating content of length '.strlen($content));
-                    $logger->log('info', 'Propagating content ' .$content);
+                    $logger->log('info', 'Found NostrJob: '.$job_id.' propagating content of length '.strlen($content));
+                    $logger->log('info', 'Propagating content '.$content);
 
                     // update the model payload and content
                     // $nostr_job->payload = $payload;
