@@ -96,7 +96,7 @@ class PayAgentCreators extends Command
         ]);
 
         $logger = new LocalLogger();
-        $logger->log('info', 'Created Prism user: '.json_encode($prismUser));
+        $logger->log('Created Prism user: '.json_encode($prismUser));
 
         if (isset($prismUser['id'])) {
             $user->prism_user_id = $prismUser['id'];
