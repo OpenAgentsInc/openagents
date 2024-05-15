@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Services\PrismService;
 use Illuminate\Console\Command;
 
 class PayAgentCreators extends Command
@@ -11,12 +12,20 @@ class PayAgentCreators extends Command
 
     protected $description = 'Pays agent creators';
 
+    protected $prismService;
+
+    public function __construct(PrismService $prismService)
+    {
+        parent::__construct();
+        $this->prismService = $prismService;
+    }
+
     public function handle()
     {
         $this->info('Paying agent creators.');
         $totalPayout = 100000; // Total payout in sats
 
-        // Get all users who have agents and have a lightning address, excluding developers
+        // Get all users who have agents and a lightning address, excluding developers
         $users = User::whereIn('id', function ($query) {
             $query->select('user_id')
                 ->from('agents')
@@ -30,7 +39,18 @@ class PayAgentCreators extends Command
         $minPayout = 10000; // Minimum payout for users who created an agent
         $remainingPayout = $totalPayout - ($users->count() * $minPayout); // Remaining payout after minimum payouts
 
+        $this->payUsers($users, $minPayout, $remainingPayout);
+    }
+
+    public function payUsers($users, $minPayout, $remainingPayout)
+    {
         foreach ($users as $user) {
+            // Check if the user has an associated Prism user
+            if (! $this->hasPrismUser($user)) {
+                // Create a Prism user if one does not exist
+                $this->createPrismUser($user);
+            }
+
             $this->info('Paying '.$user->name.' to Lightning Address '.$user->lightning_address.'...');
 
             $threadCount = $user->agents->sum('thread_count');
@@ -51,6 +71,38 @@ class PayAgentCreators extends Command
             }
 
             $this->info('Total score: '.$totalScore.' | Payout: '.$payout.' sats');
+
+            // Proceed with the payment logic
+            $this->payUser($user, $payout);
         }
+    }
+
+    protected function hasPrismUser(User $user)
+    {
+        // Check if the user has an associated Prism user
+        return ! empty($user->prism_user_id);
+    }
+
+    protected function createPrismUser(User $user)
+    {
+        // Use the PrismService to create a Prism user
+        $prismUser = $this->prismService->createUser([
+            'lnAddress' => $user->lightning_address,
+        ]);
+
+        // Save the Prism user ID to the user model
+        $user->prism_user_id = $prismUser['id'];
+        $user->save();
+    }
+
+    protected function payUser(User $user, $payout)
+    {
+        // Implement the payment logic using the Prism service
+        $recipient = [
+            'lnAddress' => $user->lightning_address,
+            'amount' => $payout,
+        ];
+
+        $this->prismService->sendPayment($payout, [$recipient]);
     }
 }
