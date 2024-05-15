@@ -91,9 +91,7 @@ class PayAgentCreators extends Command
     protected function createPrismUser(User $user)
     {
         // Use the PrismService to create a Prism user
-        $prismUser = $this->prismService->createUser([
-            'lnAddress' => $user->lightning_address,
-        ]);
+        $prismUser = $this->prismService->createUser($user->lightning_address);
 
         $logger = new LocalLogger();
         $logger->log('Created Prism user: '.json_encode($prismUser));
