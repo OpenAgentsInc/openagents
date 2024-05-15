@@ -8,6 +8,19 @@
 
         <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div class="mt-6 grid grid-cols-1 gap-10">
+                <x-pane title="May 14, 2024" borderColor="border-darkgray">
+                    <x-changelog-item post="https://twitter.com/OpenAgentsInc/status/1790500162491523138"
+                                      code="https://github.com/OpenAgentsInc/openagents/pull/383">
+                        Added the Agent Store
+                    </x-changelog-item>
+                    <x-changelog-item>
+                        Allow all users to create agents
+                    </x-changelog-item>
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/378">
+                        Added GPT-4o as chat model
+                    </x-changelog-item>
+                </x-pane>
+
                 <x-pane title="May 8, 2024" borderColor="border-darkgray">
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/348"
                                       post="https://twitter.com/OpenAgentsInc/status/1788264789828882573">
