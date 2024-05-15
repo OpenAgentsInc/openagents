@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Services\LocalLogger;
 use App\Services\PrismService;
+use Exception;
 use Illuminate\Console\Command;
 
 class PayAgentCreators extends Command
@@ -83,6 +85,9 @@ class PayAgentCreators extends Command
         return ! empty($user->prism_user_id);
     }
 
+    /**
+     * @throws Exception
+     */
     protected function createPrismUser(User $user)
     {
         // Use the PrismService to create a Prism user
@@ -90,9 +95,16 @@ class PayAgentCreators extends Command
             'lnAddress' => $user->lightning_address,
         ]);
 
-        // Save the Prism user ID to the user model
-        $user->prism_user_id = $prismUser['userId'];
-        $user->save();
+        $logger = new LocalLogger();
+        $logger->log('info', 'Created Prism user: '.json_encode($prismUser));
+
+        if (isset($prismUser['id'])) {
+            $user->prism_user_id = $prismUser['id'];
+            $user->save();
+        } else {
+            // throw exception
+            throw new Exception('Failed to create Prism user for '.$user->name);
+        }
     }
 
     protected function payUser(User $user, $payout)
