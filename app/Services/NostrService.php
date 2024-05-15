@@ -107,7 +107,7 @@ class NostrService
     {
 
         $currentime = now();
-        $expiresAt = $currentime->addMinutes(10);
+        $expiresAt = $currentime->addMinutes(30);
 
         $requestJob = new RpcRequestJob();
 
