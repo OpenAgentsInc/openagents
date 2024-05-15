@@ -2,17 +2,17 @@
 
 namespace App\Jobs;
 
+use App\Events\AgentRagReady;
+use App\Events\NostrJobReady;
 use App\Models\Agent;
 use App\Models\AgentJob;
 use App\Models\NostrJob;
-use App\Events\AgentRagReady;
-use App\Events\NostrJobReady;
-use Illuminate\Bus\Queueable;
 use App\Services\OpenObserveLogger;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 
 class NostrRagReady implements ShouldQueue
 {
@@ -69,7 +69,7 @@ class NostrRagReady implements ShouldQueue
             $nostr_job->content = $this->content;
             $nostr_job->save();
 
-            $logger->log('info', 'Found NostrJob: '.$this->job_id.' on thread '.$nostr_job->thread_id. ' propagating content of length '.strlen($this->content));
+            $logger->log('info', 'Found NostrJob: '.$this->job_id.' on thread '.$nostr_job->thread_id.' propagating content of length '.strlen($this->content));
             $logger->log('info', 'Propagating content '.$this->content);
 
             // Dispatch a job to the thread_id using websocket

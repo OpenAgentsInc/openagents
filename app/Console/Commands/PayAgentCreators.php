@@ -91,7 +91,7 @@ class PayAgentCreators extends Command
         ]);
 
         // Save the Prism user ID to the user model
-        $user->prism_user_id = $prismUser['id'];
+        $user->prism_user_id = $prismUser['userId'];
         $user->save();
     }
 
