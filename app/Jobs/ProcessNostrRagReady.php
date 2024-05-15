@@ -54,7 +54,22 @@ class ProcessNostrRagReady implements ShouldQueue
 
         try {
             // Retry logic to check for the NostrJob
-            $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
+            // Retry logic to check for the NostrJob
+            $retryCount = 0;
+            $maxRetries = 5;
+            $retryInterval = 2; // seconds
+            $nostr_job = null;
+
+            // fetch the nostr job
+            while ($retryCount < $maxRetries) {
+                $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
+                if ($nostr_job) {
+                    break;
+                }
+                $retryCount++;
+                sleep($retryInterval);
+            }
+
             if ($nostr_job) {
 
                 $this->logger->log('info', 'Found NostrJob: ' . $this->job_id . ' propagating content of length ' . strlen($this->content));

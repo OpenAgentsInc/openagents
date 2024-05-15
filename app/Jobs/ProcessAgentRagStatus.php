@@ -47,8 +47,24 @@ class ProcessAgentRagStatus implements ShouldQueue
     {
 
         try {
+
+             // Retry logic to check for the NostrJob
+        $retryCount = 0;
+        $maxRetries = 5;
+        $retryInterval = 2; // seconds
+        $agentJob = null;
+
+        // fetch the nostr job
+        while ($retryCount < $maxRetries) {
             // fetch the nostr job
             $agentJob = AgentJob::where('job_id', $this->job_id)->first();
+            if ($agentJob) {
+                break;
+            }
+            $retryCount++;
+            sleep($retryInterval);
+        }
+
             if ($agentJob) {
                 // $agentJob->is_rag_ready = true;
                 // $agentJob->save();
