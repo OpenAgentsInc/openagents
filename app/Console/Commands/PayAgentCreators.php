@@ -24,10 +24,12 @@ class PayAgentCreators extends Command
          * */
 
         // Get all users who have agents and have a lightning address
-        $users = User::join('agents', 'users.id', '=', 'agents.user_id')
-            ->whereNotNull('users.lightning_address')
-            ->distinct()
-            ->get();
+        $users = User::whereIn('id', function ($query) {
+            $query->select('user_id')
+                ->from('agents')
+                ->whereNotNull('lightning_address')
+                ->groupBy('user_id');
+        })->get();
 
         $this->info('Found '.$users->count().' users with agents and lightning addresses.');
 
