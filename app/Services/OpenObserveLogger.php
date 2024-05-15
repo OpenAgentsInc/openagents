@@ -14,12 +14,15 @@ class OpenObserveLogger
 
     private $buffer;
 
+    private $job_id;
+
     public function __construct($options)
     {
         $this->options = $options;
         $this->batchSize = $options['batchSize'] ?? 21;
         $this->flushInterval = $options['flushInterval'] ?? 5000;
         $this->buffer = collect();
+        $this->job_id = $options['jobId'] ?? "";
     }
 
     public function log($level, $message, $timestamp = null)
@@ -30,6 +33,7 @@ class OpenObserveLogger
             'log' => $message,
             'appName' => 'OpenAgents Laravel',
             'appVersion' => '1.0',
+            'jobId' => $this->job_id
         ];
 
         if (isset($this->options['meta'])) {
