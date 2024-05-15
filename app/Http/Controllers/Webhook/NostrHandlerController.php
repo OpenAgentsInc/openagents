@@ -2,12 +2,8 @@
 
 namespace App\Http\Controllers\Webhook;
 
-use App\Events\AgentRagReady;
-use App\Events\NostrJobReady;
 use App\Http\Controllers\Controller;
-use App\Models\Agent;
-use App\Models\AgentJob;
-use App\Models\NostrJob;
+use App\Jobs\NostrRagReady;
 use App\Services\OpenObserveLogger;
 use Illuminate\Http\Request;
 
@@ -69,23 +65,10 @@ class NostrHandlerController extends Controller
                     'content' => $content,
                 ];
 
-                // fetch the nostr job
-                $nostr_job = NostrJob::where('job_id', $job_id)->first();
-                if ($nostr_job) {
 
-                    $nostr_job->content = $content;
-                    $nostr_job->save();
+                // Dispatch the job
+                NostrRagReady::dispatch($job_id, $content, $payload);
 
-                    $logger->log('info', 'Found NostrJob '.$job_id.' on thread '.$nostr_job->thread_id. ', propagating content of length '.strlen($content));
-                    $logger->log('info', 'Propagating content '.$content);
-
-                    // Dispatch a job to the thread_id using websocket
-                    NostrJobReady::dispatch($nostr_job);
-                } else {
-                    $logger->log('fine', 'NostrJob not found: '.$job_id);
-                }
-
-                $this->processAgent($job_id);
 
                 return [
                     'status' => 'success',
@@ -99,23 +82,6 @@ class NostrHandlerController extends Controller
                     'status' => 'success',
                     'message' => 'data skipped',
                 ];
-            }
-        }
-    }
-
-    public function processAgent($job_id)
-    {
-        $agentJob = AgentJob::where('job_id', $job_id)->first();
-
-        if ($agentJob) {
-            $agentJob->is_rag_ready = true;
-            $agentJob->save();
-
-            $agent = Agent::find($agentJob->agent_id);
-            if ($agent && ! $agent->is_rag_ready) {
-                $agent->is_rag_ready = true;
-                $agent->save();
-                AgentRagReady::dispatch($agentJob);
             }
         }
     }
