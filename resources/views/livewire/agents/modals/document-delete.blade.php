@@ -2,7 +2,7 @@
     {{-- The whole world belongs to you. --}}
 
     <div class="mt-6 mb-1 px-6 sm:px-7">
-        <h2 class="block text-md  md:text-xl lg:text-2xl  font-bold text-white">Delete agent?</h2>
+        <h2 class="block text-md  md:text-xl lg:text-2xl  font-bold text-white">Delete document?</h2>
     </div>
 
 
