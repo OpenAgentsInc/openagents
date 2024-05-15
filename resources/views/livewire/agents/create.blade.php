@@ -74,7 +74,7 @@
                             'text/markdown' => '.md',
                             'text/html' => '.html'
                         ]) }}"
-                                    allowFileSizeValidation maxFileSize="10MB"/>
+                                    allowFileSizeValidation maxFileSize="20MB"/>
 
                     </div>
                 </div>
