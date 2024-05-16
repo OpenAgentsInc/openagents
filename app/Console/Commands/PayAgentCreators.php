@@ -79,7 +79,7 @@ class PayAgentCreators extends Command
                 $payout += $remainingPayout * $scorePercentage;
             }
 
-            $relativeWeight = $payout / $totalPayout;
+            $relativeWeight = (int) round($payout); // Convert relative weight to integer
             $payments[] = [$details['userId'], $relativeWeight];
         }
 
