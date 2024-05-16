@@ -4,7 +4,7 @@ use App\Http\Controllers\BillingController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
-use App\Http\Controllers\Webhook\NostrHandlerController;
+use App\Http\Controllers\Webhook\PoolWebhookReceiver;
 use App\Livewire\Admin;
 use App\Livewire\Agents\Create;
 use App\Livewire\Agents\Edit;
@@ -83,7 +83,7 @@ Route::get('/admin', Admin::class)->name('admin');
 Route::get('/logs', Logs::class)->name('logs');
 
 // Nostr Webhook
-Route::post('/webhook/nostr', [NostrHandlerController::class, 'handleEvent']);
+Route::post('/webhook/nostr', [PoolWebhookReceiver::class, 'handleEvent']);
 
 // Logout via GET not just POST
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);

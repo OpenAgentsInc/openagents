@@ -9,7 +9,7 @@
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                @foreach($agents as $agent)
+                @foreach($this->agents() as $agent)
                     <livewire:agent-card :agent="$agent" :key="$agent['id']"/>
                 @endforeach
             </div>

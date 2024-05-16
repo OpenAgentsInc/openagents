@@ -2,7 +2,7 @@
 
 namespace App\Livewire\Agents;
 
-use App\Jobs\ProcessAgentRag;
+use App\Utils\PoolUtils;
 use App\Livewire\Agents\Partials\Documents;
 use App\Models\Agent;
 use Illuminate\Support\Facades\Storage;
@@ -160,8 +160,8 @@ class Edit extends Component
                 ]);
             }
 
-            // Send documents to Nostr for RAG
-            ProcessAgentRag::dispatch($agent);
+            // Send RAG warmup request (we rewarm everything on edit)
+            PoolUtils::sendRAGWarmUp($agent->id, -1, "agentbuilder".PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
 
             $this->files = [];
 
