@@ -13,6 +13,8 @@ class SimpleInferencer
 {
     private static int $remainingTokens = 0;
 
+    private static string $currentPrompt = '';
+
     private static int $promptTokens = 0;
 
     private static Encoder $encoder;
@@ -24,6 +26,7 @@ class SimpleInferencer
         if ($modelDetails) {
             $gateway = $modelDetails['gateway'];
             self::$remainingTokens = $modelDetails['max_tokens'];
+            self::$currentPrompt = $prompt;
 
             $messages = [
                 [
@@ -118,6 +121,12 @@ class SimpleInferencer
 
     private static function addMessage(string $role, mixed $message, array &$messages): void
     {
+        // if this is the first message then it is the prompt,
+        // and it may have been modified by RAG agent
+        if (self::$currentPrompt && count($messages) === 0) {
+            $message->body = self::$currentPrompt;
+            $message->input_tokens = 0;
+        }
         if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
             $content = '<image>';
         } else {
@@ -128,7 +137,6 @@ class SimpleInferencer
             $messageTokens = count(self::$encoder->encode($content));
         }
 
-        // if this is the first message then it is the prompt
         if (count($messages) === 0) {
             self::$promptTokens = $messageTokens;
         }
