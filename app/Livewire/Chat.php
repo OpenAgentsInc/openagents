@@ -452,7 +452,7 @@ class Chat extends Component
     #[On('echo:threads.{thread.id},NostrJobReady')]
     public function process_nostr($event): void
     {
-        $this->selectedModel = 'gpt-3.5-turbo-16k';
+        $this->selectedModel = 'command-r-plus';
 
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
