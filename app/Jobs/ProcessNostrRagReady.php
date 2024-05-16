@@ -55,7 +55,7 @@ class ProcessNostrRagReady implements ShouldQueue
             // Retry logic to check for the NostrJob
             $retryCount = 0;
             $maxRetries = 5;
-            $retryInterval = 2; // seconds
+            $retryInterval = 3; // seconds
             $nostr_job = null;
 
             // fetch the nostr job
@@ -69,19 +69,24 @@ class ProcessNostrRagReady implements ShouldQueue
             }
 
             if ($nostr_job) {
+                if (!$nostr_job->content) { // only once
 
-                $this->logger->log('info', 'Found NostrJob: '.$this->job_id.' propagating content of length '.strlen($this->content));
-                $this->logger->log('info', 'Propagating content '.$this->content);
+                    $this->logger->log('info', 'Found NostrJob: ' . $this->job_id . ' propagating content of length ' . strlen($this->content));
+                    $this->logger->log('info', 'Propagating content ' . $this->content);
 
-                // update the model payload and content
-                // $nostr_job->payload = $payload;
-                $nostr_job->content = $this->content;
-                $nostr_job->save();
+                    // update the model payload and content
+                    // $nostr_job->payload = $payload;
+                    $nostr_job->content = $this->content;
+                    $nostr_job->save();
 
-                // Dispatch a job to the thread_id using websocket
-                NostrJobReady::dispatch($nostr_job);
+                    // Dispatch a job to the thread_id using websocket
+                    NostrJobReady::dispatch($nostr_job);
+                } else {
+                    $this->logger->log('fine', 'NostrJob already processed: ' . $this->job_id);
+                }
+
             } else {
-                $this->logger->log('info', 'NostrJob not found: '.$this->job_id);
+                $this->logger->log('info', 'NostrJob not found: ' . $this->job_id);
                 $this->fail();
             }
         } catch (Exception $exception) {
