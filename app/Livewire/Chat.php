@@ -458,7 +458,7 @@ class Chat extends Component
 
         $job = NostrJob::where('thread_id', $this->thread->id)->find($event['job']['id']);
 
-        Log::debug('Processing NostrJobReady event for thread '.$this->thread->id.' and job '.$event['job']['id']);
+        // Log::debug('Processing NostrJobReady event for thread '.$this->thread->id.' and job '.$event['job']['id']);
 
         // Simply do it
         $output = NostrInference::inference($this->selectedModel, $job, $this->getStreamingCallback());
