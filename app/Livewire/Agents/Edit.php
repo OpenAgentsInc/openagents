@@ -2,9 +2,9 @@
 
 namespace App\Livewire\Agents;
 
-use App\Utils\PoolUtils;
 use App\Livewire\Agents\Partials\Documents;
 use App\Models\Agent;
+use App\Utils\PoolUtils;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
@@ -161,7 +161,7 @@ class Edit extends Component
             }
 
             // Send RAG warmup request (we rewarm everything on edit)
-            PoolUtils::sendRAGWarmUp($agent->id, -1, "agentbuilder".PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
+            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
 
             $this->files = [];
 

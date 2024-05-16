@@ -3,21 +3,24 @@
 namespace App\Utils;
 
 use App\Models\NostrJob;
-use App\Services\OpenObserveLogger;
 use App\Services\NostrService;
+use App\Services\OpenObserveLogger;
 use Symfony\Component\Uid\Uuid;
 
 class PoolUtils
 {
-
-    public static function uuid(){
+    public static function uuid()
+    {
         return Uuid::v4()->toRfc4122();
     }
-    public static function sendRAGWarmUp($agentId, $threadId, $userId, $documents){
-        PoolUtils::sendRAGJob($agentId, $threadId, $userId, $documents, "", true);
+
+    public static function sendRAGWarmUp($agentId, $threadId, $userId, $documents)
+    {
+        PoolUtils::sendRAGJob($agentId, $threadId, $userId, $documents, '', true);
     }
 
-    public static function sendRAGJob($agentId, $threadId, $userId, $documents, $query, $warmUp=false){
+    public static function sendRAGJob($agentId, $threadId, $userId, $documents, $query, $warmUp = false)
+    {
         $logger = new OpenObserveLogger([
             'baseUrl' => 'https://pool.openagents.com:5080',
             'org' => 'default',
@@ -30,13 +33,13 @@ class PoolUtils
             ->poolAddress(config('nostr.pool'))
             ->query($query)
             ->documents($documents)
-            ->uuid("openagents.com-".$userId."-".$threadId)
+            ->uuid('openagents.com-'.$userId.'-'.$threadId)
             ->warmUp($warmUp)
             ->cacheDurationhint(-1)
             ->encryptFor(config('nostr.encrypt'))
             ->execute();
 
-        $logger->log('info', 'Requesting '.($warmUp?"warm up":"").'Job with ID: '.$job_id.' for Agent: '.$agentId.' Thread: '.$threadId);
+        $logger->log('info', 'Requesting '.($warmUp ? 'warm up' : '').'Job with ID: '.$job_id.' for Agent: '.$agentId.' Thread: '.$threadId);
         $job = new NostrJob();
         $job->agent_id = $agentId;
         $job->job_id = $job_id;

@@ -3,11 +3,11 @@
 namespace App\Livewire\Agents;
 
 use App\Models\Agent;
+use App\Utils\PoolUtils;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-use App\Utils\PoolUtils;
 
 class Create extends Component
 {
@@ -143,9 +143,8 @@ class Create extends Component
                 ]);
             }
 
-
             // Send RAG warmup request
-            PoolUtils::sendRAGWarmUp($agent->id, -1,"agentbuilder".PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
+            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
 
             $this->alert('success', 'Agent training process has now begin ..');
 

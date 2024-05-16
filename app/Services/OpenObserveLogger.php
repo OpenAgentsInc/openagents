@@ -2,9 +2,8 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Log;
-
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
 
 class OpenObserveLogger
 {
@@ -47,7 +46,6 @@ class OpenObserveLogger
         // }else{
         //     Log::debug("LOGGER " .$message);
         // }
-
 
         if (isset($this->options['meta'])) {
             foreach ($this->options['meta'] as $key => $value) {

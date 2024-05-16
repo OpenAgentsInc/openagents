@@ -32,7 +32,7 @@ class NostrService
 
     protected bool $quantize = true;
 
-    protected $uuid="";
+    protected $uuid = '';
 
     public function poolAddress($poolAddress)
     {
@@ -55,10 +55,10 @@ class NostrService
         return $this;
     }
 
-
     public function uuid($uuid)
     {
         $this->uuid = $uuid;
+
         return $this;
     }
 
@@ -158,13 +158,12 @@ class NostrService
 
         // TAG for debugging
         $chatuitag = new JobParam();
-        $chatuitag->setKey('chatui')->setValue(["true"]);
+        $chatuitag->setKey('chatui')->setValue(['true']);
 
         $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7, $chatuitag]);
 
         $requestJob->setDescription('RAG pipeline');
         $requestJob->setKind(5003);
-
 
         $requestJob->setUserId($this->uuid);
         $requestJob->setOutputFormat('application/json');

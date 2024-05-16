@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Webhook;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\AgentWarmUpReceiverJob;
 use App\Jobs\JobResultReceiverJob;
 use App\Services\OpenObserveLogger;
 use Illuminate\Http\Request;
@@ -41,16 +40,13 @@ class PoolWebhookReceiver extends Controller
                 $job_id = $payload['id'];
                 $content = $payload['result']['content'];
 
-
                 $result = [
                     'payload' => $payload,
                     'job_id' => $job_id,
                     'content' => $content,
                 ];
 
-
                 JobResultReceiverJob::dispatch($job_id, $content, $payload)->onQueue('default');
-
 
                 return [
                     'status' => 'success',
@@ -63,7 +59,7 @@ class PoolWebhookReceiver extends Controller
                     'message' => 'data skipped',
                 ];
             }
-        }else{ // Handle Event Event
+        } else { // Handle Event Event
             // do nothing
         }
     }
