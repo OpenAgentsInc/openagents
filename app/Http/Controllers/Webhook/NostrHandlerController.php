@@ -56,7 +56,7 @@ class NostrHandlerController extends Controller
                 ];
             } elseif ($status == 3) {
 
-                $logger->log('info', 'Event with status 3: ' . json_encode($payload));
+                $logger->log('info', 'Event with status 3: '.json_encode($payload));
 
                 $job_id = $payload['id'];
                 $content = $payload['result']['content'];
@@ -78,12 +78,11 @@ class NostrHandlerController extends Controller
                     }
                 }
 
-                if (!empty($warmUp) && $warmUp == 'false' || empty($warmUp)) {
+                if (! empty($warmUp) && $warmUp == 'false' || empty($warmUp)) {
                     ProcessNostrRagReady::dispatch($job_id, $content, $payload)->onQueue('default')->delay(now()->addSeconds(2));
                 } else {
                     ProcessAgentRagStatus::dispatch($job_id)->onQueue('default')->delay(now()->addSeconds(2));
                 }
-
 
                 return [
                     'status' => 'success',

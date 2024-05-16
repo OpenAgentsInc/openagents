@@ -9,7 +9,6 @@ use Livewire\Component;
 
 class PopularAgents extends Component
 {
-    
     #[Computed]
     public function agents()
     {
