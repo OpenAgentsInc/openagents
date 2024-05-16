@@ -25,9 +25,9 @@ class NostrHandlerController extends Controller
         $secret = $request->query('secret');
         $main_secret = config('nostr.webhook_secret');
 
-        // if ($secret !== $main_secret) {
-        //     return response()->json(['error' => 'Invalid token'], 403);
-        // }
+        if ($secret !== $main_secret) {
+            return response()->json(['error' => 'Invalid token'], 403);
+        }
 
         $logData = $data;
 
@@ -56,7 +56,7 @@ class NostrHandlerController extends Controller
                 ];
             } elseif ($status == 3) {
 
-                $logger->log('info', 'Event with status 3: '.json_encode($payload));
+                $logger->log('info', 'Event with status 3: ' . json_encode($payload));
 
                 $job_id = $payload['id'];
                 $content = $payload['result']['content'];
@@ -67,9 +67,23 @@ class NostrHandlerController extends Controller
                 ];
 
                 // Dispatch the job
-                ProcessNostrRagReady::dispatch($job_id, $content, $payload)->onQueue('default')->delay(now()->addSeconds(2));
 
-                ProcessAgentRagStatus::dispatch($job_id)->onQueue('default')->delay(now()->addSeconds(2));
+                $warmUp = null;
+                if (isset($payload['param'])) {
+                    foreach ($payload['param'] as $param) {
+                        if ($param['key'] == 'warm-up') {
+                            $warmUp = $param['value'][0];
+                            break;
+                        }
+                    }
+                }
+
+                if (!empty($warmUp) && $warmUp == 'false' || empty($warmUp)) {
+                    ProcessNostrRagReady::dispatch($job_id, $content, $payload)->onQueue('default')->delay(now()->addSeconds(2));
+                } else {
+                    ProcessAgentRagStatus::dispatch($job_id)->onQueue('default')->delay(now()->addSeconds(2));
+                }
+
 
                 return [
                     'status' => 'success',
