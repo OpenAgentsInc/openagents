@@ -25,6 +25,10 @@ class FlushLogEntriesJob implements ShouldQueue
 
     private function flushLoop($logEntries)
     {
+        if(!env('OPENOBSERVE_USERNAME') || !env('OPENOBSERVE_PASSWORD')){
+            return;
+        }
+
         $username = env('OPENOBSERVE_USERNAME');
         $password = env('OPENOBSERVE_PASSWORD');
         $basicAuth = base64_encode("{$username}:{$password}");
