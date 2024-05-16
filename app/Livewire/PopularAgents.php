@@ -3,16 +3,17 @@
 namespace App\Livewire;
 
 use App\Models\Agent;
-use DB;
+use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 class PopularAgents extends Component
 {
-    public $agents;
-
-    public function mount()
+    
+    #[Computed]
+    public function agents()
     {
-        $this->agents = Agent::query()
+        return Agent::query()
             ->withCount(['messages as unique_users_count' => function ($query) {
                 $query->distinct('user_id');
             }])
