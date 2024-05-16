@@ -2,30 +2,30 @@
 
 namespace App\Jobs;
 
-use Exception;
-use App\Models\Agent;
-use App\Models\AgentJob;
-use App\Models\NostrJob;
-use App\Events\AgentRagReady;
 use App\Events\NostrJobReady;
-use Illuminate\Bus\Queueable;
+use App\Models\NostrJob;
 use App\Services\OpenObserveLogger;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
+use Exception;
+use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 
 class ProcessNostrRagReady implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-
     public $tries = 5;
+
     public $backoff = 2; // seconds between retries
 
     protected $job_id;
+
     protected $content;
+
     protected $payload;
+
     protected $logger;
 
     /**
@@ -51,7 +51,6 @@ class ProcessNostrRagReady implements ShouldQueue
     public function handle(): void
     {
 
-
         try {
             // Retry logic to check for the NostrJob
             $retryCount = 0;
@@ -71,8 +70,8 @@ class ProcessNostrRagReady implements ShouldQueue
 
             if ($nostr_job) {
 
-                $this->logger->log('info', 'Found NostrJob: ' . $this->job_id . ' propagating content of length ' . strlen($this->content));
-                $this->logger->log('info', 'Propagating content ' . $this->content);
+                $this->logger->log('info', 'Found NostrJob: '.$this->job_id.' propagating content of length '.strlen($this->content));
+                $this->logger->log('info', 'Propagating content '.$this->content);
 
                 // update the model payload and content
                 // $nostr_job->payload = $payload;
@@ -82,7 +81,7 @@ class ProcessNostrRagReady implements ShouldQueue
                 // Dispatch a job to the thread_id using websocket
                 NostrJobReady::dispatch($nostr_job);
             } else {
-                $this->logger->log('info', 'NostrJob not found: ' . $this->job_id);
+                $this->logger->log('info', 'NostrJob not found: '.$this->job_id);
                 $this->fail();
             }
         } catch (Exception $exception) {
@@ -97,8 +96,6 @@ class ProcessNostrRagReady implements ShouldQueue
             throw $exception;
         }
     }
-
-
 
     /**
      * Handle a job failure.
