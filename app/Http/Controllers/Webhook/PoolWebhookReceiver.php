@@ -46,7 +46,7 @@ class PoolWebhookReceiver extends Controller
                     'content' => $content,
                 ];
 
-                JobResultReceiverJob::dispatch($job_id, $content, $payload)->onQueue('default');
+                JobResultReceiverJob::dispatch($job_id, $content, $payload);
 
                 return [
                     'status' => 'success',
