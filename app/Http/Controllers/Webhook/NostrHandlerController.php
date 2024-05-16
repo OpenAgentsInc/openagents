@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Webhook;
 
-use Illuminate\Http\Request;
-use App\Jobs\ProcessNostrRagReady;
-use App\Jobs\ProcessAgentRagStatus;
-use App\Services\OpenObserveLogger;
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessAgentRagStatus;
+use App\Jobs\ProcessNostrRagReady;
+use App\Services\OpenObserveLogger;
+use Illuminate\Http\Request;
 
 class NostrHandlerController extends Controller
 {
@@ -68,7 +68,6 @@ class NostrHandlerController extends Controller
 
                 // Dispatch the job
                 ProcessNostrRagReady::dispatch($job_id, $content, $payload)->onQueue('default')->delay(now()->addSeconds(2));
-
 
                 ProcessAgentRagStatus::dispatch($job_id)->onQueue('default')->delay(now()->addSeconds(2));
 

@@ -20,6 +20,11 @@ class NostrRag
         return $this;
     }
 
+    public function getMessages(): array
+    {
+        return $this->messages;
+    }
+
     public function send()
     {
         $apiKey = config('services.openai.api_key');
@@ -32,7 +37,6 @@ class NostrRag
         ]);
 
         return $response->choices[0]->message->content ?? '';
-
     }
 
     public function summary()
