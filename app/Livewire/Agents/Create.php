@@ -2,12 +2,12 @@
 
 namespace App\Livewire\Agents;
 
-use App\Jobs\ProcessAgentRag;
 use App\Models\Agent;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithFileUploads;
+use App\Utils\PoolUtils;
 
 class Create extends Component
 {
@@ -143,9 +143,9 @@ class Create extends Component
                 ]);
             }
 
-            // Send documents to Nostr for RAG
 
-            ProcessAgentRag::dispatch($agent);
+            // Send RAG warmup request
+            PoolUtils::sendRAGWarmUp($agent->id, -1,"agentbuilder".PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
 
             $this->alert('success', 'Agent training process has now begin ..');
 

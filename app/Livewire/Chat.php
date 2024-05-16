@@ -23,7 +23,7 @@ use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-
+use App\Utils\PoolUtils;
 use function implode;
 
 class Chat extends Component
@@ -423,9 +423,9 @@ class Chat extends Component
         $logger->log("Running agent with RAG. Input: {$this->input}");
 
         try {
-            DB::beginTransaction();
 
             $sessionId = auth()->check() ? null : Session::getId();
+            $uuid = $sessionId ? hash('sha256', $sessionId): PoolUtils::uuid();
 
             // Save user message to the thread
             $this->thread->messages()->create([
@@ -440,46 +440,27 @@ class Chat extends Component
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
-            // send to nostr
+            // Send RAG Job
+            PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query);
 
-            $pool = config('nostr.pool');
-            $encrypt = config('nostr.encrypt');
-
-            $job_id = (new NostrService())
-                ->poolAddress($pool)
-                ->query($query)
-                ->documents($documents)
-                ->warmUp(false)
-                ->cacheDurationhint(-1)
-                ->encryptFor($encrypt)
-                ->execute();
-            if (! empty($job_id)) {
-                // Save to DB
-                $nostr_job = new NostrJob();
-                $nostr_job->agent_id = $this->selectedAgent['id'];
-                $nostr_job->job_id = $job_id;
-                $nostr_job->status = 'pending';
-                $nostr_job->thread_id = $this->thread->id;
-                $nostr_job->save();
-            }
-            DB::commit();
         } catch (Exception $e) {
-            DB::rollBack();
             $this->alert('error', 'An Error occurred, please try again later');
             Log::error($e);
-
         }
     }
 
     #[On('echo:threads.{thread.id},NostrJobReady')]
     public function process_nostr($event): void
     {
-        $this->selectedModel = 'command-r-plus';
+        $this->selectedModel = 'gpt-3.5-turbo-16k';
 
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
 
         $job = NostrJob::where('thread_id', $this->thread->id)->find($event['job']['id']);
+
+
+        Log::debug('Processing NostrJobReady event for thread '.$this->thread->id.' and job '.$event['job']['id']);
 
         // Simply do it
         $output = NostrInference::inference($this->selectedModel, $job, $this->getStreamingCallback());

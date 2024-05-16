@@ -9,7 +9,6 @@ use App\Grpc\nostr\RpcRequestJob;
 use Exception;
 use Grpc\ChannelCredentials;
 use Illuminate\Support\Facades\Log;
-use Symfony\Component\Uid\Uuid;
 
 class NostrService
 {
@@ -33,6 +32,8 @@ class NostrService
 
     protected bool $quantize = true;
 
+    protected $uuid="";
+
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;
@@ -51,6 +52,13 @@ class NostrService
     {
         $this->documents = $documents;
 
+        return $this;
+    }
+
+
+    public function uuid($uuid)
+    {
+        $this->uuid = $uuid;
         return $this;
     }
 
@@ -148,12 +156,17 @@ class NostrService
         $param7 = new JobParam();
         $param7->setKey('main')->setValue(['https://github.com/OpenAgentsInc/openagents-rag-coordinator-plugin/releases/download/v0.2/rag.wasm']);
 
-        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7]);
+        // TAG for debugging
+        $chatuitag = new JobParam();
+        $chatuitag->setKey('chatui')->setValue(["true"]);
+
+        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7, $chatuitag]);
 
         $requestJob->setDescription('RAG pipeline');
         $requestJob->setKind(5003);
-        $uuid = Uuid::v4()->toRfc4122();
-        $requestJob->setUserId($uuid);
+
+
+        $requestJob->setUserId($this->uuid);
         $requestJob->setOutputFormat('application/json');
 
         if ($this->encryptFor != null) {
