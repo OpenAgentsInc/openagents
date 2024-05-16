@@ -37,15 +37,15 @@ class OpenObserveLogger
             'jobId' => $this->job_id,
         ];
 
-        // if($level=="info"){
-        //     Log::info("LOGGER ".$message);
-        // }else if($level=="error"){
-        //     Log::error("LOGGER " .$message);
-        // }else if($level=="warning"){
-        //     Log::warning("LOGGER " .$message);
-        // }else{
-        //     Log::debug("LOGGER " .$message);
-        // }
+        if($level=="info"){
+            Log::info("LOGGER ".$message);
+        }else if($level=="error"){
+            Log::error("LOGGER " .$message);
+        }else if($level=="warning"){
+            Log::warning("LOGGER " .$message);
+        }else{
+            Log::debug("LOGGER " .$message);
+        }
 
         if (isset($this->options['meta'])) {
             foreach ($this->options['meta'] as $key => $value) {
