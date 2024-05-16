@@ -28,7 +28,7 @@ class SimpleInferencer
             $messages = [
                 [
                     'role' => 'system',
-                    'content' => 'You are a helpful assistant.',
+                    'content' => $prompt,
                 ],
                 ...self::getTruncatedMessages($thread),
             ];
