@@ -101,11 +101,13 @@ class SimpleInferencer
 
         $messages = [];
 
-        foreach ($thread->messages()->orderBy('created_at', 'desc')->get() as $message) {
+        foreach (
+            $thread->messages()
+                ->orderBy('created_at', 'desc')
+                ->orderBy('id', 'desc')->get() as $message
+        ) {
             $role = is_null($message->model) ? 'user' : 'assistant';
-
             self::addMessage($role, $message, $messages);
-
             if (self::$remainingTokens <= 0) {
                 break;
             }
