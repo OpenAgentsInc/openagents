@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Events\AgentRagReady;
 use App\Events\NostrJobReady;
+use App\Models\Agent;
 use App\Models\NostrJob;
 use App\Services\OpenObserveLogger;
 use Exception;
@@ -11,8 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use App\Models\Agent;
-use App\Events\AgentRagReady;
+
 class JobResultReceiverJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -59,14 +60,16 @@ class JobResultReceiverJob implements ShouldQueue
             $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
             if ($nostr_job) {
                 $isWarmUp = $nostr_job->warmup;
-                if($isWarmUp){
+                if ($isWarmUp) {
                     $agent = Agent::find($nostr_job->agent_id);
-                    if(!$agent) throw new Exception('Agent not found '.$nostr_job->agent_id);
+                    if (! $agent) {
+                        throw new Exception('Agent not found '.$nostr_job->agent_id);
+                    }
                     $agent->is_rag_ready = true;
                     $agent->save();
                     AgentRagReady::dispatch($nostr_job->agent_id);
-                }else{
-                     if (!$nostr_job->content) { // set content only once
+                } else {
+                    if (! $nostr_job->content) { // set content only once
                         $this->logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
                         $this->logger->log('info', 'Propagating content '.$this->content);
                         $nostr_job->content = $this->content;
@@ -81,8 +84,8 @@ class JobResultReceiverJob implements ShouldQueue
                 // $this->fail();
                 // reschedule
                 if ($this->retry < $this->tries) {
-                    $this->logger->log('info', 'Rescheduling Job: '.$this->job_id.' retry '.$this->retry+1);
-                    $newJob = new JobResultReceiverJob($this->job_id, $this->content, $this->payload, $this->retry+1);
+                    $this->logger->log('info', 'Rescheduling Job: '.$this->job_id.' retry '.$this->retry + 1);
+                    $newJob = new JobResultReceiverJob($this->job_id, $this->content, $this->payload, $this->retry + 1);
                     dispatch($newJob)->delay(now()->addMillis($this->backoff));
                 } else {
                     $this->logger->log('error', 'Failed to process Job: '.$this->job_id);
@@ -92,6 +95,4 @@ class JobResultReceiverJob implements ShouldQueue
             $this->logger->log('error', $exception->getMessage());
         }
     }
-
-
 }

@@ -30,6 +30,7 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
             return in_array($user->username, [
                 'AtlantisPleb',
                 '64ost',
+                'b7d75df9',
             ]);
         });
     }

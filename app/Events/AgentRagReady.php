@@ -31,7 +31,7 @@ class AgentRagReady implements ShouldBroadcastNow
     public function broadcastOn()
     {
         return [
-            new Channel('agent_jobs.'.$this->agentJob->id)
+            new Channel('agent_jobs.'.$this->agentJob->id),
         ];
     }
 }

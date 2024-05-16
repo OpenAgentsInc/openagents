@@ -13,17 +13,16 @@ use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\LocalLogger;
-use App\Services\NostrService;
 use App\Traits\SelectedModelOrAgentTrait;
+use App\Utils\PoolUtils;
 use Exception;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-use App\Utils\PoolUtils;
+
 use function implode;
 
 class Chat extends Component
@@ -425,7 +424,7 @@ class Chat extends Component
         try {
 
             $sessionId = auth()->check() ? null : Session::getId();
-            $uuid = $sessionId ? hash('sha256', $sessionId): PoolUtils::uuid();
+            $uuid = $sessionId ? hash('sha256', $sessionId) : PoolUtils::uuid();
 
             // Save user message to the thread
             $this->thread->messages()->create([
@@ -458,7 +457,6 @@ class Chat extends Component
         $sessionId = auth()->check() ? null : Session::getId();
 
         $job = NostrJob::where('thread_id', $this->thread->id)->find($event['job']['id']);
-
 
         Log::debug('Processing NostrJobReady event for thread '.$this->thread->id.' and job '.$event['job']['id']);
 
