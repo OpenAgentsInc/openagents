@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithFileUploads;
+use Illuminate\Support\Facades\Log;
 
 class Create extends Component
 {
@@ -26,6 +27,8 @@ class Create extends Component
     public $is_public = true;
 
     public $files = [];
+
+    public $urls = "";
 
     public $image;
 
@@ -50,6 +53,7 @@ class Create extends Component
             'files' => 'nullable|array',
             'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
             'image' => 'nullable|image|max:2048',
+            'urls' => 'nullable|string',
         ];
     }
 
@@ -59,6 +63,7 @@ class Create extends Component
 
         $user = auth()->user();
         if (! $user) {
+            Log::error('User not found');
             return redirect('/');
         }
 
@@ -114,7 +119,9 @@ class Create extends Component
         $agent->is_rag_ready = ! empty($this->files) ? false : true;
         $agent->save();
 
+        $needWarmUp = false;
         if (! empty($this->files)) {
+            $needWarmUp=true;
             $disk = config('documents.disk');
             foreach ($this->files as $file) {
                 // Get filename with extension
@@ -142,15 +149,33 @@ class Create extends Component
                     'type' => $file->getClientMimeType(),
                 ]);
             }
-
-            // Send RAG warmup request
-            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
-
-            $this->alert('success', 'Agent training process has now begin ..');
-
         }
 
-        $this->alert('success', 'Agent created successfully..');
+
+        if(!empty($this->urls)) {
+            $needWarmUp=true;
+            $urls = explode("\n", $this->urls);
+            foreach ($urls as $url) {
+                $agent->documents()->create([
+                    'name' => $url,
+                    'path' => $url,
+                    'url' => $url,
+                    'disk' => 'url',
+                    'type' => 'url',
+                ]);
+            }
+        }
+
+        $agent->save();
+
+        if($needWarmUp) {
+            Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
+            // Send RAG warmup request
+            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
+            $this->alert('success', 'Agent training process has now begin ..');
+        }else{
+            $this->alert('success', 'Agent created successfully..');
+        }
 
         session()->put('agent', $agent->id);
 

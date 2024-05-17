@@ -60,7 +60,7 @@
                 </div>
 
                 <div class="mt-5 select-none">
-                    <label for="files"> Knowledge</label>
+                    <label for="files">Knowledge Files</label>
                     <div class="mt-1 border-2 border-darkgray rounded-md">
                         @error('files.*')
                         <span class="error">{{ $message }}</span>
@@ -77,6 +77,16 @@
                                     allowFileSizeValidation maxFileSize="20MB"/>
 
                     </div>
+                </div>
+                 <div class="mt-5">
+                    <label for="urls">Knowledge URLs</label>
+                    <x-textarea wire:model='urls'
+                                placeholder="If you have any URLs with content that you would like to add to this agent, please add them here one per line."
+                                dusk="instructions" id="about" class="block mt-1 w-full" min-rows="3" name="urls"
+                                />
+                    @error('urls')
+                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                    @enderror
                 </div>
 
                 {{--                <div class="my-5"> --}}
