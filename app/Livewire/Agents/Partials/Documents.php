@@ -19,7 +19,14 @@ class Documents extends Component
     #[Computed]
     public function documents()
     {
-        return AgentFile::with('agent')->where('agent_id', $this->agent_id)->get();
+        $docs = AgentFile::with('agent')
+            ->where('agent_id', $this->agent_id)
+            ->get();
+        $docs = $docs->filter(function ($doc) {
+            return $doc->type !== 'url';
+        });
+
+        return $docs;
     }
 
     #[On('document_deleted')]

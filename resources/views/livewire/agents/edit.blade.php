@@ -90,7 +90,7 @@
 
 
                 <div class="my-6 block">
-                    <label for="files"> Documents</label>
+                    <label for="files">Knowledge Files</label>
                     <div class="my-2 text-neutral-400 text-sm font-normal font-['JetBrains Mono']">If you upload files
                         under Knowledge, conversations with your Agent may include its contents.
                     </div>
@@ -110,6 +110,17 @@
                             ]) }}"
                                     allowFileSizeValidation maxFileSize="20MB"/>
                     </div>
+                </div>
+
+                <div class="my-6 block">
+                    <label for="urls">Knowledge URLs</label>
+                    <div class="my-2 text-neutral-400 text-sm font-normal font-['JetBrains Mono']">
+                        If you add URLs under Knowledge, conversations with your Agent may include its contents.
+                    </div>
+                    <x-textarea wire:model='urls' dusk="urls" id="urls" class="block mt-1 w-full" min-rows="3" name="urls" />
+                    @error('urls')
+                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                    @enderror
                 </div>
 
                 <div class="my-5 rounded border border-gray p-3">
