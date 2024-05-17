@@ -19,7 +19,7 @@ class NostrInference
 
         $prePrompt = 'You can use the following CONTEXT to help you answer the user\'s questions.';
 
-        $prompt = $agent->prompt."\n".$prePrompt."\n".$job->content;
+        $systemPrompt = $agent->prompt."\n".$prePrompt."\n".$job->content;
 
         $logger = new OpenObserveLogger([
             'baseUrl' => 'https://pool.openagents.com:5080',
@@ -29,8 +29,9 @@ class NostrInference
             'flushInterval' => 1000,
             'jobId' => $job->job_id,
         ]);
-        $logger->log('info', 'Using Augmented prompt '.$prompt);
+        $logger->log('info', 'Using Augmented prompt '.$systemPrompt);
 
-        return SimpleInferencer::inference($prompt, $model, $thread, $streamFunction, $httpClient);
+        // When prompt is empty it gets picked up from the thread if needed
+        return SimpleInferencer::inference('', $model, $thread, $streamFunction, $httpClient, $systemPrompt);
     }
 }
