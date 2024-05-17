@@ -24,7 +24,6 @@ class NostrInference
         $logger = new OpenObserveLogger([
             'baseUrl' => 'https://pool.openagents.com:5080',
             'org' => 'default',
-            'stream' => 'logs',
             'jobId' => $job->job_id,
         ]);
         $logger->log('info', 'Using Augmented prompt '.$systemPrompt);

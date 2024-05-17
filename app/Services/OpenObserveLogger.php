@@ -20,6 +20,11 @@ class OpenObserveLogger
     public function __construct($options)
     {
         $this->options = $options;
+        if (! $this->options['stream']) {
+            $isProduction = env('APP_ENV') === 'production';
+            $this->options['stream'] = $isProduction ? 'logs' : 'playground_logs';
+        }
+
         $this->batchSize = $options['batchSize'] ?? 21;
         $this->flushInterval = $options['flushInterval'] ?? 5000;
         $this->buffer = collect();
@@ -71,9 +76,10 @@ class OpenObserveLogger
     }
 
     public function close() // flush on close
-    {if ($this->buffer->count() > 0) {
-        Bus::dispatch(new FlushLogEntriesJob($this->buffer->all(), $this->options));
-        $this->buffer = collect(); // Reset the buffer
-    }
+    {
+        if ($this->buffer->count() > 0) {
+            Bus::dispatch(new FlushLogEntriesJob($this->buffer->all(), $this->options));
+            $this->buffer = collect(); // Reset the buffer
+        }
     }
 }
