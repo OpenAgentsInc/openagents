@@ -14,7 +14,7 @@ test('sends a log entry to OpenObserve', function () {
 
     // Send a dummy log entry
     $logger->log('INFO', 'This is a dummy log entry from the test');
-
+    $logger->close();
     // Wait for the flush interval to pass
     sleep(1);
 

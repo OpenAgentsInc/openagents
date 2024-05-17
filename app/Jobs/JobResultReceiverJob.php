@@ -41,13 +41,7 @@ class JobResultReceiverJob implements ShouldQueue
         $this->content = $content;
         $this->payload = $payload;
         $this->retry = $retry;
-        $this->logger = new OpenObserveLogger([
-            'baseUrl' => 'https://pool.openagents.com:5080',
-            'org' => 'default',
-            'stream' => 'logs',
-            'batchSize' => 1,
-            'flushInterval' => 1000,
-        ]);
+
     }
 
     /**
@@ -55,6 +49,13 @@ class JobResultReceiverJob implements ShouldQueue
      */
     public function handle(): void
     {
+        $this->logger = new OpenObserveLogger([
+            'baseUrl' => 'https://pool.openagents.com:5080',
+            'org' => 'default',
+            'stream' => 'logs',
+            'batchSize' => 1,
+            'flushInterval' => 1000,
+        ]);
 
         try {
             $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
@@ -67,6 +68,7 @@ class JobResultReceiverJob implements ShouldQueue
                     if (! $agent) {
                         throw new Exception('Agent not found '.$nostr_job->agent_id);
                     }
+                    $this ->logger->log('info', 'Agent WarmUp completed for agent '.$nostr_job->agent_id);
                     $agent->is_rag_ready = true;
                     $agent->save();
                     AgentRagReady::dispatch($nostr_job->agent_id);
@@ -97,6 +99,8 @@ class JobResultReceiverJob implements ShouldQueue
             }
         } catch (Exception $exception) {
             $this->logger->log('error', $exception->getMessage());
+        }finally{
+            $this->logger->close();
         }
     }
 }
