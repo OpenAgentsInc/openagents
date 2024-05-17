@@ -12,8 +12,7 @@ class PoolWebhookReceiver extends Controller
     public function handleEvent(Request $request)
     {
         $logger = new OpenObserveLogger([
-            'baseUrl' => 'https://pool.openagents.com:5080',
-            'org' => 'default',
+
         ]);
 
         $data = $request->all();

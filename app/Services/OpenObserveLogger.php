@@ -17,14 +17,19 @@ class OpenObserveLogger
 
     private $job_id;
 
-    public function __construct($options)
+    public function __construct($options = [])
     {
         $this->options = $options;
-        if ( ! isset($this->options['stream'])) {
+        if (! isset($this->options['stream'])) {
             $isProduction = env('APP_ENV') === 'production';
             $this->options['stream'] = $isProduction ? 'logs' : 'playground_logs';
         }
-
+        if (! isset($this->options['baseUrl'])) {
+            $this->options['baseUrl'] = 'https://pool.openagents.com:5080';
+        }
+        if (! isset($this->options['org'])) {
+            $this->options['org'] = 'default';
+        }
         $this->batchSize = $options['batchSize'] ?? 21;
         $this->flushInterval = $options['flushInterval'] ?? 5000;
         $this->buffer = collect();

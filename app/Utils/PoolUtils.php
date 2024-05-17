@@ -22,8 +22,7 @@ class PoolUtils
     public static function sendRAGJob($agentId, $threadId, $userId, $documents, $query, $warmUp = false)
     {
         $logger = new OpenObserveLogger([
-            'baseUrl' => 'https://pool.openagents.com:5080',
-            'org' => 'default',
+
         ]);
 
         $job_id = (new NostrService())

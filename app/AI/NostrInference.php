@@ -22,8 +22,6 @@ class NostrInference
         $systemPrompt = $agent->prompt."\n".$prePrompt."\n".$job->content;
 
         $logger = new OpenObserveLogger([
-            'baseUrl' => 'https://pool.openagents.com:5080',
-            'org' => 'default',
             'jobId' => $job->job_id,
         ]);
         $logger->log('info', 'Using Augmented prompt '.$systemPrompt);
