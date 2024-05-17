@@ -286,7 +286,8 @@ class Chat extends Component
         //            $model = 'command-r';
         //        }
 
-        $output = SimpleInferencer::inference($userInput, $model, $this->thread, $this->getStreamingCallback(), null, $systemPrompt);
+        $inference = new SimpleInferencer();
+        $output = $inference->inference($userInput, $model, $this->thread, $this->getStreamingCallback(), null, $systemPrompt);
 
         // Append the response to the chat
         $message = [
@@ -386,7 +387,8 @@ class Chat extends Component
         ]);
 
         // Simply do it
-        $output = SimpleInferencer::inference($this->input, $this->selectedModel, $this->thread, $this->getStreamingCallback());
+        $inference = new SimpleInferencer();
+        $output = $inference->inference($this->input, $this->selectedModel, $this->thread, $this->getStreamingCallback());
 
         // Append the response to the chat
         $message = [

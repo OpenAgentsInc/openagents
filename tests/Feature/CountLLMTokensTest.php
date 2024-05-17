@@ -33,7 +33,8 @@ test('LLM inference counts tokens for the Message model', function () {
     $streamFunction = function ($chunk, $replace) {
         $this->assertIsString($chunk);
     };
-    $result = SimpleInferencer::inference($prompt, $model, $thread, $streamFunction, $httpClient);
+    $inference = new SimpleInferencer();
+    $result = $inference->inference($prompt, $model, $thread, $streamFunction, $httpClient);
 
     expect($result)->toBeArray();
     expect($result['content'])->toEqual($answer);

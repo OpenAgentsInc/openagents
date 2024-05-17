@@ -15,7 +15,8 @@ class NostrRag
 
     public function history(Thread $thread, int $maxTokens = 14000): NostrRag
     {
-        $this->messages = SimpleInferencer::getTruncatedMessages($thread, $maxTokens);
+        $inference = new SimpleInferencer();
+        $this->messages = $inference->getTruncatedMessages($thread, $maxTokens);
 
         return $this;
     }
