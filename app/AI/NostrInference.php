@@ -25,12 +25,10 @@ class NostrInference
             'baseUrl' => 'https://pool.openagents.com:5080',
             'org' => 'default',
             'stream' => 'logs',
-            'batchSize' => 1,
-            'flushInterval' => 1000,
             'jobId' => $job->job_id,
         ]);
         $logger->log('info', 'Using Augmented prompt '.$systemPrompt);
-
+        $logger->close();
         // When prompt is empty it gets picked up from the thread if needed
         $inference = new SimpleInferencer();
         return $inference->inference('', $model, $thread, $streamFunction, $httpClient, $systemPrompt);

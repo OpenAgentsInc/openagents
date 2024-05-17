@@ -47,5 +47,6 @@ class PoolUtils
         $job->thread_id = $threadId;
         $job->warmup = $warmUp;
         $job->save();
+        $logger->close();
     }
 }

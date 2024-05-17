@@ -31,6 +31,8 @@ class PoolWebhookReceiver extends Controller
             $status = $payload['state']['status'];
 
             if ($status == 2) {
+                $logger->log('error', 'Event with status 2: '.json_encode($payload));
+                $logger->close();
                 return [
                     'status' => 'success',
                     'message' => 'error logged',
@@ -47,13 +49,15 @@ class PoolWebhookReceiver extends Controller
                 ];
 
                 JobResultReceiverJob::dispatch($job_id, $content, $payload);
-
+                $logger->close();
                 return [
                     'status' => 'success',
                     'message' => 'data processed',
                     'data' => $result,
                 ];
             } else {
+                $logger->log('info', 'Event with status '.$status.': '.json_encode($payload));
+                $logger->close();
                 return [
                     'status' => 'success',
                     'message' => 'data skipped',

@@ -68,4 +68,11 @@ class OpenObserveLogger
             $this->buffer = collect(); // Reset the buffer
         }
     }
+
+    public function close(){ // flush on close
+        if ($this->buffer->count() > 0) {
+            Bus::dispatch(new FlushLogEntriesJob($this->buffer->all(), $this->options));
+            $this->buffer = collect(); // Reset the buffer
+        }
+    }
 }
