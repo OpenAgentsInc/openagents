@@ -7,9 +7,6 @@ test('sends a log entry to OpenObserve', function () {
     $logger = new OpenObserveLogger([
         'baseUrl' => 'https://pool.openagents.com:5080',
         'org' => 'default',
-        'stream' => 'logs',
-        'batchSize' => 1,
-        'flushInterval' => 1000,
     ]);
 
     // Send a dummy log entry

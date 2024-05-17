@@ -50,9 +50,6 @@ class JobResultReceiverJob implements ShouldQueue
         $logger = new OpenObserveLogger([
             'baseUrl' => 'https://pool.openagents.com:5080',
             'org' => 'default',
-            'stream' => 'logs',
-            'batchSize' => 1,
-            'flushInterval' => 1000,
         ]);
 
         try {
