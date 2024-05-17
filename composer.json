@@ -8,7 +8,7 @@
   ],
   "license": "MIT",
   "require": {
-    "php": "^8.2",
+    "php": "^8.3",
     "google/protobuf": "^3.22.0",
     "grpc/grpc": "1.57.0",
     "jantinnerezo/livewire-alert": "^3.0",
