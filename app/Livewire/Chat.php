@@ -501,15 +501,13 @@ class Chat extends Component
         return view('livewire.chat');
     }
 
-    //    #[On('echo:agent_jobs.{selectedAgent.id},AgentRagReady')] // ??
-    //    public function process_agent_rag($event)
-    //    {
-    //        $agent = Agent::find($event['agent_id']);
-    //        if ($agent) {
-    //            if ($this->selectedAgent['id'] == $agent->id && $agent->is_rag_ready) {
-    //                $this->pending = false;
-    //            }
-    //        }
-    //    }
+    // #[On('echo:agent_warmup.{selectedAgent.id},AgentRagReady')]
+    // public function processRagWarmUp($event)
+    // {
+    //     if ($this->selectedAgent['id'] == $event["agentId"]) {
+    //         $this->pending = false;
+    //     }
+
+    // }
 
 }
