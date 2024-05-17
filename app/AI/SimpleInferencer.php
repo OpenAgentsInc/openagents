@@ -13,27 +13,23 @@ class SimpleInferencer
 {
     private static int $remainingTokens = 0;
 
-    private static string $currentPrompt = '';
-
     private static int $promptTokens = 0;
 
     private static Encoder $encoder;
 
-    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, ?Client $httpClient = null): array
+    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, ?Client $httpClient = null, string $systemPrompt = ''): array
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
         if ($modelDetails) {
             $gateway = $modelDetails['gateway'];
-            self::$remainingTokens = $modelDetails['max_tokens'];
-            self::$currentPrompt = $prompt;
 
             $messages = [
                 [
                     'role' => 'system',
-                    'content' => $prompt,
+                    'content' => $systemPrompt ?: 'You are a helpful assistant.',
                 ],
-                ...self::getTruncatedMessages($thread),
+                ...self::getTruncatedMessages($thread, $modelDetails['max_tokens'], $systemPrompt),
             ];
 
             if (! $httpClient) {
@@ -93,14 +89,16 @@ class SimpleInferencer
         return $inference;
     }
 
-    public static function getTruncatedMessages(Thread $thread, ?int $maxTokens = null): array
+    public static function getTruncatedMessages(Thread $thread, int $maxTokens, string $systemPrompt = ''): array
     {
-        if ($maxTokens) {
-            self::$remainingTokens = $maxTokens;
-        }
-
         $provider = new EncoderProvider();
         self::$encoder = $provider->getForModel('gpt-4');
+
+        self::$remainingTokens = $maxTokens;
+
+        if ($systemPrompt) {
+            self::$remainingTokens -= count(self::$encoder->encode($systemPrompt));
+        }
 
         $messages = [];
 
@@ -121,12 +119,6 @@ class SimpleInferencer
 
     private static function addMessage(string $role, mixed $message, array &$messages): void
     {
-        // if this is the first message then it is the prompt,
-        // and it may have been modified by RAG agent
-        if (self::$currentPrompt && count($messages) === 0) {
-            $message->body = self::$currentPrompt;
-            $message->input_tokens = 0;
-        }
         if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
             $content = '<image>';
         } else {
@@ -137,6 +129,7 @@ class SimpleInferencer
             $messageTokens = count(self::$encoder->encode($content));
         }
 
+        // if this is the first message then it is the prompt
         if (count($messages) === 0) {
             self::$promptTokens = $messageTokens;
         }

@@ -59,11 +59,15 @@ class CohereAIGateway implements GatewayInterface
         ];
 
         if (isset($params['messages'])) {
+            $message = null;
             foreach ($params['messages'] as $message) {
                 $data['chat_history'][] = [
                     'role' => $message['role'],
                     'message' => $message['content'],
                 ];
+            }
+            if (empty($data['message']) && $message) {
+                $data['message'] = $message['content'];
             }
         }
 

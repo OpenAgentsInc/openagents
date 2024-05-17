@@ -258,16 +258,14 @@ class Chat extends Component
         // Attach any context necessary from querying the codebase
         $this->handleCodebaseContext();
 
-        // Until RAG is working we'll just pass the agent info to the model
-        $imageInput = $this->handleImageInput();
-        $userInput = $this->input;
+        $userInput = $this->handleImageInput().$this->input;
 
-        $this->input = implode("\n\n", [
+        $systemPrompt = implode("\n\n", [
             'You are an AI agent on OpenAgents.com.',
             "Your name is {$this->selectedAgent['name']}.",
             "Your description is: {$this->selectedAgent['description']}",
             "Your instructions are: {$this->selectedAgent['instructions']}.",
-            $imageInput."Respond to the following user input: \"$userInput\"",
+            'Respond to the following user input:',
         ]);
 
         // Authenticate user session or proceed without it
@@ -275,7 +273,7 @@ class Chat extends Component
 
         // Save user message to the thread
         $userMessage = $this->thread->messages()->create([
-            'body' => $imageInput.$userInput,
+            'body' => $userInput,
             'session_id' => $sessionId,
             'user_id' => auth()->id() ?? null,
         ]);
@@ -288,7 +286,7 @@ class Chat extends Component
         //            $model = 'command-r';
         //        }
 
-        $output = SimpleInferencer::inference($this->input, $model, $this->thread, $this->getStreamingCallback());
+        $output = SimpleInferencer::inference($userInput, $model, $this->thread, $this->getStreamingCallback(), null, $systemPrompt);
 
         // Append the response to the chat
         $message = [
