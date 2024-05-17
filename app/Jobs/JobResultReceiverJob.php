@@ -28,7 +28,6 @@ class JobResultReceiverJob implements ShouldQueue
 
     protected $payload;
 
-    protected $logger;
 
     protected $retry;
 
@@ -49,7 +48,7 @@ class JobResultReceiverJob implements ShouldQueue
      */
     public function handle(): void
     {
-        $this->logger = new OpenObserveLogger([
+        $logger = new OpenObserveLogger([
             'baseUrl' => 'https://pool.openagents.com:5080',
             'org' => 'default',
             'stream' => 'logs',
@@ -68,38 +67,38 @@ class JobResultReceiverJob implements ShouldQueue
                     if (! $agent) {
                         throw new Exception('Agent not found '.$nostr_job->agent_id);
                     }
-                    $this->logger->log('info', 'Agent WarmUp completed for agent '.$nostr_job->agent_id);
+                    $logger->log('info', 'Agent WarmUp completed for agent '.$nostr_job->agent_id);
                     $agent->is_rag_ready = true;
                     $agent->save();
                     AgentRagReady::dispatch($nostr_job->agent_id);
                 }
 
                 if (! $nostr_job->content) { // set content only once
-                    $this->logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
-                    $this->logger->log('info', 'Propagating content '.$this->content);
+                    $logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
+                    $logger->log('info', 'Propagating content '.$this->content);
                     $nostr_job->content = $this->content;
                     $nostr_job->save();
                     NostrJobReady::dispatch($nostr_job);
                 } else {
-                    $this->logger->log('fine', 'Job already processed: '.$this->job_id);
+                    $logger->log('fine', 'Job already processed: '.$this->job_id);
                 }
 
             } else {
-                $this->logger->log('fine', 'Job not found: '.$this->job_id);
+                $logger->log('fine', 'Job not found: '.$this->job_id);
                 // $this->fail();
                 // reschedule
                 if ($this->retry < $this->tries) {
-                    $this->logger->log('info', 'Rescheduling Job: '.$this->job_id.' retry '.($this->retry + 1));
+                    $logger->log('info', 'Rescheduling Job: '.$this->job_id.' retry '.($this->retry + 1));
                     $newJob = new JobResultReceiverJob($this->job_id, $this->content, $this->payload, $this->retry + 1);
                     dispatch($newJob)->delay(now()->addMillis($this->backoff));
                 } else {
-                    $this->logger->log('error', 'Failed to process Job: '.$this->job_id);
+                    $logger->log('error', 'Failed to process Job: '.$this->job_id);
                 }
             }
         } catch (Exception $exception) {
-            $this->logger->log('error', $exception->getMessage());
+            $logger->log('error', $exception->getMessage());
         } finally {
-            $this->logger->close();
+            $logger->close();
         }
     }
 }
