@@ -101,12 +101,13 @@
                         @enderror
                         <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
                                     imagePreviewMaxHeight="300"
-                                    acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
+                                    acceptedFileTypes="['application/pdf', 'text/markdown','text/html', 'text/csv', 'text/plain']"
                                     fileValidateTypeLabelExpectedTypesMap="{{ json_encode([
                             'application/pdf' => '.pdf',
                             'text/plain' => '.txt',
                             'text/markdown' => '.md',
-                            'text/html' => '.html'
+                            'text/html' => '.html',
+                            'text/csv' => '.csv'
                             ]) }}"
                                     allowFileSizeValidation maxFileSize="20MB"/>
                     </div>
@@ -117,7 +118,8 @@
                     <div class="my-2 text-neutral-400 text-sm font-normal font-['JetBrains Mono']">
                         If you add URLs under Knowledge, conversations with your Agent may include its contents.
                     </div>
-                    <x-textarea wire:model='urls' dusk="urls" id="urls" class="block mt-1 w-full" min-rows="3" name="urls" />
+                    <x-textarea wire:model='urls' dusk="urls" id="urls" class="block mt-1 w-full" min-rows="3"
+                                name="urls"/>
                     @error('urls')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
