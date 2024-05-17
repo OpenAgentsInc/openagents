@@ -67,23 +67,24 @@
                         @enderror
                         <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
                                     imagePreviewMaxHeight="300"
-                                    acceptedFileTypes="['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'text/plain']"
+                                    acceptedFileTypes="['application/pdf', 'text/markdown','text/html', 'text/csv', 'text/plain']"
                                     fileValidateTypeLabelExpectedTypesMap="{{ json_encode([
                             'application/pdf' => '.pdf',
                             'text/plain' => '.txt',
                             'text/markdown' => '.md',
-                            'text/html' => '.html'
-                        ]) }}"
+                            'text/html' => '.html',
+                            'text/csv' => '.csv'
+                            ]) }}"
                                     allowFileSizeValidation maxFileSize="20MB"/>
 
                     </div>
                 </div>
-                 <div class="mt-5">
+                <div class="mt-5">
                     <label for="urls">Knowledge URLs</label>
                     <x-textarea wire:model='urls'
                                 placeholder="If you have any URLs with content that you would like to add to this agent, please add them here one per line."
                                 dusk="urls" id="urls" class="block mt-1 w-full" min-rows="3" name="urls"
-                                />
+                    />
                     @error('urls')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
