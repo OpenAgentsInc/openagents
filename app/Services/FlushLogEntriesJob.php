@@ -45,5 +45,9 @@ class FlushLogEntriesJob implements ShouldQueue
         if ($response->status() != 200) {
             Log::error('Error flushing log: '.$response->status());
         }
+
+        // Ensure the response is read and thrown away
+        $response->body();
+
     }
 }

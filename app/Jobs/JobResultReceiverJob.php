@@ -85,7 +85,7 @@ class JobResultReceiverJob implements ShouldQueue
                 if ($this->retry < $this->tries) {
                     $logger->log('info', 'Rescheduling Job: '.$this->job_id.' retry '.($this->retry + 1));
                     $newJob = new JobResultReceiverJob($this->job_id, $this->content, $this->payload, $this->retry + 1);
-                    dispatch($newJob)->delay(now()->addMillis($this->backoff));
+                    dispatch($newJob)->delay(now()->addMilliseconds($this->backoff));
                 } else {
                     $logger->log('error', 'Failed to process Job: '.$this->job_id);
                 }
