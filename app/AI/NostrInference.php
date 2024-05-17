@@ -31,6 +31,7 @@ class NostrInference
         $logger->close();
         // When prompt is empty it gets picked up from the thread if needed
         $inference = new SimpleInferencer();
+
         return $inference->inference('', $model, $thread, $streamFunction, $httpClient, $systemPrompt);
     }
 }

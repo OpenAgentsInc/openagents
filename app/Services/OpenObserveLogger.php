@@ -29,16 +29,17 @@ class OpenObserveLogger
     public function log($level, $message, $timestamp = null)
     {
 
-        if (!env('OPENOBSERVE_USERNAME') || !env('OPENOBSERVE_PASSWORD')) {
-            if($level=="info"){
-                Log::info("LOGGER ".$message);
-            }else if($level=="error"){
-                Log::error("LOGGER " .$message);
-            }else if($level=="warning"){
-                Log::warning("LOGGER " .$message);
-            }else{
-                Log::debug("LOGGER " .$message);
+        if (! env('OPENOBSERVE_USERNAME') || ! env('OPENOBSERVE_PASSWORD')) {
+            if ($level == 'info') {
+                Log::info('LOGGER '.$message);
+            } elseif ($level == 'error') {
+                Log::error('LOGGER '.$message);
+            } elseif ($level == 'warning') {
+                Log::warning('LOGGER '.$message);
+            } else {
+                Log::debug('LOGGER '.$message);
             }
+
             return;
         }
 
@@ -51,7 +52,7 @@ class OpenObserveLogger
             '_timestamp' => $timestamp ?? round(microtime(true) * 1000),
             'log' => $message,
             'appName' => "OpenAgents $appName",
-            'appVersion' => "$appEnv" . ($appDebug ? ' (debug)' : ''),
+            'appVersion' => "$appEnv".($appDebug ? ' (debug)' : ''),
             'jobId' => $this->job_id,
         ];
 
@@ -69,10 +70,10 @@ class OpenObserveLogger
         }
     }
 
-    public function close(){ // flush on close
-        if ($this->buffer->count() > 0) {
-            Bus::dispatch(new FlushLogEntriesJob($this->buffer->all(), $this->options));
-            $this->buffer = collect(); // Reset the buffer
-        }
+    public function close() // flush on close
+    {if ($this->buffer->count() > 0) {
+        Bus::dispatch(new FlushLogEntriesJob($this->buffer->all(), $this->options));
+        $this->buffer = collect(); // Reset the buffer
+    }
     }
 }

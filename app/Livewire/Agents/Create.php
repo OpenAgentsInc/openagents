@@ -4,11 +4,11 @@ namespace App\Livewire\Agents;
 
 use App\Models\Agent;
 use App\Utils\PoolUtils;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-use Illuminate\Support\Facades\Log;
 
 class Create extends Component
 {
@@ -28,7 +28,7 @@ class Create extends Component
 
     public $files = [];
 
-    public $urls = "";
+    public $urls = '';
 
     public $image;
 
@@ -64,6 +64,7 @@ class Create extends Component
         $user = auth()->user();
         if (! $user) {
             Log::error('User not found');
+
             return redirect('/');
         }
 
@@ -121,7 +122,7 @@ class Create extends Component
 
         $needWarmUp = false;
         if (! empty($this->files)) {
-            $needWarmUp=true;
+            $needWarmUp = true;
             $disk = config('documents.disk');
             foreach ($this->files as $file) {
                 // Get filename with extension
@@ -151,9 +152,8 @@ class Create extends Component
             }
         }
 
-
-        if(!empty($this->urls)) {
-            $needWarmUp=true;
+        if (! empty($this->urls)) {
+            $needWarmUp = true;
             $urls = explode("\n", $this->urls);
             foreach ($urls as $url) {
                 $agent->documents()->create([
@@ -168,12 +168,12 @@ class Create extends Component
 
         $agent->save();
 
-        if($needWarmUp) {
+        if ($needWarmUp) {
             Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
             // Send RAG warmup request
             PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
             $this->alert('success', 'Agent training process has now begin ..');
-        }else{
+        } else {
             $this->alert('success', 'Agent created successfully..');
         }
 
