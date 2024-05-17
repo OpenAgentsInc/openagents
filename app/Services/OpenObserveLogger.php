@@ -28,24 +28,32 @@ class OpenObserveLogger
 
     public function log($level, $message, $timestamp = null)
     {
+
+        if (!env('OPENOBSERVE_USERNAME') || !env('OPENOBSERVE_PASSWORD')) {
+            if($level=="info"){
+                Log::info("LOGGER ".$message);
+            }else if($level=="error"){
+                Log::error("LOGGER " .$message);
+            }else if($level=="warning"){
+                Log::warning("LOGGER " .$message);
+            }else{
+                Log::debug("LOGGER " .$message);
+            }
+            return;
+        }
+
+        $appEnv = env('APP_ENV');
+        $appName = env('APP_NAME');
+        $appDebug = env('APP_DEBUG');
+
         $logEntry = [
             'level' => $level,
-            '_timestamp' => $timestamp ?? now()->timestamp * 1000,
+            '_timestamp' => $timestamp ?? round(microtime(true) * 1000),
             'log' => $message,
-            'appName' => 'OpenAgents Laravel',
-            'appVersion' => '1.0',
+            'appName' => "OpenAgents $appName",
+            'appVersion' => "$appEnv" . ($appDebug ? ' (debug)' : ''),
             'jobId' => $this->job_id,
         ];
-
-        // if($level=="info"){
-        //     Log::info("LOGGER ".$message);
-        // }else if($level=="error"){
-        //     Log::error("LOGGER " .$message);
-        // }else if($level=="warning"){
-        //     Log::warning("LOGGER " .$message);
-        // }else{
-        //     Log::debug("LOGGER " .$message);
-        // }
 
         if (isset($this->options['meta'])) {
             foreach ($this->options['meta'] as $key => $value) {
