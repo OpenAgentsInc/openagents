@@ -2,7 +2,6 @@
 
 namespace App\Events;
 
-use App\Models\AgentJob;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
