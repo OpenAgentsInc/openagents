@@ -4,7 +4,9 @@ namespace App\Livewire\Agents;
 
 use App\Livewire\Agents\Partials\Documents;
 use App\Models\Agent;
+use App\Models\AgentFile;
 use App\Utils\PoolUtils;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
@@ -26,6 +28,8 @@ class Edit extends Component
 
     public $files = [];
 
+    public $urls = '';
+
     public $image;
 
     public $message;
@@ -39,13 +43,21 @@ class Edit extends Component
 
         abort_if($user->id !== $this->agent->user_id, 403, 'permission denied').
 
-    $this->name = $this->agent->name;
+        $this->name = $this->agent->name;
         $this->about = $this->agent->about;
         $this->prompt = $this->agent->prompt;
         $this->rag_prompt = $this->agent->rag_prompt;
         $this->is_public = $this->agent->is_public;
         $this->message = $this->agent->message;
 
+        $docs = AgentFile::with('agent')
+            ->where('agent_id', $this->agent->id)
+            ->get();
+        $docs = $docs->filter(function ($doc) {
+            return $doc->type === 'url';
+        });
+        $docs = $docs->pluck('url')->implode("\n");
+        $this->urls = $docs;
         // public $files = [];
         // public $image;
 
@@ -63,6 +75,7 @@ class Edit extends Component
             'files' => 'nullable|array',
             'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
             'image' => 'nullable|image|max:2048',
+            'urls' => 'nullable|string',
         ];
     }
 
@@ -129,7 +142,9 @@ class Edit extends Component
         $agent->user_id = $user->id;
         $agent->save();
 
+        $needWarmUp = false;
         if (! empty($this->files)) {
+            $needWarmUp = true;
             $disk = config('documents.disk'); // Assuming you are using the 'public' disk
 
             foreach ($this->files as $file) {
@@ -160,15 +175,38 @@ class Edit extends Component
                 ]);
             }
 
-            // Send RAG warmup request (we rewarm everything on edit)
-            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
-
             $this->files = [];
 
             $this->dispatch('document_updated')->to(Documents::class);
 
             $this->alert('warning', 'Agent learning process has now begin ..');
 
+        }
+
+        $agent->documents()->where('type', 'url')->delete();
+        if (! empty($this->urls)) {
+            $needWarmUp = true;
+            $urls = explode("\n", $this->urls);
+            foreach ($urls as $url) {
+                $agent->documents()->create([
+                    'name' => $url,
+                    'path' => $url,
+                    'url' => $url,
+                    'disk' => 'url',
+                    'type' => 'url',
+                ]);
+            }
+        }
+
+        $agent->save();
+
+        if ($needWarmUp) {
+            // Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
+            // Send RAG warmup request
+            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
+            $this->alert('success', 'Agent training process has now begin ..');
+        } else {
+            $this->alert('success', 'Agent created successfully..');
         }
 
         $this->alert('success', 'Agent updated successfully');

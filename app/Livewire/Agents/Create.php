@@ -169,7 +169,7 @@ class Create extends Component
         $agent->save();
 
         if ($needWarmUp) {
-            Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
+            // Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
             // Send RAG warmup request
             PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
             $this->alert('success', 'Agent training process has now begin ..');

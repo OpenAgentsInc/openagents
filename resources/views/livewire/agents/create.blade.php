@@ -82,7 +82,7 @@
                     <label for="urls">Knowledge URLs</label>
                     <x-textarea wire:model='urls'
                                 placeholder="If you have any URLs with content that you would like to add to this agent, please add them here one per line."
-                                dusk="instructions" id="about" class="block mt-1 w-full" min-rows="3" name="urls"
+                                dusk="urls" id="urls" class="block mt-1 w-full" min-rows="3" name="urls"
                                 />
                     @error('urls')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>

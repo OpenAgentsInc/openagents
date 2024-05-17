@@ -28,7 +28,6 @@ class JobResultReceiverJob implements ShouldQueue
 
     protected $payload;
 
-
     protected $retry;
 
     /**
