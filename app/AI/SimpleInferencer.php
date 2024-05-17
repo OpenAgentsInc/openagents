@@ -11,13 +11,13 @@ use Yethee\Tiktoken\EncoderProvider;
 
 class SimpleInferencer
 {
-    private static int $remainingTokens = 0;
+    private int $remainingTokens = 0;
 
-    private static int $promptTokens = 0;
+    private int $promptTokens = 0;
 
-    private static Encoder $encoder;
+    private Encoder $encoder;
 
-    public static function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, ?Client $httpClient = null, string $systemPrompt = ''): array
+    public function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, ?Client $httpClient = null, string $systemPrompt = ''): array
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
@@ -29,7 +29,7 @@ class SimpleInferencer
                     'role' => 'system',
                     'content' => $systemPrompt ?: 'You are a helpful assistant.',
                 ],
-                ...self::getTruncatedMessages($thread, $modelDetails['max_tokens'], $systemPrompt),
+                ...$this->getTruncatedMessages($thread, $modelDetails['max_tokens'], $systemPrompt),
             ];
 
             if (! $httpClient) {
@@ -38,7 +38,7 @@ class SimpleInferencer
             $params = [
                 'model' => $model,
                 'messages' => $messages,
-                'max_tokens' => self::$remainingTokens,
+                'max_tokens' => $this->remainingTokens,
                 'stream_function' => $streamFunction,
             ];
             switch ($gateway) {
@@ -83,21 +83,21 @@ class SimpleInferencer
         if (count($messages) === 2 && $inference['input_tokens']) {
             $inference['prompt_tokens'] = $inference['input_tokens'];
         } else {
-            $inference['prompt_tokens'] = self::$promptTokens;
+            $inference['prompt_tokens'] = $this->promptTokens;
         }
 
         return $inference;
     }
 
-    public static function getTruncatedMessages(Thread $thread, int $maxTokens, string $systemPrompt = ''): array
+    public function getTruncatedMessages(Thread $thread, int $maxTokens, string $systemPrompt = ''): array
     {
         $provider = new EncoderProvider();
-        self::$encoder = $provider->getForModel('gpt-4');
+        $this->encoder = $provider->getForModel('gpt-4');
 
-        self::$remainingTokens = $maxTokens;
+        $this->remainingTokens = $maxTokens;
 
         if ($systemPrompt) {
-            self::$remainingTokens -= count(self::$encoder->encode($systemPrompt));
+            $this->remainingTokens -= count($this->encoder->encode($systemPrompt));
         }
 
         $messages = [];
@@ -108,8 +108,8 @@ class SimpleInferencer
                 ->orderBy('id', 'desc')->get() as $message
         ) {
             $role = is_null($message->model) ? 'user' : 'assistant';
-            self::addMessage($role, $message, $messages);
-            if (self::$remainingTokens <= 0) {
+            $this->addMessage($role, $message, $messages);
+            if ($this->remainingTokens <= 0) {
                 break;
             }
         }
@@ -117,7 +117,7 @@ class SimpleInferencer
         return $messages;
     }
 
-    private static function addMessage(string $role, mixed $message, array &$messages): void
+    private function addMessage(string $role, mixed $message, array &$messages): void
     {
         if (strtolower(substr($message->body, 0, 11)) === 'data:image/') {
             $content = '<image>';
@@ -126,18 +126,18 @@ class SimpleInferencer
         }
         $messageTokens = $role === 'user' ? $message->input_tokens : $message->output_tokens;
         if (! $messageTokens) {
-            $messageTokens = count(self::$encoder->encode($content));
+            $messageTokens = count($this->encoder->encode($content));
         }
 
         // if this is the first message then it is the prompt
         if (count($messages) === 0) {
-            self::$promptTokens = $messageTokens;
+            $this->promptTokens = $messageTokens;
         }
 
-        if ($messageTokens <= self::$remainingTokens || ($role === 'user')) {
-            self::$remainingTokens -= $messageTokens;
-            if (self::$remainingTokens < 0) {
-                self::$remainingTokens = 0;
+        if ($messageTokens <= $this->remainingTokens || ($role === 'user')) {
+            $this->remainingTokens -= $messageTokens;
+            if ($this->remainingTokens < 0) {
+                $this->remainingTokens = 0;
             }
 
             if (count($messages) && $messages[0]['role'] === $role) {

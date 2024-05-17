@@ -32,6 +32,7 @@ class NostrInference
         $logger->log('info', 'Using Augmented prompt '.$systemPrompt);
 
         // When prompt is empty it gets picked up from the thread if needed
-        return SimpleInferencer::inference('', $model, $thread, $streamFunction, $httpClient, $systemPrompt);
+        $inference = new SimpleInferencer();
+        return $inference->inference('', $model, $thread, $streamFunction, $httpClient, $systemPrompt);
     }
 }
