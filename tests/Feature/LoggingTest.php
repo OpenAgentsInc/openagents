@@ -5,8 +5,7 @@ use App\Services\OpenObserveLogger;
 test('sends a log entry to OpenObserve', function () {
     // Create an instance of the OpenObserve logger
     $logger = new OpenObserveLogger([
-        'baseUrl' => 'https://pool.openagents.com:5080',
-        'org' => 'default',
+
     ]);
 
     // Send a dummy log entry

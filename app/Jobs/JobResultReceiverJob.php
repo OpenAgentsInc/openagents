@@ -48,8 +48,7 @@ class JobResultReceiverJob implements ShouldQueue
     public function handle(): void
     {
         $logger = new OpenObserveLogger([
-            'baseUrl' => 'https://pool.openagents.com:5080',
-            'org' => 'default',
+
         ]);
 
         try {
