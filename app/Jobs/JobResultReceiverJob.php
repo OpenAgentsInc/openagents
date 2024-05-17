@@ -59,6 +59,8 @@ class JobResultReceiverJob implements ShouldQueue
         try {
             $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
             if ($nostr_job) {
+
+                // any warmup message will warm up the agent
                 $isWarmUp = $nostr_job->warmup;
                 if ($isWarmUp) {
                     $agent = Agent::find($nostr_job->agent_id);
@@ -68,17 +70,19 @@ class JobResultReceiverJob implements ShouldQueue
                     $agent->is_rag_ready = true;
                     $agent->save();
                     AgentRagReady::dispatch($nostr_job->agent_id);
-                } else {
-                    if (! $nostr_job->content) { // set content only once
-                        $this->logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
-                        $this->logger->log('info', 'Propagating content '.$this->content);
-                        $nostr_job->content = $this->content;
-                        $nostr_job->save();
-                        NostrJobReady::dispatch($nostr_job);
-                    } else {
-                        $this->logger->log('fine', 'Job already processed: '.$this->job_id);
-                    }
                 }
+
+
+                if (!$nostr_job->content) { // set content only once
+                    $this->logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
+                    $this->logger->log('info', 'Propagating content '.$this->content);
+                    $nostr_job->content = $this->content;
+                    $nostr_job->save();
+                    NostrJobReady::dispatch($nostr_job);
+                } else {
+                    $this->logger->log('fine', 'Job already processed: '.$this->job_id);
+                }
+
             } else {
                 $this->logger->log('fine', 'Job not found: '.$this->job_id);
                 // $this->fail();
