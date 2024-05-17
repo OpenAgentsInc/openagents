@@ -20,7 +20,7 @@ class OpenObserveLogger
     public function __construct($options)
     {
         $this->options = $options;
-        if (! $this->options['stream']) {
+        if ( ! isset($this->options['stream'])) {
             $isProduction = env('APP_ENV') === 'production';
             $this->options['stream'] = $isProduction ? 'logs' : 'playground_logs';
         }
