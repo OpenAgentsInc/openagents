@@ -3,8 +3,6 @@
     <!-- Trigger button -->
     <!-- Modal -->
     <div x-show="open" class="fixed inset-0 flex items-center justify-center  bg-black/90 w-full h-full z-[50]">
-
-
         <!-- Overlay -->
         <div class="fixed bg-black/20 rounded-lg p-6  w-full max-w-full shadow-lg transform transition-all duration-300 z-[5]"
              x-show.transition.opacity="open"></div>
@@ -13,8 +11,6 @@
              x-show.transition.opacity="open">
             @livewire('auth-old.login')
         </div>
-
-
     </div>
 </div>
 
