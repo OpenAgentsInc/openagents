@@ -18,7 +18,8 @@ test('SimpleInferencer simply inferences', function () {
     $answer = 'Capital of France is Paris.';
     $outputTokens = 5;
 
-    $streamFunction = function () {
+    $streamFunction = function ($chunk) use ($answer) {
+        $this->assertEquals($answer, $chunk);
     };
 
     $mockResponse = [
@@ -36,8 +37,8 @@ test('SimpleInferencer simply inferences', function () {
     ];
     $httpClient = mockGuzzleClient($mockResponse);
 
-    $inference = new SimpleInferencer();
-    $result = $inference->inference($prompt, 'sonar-small-online', $thread, $streamFunction, $httpClient);
+    $inference = new SimpleInferencer($httpClient);
+    $result = $inference->inference($prompt, 'sonar-small-online', $thread, $streamFunction);
 
     expect($result)->toBeArray();
     expect($result['content'])->toEqual($answer);

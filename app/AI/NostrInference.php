@@ -12,7 +12,14 @@ use GuzzleHttp\Client;
 
 class NostrInference
 {
-    public static function inference(string $model, NostrJob $job, callable $streamFunction, ?Client $httpClient = null): array
+    private ?Client $httpClient;
+
+    public function __construct(?Client $httpClient = null)
+    {
+        $this->httpClient = $httpClient;
+    }
+
+    public function inference(string $model, NostrJob $job, callable $streamFunction): array
     {
         $thread = Thread::find($job->thread_id);
         $agent = Agent::find($job->agent_id);
@@ -26,9 +33,10 @@ class NostrInference
         ]);
         $logger->log('info', 'Using Augmented prompt '.$systemPrompt);
         $logger->close();
-        // When prompt is empty it gets picked up from the thread if needed
-        $inference = new SimpleInferencer();
 
-        return $inference->inference('', $model, $thread, $streamFunction, $httpClient, $systemPrompt);
+        $inferencer = new SimpleInferencer($this->httpClient);
+
+        // When prompt is empty it gets picked up from the thread if needed
+        return $inferencer->inference('', $model, $thread, $streamFunction, $systemPrompt);
     }
 }
