@@ -158,7 +158,7 @@ class Chat extends Component
 
     public function openModal()
     {
-        $this->js('setTimeout(() => { Livewire.dispatch("openModal", { component: "auth.join" }) }, 100)');
+        $this->js('setTimeout(() => { Livewire.dispatch("openModal", { component: "modals.lander-welcome" }) }, 100)');
     }
 
     #[On('select-agent')]
