@@ -10,6 +10,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Psr\Http\Message\RequestInterface;
 use Tests\TestCase;
 
 /*
@@ -51,7 +52,18 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function mockGuzzleClient(array $mockResponse): Client
+function createRequestHistoryMiddleware(array &$container): callable
+{
+    return function (callable $handler) use (&$container) {
+        return function (RequestInterface $request, array $options) use (&$container, $handler) {
+            $container[] = $request;
+
+            return $handler($request, $options);
+        };
+    };
+}
+
+function mockGuzzleClient(array $mockResponse, array &$requestContainer = []): Client
 {
     $mockResponseStream = fopen('php://memory', 'r+');
     if (isset($mockResponse['text']) || isset($mockResponse['choices'])) {
@@ -69,10 +81,15 @@ function mockGuzzleClient(array $mockResponse): Client
         );
     }
     rewind($mockResponseStream);
+
     $mock = new MockHandler([
         new Response(200, [], $mockResponseStream),
     ]);
     $handlerStack = HandlerStack::create($mock);
+
+    // Add the history middleware
+    $history = createRequestHistoryMiddleware($requestContainer);
+    $handlerStack->push($history);
 
     return new Client(['handler' => $handlerStack]);
 }
