@@ -38,6 +38,10 @@ Route::get('/create', Create::class)->name('agents.create');
 Route::get('/agents/{agent}', Profile::class)->name('agents.profile');
 Route::get('/agents/{agent}/edit', Edit::class)->name('agents.edit');
 
+Route::get('/u/{username}', function () {
+    return view('profile', ['username' => request()->route('username')]);
+})->name('profile');
+
 // STORE
 Route::get('/store', Store::class)->name('store');
 
