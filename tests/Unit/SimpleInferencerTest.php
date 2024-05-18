@@ -36,8 +36,8 @@ test('SimpleInferencer simply inferences', function () {
     ];
     $httpClient = mockGuzzleClient($mockResponse);
 
-    $inference = new SimpleInferencer();
-    $result = $inference->inference($prompt, 'sonar-small-online', $thread, $streamFunction, $httpClient);
+    $inference = new SimpleInferencer($httpClient);
+    $result = $inference->inference($prompt, 'sonar-small-online', $thread, $streamFunction);
 
     expect($result)->toBeArray();
     expect($result['content'])->toEqual($answer);

@@ -17,7 +17,14 @@ class SimpleInferencer
 
     private Encoder $encoder;
 
-    public function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, ?Client $httpClient = null, string $systemPrompt = ''): array
+    private ?Client $httpClient;
+
+    public function __construct(?Client $httpClient = null)
+    {
+        $this->httpClient = $httpClient ?? new Client();
+    }
+
+    public function inference(string $prompt, string $model, Thread $thread, callable $streamFunction, string $systemPrompt = ''): array
     {
         $modelDetails = Models::MODELS[$model] ?? null;
 
@@ -32,9 +39,6 @@ class SimpleInferencer
                 ...$this->getTruncatedMessages($thread, $modelDetails['max_tokens'], $systemPrompt),
             ];
 
-            if (! $httpClient) {
-                $httpClient = new Client();
-            }
             $params = [
                 'model' => $model,
                 'messages' => $messages,
@@ -43,25 +47,25 @@ class SimpleInferencer
             ];
             switch ($gateway) {
                 case 'meta':
-                    $client = new TogetherAIGateway($httpClient);
+                    $client = new TogetherAIGateway($this->httpClient);
                     break;
                 case 'groq':
-                    $client = new GroqAIGateway($httpClient);
+                    $client = new GroqAIGateway($this->httpClient);
                     break;
                 case 'anthropic':
-                    $client = new AnthropicAIGateway($httpClient);
+                    $client = new AnthropicAIGateway($this->httpClient);
                     break;
                 case 'mistral':
-                    $client = new MistralAIGateway($httpClient);
+                    $client = new MistralAIGateway($this->httpClient);
                     break;
                 case 'openai':
                     $client = new OpenAIGateway();
                     break;
                 case 'perplexity':
-                    $client = new PerplexityAIGateway($httpClient);
+                    $client = new PerplexityAIGateway($this->httpClient);
                     break;
                 case 'cohere':
-                    $client = new CohereAIGateway($httpClient);
+                    $client = new CohereAIGateway($this->httpClient);
                     $params['message'] = $prompt;
                     break;
                 case 'satoshi':
