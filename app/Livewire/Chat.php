@@ -159,6 +159,8 @@ class Chat extends Component
     public function openModal()
     {
         $this->js('setTimeout(() => { Livewire.dispatch("openModal", { component: "modals.lander-welcome" }) }, 100)');
+        // Remove that session variable
+        session()->forget('campaign_subid');
     }
 
     #[On('select-agent')]
