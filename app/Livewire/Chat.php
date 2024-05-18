@@ -101,6 +101,11 @@ class Chat extends Component
         $this->messages = $messages;
 
         $this->setModelOrAgentForThread($this->thread);
+
+        // if the campaign_subid exists, pop open a modal
+        if (session()->has('campaign_subid')) {
+            $this->openModal();
+        }
     }
 
     private function ensureThread()
@@ -149,6 +154,11 @@ class Chat extends Component
 
             return $this->redirect('/chat/'.$this->thread->id, true);
         }
+    }
+
+    public function openModal()
+    {
+        $this->js('setTimeout(() => { Livewire.dispatch("openModal", { component: "auth.join" }) }, 100)');
     }
 
     #[On('select-agent')]
