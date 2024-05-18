@@ -6,7 +6,7 @@
 
         <h1 class="mt-8 text-center">You're a pro!</h1>
 
-        <p class="text-gray">A message from the founder</p>
+        <p class="text-gray">A message from the founder </p>
 
         <div class="w-full sm:max-w-2xl p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div style="padding:56.25% 0 0 0;position:relative;">
@@ -25,4 +25,11 @@
     </div>
 
     <script src="https://player.vimeo.com/api/player.js"></script>
+    @include('partials.x-pixel')
+
+    <script type="text/javascript">
+        twq('event', 'tw-om4wz-om4xz', {
+            email_address: '{{auth()->user()->email}}'
+        });
+    </script>
 </div>

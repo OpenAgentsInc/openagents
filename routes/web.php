@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BillingController;
+use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
@@ -69,6 +70,9 @@ Route::get('/blog', Blog::class);
 Route::get('/launch', MarkdownPage::class);
 Route::get('/goodbye-chatgpt', MarkdownPage::class);
 Route::get('/introducing-the-agent-store', MarkdownPage::class);
+
+// LANDERS
+Route::get('/campaign/{id}', [CampaignController::class, 'land']);
 
 // MISC
 Route::get('/changelog', Changelog::class);
