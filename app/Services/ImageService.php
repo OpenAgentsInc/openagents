@@ -33,7 +33,6 @@ class ImageService
         $inference = ImageInferencer::multimodalInference($input, $model, $streamFunction);
 
         // Extract the summary from the inference response
-
         $summary = "The user has uploaded an image: `$originalFilename` which shows the following:\n\n";
 
         return $summary.$inference['content'];

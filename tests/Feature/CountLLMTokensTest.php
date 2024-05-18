@@ -30,11 +30,11 @@ test('LLM inference counts tokens for the Message model', function () {
     ];
     $httpClient = mockGuzzleClient($mockResponse);
 
-    $streamFunction = function ($chunk, $replace) {
-        $this->assertIsString($chunk);
+    $streamFunction = function ($chunk, $replace) use ($answer) {
+        $this->assertEquals($answer, $chunk);
     };
-    $inference = new SimpleInferencer();
-    $result = $inference->inference($prompt, $model, $thread, $streamFunction, $httpClient);
+    $inference = new SimpleInferencer($httpClient);
+    $result = $inference->inference($prompt, $model, $thread, $streamFunction);
 
     expect($result)->toBeArray();
     expect($result['content'])->toEqual($answer);

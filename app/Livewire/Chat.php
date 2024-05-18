@@ -299,7 +299,7 @@ class Chat extends Component
         //        }
 
         $inference = new SimpleInferencer();
-        $output = $inference->inference($userInput, $model, $this->thread, $this->getStreamingCallback(), null, $systemPrompt);
+        $output = $inference->inference($userInput, $model, $this->thread, $this->getStreamingCallback(), $systemPrompt);
 
         // Append the response to the chat
         $message = [
@@ -473,7 +473,8 @@ class Chat extends Component
         // Log::debug('Processing NostrJobReady event for thread '.$this->thread->id.' and job '.$event['job']['id']);
 
         // Simply do it
-        $output = NostrInference::inference($this->selectedModel, $job, $this->getStreamingCallback());
+        $inferencer = new NostrInference();
+        $output = $inferencer->inference($this->selectedModel, $job, $this->getStreamingCallback());
 
         // Append the response to the chat
         $message = [
