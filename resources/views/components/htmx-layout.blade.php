@@ -5,8 +5,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
     @include('partials.vite')
-    <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@10.2.1/build/styles/default.min.css">
+    <link rel="stylesheet" href="{{ asset('vendor/tokyo-night-dark.min.css') }}">
     <script type="text/javascript"
             src="https://cdnjs.cloudflare.com/ajax/libs/markdown-it/11.0.1/markdown-it.min.js "></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.2.1/highlight.min.js"></script>
