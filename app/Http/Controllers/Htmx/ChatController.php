@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Htmx;
 
+use App\Http\Controllers\Controller;
 use App\Models\Thread;
 use Illuminate\Support\Facades\Session;
 
@@ -11,9 +12,7 @@ class ChatController extends Controller
 {
     public function index()
     {
-        $threads = $this->getThreadsForUser();
-
-        return view('chat', compact('threads'));
+        return view('htmx.chat');
     }
 
     private function getThreadsForUser()
