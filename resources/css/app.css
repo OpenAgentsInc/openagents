@@ -254,7 +254,7 @@ pre.shiki:hover .copy-button {
         text-align: center;
     }
 
-    .prose h4:first-of-type {
+    .prose:not(.messages) h4:first-of-type {
         text-align: center;
         margin-top: 0.1em;
         margin-bottom: 2.5em;
