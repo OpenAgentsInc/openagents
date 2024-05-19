@@ -16,7 +16,7 @@
             <div class="flex flex-col justify-center">
                 <h1>{{ $user->name }}</h1>
                 @if ($user->username)
-                    <h2><span class="mr-[4px] text-text">@</span>{{ $user->username }}</h2>
+                    <h2 class="text-gray">{{ $user->username }}</h2>
                 @endif
             </div>
             @if ($user->username)
