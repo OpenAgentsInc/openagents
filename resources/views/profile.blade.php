@@ -17,10 +17,11 @@
             <h2>{{ $username }}</h2>
         </div>
     </div>
-
-    <a href="https://x.com/{{ auth()->user()->username }}" target="_blank">
-        <x-icon.x class="h-6 w-6"/>
-    </a>
+    <div class="m-3">
+        <a href="https://x.com/{{ auth()->user()->username }}" target="_blank">
+            <x-icon.x class="h-6 w-6"/>
+        </a>
+    </div>
 </main>
 </body>
 </html>
