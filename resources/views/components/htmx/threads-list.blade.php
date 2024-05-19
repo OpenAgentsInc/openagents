@@ -1,3 +1,5 @@
+@props(['threads' => []])
+
 <div hx-get="{{ route('threads.index') }}" hx-trigger="load" hx-target="#threads-list">
     <ol id="threads-list">
         @foreach($threads as $thread)
