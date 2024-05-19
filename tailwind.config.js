@@ -32,6 +32,9 @@ export default {
             typography: (theme) => ({
                 DEFAULT: {
                     css: {
+                        img: {
+                            borderWidth: 0,
+                        },
                         // Customizing paragraph spacing
                         p: {
                             // marginTop: '2.2em', // Increase top margin

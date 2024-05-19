@@ -259,11 +259,7 @@ pre.shiki:hover .copy-button {
         margin-top: 0.1em;
         margin-bottom: 2.5em;
         font-size: 16px;
-        color: "#d1d5db";
-    }
-
-    .prose img {
-        @apply border border-white;
+        color: #d1d5db;
     }
 
     h1.title {
