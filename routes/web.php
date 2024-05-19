@@ -3,6 +3,7 @@
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\NostrAuthController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\PoolWebhookReceiver;
@@ -38,9 +39,8 @@ Route::get('/create', Create::class)->name('agents.create');
 Route::get('/agents/{agent}', Profile::class)->name('agents.profile');
 Route::get('/agents/{agent}/edit', Edit::class)->name('agents.edit');
 
-Route::get('/u/{username}', function () {
-    return view('profile', ['username' => request()->route('username')]);
-})->name('profile');
+// PROFILES
+Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile');
 
 // STORE
 Route::get('/store', Store::class)->name('store');
