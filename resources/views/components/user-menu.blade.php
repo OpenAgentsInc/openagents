@@ -6,7 +6,8 @@
                     <img src="{{ Auth::user()->profile_photo_path }}" alt="Profile"
                          class="mt-4 rounded-full w-[32px] h-[32px] object-cover">
                 @else
-                    <x-icon.user class="w-[32px] h-[32px] mt-4"/>
+                    <img src="{{ asset('/images/nostrich.jpeg') }}" alt="Profile"
+                         class="mt-4 rounded-full w-[32px] h-[32px] object-cover">
                 @endif
             </button>
             <div x-popover:panel x-cloak x-transition x-show="open"
