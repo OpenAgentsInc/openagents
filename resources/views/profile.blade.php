@@ -1,8 +1,5 @@
 <x-htmx-layout>
-    <main class="p-12 relative"> <!-- Add 'relative' class to the main element -->
-        <!-- X icon positioned top right -->
-
-
+    <main class="p-12 relative">
         <div class="flex flex-row gap-x-6">
             @if($user->profile_photo_path)
                 <img src="{{ str_replace('_normal', '', $user->profile_photo_path) }}"
