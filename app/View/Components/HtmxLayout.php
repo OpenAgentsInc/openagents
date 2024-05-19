@@ -12,6 +12,6 @@ class HtmxLayout extends Component
      */
     public function render(): View
     {
-        return view('components.layouts.htmx');
+        return view('components.htmx-layout');
     }
 }
