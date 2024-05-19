@@ -1,4 +1,4 @@
-<div class="select-auto pointer-events-auto border border-offblack rounded-lg p-4 flex flex-col leading-normal"
+<div class="not-prose select-auto pointer-events-auto border border-offblack rounded-lg p-4 flex flex-col leading-normal"
 >
     <div class="items-center gap-1.5 pr-2  group-hover:flex">
         @auth
