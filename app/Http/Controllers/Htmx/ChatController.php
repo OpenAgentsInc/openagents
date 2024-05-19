@@ -10,6 +10,21 @@ use Illuminate\Support\Facades\Session;
 
 class ChatController extends Controller
 {
+    //    public function index(Request $request)
+    //    {
+    //        // Check if the request is an HTMX request
+    //        if ($request->header('HX-Request')) {
+    //            // If it's an HTMX request, return just the HTML fragment
+    //            return 'nice';
+    //            //            return view('partials.chat-threads', ['threads' => $this->getThreadsForUser()]);
+    //        }
+    //
+    //        // For a regular request, return the full page
+    //        return view('htmx.chat', [
+    //            'threads' => $this->getThreadsForUser(),
+    //        ]);
+    //    }
+
     public function index()
     {
         return view('htmx.chat');

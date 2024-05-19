@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Htmx;
 
 use App\Http\Controllers\Controller;
 use App\Models\Thread;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 
 class ThreadController extends Controller
@@ -26,11 +27,14 @@ class ThreadController extends Controller
         return auth()->user()->threads()->orderBy('created_at', 'desc')->get();
     }
 
-    public function show($threadId)
+    public function show(Request $request, Thread $thread)
     {
-        $thread = Thread::findOrFail($threadId);
         $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
 
-        return view('components.htmx.messages-list', compact('thread', 'messages'));
+        if ($request->header('HX-Request')) {
+            return view('components.htmx.messages-list', compact('thread', 'messages'));
+        }
+
+        return view('htmx.chat', compact('thread', 'messages'));
     }
 }

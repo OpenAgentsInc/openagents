@@ -7,7 +7,11 @@
         </div>
         <div class="w-3/4">
             <div id="main-chat" class="h-full overflow-y-auto">
-                <x-htmx.messages-list/>
+                @if(isset($messages) && isset($thread))
+                    <x-htmx.messages-list :messages="$messages" :thread="$thread"/>
+                @else
+                    <p class="p-6">Select a thread to view messages.</p>
+                @endif
             </div>
         </div>
     </div>
