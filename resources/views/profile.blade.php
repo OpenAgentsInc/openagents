@@ -6,17 +6,23 @@
                      alt="{{ $user->name }}"
                      class="rounded-xl w-[120px] h-[120px]"/>
             @else
-                <x-icon.user class="w-[32px] h-[32px] mt-4"/>
+                <img src="/images/nostrich.jpeg"
+                     alt="{{ $user->name }}"
+                     class="rounded-xl w-[120px] h-[120px]"/>
             @endif
-            <div>
+            <div class="flex flex-col justify-center">
                 <h1>{{ $user->name }}</h1>
-                <h2><span class="mr-[4px] text-text">@</span>{{ $user->username }}</h2>
+                @if ($user->username)
+                    <h2><span class="mr-[4px] text-text">@</span>{{ $user->username }}</h2>
+                @endif
             </div>
         </div>
         <div class="mx-2 my-4 inline-block">
-            <a href="https://x.com/{{ $user->username }}" target="_blank">
-                <x-icon.x class="h-6 w-6"/>
-            </a>
+            @if ($user->username)
+                <a href="https://x.com/{{ $user->username }}" target="_blank">
+                    <x-icon.x class="h-6 w-6"/>
+                </a>
+            @endif
         </div>
     </main>
 </x-htmx-layout>
