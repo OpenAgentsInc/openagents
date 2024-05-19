@@ -26,7 +26,6 @@
         @endauth
     </div>
 
-
     <div class="mt-1 mb-3 w-[20px] h-[20px] sm:w-[60px] sm:h-[60px]">
         <img src="{{ $agent->image_url }}" alt="Agent" class="w-full h-full rounded">
     </div>
