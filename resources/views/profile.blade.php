@@ -14,7 +14,7 @@
              class="rounded-xl w-[120px] h-[120px]"/>
         <div>
             <h1>{{ auth()->user()->name }}</h1>
-            <h2>{{ $username }}</h2>
+            <h2><span class="mr-[4px] text-text">@</span>{{ auth()->user()->username }}</h2>
         </div>
     </div>
     <div class="mx-2 my-4">
