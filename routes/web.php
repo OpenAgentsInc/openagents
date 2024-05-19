@@ -50,6 +50,7 @@ Route::get('/store', Store::class)->name('store');
 
 // THREADS
 Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
+Route::get('/threads/{thread}', [ThreadController::class, 'show'])->name('threads.show');
 
 Route::middleware('guest')->group(function () {
     // AUTH - SOCIAL

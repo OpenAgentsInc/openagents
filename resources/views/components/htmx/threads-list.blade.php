@@ -1,13 +1,16 @@
 @props(['threads' => []])
 
-<div hx-get="{{ route('threads.index') }}" hx-trigger="load" hx-target="#threads-list">
-    <ol id="threads-list">
-        @foreach($threads as $thread)
-            <a href="/chat/{{ $thread->id }}" class="flex items-center gap-2 py-1">
-                <div class="relative grow overflow-hidden whitespace-nowrap">
-                    {{ $thread->title }}
-                </div>
-            </a>
-        @endforeach
-    </ol>
-</div>
+<ol id="threads-list">
+    @foreach($threads as $thread)
+        <button class="flex items-center gap-2 py-1"
+                hx-get="/threads/{{ $thread->id }}"
+                hx-target="#main-chat"
+                hx-swap="innerHTML"
+                hx-trigger="click"
+        >
+            <div class="relative grow overflow-hidden whitespace-nowrap">
+                {{ $thread->title }}
+            </div>
+        </button>
+    @endforeach
+</ol>

@@ -25,4 +25,12 @@ class ThreadController extends Controller
 
         return auth()->user()->threads()->orderBy('created_at', 'desc')->get();
     }
+
+    public function show($threadId)
+    {
+        $thread = Thread::findOrFail($threadId);
+        $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
+
+        return view('components.htmx.messages-list', compact('thread', 'messages'));
+    }
 }
