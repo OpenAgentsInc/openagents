@@ -32,13 +32,17 @@
     </div>
 
     <div class="font-bold text-xl">{{ $agent['name'] }}</div>
-    <div class="flex items-center">
-        <div class="text-xs">
-            <p class="text-sm text-gray leading-none">From: {{ $agent->creator_username }}</p>
+
+    <a href="/u/{{ $agent->creator_username }}">
+        <div class="flex items-center">
+            <div class="text-xs">
+                <p class="text-sm text-gray leading-none">From: <span
+                            class="hover:underline">{{ $agent->creator_username }}</span></p>
+            </div>
+            <img class="w-5 h-5 rounded-full mx-4" src="{{ $agent->creator_picture }}"
+                 alt="Avatar of {{ $agent->creator_username }}">
         </div>
-        <img class="w-5 h-5 rounded-full mx-4" src="{{ $agent->creator_picture }}"
-             alt="Avatar of {{ $agent->creator_username }}">
-    </div>
+    </a>
     <div class="flex-grow">
         <p class="text-sm text-text my-1">{{ $agent['about'] }}</p>
     </div>
