@@ -1,6 +1,6 @@
 @props(['threads' => []])
 
-<ol id="threads-list">
+<div>
     @foreach($threads as $thread)
         <button class="flex items-center gap-2 py-1"
                 hx-get="/threads/{{ $thread->id }}"
@@ -13,4 +13,4 @@
             </div>
         </button>
     @endforeach
-</ol>
+</div>

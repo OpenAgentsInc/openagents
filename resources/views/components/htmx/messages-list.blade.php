@@ -1,6 +1,6 @@
 <div class="p-4 space-y-4">
     @if(isset($thread))
-        <h2 class="text-lg font-bold">Messages for Thread: {{ $thread->title }}</h2>
+        <h2 class="text-lg font-bold">{{ $thread->title }}</h2>
         <ul class="space-y-2">
             @foreach($messages as $message)
                 <li class="p-2 bg-gray-700 text-white rounded-md">
