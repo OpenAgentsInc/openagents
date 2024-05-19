@@ -1,4 +1,4 @@
-<div class="p-4 space-y-4">
+<div class="p-4 space-y-4" id="message-container">
     @if(isset($thread))
         <h2 class="text-lg font-bold">{{ $thread->title }}</h2>
         <ul class="space-y-2">
@@ -7,7 +7,7 @@
                     <div><strong>from</strong> <span
                                 class="text-sm text-gray-400">- {{ $message->created_at->format('d M Y, h:i A') }}</span>
                     </div>
-                    <div>{{ $message->body }}</div>
+                    <div class="message-body">{{ $message->body }}</div>
                 </li>
             @endforeach
         </ul>
