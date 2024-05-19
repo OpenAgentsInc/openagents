@@ -5,6 +5,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
     @include('partials.vite')
+    <link href="vendor/prism.css" rel="stylesheet"/>
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@10.2.1/build/styles/default.min.css">
     <script type="text/javascript"
@@ -12,6 +13,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.2.1/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     {{--    <link rel="stylesheet" href="https://unpkg.com/missing.css@1.1.1/prism">--}}
+    <script src="{{ asset('vendor/prism.js') }}"></script>
 </head>
 <body>
 {{ $slot }}
@@ -29,7 +31,24 @@
         // Loop through all .message-body elements and apply marked
         document.querySelectorAll('.message-body').forEach(element => {
             const decodedContent = decodeHTML(element.innerHTML);
-            element.innerHTML = marked.parse(decodedContent);
+            // element.innerHTML = marked.parse(hljs.highlight('php', decodedContent));
+            const md = window.markdownit()
+            md.set({
+                highlight: function (str, lang) {
+                    if (lang && hljs.getLanguage(lang)) {
+                        try {
+                            return '<pre class="hljs"><code>' +
+                                hljs.highlight(lang, str, true).value +
+                                '</code></pre>';
+                        } catch (__) {
+                        }
+                    }
+
+                    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
+                }
+            })
+
+            element.innerHTML = md.render(decodedContent);
         });
     })
 </script>
