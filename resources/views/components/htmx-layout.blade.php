@@ -6,7 +6,7 @@
     <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
     @include('partials.vite')
 </head>
-<body hx-boost="true">
+<body>
 {{ $slot }}
 </body>
 </html>
