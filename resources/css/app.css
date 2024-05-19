@@ -250,7 +250,7 @@ pre.shiki:hover .copy-button {
         @apply bg-black text-white h-screen font-mono;
     }
 
-    .prose h1:first-of-type {
+    .prose:not(.messages) h1:first-of-type {
         text-align: center;
     }
 
