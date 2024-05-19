@@ -1,8 +1,7 @@
 <div class="z-[-1] w-full text-lightgray">
     <div class="px-1 py-2 justify-center text-base md:gap-6 m-auto">
-        <div
-                class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[800px]">
-            <div class="flex-shrink-0 flex flex-col relative items-end">
+        <div class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[800px]">
+            <div class="flex-shrink-0 flex flex-col relative items-end not-prose">
                 @if ($author === 'You')
                     <div class="m-[2px] w-[28px] p-[2px] border border-darkgray rounded">
                         <x-icon name="user" class=""/>
@@ -26,9 +25,9 @@
 
                 @endif
             </div>
-            <div class="relative flex w-full flex-col">
+            <div class="relative flex w-full flex-col items-start"> <!-- Add "items-start" here -->
                 <span class="mb-1 font-semibold select-none text-white">{{ $author }}</span>
-                <div class="flex-col gap-1 md:gap-3">
+                <div class="flex-col">
                     <div class="-mt-4 flex flex-grow flex-col max-w-[936px]">
 
                         @if(substr($message, 0, 11) === 'data:image/')

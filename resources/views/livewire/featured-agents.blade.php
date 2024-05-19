@@ -1,4 +1,4 @@
-<div>
+<div class="not-prose">
     @if (count($agents) > 0)
         <div class="hidden sm:block md:w-[800px] p-8">
             <div>
