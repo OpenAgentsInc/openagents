@@ -34,10 +34,9 @@
     <div class="font-bold text-xl">{{ $agent['name'] }}</div>
 
     <a href="/u/{{ $agent->creator_username }}">
-        <div class="flex items-center">
+        <div class="flex items-center hover:underline text-gray">
             <div class="text-xs">
-                <p class="text-sm text-gray leading-none">From: <span
-                            class="hover:underline">{{ $agent->creator_username }}</span></p>
+                <p class="text-sm leading-none">From: {{ $agent->creator_username }}</p>
             </div>
             <img class="w-5 h-5 rounded-full mx-4" src="{{ $agent->creator_picture }}"
                  alt="Avatar of {{ $agent->creator_username }}">
