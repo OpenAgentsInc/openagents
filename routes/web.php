@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SocialAuthController;
@@ -32,6 +33,7 @@ Route::get('/', function () {
 // CHAT
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
+Route::get('/chatmx', [ChatController::class, 'index']);
 
 // AGENTS
 Route::get('/agents', Index::class)->name('agents');
