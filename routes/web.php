@@ -2,7 +2,8 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
-use App\Http\Controllers\ChatController;
+use App\Http\Controllers\Htmx\ChatController;
+use App\Http\Controllers\Htmx\ThreadController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SocialAuthController;
@@ -46,6 +47,10 @@ Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile')
 
 // STORE
 Route::get('/store', Store::class)->name('store');
+
+// THREADS
+Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
+Route::get('/chatmx/{thread}', [ThreadController::class, 'show'])->name('threads.show');
 
 Route::middleware('guest')->group(function () {
     // AUTH - SOCIAL
