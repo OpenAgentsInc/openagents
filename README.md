@@ -5,6 +5,10 @@ will soon include a two-sided marketplace for builders and users of AI agents.
 
 See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
 
+See the [changelog](https://openagents.com/changelog) for recent changes.
+
+We have a [community](https://stacker.news/~openagents) on Stacker News.
+
 ![builder1](https://github.com/OpenAgentsInc/openagents/assets/14167547/2114cfed-5731-4d50-9a11-1f58de3b41e9)
 
 ## How it works
@@ -27,7 +31,7 @@ See the [wiki](https://github.com/OpenAgentsInc/openagents/wiki) for more.
     - Tailwind
     - Alpine
     - Laravel
-    - Livewire
+    - Livewire -> HTMX
 
 ## Video series
 
