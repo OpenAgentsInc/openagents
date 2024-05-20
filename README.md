@@ -9,6 +9,8 @@ See the [changelog](https://openagents.com/changelog) for recent changes.
 
 We have a [community](https://stacker.news/~openagents) on Stacker News.
 
+![agentstore](https://github.com/OpenAgentsInc/openagents/assets/14167547/4acf99e7-09ec-4f05-b28a-08b380ad683a)
+
 ![builder1](https://github.com/OpenAgentsInc/openagents/assets/14167547/2114cfed-5731-4d50-9a11-1f58de3b41e9)
 
 ## How it works
