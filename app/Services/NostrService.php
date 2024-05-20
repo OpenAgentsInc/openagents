@@ -34,6 +34,8 @@ class NostrService
 
     protected $uuid = '';
 
+    protected bool $useTools = false;
+
     public function poolAddress($poolAddress)
     {
         $this->poolAddress = $poolAddress;
@@ -111,6 +113,13 @@ class NostrService
         return $this;
     }
 
+    public function useTools(bool $useTools)
+    {
+        $this->useTools = $useTools;
+
+        return $this;
+    }
+
     public function execute()
     {
 
@@ -156,11 +165,14 @@ class NostrService
         $param7 = new JobParam();
         $param7->setKey('main')->setValue(['https://github.com/OpenAgentsInc/openagents-rag-coordinator-plugin/releases/download/v0.2/rag.wasm']);
 
+        $param8 = new JobParam();
+        $param8->setKey('use-tools')->setValue([$this->useTools ? 'true' : 'false']);
+
         // TAG for debugging
         $chatuitag = new JobParam();
         $chatuitag->setKey('chatui')->setValue(['true']);
 
-        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7, $chatuitag]);
+        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7, $param8, $chatuitag]);
 
         $requestJob->setDescription('RAG pipeline');
         $requestJob->setKind(5003);
