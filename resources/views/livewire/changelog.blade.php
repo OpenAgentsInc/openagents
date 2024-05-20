@@ -8,6 +8,12 @@
 
         <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div class="mt-6 grid grid-cols-1 gap-10">
+                <x-pane title="May 19, 2024" borderColor="border-darkgray">
+                    <x-changelog-item>
+                        Improved Markdown styling
+                    </x-changelog-item>
+                </x-pane>
+
                 <x-pane title="May 18, 2024" borderColor="border-darkgray">
                     <x-changelog-item post="https://x.com/OpenAgentsInc/status/1792037181181034531"
                                       code="https://github.com/OpenAgentsInc/openagents/pull/402">
