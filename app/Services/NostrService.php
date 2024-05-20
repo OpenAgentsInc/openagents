@@ -18,7 +18,7 @@ class NostrService
 
     protected $documents = [];
 
-    protected $k = 1;
+    protected $k = 2;
 
     protected $max_tokens = 512;
 
