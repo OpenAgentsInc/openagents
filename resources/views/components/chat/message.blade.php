@@ -1,5 +1,5 @@
 <div class="z-[-1] w-full text-lightgray">
-    <div class="px-1 py-2 justify-center text-base md:gap-6 m-auto">
+    <div class="px-1 justify-center text-base md:gap-4 m-auto">
         <div class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[800px]">
             <div class="flex-shrink-0 flex flex-col relative items-end not-prose">
                 @if ($author === 'You')
@@ -39,10 +39,7 @@
                         @endif
 
                     </div>
-                    <div class="flex justify-start gap-3 empty:hidden">
-                        <div class="text-gray flex self-end lg:self-center justify-center lg:justify-start mt-0 -ml-1 h-7 visible">
-                        </div>
-                    </div>
+
                 </div>
             </div>
         </div>
