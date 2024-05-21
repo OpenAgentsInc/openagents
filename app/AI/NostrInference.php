@@ -24,7 +24,7 @@ class NostrInference
         $thread = Thread::find($job->thread_id);
         $agent = Agent::find($job->agent_id);
 
-        $prePrompt = 'You can use the following CONTEXT to help you answer the user\'s questions.';
+        $prePrompt = 'You can use the following extracted parts of a long document to help you answer the user\'s questions.';
 
         $systemPrompt = $agent->prompt."\n".$prePrompt."\n".$job->content;
 

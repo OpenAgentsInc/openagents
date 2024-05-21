@@ -6,6 +6,7 @@ namespace App\AI;
 
 use App\Models\Thread;
 use OpenAI;
+use App\Services\OpenObserveLogger;
 
 class NostrRag
 {
@@ -43,20 +44,29 @@ class NostrRag
     public function summary()
     {
         // Convert the messages array into a string
-        $chatHistory = implode("\n", array_map(function ($message) {
-            return $message['role'].': '.$message['content'];
-        }, $this->messages));
-
+        $chatHistory = "";
+        for ($i = 0; $i < count($this->messages); $i++) {
+            $message = $this->messages[$i];
+            $role = $message['role'];
+            $content = $message['content'];
+            if($role=="system")continue; // Skip system messages
+            $chatHistory .= "$role: $content\n";
+        }
         // Construct the prompt with the chat history
-        $content = "Given the following chat history between user and assistant,
-        answer with a fully qualified standalone and short question that summarizes the user's question.
+        $content = "\
+Given the following chat history between user and assistant, answer with a fully qualified short standalone question to retrieve more context.
 
-        CHAT HISTORY:
-        $chatHistory
+CHAT HISTORY:
+$chatHistory
 
-        FULLY QUALIFIED QUESTION: ";
+FULLY QUALIFIED QUESTION: ";
 
         $this->prompt = $content;
+
+        $logger = new OpenObserveLogger([
+        ]);
+        $logger->log('info', 'Using RAG prompt ' . $content);
+        $logger->close();
 
         return $this->send();
     }
