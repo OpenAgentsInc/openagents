@@ -26,7 +26,7 @@ class PayAgentCreators extends Command
     public function handle()
     {
         $this->info('Paying agent creators.');
-        $totalPayout = 100000; // Total payout in sats
+        $totalPayout = 25000; // Total payout in sats
 
         $users = User::whereIn('id', function ($query) {
             $query->select('user_id')
@@ -36,9 +36,14 @@ class PayAgentCreators extends Command
                 ->groupBy('user_id');
         })->get();
 
+        // Also exclude the user with name b7d75df9 (riccardo - no lightning address attached)
+        $users = $users->reject(function ($user) {
+            return $user->name === 'b7d75df9';
+        });
+
         $this->info('Found '.$users->count().' users with agents and lightning addresses (excluding developers).');
 
-        $minPayout = 10000; // Minimum payout for users who created an agent
+        $minPayout = 1000; // Minimum payout for users who created an agent
         $remainingPayout = $users->count() > 0 ? $totalPayout - ($users->count() * $minPayout) : 0; // Remaining payout after minimum payouts
 
         $this->payUsers($users, $minPayout, $remainingPayout, $totalPayout);
