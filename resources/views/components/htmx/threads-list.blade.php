@@ -5,7 +5,7 @@
         <button class="flex items-center gap-2 py-1"
                 hx-get="/chatmx/{{ $thread->id }}"
                 hx-target="#main-chat"
-                hx-swap="innerHTML"
+                hx-swap="outerHTML"
                 hx-trigger="click"
                 hx-push-url="true"
         >

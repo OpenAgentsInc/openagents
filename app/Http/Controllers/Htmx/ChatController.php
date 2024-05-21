@@ -10,4 +10,11 @@ class ChatController extends Controller
     {
         return view('htmx.chat');
     }
+
+    public function store()
+    {
+        $message = request('message-input');
+
+        return "hi: $message";
+    }
 }
