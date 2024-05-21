@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\AI;
 
 use App\Models\Thread;
-use OpenAI;
 use App\Services\OpenObserveLogger;
+use OpenAI;
 
 class NostrRag
 {
@@ -44,12 +44,14 @@ class NostrRag
     public function summary()
     {
         // Convert the messages array into a string
-        $chatHistory = "";
+        $chatHistory = '';
         for ($i = 0; $i < count($this->messages); $i++) {
             $message = $this->messages[$i];
             $role = $message['role'];
             $content = $message['content'];
-            if($role=="system")continue; // Skip system messages
+            if ($role == 'system') {
+                continue;
+            } // Skip system messages
             $chatHistory .= "$role: $content\n";
         }
         // Construct the prompt with the chat history
@@ -65,7 +67,7 @@ FULLY QUALIFIED QUESTION: ";
 
         $logger = new OpenObserveLogger([
         ]);
-        $logger->log('info', 'Using RAG prompt ' . $content);
+        $logger->log('info', 'Using RAG prompt '.$content);
         $logger->close();
 
         return $this->send();
