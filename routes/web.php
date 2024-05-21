@@ -38,6 +38,7 @@ Route::get('/chat/{id}', Chat::class)->name('chat.id');
 // CHAT - HTMX REFACTOR
 Route::get('/chatmx', [ChatController::class, 'index']);
 Route::post('/message', [ChatController::class, 'store']);
+Route::get('/message-stream', [ChatController::class, 'stream']);
 
 // AGENTS
 Route::get('/agents', Index::class)->name('agents');
