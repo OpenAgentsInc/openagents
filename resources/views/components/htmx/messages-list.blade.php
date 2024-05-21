@@ -1,5 +1,5 @@
 <div class="p-4 space-y-4" id="message-container">
-    @if(isset($thread))
+    @if(isset($thread) && isset($messages))
         <h2 class="text-lg font-bold">{{ $thread->title }}</h2>
         <ul class="space-y-2">
             @foreach($messages as $message)

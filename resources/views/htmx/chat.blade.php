@@ -6,12 +6,8 @@
             <div hx-get="{{ route('threads.index') }}" hx-trigger="load"></div>
         </div>
         <div class="w-full overflow-y-auto flex flex-col justify-center items-center">
-            <div id="main-chat" class="h-full prose prose-invert messages max-w-4xl">
-                @if(isset($messages) && isset($thread))
-                    <x-htmx.messages-list :messages="$messages" :thread="$thread"/>
-                @else
-                    <p class="p-6">Select a thread to view messages.</p>
-                @endif
+            <div id="main-chat" class="w-full h-full prose prose-invert messages max-w-4xl">
+                <x-htmx.messages-list :messages="$messages ?? null" :thread="$thread ?? null"/>
             </div>
         </div>
     </div>
