@@ -57,7 +57,7 @@ test('NostrInferencer can inference', function () {
             [
                 'role' => 'system',
                 'content' => $agent->prompt."\n".
-                    "You can use the following CONTEXT to help you answer the user's questions.\n".
+                    "You can use the following extracted parts of a long document to help you answer the user's questions.\n".
                     $job->content,
             ],
             [
@@ -66,7 +66,7 @@ test('NostrInferencer can inference', function () {
             ],
         ],
         'stream' => true,
-        'max_tokens' => 1967,
+        'max_tokens' => 1962,
     ], $payload);
 
     expect($result)->toBeArray();
