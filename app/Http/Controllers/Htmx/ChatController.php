@@ -35,9 +35,12 @@ class ChatController extends Controller
 
     public function messageStream()
     {
-        $this->startStream('messagestreamtest', function ($i) {
-            // Dummy content to keep the connection alive in case there are no new messages
-            return "<div>Streaming active... $i </div>";
-        });
+        $this->stream('messagestreamtest', 'Hello, world!');
+        //        sleep(1);
+        //        $this->stream('messagestreamtest', 'Hello, world!');
+        //        sleep(1);
+        //        $this->stream('messagestreamtest', 'Helasdfasdfworld!');
+        //        sleep(1);
+        //        $this->stream('messagestreamtest', 'Helldfasdfasdsfasdfasdfld!');
     }
 }
