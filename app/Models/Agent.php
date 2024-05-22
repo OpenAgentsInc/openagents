@@ -22,6 +22,7 @@ class Agent extends Model
         'is_public',
         'user_id',
         'is_rag_ready',
+        'use_tools',
     ];
 
     public function getCreatorPictureAttribute()
