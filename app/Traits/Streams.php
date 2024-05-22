@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\LocalLogger;
 use Illuminate\Support\Facades\Cache;
 
 trait Streams
@@ -23,6 +24,8 @@ trait Streams
     {
         $keepAliveCount = 0;
 
+        $logger = new LocalLogger();
+
         while (true) {
             // Retrieve the message queue from cache
             $messages = Cache::get('message_queue', []);
@@ -30,6 +33,7 @@ trait Streams
             if (! empty($messages)) {
                 // Stream each message
                 foreach ($messages as $message) {
+                    $logger->log('Message streamed:'.$message);
                     $this->stream('message', $message);
                 }
 
