@@ -15,6 +15,11 @@ class ChatController extends Controller
 {
     use Streams;
 
+    public function sseStreamTest()
+    {
+        return view('htmx.sse-stream');
+    }
+
     public function index()
     {
         return view('htmx.chat');

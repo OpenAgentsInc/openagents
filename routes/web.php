@@ -41,6 +41,7 @@ Route::get('/chatmx', [ChatController::class, 'index']);
 Route::post('/message', [ChatController::class, 'store']);
 
 Route::get('/stream', [ChatController::class, 'sseStream']);
+Route::get('/streamtest', [ChatController::class, 'sseStreamTest']);
 
 Route::get('rediscli', function () {
     return Redis::ping();
