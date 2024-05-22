@@ -8,11 +8,19 @@
             {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="message">--}}
             {{--            </div>--}}
 
-            <div hx-ext="sse" sse-connect="/message-stream">
-                <div sse-swap="TestStream"></div>
-                <div sse-swap="TestStream2"></div>
-                <div sse-swap="messagestreamtest"></div>
+            {{--            <div hx-ext="sse" sse-connect="/event-stream" sse-swap="message">--}}
+            {{--                Contents of this box will be updated in real time with every SSE message received.--}}
+            {{--            </div>--}}
+
+            <div id="chat-messages" hx-ext="sse" sse-connect="/stream" sse-swap="message" hx-swap="beforeend">
+                <p>Chat messages will appear here in real-time.</p>
             </div>
+
+            {{--            <div hx-ext="sse" sse-connect="/message-stream">--}}
+            {{--                <div sse-swap="TestStream"></div>--}}
+            {{--                <div sse-swap="TestStream2"></div>--}}
+            {{--                <div sse-swap="messagestreamtest"></div>--}}
+            {{--            </div>--}}
 
             {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="outerHTML">--}}
             {{--                <div id="messagestreamtest"></div>--}}

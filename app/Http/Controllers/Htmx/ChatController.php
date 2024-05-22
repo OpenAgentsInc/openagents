@@ -5,36 +5,57 @@ namespace App\Http\Controllers\Htmx;
 use App\AI\SimpleInferencer;
 use App\Http\Controllers\Controller;
 use App\Models\Thread;
-use App\Traits\Streams;
 
 class ChatController extends Controller
 {
-    use Streams;
-
     public function index()
     {
         return view('htmx.chat');
     }
 
+    public function sseStream()
+    {
+        $keepAlive = function () {
+            while (true) {
+                echo "event: keep-alive!!\n";
+                echo "data: \n\n";
+                ob_flush();
+                flush();
+                sleep(5);
+            }
+        };
+
+        $this->initializeStream($keepAlive);
+    }
+
+    private function initializeStream($keepAlive)
+    {
+        $response = response()->stream($keepAlive, 200, [
+            'Cache-Control' => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'X-Accel-Buffering' => 'no',
+        ]);
+
+        $response->send();
+    }
+
+    private function stream()
+    {
+
+    }
+
     public function store()
     {
+        $this->stream('message', request('message-input'));
         $input = request('message-input');
         $thread = Thread::latest()->first();
 
         $inference = new SimpleInferencer();
         $inference->inference($input, 'gpt-4o', $thread, function ($content) {
-            // Correctly naming the event for SSE and htmx
-            $this->stream('messagestreamtest', $content);
+            $this->stream('message', $content);
         });
 
-        // Return a response to the client indicating the stream has started
-        return response()->json([
-            'message' => 'Streaming has started',
-        ]);
-    }
-
-    public function messageStream()
-    {
-        $this->ensureStreamResponseStarted();
+        // Return an empty response since we are using SSE for streaming.
+        return response()->noContent();
     }
 }
