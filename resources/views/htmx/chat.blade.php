@@ -13,7 +13,7 @@
                 <div sse-swap="event2"></div>
 
                 <p>Messages Catch-all:</p>
-                <div sse-swap="message"></div>
+                <div sse-swap="message" hx-swap="beforeend"></div>
             </div>
 
             {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="message">--}}

@@ -24,15 +24,4 @@ trait Streams
             self::$headersSent = true;
         }
     }
-
-    public function keepAlive()
-    {
-        while (true) {
-            echo "event: keep-alive\n";
-            echo "data: \n\n";
-            ob_flush();
-            flush();
-            sleep(10);
-        }
-    }
 }

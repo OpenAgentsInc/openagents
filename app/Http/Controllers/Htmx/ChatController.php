@@ -6,6 +6,7 @@ use App\AI\SimpleInferencer;
 use App\Http\Controllers\Controller;
 use App\Models\Thread;
 use App\Traits\Streams;
+use Illuminate\Support\Facades\Cache;
 
 class ChatController extends Controller
 {
@@ -20,30 +21,45 @@ class ChatController extends Controller
     {
         $this->initializeStream();
 
-        $i = 0;
         while (true) {
-            $i++;
-            // Here we can emit different events
-            $this->stream('event1', "<div>Content for Event 1 - $i</div>");
-            $this->stream('event2', '<div>Content for Event 2</div>');
-            $this->stream('message', '<div>General Message</div>');
+            // Retrieve the message queue from cache
+            $messages = Cache::get('message_queue', []);
 
-            sleep(1); // Simulate some delay
+            // Stream each message
+            foreach ($messages as $message) {
+                $this->stream('message', $message);
+            }
+
+            // Clear the message queue after processing
+            Cache::put('message_queue', []);
+
+            // Simulate delay and keep-alive
+            echo "event: keep-alive\n";
+            echo "data: \n\n";
+            ob_flush();
+            flush();
+            sleep(1);
         }
     }
 
     public function store()
     {
         $input = request('message-input');
-        $this->stream('message', $input); // Update the shared state directly
+
+        // Retrieve the existing message queue, append the new message, and store it back in cache
+        $messages = Cache::get('message_queue', []);
+        $messages[] = $input;
+        Cache::put('message_queue', $messages);
 
         $thread = Thread::latest()->first();
         $inference = new SimpleInferencer();
         $inference->inference($input, 'gpt-4o', $thread, function ($content) {
-            $this->stream('message', $content);
+            // Retrieve the existing message queue, append the new message, and store it back in cache
+            $messages = Cache::get('message_queue', []);
+            $messages[] = $content;
+            Cache::put('message_queue', $messages);
         });
 
-        // Return an empty response since we are using SSE for streaming.
         return response()->noContent();
     }
 }
