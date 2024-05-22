@@ -20,7 +20,6 @@ class Card extends Component
         $this->selectedAgent = $selectedAgent;
     }
 
-
     #[On('agent_updated')]
     public function updateSelectedAgent($agent_id)
     {

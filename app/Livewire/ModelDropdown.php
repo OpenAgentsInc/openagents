@@ -99,7 +99,7 @@ class ModelDropdown extends Component
         $userAccess = $this->getUserAccess();
 
         // If the user is not logged in, show the login modal for any model they don't have access to
-        if ($userAccess === 'guest' && !$this->hasModelAccess($model, $userAccess)) {
+        if ($userAccess === 'guest' && ! $this->hasModelAccess($model, $userAccess)) {
             $this->dispatch('openModal', 'auth.join');
 
             return;
@@ -152,7 +152,7 @@ class ModelDropdown extends Component
 
     public function toggleDropdown()
     {
-        $this->isOpen = !$this->isOpen;
+        $this->isOpen = ! $this->isOpen;
     }
 
     public function render()

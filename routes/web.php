@@ -26,7 +26,6 @@ use App\Livewire\Store;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
-
 // REDIRECT DEFAULT AUTH TO HOME
 // Define an array of default authentication routes
 $authRoutes = [
@@ -35,15 +34,13 @@ $authRoutes = [
     '/password/reset',
     '/password/reset/{token}',
     '/password/confirm',
-    '/password/email'
+    '/password/email',
 ];
 
-
 // Redirect all authentication routes to home
-Route::match(['get', 'post'], '/{authRoute}', function (string $authRoute) use ($authRoutes) {
+Route::match(['get', 'post'], '/{authRoute}', function (string $authRoute) {
     return redirect()->route('home');
 })->whereIn('authRoute', $authRoutes);
-
 
 // HOME
 Route::get('/', function () {
