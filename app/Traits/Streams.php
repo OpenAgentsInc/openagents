@@ -2,38 +2,32 @@
 
 namespace App\Traits;
 
-use App\Services\LocalLogger;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 trait Streams
 {
-    public function stream($to, $content)
-    {
-        $logger = new LocalLogger();
-        $logger->log([
-            'to' => $to,
-            'content' => $content,
-        ]);
+    protected static $response;
 
-        // Stream the response
-        $response = new StreamedResponse(function () use ($to, $content) {
-            echo "event: $to\n";
+    public function stream($name, $content, $replace = false)
+    {
+        if (static::$response) {
+            echo "event: $name\n";
             echo "data: $content\n\n";
             ob_flush();
             flush();
-        }, 200, [
-            'Cache-Control' => 'no-cache',
-            'Content-Type' => 'text/event-stream',
-            'X-Accel-Buffering' => 'no',
-        ]);
-        // Send the response
-        $response->send();
+        } else {
+            $this->startStream($name, function () use ($content) {
+                return $content;
+            });
+        }
     }
 
-    public function startStream(array $events): void
+    public function startStream(string $eventName, callable $callback): void
     {
+        static::ensureStreamResponseStarted();
+
         // Stream the response
-        $response = new StreamedResponse(function () use ($events) {
+        $response = new StreamedResponse(function () use ($eventName, $callback) {
             // Initial message to keep connection alive
             echo "data: Connection Established\n\n";
             ob_flush();
@@ -44,14 +38,11 @@ trait Streams
 
             // Keep the connection alive
             while (true) {
-                // Loop through all the callbacks and event names
-                foreach ($events as $event) {
-                    $eventName = $event['name'];
-                    $callback = $event['callback'];
-                    $callback($count, $eventName);
-                    ob_flush();
-                    flush();
-                }
+                $content = $callback($count);
+                echo "event: $eventName\n";
+                echo "data: $content\n\n";
+                ob_flush();
+                flush();
                 $count++;
                 sleep(1); // Wait for 1 second before sending the next updates
             }
@@ -63,5 +54,20 @@ trait Streams
 
         // Send the response
         $response->send();
+    }
+
+    protected static function ensureStreamResponseStarted()
+    {
+        if (static::$response) {
+            return;
+        }
+
+        static::$response = response()->stream(null, 200, [
+            'Cache-Control' => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'X-Accel-Buffering' => 'no',
+        ]);
+
+        static::$response->sendHeaders();
     }
 }
