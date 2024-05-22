@@ -1,17 +1,21 @@
 <?php
 
-use App\Livewire\PopularAgents;
+use App\Livewire\AgentCardStatic;
 use App\Models\Agent;
 use Livewire\Livewire;
 
-it('renders successfully', function () {
+it('renders static card successfully', function () {
     $agent = Agent::factory()->create();
+    $agent->about = 'About this agent';
+    $agent->sats_earned = 1000;
     $agent->thread_count = 8;
 
-    Livewire::test(PopularAgents::class)
+    Livewire::test(AgentCardStatic::class, ['agent' => $agent])
         ->assertStatus(200)
         ->assertSeeHtml("<img src=\"{$agent->image_url}\" alt=\"Agent\"")
         ->assertSeeHtml(">{$agent->name}</div>")
         ->assertSeeHtml(">From: {$agent->creator_username}</p>")
+        ->assertSeeHtml(">{$agent->about}</p>")
+        ->assertSeeHtml("<span>{$agent->sats_earned}</span>")
         ->assertSeeHtml("<span>{$agent->thread_count}</span>");
 });
