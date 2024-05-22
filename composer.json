@@ -23,6 +23,7 @@
     "league/flysystem-aws-s3-v3": "^3.0",
     "livewire/livewire": "^3.0",
     "openai-php/client": "^0.8.4",
+    "predis/predis": "^2.0",
     "pusher/pusher-php-server": "^7.2",
     "spatie/laravel-markdown": "^2.5",
     "swentel/nostr-php": "dev-main",

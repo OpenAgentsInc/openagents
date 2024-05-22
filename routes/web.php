@@ -23,6 +23,7 @@ use App\Livewire\MarkdownPage;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
 use App\Livewire\Store;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
@@ -40,6 +41,10 @@ Route::get('/chatmx', [ChatController::class, 'index']);
 Route::post('/message', [ChatController::class, 'store']);
 
 Route::get('/stream', [ChatController::class, 'sseStream']);
+
+Route::get('rediscli', function () {
+    return Redis::ping();
+});
 
 Route::get('/message-stream', [ChatController::class, 'messageStream']);
 Route::get('/message-stream3', [ChatController::class, 'messageStream']);
