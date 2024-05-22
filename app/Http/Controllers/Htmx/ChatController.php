@@ -23,23 +23,13 @@ class ChatController extends Controller
 
     public function stream()
     {
-        $i = 0;
-        $this->startStream(function () use (&$i) {
-            // Send an initial named event
-            echo "event: TestStream\n";
-            //            echo "data: <div>Hello, world!</div>\n\n";
-            ob_flush();
-            flush();
+        // Define the callback function for streaming
+        $callback = function ($i, $eventName) {
+            echo "event: $eventName\n";
+            echo "data: <div>Hello, world! $i </div>\n\n";
+        };
 
-            // Keep the connection alive
-            while (true) {
-                $i++;
-                echo "event: TestStream\n";
-                echo "data: <div>Hello, world!!!!! $i </div>\n\n";
-                ob_flush();
-                flush();
-                sleep(1); // Wait for 1 second before sending the next keep-alive message
-            }
-        });
+        // Call the startStream method with the event name and the callback function
+        $this->startStream('TestStream', $callback);
     }
 }
