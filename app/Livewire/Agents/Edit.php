@@ -6,7 +6,6 @@ use App\Livewire\Agents\Partials\Documents;
 use App\Models\Agent;
 use App\Models\AgentFile;
 use App\Utils\PoolUtils;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
@@ -36,6 +35,8 @@ class Edit extends Component
 
     public Agent $agent;
 
+    public $useTools = false;
+
     public function mount()
     {
 
@@ -49,6 +50,7 @@ class Edit extends Component
         $this->rag_prompt = $this->agent->rag_prompt;
         $this->is_public = $this->agent->is_public;
         $this->message = $this->agent->message;
+        $this->useTools = $this->agent->use_tools;
 
         $docs = AgentFile::with('agent')
             ->where('agent_id', $this->agent->id)
@@ -76,6 +78,7 @@ class Edit extends Component
             'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
             'image' => 'nullable|image|max:2048',
             'urls' => 'nullable|string',
+            'useTools' => 'required|boolean',
         ];
     }
 
@@ -139,6 +142,7 @@ class Edit extends Component
         }
 
         $agent->is_rag_ready = ! empty($this->files) ? false : true;
+        $agent->use_tools = $this->useTools;
         $agent->user_id = $user->id;
         $agent->save();
 
@@ -203,7 +207,7 @@ class Edit extends Component
         if ($needWarmUp) {
             // Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
             // Send RAG warmup request
-            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
+            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray(), $this->useTools);
             $this->alert('success', 'Agent training process has now begin ..');
         } else {
             $this->alert('success', 'Agent created successfully..');

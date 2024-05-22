@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\AI\Models;
+use App\Livewire\Agents\Partials\Card;
 use App\Models\Agent;
 use App\Models\Message;
 use Illuminate\Support\Facades\Session;
@@ -69,6 +70,8 @@ class ModelDropdown extends Component
 
         $this->formattedModelOrAgent = $agent->name;
         $this->picture = $agent->image_url;
+
+        $this->dispatch('agent_updated', agent_id: $agent->id)->to(Card::class);
 
         $this->selectedModel = '';
         session()->forget('selectedModel');

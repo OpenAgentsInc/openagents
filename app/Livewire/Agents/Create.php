@@ -34,6 +34,8 @@ class Create extends Component
 
     public $message;
 
+    public $useTools = false;
+
     public function mount()
     {
         if (! auth()->check()) {
@@ -54,6 +56,7 @@ class Create extends Component
             'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
             'image' => 'nullable|image|max:2048',
             'urls' => 'nullable|string',
+            'useTools' => 'required|boolean',
         ];
     }
 
@@ -118,6 +121,7 @@ class Create extends Component
         $agent->image = json_encode($saveimage);
         $agent->user_id = $user->id;
         $agent->is_rag_ready = ! empty($this->files) ? false : true;
+        $agent->use_tools = $this->useTools;
         $agent->save();
 
         $needWarmUp = false;
@@ -171,7 +175,7 @@ class Create extends Component
         if ($needWarmUp) {
             // Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
             // Send RAG warmup request
-            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
+            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray(), $this->useTools);
             $this->alert('success', 'Agent training process has now begin ..');
         } else {
             $this->alert('success', 'Agent created successfully..');

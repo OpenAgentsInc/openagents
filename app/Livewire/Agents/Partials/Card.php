@@ -3,6 +3,7 @@
 namespace App\Livewire\Agents\Partials;
 
 use App\Models\Agent;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Card extends Component
@@ -17,6 +18,19 @@ class Card extends Component
 
         //        dd($selectedAgent['id']); // This will output the selected agent (if you passed it in from the parent component
         $this->selectedAgent = $selectedAgent;
+    }
+
+    #[On('agent_updated')]
+    public function updateSelectedAgent($agent_id)
+    {
+        $this->agent = Agent::find($agent_id);
+        $this->selectedAgent = [
+            'id' => $this->agent->id,
+            'name' => $this->agent->name,
+            'description' => $this->agent->about,
+            'use_tools' => $this->agent->use_tools,
+            'instructions' => $this->agent->message,
+        ];
     }
 
     public function render()
