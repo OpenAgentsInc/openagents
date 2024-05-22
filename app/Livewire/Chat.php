@@ -24,6 +24,7 @@ use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithFileUploads;
+
 use function implode;
 
 class Chat extends Component
@@ -75,7 +76,7 @@ class Chat extends Component
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
             $thread = Thread::find($id);
-            if (!$thread || (auth()->check() && $thread->user_id !== auth()->id()) || (!auth()->check() && $thread->session_id !== session()->getId())) {
+            if (! $thread || (auth()->check() && $thread->user_id !== auth()->id()) || (! auth()->check() && $thread->session_id !== session()->getId())) {
                 return $this->redirect('/', true);
             } else {
                 // Notify the sidebar component of the active thread
@@ -131,7 +132,7 @@ class Chat extends Component
                 $this->thread = $recentThread;
                 $this->dispatch('thread-update');
 
-                return $this->redirect('/chat/' . $this->thread->id, true);
+                return $this->redirect('/chat/'.$this->thread->id, true);
             }
 
             // If no recent thread found, create a new one
@@ -154,7 +155,7 @@ class Chat extends Component
             $this->dispatch('thread-update');
             //            session()->put('redirecting-with-selection', true);
 
-            return $this->redirect('/chat/' . $this->thread->id, true);
+            return $this->redirect('/chat/'.$this->thread->id, true);
         }
     }
 
@@ -203,7 +204,7 @@ class Chat extends Component
     public function sendMessage(): void
     {
 
-        if (!empty($this->selectedAgent)) {
+        if (! empty($this->selectedAgent)) {
             // Check if the action should be stopped
             if ($this->selectedAgent['is_rag_ready'] == false && $this->selectedAgent['created_at']->diffInMinutes() > 30) {
                 // Stop the action
@@ -231,7 +232,7 @@ class Chat extends Component
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
             'agent_id' => $this->selectedAgent['id'] ?? null,
             'agent' => $this->selectedAgent,
-            'model' => !$this->selectedAgent ? $this->selectedModel : null,
+            'model' => ! $this->selectedAgent ? $this->selectedModel : null,
             'input_tokens' => null,
             'output_tokens' => null,
         ];
@@ -243,12 +244,12 @@ class Chat extends Component
 
         // Call simpleRun after the next render
         $this->dispatch('message-created');
-        if (!$this->selectedAgent) {
+        if (! $this->selectedAgent) {
             $this->js('$wire.simpleRun()');
         } else {
             $agent = Agent::find($this->selectedAgent['id']);
             $isRagReady = $agent->is_rag_ready;
-            if (!$isRagReady) {
+            if (! $isRagReady) {
                 // Log::debug('RAG not ready. Skip for now...');
                 $this->js('$wire.runAgentWithoutRag()');
             } else {
@@ -272,7 +273,7 @@ class Chat extends Component
         // Attach any context necessary from querying the codebase
         $this->handleCodebaseContext();
 
-        $userInput = $this->handleImageInput() . $this->input;
+        $userInput = $this->handleImageInput().$this->input;
 
         $systemPrompt = implode("\n\n", [
             'You are an AI agent on OpenAgents.com.',
@@ -339,7 +340,7 @@ class Chat extends Component
         //        dd($this->selectedAgent['capabilities']);
 
         // If this agent doesn't have codebase capability, return - check if the array includes "codebase_search"
-        if (!$this->selectedAgent || !$this->selectedAgent['capabilities'] || !in_array('codebase_search', $this->selectedAgent['capabilities'])) {
+        if (! $this->selectedAgent || ! $this->selectedAgent['capabilities'] || ! in_array('codebase_search', $this->selectedAgent['capabilities'])) {
             return;
         }
 
@@ -351,16 +352,16 @@ class Chat extends Component
         $client = new GreptileGateway();
         $results = $client->search($this->input, Codebase::all());
 
-        $this->input .= "\n\n" . "Use these code results as context:\n" . $results;
+        $this->input .= "\n\n"."Use these code results as context:\n".$results;
     }
 
     private function handleImageInput(): string
     {
         $imageDescriptions = '';
-        if (!empty($this->images_to_upload)) {
+        if (! empty($this->images_to_upload)) {
             $imageService = new ImageService();
             foreach ($this->images_to_upload as $image) {
-                $imageDescriptions .= $imageService->getImageDescription($image, $this->thread) . "\n\n";
+                $imageDescriptions .= $imageService->getImageDescription($image, $this->thread)."\n\n";
             }
             if ($imageDescriptions) {
                 $imageDescriptions = str_replace('-->', ' ', $imageDescriptions);
@@ -376,7 +377,7 @@ class Chat extends Component
     {
         return function ($content, bool $replace = false) {
             $this->stream(
-                to: 'streamtext' . $this->thread->id,
+                to: 'streamtext'.$this->thread->id,
                 content: $content,
                 replace: $replace,
             );
@@ -386,7 +387,7 @@ class Chat extends Component
     public function simpleRun(): void
     {
         // Convert any images to messages with descriptions generated by vision LLM
-        $this->input = $this->handleImageInput() . $this->input;
+        $this->input = $this->handleImageInput().$this->input;
 
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
