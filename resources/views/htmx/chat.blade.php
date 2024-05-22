@@ -5,6 +5,17 @@
         <x-htmx.sidebar/>
         <div class="flex flex-col w-full">
 
+            <div hx-ext="sse" sse-connect="/stream">
+                <p>Demo Event 1:</p>
+                <div sse-swap="event1"></div>
+
+                <p>Demo Event 2:</p>
+                <div sse-swap="event2"></div>
+
+                <p>Messages Catch-all:</p>
+                <div sse-swap="message"></div>
+            </div>
+
             {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="message">--}}
             {{--            </div>--}}
 
@@ -12,9 +23,9 @@
             {{--                Contents of this box will be updated in real time with every SSE message received.--}}
             {{--            </div>--}}
 
-            <div id="chat-messages" hx-ext="sse" sse-connect="/stream" sse-swap="message" hx-swap="beforeend">
-                <p>Chat messages will appear here in real-time.</p>
-            </div>
+            {{--            <div id="chat-messages" hx-ext="sse" sse-connect="/stream" sse-swap="message" hx-swap="beforeend">--}}
+            {{--                <p>Chat messages will appear here in real-time.</p>--}}
+            {{--            </div>--}}
 
             {{--            <div hx-ext="sse" sse-connect="/message-stream">--}}
             {{--                <div sse-swap="TestStream"></div>--}}

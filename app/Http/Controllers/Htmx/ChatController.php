@@ -5,20 +5,23 @@ namespace App\Http\Controllers\Htmx;
 use App\AI\SimpleInferencer;
 use App\Http\Controllers\Controller;
 use App\Models\Thread;
+use App\Traits\Streams;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ChatController extends Controller
 {
-    // Replace the Cache implementation with a static variable to act as a shared state
-    private static $sharedState = 'keep-alive!';
+    use Streams;
 
-    private static $messageQueue = [];
-
-    public function __construct()
-    {
-        // Initialize the shared state (self::$messageQueue can be treated as the hardcoded variable)
-        self::$messageQueue = [self::$sharedState];
-    }
+    //    // Replace the Cache implementation with a static variable to act as a shared state
+    //    private static $sharedState = 'keep-alive!';
+    //
+    //    private static $messageQueue = [];
+    //
+    //    public function __construct()
+    //    {
+    //        // Initialize the shared state (self::$messageQueue can be treated as the hardcoded variable)
+    //        self::$messageQueue = [self::$sharedState];
+    //    }
 
     public function index()
     {
@@ -27,30 +30,28 @@ class ChatController extends Controller
 
     public function sseStream()
     {
-        // Set the appropriate headers for SSE
-        $response = new StreamedResponse(function () {
-            while (true) {
-                // Your server-side logic to get data
-                $data = json_encode(['message' => 'This is a message']);
+        $this->initializeStream();
 
-                echo "event: message\n";
-                echo "data: $data\n\n";
+        while (true) {
+            // Here we can emit different events
+            $this->stream('event1', '<div>Content for Event 1</div>');
+            $this->stream('event2', '<div>Content for Event 2</div>');
+            $this->stream('message', '<div>General Message</div>');
 
-                // Flush the output buffer
-                ob_flush();
-                flush();
-
-                // Delay for 1 second
-                sleep(1);
-            }
-        });
-
-        $response->headers->set('Content-Type', 'text/event-stream');
-        $response->headers->set('Cache-Control', 'no-cache');
-        $response->headers->set('Connection', 'keep-alive');
-
-        return $response;
+            sleep(5); // Simulate some delay
+        }
     }
+
+    //    private function initializeStream($keepAlive)
+    //    {
+    //        $response = response()->stream($keepAlive, 200, [
+    //            'Cache-Control' => 'no-cache',
+    //            'Content-Type' => 'text/event-stream',
+    //            'X-Accel-Buffering' => 'no',
+    //        ]);
+    //
+    //        $response->send();
+    //    }
 
     //    public function sseStream()
     //    {
@@ -79,6 +80,39 @@ class ChatController extends Controller
     //        $this->initializeStream($keepAlive);
     //    }
 
+    //    private function stream($data)
+    //    {
+    //        // Add the new message to the message queue
+    //        self::$messageQueue[] = $data;
+    //    }
+
+    public function sseStreamOld()
+    {
+        // Set the appropriate headers for SSE
+        $response = new StreamedResponse(function () {
+            while (true) {
+                // Your server-side logic to get data
+                $data = json_encode(['message' => 'This is a message']);
+
+                echo "event: message\n";
+                echo "data: $data\n\n";
+
+                // Flush the output buffer
+                ob_flush();
+                flush();
+
+                // Delay for 1 second
+                sleep(1);
+            }
+        });
+
+        $response->headers->set('Content-Type', 'text/event-stream');
+        $response->headers->set('Cache-Control', 'no-cache');
+        $response->headers->set('Connection', 'keep-alive');
+
+        return $response;
+    }
+
     public function store()
     {
         $input = request('message-input');
@@ -92,22 +126,5 @@ class ChatController extends Controller
 
         // Return an empty response since we are using SSE for streaming.
         return response()->noContent();
-    }
-
-    private function stream($data)
-    {
-        // Add the new message to the message queue
-        self::$messageQueue[] = $data;
-    }
-
-    private function initializeStream($keepAlive)
-    {
-        $response = response()->stream($keepAlive, 200, [
-            'Cache-Control' => 'no-cache',
-            'Content-Type' => 'text/event-stream',
-            'X-Accel-Buffering' => 'no',
-        ]);
-
-        $response->send();
     }
 }

@@ -4,7 +4,7 @@ namespace App\Traits;
 
 trait Streams
 {
-    protected static $headersSent = false;
+    private static $headersSent = false;
 
     public function stream($eventName, $data)
     {
@@ -14,6 +14,17 @@ trait Streams
         flush();
     }
 
+    public function initializeStream()
+    {
+        if (! self::$headersSent) {
+            header('Content-Type: text/event-stream');
+            header('Cache-Control: no-cache');
+            header('Connection: keep-alive');
+            header('X-Accel-Buffering: no');
+            self::$headersSent = true;
+        }
+    }
+
     public function keepAlive()
     {
         while (true) {
@@ -21,25 +32,7 @@ trait Streams
             echo "data: \n\n";
             ob_flush();
             flush();
-            sleep(30); // Ping every 30 seconds
+            sleep(10);
         }
-    }
-
-    public function initializeStream()
-    {
-        if (self::$headersSent) {
-            return;
-        }
-
-        header('Content-Type: text/event-stream');
-        header('Cache-Control: no-cache');
-        header('Connection: keep-alive');
-        header('X-Accel-Buffering: no');
-        self::$headersSent = true;
-    }
-
-    protected function headersNotSent()
-    {
-        return ! self::$headersSent;
     }
 }
