@@ -6,14 +6,14 @@
         <div class="flex flex-col w-full">
 
             <div hx-ext="sse" sse-connect="/stream">
-                <p>Demo Event 1:</p>
-                <div sse-swap="event1"></div>
+                {{--                <p>Demo Event 1:</p>--}}
+                {{--                <div sse-swap="event1"></div>--}}
 
-                <p>Demo Event 2:</p>
-                <div sse-swap="event2"></div>
+                {{--                <p>Demo Event 2:</p>--}}
+                {{--                <div sse-swap="event2"></div>--}}
 
                 <p>Messages Catch-all:</p>
-                <div sse-swap="message" hx-swap="beforeend" style="white-space: pre-wrap;"></div>
+                <div sse-swap="message" hx-swap="beforeend"></div>
             </div>
 
             {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="message">--}}
