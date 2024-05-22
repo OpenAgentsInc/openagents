@@ -30,7 +30,7 @@ trait Streams
             if (! empty($messages)) {
                 // Stream each message
                 foreach ($messages as $message) {
-                    $this->stream('message', "<span>$message</span>");
+                    $this->stream('message', $message);
                 }
 
                 // Clear the message queue after processing
