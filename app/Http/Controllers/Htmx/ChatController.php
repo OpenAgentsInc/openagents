@@ -55,20 +55,26 @@ class ChatController extends Controller
         $input = request('message-input');
         $thread_id = request('thread_id');
 
-        // Retrieve the existing message queue, append the new message, and store it back in cache
-        $messages = Cache::get('message_queue', []);
-        $messages[] = $input;
-        Cache::put('message_queue', $messages);
+        $this->addMessageToQueue('<br />'.$input.'<br />');
 
+        $this->processInference($input, $thread_id);
+
+        return response()->noContent();
+    }
+
+    private function addMessageToQueue($message)
+    {
+        $messages = Cache::get('message_queue', []);
+        $messages[] = $message;
+        Cache::put('message_queue', $messages);
+    }
+
+    private function processInference($input, $thread_id)
+    {
         $thread = Thread::findOrFail($thread_id);
         $inference = new SimpleInferencer();
         $inference->inference($input, 'gpt-4o', $thread, function ($content) {
-            // Retrieve the existing message queue, append the new message, and store it back in cache
-            $messages = Cache::get('message_queue', []);
-            $messages[] = $content;
-            Cache::put('message_queue', $messages);
+            $this->addMessageToQueue($content);
         });
-
-        return response()->noContent();
     }
 }
