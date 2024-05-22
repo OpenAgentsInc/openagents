@@ -26,6 +26,25 @@ use App\Livewire\Store;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
+
+// REDIRECT DEFAULT AUTH TO HOME
+// Define an array of default authentication routes
+$authRoutes = [
+    '/login',
+    '/register',
+    '/password/reset',
+    '/password/reset/{token}',
+    '/password/confirm',
+    '/password/email'
+];
+
+
+// Redirect all authentication routes to home
+Route::match(['get', 'post'], '/{authRoute}', function (string $authRoute) use ($authRoutes) {
+    return redirect()->route('home');
+})->whereIn('authRoute', $authRoutes);
+
+
 // HOME
 Route::get('/', function () {
     return redirect()->route('chat');
@@ -107,6 +126,11 @@ Route::post('/webhook/nostr', [PoolWebhookReceiver::class, 'handleEvent']);
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
 // Catch-all redirect to the homepage
+
+Route::get('/login', function () {
+    return redirect('/');
+});
+
 Route::get('/{any}', function () {
     return redirect('/');
 })->where('any', '.*');
