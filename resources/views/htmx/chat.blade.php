@@ -5,13 +5,10 @@
         <x-htmx.sidebar/>
         <div class="flex flex-col w-full">
 
-            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="TestStream">
-
+            <div hx-ext="sse" sse-connect="/message-stream">
+                <div sse-swap="TestStream"></div>
+                <div sse-swap="TestStream2"></div>
             </div>
-
-            {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="TestStreamNo">--}}
-
-            {{--            </div>--}}
 
             <div class="flex-grow w-full overflow-y-auto flex flex-col items-center">
                 <x-htmx.messages-list :messages="$messages ?? null" :thread="$thread ?? null"/>

@@ -23,13 +23,25 @@ class ChatController extends Controller
 
     public function stream()
     {
-        // Define the callback function for streaming
-        $callback = function ($i, $eventName) {
-            echo "event: $eventName\n";
-            echo "data: <div>Hello, world! $i </div>\n\n";
-        };
+        // Define the callbacks and event names for streaming
+        $events = [
+            [
+                'name' => 'TestStream',
+                'callback' => function ($i, $eventName) {
+                    echo "event: $eventName\n";
+                    echo "data: <div>Hello, world! $i </div>\n\n";
+                },
+            ],
+            [
+                'name' => 'TestStream2',
+                'callback' => function ($i, $eventName) {
+                    echo "event: $eventName\n";
+                    echo "data: <div>Goodbye, world! $i </div>\n\n";
+                },
+            ],
+        ];
 
-        // Call the startStream method with the event name and the callback function
-        $this->startStream('TestStream', $callback);
+        // Call the startStream method with the events array
+        $this->startStream($events);
     }
 }
