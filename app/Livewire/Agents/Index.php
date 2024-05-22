@@ -8,7 +8,7 @@ use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
-class Index extends Component
+class   Index extends Component
 {
     #[Url(except: '', as: 'q')]
     public $search = '';
@@ -17,7 +17,7 @@ class Index extends Component
     public function agents()
     {
         return Agent::query()->when($this->search, function ($query) {
-            return $query->where('name', 'like', '%'.$this->search.'%');
+            return $query->where('name', 'like', '%' . $this->search . '%');
         })
             ->paginate(12);
     }
