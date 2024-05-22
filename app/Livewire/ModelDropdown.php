@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\AI\Models;
+use App\Livewire\Agents\Partials\Card;
 use App\Models\Agent;
 use App\Models\Message;
 use Illuminate\Support\Facades\Session;
@@ -70,6 +71,8 @@ class ModelDropdown extends Component
         $this->formattedModelOrAgent = $agent->name;
         $this->picture = $agent->image_url;
 
+        $this->dispatch('agent_updated', agent_id: $agent->id)->to(Card::class);
+
         $this->selectedModel = '';
         session()->forget('selectedModel');
     }
@@ -96,7 +99,7 @@ class ModelDropdown extends Component
         $userAccess = $this->getUserAccess();
 
         // If the user is not logged in, show the login modal for any model they don't have access to
-        if ($userAccess === 'guest' && ! $this->hasModelAccess($model, $userAccess)) {
+        if ($userAccess === 'guest' && !$this->hasModelAccess($model, $userAccess)) {
             $this->dispatch('openModal', 'auth.join');
 
             return;
@@ -149,7 +152,7 @@ class ModelDropdown extends Component
 
     public function toggleDropdown()
     {
-        $this->isOpen = ! $this->isOpen;
+        $this->isOpen = !$this->isOpen;
     }
 
     public function render()
