@@ -456,7 +456,7 @@ class Chat extends Component
 
             $withTools = $this->selectedAgent['with_tools'] ?? false;
             // Send RAG Job
-            PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $withTools, false);
+            PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $withTools);
 
         } catch (Exception $e) {
             $this->alert('error', 'An Error occurred, please try again later');
