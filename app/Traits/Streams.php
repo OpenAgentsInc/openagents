@@ -2,54 +2,30 @@
 
 namespace App\Traits;
 
+use App\Services\EventManager;
+use App\Services\LocalLogger;
+
 trait Streams
 {
-    protected static $response;
-
     public function stream($name, $content, $replace = false)
     {
-        static::ensureStreamResponseStarted();
-
-        static::streamContent(['name' => $name, 'content' => $content, 'replace' => $replace]);
+        $manager = EventManager::getInstance();
+        $this->logEvent($name, $content);
+        $manager->streamEvent($name, $content, $replace);
     }
 
-    public static function ensureStreamResponseStarted()
+    private function logEvent($name, $content)
     {
-        if (static::$response) {
-            return;
-        }
-
-        $demoCallback = function ($content) {
-            while (true) {
-                $this->stream('messagestreamtest', 'hi');
-                sleep(1);
-            }
-        };
-
-        static::$response = response()->stream($demoCallback, 200, [
-            'Cache-Control' => 'no-cache',
-            'Content-Type' => 'text/event-stream',
-            'X-Accel-Buffering' => 'no',
-            //            'X-Livewire-Stream' => true,
+        $logger = new LocalLogger();
+        $logger->log([
+            'event' => $name,
+            'content' => $content,
         ]);
-
-        static::$response->sendHeaders();
     }
 
-    public static function streamContent($body)
+    protected function ensureStreamResponseStarted()
     {
-        $name = $body['name'];
-        $content = $body['content'];
-
-        echo "event: $name\n";
-        echo "data: $content\n\n";
-
-        //        echo json_encode(['stream' => true, 'body' => $body, 'endStream' => true]);
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-
-        flush();
+        $manager = EventManager::getInstance();
+        $manager->ensureStreamResponseStarted();
     }
 }

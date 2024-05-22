@@ -8,15 +8,17 @@
             {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="message">--}}
             {{--            </div>--}}
 
-            {{--            <div hx-ext="sse" sse-connect="/message-stream">--}}
-            {{--                <div sse-swap="TestStream"></div>--}}
-            {{--                <div sse-swap="TestStream2"></div>--}}
-            {{--                <div sse-swap="messagestreamtest"></div>--}}
-            {{--            </div>--}}
-
             <div hx-ext="sse" sse-connect="/message-stream">
+                <div sse-swap="TestStream"></div>
+                <div sse-swap="TestStream2"></div>
                 <div sse-swap="messagestreamtest"></div>
             </div>
+
+            {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="outerHTML">--}}
+            {{--                <div id="messagestreamtest"></div>--}}
+            {{--            </div>--}}
+
+            {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="messagestreamtest"></div>--}}
 
             {{--            <div hx-ext="sse" sse-connect="/message-stream3">--}}
             {{--                <div sse-swap="TestStream3"></div>--}}

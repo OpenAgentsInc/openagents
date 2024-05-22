@@ -19,15 +19,15 @@ class ChatController extends Controller
     public function store()
     {
         $input = request('message-input');
-
-        // Assuming `Thread` and `SimpleInferencer` shall be used here...
         $thread = Thread::latest()->first();
 
         $inference = new SimpleInferencer();
         $inference->inference($input, 'gpt-4o', $thread, function ($content) {
+            // Correctly naming the event for SSE and htmx
             $this->stream('messagestreamtest', $content);
         });
 
+        // Return a response to the client indicating the stream has started
         return response()->json([
             'message' => 'Streaming has started',
         ]);
@@ -35,12 +35,6 @@ class ChatController extends Controller
 
     public function messageStream()
     {
-        $this->stream('messagestreamtest', 'Hello, world!');
-        //        sleep(1);
-        //        $this->stream('messagestreamtest', 'Hello, world!');
-        //        sleep(1);
-        //        $this->stream('messagestreamtest', 'Helasdfasdfworld!');
-        //        sleep(1);
-        //        $this->stream('messagestreamtest', 'Helldfasdfasdsfasdfasdfld!');
+        $this->ensureStreamResponseStarted();
     }
 }
