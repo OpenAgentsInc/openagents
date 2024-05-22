@@ -27,7 +27,7 @@ class ChatController extends Controller
 
             // Stream each message
             foreach ($messages as $message) {
-                $this->stream('message', $message);
+                $this->stream('message', "<span>$message</span>");
             }
 
             // Clear the message queue after processing

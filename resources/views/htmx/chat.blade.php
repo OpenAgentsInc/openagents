@@ -13,7 +13,7 @@
                 <div sse-swap="event2"></div>
 
                 <p>Messages Catch-all:</p>
-                <div sse-swap="message" hx-swap="beforeend"></div>
+                <div sse-swap="message" hx-swap="beforeend" style="white-space: pre-wrap;"></div>
             </div>
 
             {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="message">--}}
@@ -43,7 +43,8 @@
             {{--                <div sse-swap="TestStream3"></div>--}}
             {{--            </div>--}}
 
-            <div class="flex-grow w-full overflow-y-auto flex flex-col items-center">
+            <div class=" flex-grow w-full overflow-y-auto flex flex-col items-center
+                ">
                 <x-htmx.messages-list :messages="$messages ?? null" :thread="$thread ?? null"/>
             </div>
             <x-htmx.chatbar/>
