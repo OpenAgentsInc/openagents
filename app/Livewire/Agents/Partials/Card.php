@@ -12,7 +12,7 @@ class Card extends Component
 
     public $agent;
 
-    public function mount($se7lectedAgent)
+    public function mount($selectedAgent)
     {
         $this->agent = Agent::find($selectedAgent['id']);
 
