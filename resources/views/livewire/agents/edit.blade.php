@@ -130,6 +130,12 @@
                               wire:model='is_public'/>
                 </div>
 
+
+                <div class="my-5 rounded border border-gray p-3">
+                    <x-switch label="Use community tools" description="Make this agent use community tools"
+                              wire:model='useTools'/>
+                </div>
+
                 <div class="mt-5 w-full text-center">
                     <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4">
                         Update Agent

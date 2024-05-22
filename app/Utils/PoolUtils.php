@@ -14,9 +14,9 @@ class PoolUtils
         return Uuid::v4()->toRfc4122();
     }
 
-    public static function sendRAGWarmUp($agentId, $threadId, $userId, $documents)
+    public static function sendRAGWarmUp($agentId, $threadId, $userId, $documents, $withTools = true)
     {
-        PoolUtils::sendRAGJob($agentId, $threadId, $userId, $documents, '', true, false);
+        PoolUtils::sendRAGJob($agentId, $threadId, $userId, $documents, '', true, $withTools);
     }
 
     public static function sendRAGJob($agentId, $threadId, $userId, $documents, $query, $warmUp = false, $withTools = true)
