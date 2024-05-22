@@ -11,11 +11,13 @@ use App\Models\AgentFile;
 use App\Models\Codebase;
 use App\Models\NostrJob;
 use App\Models\Thread;
+use App\Models\User;
 use App\Services\ImageService;
 use App\Services\LocalLogger;
 use App\Traits\SelectedModelOrAgentTrait;
 use App\Utils\PoolUtils;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
@@ -176,6 +178,7 @@ class Chat extends Component
                 'instructions' => $agent->prompt,
                 'image' => $agent->image_url,
                 'is_rag_ready' => $agent->is_rag_ready,
+                'use_tools' => $agent->use_tools,
                 'created_at' => $agent->updated_at,
             ];
             $this->selectedModel = '';
@@ -451,8 +454,9 @@ class Chat extends Component
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
+            $withTools = $this->selectedAgent['with_tools'] ?? false;
             // Send RAG Job
-            PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query);
+            PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $withTools, false);
 
         } catch (Exception $e) {
             $this->alert('error', 'An Error occurred, please try again later');

@@ -42,6 +42,7 @@ trait SelectedModelOrAgentTrait
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,
+            'use_tools' => $agent->use_tools,
             'created_at' => $agent->updated_at,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];
@@ -55,7 +56,7 @@ trait SelectedModelOrAgentTrait
     public function setModelOrAgentForThread(Thread $thread): void
     {
         $messages = $this->thread->messages()
-            ->with('agent:image,id,name,about,prompt,is_rag_ready,created_at,updated_at')
+            ->with('agent:image,id,name,about,prompt,is_rag_ready,created_at,updated_at,use_tools,capabilities')
             ->orderBy('created_at', 'asc')
             ->get()
             ->toArray();
@@ -92,6 +93,7 @@ trait SelectedModelOrAgentTrait
             'instructions' => $message['agent']['prompt'],
             'image' => $message['agent']['image_url'],
             'is_rag_ready' => $message['agent']['is_rag_ready'],
+            'use_tools' => $message['agent']['use_tools'],
             'created_at' => $message['agent']['updated_at'],
             'capabilities' => $this->safeDecode($message['agent']['capabilities'] ?? null),
         ];
@@ -106,6 +108,7 @@ trait SelectedModelOrAgentTrait
             'instructions' => $this->thread->agent->prompt,
             'image' => $this->thread->agent->image_url,
             'is_rag_ready' => $this->thread->agent->is_rag_ready,
+            'use_tools' => $this->thread->agent->use_tools,
             'created_at' => $this->thread->agent->updated_at,
             'capabilities' => $this->safeDecode($this->thread->agent->capabilities),
         ];
@@ -123,6 +126,7 @@ trait SelectedModelOrAgentTrait
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,
+            'use_tools' => $agent->use_tools,
             'created_at' => $agent->updated_at,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];
