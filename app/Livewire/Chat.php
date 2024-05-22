@@ -56,7 +56,6 @@ class Chat extends Component
 
     public function mount($id = null)
     {
-        Auth::login(User::first());
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
         }
@@ -179,6 +178,7 @@ class Chat extends Component
                 'instructions' => $agent->prompt,
                 'image' => $agent->image_url,
                 'is_rag_ready' => $agent->is_rag_ready,
+                'use_tools' => $agent->use_tools,
                 'created_at' => $agent->updated_at,
             ];
             $this->selectedModel = '';

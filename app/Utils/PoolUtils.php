@@ -16,10 +16,11 @@ class PoolUtils
 
     public static function sendRAGWarmUp($agentId, $threadId, $userId, $documents, $withTools = true)
     {
+
         PoolUtils::sendRAGJob($agentId, $threadId, $userId, $documents, '', $withTools, true);
     }
 
-    public static function sendRAGJob($agentId, $threadId, $userId, $documents, $query, $withTools = false, $warmUp = false)
+    public static function sendRAGJob($agentId, $threadId, $userId, $documents, $query, $withTools = true,$warmUp = false)
     {
         $logger = new OpenObserveLogger([
 
