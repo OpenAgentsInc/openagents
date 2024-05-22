@@ -5,9 +5,13 @@
         <x-htmx.sidebar/>
         <div class="flex flex-col w-full">
 
+            {{--            <div hx-ext="sse" sse-connect="/message-stream" sse-swap="message">--}}
+            {{--            </div>--}}
+
             <div hx-ext="sse" sse-connect="/message-stream">
                 <div sse-swap="TestStream"></div>
                 <div sse-swap="TestStream2"></div>
+                <div sse-swap="messagestreamtest"></div>
             </div>
 
             <div hx-ext="sse" sse-connect="/message-stream3">

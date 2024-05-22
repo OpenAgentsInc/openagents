@@ -2,10 +2,34 @@
 
 namespace App\Traits;
 
+use App\Services\LocalLogger;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 trait Streams
 {
+    public function stream($to, $content)
+    {
+        $logger = new LocalLogger();
+        $logger->log([
+            'to' => $to,
+            'content' => $content,
+        ]);
+
+        // Stream the response
+        $response = new StreamedResponse(function () use ($to, $content) {
+            echo "event: $to\n";
+            echo "data: $content\n\n";
+            ob_flush();
+            flush();
+        }, 200, [
+            'Cache-Control' => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'X-Accel-Buffering' => 'no',
+        ]);
+        // Send the response
+        $response->send();
+    }
+
     public function startStream(array $events): void
     {
         // Stream the response
