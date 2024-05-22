@@ -26,14 +26,15 @@ class ChatController extends Controller
         $i = 0;
         $this->startStream(function () use (&$i) {
             // Send an initial named event
-            echo "event: message\n";
-            echo "data: <div>Hello, world!</div>\n\n";
+            echo "event: TestStream\n";
+            //            echo "data: <div>Hello, world!</div>\n\n";
             ob_flush();
             flush();
 
             // Keep the connection alive
             while (true) {
                 $i++;
+                echo "event: TestStream\n";
                 echo "data: <div>Hello, world!!!!! $i </div>\n\n";
                 ob_flush();
                 flush();
