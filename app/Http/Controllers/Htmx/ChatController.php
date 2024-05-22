@@ -44,4 +44,21 @@ class ChatController extends Controller
         // Call the startStream method with the events array
         $this->startStream($events);
     }
+
+    public function stream3()
+    {
+        // Define the callbacks and event names for streaming
+        $events = [
+            [
+                'name' => 'TestStream3',
+                'callback' => function ($i, $eventName) {
+                    echo "event: $eventName\n";
+                    echo "data: <div>Yooooooo $i </div>\n\n";
+                },
+            ],
+        ];
+
+        // Call the startStream method with the events array
+        $this->startStream($events);
+    }
 }
