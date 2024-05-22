@@ -28,6 +28,7 @@ class Card extends Component
             'id' => $this->agent->id,
             'name' => $this->agent->name,
             'description' => $this->agent->about,
+            'use_tools' => $this->agent->use_tools,
             'instructions' => $this->agent->message,
         ];
     }
