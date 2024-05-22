@@ -53,7 +53,10 @@ Route::get('/', function () {
 // CHAT
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
+
+// CHAT - HTMX REFACTOR
 Route::get('/chatmx', [ChatController::class, 'index']);
+Route::post('/message', [ChatController::class, 'store']);
 
 // AGENTS
 Route::get('/agents', Index::class)->name('agents');
