@@ -34,22 +34,25 @@ class StreamService
             if ($event) {
                 $eventData = json_decode($event, true);
                 echo "event: {$eventData['event']}\n";
-                echo 'data: '.json_encode($eventData['data'])."\n\n";
+                echo 'data: '.$eventData['data']."\n\n";
                 ob_flush();
                 flush();
+                sleep(0.01);
+            } else {
+                sleep(0.05);
             }
 
             // Send keep-alive message every 10 seconds
-            if ($keepAliveCount >= 10) {
-                echo "event: keep-alive\n";
-                echo "data: \n\n";
-                ob_flush();
-                flush();
-                $keepAliveCount = 0;
-            }
+            //            if ($keepAliveCount >= 10) {
+            //                echo "event: keep-alive\n";
+            //                echo "data: \n\n";
+            //                ob_flush();
+            //                flush();
+            //                $keepAliveCount = 0;
+            //            }
 
-            $keepAliveCount++;
-            sleep(1);
+            //            $keepAliveCount++;
+            //            sleep(0.01);
         }
     }
 
