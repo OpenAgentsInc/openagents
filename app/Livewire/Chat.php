@@ -254,7 +254,7 @@ class Chat extends Component
                 $this->js('$wire.runAgentWithoutRag()');
             } else {
                 $docCount = AgentFile::where('agent_id', $this->selectedAgent['id'])->count();
-                if ($docCount > 0) {
+                if ($docCount > 0 || $agent->use_tools) {
                     // Log::debug('RAG Run');
                     $this->js('$wire.ragRun()');
                 } else {
