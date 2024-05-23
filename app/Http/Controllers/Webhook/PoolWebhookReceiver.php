@@ -24,46 +24,25 @@ class PoolWebhookReceiver extends Controller
 
         if ($data[0] == 'Job') { // Handle job Event
             $payload = $data[1];
-            $status = $payload['state']['status'];
+            $logger->log('info', 'Received Job Update' . json_encode($payload));
 
-            if ($status == 2) {
-                $logger->log('error', 'Event with status 2: '.json_encode($payload));
-                $logger->close();
-
-                return [
-                    'status' => 'success',
-                    'message' => 'error logged',
-                ];
-            } elseif ($status == 3) {
-                $logger->log('info', 'Event with status 3: '.json_encode($payload));
-                $job_id = $payload['id'];
-                $content = $payload['result']['content'];
-
-                $result = [
-                    'payload' => $payload,
-                    'job_id' => $job_id,
-                    'content' => $content,
-                ];
-
+            $states = $payload['results'];
+            foreach ($states as $state) {
+                $status = $state['status'];
+                if($status == 3){
+                    $job_id = $payload['id'];
+                    $content = $payload['result']['content'];
+                }
+                $job_id = $state['id'];
+                $content = $state['result']["content"];
                 JobResultReceiverJob::dispatch($job_id, $content, $payload);
-                $logger->close();
-
-                return [
-                    'status' => 'success',
-                    'message' => 'data processed',
-                    'data' => $result,
-                ];
-            } else {
-                $logger->log('info', 'Event with status '.$status.': '.json_encode($payload));
-                $logger->close();
-
-                return [
-                    'status' => 'success',
-                    'message' => 'data skipped',
-                ];
+                break;
             }
-        } else { // Handle Event Event
-            // do nothing
+
+            return [
+                'status' => 'success',
+                'message' => 'received',
+            ];
         }
     }
 }
