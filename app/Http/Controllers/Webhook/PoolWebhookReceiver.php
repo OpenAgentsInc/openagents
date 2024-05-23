@@ -24,19 +24,18 @@ class PoolWebhookReceiver extends Controller
 
         if ($data[0] == 'Job') { // Handle job Event
             $payload = $data[1];
-            $logger->log('info', 'Received Job Update' . json_encode($payload));
+            $logger->log('info', 'Received Job Update'.json_encode($payload));
+            $logger->close();
 
             $states = $payload['results'];
             foreach ($states as $state) {
                 $status = $state['status'];
-                if($status == 3){
+                if ($status == 3) {
                     $job_id = $payload['id'];
-                    $content = $payload['result']['content'];
+                    $content = $state['result']['content'];
+                    JobResultReceiverJob::dispatch($job_id, $content, $payload);
+                    break;
                 }
-                $job_id = $state['id'];
-                $content = $state['result']["content"];
-                JobResultReceiverJob::dispatch($job_id, $content, $payload);
-                break;
             }
 
             return [
