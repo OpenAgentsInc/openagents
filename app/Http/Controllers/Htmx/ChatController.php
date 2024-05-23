@@ -5,10 +5,7 @@ namespace App\Http\Controllers\Htmx;
 use App\AI\SimpleInferencer;
 use App\Http\Controllers\Controller;
 use App\Models\Thread;
-use App\Services\LocalLogger;
 use App\Traits\Streams;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 
 class ChatController extends Controller
@@ -42,25 +39,6 @@ class ChatController extends Controller
         return response()->noContent();
     }
 
-    private function addMessageToQueue($message)
-    {
-        $lock = Cache::lock('message_queue_lock', 10); // 10-second lock
-
-        try {
-            if ($lock->get()) {
-                // Retrieve the messages, update the queue, and store it back
-                $messages = Cache::get('message_queue', []);
-                $messages[] = $message;
-                Cache::put('message_queue', $messages);
-            } else {
-                // Log if unable to acquire the lock
-                Log::warning('Unable to acquire lock for updating message queue');
-            }
-        } finally {
-            $lock->release();
-        }
-    }
-
     private function processInference($input, $thread_id)
     {
         $thread = Thread::findOrFail($thread_id);
@@ -78,11 +56,10 @@ class ChatController extends Controller
         ]);
 
         $inference = new SimpleInferencer();
-        $logger = new LocalLogger();
+
         $output = $inference->inference($input, 'gpt-4o', $thread, function ($content) {
             $inferenceMessage = '<span>'.nl2br(e($content)).'</span>';
             //            $inferenceMessage = '<pre>'.htmlspecialchars($content).'</pre>';
-
             //            $inferenceMessage = nl2br(e($content));
 
             $this->addMessageToQueue($inferenceMessage);
