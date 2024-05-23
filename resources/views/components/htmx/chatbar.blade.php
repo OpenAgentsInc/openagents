@@ -2,6 +2,9 @@
     <div class="sm:w-[584px] lg:w-[768px] mx-auto relative">
         <form hx-post="/message" hx-trigger="submit" hx-swap="none" hx-on="htmx:afterRequest: resetTextarea()">
             @csrf
+            <!-- hidden field with the thread ID from the path like /chat/2 would be 2. Use path from request minus chatmx/ -->
+            <input type="hidden" name="thread_id" value="{{ last(explode('/', request()->path())) }}"/>
+
             <textarea id="message-input" name="message-input" minRows="1" placeholder="Message OpenAgents..."
                       min-rows="1" max-rows="12"
                       autofocus
