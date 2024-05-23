@@ -21,15 +21,15 @@ class StreamService
 
     public function keepAlive()
     {
-        $keepAliveCount = 0;
-
         echo "event: handshake\n";
         echo "data: \n\n";
         ob_flush();
         flush();
 
+        $lastKeepAliveTime = microtime(true);
+
         while (true) {
-            // TODO: Read off the queue and echo
+            // Read off the queue and echo
             $event = Redis::lpop('stream_events');
             if ($event) {
                 $eventData = json_decode($event, true);
@@ -42,17 +42,14 @@ class StreamService
                 sleep(0.05);
             }
 
-            // Send keep-alive message every 10 seconds
-            //            if ($keepAliveCount >= 10) {
-            //                echo "event: keep-alive\n";
-            //                echo "data: \n\n";
-            //                ob_flush();
-            //                flush();
-            //                $keepAliveCount = 0;
-            //            }
-
-            //            $keepAliveCount++;
-            //            sleep(0.01);
+            // Check if 10 seconds have passed since last keep-alive
+            if (microtime(true) - $lastKeepAliveTime >= 10) {
+                echo "event: keep-alive\n";
+                echo "data: \n\n";
+                ob_flush();
+                flush();
+                $lastKeepAliveTime = microtime(true); // Reset the timer
+            }
         }
     }
 
