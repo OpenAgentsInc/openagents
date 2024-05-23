@@ -2,8 +2,7 @@
 
 namespace App\Services;
 
-use App\Events\StreamMessage;
-use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Redis;
 
 class StreamService
 {
@@ -24,7 +23,22 @@ class StreamService
     {
         $keepAliveCount = 0;
 
+        echo "event: handshake\n";
+        echo "data: \n\n";
+        ob_flush();
+        flush();
+
         while (true) {
+            // TODO: Read off the queue and echo
+            $event = Redis::lpop('stream_events');
+            if ($event) {
+                $eventData = json_decode($event, true);
+                echo "event: {$eventData['event']}\n";
+                echo 'data: '.json_encode($eventData['data'])."\n\n";
+                ob_flush();
+                flush();
+            }
+
             // Send keep-alive message every 10 seconds
             if ($keepAliveCount >= 10) {
                 echo "event: keep-alive\n";
@@ -41,6 +55,10 @@ class StreamService
 
     public function stream($eventName, $data)
     {
-        Event::dispatch(new StreamMessage($eventName, $data));
+        // Push to the Redis queue
+        Redis::rpush('stream_events', json_encode([
+            'event' => $eventName,
+            'data' => $data,
+        ]));
     }
 }
