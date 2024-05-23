@@ -454,7 +454,8 @@ class Chat extends Component
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
-            $withTools = $this->selectedAgent['with_tools'] ?? false;
+            $withTools = (bool) $this->selectedAgent['use_tools'];
+
             // Send RAG Job
             PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $withTools);
 
