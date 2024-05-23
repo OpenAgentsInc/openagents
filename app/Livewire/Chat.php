@@ -56,7 +56,6 @@ class Chat extends Component
 
     public function mount($id = null)
     {
-        Auth::login(User::find(1));
         if (request()->query('model')) {
             session()->put('selectedModel', request()->query('model'));
         }
