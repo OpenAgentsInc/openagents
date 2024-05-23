@@ -3,63 +3,77 @@
 namespace App\Traits;
 
 use App\Services\LocalLogger;
-use Illuminate\Support\Facades\Cache;
+use App\Services\StreamService;
 
 trait Streams
 {
-    private static $headersSent = false;
+    protected StreamService $streamService;
 
-    public function initializeStream()
+    protected LocalLogger $logger;
+
+    public function __construct(StreamService $streamService, LocalLogger $localLogger)
     {
-        if (! self::$headersSent) {
-            header('Content-Type: text/event-stream');
-            header('Cache-Control: no-cache');
-            header('Connection: keep-alive');
-            header('X-Accel-Buffering: no');
-            self::$headersSent = true;
-        }
+        $this->streamService = $streamService;
+        $this->logger = $localLogger;
     }
 
-    public function keepAlive()
+    public function startStream()
     {
-        $keepAliveCount = 0;
-
-        $logger = new LocalLogger();
-
-        while (true) {
-            // Retrieve the message queue from cache
-            $messages = Cache::get('message_queue', []);
-
-            if (! empty($messages)) {
-                // Stream each message
-                foreach ($messages as $message) {
-                    $logger->log('Message streamed:'.$message);
-                    $this->stream('message', $message);
-                }
-
-                // Clear the message queue after processing
-                Cache::put('message_queue', []);
-            }
-
-            // Send keep-alive message every 10 iterations (e.g., every second if sleep is 0.1s)
-            if ($keepAliveCount >= 10) {
-                echo "event: keep-alive\n";
-                echo "data: \n\n";
-                ob_flush();
-                flush();
-                $keepAliveCount = 0;
-            }
-
-            $keepAliveCount++;
-            usleep(100000); // Sleep for 100 milliseconds (0.1 seconds)
-        }
+        $this->streamService->initializeStream();
+        $this->logger->log('Stream initialized.');
+        $this->streamService->keepAlive();
     }
 
-    public function stream($eventName, $data)
-    {
-        echo "event: {$eventName}\n";
-        echo 'data: '.$data."\n\n";
-        ob_flush();
-        flush();
-    }
+    //    private static $headersSent = false;
+    //
+    //    public function initializeStream()
+    //    {
+    //        if (! self::$headersSent) {
+    //            header('Content-Type: text/event-stream');
+    //            header('Cache-Control: no-cache');
+    //            header('Connection: keep-alive');
+    //            header('X-Accel-Buffering: no');
+    //            self::$headersSent = true;
+    //        }
+    //    }
+    //
+    //    public function keepAlive()
+    //    {
+    //        $keepAliveCount = 0;
+    //
+    //        while (true) {
+    //            // Retrieve the message queue from cache
+    //            $messages = Cache::get('message_queue', []);
+    //
+    //            if (! empty($messages)) {
+    //                // Stream each message
+    //                foreach ($messages as $message) {
+    //                    $this->stream('message', $message);
+    //                }
+    //
+    //                // Clear the message queue after processing
+    //                Cache::put('message_queue', []);
+    //            }
+    //
+    //            // Send keep-alive message every 10 iterations (e.g., every second if sleep is 0.1s)
+    //            if ($keepAliveCount >= 10) {
+    //                echo "event: keep-alive\n";
+    //                echo "data: \n\n";
+    //                ob_flush();
+    //                flush();
+    //                $keepAliveCount = 0;
+    //            }
+    //
+    //            $keepAliveCount++;
+    //            usleep(100000); // Sleep for 100 milliseconds (0.1 seconds)
+    //        }
+    //    }
+    //
+    //    public function stream($eventName, $data)
+    //    {
+    //        echo "event: {$eventName}\n";
+    //        echo 'data: '.$data."\n\n";
+    //        ob_flush();
+    //        flush();
+    //    }
 }

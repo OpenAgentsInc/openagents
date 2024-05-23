@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Services\LocalLogger;
 use App\Services\SharedContextService;
+use App\Services\StreamService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -14,6 +16,14 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(SharedContextService::class, function ($app) {
             return new SharedContextService();
+        });
+
+        $this->app->singleton(StreamService::class, function ($app) {
+            return new StreamService();
+        });
+
+        $this->app->singleton(LocalLogger::class, function ($app) {
+            return new LocalLogger();
         });
     }
 
