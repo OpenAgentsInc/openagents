@@ -21,6 +21,8 @@ class StreamService
 
     public function keepAlive()
     {
+        set_time_limit(0);
+
         echo "event: handshake\n";
         echo "data: \n\n";
         ob_flush();
