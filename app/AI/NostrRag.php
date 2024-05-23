@@ -56,7 +56,7 @@ class NostrRag
         }
         // Construct the prompt with the chat history
         $content = "\
-Given the following chat history between user and assistant, answer with a fully qualified short standalone question to retrieve more context.
+Given the following chat history between user and assistant, answer with a fully qualified standalone and short question that summarizes the user's question.
 
 CHAT HISTORY:
 $chatHistory
