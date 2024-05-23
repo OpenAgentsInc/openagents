@@ -2,7 +2,8 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Cache;
+use App\Events\StreamMessage;
+use Illuminate\Support\Facades\Event;
 
 class StreamService
 {
@@ -24,21 +25,7 @@ class StreamService
         $keepAliveCount = 0;
 
         while (true) {
-            // Retrieve the message queue from cache
-            $messages = Cache::get('message_queue', []);
-
-            if (! empty($messages)) {
-                // Stream each message
-                foreach ($messages as $message) {
-                    echo 'Message streamed:'.$message.PHP_EOL;
-                    $this->stream('message', $message);
-                }
-
-                // Clear the message queue after processing
-                Cache::put('message_queue', []);
-            }
-
-            // Send keep-alive message every 10 iterations (e.g., every second if sleep is 0.1s)
+            // Send keep-alive message every 10 seconds
             if ($keepAliveCount >= 10) {
                 echo "event: keep-alive\n";
                 echo "data: \n\n";
@@ -48,15 +35,12 @@ class StreamService
             }
 
             $keepAliveCount++;
-            usleep(100000); // Sleep for 100 milliseconds (0.1 seconds)
+            sleep(1);
         }
     }
 
     public function stream($eventName, $data)
     {
-        echo "event: {$eventName}\n";
-        echo 'data: '.$data."\n\n";
-        ob_flush();
-        flush();
+        Event::dispatch(new StreamMessage($eventName, $data));
     }
 }

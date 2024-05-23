@@ -32,7 +32,7 @@ class ChatController extends Controller
         $input = request('message-input');
         $thread_id = request('thread_id');
 
-        $this->addMessageToQueue('<br />'.$input.'<br />');
+        $this->stream('<br />'.$input.'<br />');
 
         $this->processInference($input, $thread_id);
 
@@ -62,7 +62,8 @@ class ChatController extends Controller
             //            $inferenceMessage = '<pre>'.htmlspecialchars($content).'</pre>';
             //            $inferenceMessage = nl2br(e($content));
 
-            $this->addMessageToQueue($inferenceMessage);
+            $this->stream($inferenceMessage);
+            //            $this->addMessageToQueue($inferenceMessage);
         });
 
         // Append the response to the chat
