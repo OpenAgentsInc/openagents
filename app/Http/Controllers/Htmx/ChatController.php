@@ -30,7 +30,8 @@ class ChatController extends Controller
         auth()->user()->increment('credits', $randomNumber);
 
         // Then stream the updated balance
-        $this->stream(auth()->user()->credits);
+        $this->stream('BalanceUpdate', auth()->user()->credits);
+        $this->stream('StatusMessage', 'You got paid '.$randomNumber.' sats!');
 
         return response()->noContent();
     }
