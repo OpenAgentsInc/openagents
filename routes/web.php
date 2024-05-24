@@ -52,6 +52,11 @@ Route::get('/', function () {
     return redirect()->route('chat');
 })->name('home');
 
+// dump phpinfo
+Route::get('/phpinfo', function () {
+    phpinfo();
+});
+
 // CHAT
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
