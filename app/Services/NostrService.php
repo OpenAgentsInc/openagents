@@ -9,7 +9,9 @@ use App\Grpc\nostr\RpcRequestJob;
 use Exception;
 use Grpc\ChannelCredentials;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 
+// TODO: Rename this to AgentService
 class NostrService
 {
     protected $poolAddress;
@@ -35,6 +37,8 @@ class NostrService
     protected $uuid = '';
 
     protected bool $useTools = false;
+
+    protected array $toolsWhitelist = [];
 
     public function poolAddress($poolAddress)
     {
@@ -120,6 +124,18 @@ class NostrService
         return $this;
     }
 
+    public function setToolsWhitelist(array $toolsWhitelist)
+    {
+        foreach ($toolsWhitelist as $tool) {
+            if (!is_string($tool)) {
+                throw new InvalidArgumentException('All elements of toolWhitelist must be strings.');
+            }
+        }
+        $this->toolsWhitelist = $toolsWhitelist;
+
+        return $this;
+    }
+
     public function execute()
     {
 
@@ -168,11 +184,14 @@ class NostrService
         $param8 = new JobParam();
         $param8->setKey('use-tools')->setValue([$this->useTools ? 'true' : 'false']);
 
+        $param9 = new JobParam();
+        $param9->setKey('tools-whitelist')->setValue($this->toolsWhitelist);
+
         // TAG for debugging
         $chatuitag = new JobParam();
         $chatuitag->setKey('chatui')->setValue(['true']);
 
-        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7, $param8, $chatuitag]);
+        $requestJob->setParam([$param1, $param2, $param3, $param4, $param5, $param6, $param7, $param8, $param9, $chatuitag]);
 
         $requestJob->setDescription('RAG pipeline');
         $requestJob->setKind(5003);
