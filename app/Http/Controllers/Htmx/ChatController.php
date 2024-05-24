@@ -29,11 +29,15 @@ class ChatController extends Controller
         // Increment the user's credits by the random number
         auth()->user()->increment('credits', $randomNumber);
 
+        $this->logger->log("Incremented user's credits by $randomNumber sats");
+
         // Then stream the updated balance
         sleep(0.1);
         $this->stream('BalanceUpdate', auth()->user()->credits);
+        $this->logger->log('Streamed updated balance to the user '.$randomNumber);
         sleep(0.1);
         $this->stream('StatusMessage', 'You got paid '.$randomNumber.' sats!');
+        $this->logger->log('Streamed status message to the user '.$randomNumber);
 
         return response()->noContent();
     }

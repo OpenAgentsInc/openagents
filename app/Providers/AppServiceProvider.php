@@ -13,12 +13,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        $this->app->singleton(StreamService::class, function ($app) {
-            return new StreamService();
-        });
-
         $this->app->singleton(LocalLogger::class, function ($app) {
             return new LocalLogger();
+        });
+
+        $this->app->singleton(StreamService::class, function ($app) {
+            return new StreamService();
         });
     }
 
