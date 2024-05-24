@@ -72,14 +72,25 @@ class Job extends \Google\Protobuf\Internal\Message
     private $relays;
 
     /**
+     **
+     * Deprecated
+     *
      * Generated from protobuf field <code>.JobResult result = 12;</code>
      */
     protected $result = null;
 
     /**
+     **
+     * Deprecated
+     *
      * Generated from protobuf field <code>.JobState state = 11;</code>
      */
     protected $state = null;
+
+    /**
+     * Generated from protobuf field <code>repeated .JobState results = 18;</code>
+     */
+    private $results;
 
     /**
      * enforced by the provider
@@ -125,7 +136,12 @@ class Job extends \Google\Protobuf\Internal\Message
      * @type string $provider
      * @type array<string>|\Google\Protobuf\Internal\RepeatedField $relays
      * @type \App\Grpc\nostr\JobResult $result
+     *                                 *
+     *                                 Deprecated
      * @type \App\Grpc\nostr\JobState $state
+     *                                *
+     *                                Deprecated
+     * @type array<\App\Grpc\nostr\JobState>|\Google\Protobuf\Internal\RepeatedField $results
      * @type int|string $maxExecutionTime
      *                  enforced by the provider
      * @type string $nodeId
@@ -413,6 +429,9 @@ class Job extends \Google\Protobuf\Internal\Message
     }
 
     /**
+     **
+     * Deprecated
+     *
      * Generated from protobuf field <code>.JobResult result = 12;</code>
      *
      * @return \App\Grpc\nostr\JobResult|null
@@ -433,6 +452,9 @@ class Job extends \Google\Protobuf\Internal\Message
     }
 
     /**
+     **
+     * Deprecated
+     *
      * Generated from protobuf field <code>.JobResult result = 12;</code>
      *
      * @param  \App\Grpc\nostr\JobResult  $var
@@ -447,6 +469,9 @@ class Job extends \Google\Protobuf\Internal\Message
     }
 
     /**
+     **
+     * Deprecated
+     *
      * Generated from protobuf field <code>.JobState state = 11;</code>
      *
      * @return \App\Grpc\nostr\JobState|null
@@ -467,6 +492,9 @@ class Job extends \Google\Protobuf\Internal\Message
     }
 
     /**
+     **
+     * Deprecated
+     *
      * Generated from protobuf field <code>.JobState state = 11;</code>
      *
      * @param  \App\Grpc\nostr\JobState  $var
@@ -476,6 +504,30 @@ class Job extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkMessage($var, \App\Grpc\nostr\JobState::class);
         $this->state = $var;
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>repeated .JobState results = 18;</code>
+     *
+     * @return \Google\Protobuf\Internal\RepeatedField
+     */
+    public function getResults()
+    {
+        return $this->results;
+    }
+
+    /**
+     * Generated from protobuf field <code>repeated .JobState results = 18;</code>
+     *
+     * @param  array<\App\Grpc\nostr\JobState>|\Google\Protobuf\Internal\RepeatedField  $var
+     * @return $this
+     */
+    public function setResults($var)
+    {
+        $arr = GPBUtil::checkRepeatedField($var, \Google\Protobuf\Internal\GPBType::MESSAGE, \App\Grpc\nostr\JobState::class);
+        $this->results = $arr;
 
         return $this;
     }

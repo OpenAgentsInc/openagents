@@ -18,10 +18,11 @@ class JobState
         }
         \App\Grpc\nostr\GPBMetadata\Log::initOnce();
         \App\Grpc\nostr\GPBMetadata\JobStatus::initOnce();
+        \App\Grpc\nostr\GPBMetadata\JobResult::initOnce();
         $pool->internalAddGeneratedFile(
             '
-Ð
-JobState.protoJobStatus.proto"u
+–
+JobState.protoJobStatus.protoJobResult.proto"©
 JobState
 
 acceptedAt (
@@ -30,7 +31,10 @@ acceptedBy (	
 status (2
 .JobStatus
 logs (2.Log
-	timestamp (B.ÊApp\\Grpc\\nostrâApp\\Grpc\\nostr\\GPBMetadatabproto3', true);
+	timestamp (
+result (2
+.JobResult
+acceptedByNode (	B.ÊApp\\Grpc\\nostrâApp\\Grpc\\nostr\\GPBMetadatabproto3', true);
 
         static::$is_initialized = true;
     }
