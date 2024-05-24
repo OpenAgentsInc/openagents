@@ -12,6 +12,29 @@ class ChatController extends Controller
 {
     use Streams;
 
+    public function creditBalance()
+    {
+        // Assuming you have a User model with a credits attribute
+        $credits = auth()->user()->credits;
+
+        // Return the credit balance as a simple plain text response
+        return response($credits);
+    }
+
+    public function payme()
+    {
+        // Pick a random integer between 1 and 50
+        $randomNumber = random_int(1, 50);
+
+        // Increment the user's credits by the random number
+        auth()->user()->increment('credits', $randomNumber);
+
+        // Then stream the updated balance
+        $this->stream(auth()->user()->credits);
+
+        return response()->noContent();
+    }
+
     public function sseStreamTest()
     {
         return view('htmx.sse-stream');
