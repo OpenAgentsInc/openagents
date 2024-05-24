@@ -56,6 +56,8 @@ Route::get('/chat/{id}', Chat::class)->name('chat.id');
 Route::get('/chatmx', [ChatController::class, 'index']);
 Route::post('/message', [ChatController::class, 'store']);
 
+Route::get('/credit-balance', [ChatController::class, 'creditBalance']);
+
 Route::get('/stream', [ChatController::class, 'sseStream']);
 Route::get('/streamtest', [ChatController::class, 'sseStreamTest']);
 

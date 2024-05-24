@@ -6,7 +6,7 @@
 
     <div class="p-2 border-offblack text-text border shadow-lg rounded-lg" hx-ext="sse" sse-connect="/stream">
         ₿
-        <span sse-swap="message">0</span>
+        <span sse-swap="message" hx-get="/credit-balance" hx-trigger="load">--</span>
     </div>
 </div>
 @endpro
