@@ -15,7 +15,7 @@
                 @endauth
             </div>
             <div class="w-full overflow-y-auto flex flex-col items-center">
-                <div class="prose prose-invert messages max-w-4xl flex flex-col text-sm pb-9" style="">
+                <div class="w-full prose prose-invert messages max-w-4xl flex flex-col text-sm pb-9" style="">
                     <div class="xl:-ml-[50px] pt-8 chat">
                         @if (count($messages) === 0 && !$hasSelection)
                             <div class="w-full h-[70vh] flex flex-col justify-center">
