@@ -63,6 +63,11 @@ class RpcRequestJob extends \Google\Protobuf\Internal\Message
     protected $userId = null;
 
     /**
+     * Generated from protobuf field <code>optional uint32 minWorkers = 12;</code>
+     */
+    protected $minWorkers = null;
+
+    /**
      * Constructor.
      *
      * @param  array  $data  {
@@ -78,7 +83,8 @@ class RpcRequestJob extends \Google\Protobuf\Internal\Message
      * @type string $requestProvider
      * @type bool $encrypted
      * @type string $userId
-     *              }
+     * @type int $minWorkers
+     *           }
      */
     public function __construct($data = null)
     {
@@ -372,6 +378,40 @@ class RpcRequestJob extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkString($var, true);
         $this->userId = $var;
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>optional uint32 minWorkers = 12;</code>
+     *
+     * @return int
+     */
+    public function getMinWorkers()
+    {
+        return isset($this->minWorkers) ? $this->minWorkers : 0;
+    }
+
+    public function hasMinWorkers()
+    {
+        return isset($this->minWorkers);
+    }
+
+    public function clearMinWorkers()
+    {
+        unset($this->minWorkers);
+    }
+
+    /**
+     * Generated from protobuf field <code>optional uint32 minWorkers = 12;</code>
+     *
+     * @param  int  $var
+     * @return $this
+     */
+    public function setMinWorkers($var)
+    {
+        GPBUtil::checkUint32($var);
+        $this->minWorkers = $var;
 
         return $this;
     }

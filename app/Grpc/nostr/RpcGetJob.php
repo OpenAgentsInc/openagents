@@ -25,6 +25,13 @@ class RpcGetJob extends \Google\Protobuf\Internal\Message
     protected $wait = null;
 
     /**
+     * max number of results to wait for
+     *
+     * Generated from protobuf field <code>optional uint32 nResultsToWait = 100;</code>
+     */
+    protected $nResultsToWait = null;
+
+    /**
      * Constructor.
      *
      * @param  array  $data  {
@@ -33,6 +40,8 @@ class RpcGetJob extends \Google\Protobuf\Internal\Message
      * @type string $jobId
      * @type int $wait
      *           max time to wait in ms , 0 or unset means no wait
+     * @type int $nResultsToWait
+     *           max number of results to wait for
      *           }
      */
     public function __construct($data = null)
@@ -99,6 +108,44 @@ class RpcGetJob extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkUint32($var);
         $this->wait = $var;
+
+        return $this;
+    }
+
+    /**
+     * max number of results to wait for
+     *
+     * Generated from protobuf field <code>optional uint32 nResultsToWait = 100;</code>
+     *
+     * @return int
+     */
+    public function getNResultsToWait()
+    {
+        return isset($this->nResultsToWait) ? $this->nResultsToWait : 0;
+    }
+
+    public function hasNResultsToWait()
+    {
+        return isset($this->nResultsToWait);
+    }
+
+    public function clearNResultsToWait()
+    {
+        unset($this->nResultsToWait);
+    }
+
+    /**
+     * max number of results to wait for
+     *
+     * Generated from protobuf field <code>optional uint32 nResultsToWait = 100;</code>
+     *
+     * @param  int  $var
+     * @return $this
+     */
+    public function setNResultsToWait($var)
+    {
+        GPBUtil::checkUint32($var);
+        $this->nResultsToWait = $var;
 
         return $this;
     }

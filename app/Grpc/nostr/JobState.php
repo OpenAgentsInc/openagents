@@ -38,6 +38,16 @@ class JobState extends \Google\Protobuf\Internal\Message
     protected $timestamp = 0;
 
     /**
+     * Generated from protobuf field <code>.JobResult result = 19;</code>
+     */
+    protected $result = null;
+
+    /**
+     * Generated from protobuf field <code>string acceptedByNode = 20;</code>
+     */
+    protected $acceptedByNode = '';
+
+    /**
      * Constructor.
      *
      * @param  array  $data  {
@@ -48,7 +58,9 @@ class JobState extends \Google\Protobuf\Internal\Message
      * @type int $status
      * @type array<\App\Grpc\nostr\Log>|\Google\Protobuf\Internal\RepeatedField $logs
      * @type int|string $timestamp
-     *                  }
+     * @type \App\Grpc\nostr\JobResult $result
+     * @type string $acceptedByNode
+     *              }
      */
     public function __construct($data = null)
     {
@@ -172,6 +184,64 @@ class JobState extends \Google\Protobuf\Internal\Message
     {
         GPBUtil::checkUint64($var);
         $this->timestamp = $var;
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>.JobResult result = 19;</code>
+     *
+     * @return \App\Grpc\nostr\JobResult|null
+     */
+    public function getResult()
+    {
+        return $this->result;
+    }
+
+    public function hasResult()
+    {
+        return isset($this->result);
+    }
+
+    public function clearResult()
+    {
+        unset($this->result);
+    }
+
+    /**
+     * Generated from protobuf field <code>.JobResult result = 19;</code>
+     *
+     * @param  \App\Grpc\nostr\JobResult  $var
+     * @return $this
+     */
+    public function setResult($var)
+    {
+        GPBUtil::checkMessage($var, \App\Grpc\nostr\JobResult::class);
+        $this->result = $var;
+
+        return $this;
+    }
+
+    /**
+     * Generated from protobuf field <code>string acceptedByNode = 20;</code>
+     *
+     * @return string
+     */
+    public function getAcceptedByNode()
+    {
+        return $this->acceptedByNode;
+    }
+
+    /**
+     * Generated from protobuf field <code>string acceptedByNode = 20;</code>
+     *
+     * @param  string  $var
+     * @return $this
+     */
+    public function setAcceptedByNode($var)
+    {
+        GPBUtil::checkString($var, true);
+        $this->acceptedByNode = $var;
 
         return $this;
     }
