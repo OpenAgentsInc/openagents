@@ -29,8 +29,6 @@ class StreamService
 
     public function keepAlive()
     {
-        set_time_limit(0);
-
         echo "event: handshake\n";
         echo "data: \n\n";
         ob_flush();
@@ -43,11 +41,11 @@ class StreamService
             $event = Redis::lpop('stream_events');
             if ($event) {
                 $eventData = json_decode($event, true);
-                $this->logger->log('Streaming event: '.$eventData['event']);
                 echo "event: {$eventData['event']}\n";
                 echo 'data: '.$eventData['data']."\n\n";
                 ob_flush();
                 flush();
+                $this->logger->log('Streamed event: '.$eventData['event']);
                 sleep(0.01);
             } else {
                 sleep(0.05);
