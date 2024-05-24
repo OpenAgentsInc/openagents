@@ -7,9 +7,9 @@ use App\Services\StreamService;
 
 trait Streams
 {
-    protected StreamService $streamService;
+    public LocalLogger $logger;
 
-    protected LocalLogger $logger;
+    protected StreamService $streamService;
 
     public function __construct(StreamService $streamService, LocalLogger $localLogger)
     {

@@ -8,6 +8,14 @@ class StreamService
 {
     private static $headersSent = false;
 
+    private LocalLogger $logger;
+
+    public function __construct()
+    {
+        $localLogger = app(LocalLogger::class);
+        $this->logger = $localLogger;
+    }
+
     public function initializeStream()
     {
         if (! self::$headersSent) {
@@ -35,6 +43,7 @@ class StreamService
             $event = Redis::lpop('stream_events');
             if ($event) {
                 $eventData = json_decode($event, true);
+                $this->logger->log('Streaming event: '.$eventData['event']);
                 echo "event: {$eventData['event']}\n";
                 echo 'data: '.$eventData['data']."\n\n";
                 ob_flush();
