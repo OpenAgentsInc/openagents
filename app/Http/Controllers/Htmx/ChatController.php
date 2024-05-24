@@ -60,7 +60,7 @@ class ChatController extends Controller
         $input = request('message-input');
         $thread_id = request('thread_id');
 
-        $this->stream('<br />'.$input.'<br />');
+        $this->stream('message', '<br />'.$input.'<br />');
 
         $this->processInference($input, $thread_id);
 
