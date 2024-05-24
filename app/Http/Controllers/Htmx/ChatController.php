@@ -12,6 +12,16 @@ class ChatController extends Controller
 {
     use Streams;
 
+    public function payme()
+    {
+        // Pick a random integer between 1 and 50
+        $randomNumber = random_int(1, 50);
+
+        $this->stream($randomNumber);
+
+        return response()->noContent();
+    }
+
     public function sseStreamTest()
     {
         return view('htmx.sse-stream');
