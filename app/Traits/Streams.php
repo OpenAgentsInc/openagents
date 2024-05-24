@@ -24,8 +24,8 @@ trait Streams
         $this->streamService->keepAlive();
     }
 
-    public function stream($message)
+    public function stream($eventName, $message)
     {
-        $this->streamService->stream('message', $message);
+        $this->streamService->stream($eventName, $message);
     }
 }
