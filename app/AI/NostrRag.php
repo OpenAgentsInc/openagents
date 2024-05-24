@@ -56,12 +56,12 @@ class NostrRag
         }
         // Construct the prompt with the chat history
         $content = "\
-Given the following chat history between user and assistant, answer with a fully qualified standalone and short question that summarizes the user's question.
+Given the following chat history between user and assistant, answer with a fully qualified standalone and short question or statement that summarizes the user's question or statement.
 
 CHAT HISTORY:
 $chatHistory
 
-FULLY QUALIFIED QUESTION: ";
+FULLY QUALIFIED QUESTION OR STATEMENT: ";
 
         $this->prompt = $content;
 

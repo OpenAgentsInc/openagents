@@ -127,7 +127,7 @@ class NostrService
     public function setToolsWhitelist(array $toolsWhitelist)
     {
         foreach ($toolsWhitelist as $tool) {
-            if (!is_string($tool)) {
+            if (! is_string($tool)) {
                 throw new InvalidArgumentException('All elements of toolWhitelist must be strings.');
             }
         }
