@@ -90,7 +90,7 @@ class ChatController extends Controller
             //            $inferenceMessage = '<pre>'.htmlspecialchars($content).'</pre>';
             //            $inferenceMessage = nl2br(e($content));
 
-            $this->stream($inferenceMessage);
+            $this->stream('message', $inferenceMessage);
             //            $this->addMessageToQueue($inferenceMessage);
         });
 
