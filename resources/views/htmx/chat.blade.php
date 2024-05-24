@@ -15,6 +15,7 @@
             <x-htmx.chatbar/>
             <x-htmx.messages-remaining/>
         </div>
+        <x-htmx.bonus-widget/>
     </div>
 
     <script>
