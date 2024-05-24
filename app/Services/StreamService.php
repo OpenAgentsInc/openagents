@@ -21,12 +21,9 @@ class StreamService
 
     public function keepAlive()
     {
-        set_time_limit(0);
-
         echo "event: handshake\n";
         echo "data: \n\n";
-        ob_flush();
-        flush();
+        $this->flush();
 
         $lastKeepAliveTime = microtime(true);
 
@@ -37,8 +34,7 @@ class StreamService
                 $eventData = json_decode($event, true);
                 echo "event: {$eventData['event']}\n";
                 echo 'data: '.$eventData['data']."\n\n";
-                ob_flush();
-                flush();
+                $this->flush();
                 sleep(0.01);
             } else {
                 sleep(0.05);
@@ -48,11 +44,19 @@ class StreamService
             if (microtime(true) - $lastKeepAliveTime >= 10) {
                 echo "event: keep-alive\n";
                 echo "data: \n\n";
-                ob_flush();
-                flush();
+                $this->flush();
                 $lastKeepAliveTime = microtime(true); // Reset the timer
             }
         }
+    }
+
+    private function flush()
+    {
+        if (ob_get_level() > 0) {
+            ob_flush();
+        }
+
+        flush();
     }
 
     public function stream($eventName, $data)

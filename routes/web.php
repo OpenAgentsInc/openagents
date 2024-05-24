@@ -43,6 +43,10 @@ Route::match(['get', 'post'], '/{authRoute}', function (string $authRoute) {
     return redirect()->route('home');
 })->whereIn('authRoute', $authRoutes);
 
+Route::get('/basics', function () {
+    return view('basics');
+});
+
 // HOME
 Route::get('/', function () {
     return redirect()->route('chat');

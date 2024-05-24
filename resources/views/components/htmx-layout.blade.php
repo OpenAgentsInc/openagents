@@ -2,8 +2,8 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <title>OpenAgents</title>
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
+    {{--    <script src="https://unpkg.com/htmx.org@1.9.12"></script>--}}
+    {{--    <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>--}}
     <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
     @include('partials.vite')
     <link rel="stylesheet" href="{{ asset('vendor/tokyo-night-dark.min.css') }}">

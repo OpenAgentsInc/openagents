@@ -1,0 +1,1 @@
+<x-htmx.bonus-widget/>
