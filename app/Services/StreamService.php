@@ -52,6 +52,8 @@ class StreamService
 
     private function flush()
     {
+        $logger = app(LocalLogger::class);
+        $logger->log('Flushing the output buffer. ob level is '.ob_get_level());
         if (ob_get_level() > 0) {
             ob_flush();
         }
