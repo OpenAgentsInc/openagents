@@ -8,14 +8,6 @@ class StreamService
 {
     private static $headersSent = false;
 
-    private LocalLogger $logger;
-
-    public function __construct()
-    {
-        $localLogger = app(LocalLogger::class);
-        $this->logger = $localLogger;
-    }
-
     public function initializeStream()
     {
         if (! self::$headersSent) {
@@ -29,39 +21,30 @@ class StreamService
 
     public function keepAlive()
     {
-        // Set appropriate headers for SSE
-        //        header('Content-Type: text/event-stream');
-        //        header('Cache-Control: no-cache');
-        //        header('Connection: keep-alive');
+        set_time_limit(0);
 
-        // Disable output buffering if enabled
-        while (ob_get_level() > 0) {
-            ob_end_flush();
-        }
-
-        // Send initial "handshake" event
         echo "event: handshake\n";
         echo "data: \n\n";
-
-        // Use if ob_implicit_flush is enabled, or manually trigger flush
-        if (function_exists('ob_implicit_flush')) {
-            ob_implicit_flush(true);
-        }
+        ob_flush();
         flush();
 
         $lastKeepAliveTime = microtime(true);
 
         while (true) {
-            while ($event = Redis::lpop('stream_events')) {
+            // Read off the queue and echo
+            $event = Redis::lpop('stream_events');
+            if ($event) {
                 $eventData = json_decode($event, true);
                 echo "event: {$eventData['event']}\n";
                 echo 'data: '.$eventData['data']."\n\n";
                 ob_flush();
                 flush();
-                $this->logger->log('Streamed event: '.$eventData['event']);
+                sleep(0.01);
+            } else {
+                sleep(0.05);
             }
-            usleep(50000); // sleep for 0.05 seconds if no events in queue
-            // Check if 10 seconds have passed since the last keep-alive
+
+            // Check if 10 seconds have passed since last keep-alive
             if (microtime(true) - $lastKeepAliveTime >= 10) {
                 echo "event: keep-alive\n";
                 echo "data: \n\n";
@@ -70,7 +53,6 @@ class StreamService
                 $lastKeepAliveTime = microtime(true); // Reset the timer
             }
         }
-
     }
 
     public function stream($eventName, $data)
