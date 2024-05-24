@@ -45,7 +45,7 @@ class StreamService
             }
 
             // Check if 10 seconds have passed since last keep-alive
-            if (microtime(true) - $lastKeepAliveTime >= 10) {
+            if (microtime(true) - $lastKeepAliveTime >= 5) {
                 echo "event: keep-alive\n";
                 echo "data: \n\n";
                 ob_flush();
