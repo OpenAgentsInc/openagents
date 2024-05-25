@@ -77,7 +77,6 @@
         </main>
     </div>
 
-    <x-htmx.bonus-widget/>
 </div>
 
 @stack('scripts')
