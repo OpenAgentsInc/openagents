@@ -12,10 +12,10 @@ window.Echo = new Echo({
 });
 
 
-document.addEventListener('livewire:load', function () {
-    window.Echo.channel('payments')
-        .listen('.PaymentCreated', (e) => {
-            console.log('Payment created', e);
-        });
-});
+// document.addEventListener('livewire:load', function () {
+//     window.Echo.channel('payments')
+//         .listen('.PaymentCreated', (e) => {
+//             console.log('Payment created', e);
+//         });
+// });
 
