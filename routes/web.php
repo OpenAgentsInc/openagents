@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
-use App\Http\Controllers\Htmx\ChatController;
 use App\Http\Controllers\Htmx\ThreadController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\ProfileController;
@@ -23,7 +22,6 @@ use App\Livewire\MarkdownPage;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
 use App\Livewire\Store;
-use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
@@ -43,43 +41,14 @@ Route::match(['get', 'post'], '/{authRoute}', function (string $authRoute) {
     return redirect()->route('home');
 })->whereIn('authRoute', $authRoutes);
 
-Route::get('/basics', function () {
-    return view('basics');
-});
-
 // HOME
 Route::get('/', function () {
     return redirect()->route('chat');
 })->name('home');
 
-// dump phpinfo
-Route::get('/phpinfo', function () {
-    phpinfo();
-});
-
 // CHAT
 Route::get('/chat', Chat::class)->name('chat');
 Route::get('/chat/{id}', Chat::class)->name('chat.id');
-
-// CHAT - HTMX REFACTOR
-Route::get('/chatmx', [ChatController::class, 'index']);
-Route::post('/message', [ChatController::class, 'store']);
-
-Route::get('/credit-balance', [ChatController::class, 'creditBalance']);
-
-Route::get('/stream', [ChatController::class, 'sseStream']);
-Route::get('/streamtest', [ChatController::class, 'sseStreamTest']);
-
-Route::get('/payme', [ChatController::class, 'payme']);
-
-Route::get('rediscli', function () {
-    return Redis::ping();
-});
-
-Route::get('/message-stream', [ChatController::class, 'messageStream']);
-Route::get('/message-stream3', [ChatController::class, 'messageStream']);
-
-Route::get('/event-stream', [ChatController::class, 'eventStream']);
 
 // AGENTS
 Route::get('/agents', Index::class)->name('agents');
@@ -149,7 +118,6 @@ Route::post('/webhook/nostr', [PoolWebhookReceiver::class, 'handleEvent']);
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
 // Catch-all redirect to the homepage
-
 Route::get('/login', function () {
     return redirect('/');
 });
