@@ -13,7 +13,11 @@ return new class extends Migration
     {
         Schema::create('balances', function (Blueprint $table) {
             $table->id();
+            $table->morphs('holder');
+            $table->enum('currency', ['btc', 'usd', 'ecash', 'taproot']);
+            $table->bigInteger('amount');
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 
