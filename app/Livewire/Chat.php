@@ -11,13 +11,11 @@ use App\Models\AgentFile;
 use App\Models\Codebase;
 use App\Models\NostrJob;
 use App\Models\Thread;
-use App\Models\User;
 use App\Services\ImageService;
 use App\Services\LocalLogger;
 use App\Traits\SelectedModelOrAgentTrait;
 use App\Utils\PoolUtils;
 use Exception;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
@@ -328,6 +326,10 @@ class Chat extends Component
 
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
+
+        if (isset($output['error'])) {
+            $this->alert('error', $output['error']);
+        }
     }
 
     public function handleCodebaseContext(): void
@@ -429,6 +431,10 @@ class Chat extends Component
 
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
+
+        if (isset($output['error'])) {
+            $this->alert('error', $output['error']);
+        }
     }
 
     public function ragRun(): void
@@ -502,6 +508,10 @@ class Chat extends Component
 
         // Optionally notify other components of the new message
         $this->dispatch('message-created');
+
+        if (isset($output['error'])) {
+            $this->alert('error', $output['error']);
+        }
     }
 
     // #[On('echo:rags.{rag.id},AgentRagReady')]
