@@ -13,3 +13,13 @@ test('user can pay an agent', function () {
     expect($user->checkBalance(Currency::BTC))->toBe(0)
         ->and($agent->checkBalance(Currency::BTC))->toBe(1000 * 1000);
 });
+
+test('user can pay a user', function () {
+    $user = User::factory()->withBalance(1000 * 1000, Currency::BTC)->create();
+    $user2 = User::factory()->withBalance(0, Currency::BTC)->create();
+
+    $user->payUser($user2, 1000 * 1000, Currency::BTC);
+
+    expect($user->checkBalance(Currency::BTC))->toBe(0)
+        ->and($user2->checkBalance(Currency::BTC))->toBe(1000 * 1000);
+});

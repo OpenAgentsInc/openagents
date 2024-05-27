@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Enums\Currency;
 use App\Models\Agent;
 use App\Models\Balance;
+use App\Models\User;
 use Exception;
 use Illuminate\Support\Facades\DB;
 
@@ -41,6 +42,14 @@ trait Payable
         );
         $balance->amount += $amount;
         $balance->save();
+    }
+
+    public function payUser(User $user, int $amount, Currency $currency)
+    {
+        DB::transaction(function () use ($user, $amount, $currency) {
+            $this->withdraw($amount, $currency);
+            $user->deposit($amount, $currency);
+        });
     }
 
     public function checkBalance(Currency $currency)
