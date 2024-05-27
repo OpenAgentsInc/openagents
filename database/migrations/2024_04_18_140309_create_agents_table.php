@@ -18,6 +18,12 @@ return new class extends Migration
             $table->text('about')->nullable();
             $table->text('message')->nullable();
             $table->longText('prompt')->nullable();
+            $table->boolean('use_tools')->default(false);
+            $table->text('rag_prompt')->nullable();
+            $table->boolean('is_public')->default(true);
+            $table->boolean('featured')->default(false);
+            $table->json('capabilities')->nullable();
+            $table->boolean('is_rag_ready')->default(true);
             $table->foreignId('user_id')->nullable()->constrained('users');
             $table->timestamps();
         });
