@@ -11,14 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('payments', function (Blueprint $table) {
+        Schema::create('balances', function (Blueprint $table) {
             $table->id();
-            $table->enum('currency', ['btc', 'usd', 'ecash', 'taproot']);
-            $table->bigInteger('amount'); // Smallest denomination: msats, cents, etc.
-            $table->json('metadata')->nullable();
-            $table->text('description')->nullable();
             $table->timestamps();
-            $table->softDeletes();
         });
     }
 
@@ -27,6 +22,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('payments');
+        Schema::dropIfExists('balances');
     }
 };
