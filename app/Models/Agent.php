@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\Payable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
 class Agent extends Model
 {
-    use HasFactory;
+    use HasFactory, Payable;
 
     protected $appends = ['image_url', 'thread_count', 'unique_users_count', 'creator_username'];
 

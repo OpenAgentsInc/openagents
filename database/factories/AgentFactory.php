@@ -2,6 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Enums\Currency;
+use App\Models\Agent;
 use App\Models\Thread;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -22,5 +24,12 @@ class AgentFactory extends Factory
             'name' => $this->faker->name,
             'user_id' => User::factory(),
         ];
+    }
+
+    public function withBalance(int $amount, Currency $currency)
+    {
+        return $this->afterCreating(function (Agent $agent) use ($amount, $currency) {
+            $agent->newBalance($amount, $currency);
+        });
     }
 }
