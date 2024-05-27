@@ -38,5 +38,8 @@ class DumpRelevantTables extends Command
                 'users',
             ])
             ->dumpToFile("dumps/{$databaseName}_{$timestamp}.sql");
+
+        // Output the path to the dump file
+        $this->info("Dumped tables to dumps/{$databaseName}_{$timestamp}.sql");
     }
 }
