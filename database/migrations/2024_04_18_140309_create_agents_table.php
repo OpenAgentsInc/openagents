@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('agents', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->nullable()->constrained('users');
             $table->string('name');
             $table->json('image')->nullable();
             $table->text('about')->nullable();
@@ -24,7 +25,6 @@ return new class extends Migration
             $table->boolean('featured')->default(false);
             $table->json('capabilities')->nullable();
             $table->boolean('is_rag_ready')->default(true);
-            $table->foreignId('user_id')->nullable()->constrained('users');
             $table->timestamps();
         });
     }
