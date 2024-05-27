@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI;
 
-use Exception;
 use OpenAI;
-use Yethee\Tiktoken\EncoderProvider;
 
 class OpenAIGateway implements GatewayInterface
 {
@@ -38,37 +36,26 @@ class OpenAIGateway implements GatewayInterface
         $stream = $this->client->chat()->createStreamed([
             'model' => $model,
             'messages' => $messages,
+            'stream_options' => [
+                'include_usage' => true,
+            ],
         ]);
 
+        $inputTokens = $outputTokens = 0;
         foreach ($stream as $response) {
             $content = $response['choices'][0]['delta']['content'] ?? '';
             $streamFunction($content);
             $message .= $content;
-        }
-
-        // OpenAI doesn't return token counts during streams (wtf) - https://github.com/openai-php/client/issues/186#issuecomment-2033185221
-        // So we have to count the tokens ourselves
-        $provider = new EncoderProvider();
-
-        $encoder = $provider->getForModel('gpt-4'); // gpt-3.5.turbo & gpt-4 have the same tokenization
-        $outputTokens = $encoder->encode($message);
-
-        // Calculate input tokens by extracting the content from the messages and counting # of tokens (approximation)
-        $content = '';
-        try {
-            foreach ($messages as $messagetocount) {
-                $content .= $messagetocount['content'].' ';
+            if (isset($response['usage'])) {
+                $inputTokens = $response['usage']['prompt_tokens'] ?? $inputTokens;
+                $outputTokens = $response['usage']['completion_tokens'] ?? $outputTokens;
             }
-        } catch (Exception $e) {
-            $content = '';
         }
-
-        $inputTokens = $encoder->encode($content);
 
         return [
             'content' => $message,
-            'input_tokens' => count($inputTokens),
-            'output_tokens' => count($outputTokens),
+            'input_tokens' => $inputTokens,
+            'output_tokens' => $outputTokens,
         ];
     }
 }

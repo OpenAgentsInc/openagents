@@ -22,7 +22,7 @@
     "laravel/tinker": "^2.9",
     "league/flysystem-aws-s3-v3": "^3.0",
     "livewire/livewire": "^3.0",
-    "openai-php/client": "^0.8.4",
+    "openai-php/client": "^0.9",
     "predis/predis": "^2.2",
     "pusher/pusher-php-server": "^7.2",
     "spatie/db-dumper": "^3.6",
