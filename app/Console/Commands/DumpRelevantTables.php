@@ -40,7 +40,6 @@ class DumpRelevantTables extends Command
                 'nostr_accounts',
                 'nostr_jobs',
                 'sessions',
-                'social_accounts',
                 'subscription_items',
                 'subscriptions',
                 'threads',
