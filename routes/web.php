@@ -35,7 +35,7 @@ $authRoutes = [
 ];
 
 // Redirect all authentication routes to home
-Route::match(['get', 'post'], '/{authRoute}', function (string $authRoute) {
+Route::match(['get', 'post'], '/{authRoute}', function () {
     return redirect()->route('home');
 })->whereIn('authRoute', $authRoutes);
 
@@ -92,11 +92,11 @@ Route::get('/campaign/{id}', [CampaignController::class, 'land']);
 
 // MISC
 Route::get('/changelog', Changelog::class);
+Route::get('/terms', MarkdownPage::class);
+Route::get('/privacy', MarkdownPage::class);
 Route::get('/docs', function () {
     return redirect('https://docs.openagents.com');
 });
-Route::get('/terms', MarkdownPage::class);
-Route::get('/privacy', MarkdownPage::class);
 
 // ADMIN
 Route::get('/admin', Admin::class)->name('admin');
