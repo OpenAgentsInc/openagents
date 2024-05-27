@@ -13,6 +13,10 @@ return new class extends Migration
     {
         Schema::create('payments', function (Blueprint $table) {
             $table->id();
+            $table->enum('currency', ['btc', 'usd', 'ecash', 'taproot']);
+            $table->bigInteger('amount'); // Smallest denomination: msats, cents, etc.
+            $table->json('metadata')->nullable();
+            $table->text('description')->nullable();
             $table->timestamps();
         });
     }
