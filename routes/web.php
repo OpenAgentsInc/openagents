@@ -99,7 +99,6 @@ Route::get('/docs', function () {
 });
 
 // ADMIN
-Route::get('/admin', Admin::class)->name('admin');
 Route::get('/logs', Logs::class)->name('logs');
 
 // Nostr Webhook
