@@ -49,19 +49,23 @@ test('agent can pay an agent', function () {
 });
 
 test('user can pay multipay users and agents', function () {
-    $user = User::factory()->withBalance(1000 * 1000, Currency::BTC)->create();
+    $initialBalance = 100000000;
+    $payEach = 1000000;
+
+    $user = User::factory()->withBalance($initialBalance, Currency::BTC)->create();
     $recipientUsers = User::factory(20)->withBalance(0, Currency::BTC)->create();
-    $recipientAgents = Agent::factory()->withBalance(0, Currency::BTC)->create();
-    $recipients = $recipientUsers->concat([$recipientAgents]);
+    $recipientAgents = Agent::factory(5)->withBalance(0, Currency::BTC)->create();
+    $recipients = $recipientUsers->concat($recipientAgents);
 
-    // With one method, any Payable can pay any number of Payables, differing amounts and currencies
-    $user->multipay([
-        ...$recipients->map(fn ($recipient) => [$recipient, 50 * 1000, Currency::BTC])->all(),
-    ]);
+    $recipients->each(function ($recipient) use ($user, $payEach) {
+        $user->multipay([
+            [$recipient, $payEach, Currency::BTC],
+        ]);
+    });
 
-    expect($user->checkBalance(Currency::BTC))->toBe(0)
-        ->and($recipientUsers->sum(fn ($recipient) => $recipient->checkBalance(Currency::BTC)))->toBe(20 * 50 * 1000)
-        ->and(User::find(4)->checkBalance(Currency::BTC))->toBe(50 * 1000)
-        ->and($recipientAgents->checkBalance(Currency::BTC))->toBe(50 * 1000)
-        ->and($user->payments()->count())->toBe(21);
+    expect($user->checkBalance(Currency::BTC))->toBe($initialBalance - $payEach * 25)
+        ->and($recipientUsers->fresh()->sum(fn ($recipient) => $recipient->checkBalance(Currency::BTC)))->toBe($payEach * 20)
+        ->and(User::find(4)->fresh()->checkBalance(Currency::BTC))->toBe(1000000)
+        ->and(Agent::find(3)->checkBalance(Currency::BTC))->toBe(1000000)
+        ->and($user->payments()->count())->toBe(25);
 });

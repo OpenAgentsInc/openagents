@@ -12,17 +12,15 @@ use Illuminate\Support\Facades\DB;
 
 trait Payable
 {
-    public function payments()
+    public function multipay(array $recipients): void
     {
-        return $this->morphMany(Payment::class, 'payer');
-    }
-
-    public function payAgent(Agent $agent, int $amount, Currency $currency)
-    {
-        DB::transaction(function () use ($agent, $amount, $currency) {
-            $this->withdraw($amount, $currency);
-            $agent->deposit($amount, $currency);
-            $this->recordPayment($amount, $currency);
+        DB::transaction(function () use ($recipients) {
+            foreach ($recipients as $recipient) {
+                [$payee, $amount, $currency] = $recipient;
+                $this->withdraw($amount, $currency);
+                $payee->deposit($amount, $currency);
+                $this->recordPayment($amount, $currency);
+            }
         });
     }
 
@@ -59,6 +57,20 @@ trait Payable
             'currency' => $currency->value,
             'amount' => $amount,
         ]);
+    }
+
+    public function payments()
+    {
+        return $this->morphMany(Payment::class, 'payer');
+    }
+
+    public function payAgent(Agent $agent, int $amount, Currency $currency)
+    {
+        DB::transaction(function () use ($agent, $amount, $currency) {
+            $this->withdraw($amount, $currency);
+            $agent->deposit($amount, $currency);
+            $this->recordPayment($amount, $currency);
+        });
     }
 
     public function payUser(User $user, int $amount, Currency $currency)
