@@ -27,6 +27,10 @@ test('OpenAIGateway handles OpenAI responses correctly', function () {
                 'content' => $answer,
             ],
         ]],
+        'usage' => [
+            'prompt_tokens' => $inputTokens,
+            'completion_tokens' => $outputTokens,
+        ],
     ]]);
     $gateway = new OpenAIGateway($chatClient);
 
