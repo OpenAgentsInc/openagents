@@ -1,28 +1,31 @@
 <?php
 
-use App\Http\Controllers\BillingController;
-use App\Http\Controllers\CampaignController;
-use App\Http\Controllers\Htmx\ThreadController;
-use App\Http\Controllers\NostrAuthController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\SocialAuthController;
-use App\Http\Controllers\StaticController;
-use App\Http\Controllers\Webhook\PoolWebhookReceiver;
+use App\Livewire\Blog;
+use App\Livewire\Chat;
+use App\Livewire\Logs;
 use App\Livewire\Admin;
-use App\Livewire\Agents\Create;
+use App\Livewire\Store;
+use App\Livewire\Settings;
+use App\Livewire\Changelog;
+use App\Livewire\ProWelcome;
 use App\Livewire\Agents\Edit;
 use App\Livewire\Agents\Index;
-use App\Livewire\Agents\Profile;
-use App\Livewire\Blog;
-use App\Livewire\Changelog;
-use App\Livewire\Chat;
-use App\Livewire\IndexedCodebaseList;
-use App\Livewire\Logs;
 use App\Livewire\MarkdownPage;
-use App\Livewire\ProWelcome;
-use App\Livewire\Settings;
-use App\Livewire\Store;
+use App\Livewire\Agents\Create;
+use App\Livewire\Agents\Profile;
+use App\Livewire\Plugins\PluginEdit;
+use App\Livewire\Plugins\PluginList;
+use App\Livewire\IndexedCodebaseList;
 use Illuminate\Support\Facades\Route;
+use App\Livewire\Plugins\PluginCreate;
+use App\Http\Controllers\StaticController;
+use App\Http\Controllers\BillingController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\NostrAuthController;
+use App\Http\Controllers\SocialAuthController;
+use App\Http\Controllers\Htmx\ThreadController;
+use App\Http\Controllers\Webhook\PoolWebhookReceiver;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // REDIRECT DEFAULT AUTH TO HOME
@@ -88,7 +91,9 @@ Route::get('/pro', ProWelcome::class)->name('pro');
 Route::get('/codebases', IndexedCodebaseList::class);
 
 // PLUGIN REGISTRY
-Route::get('/plugins', [StaticController::class, 'plugins']);
+Route::get('/plugins', PluginList::class)->name('plugins.index');
+Route::get('/plugins/create', PluginCreate::class)->name('plugins.create');
+Route::get('/plugins/edit/{plugin}', PluginEdit::class)->name('plugins.edit');
 
 // BLOG
 Route::get('/blog', Blog::class);
