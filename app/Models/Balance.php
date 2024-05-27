@@ -11,6 +11,8 @@ class Balance extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected $guarded = [];
+
     protected $casts = [
         'currency' => Currency::class,
     ];
