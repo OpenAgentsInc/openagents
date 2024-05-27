@@ -4,7 +4,6 @@ namespace Database\Factories;
 
 use App\Enums\Currency;
 use App\Models\Agent;
-use App\Models\Balance;
 use App\Models\Thread;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -27,15 +26,10 @@ class AgentFactory extends Factory
         ];
     }
 
-    public function withBalance(int $amount, Currency $currency): self
+    public function withBalance(int $amount, Currency $currency)
     {
         return $this->afterCreating(function (Agent $agent) use ($amount, $currency) {
-            Balance::create([
-                'holder_type' => Agent::class,
-                'holder_id' => $agent->id,
-                'currency' => $currency,
-                'amount' => $amount,
-            ]);
+            $agent->newBalance($amount, $currency);
         });
     }
 }

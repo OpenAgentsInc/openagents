@@ -3,7 +3,6 @@
 namespace Database\Factories;
 
 use App\Enums\Currency;
-use App\Models\Balance;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -35,15 +34,10 @@ class UserFactory extends Factory
         ];
     }
 
-    public function withBalance(int $amount, Currency $currency): self
+    public function withBalance(int $amount, Currency $currency)
     {
-        return $this->afterCreating(function (User $user) use ($currency, $amount) {
-            Balance::create([
-                'holder_type' => User::class,
-                'holder_id' => $user->id,
-                'currency' => $currency,
-                'amount' => $amount,
-            ]);
+        return $this->afterCreating(function (User $user) use ($amount, $currency) {
+            $user->newBalance($amount, $currency);
         });
     }
 }

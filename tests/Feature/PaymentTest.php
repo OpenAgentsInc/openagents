@@ -11,7 +11,8 @@ test('user can pay an agent', function () {
     $user->payAgent($agent, 1000 * 1000, Currency::BTC);
 
     expect($user->checkBalance(Currency::BTC))->toBe(0)
-        ->and($agent->checkBalance(Currency::BTC))->toBe(1000 * 1000);
+        ->and($agent->checkBalance(Currency::BTC))->toBe(1000 * 1000)
+        ->and($user->payments()->count())->toBe(1);
 });
 
 test('user can pay a user', function () {
@@ -21,7 +22,8 @@ test('user can pay a user', function () {
     $user->payUser($user2, 1000 * 1000, Currency::BTC);
 
     expect($user->checkBalance(Currency::BTC))->toBe(0)
-        ->and($user2->checkBalance(Currency::BTC))->toBe(1000 * 1000);
+        ->and($user2->checkBalance(Currency::BTC))->toBe(1000 * 1000)
+        ->and($user->payments()->count())->toBe(1);
 });
 
 test('agent can pay a user', function () {
@@ -31,7 +33,8 @@ test('agent can pay a user', function () {
     $agent->payUser($user, 1000 * 1000, Currency::BTC);
 
     expect($agent->checkBalance(Currency::BTC))->toBe(0)
-        ->and($user->checkBalance(Currency::BTC))->toBe(1000 * 1000);
+        ->and($user->checkBalance(Currency::BTC))->toBe(1000 * 1000)
+        ->and($agent->payments()->count())->toBe(1);
 });
 
 test('agent can pay an agent', function () {
@@ -41,5 +44,6 @@ test('agent can pay an agent', function () {
     $agent->payAgent($agent2, 1000 * 1000, Currency::BTC);
 
     expect($agent->checkBalance(Currency::BTC))->toBe(0)
-        ->and($agent2->checkBalance(Currency::BTC))->toBe(1000 * 1000);
+        ->and($agent2->checkBalance(Currency::BTC))->toBe(1000 * 1000)
+        ->and($agent->payments()->count())->toBe(1);
 });

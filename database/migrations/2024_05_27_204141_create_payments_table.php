@@ -14,6 +14,7 @@ return new class extends Migration
     {
         Schema::create('payments', function (Blueprint $table) {
             $table->id();
+            $table->morphs('payer');
             $table->enum('currency', array_column(Currency::cases(), 'value'));
             $table->bigInteger('amount'); // Smallest denomination: msats, cents, etc.
             $table->json('metadata')->nullable();
