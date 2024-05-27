@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\File;
 use Spatie\DbDumper\Databases\MySql;
 
 class DumpRelevantTables extends Command
@@ -21,6 +22,13 @@ class DumpRelevantTables extends Command
         // Get a string timestamp for the dumpToFile
         $timestamp = now()->format('Y-m-d_H-i-s');
 
+        // Define the dump path within the storage directory
+        $dumpPath = storage_path("app/dumps/{$databaseName}_{$timestamp}.sql");
+
+        // Ensure the directory exists
+        File::ensureDirectoryExists(dirname($dumpPath));
+
+        // Perform the dump
         MySql::create()
             ->setDbName($databaseName)
             ->setUserName($userName)
@@ -32,14 +40,14 @@ class DumpRelevantTables extends Command
                 'nostr_accounts',
                 'nostr_jobs',
                 'sessions',
+                'social_accounts',
                 'subscription_items',
                 'subscriptions',
                 'threads',
                 'users',
             ])
-            ->dumpToFile("dumps/{$databaseName}_{$timestamp}.sql");
+            ->dumpToFile($dumpPath);
 
-        // Output the path to the dump file
-        $this->info("Dumped tables to dumps/{$databaseName}_{$timestamp}.sql");
+        $this->info("Database dump created successfully: $dumpPath");
     }
 }
