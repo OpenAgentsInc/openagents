@@ -179,7 +179,7 @@ class NostrService
         $param6->setKey('warm-up')->setValue([$this->warmUp ? 'true' : 'false']);
 
         $param7 = new JobParam();
-        $param7->setKey('main')->setValue(['https://github.com/OpenAgentsInc/openagents-rag-coordinator-plugin/releases/download/v0.5.6/rag.wasm']);
+        $param7->setKey('main')->setValue(['https://github.com/OpenAgentsInc/openagents-rag-coordinator-plugin/releases/download/v0.6/rag.wasm']);
 
         $param8 = new JobParam();
         $param8->setKey('use-tools')->setValue([$this->useTools ? 'true' : 'false']);
