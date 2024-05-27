@@ -78,7 +78,16 @@ class SimpleInferencer
                 default:
                     dd("Unknown gateway: $gateway");
             }
-            $inference = $client->inference($params);
+            try {
+                $inference = $client->inference($params);
+            } catch (\Throwable $exception) {
+                $inference = [
+                    'error' => $exception->getMessage(),
+                    'content' => '',
+                    'input_tokens' => 0,
+                    'output_tokens' => 0,
+                ];
+            }
         } else {
             dd("Unknown model: $model");
         }
