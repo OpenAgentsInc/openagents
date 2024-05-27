@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
-use App\Http\Controllers\Htmx\ThreadController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SocialAuthController;
@@ -16,7 +15,6 @@ use App\Livewire\Agents\Profile;
 use App\Livewire\Blog;
 use App\Livewire\Changelog;
 use App\Livewire\Chat;
-use App\Livewire\IndexedCodebaseList;
 use App\Livewire\Logs;
 use App\Livewire\MarkdownPage;
 use App\Livewire\ProWelcome;
@@ -62,10 +60,6 @@ Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile')
 // STORE
 Route::get('/store', Store::class)->name('store');
 
-// THREADS
-Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
-Route::get('/chatmx/{thread}', [ThreadController::class, 'show'])->name('threads.show');
-
 Route::middleware('guest')->group(function () {
     // AUTH - SOCIAL
     Route::get('/login/x', [SocialAuthController::class, 'login_x']);
@@ -83,9 +77,6 @@ Route::get('/settings', Settings::class)->name('settings');
 Route::get('/subscription', [BillingController::class, 'stripe_billing_portal']);
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 Route::get('/pro', ProWelcome::class)->name('pro');
-
-// CODEBASE INDEXES
-Route::get('/codebases', IndexedCodebaseList::class);
 
 // PLUGIN REGISTRY
 Route::get('/plugins', [StaticController::class, 'plugins']);
