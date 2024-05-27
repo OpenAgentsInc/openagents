@@ -13,11 +13,13 @@ return new class extends Migration
     {
         Schema::create('nostr_jobs', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('agent_id')->nullable();
             $table->bigInteger('thread_id')->nullable();
             $table->text('job_id')->nullable();
             $table->json('payload')->nullable();
             $table->longText('content')->nullable();
             $table->char('status', 25)->nullable();
+            $table->boolean('warmup')->default(false);
             $table->timestamps();
         });
     }
