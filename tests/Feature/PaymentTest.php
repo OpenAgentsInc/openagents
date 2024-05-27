@@ -47,3 +47,21 @@ test('agent can pay an agent', function () {
         ->and($agent2->checkBalance(Currency::BTC))->toBe(1000 * 1000)
         ->and($agent->payments()->count())->toBe(1);
 });
+
+test('user can pay multipay users and agents', function () {
+    $user = User::factory()->withBalance(1000 * 1000, Currency::BTC)->create();
+    $recipientUsers = User::factory(20)->withBalance(0, Currency::BTC)->create();
+    $recipientAgents = Agent::factory()->withBalance(0, Currency::BTC)->create();
+    $recipients = $recipientUsers->concat([$recipientAgents]);
+
+    // With one method, any Payable can pay any number of Payables, differing amounts and currencies
+    $user->multipay([
+        ...$recipients->map(fn ($recipient) => [$recipient, 50 * 1000, Currency::BTC])->all(),
+    ]);
+
+    expect($user->checkBalance(Currency::BTC))->toBe(0)
+        ->and($recipientUsers->sum(fn ($recipient) => $recipient->checkBalance(Currency::BTC)))->toBe(20 * 50 * 1000)
+        ->and(User::find(4)->checkBalance(Currency::BTC))->toBe(50 * 1000)
+        ->and($recipientAgents->checkBalance(Currency::BTC))->toBe(50 * 1000)
+        ->and($user->payments()->count())->toBe(21);
+});
