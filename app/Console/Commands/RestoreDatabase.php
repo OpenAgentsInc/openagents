@@ -30,6 +30,9 @@ class RestoreDatabase extends Command
 
         // Construct the command to restore the database
         $command = "mysql -h {$host} -P {$port} -u {$userName} --password={$password} {$databaseName} < {$dumpFile}";
+        // info the command
+        $this->info("Restoring database from {$dumpFile}...");
+        $this->info($command);
 
         // Execute the command
         $result = null;
