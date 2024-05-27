@@ -69,12 +69,9 @@ class JobResultReceiverJob implements ShouldQueue
                     AgentRagReady::dispatch($nostr_job->agent_id);
                 }
 
-
-
                 if (! $nostr_job->content) { // set content only once
                     $logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
                     $logger->log('info', 'Propagating content '.$this->content);
-
 
                     $contentData = json_decode($this->content, true);
                     $content = $contentData['content'];
@@ -87,20 +84,19 @@ class JobResultReceiverJob implements ShouldQueue
                         foreach ($usedToolIds as $toolId) {
                             $tool = null;
                             foreach ($availableTools as $availableTool) {
-                                $logger->log('info', 'Checking tool ' . json_encode($availableTool) . $toolId);
+                                $logger->log('info', 'Checking tool '.json_encode($availableTool).$toolId);
                                 if (isset($availableTool['id']) && $availableTool['id'] == $toolId) {
-                                    $logger->log('info', 'Found tool ' . $toolId);
+                                    $logger->log('info', 'Found tool '.$toolId);
                                     $tool = $availableTool;
                                     break;
                                 }
                             }
-                            if (isset($tool) ) {
-                                $logger->log('info', 'Used tool ' . $tool["meta"]["name"]);
+                            if (isset($tool)) {
+                                $logger->log('info', 'Used tool '.$tool['meta']['name']);
                             }
                         }
                     }
                     /////
-
 
                     $nostr_job->content = $content;
                     $nostr_job->save();
