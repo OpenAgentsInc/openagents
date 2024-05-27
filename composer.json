@@ -25,7 +25,7 @@
     "openai-php/client": "^0.8.4",
     "predis/predis": "^2.2",
     "pusher/pusher-php-server": "^7.2",
-    "spatie/laravel-backup": "^8.8",
+    "spatie/db-dumper": "^3.6",
     "spatie/laravel-markdown": "^2.5",
     "swentel/nostr-php": "dev-main",
     "wire-elements/modal": "^2.0",
