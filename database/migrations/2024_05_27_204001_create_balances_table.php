@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Currency;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -14,7 +15,7 @@ return new class extends Migration
         Schema::create('balances', function (Blueprint $table) {
             $table->id();
             $table->morphs('holder');
-            $table->enum('currency', ['btc', 'usd', 'ecash', 'taproot']);
+            $table->enum('currency', array_column(Currency::cases(), 'value'));
             $table->bigInteger('amount');
             $table->timestamps();
             $table->softDeletes();
