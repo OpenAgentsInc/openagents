@@ -73,12 +73,19 @@ test('user can pay multipay users and agents', function () {
         ]);
     });
 
+    // User's final balance is correct
     expect($user->checkBalance(Currency::BTC))->toBe($initialBalance - $payEach * 25)
+        // Total balance for all recipient users
         ->and($recipientUsers->fresh()->sum(fn ($recipient) => $recipient->checkBalance(Currency::BTC)))->toBe($payEach * 20)
+        // Specific user 4 has correct balance
         ->and(User::find(4)->fresh()->checkBalance(Currency::BTC))->toBe(1000000)
+        // Specific agent 3 has correct balance
         ->and(Agent::find(3)->checkBalance(Currency::BTC))->toBe(1000000)
-        ->and($user->sentPayments()->count())->toBe(25) // Fix method call here
+        // Correct number of sent payments recorded for user
+        ->and($user->sentPayments()->count())->toBe(25)
+        // Correct number of payment source records
         ->and(PaymentSource::where('source_type', get_class($user))->where('source_id', $user->id)->count())->toBe(25)
+        // Correct number of payment destination records
         ->and(PaymentDestination::whereIn('destination_id', $recipients->pluck('id'))->count())->toBe(25);
 });
 
