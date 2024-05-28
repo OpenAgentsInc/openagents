@@ -2,29 +2,31 @@
 
 namespace App\Console\Commands;
 
+use App\Models\User;
+use App\Services\PaymentService;
+use Auth;
 use Illuminate\Console\Command;
 
 class PayTestInvoice extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'app:pay-test-invoice';
+    protected $signature = 'pay-invoice {bolt11}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
     protected $description = 'Command description';
 
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(PaymentService $paymentService)
     {
-        //
+        $bolt11 = $this->argument('bolt11');
+        $this->info("Paying invoice: $bolt11");
+
+        $user = User::where('username', 'AtlantisPleb')->first();
+        Auth::login($user);
+
+        $response = $paymentService->processPaymentRequest($bolt11);
+
+        print_r($response);
+        //        $this->info($response['message'] ?? 'donno');
     }
 }

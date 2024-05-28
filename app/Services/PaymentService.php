@@ -5,6 +5,7 @@
 namespace App\Services;
 
 use App\Enums\Currency;
+use App\Models\User;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -22,9 +23,10 @@ class PaymentService
 
     public function processPaymentRequest($payment_request)
     {
-        $user = Auth::user();
+        /** @var User $user */
+        $authedUser = Auth::user();
 
-        if (! $user) {
+        if (! $authedUser) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
@@ -49,8 +51,8 @@ class PaymentService
 
         try {
             // Check balance and lock the row for the current transaction
-            $user = DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
-            $currentBalance = $user->balance;
+            $user = DB::table('users')->where('id', $authedUser->id)->lockForUpdate()->first();
+            $currentBalance = $authedUser->getSatsBalanceAttribute();
 
             if ($currentBalance < $amount) {
                 throw new Exception('Insufficient balance');
@@ -59,7 +61,7 @@ class PaymentService
             // Insert into Payments table
             DB::table('payments')->insert([
                 'payer_type' => get_class($user),
-                'payer_id' => $user->id,
+                'payer_id' => $authedUser->id,
                 'currency' => Currency::BTC,
                 'amount' => $amount,
                 'metadata' => json_encode($metadata),
@@ -68,10 +70,16 @@ class PaymentService
                 'updated_at' => now(),
             ]);
 
-            // Update balance
-            DB::table('users')->where('id', $user->id)->update([
-                'balance' => $currentBalance - $amount,
-            ]);
+            // Update balance in the balances table
+            DB::table('balances')->where([
+                ['holder_type', '=', get_class($authedUser)],
+                ['holder_id', '=', $authedUser->id],
+                ['currency', '=', Currency::BTC],
+            ])
+                ->update([
+                    'amount' => DB::raw('amount - '.$amount),
+                    'updated_at' => now(),
+                ]);
 
             // Commit the transaction
             DB::commit();
@@ -92,7 +100,7 @@ class PaymentService
                     ]);
             }
 
-            return ['ok' => true];
+            return ['ok' => true, 'response' => $payResponse->json()];
         } catch (Exception $e) {
             DB::rollBack();
 

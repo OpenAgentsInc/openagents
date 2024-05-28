@@ -30,7 +30,7 @@ class WalletScreen extends Component
         $this->balance_btc = $user->getSatsBalanceAttribute();
     }
 
-    public function submitPaymentRequest(PaymentService $paymentService)
+    public function submitPaymentRequest(PaymentService $paymentService): void
     {
         $this->validate();
 
