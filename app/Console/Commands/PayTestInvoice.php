@@ -27,6 +27,5 @@ class PayTestInvoice extends Command
         $response = $paymentService->processPaymentRequest($bolt11);
 
         print_r($response);
-        //        $this->info($response['message'] ?? 'donno');
     }
 }

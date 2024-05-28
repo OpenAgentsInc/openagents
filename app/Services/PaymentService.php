@@ -93,6 +93,7 @@ class PaymentService
                 'Authorization' => 'Bearer '.$this->albyAccessToken,
             ])->post('https://api.getalby.com/payments/bolt11', [
                 'invoice' => $payment_request,
+                'description' => 'test withdrawal',
             ]);
 
             // If payment is successful, update the payment record by setting invoice_status to settled
