@@ -2,7 +2,6 @@
 
 namespace App\Livewire;
 
-use App\Enums\Currency;
 use App\Models\User;
 use Livewire\Component;
 
@@ -20,7 +19,7 @@ class WalletScreen extends Component
 
         /** @var User $user */
         $user = auth()->user();
-        $this->balance_btc = $user->checkBalance(Currency::BTC);
+        $this->balance_btc = $user->getSatsBalanceAttribute();
     }
 
     public function render()
