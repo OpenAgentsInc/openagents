@@ -2,7 +2,7 @@
     <div class="px-1 py-2 justify-center text-base md:gap-6 m-auto">
         <div
                 class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[800px]">
-            <div class="flex-shrink-0 flex flex-col relative items-end">
+            <div class="flex-shrink-0 flex flex-col relative items-end not-prose">
                 @if ($agentImage)
                     <div class="m-[1px] w-[28px] p-[2px] border border-darkgray rounded">
                         <img src="{{ $agentImage }}" alt="Agent Image">
