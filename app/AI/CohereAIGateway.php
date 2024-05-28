@@ -102,8 +102,8 @@ class CohereAIGateway implements GatewayInterface
             $this->data['content'] .= $event['text'];
             $streamFunction($event['text']);
         } elseif ($event['event_type'] === 'stream-end') {
-            $this->data['input_tokens'] = $event['response']['meta']['tokens']['input_tokens'];
-            $this->data['output_tokens'] = $event['response']['meta']['tokens']['output_tokens'];
+            $this->data['input_tokens'] = $event['response']['meta']['tokens']['input_tokens'] ?? 0;
+            $this->data['output_tokens'] = $event['response']['meta']['tokens']['output_tokens'] ?? 0;
         }
     }
 }
