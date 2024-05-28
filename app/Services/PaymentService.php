@@ -12,6 +12,14 @@ use Illuminate\Support\Facades\Http;
 
 class PaymentService
 {
+    private string $albyAccessToken;
+
+    // in constructor set alby access token
+    public function __construct()
+    {
+        $this->albyAccessToken = env('ALBY_ACCESS_TOKEN');
+    }
+
     public function processPaymentRequest($payment_request)
     {
         $user = Auth::user();
@@ -70,7 +78,7 @@ class PaymentService
 
             $payResponse = Http::withHeaders([
                 'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer '.env('ALBY_PAYMENT_KEY'),
+                'Authorization' => 'Bearer '.$this->albyAccessToken,
             ])->post('https://api.getalby.com/payments/bolt11', [
                 'invoice' => $payment_request,
             ]);
