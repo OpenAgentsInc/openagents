@@ -16,4 +16,14 @@ class Payment extends Model
     protected $casts = [
         'currency' => Currency::class,
     ];
+
+    public function sources()
+    {
+        return $this->hasMany(PaymentSource::class);
+    }
+
+    public function destinations()
+    {
+        return $this->hasMany(PaymentDestination::class);
+    }
 }

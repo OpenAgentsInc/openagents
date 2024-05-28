@@ -6,9 +6,12 @@ use App\Enums\Currency;
 use App\Models\Agent;
 use App\Models\Balance;
 use App\Models\Payment;
+use App\Models\PaymentDestination;
+use App\Models\PaymentSource;
 use App\Models\User;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 trait Payable
 {
@@ -19,7 +22,8 @@ trait Payable
                 [$payee, $amount, $currency] = $recipient;
                 $this->withdraw($amount, $currency);
                 $payee->deposit($amount, $currency);
-                $this->recordPayment($amount, $currency);
+                $payment = $this->recordPayment($amount, $currency, null, $this); // Ensure payer is 'this'
+                $this->recordPaymentDestination($payment, $payee);
             }
         });
     }
@@ -49,37 +53,93 @@ trait Payable
         $balance->save();
     }
 
-    private function recordPayment(int $amount, Currency $currency, ?string $description = null)
+    private function recordPayment(int $amount, Currency $currency, ?string $description = null, $payer = null)
     {
-        Payment::create([
-            'payer_type' => get_class($this),
-            'payer_id' => $this->id,
+        if (is_string($payer) && $payer === 'System') {
+            $payerType = 'System';
+            $payerId = 0;
+        } elseif (is_object($payer)) {
+            $payerType = get_class($payer);
+            $payerId = $payer->id;
+        } else {
+            throw new InvalidArgumentException('Payer must be an object or the string "System"');
+        }
+
+        $payment = Payment::create([
+            'payer_type' => $payerType,
+            'payer_id' => $payerId,
             'currency' => $currency->value,
             'amount' => $amount,
             'description' => $description,
         ]);
+
+        $this->recordPaymentSource($payment, $payer);
+
+        return $payment;
     }
 
-    public function payments()
+    private function recordPaymentSource(Payment $payment, $payer = null)
+    {
+        if (is_string($payer) && $payer === 'System') {
+            $sourceType = 'System';
+            $sourceId = 0;
+        } elseif (is_object($payer)) {
+            $sourceType = get_class($payer);
+            $sourceId = $payer->id;
+        } else {
+            throw new InvalidArgumentException('Payer must be an object or the string "System"');
+        }
+
+        PaymentSource::create([
+            'payment_id' => $payment->id,
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
+        ]);
+    }
+
+    private function recordPaymentDestination(Payment $payment, $payee)
+    {
+        PaymentDestination::create([
+            'payment_id' => $payment->id,
+            'destination_type' => get_class($payee),
+            'destination_id' => $payee->id,
+        ]);
+    }
+
+    public function sentPayments()
     {
         return $this->morphMany(Payment::class, 'payer');
     }
 
-    public function payAgent(Agent $agent, int $amount, Currency $currency)
+    public function receivedPayments()
     {
-        DB::transaction(function () use ($agent, $amount, $currency) {
+        return $this->hasManyThrough(
+            Payment::class,
+            PaymentDestination::class,
+            'destination_id', // Foreign key on PaymentDestination table
+            'id', // Foreign key on Payment table
+            'id', // Local key on User table
+            'payment_id'  // Local key on PaymentDestination table
+        );
+    }
+
+    public function payAgent(Agent $recipient, int $amount, Currency $currency, ?string $description = 'Payment')
+    {
+        DB::transaction(function () use ($recipient, $amount, $currency, $description) {
             $this->withdraw($amount, $currency);
-            $agent->deposit($amount, $currency);
-            $this->recordPayment($amount, $currency);
+            $recipient->deposit($amount, $currency);
+            $payment = $this->recordPayment($amount, $currency, $description, $this); // Ensure payer is 'this'
+            $this->recordPaymentDestination($payment, $recipient);
         });
     }
 
-    public function payUser(User $user, int $amount, Currency $currency)
+    public function payUser(User $recipient, int $amount, Currency $currency, ?string $description = 'Payment')
     {
-        DB::transaction(function () use ($user, $amount, $currency) {
+        DB::transaction(function () use ($recipient, $amount, $currency, $description) {
             $this->withdraw($amount, $currency);
-            $user->deposit($amount, $currency);
-            $this->recordPayment($amount, $currency);
+            $recipient->deposit($amount, $currency);
+            $payment = $this->recordPayment($amount, $currency, $description, $this); // Ensure payer is 'this'
+            $this->recordPaymentDestination($payment, $recipient);
         });
     }
 
@@ -103,11 +163,12 @@ trait Payable
         ]);
     }
 
-    public function payBonus(int $amount, Currency $currency, ?string $description = 'System bonus')
+    public function payBonus(int $amount, Currency $currency, ?string $description = 'System bonus', $payer = 'System')
     {
-        DB::transaction(function () use ($amount, $currency, $description) {
+        DB::transaction(function () use ($amount, $currency, $description, $payer) {
             $this->deposit($amount, $currency);
-            $this->recordPayment($amount, $currency, $description);
+            $payment = $this->recordPayment($amount, $currency, $description, $payer);
+            $this->recordPaymentDestination($payment, $this);
         });
     }
 }

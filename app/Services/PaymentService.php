@@ -1,7 +1,5 @@
 <?php
 
-// app/Services/PaymentService.php
-
 namespace App\Services;
 
 use App\Enums\Currency;
@@ -16,10 +14,18 @@ class PaymentService
 {
     private string $albyAccessToken;
 
-    // in constructor set alby access token
     public function __construct()
     {
         $this->albyAccessToken = env('ALBY_ACCESS_TOKEN');
+    }
+
+    public function paySystemBonusToMultipleRecipients(iterable $recipients, int $amount, Currency $currency, ?string $description = 'System bonus')
+    {
+        DB::transaction(function () use ($recipients, $amount, $currency, $description) {
+            foreach ($recipients as $recipient) {
+                $recipient->payBonus($amount, $currency, $description, 'System');
+            }
+        });
     }
 
     public function processPaymentRequest($payment_request)
@@ -51,7 +57,6 @@ class PaymentService
         DB::beginTransaction();
 
         try {
-            // Check balance and lock the row for the current transaction
             DB::table('users')->where('id', $authedUser->id)->lockForUpdate()->first();
             $currentBalance = $authedUser->getSatsBalanceAttribute();
 
@@ -62,7 +67,6 @@ class PaymentService
                 throw new Exception('Insufficient balance');
             }
 
-            // Insert into Payments table
             DB::table('payments')->insert([
                 'payer_type' => get_class($authedUser),
                 'payer_id' => $authedUser->id,
@@ -74,18 +78,15 @@ class PaymentService
                 'updated_at' => now(),
             ]);
 
-            // Update balance in the balances table
             DB::table('balances')->where([
                 ['holder_type', '=', get_class($authedUser)],
                 ['holder_id', '=', $authedUser->id],
                 ['currency', '=', Currency::BTC],
-            ])
-                ->update([
-                    'amount' => DB::raw('amount - '.$amount * 1000),
-                    'updated_at' => now(),
-                ]);
+            ])->update([
+                'amount' => DB::raw('amount - '.$amount * 1000),
+                'updated_at' => now(),
+            ]);
 
-            // Commit the transaction
             DB::commit();
 
             $payResponse = Http::withHeaders([
@@ -96,7 +97,6 @@ class PaymentService
                 'description' => 'test withdrawal',
             ]);
 
-            // If payment is successful, update the payment record by setting invoice_status to settled
             if ($payResponse->ok()) {
                 DB::table('payments')->where('metadata->payment_hash', $payment_hash)
                     ->update([
