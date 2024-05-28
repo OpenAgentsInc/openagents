@@ -23,7 +23,7 @@ class PaymentService
     {
         DB::transaction(function () use ($recipients, $amount, $currency, $description) {
             foreach ($recipients as $recipient) {
-                $recipient->payBonus($amount, $currency, $description);
+                $recipient->payBonus($amount, $currency, $description, 'System');
             }
         });
     }

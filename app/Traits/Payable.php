@@ -11,6 +11,7 @@ use App\Models\PaymentSource;
 use App\Models\User;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 trait Payable
 {
@@ -52,27 +53,47 @@ trait Payable
         $balance->save();
     }
 
-    private function recordPayment(int $amount, Currency $currency, ?string $description = null)
+    private function recordPayment(int $amount, Currency $currency, ?string $description = null, $payer = null)
     {
+        if (is_string($payer) && $payer === 'System') {
+            $payerType = 'System';
+            $payerId = 0;
+        } elseif (is_object($payer)) {
+            $payerType = get_class($payer);
+            $payerId = $payer->id;
+        } else {
+            throw new InvalidArgumentException('Payer must be an object or the string "System"');
+        }
+
         $payment = Payment::create([
-            'payer_type' => get_class($this),
-            'payer_id' => $this->id,
+            'payer_type' => $payerType,
+            'payer_id' => $payerId,
             'currency' => $currency->value,
             'amount' => $amount,
             'description' => $description,
         ]);
 
-        $this->recordPaymentSource($payment);
+        $this->recordPaymentSource($payment, $payer);
 
         return $payment;
     }
 
-    private function recordPaymentSource(Payment $payment)
+    private function recordPaymentSource(Payment $payment, $payer = null)
     {
+        if (is_string($payer) && $payer === 'System') {
+            $sourceType = 'System';
+            $sourceId = 0;
+        } elseif (is_object($payer)) {
+            $sourceType = get_class($payer);
+            $sourceId = $payer->id;
+        } else {
+            throw new InvalidArgumentException('Payer must be an object or the string "System"');
+        }
+
         PaymentSource::create([
             'payment_id' => $payment->id,
-            'source_type' => get_class($this),
-            'source_id' => $this->id,
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
         ]);
     }
 
@@ -85,9 +106,21 @@ trait Payable
         ]);
     }
 
-    public function payments()
+    public function sentPayments()
     {
         return $this->morphMany(Payment::class, 'payer');
+    }
+
+    public function receivedPayments()
+    {
+        return $this->hasManyThrough(
+            Payment::class,
+            PaymentDestination::class,
+            'destination_id', // Foreign key on PaymentDestination table
+            'id', // Foreign key on Payment table
+            'id', // Local key on User table
+            'payment_id'  // Local key on PaymentDestination table
+        );
     }
 
     public function payAgent(Agent $agent, int $amount, Currency $currency)
@@ -130,11 +163,11 @@ trait Payable
         ]);
     }
 
-    public function payBonus(int $amount, Currency $currency, ?string $description = 'System bonus')
+    public function payBonus(int $amount, Currency $currency, ?string $description = 'System bonus', $payer = 'System')
     {
-        DB::transaction(function () use ($amount, $currency, $description) {
+        DB::transaction(function () use ($amount, $currency, $description, $payer) {
             $this->deposit($amount, $currency);
-            $payment = $this->recordPayment($amount, $currency, $description);
+            $payment = $this->recordPayment($amount, $currency, $description, $payer);
             $this->recordPaymentDestination($payment, $this);
         });
     }
