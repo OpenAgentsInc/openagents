@@ -69,3 +69,12 @@ test('user can pay multipay users and agents', function () {
         ->and(Agent::find(3)->checkBalance(Currency::BTC))->toBe(1000000)
         ->and($user->payments()->count())->toBe(25);
 });
+
+test('system can award balance increase', function () {
+    $user = User::factory()->withBalance(1000 * 1000, Currency::BTC)->create();
+
+    $user->payBonus(1000 * 1000, Currency::BTC, 'Bonus!');
+
+    expect($user->checkBalance(Currency::BTC))->toBe(2000 * 1000)
+        ->and($user->payments()->first()->description)->toBe('Bonus!');
+});
