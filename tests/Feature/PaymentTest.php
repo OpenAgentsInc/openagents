@@ -77,7 +77,7 @@ test('user can pay multipay users and agents', function () {
         ->and($recipientUsers->fresh()->sum(fn ($recipient) => $recipient->checkBalance(Currency::BTC)))->toBe($payEach * 20)
         ->and(User::find(4)->fresh()->checkBalance(Currency::BTC))->toBe(1000000)
         ->and(Agent::find(3)->checkBalance(Currency::BTC))->toBe(1000000)
-        ->and($user->payments()->count())->toBe(25)
+        ->and($user->sentPayments()->count())->toBe(25) // Fix method call here
         ->and(PaymentSource::where('source_type', get_class($user))->where('source_id', $user->id)->count())->toBe(25)
         ->and(PaymentDestination::whereIn('destination_id', $recipients->pluck('id'))->count())->toBe(25);
 });

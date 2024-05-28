@@ -22,7 +22,7 @@ trait Payable
                 [$payee, $amount, $currency] = $recipient;
                 $this->withdraw($amount, $currency);
                 $payee->deposit($amount, $currency);
-                $payment = $this->recordPayment($amount, $currency);
+                $payment = $this->recordPayment($amount, $currency, null, $this); // Ensure payer is 'this'
                 $this->recordPaymentDestination($payment, $payee);
             }
         });
