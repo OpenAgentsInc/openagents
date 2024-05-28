@@ -6,6 +6,8 @@ use App\Enums\Currency;
 use App\Models\Agent;
 use App\Models\Balance;
 use App\Models\Payment;
+use App\Models\PaymentDestination;
+use App\Models\PaymentSource;
 use App\Models\User;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +21,8 @@ trait Payable
                 [$payee, $amount, $currency] = $recipient;
                 $this->withdraw($amount, $currency);
                 $payee->deposit($amount, $currency);
-                $this->recordPayment($amount, $currency);
+                $payment = $this->recordPayment($amount, $currency);
+                $this->recordPaymentDestination($payment, $payee);
             }
         });
     }
@@ -51,12 +54,34 @@ trait Payable
 
     private function recordPayment(int $amount, Currency $currency, ?string $description = null)
     {
-        Payment::create([
+        $payment = Payment::create([
             'payer_type' => get_class($this),
             'payer_id' => $this->id,
             'currency' => $currency->value,
             'amount' => $amount,
             'description' => $description,
+        ]);
+
+        $this->recordPaymentSource($payment);
+
+        return $payment;
+    }
+
+    private function recordPaymentSource(Payment $payment)
+    {
+        PaymentSource::create([
+            'payment_id' => $payment->id,
+            'source_type' => get_class($this),
+            'source_id' => $this->id,
+        ]);
+    }
+
+    private function recordPaymentDestination(Payment $payment, $payee)
+    {
+        PaymentDestination::create([
+            'payment_id' => $payment->id,
+            'destination_type' => get_class($payee),
+            'destination_id' => $payee->id,
         ]);
     }
 
@@ -70,7 +95,8 @@ trait Payable
         DB::transaction(function () use ($agent, $amount, $currency) {
             $this->withdraw($amount, $currency);
             $agent->deposit($amount, $currency);
-            $this->recordPayment($amount, $currency);
+            $payment = $this->recordPayment($amount, $currency);
+            $this->recordPaymentDestination($payment, $agent);
         });
     }
 
@@ -79,7 +105,8 @@ trait Payable
         DB::transaction(function () use ($user, $amount, $currency) {
             $this->withdraw($amount, $currency);
             $user->deposit($amount, $currency);
-            $this->recordPayment($amount, $currency);
+            $payment = $this->recordPayment($amount, $currency);
+            $this->recordPaymentDestination($payment, $user);
         });
     }
 
@@ -107,7 +134,8 @@ trait Payable
     {
         DB::transaction(function () use ($amount, $currency, $description) {
             $this->deposit($amount, $currency);
-            $this->recordPayment($amount, $currency, $description);
+            $payment = $this->recordPayment($amount, $currency, $description);
+            $this->recordPaymentDestination($payment, $this);
         });
     }
 }
