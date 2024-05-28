@@ -14,7 +14,7 @@ test('user can pay an agent', function () {
 
     expect($user->checkBalance(Currency::BTC))->toBe(0)
         ->and($agent->checkBalance(Currency::BTC))->toBe(1000 * 1000)
-        ->and($user->payments()->count())->toBe(1)
+        ->and($user->sentPayments()->count())->toBe(1) // Use sentPayments here
         ->and(PaymentSource::where('source_id', $user->id)->count())->toBe(1)
         ->and(PaymentDestination::where('destination_id', $agent->id)->count())->toBe(1);
 });
@@ -27,7 +27,7 @@ test('user can pay a user', function () {
 
     expect($user->checkBalance(Currency::BTC))->toBe(0)
         ->and($user2->checkBalance(Currency::BTC))->toBe(1000 * 1000)
-        ->and($user->payments()->count())->toBe(1)
+        ->and($user->sentPayments()->count())->toBe(1) // Use sentPayments for the user
         ->and(PaymentSource::where('source_id', $user->id)->count())->toBe(1)
         ->and(PaymentDestination::where('destination_id', $user2->id)->count())->toBe(1);
 });
