@@ -123,13 +123,13 @@ trait Payable
         );
     }
 
-    public function payAgent(Agent $agent, int $amount, Currency $currency)
+    public function payAgent(Agent $recipient, int $amount, Currency $currency, ?string $description = 'Payment')
     {
-        DB::transaction(function () use ($agent, $amount, $currency) {
+        DB::transaction(function () use ($recipient, $amount, $currency, $description) {
             $this->withdraw($amount, $currency);
-            $agent->deposit($amount, $currency);
-            $payment = $this->recordPayment($amount, $currency);
-            $this->recordPaymentDestination($payment, $agent);
+            $recipient->deposit($amount, $currency);
+            $payment = $this->recordPayment($amount, $currency, $description, $this); // Ensure payer is 'this'
+            $this->recordPaymentDestination($payment, $recipient);
         });
     }
 
