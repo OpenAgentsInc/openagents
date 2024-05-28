@@ -10,6 +10,7 @@ use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Log;
 
 class PaymentService
 {
@@ -51,8 +52,11 @@ class PaymentService
 
         try {
             // Check balance and lock the row for the current transaction
-            $user = DB::table('users')->where('id', $authedUser->id)->lockForUpdate()->first();
+            DB::table('users')->where('id', $authedUser->id)->lockForUpdate()->first();
             $currentBalance = $authedUser->getSatsBalanceAttribute();
+
+            Log::info("Current sats balance: $currentBalance\n");
+            Log::info("Amount to pay: $amount\n");
 
             if ($currentBalance < $amount) {
                 throw new Exception('Insufficient balance');
@@ -60,7 +64,7 @@ class PaymentService
 
             // Insert into Payments table
             DB::table('payments')->insert([
-                'payer_type' => get_class($user),
+                'payer_type' => get_class($authedUser),
                 'payer_id' => $authedUser->id,
                 'currency' => Currency::BTC,
                 'amount' => $amount,
@@ -77,7 +81,7 @@ class PaymentService
                 ['currency', '=', Currency::BTC],
             ])
                 ->update([
-                    'amount' => DB::raw('amount - '.$amount),
+                    'amount' => DB::raw('amount - '.$amount * 1000),
                     'updated_at' => now(),
                 ]);
 

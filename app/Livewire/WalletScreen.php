@@ -2,7 +2,6 @@
 
 namespace App\Livewire;
 
-use App\Enums\Currency;
 use App\Models\User;
 use App\Services\PaymentService;
 use Livewire\Component;
@@ -43,7 +42,7 @@ class WalletScreen extends Component
         }
 
         // Optionally update the balance after processing the payment
-        $this->balance_btc = auth()->user()->checkBalance(Currency::BTC);
+        $this->balance_btc = auth()->user()->fresh()->getSatsBalanceAttribute();
     }
 
     public function render()
