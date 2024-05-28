@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\LocalLogger;
+use App\Services\PaymentService;
 use App\Services\StreamService;
 use Illuminate\Support\ServiceProvider;
 
@@ -19,6 +20,10 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(StreamService::class, function ($app) {
             return new StreamService();
+        });
+
+        $this->app->singleton(PaymentService::class, function ($app) {
+            return new PaymentService();
         });
     }
 

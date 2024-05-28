@@ -7,7 +7,6 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\PoolWebhookReceiver;
-use App\Livewire\Admin;
 use App\Livewire\Agents\Create;
 use App\Livewire\Agents\Edit;
 use App\Livewire\Agents\Index;
@@ -20,6 +19,7 @@ use App\Livewire\MarkdownPage;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
 use App\Livewire\Store;
+use App\Livewire\WalletScreen;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
@@ -89,6 +89,9 @@ Route::get('/introducing-the-agent-store', MarkdownPage::class);
 
 // LANDERS
 Route::get('/campaign/{id}', [CampaignController::class, 'land']);
+
+// WALLET
+Route::get('/wallet', WalletScreen::class)->name('wallet');
 
 // MISC
 Route::get('/changelog', Changelog::class);

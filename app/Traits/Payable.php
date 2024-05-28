@@ -49,13 +49,14 @@ trait Payable
         $balance->save();
     }
 
-    private function recordPayment(int $amount, Currency $currency)
+    private function recordPayment(int $amount, Currency $currency, ?string $description = null)
     {
         Payment::create([
             'payer_type' => get_class($this),
             'payer_id' => $this->id,
             'currency' => $currency->value,
             'amount' => $amount,
+            'description' => $description,
         ]);
     }
 
@@ -100,5 +101,13 @@ trait Payable
             'currency' => $currency->value,
             'amount' => $amount,
         ]);
+    }
+
+    public function payBonus(int $amount, Currency $currency, ?string $description = 'System bonus')
+    {
+        DB::transaction(function () use ($amount, $currency, $description) {
+            $this->deposit($amount, $currency);
+            $this->recordPayment($amount, $currency, $description);
+        });
     }
 }
