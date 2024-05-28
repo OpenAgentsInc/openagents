@@ -5,6 +5,7 @@
 namespace App\Services;
 
 use App\Enums\Currency;
+use App\Models\Payment;
 use App\Models\User;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -20,6 +21,30 @@ class PaymentService
     public function __construct()
     {
         $this->albyAccessToken = env('ALBY_ACCESS_TOKEN');
+    }
+
+    public function paySystemBonusToMultipleRecipients(iterable $recipients, int $amount, Currency $currency, ?string $description = 'System bonus')
+    {
+        DB::transaction(function () use ($recipients, $amount, $currency, $description) {
+            foreach ($recipients as $recipient) {
+                // Assuming recipient is a User instance or something with deposit method
+                $recipient->deposit($amount, $currency);
+                $this->recordPayment($recipient, $amount, $currency, $description);
+            }
+        });
+    }
+
+    private function recordPayment($recipient, int $amount, Currency $currency, ?string $description = null)
+    {
+        Payment::create([
+            'payer_type' => 'System', // Considering the system is the payer here
+            'payer_id' => 0, // Assuming 0 or some specific ID for system
+            //            'payee_type' => get_class($recipient),
+            //            'payee_id' => $recipient->id,
+            'currency' => $currency->value,
+            'amount' => $amount,
+            'description' => $description,
+        ]);
     }
 
     public function processPaymentRequest($payment_request)
