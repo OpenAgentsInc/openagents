@@ -8,6 +8,12 @@
 
         <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div class="mt-6 grid grid-cols-1 gap-10">
+                <x-pane title="May 28, 2024" borderColor="border-darkgray">
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/430">
+                        Add wallet with sats balance and withdrawal via bolt11
+                    </x-changelog-item>
+                </x-pane>
+
                 <x-pane title="May 19, 2024" borderColor="border-darkgray">
                     <x-changelog-item post="https://x.com/OpenAgentsInc/status/1792346743805558985"
                                       code="https://github.com/OpenAgentsInc/openagents/commit/4692e7b68d259ac3253ac5338d7f2bd129f4ac46">
