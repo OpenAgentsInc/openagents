@@ -40,7 +40,7 @@ test('agent can pay a user', function () {
 
     expect($agent->checkBalance(Currency::BTC))->toBe(0)
         ->and($user->checkBalance(Currency::BTC))->toBe(1000 * 1000)
-        ->and($agent->payments()->count())->toBe(1)
+        ->and($agent->sentPayments()->count())->toBe(1) // Use sentPayments here
         ->and(PaymentSource::where('source_id', $agent->id)->count())->toBe(1)
         ->and(PaymentDestination::where('destination_id', $user->id)->count())->toBe(1);
 });

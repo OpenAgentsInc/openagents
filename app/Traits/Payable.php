@@ -133,13 +133,13 @@ trait Payable
         });
     }
 
-    public function payUser(User $user, int $amount, Currency $currency)
+    public function payUser(User $recipient, int $amount, Currency $currency, ?string $description = 'Payment')
     {
-        DB::transaction(function () use ($user, $amount, $currency) {
+        DB::transaction(function () use ($recipient, $amount, $currency, $description) {
             $this->withdraw($amount, $currency);
-            $user->deposit($amount, $currency);
-            $payment = $this->recordPayment($amount, $currency);
-            $this->recordPaymentDestination($payment, $user);
+            $recipient->deposit($amount, $currency);
+            $payment = $this->recordPayment($amount, $currency, $description, $this); // Ensure payer is 'this'
+            $this->recordPaymentDestination($payment, $recipient);
         });
     }
 
