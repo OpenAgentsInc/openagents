@@ -12,13 +12,14 @@
             @endif
 
             <!-- Balance Display -->
-            <h4>Current Balance: {{ $balance_btc }}</h4>
+            <h4>Balance: {{ $balance_btc }} sats</h4>
 
             <!-- Payment Request Form -->
             <form class="mt-8" wire:submit.prevent="submitPaymentRequest">
                 <div>
                     <label for="payment_request">Bolt11 invoice:</label>
-                    <x-chat.input type="text" id="payment_request" wire:model="payment_request" required></x-chat.input>
+                    <x-chat.textarea type="text" id="payment_request" wire:model="payment_request"
+                                     required></x-chat.textarea>
                     @error('payment_request') <span class="error">{{ $message }}</span> @enderror
                 </div>
 
