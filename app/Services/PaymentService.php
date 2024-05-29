@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\Currency;
 use App\Models\Agent;
 use App\Models\User;
+use App\Traits\Payable;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -12,15 +13,20 @@ use Illuminate\Support\Facades\Http;
 
 class PaymentService
 {
+    use Payable;
+
     private string $albyAccessToken;
 
     public function __construct()
     {
-        $this->albyAccessToken = env('ALBY_ACCESS_TOKEN');
+        $this->albyAccessToken = env('ALBY_ACCESS_TOKEN', 'none');
     }
 
     public function payAgentForMessage(int $agentId, int $amount): bool
     {
+        // amount comes in as sats, we have to convert to msats
+        $amount = $amount * 1000;
+
         /** @var User $user */
         $user = Auth::user();
 
@@ -37,48 +43,32 @@ class PaymentService
         DB::beginTransaction();
 
         try {
+            // Lock user balance for update
             DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
-            $currentBalance = $user->getSatsBalanceAttribute();
+
+            $currentBalance = $user->checkBalance(Currency::BTC); // Using method from Payable trait
 
             if ($currentBalance < $amount) {
                 throw new Exception('Insufficient balance');
             }
 
-            DB::table('payments')->insert([
-                'payer_type' => get_class($user),
-                'payer_id' => $user->id,
-                //                'payee_type' => get_class($agent),
-                //                'payee_id' => $agent->id,
-                'currency' => Currency::BTC,
-                'amount' => $amount,
-                'metadata' => json_encode(['message' => 'Payment for message']),
-                'description' => 'Payment for message',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            // Withdraw balance from user
+            $user->withdraw($amount, Currency::BTC);
 
-            DB::table('balances')->where([
-                ['holder_type', '=', get_class($user)],
-                ['holder_id', '=', $user->id],
-                ['currency', '=', Currency::BTC],
-            ])->update([
-                'amount' => DB::raw('amount - '.$amount * 1000),
-                'updated_at' => now(),
-            ]);
+            // Deposit balance to agent
+            $agent->deposit($amount, Currency::BTC);
 
-            DB::table('balances')->where([
-                ['holder_type', '=', get_class($agent)],
-                ['holder_id', '=', $agent->id],
-                ['currency', '=', Currency::BTC],
-            ])->update([
-                'amount' => DB::raw('amount + '.$amount * 1000),
-                'updated_at' => now(),
-            ]);
+            // Record the payment
+            $payment = $user->recordPayment($amount, Currency::BTC, 'Payment for message', $user);
+
+            // Record the payment destination
+            $user->recordPaymentDestination($payment, $agent);
 
             DB::commit();
 
             return true;
         } catch (Exception $e) {
+            //            dd($e->getMessage());
             DB::rollBack();
 
             return false;
