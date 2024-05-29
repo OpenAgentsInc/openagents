@@ -49,7 +49,6 @@ class DumpRelevantTables extends Command
                 'threads',
                 'users',
             ])
-            ->doNotCreateTables()
             ->dumpToFile($dumpPath);
 
         $this->info("Database dump created successfully: $dumpPath");
