@@ -211,7 +211,7 @@
                 </form>
                 {{-- If selected agent, show agent usage component. Otherwise show messages-remaining--}}
                 @if ($selectedAgent)
-                    <livewire:agent-usage :agent="$selectedAgent"/>
+                    <livewire:agent-usage :selectedAgent="$selectedAgent"/>
                 @else
                     <livewire:messages-remaining/>
                 @endif
