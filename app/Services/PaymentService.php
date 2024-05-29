@@ -19,7 +19,7 @@ class PaymentService
 
     public function __construct()
     {
-        $this->albyAccessToken = env('ALBY_ACCESS_TOKEN');
+        $this->albyAccessToken = env('ALBY_ACCESS_TOKEN', 'none');
     }
 
     public function payAgentForMessage(int $agentId, int $amount): bool
