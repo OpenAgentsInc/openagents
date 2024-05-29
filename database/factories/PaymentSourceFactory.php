@@ -2,10 +2,12 @@
 
 namespace Database\Factories;
 
+use App\Models\PaymentSource;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\PaymentSource>
+ * @extends Factory<PaymentSource>
  */
 class PaymentSourceFactory extends Factory
 {
@@ -17,7 +19,8 @@ class PaymentSourceFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'source_type' => User::class,
+            'source_id' => User::factory(),
         ];
     }
 }
