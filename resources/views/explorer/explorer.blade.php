@@ -12,9 +12,17 @@
 </head>
 
 <body>
-Explorer
-
-Recent payments
+<div>
+    <h1>Explorer</h1>
+    <h2>Recent payments</h2>
+    <ul>
+        @forelse ($recentPayments as $payment)
+            <li>{{ $payment->amount }}</li>
+        @empty
+            <li>No recent payments found.</li>
+        @endforelse
+    </ul>
+</div>
 </body>
 
 </html>

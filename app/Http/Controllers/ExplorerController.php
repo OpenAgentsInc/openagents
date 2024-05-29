@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Payment;
+
 class ExplorerController extends Controller
 {
     public function index()
     {
-        return view('explorer.explorer');
+        $recentPayments = Payment::latest()->take(10)->get();
+
+        return view('explorer.explorer', compact('recentPayments'));
     }
 }
