@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class AgentUsage extends Component
@@ -14,10 +15,21 @@ class AgentUsage extends Component
     {
         $this->selectedAgent = $selectedAgent;
         if (auth()->check()) {
-            $this->sats_balance = auth()->user()->getSatsBalanceAttribute();
+            $this->updateSatsBalance();
         } else {
             $this->sats_balance = 0;
         }
+    }
+
+    private function updateSatsBalance()
+    {
+        $this->sats_balance = auth()->user()->getSatsBalanceAttribute();
+    }
+
+    #[On('message-created')]
+    public function updateStuff()
+    {
+        $this->updateSatsBalance();
     }
 
     public function render()
