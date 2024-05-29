@@ -80,7 +80,6 @@ class PaymentService
             return true;
         } catch (Exception $e) {
             DB::rollBack();
-            dd($e->getMessage());
 
             return false;
         }

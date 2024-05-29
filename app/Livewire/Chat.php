@@ -213,9 +213,14 @@ class Chat extends Component
             // Agent is ready for chat. Deduct sats_per_message from user balance.
             $payService = app(PaymentService::class);
             try {
-                $payService->payAgentForMessage($this->selectedAgent['id'], $this->selectedAgent['sats_per_message']);
+                $paid = $payService->payAgentForMessage($this->selectedAgent['id'], $this->selectedAgent['sats_per_message']);
+                if (! $paid) {
+                    $this->alert('error', 'Failed to pay '.$this->selectedAgent['sats_per_message'].' sats');
+
+                    return;
+                }
             } catch (Exception $e) {
-                $this->alert('error', 'Agent payment failed');
+                $this->alert('error', 'Failed to pay '.$this->selectedAgent['sats_per_message'].' sats');
 
                 return;
             }
