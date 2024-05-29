@@ -52,5 +52,10 @@ class DumpRelevantTables extends Command
             ->dumpToFile($dumpPath);
 
         $this->info("Database dump created successfully: $dumpPath");
+
+        // Copy the backup file to /home/forge
+        $backupPath = "/home/forge/{$databaseName}_{$timestamp}.sql";
+        File::copy($dumpPath, $backupPath);
+        $this->info("Database dump copied to $backupPath");
     }
 }
