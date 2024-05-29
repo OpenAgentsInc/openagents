@@ -13,6 +13,8 @@
 
 <body>
 Explorer
+
+Recent payments
 </body>
 
 </html>
