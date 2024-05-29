@@ -10,6 +10,7 @@ use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class PaymentService
 {
@@ -57,6 +58,9 @@ class PaymentService
 
                         // Record the payment destination
                         $agent->recordPaymentDestination($payment, $agentAuthor);
+
+                        // Log the payment
+                        Log::info("Swept {$agentAuthorShare} msats from agent {$agent->name} (ID {$agent->id}) to user $agentAuthor->name (ID {$agentAuthor->id})");
                     } else {
                         throw new Exception('Agent author not found');
                     }
