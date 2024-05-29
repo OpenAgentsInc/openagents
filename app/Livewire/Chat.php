@@ -11,6 +11,7 @@ use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
 use App\Services\LocalLogger;
+use App\Services\PaymentService;
 use App\Traits\SelectedModelOrAgentTrait;
 use App\Utils\PoolUtils;
 use Exception;
@@ -205,6 +206,16 @@ class Chat extends Component
             } elseif ($this->selectedAgent['is_rag_ready'] == false) {
 
                 $this->alert('warning', 'Agent is still training..');
+
+                return;
+            }
+
+            // Agent is ready for chat. Deduct sats_per_message from user balance.
+            $payService = app(PaymentService::class);
+            try {
+                $payService->payAgentForMessage($this->selectedAgent['id'], $this->selectedAgent['sats_per_message']);
+            } catch (Exception $e) {
+                $this->alert('error', 'Agent payment failed');
 
                 return;
             }
