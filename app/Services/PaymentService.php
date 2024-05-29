@@ -22,6 +22,11 @@ class PaymentService
         $this->albyAccessToken = env('ALBY_ACCESS_TOKEN', 'none');
     }
 
+    public function sweepAllAgentBalances()
+    {
+
+    }
+
     public function payAgentForMessage(int $agentId, int $amount): bool
     {
         // amount comes in as sats, we have to convert to msats
