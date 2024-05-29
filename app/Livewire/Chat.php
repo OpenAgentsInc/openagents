@@ -170,6 +170,7 @@ class Chat extends Component
             $this->selectedAgent = [
                 'id' => $agent->id,
                 'name' => $agent->name,
+                'sats_per_message' => $agent->sats_per_message,
                 'description' => $agent->about,
                 'instructions' => $agent->prompt,
                 'image' => $agent->image_url,
@@ -193,7 +194,6 @@ class Chat extends Component
 
     public function sendMessage(): void
     {
-
         if (! empty($this->selectedAgent)) {
             // Check if the action should be stopped
             if ($this->selectedAgent['is_rag_ready'] == false && $this->selectedAgent['created_at']->diffInMinutes() > 30) {
