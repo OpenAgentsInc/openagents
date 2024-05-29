@@ -19,7 +19,7 @@
 <body>
 <div>
     <h1>Explorer</h1>
-    <h2>Recent Payments</h2>
+    <h2>Recent payments</h2>
     <table class="table-auto">
         <thead>
         <tr>
