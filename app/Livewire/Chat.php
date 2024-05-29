@@ -197,18 +197,20 @@ class Chat extends Component
     {
         if (! empty($this->selectedAgent)) {
             // Check if the action should be stopped
-            if ($this->selectedAgent['is_rag_ready'] == false && $this->selectedAgent['created_at']->diffInMinutes() > 30) {
-                // Stop the action
-                // You can either return from a function, exit the script, throw an exception, etc., depending on the context
-                $this->alert('error', 'Agent is not available for interactions');
 
-                return; // or exit(); or throw new Exception('Action stopped due to Learning or Error state.');
-            } elseif ($this->selectedAgent['is_rag_ready'] == false) {
-
-                $this->alert('warning', 'Agent is still training..');
-
-                return;
-            }
+            // TODO: This must be refactored to allow for agents that do not have files, for which RAG is irrelevant
+            //            if ($this->selectedAgent['is_rag_ready'] == false && $this->selectedAgent['created_at']->diffInMinutes() > 30) {
+            //                // Stop the action
+            //                // You can either return from a function, exit the script, throw an exception, etc., depending on the context
+            //                $this->alert('error', 'Agent is not available for interactions');
+            //
+            //                return; // or exit(); or throw new Exception('Action stopped due to Learning or Error state.');
+            //            } elseif ($this->selectedAgent['is_rag_ready'] == false) {
+            //
+            //                $this->alert('warning', 'Agent is still training..');
+            //
+            //                return;
+            //            }
 
             // Agent is ready for chat. Deduct sats_per_message from user balance.
             $payService = app(PaymentService::class);
