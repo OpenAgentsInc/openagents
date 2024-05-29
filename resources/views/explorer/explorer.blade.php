@@ -9,19 +9,41 @@
     <script src="https://unpkg.com/htmx.org@2.0.0-beta4/dist/htmx.min.js"></script>
     <script src="https://unpkg.com/htmx-ext-sse@2.0.0/sse.js"></script>
     @include('partials.vite')
+    <style>
+        td {
+            padding: 0.5rem;
+        }
+    </style>
 </head>
 
 <body>
 <div>
     <h1>Explorer</h1>
-    <h2>Recent payments</h2>
-    <ul>
+    <h2>Recent Payments</h2>
+    <table class="table-auto">
+        <thead>
+        <tr>
+            <th>Amount</th>
+            <th>Currency</th>
+            <th>Description</th>
+            <th>Date</th>
+        </tr>
+        </thead>
+        <tbody>
         @forelse ($recentPayments as $payment)
-            <li>{{ $payment->amount }}</li>
+            <tr>
+                <td>{{ $payment->amount }}</td>
+                <td>{{ $payment->currency }}</td>
+                <td>{{ $payment->description }}</td>
+                <td>{{ $payment->created_at }}</td>
+            </tr>
         @empty
-            <li>No recent payments found.</li>
+            <tr>
+                <td colspan="3">No recent payments found.</td>
+            </tr>
         @endforelse
-    </ul>
+        </tbody>
+    </table>
 </div>
 </body>
 

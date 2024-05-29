@@ -23,5 +23,7 @@ test('explorer page shows the most recent payments', function () {
     // Assert we see the amounts of 10 recent payments
     foreach ($recentPayments as $payment) {
         $response->assertSee($payment->amount);
+        // assert that the description is present
+        $response->assertSee($payment->description);
     }
 });

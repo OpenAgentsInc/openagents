@@ -8,7 +8,7 @@ class ExplorerController extends Controller
 {
     public function index()
     {
-        $recentPayments = Payment::latest()->take(10)->get();
+        $recentPayments = Payment::latest()->take(50)->get();
 
         return view('explorer.explorer', compact('recentPayments'));
     }
