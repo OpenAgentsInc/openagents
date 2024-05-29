@@ -3,11 +3,23 @@
 use App\Enums\Currency;
 use App\Models\Agent;
 use App\Models\User;
+use App\Services\PaymentService;
 
 test('sats_earned is calculated correctly', function () {
     $agent = Agent::factory()->withBalance(800000, Currency::BTC)->create();
     $user = User::factory()->withBalance(300000, Currency::BTC)->create();
+    $this->actingAs($user);
 
-    expect($agent->sats_earned)->toBe(800)
-        ->and($user->sats_earned)->toBe(300);
+    // First we expect it to be 0 because we only care about payments received
+    expect($agent->sats_earned)->toBe(0)
+        ->and($user->sats_earned)->toBe(0);
+
+    // Now we have the User make a payment to the Agent
+    $payService = new PaymentService();
+    $res = $payService->payAgentForMessage($agent->id, 8);
+
+    expect($res)->toBeTrue()
+        // Now we expect the Agent to have earned 8 sats
+        ->and($agent->fresh()->sats_earned)->toBe(8)
+        ->and($user->sats_earned)->toBe(0);
 });

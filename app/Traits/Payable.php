@@ -15,6 +15,24 @@ use InvalidArgumentException;
 
 trait Payable
 {
+    // Add an attribute sats_earned that calculates all bitcoin payments received
+    public function getSatsEarnedAttribute()
+    {
+        return $this->receivedPayments()->where('currency', Currency::BTC)->sum('amount');
+    }
+
+    public function receivedPayments()
+    {
+        return $this->hasManyThrough(
+            Payment::class,
+            PaymentDestination::class,
+            'destination_id', // Foreign key on PaymentDestination table
+            'id', // Foreign key on Payment table
+            'id', // Local key on User table
+            'payment_id'  // Local key on PaymentDestination table
+        );
+    }
+
     public function multipay(array $recipients): void
     {
         DB::transaction(function () use ($recipients) {
@@ -53,7 +71,7 @@ trait Payable
         $balance->save();
     }
 
-    private function recordPayment(int $amount, Currency $currency, ?string $description = null, $payer = null)
+    public function recordPayment(int $amount, Currency $currency, ?string $description = null, $payer = null)
     {
         if (is_string($payer) && $payer === 'System') {
             $payerType = 'System';
@@ -78,7 +96,7 @@ trait Payable
         return $payment;
     }
 
-    private function recordPaymentSource(Payment $payment, $payer = null)
+    public function recordPaymentSource(Payment $payment, $payer = null)
     {
         if (is_string($payer) && $payer === 'System') {
             $sourceType = 'System';
@@ -97,7 +115,7 @@ trait Payable
         ]);
     }
 
-    private function recordPaymentDestination(Payment $payment, $payee)
+    public function recordPaymentDestination(Payment $payment, $payee)
     {
         PaymentDestination::create([
             'payment_id' => $payment->id,
@@ -109,18 +127,6 @@ trait Payable
     public function sentPayments()
     {
         return $this->morphMany(Payment::class, 'payer');
-    }
-
-    public function receivedPayments()
-    {
-        return $this->hasManyThrough(
-            Payment::class,
-            PaymentDestination::class,
-            'destination_id', // Foreign key on PaymentDestination table
-            'id', // Foreign key on Payment table
-            'id', // Local key on User table
-            'payment_id'  // Local key on PaymentDestination table
-        );
     }
 
     public function payAgent(Agent $recipient, int $amount, Currency $currency, ?string $description = 'Payment')
