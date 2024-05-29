@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\ExplorerController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SocialAuthController;
@@ -92,6 +93,9 @@ Route::get('/campaign/{id}', [CampaignController::class, 'land']);
 
 // WALLET
 Route::get('/wallet', WalletScreen::class)->name('wallet');
+
+// PAYMENTS EXPLORER
+Route::get('/explorer', [ExplorerController::class, 'index'])->name('explorer');
 
 // MISC
 Route::get('/changelog', Changelog::class);

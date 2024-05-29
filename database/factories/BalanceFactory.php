@@ -2,10 +2,13 @@
 
 namespace Database\Factories;
 
+use App\Enums\Currency;
+use App\Models\Balance;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Balance>
+ * @extends Factory<Balance>
  */
 class BalanceFactory extends Factory
 {
@@ -17,7 +20,10 @@ class BalanceFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'holder_type' => User::class, // Assuming `User` is a model. Replace with actual holder models
+            'holder_id' => User::factory(),
+            'currency' => $this->faker->randomElement(Currency::cases()),
+            'amount' => $this->faker->numberBetween(1000, 1000000), // Example amount range
         ];
     }
 }
