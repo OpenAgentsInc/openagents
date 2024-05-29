@@ -26,6 +26,16 @@ trait Payable
             ->leftJoin('payments', 'payment_destinations.payment_id', '=', 'payments.id');
     }
 
+    public function getSatsBalanceAttribute(): int
+    {
+        return (int) $this->balances()->where('currency', Currency::BTC)->first()->amount;
+    }
+
+    public function balances()
+    {
+        return $this->morphMany(Balance::class, 'holder');
+    }
+
     public function multipay(array $recipients): void
     {
         DB::transaction(function () use ($recipients) {
@@ -47,11 +57,6 @@ trait Payable
         }
         $balance->amount -= $amount;
         $balance->save();
-    }
-
-    public function balances()
-    {
-        return $this->morphMany(Balance::class, 'holder');
     }
 
     public function deposit(int $amount, Currency $currency)
