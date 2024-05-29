@@ -22,6 +22,7 @@ class AgentFactory extends Factory
     {
         return [
             'name' => $this->faker->name,
+            'sats_per_message' => 3,
             'user_id' => User::factory(),
         ];
     }

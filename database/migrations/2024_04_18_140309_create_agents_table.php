@@ -19,6 +19,7 @@ return new class extends Migration
             $table->text('about')->nullable();
             $table->text('message')->nullable();
             $table->longText('prompt')->nullable();
+            $table->integer('sats_per_message')->default(3);
             $table->boolean('use_tools')->default(false);
             $table->text('rag_prompt')->nullable();
             $table->boolean('is_public')->default(true);
