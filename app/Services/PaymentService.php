@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Currency;
+use App\Models\Agent;
 use App\Models\User;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -16,6 +17,72 @@ class PaymentService
     public function __construct()
     {
         $this->albyAccessToken = env('ALBY_ACCESS_TOKEN');
+    }
+
+    public function payAgentForMessage(int $agentId, int $amount): bool
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        if (! $user) {
+            return false;
+        }
+
+        $agent = Agent::find($agentId);
+
+        if (! $agent) {
+            return false;
+        }
+
+        DB::beginTransaction();
+
+        try {
+            DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
+            $currentBalance = $user->getSatsBalanceAttribute();
+
+            if ($currentBalance < $amount) {
+                throw new Exception('Insufficient balance');
+            }
+
+            DB::table('payments')->insert([
+                'payer_type' => get_class($user),
+                'payer_id' => $user->id,
+                //                'payee_type' => get_class($agent),
+                //                'payee_id' => $agent->id,
+                'currency' => Currency::BTC,
+                'amount' => $amount,
+                'metadata' => json_encode(['message' => 'Payment for message']),
+                'description' => 'Payment for message',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::table('balances')->where([
+                ['holder_type', '=', get_class($user)],
+                ['holder_id', '=', $user->id],
+                ['currency', '=', Currency::BTC],
+            ])->update([
+                'amount' => DB::raw('amount - '.$amount * 1000),
+                'updated_at' => now(),
+            ]);
+
+            DB::table('balances')->where([
+                ['holder_type', '=', get_class($agent)],
+                ['holder_id', '=', $agent->id],
+                ['currency', '=', Currency::BTC],
+            ])->update([
+                'amount' => DB::raw('amount + '.$amount * 1000),
+                'updated_at' => now(),
+            ]);
+
+            DB::commit();
+
+            return true;
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            return false;
+        }
     }
 
     public function paySystemBonusToMultipleRecipients(iterable $recipients, int $amount, Currency $currency, ?string $description = 'System bonus')
