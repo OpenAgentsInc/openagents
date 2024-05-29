@@ -2,13 +2,11 @@
 
 namespace App\Livewire;
 
-use App\AI\GreptileGateway;
 use App\AI\NostrInference;
 use App\AI\NostrRag;
 use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\AgentFile;
-use App\Models\Codebase;
 use App\Models\NostrJob;
 use App\Models\Thread;
 use App\Services\ImageService;
@@ -184,12 +182,6 @@ class Chat extends Component
             // dd('Agent not found');
             $this->selectedAgent = null;
         }
-
-        // If the agent has Codebase capability, fetch the codebases
-        if ($agent->hasCapability('codebase_search')) {
-            // Dispatch an event to notify the sidebar component of the active agent & selected codebases
-            $this->dispatch('codebase-agent-selected', $agent->id);
-        }
     }
 
     #[On('no-more-messages')]
@@ -268,13 +260,9 @@ class Chat extends Component
         $logger = new LocalLogger();
         $logger->log("Running agent without RAG. Input: {$this->input}");
 
-        // Attach any context necessary from querying the codebase
-        $this->handleCodebaseContext();
-
         $userInput = $this->handleImageInput().$this->input;
 
         $systemPrompt = implode("\n\n", [
-            'You are an AI agent on OpenAgents.com.',
             "Your name is {$this->selectedAgent['name']}.",
             "Your description is: {$this->selectedAgent['description']}",
             "Your instructions are: {$this->selectedAgent['instructions']}.",
@@ -330,31 +318,6 @@ class Chat extends Component
         if (isset($output['error'])) {
             $this->alert('error', $output['error']);
         }
-    }
-
-    public function handleCodebaseContext(): void
-    {
-        // If we're not in env local, return
-        if (app()->environment() !== 'local') {
-            return;
-        }
-
-        //        dd($this->selectedAgent['capabilities']);
-
-        // If this agent doesn't have codebase capability, return - check if the array includes "codebase_search"
-        if (! $this->selectedAgent || ! $this->selectedAgent['capabilities'] || ! in_array('codebase_search', $this->selectedAgent['capabilities'])) {
-            return;
-        }
-
-        // Return if text does not include the word 'index'
-        //        if (strpos($this->input, 'index') === false) {
-        //            return;
-        //        }
-
-        $client = new GreptileGateway();
-        $results = $client->search($this->input, Codebase::all());
-
-        $this->input .= "\n\n"."Use these code results as context:\n".$results;
     }
 
     private function handleImageInput(): string
