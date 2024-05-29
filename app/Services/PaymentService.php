@@ -10,6 +10,7 @@ use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class PaymentService
 {
@@ -20,6 +21,59 @@ class PaymentService
     public function __construct()
     {
         $this->albyAccessToken = env('ALBY_ACCESS_TOKEN', 'none');
+    }
+
+    public function sweepAllAgentBalances()
+    {
+        // Get all agents with a non-zero balance
+        $agents = Agent::whereHas('balances', function ($query) {
+            $query->where('currency', Currency::BTC)->where('amount', '>', 0);
+        })->get();
+
+        DB::beginTransaction();
+
+        try {
+            foreach ($agents as $agent) {
+                // Get agent's BTC balance
+                $balance = $agent->balances()->where('currency', Currency::BTC)->first();
+
+                if ($balance) {
+                    $amount = $balance->amount;
+
+                    // Calculate the distribution
+                    $agentAuthorShare = 0.80 * $amount; // 80% to agent author
+
+                    // Withdraw balance from agent
+                    $agent->withdraw($amount, Currency::BTC);
+
+                    // Distribution to Agent Author
+                    $agentAuthor = User::find($agent->user_id);
+
+                    if ($agentAuthor) {
+                        $agentAuthor->deposit($agentAuthorShare, Currency::BTC);
+
+                        // Record the payment
+                        $payment = $agent->recordPayment($agentAuthorShare, Currency::BTC, 'Swept balance to author',
+                            $agent);
+
+                        // Record the payment destination
+                        $agent->recordPaymentDestination($payment, $agentAuthor);
+
+                        // Log the payment
+                        Log::info("Swept {$agentAuthorShare} msats from agent {$agent->name} (ID {$agent->id}) to user $agentAuthor->name (ID {$agentAuthor->id})");
+                    } else {
+                        throw new Exception('Agent author not found');
+                    }
+                }
+            }
+
+            DB::commit();
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            // Log exception or handle it as needed
+            throw $e;
+        }
     }
 
     public function payAgentForMessage(int $agentId, int $amount): bool
