@@ -35,7 +35,7 @@ test('sats_earned is calculated correctly even after a masspay', function () {
 
     // First we expect it to be 0 because we only care about payments received
     expect($agent->sats_earned)->toBe(0)
-        ->and($user->sats_earned)->toBe(500);
+        ->and($user->sats_earned)->toBe(50);
 
     // Now we have the User make a payment to the Agent
     $payService = new PaymentService();
@@ -44,5 +44,5 @@ test('sats_earned is calculated correctly even after a masspay', function () {
     expect($res)->toBeTrue()
         // Now we expect the Agent to have earned 8 sats
         ->and($agent->fresh()->sats_earned)->toBe(8)
-        ->and($user->sats_earned)->toBe(500);
+        ->and($user->sats_earned)->toBe(50);
 });

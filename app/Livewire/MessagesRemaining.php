@@ -25,6 +25,7 @@ class MessagesRemaining extends Component
             $messagesToday = Message::where('user_id', $user->id)
                 ->whereDate('created_at', today())
                 ->whereNotNull('model')
+                ->whereNull('agent_id')
                 ->count();
 
             if ($user->isPro()) {
@@ -40,6 +41,7 @@ class MessagesRemaining extends Component
             $messagesToday = Message::where('session_id', $sessionId)
                 ->whereDate('created_at', today())
                 ->whereNotNull('model')
+                ->whereNull('agent_id')
                 ->count();
             $this->remaining = max(0, 5 - $messagesToday);
         }

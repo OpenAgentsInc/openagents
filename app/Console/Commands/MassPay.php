@@ -23,12 +23,12 @@ class MassPay extends Command
 
         $currency = Currency::BTC;
 
-        $msats = 500 * 1000; // Pay 500 sats to non-pro users
-        $msats_pro = 2500 * 1000; // Pay 2500 sats to pro users
+        $msats = 50 * 1000; // Pay 50 sats to non-pro users
+        $msats_pro = 250 * 1000; // Pay 250 sats to pro users
 
         // Instantiate PaymentService and make the payment
-        $paymentService->paySystemBonusToMultipleRecipients($nonProRecipients, $msats, $currency, 'Bonus test');
-        $paymentService->paySystemBonusToMultipleRecipients($proRecipients, $msats_pro, $currency, 'Bonus test (5x extra for pro!)');
+        $paymentService->paySystemBonusToMultipleRecipients($nonProRecipients, $msats, $currency, 'A little bonus');
+        $paymentService->paySystemBonusToMultipleRecipients($proRecipients, $msats_pro, $currency, 'A little bonus (5x extra for pro!)');
 
         $this->info('Mass payment successful.');
     }
