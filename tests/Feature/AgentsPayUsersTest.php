@@ -6,7 +6,6 @@ use App\Models\Balance;
 use App\Services\PaymentService;
 
 test('agent balances can be distributed to users', function () {
-
     // Given a bunch of agents with balances (run the PaymentSeeder)
     Agent::factory(15)->create()->each(function ($agent) {
         Balance::factory()->create([
