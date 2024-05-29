@@ -11,7 +11,7 @@ class Agent extends Model
 {
     use HasFactory, Payable;
 
-    protected $appends = ['sats_earned', 'image_url', 'thread_count', 'unique_users_count', 'creator_username'];
+    protected $appends = ['sats_balance', 'sats_earned', 'image_url', 'thread_count', 'unique_users_count', 'creator_username'];
 
     protected $fillable = [
         'name',
