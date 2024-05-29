@@ -36,9 +36,13 @@ class DumpRelevantTables extends Command
             ->includeTables([
                 'agent_files',
                 'agents',
+                'balances',
                 'messages',
                 'nostr_accounts',
                 'nostr_jobs',
+                'payment_destinations',
+                'payment_sources',
+                'payments',
                 'sessions',
                 'subscription_items',
                 'subscriptions',

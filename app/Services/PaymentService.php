@@ -8,7 +8,6 @@ use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Log;
 
 class PaymentService
 {
@@ -59,9 +58,6 @@ class PaymentService
         try {
             DB::table('users')->where('id', $authedUser->id)->lockForUpdate()->first();
             $currentBalance = $authedUser->getSatsBalanceAttribute();
-
-            Log::info("Current sats balance: $currentBalance\n");
-            Log::info("Amount to pay: $amount\n");
 
             if ($currentBalance < $amount) {
                 throw new Exception('Insufficient balance');
