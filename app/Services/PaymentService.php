@@ -22,9 +22,11 @@ class PaymentService
         $this->albyAccessToken = env('ALBY_ACCESS_TOKEN');
     }
 
-    // amount is sats
     public function payAgentForMessage(int $agentId, int $amount): bool
     {
+        // amount comes in as sats, we have to convert to msats
+        $amount = $amount * 1000;
+
         /** @var User $user */
         $user = Auth::user();
 
@@ -66,7 +68,7 @@ class PaymentService
 
             return true;
         } catch (Exception $e) {
-            dd($e->getMessage());
+            //            dd($e->getMessage());
             DB::rollBack();
 
             return false;

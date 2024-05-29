@@ -16,9 +16,23 @@ use InvalidArgumentException;
 trait Payable
 {
     // Add an attribute sats_earned that calculates all bitcoin payments received
-    public function getSatsEarnedAttribute()
+    //    public function getSatsEarnedAttribute(): int
+    //    {
+    //        //        dd($this->receivedPayments()->where('currency', Currency::BTC)->sum('amount') / 1000);
+    //
+    //        // dd the count of received payments
+    //        dd($this->receivedPayments()->where('currency', Currency::BTC)->count());
+    //
+    //        return (int) $this->receivedPayments()->where('currency', Currency::BTC)->sum('amount') / 1000;
+    //    }
+
+    public function getSatsEarnedAttribute(): int
     {
-        return $this->receivedPayments()->where('currency', Currency::BTC)->sum('amount');
+        $query = $this->receivedPayments()->where('currency', Currency::BTC)->toSql();
+        //        dd($query);
+        //        dd($this);
+
+        return (int) $this->receivedPayments()->where('currency', Currency::BTC)->sum('amount') / 1000;
     }
 
     public function receivedPayments()
@@ -26,10 +40,10 @@ trait Payable
         return $this->hasManyThrough(
             Payment::class,
             PaymentDestination::class,
-            'destination_id', // Foreign key on PaymentDestination table
-            'id', // Foreign key on Payment table
-            'id', // Local key on User table
-            'payment_id'  // Local key on PaymentDestination table
+            'destination_id', // Foreign key on PaymentDestination table that references the receiver (destination)
+            'id', // Foreign key on Payment table referencing the intermediate table (PaymentDestination)
+            'id', // Local key on the current model (User or Agent model)
+            'payment_id' // Local key on the PaymentDestination table (pointers to the Payment)
         );
     }
 
