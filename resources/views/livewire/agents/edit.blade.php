@@ -70,6 +70,15 @@
                     @enderror
                 </div>
 
+                <div class="form-group flex-col flex mt-5">
+                    <label class="mb-1" for="sats_per_message">Sats Per Message </label>
+                    <input type="number" id="sats_per_message" wire:model="sats_per_message"
+                           class="rounded border-2 border-[#3D3E42] focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white w-[150px] bg-black"
+                           min="3" max="3000">
+                    <div class="text-darkgray">(min 3, max 3000)</div>
+                    @error('sats_per_message') <span class="text-danger">{{ $message }}</span> @enderror
+                </div>
+
                 {{--                <div class="mt-5">--}}
                 {{--                    <label for="rag_prompt"> RAG Prompt</label>--}}
                 {{--                    <x-textarea wire:model='rag_prompt' placeholder="Add your RAG prompt?" id="rag_prompt"--}}
