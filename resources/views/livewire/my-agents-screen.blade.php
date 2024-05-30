@@ -13,7 +13,7 @@
             </a>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-6">
+        <div class="mt-6 grid grid-cols-2 gap-6">
             @forelse(auth()->user()->agents as $agent)
                 <livewire:agent-card :agent="$agent" :key="$agent->id"/>
             @empty

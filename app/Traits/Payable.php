@@ -28,7 +28,9 @@ trait Payable
 
     public function getSatsBalanceAttribute(): int
     {
-        return (int) $this->balances()->where('currency', Currency::BTC)->first()->amount;
+        $balance = $this->balances()->where('currency', Currency::BTC)->first();
+
+        return $balance ? (int) $balance->amount : 0;
     }
 
     public function balances()
