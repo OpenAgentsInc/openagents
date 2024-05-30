@@ -31,6 +31,7 @@
     </div>
 
     <div class="font-bold text-xl">{{ $agent['name'] }}</div>
+    <p class="mb-0 text-sm text-gray leading-none">{{ $agent->sats_per_message }} sats per message</p>
 
     <a href="/u/{{ $agent->creator_username }}">
         <div class="flex items-center hover:underline text-gray">

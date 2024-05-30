@@ -9,8 +9,22 @@
         <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div class="mt-6 grid grid-cols-1 gap-10">
                 <x-pane title="May 30, 2024" borderColor="border-darkgray">
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/441"
+                                      post="https://x.com/OpenAgentsInc/status/1796195661752246705">
+                        Sweep agent balances to users every minute
+                    </x-changelog-item>
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/439">
                         Added 'My Agents' screen
+                    </x-changelog-item>
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/441"
+                                      post="https://x.com/OpenAgentsInc/status/1796198368802210163">
+                        Improved wallet UI
+                    </x-changelog-item>
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/443">
+                        Editable agent sats per message (max 3000)
+                    </x-changelog-item>
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/442">
+                        [Pro] Added Codestral model
                     </x-changelog-item>
                 </x-pane>
 
