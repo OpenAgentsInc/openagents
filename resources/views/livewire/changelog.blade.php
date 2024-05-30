@@ -10,7 +10,7 @@
             <div class="mt-6 grid grid-cols-1 gap-10">
                 <x-pane title="May 30, 2024" borderColor="border-darkgray">
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/439">
-                        Add 'My Agents' screen
+                        Added 'My Agents' screen
                     </x-changelog-item>
                 </x-pane>
 
@@ -24,7 +24,7 @@
                 <x-pane title="May 28, 2024" borderColor="border-darkgray">
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/430"
                                       post="https://x.com/OpenAgentsInc/status/1795535732032831719">
-                        Add sats wallet with bolt11 withdrawal
+                        Added sats wallet with bolt11 withdrawal
                     </x-changelog-item>
                 </x-pane>
 
