@@ -19,6 +19,7 @@ use App\Livewire\MarkdownPage;
 use App\Livewire\Plugins\PluginCreate;
 use App\Livewire\Plugins\PluginEdit;
 use App\Livewire\Plugins\PluginList;
+use App\Livewire\MyAgentsScreen;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
 use App\Livewire\Store;
@@ -56,6 +57,7 @@ Route::get('/agents', Index::class)->name('agents');
 Route::get('/create', Create::class)->name('agents.create');
 Route::get('/agents/{agent}', Profile::class)->name('agents.profile');
 Route::get('/agents/{agent}/edit', Edit::class)->name('agents.edit');
+Route::get('/my-agents', MyAgentsScreen::class)->name('myagents');
 
 // PROFILES
 Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile');
