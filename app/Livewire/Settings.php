@@ -18,6 +18,8 @@ class Settings extends Component
 
     public $lightning_address;
 
+    public $system_prompt;
+
     public $models = Models::MODELS;
 
     public function mount()
@@ -29,8 +31,26 @@ class Settings extends Component
         $this->lightning_address = auth()->user()->lightning_address;
 
         $this->selectedModel = auth()->user()->default_model ?? Models::getDefaultModel();
+        $this->system_prompt = auth()->user()->system_prompt ?? '';
         $this->autoscroll = auth()->user()->autoscroll; // Initialize autoscroll
 
+    }
+
+    public function updateSystemPrompt()
+    {
+        try {
+            $this->validate([
+                'system_prompt' => 'nullable|string',
+            ]);
+        } catch (Exception $e) {
+            $this->alert('error', 'Invalid system prompt');
+
+            return;
+        }
+
+        auth()->user()->update(['system_prompt' => trim($this->system_prompt)]);
+
+        $this->alert('success', 'Updated system prompt');
     }
 
     public function updateLightningAddress()

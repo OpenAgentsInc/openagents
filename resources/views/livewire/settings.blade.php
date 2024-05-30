@@ -6,6 +6,14 @@
                                      action="setDefaultModel"/>
         </x-pane>
 
+        <x-pane title="Custom system prompt">
+            <div class="flex flex-col">
+                <x-textarea wire:model='system_prompt' placeholder="You are a helpful assistant."
+                            id="system_prompt" class="form-input" min-rows="3" name="system_prompt"/>
+                <button class="btn mt-4" wire:click="updateSystemPrompt">Save</button>
+            </div>
+        </x-pane>
+
         <div class="my-12"/>
 
         <x-pane title="Autoscroll to bottom in chats">

@@ -34,6 +34,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'profile_photo_path',
         'default_model',
+        'system_prompt',
         'autoscroll',
         'lightning_address',
     ];
