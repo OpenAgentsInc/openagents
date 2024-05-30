@@ -12,6 +12,8 @@ class WalletScreen extends Component
 
     public $payment_request;
 
+    public $received_payments;
+
     protected $rules = [
         'payment_request' => 'required|string',
     ];
@@ -27,6 +29,9 @@ class WalletScreen extends Component
         /** @var User $user */
         $user = auth()->user();
         $this->balance_btc = $user->getSatsBalanceAttribute();
+
+        // Get the user's received payments
+        $this->received_payments = $user->receivedPayments()->get()->reverse();
     }
 
     public function submitPaymentRequest(PaymentService $paymentService): void
