@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('threads', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained('users');
+            $table->foreignId('agent_id')->nullable();
             $table->string('session_id')->nullable();
             $table->string('title')->nullable();
             $table->timestamps();

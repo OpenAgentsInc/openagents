@@ -2,27 +2,28 @@
 
 namespace App\Models;
 
-use App\Events\PaymentCreated;
+use App\Enums\Currency;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Payment extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $guarded = [];
 
-    protected static function booted()
+    protected $casts = [
+        'currency' => Currency::class,
+    ];
+
+    public function sources()
     {
-        static::created(function ($payment) {
-            broadcast(new PaymentCreated($payment));
-        });
+        return $this->hasMany(PaymentSource::class);
     }
 
-    // Add this method to define the receiver relationship
-    public function receiver(): BelongsTo
+    public function destinations()
     {
-        return $this->belongsTo(User::class, 'receiver_id');
+        return $this->hasMany(PaymentDestination::class);
     }
 }

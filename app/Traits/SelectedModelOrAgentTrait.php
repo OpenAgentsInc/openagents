@@ -40,6 +40,7 @@ trait SelectedModelOrAgentTrait
             'name' => $agent->name,
             'description' => $agent->about,
             'instructions' => $agent->prompt,
+            'sats_per_message' => $agent->sats_per_message,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,
             'use_tools' => $agent->use_tools,
@@ -56,7 +57,7 @@ trait SelectedModelOrAgentTrait
     public function setModelOrAgentForThread(Thread $thread): void
     {
         $messages = $this->thread->messages()
-            ->with('agent:image,id,name,about,prompt,is_rag_ready,created_at,updated_at,use_tools,capabilities')
+            ->with('agent:image,id,name,about,prompt,sats_per_message,is_rag_ready,created_at,updated_at,use_tools,capabilities')
             ->orderBy('created_at', 'asc')
             ->get()
             ->toArray();
@@ -91,6 +92,7 @@ trait SelectedModelOrAgentTrait
             'name' => $message['agent']['name'],
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
+            'sats_per_message' => $message['agent']['sats_per_message'],
             'image' => $message['agent']['image_url'],
             'is_rag_ready' => $message['agent']['is_rag_ready'],
             'use_tools' => $message['agent']['use_tools'],
@@ -106,6 +108,7 @@ trait SelectedModelOrAgentTrait
             'name' => $this->thread->agent->name,
             'description' => $this->thread->agent->about,
             'instructions' => $this->thread->agent->prompt,
+            'sats_per_message' => $this->thread->agent->sats_per_message,
             'image' => $this->thread->agent->image_url,
             'is_rag_ready' => $this->thread->agent->is_rag_ready,
             'use_tools' => $this->thread->agent->use_tools,
@@ -123,6 +126,7 @@ trait SelectedModelOrAgentTrait
             'id' => $agent->id,
             'name' => $agent->name,
             'description' => $agent->about,
+            'sats_per_message' => $agent->sats_per_message,
             'instructions' => $agent->prompt,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,

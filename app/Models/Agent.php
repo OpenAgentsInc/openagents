@@ -2,15 +2,16 @@
 
 namespace App\Models;
 
+use App\Traits\Payable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
 class Agent extends Model
 {
-    use HasFactory;
+    use HasFactory, Payable;
 
-    protected $appends = ['image_url', 'thread_count', 'unique_users_count', 'creator_username'];
+    protected $appends = ['sats_balance', 'sats_earned', 'image_url', 'thread_count', 'unique_users_count', 'creator_username'];
 
     protected $fillable = [
         'name',
@@ -27,7 +28,7 @@ class Agent extends Model
 
     public function getCreatorPictureAttribute()
     {
-        return $this->user->profile_photo_path ?? 'https://placekitten.com/200/200';
+        return $this->user->profile_photo_path ?? '/images/nostrich.jpeg';
     }
 
     public function getCreatorUsernameAttribute()

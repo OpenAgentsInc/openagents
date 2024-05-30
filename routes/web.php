@@ -1,21 +1,20 @@
 <?php
 
-use App\Livewire\Blog;
-use App\Livewire\Chat;
-use App\Livewire\Logs;
-use App\Livewire\Admin;
-use App\Livewire\Store;
-use App\Livewire\Settings;
-use App\Livewire\Changelog;
-use App\Livewire\ProWelcome;
+
+use App\Http\Controllers\ExplorerController;
+use App\Livewire\Agents\Create;
 use App\Livewire\Agents\Edit;
 use App\Livewire\Agents\Index;
-use App\Livewire\MarkdownPage;
-use App\Livewire\Agents\Create;
 use App\Livewire\Agents\Profile;
-use App\Livewire\Plugins\PluginEdit;
-use App\Livewire\Plugins\PluginList;
-use App\Livewire\IndexedCodebaseList;
+use App\Livewire\Blog;
+use App\Livewire\Changelog;
+use App\Livewire\Chat;
+use App\Livewire\Logs;
+use App\Livewire\MarkdownPage;
+use App\Livewire\ProWelcome;
+use App\Livewire\Settings;
+use App\Livewire\Store;
+use App\Livewire\WalletScreen;
 use Illuminate\Support\Facades\Route;
 use App\Livewire\Plugins\PluginCreate;
 use App\Http\Controllers\StaticController;
@@ -40,7 +39,7 @@ $authRoutes = [
 ];
 
 // Redirect all authentication routes to home
-Route::match(['get', 'post'], '/{authRoute}', function (string $authRoute) {
+Route::match(['get', 'post'], '/{authRoute}', function () {
     return redirect()->route('home');
 })->whereIn('authRoute', $authRoutes);
 
@@ -65,10 +64,6 @@ Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile')
 // STORE
 Route::get('/store', Store::class)->name('store');
 
-// THREADS
-Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
-Route::get('/chatmx/{thread}', [ThreadController::class, 'show'])->name('threads.show');
-
 Route::middleware('guest')->group(function () {
     // AUTH - SOCIAL
     Route::get('/login/x', [SocialAuthController::class, 'login_x']);
@@ -87,9 +82,6 @@ Route::get('/subscription', [BillingController::class, 'stripe_billing_portal'])
 Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 Route::get('/pro', ProWelcome::class)->name('pro');
 
-// CODEBASE INDEXES
-Route::get('/codebases', IndexedCodebaseList::class);
-
 // PLUGIN REGISTRY
 Route::get('/plugins', PluginList::class)->name('plugins.index');
 Route::get('/plugins/create', PluginCreate::class)->name('plugins.create');
@@ -104,16 +96,21 @@ Route::get('/introducing-the-agent-store', MarkdownPage::class);
 // LANDERS
 Route::get('/campaign/{id}', [CampaignController::class, 'land']);
 
+// WALLET
+Route::get('/wallet', WalletScreen::class)->name('wallet');
+
+// PAYMENTS EXPLORER
+Route::get('/explorer', [ExplorerController::class, 'index'])->name('explorer');
+
 // MISC
 Route::get('/changelog', Changelog::class);
+Route::get('/terms', MarkdownPage::class);
+Route::get('/privacy', MarkdownPage::class);
 Route::get('/docs', function () {
     return redirect('https://docs.openagents.com');
 });
-Route::get('/terms', MarkdownPage::class);
-Route::get('/privacy', MarkdownPage::class);
 
 // ADMIN
-Route::get('/admin', Admin::class)->name('admin');
 Route::get('/logs', Logs::class)->name('logs');
 
 // Nostr Webhook

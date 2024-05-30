@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\Currency;
+use App\Traits\Payable;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -19,6 +21,7 @@ class User extends Authenticatable implements MustVerifyEmail
     use HasFactory;
     use HasProfilePhoto;
     use Notifiable;
+    use Payable;
 
     /**
      * The attributes that are mass assignable.
@@ -34,8 +37,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'default_model',
         'autoscroll',
         'lightning_address',
-        'prism_user_id',
-        'credit',
     ];
 
     /**
@@ -65,6 +66,12 @@ class User extends Authenticatable implements MustVerifyEmail
                 'M d, g:i A' :
                 'M d Y, g:i A'
         );
+    }
+
+    // has an attribute sats_balance that gets the bitcoin balance divided by 1000
+    public function getSatsBalanceAttribute(): int
+    {
+        return (int) $this->checkBalance(Currency::BTC) / 1000;
     }
 
     public function getIsProAttribute(): bool
@@ -97,11 +104,6 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Message::class);
     }
 
-    public function socialAccounts(): HasMany
-    {
-        return $this->hasMany(SocialAccount::class);
-    }
-
     public function nostrAccount(): HasOne
     {
         return $this->hasOne(NostrAccount::class);
@@ -115,7 +117,6 @@ class User extends Authenticatable implements MustVerifyEmail
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
     }

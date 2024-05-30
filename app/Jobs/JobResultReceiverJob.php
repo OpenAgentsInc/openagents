@@ -7,6 +7,7 @@ use App\Events\NostrJobReady;
 use App\Models\Agent;
 use App\Models\NostrJob;
 use App\Services\OpenObserveLogger;
+use App\Utils\PoolUtils;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -71,7 +72,33 @@ class JobResultReceiverJob implements ShouldQueue
                 if (! $nostr_job->content) { // set content only once
                     $logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
                     $logger->log('info', 'Propagating content '.$this->content);
-                    $nostr_job->content = $this->content;
+
+                    $contentData = json_decode($this->content, true);
+                    $content = $contentData['content'];
+                    $meta = $contentData['meta'];
+                    $usedToolIds = $meta['usedTools'];
+
+                    // Track plugin usage
+                    $availableTools = PoolUtils::getTools();
+                    if (count($usedToolIds) > 0) {
+                        foreach ($usedToolIds as $toolId) {
+                            $tool = null;
+                            foreach ($availableTools as $availableTool) {
+                                $logger->log('info', 'Checking tool '.json_encode($availableTool).$toolId);
+                                if (isset($availableTool['id']) && $availableTool['id'] == $toolId) {
+                                    $logger->log('info', 'Found tool '.$toolId);
+                                    $tool = $availableTool;
+                                    break;
+                                }
+                            }
+                            if (isset($tool)) {
+                                $logger->log('info', 'Used tool '.$tool['meta']['name']);
+                            }
+                        }
+                    }
+                    /////
+
+                    $nostr_job->content = $content;
                     $nostr_job->save();
                     NostrJobReady::dispatch($nostr_job);
                 } else {
