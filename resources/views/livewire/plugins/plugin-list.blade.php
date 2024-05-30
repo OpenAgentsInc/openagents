@@ -6,7 +6,7 @@
         <div class="items-center justify-between gap-x-1 py-4 border-b border-offblack md:flex">
             <div class="md:max-w-md lg:max-w-lg">
                 <h3 class="text-gray-800 text-2xl font-bold">
-                    All Plugins
+                    Plugin Registry
                 </h3>
             </div>
             <div class="mt-6 sm:mt-0 w-auto">
