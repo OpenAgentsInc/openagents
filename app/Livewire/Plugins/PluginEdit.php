@@ -65,7 +65,18 @@ class PluginEdit extends Component
     public function mount()
     {
 
+        if (! auth()->check()) {
+            return redirect('/');
+        }
+
+        $user = auth()->user();
+
+        abort_if($user->id !== $this->plugin->user_id, 403, 'permission denied');
+
+        $this->user = $user;
+
         $this->setProperties();
+
     }
 
     public function rules()

@@ -64,7 +64,11 @@ class PluginCreate extends Component
     public function mount()
     {
 
-        $this->user = auth()->check() ? auth()->user() : User::first();
+        if (! auth()->check()) {
+            return redirect('/');
+        }
+
+        $this->user = auth()->user();
 
         $this->author = $this->user->name;
         $this->payment = $this->user->lightning_address;

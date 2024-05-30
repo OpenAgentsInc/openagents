@@ -19,8 +19,6 @@ class PluginList extends Component
     public function plugins()
     {
 
-        Auth::login(User::first());
-
         return Plugin::query()->when($this->search, function ($query) {
             return $query->where('name', 'like', '%'.$this->search.'%');
         })
