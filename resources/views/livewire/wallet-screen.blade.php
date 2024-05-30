@@ -21,12 +21,13 @@
 
             <div class="my-16">
                 <x-pane title="Withdraw bitcoin">
-                    <!-- Payment Request Form -->
+                    <div class="px-4 pt-2 text-gray">You can withdraw any amount up to {{ $balance_btc }} sats.</div>
+
                     <form class="p-4" wire:submit.prevent="submitPaymentRequest">
                         <div>
-                            <label for="payment_request">Bolt11 invoice:</label>
+                            <label for="payment_request">Lightning invoice:</label>
                             <x-chat.textarea type="text" id="payment_request" wire:model="payment_request"
-                                             required></x-chat.textarea>
+                                             required default="lnbc..."></x-chat.textarea>
                             @error('payment_request') <span class="error">{{ $message }}</span> @enderror
                         </div>
 
@@ -34,7 +35,22 @@
                     </form>
                 </x-pane>
             </div>
-        </div>
 
+            <div class="my-16">
+                <x-pane title="Recent payments received">
+                    @foreach($received_payments as $payment)
+                        <div class="p-4 border-b border-offblack">
+                            <div class="flex justify-between">
+
+                                <div>{{ $payment->amount / 1000 }} sats</div>
+                                <div>{{ $payment->description }} sats</div>
+                                <div>{{ $payment->created_at->diffForHumans() }}</div>
+
+                            </div>
+                        </div>
+                    @endforeach
+                </x-pane>
+            </div>
+        </div>
     </div>
 </div>
