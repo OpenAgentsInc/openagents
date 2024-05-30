@@ -11,9 +11,13 @@
                 <div class="alert alert-danger">{{ session('error') }}</div>
             @endif
 
-            <x-pane title="Bitcoin balance">
+            <x-pane title="Your bitcoin balance">
                 <h4 class="text-center">{{ $balance_btc }} sats</h4>
             </x-pane>
+
+            <div class="my-16">
+                <livewire:agent-balance-summary/>
+            </div>
 
             <div class="my-16">
                 <x-pane title="Withdraw bitcoin">
@@ -30,8 +34,6 @@
                     </form>
                 </x-pane>
             </div>
-
-            <livewire:agent-balance-summary/>
         </div>
 
     </div>
