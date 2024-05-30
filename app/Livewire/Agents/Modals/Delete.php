@@ -35,11 +35,26 @@ class Delete extends ModalComponent
             $this->closeModal();
 
         } else {
+            // Delete the image
+
+            $oldimage = json_decode($agent->image);
+
+            if ($oldimage && isset($oldimage->path)) {
+                Storage::disk($oldimage->disk)->delete($oldimage->path);
+            }
+
             // Delete documents from storage and database
-            $agent->documents->each(function ($document) {
-                Storage::disk($document->disk)->delete($document->path);
-                $document->delete();
-            });
+            if(!empty($agent->documents)){
+                $agent->documents->each(function ($document) {
+                   if($document->disk != 'url'){
+                    Storage::disk($document->disk)->delete($document->path);
+                    $document->delete();
+                   }else{
+                    $document->delete();
+                   }
+                });
+            }
+
 
             // Now delete the agent
             $agent->delete();
