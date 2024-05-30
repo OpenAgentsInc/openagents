@@ -2,43 +2,63 @@
 
 namespace App\Livewire\Plugins;
 
-use App\Models\User;
 use App\Models\Plugin;
-use App\Rules\WasmUrl;
+use App\Models\User;
 use App\Rules\WasmFile;
-use Livewire\Component;
-use Livewire\WithFileUploads;
+use App\Rules\WasmUrl;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class PluginCreate extends Component
 {
-
     use LivewireAlert, WithFileUploads;
 
     public $kind;
+
     public $name;
+
     public $description;
+
     public $tos;
+
     public $privacy;
+
     public $author;
+
     public $web;
+
     public $picture;
+
     public $wasm_upload;
+
     public $tags;
+
     public $mini_template;
+
     public $sockets;
+
     public $input;
+
     public Collection $inputs;
+
     public $outputs = [];
+
     public $file_link;
+
     public $output_description;
+
     public $output_type;
+
     public Collection $secrets;
+
     public $plugin_input;
+
     public $payment;
+
     public $user;
 
     public function mount()
@@ -54,15 +74,13 @@ class PluginCreate extends Component
                 'name' => '',
                 'required' => true,
                 'type' => 'string',
-                'description' => ''
+                'description' => '',
             ]]),
             'secrets' => collect([[
                 'key' => '',
                 'value' => '',
             ]]),
         ]);
-
-
 
     }
 
@@ -81,7 +99,7 @@ class PluginCreate extends Component
             // 'tags' => 'required|array',
             // 'mini_template' => 'required|array',
             // 'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
-            'wasm_upload' =>['required','file',new WasmFile()],
+            'wasm_upload' => ['required', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
             'secrets.*.key' => 'required_with:secrets.*.value|string',
             'secrets.*.value' => 'required_with:secrets.*.key|string',
@@ -89,14 +107,13 @@ class PluginCreate extends Component
             'inputs' => 'required|array',
             'inputs.*.name' => 'required|string',
             'inputs.*.description' => 'required|string',
-            'inputs.*.required'=> 'required|boolean',
+            'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,json,array',
             'output_type' => 'required|string|in:string,integer,json,array',
             'output_description' => 'required|string',
 
         ];
     }
-
 
     public function submit()
     {
@@ -105,7 +122,6 @@ class PluginCreate extends Component
 
         $validated = $this->validate();
         $good = false;
-
 
         if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
 
@@ -135,7 +151,6 @@ class PluginCreate extends Component
             $this->file_link = $url;
         }
 
-
         try {
 
             $plugin = new Plugin();
@@ -149,11 +164,11 @@ class PluginCreate extends Component
             $plugin->tags = json_encode($this->tags);
             $plugin->mini_template = $this->generateMiniTemplate();
             $plugin->output_template = $this->generateOutputTemplate();
-            $plugin->input_template =  $this->inputs->toJson();
-            $plugin->secrets =  $this->secrets->toJson();
+            $plugin->input_template = $this->inputs->toJson();
+            $plugin->secrets = $this->secrets->toJson();
             $plugin->plugin_input = $this->plugin_input;
             $plugin->file_link = $this->file_link;
-            $plugin->user_id =  $this->user->id;
+            $plugin->user_id = $this->user->id;
             $plugin->author = $this->author;
             $plugin->payment = $this->payment;
             $plugin->wasm_upload = $wasm_upload->toJson();
@@ -161,19 +176,18 @@ class PluginCreate extends Component
 
             $good = true;
         } catch (\Throwable $th) {
-            Log::error("error forom plugin : ".$th);
+            Log::error('error forom plugin : '.$th);
             $good = false;
         }
 
-
         if ($good) {
             $this->alert('success', 'Plugin successfully created.');
+
             return redirect()->route('plugins.index');
         } else {
             $this->alert('error', 'An error occured');
         }
     }
-
 
     public function generateOutputTemplate()
     {
@@ -183,12 +197,11 @@ class PluginCreate extends Component
         ]);
     }
 
-
     public function generateMiniTemplate()
     {
         return json_encode([
             'main' => $this->file_link,
-            'input' => $this->generateInputMoustacheTemplate()
+            'input' => $this->generateInputMoustacheTemplate(),
         ]);
     }
 
@@ -197,7 +210,7 @@ class PluginCreate extends Component
         $template = '';
 
         foreach ($this->inputs as $input) {
-            $template .= '{{in.' . $input['name'] . '}}';
+            $template .= '{{in.'.$input['name'].'}}';
             // if (isset($input['type']) && $input['type'] === 'string') {
             //     $template .= '|' . $input['name'];
             // }
@@ -213,7 +226,7 @@ class PluginCreate extends Component
             'name' => '',
             'required' => false,
             'type' => 'string',
-            'description' => ''
+            'description' => '',
         ]);
     }
 
@@ -226,7 +239,7 @@ class PluginCreate extends Component
     {
         $this->secrets->push([
             'key' => '',
-            'value' => ''
+            'value' => '',
         ]);
     }
 
@@ -234,8 +247,6 @@ class PluginCreate extends Component
     {
         $this->secrets->pull($key);
     }
-
-
 
     public function render()
     {

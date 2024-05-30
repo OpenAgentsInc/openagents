@@ -2,11 +2,11 @@
 
 namespace App\Livewire\Plugins\Modals;
 
-use App\Models\Plugin;
 use App\Livewire\Plugins\PluginList;
-use LivewireUI\Modal\ModalComponent;
+use App\Models\Plugin;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use LivewireUI\Modal\ModalComponent;
 
 class Delete extends ModalComponent
 {
@@ -29,8 +29,7 @@ class Delete extends ModalComponent
 
         $plugin = Plugin::with('user')->find($this->plugin_id);
 
-
-        if($plugin && $plugin->user_id !== auth()->user()->id) {
+        if ($plugin && $plugin->user_id !== auth()->user()->id) {
 
             $this->alert('error', 'Permission Denied..');
             $this->closeModal();
@@ -44,7 +43,6 @@ class Delete extends ModalComponent
                 Storage::disk($oldfile->disk)->delete($oldfile->path);
             }
 
-
             // Now delete the agent
             $plugin->delete();
 
@@ -55,10 +53,6 @@ class Delete extends ModalComponent
             $this->closeModal();
 
             $this->alert('success', 'plugin deleted successfully');
-
-
-
-
 
         }
 

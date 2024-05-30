@@ -2,17 +2,16 @@
 
 namespace App\Livewire\Plugins;
 
-use App\Models\User;
 use App\Models\Plugin;
-use Livewire\Component;
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
-use Livewire\Attributes\Computed;
-use Illuminate\Support\Facades\Auth;
+use Livewire\Component;
 
 class PluginList extends Component
 {
-
     #[Url(except: '', as: 'q')]
     public $search = '';
 
@@ -25,8 +24,8 @@ class PluginList extends Component
         return Plugin::query()->when($this->search, function ($query) {
             return $query->where('name', 'like', '%'.$this->search.'%');
         })
-        ->with('user')
-        ->latest()
+            ->with('user')
+            ->latest()
             ->paginate(12);
     }
 

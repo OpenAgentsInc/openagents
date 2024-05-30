@@ -7,14 +7,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class PluginSecretResource extends JsonResource
 {
-
     /**
      * The "data" wrapper that should be applied.
      *
      * @var string
      */
     public static $wrap = null;
-
 
     /**
      * Transform the resource into an array.
@@ -24,7 +22,6 @@ class PluginSecretResource extends JsonResource
     public function toArray(Request $request): array
     {
         // return parent::toArray($request);
-
 
         // Decode the secrets field
         $secrets = json_decode($this->secrets, true);
@@ -36,9 +33,8 @@ class PluginSecretResource extends JsonResource
             }
         }
 
-
         return [
-            $this->file_link => $secretsArray
+            $this->file_link => $secretsArray,
         ];
     }
 }

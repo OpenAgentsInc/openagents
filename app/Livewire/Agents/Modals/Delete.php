@@ -44,17 +44,16 @@ class Delete extends ModalComponent
             }
 
             // Delete documents from storage and database
-            if(!empty($agent->documents)){
+            if (! empty($agent->documents)) {
                 $agent->documents->each(function ($document) {
-                   if($document->disk != 'url'){
-                    Storage::disk($document->disk)->delete($document->path);
-                    $document->delete();
-                   }else{
-                    $document->delete();
-                   }
+                    if ($document->disk != 'url') {
+                        Storage::disk($document->disk)->delete($document->path);
+                        $document->delete();
+                    } else {
+                        $document->delete();
+                    }
                 });
             }
-
 
             // Now delete the agent
             $agent->delete();

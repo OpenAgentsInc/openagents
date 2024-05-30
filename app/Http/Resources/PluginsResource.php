@@ -7,14 +7,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class PluginsResource extends JsonResource
 {
-
-        /**
+    /**
      * The "data" wrapper that should be applied.
      *
      * @var string
      */
     public static $wrap = null;
-
 
     /**
      * Transform the resource collection into an array.
@@ -24,9 +22,8 @@ class PluginsResource extends JsonResource
     public function toArray(Request $request): array
     {
 
-
         return [
-            route('api.plugins.view',['plugin' => $this->id])
+            route('api.plugins.view', ['plugin' => $this->id]),
         ];
     }
 }

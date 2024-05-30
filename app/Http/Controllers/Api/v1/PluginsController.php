@@ -2,18 +2,17 @@
 
 namespace App\Http\Controllers\Api\v1;
 
-use App\Models\Plugin;
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PluginResource;
-use App\Http\Resources\PluginsResource;
 use App\Http\Resources\PluginSecretResource;
+use App\Http\Resources\PluginsResource;
+use App\Models\Plugin;
+use Illuminate\Http\Request;
 
 class PluginsController extends Controller
 {
-
-     /**
-      *  List available plugins.
+    /**
+     *  List available plugins.
      *
      * @response array ["http://openagents.test/api/v1/plugins/view/8"]
      */
@@ -26,29 +25,27 @@ class PluginsController extends Controller
             return response()->json(['error' => 'Invalid token'], 403);
         }
 
-      $plugins = Plugin::query()->oldest('created_at')->paginate(100);
+        $plugins = Plugin::query()->oldest('created_at')->paginate(100);
 
-     // Transform the paginated plugins collection using PluginsResource
-    $transformedPlugins = PluginsResource::collection($plugins);
+        // Transform the paginated plugins collection using PluginsResource
+        $transformedPlugins = PluginsResource::collection($plugins);
 
-    // Get the array of transformed plugins using the toArray() method
-    $pluginsArray = $transformedPlugins->toArray($request);
+        // Get the array of transformed plugins using the toArray() method
+        $pluginsArray = $transformedPlugins->toArray($request);
 
-    // Extract the plugins URLs using the 'through' method
-    $pluginsUrls = collect($pluginsArray)->pluck('0')->toArray();
+        // Extract the plugins URLs using the 'through' method
+        $pluginsUrls = collect($pluginsArray)->pluck('0')->toArray();
 
-    return response()->json($pluginsUrls,200);
-
+        return response()->json($pluginsUrls, 200);
 
     }
 
-
-
     /**
      *  View a plugin
+     *
      * @response PluginResource
      */
-    public function show(Request $request,Plugin $plugin)
+    public function show(Request $request, Plugin $plugin)
     {
         $secret = $request->query('secret');
 
@@ -59,9 +56,9 @@ class PluginsController extends Controller
         return new PluginResource($plugin);
     }
 
-
-     /**
-      *  Get the plugin secret
+    /**
+     *  Get the plugin secret
+     *
      * @response  PluginSecretResource
      */
     public function secret(Request $request)
@@ -73,11 +70,12 @@ class PluginsController extends Controller
             return response()->json(['message' => 'Invalid token'], 403);
         }
 
-        $file_link =  $request->query('plugin-url');
-        $plugin = Plugin::where('file_link',$file_link)->first();
-        if($plugin){
+        $file_link = $request->query('plugin-url');
+        $plugin = Plugin::where('file_link', $file_link)->first();
+        if ($plugin) {
             return new PluginSecretResource($plugin);
         }
-        return response()->json(['message'=>'Plugin not found'],404);
+
+        return response()->json(['message' => 'Plugin not found'], 404);
     }
 }

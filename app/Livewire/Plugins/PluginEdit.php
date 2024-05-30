@@ -2,44 +2,62 @@
 
 namespace App\Livewire\Plugins;
 
-use App\Models\User;
 use App\Models\Plugin;
-use App\Rules\WasmUrl;
 use App\Rules\WasmFile;
-use Livewire\Component;
-use Livewire\WithFileUploads;
+use App\Rules\WasmUrl;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class PluginEdit extends Component
 {
-
     use LivewireAlert, WithFileUploads;
 
     public $kind;
+
     public $name;
+
     public $description;
+
     public $tos;
+
     public $privacy;
+
     public $author;
+
     public $web;
+
     public $picture;
+
     public $wasm_upload;
+
     public $tags;
+
     public $mini_template;
+
     public $sockets;
+
     public $input;
+
     public Collection $inputs;
+
     public $outputs = [];
+
     public $file_link;
+
     public $output_description;
+
     public $output_type;
+
     public Collection $secrets;
+
     public $plugin_input;
+
     public $payment;
+
     public $user;
 
     public Plugin $plugin;
@@ -65,7 +83,7 @@ class PluginEdit extends Component
             // 'tags' => 'required|array',
             // 'mini_template' => 'required|array',
             // 'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
-            'wasm_upload' =>['nullable','file',new WasmFile()],
+            'wasm_upload' => ['nullable', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
             'secrets.*.key' => 'required_with:secrets.*.value|string',
             'secrets.*.value' => 'required_with:secrets.*.key|string',
@@ -73,14 +91,13 @@ class PluginEdit extends Component
             'inputs' => 'required|array',
             'inputs.*.name' => 'required|string',
             'inputs.*.description' => 'required|string',
-            'inputs.*.required'=> 'required|boolean',
+            'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,json,array',
             'output_type' => 'required|string|in:string,integer,json,array',
             'output_description' => 'required|string',
 
         ];
     }
-
 
     public function submit()
     {
@@ -93,8 +110,6 @@ class PluginEdit extends Component
         $good = false;
 
         try {
-
-
 
             $plugin = $this->plugin;
 
@@ -133,9 +148,6 @@ class PluginEdit extends Component
                 $this->file_link = $url;
             }
 
-
-
-
             $plugin->kind = 5003;
             $plugin->name = $this->name;
             $plugin->description = $this->description;
@@ -147,19 +159,18 @@ class PluginEdit extends Component
             $plugin->mini_template = $this->generateMiniTemplate();
             $plugin->output_template = $this->generateOutputTemplate();
             $plugin->input_template = $this->inputs->toJson();
-            $plugin->secrets =  $this->secrets->toJson();
+            $plugin->secrets = $this->secrets->toJson();
             $plugin->plugin_input = $this->plugin_input;
             $plugin->file_link = $this->file_link;
-            $plugin->author = $this->author ;
+            $plugin->author = $this->author;
             $plugin->payment = $this->payment;
             $plugin->save();
 
             $good = true;
         } catch (\Throwable $th) {
-            Log::error("error from plugin : ".$th);
+            Log::error('error from plugin : '.$th);
             $good = false;
         }
-
 
         if ($good) {
             $this->wasm_upload = null;
@@ -170,7 +181,6 @@ class PluginEdit extends Component
         }
     }
 
-
     public function generateOutputTemplate()
     {
         return json_encode([
@@ -179,12 +189,11 @@ class PluginEdit extends Component
         ]);
     }
 
-
     public function generateMiniTemplate()
     {
         return json_encode([
             'main' => $this->file_link,
-            'input' => $this->generateInputMoustacheTemplate()
+            'input' => $this->generateInputMoustacheTemplate(),
         ]);
     }
 
@@ -194,7 +203,7 @@ class PluginEdit extends Component
         $template = '';
 
         foreach ($this->inputs as $input) {
-            $template .= '{{in.' . $input['name'] . '}}';
+            $template .= '{{in.'.$input['name'].'}}';
             // if (isset($input['type']) && $input['type'] === 'string') {
             //     $template .= '|' . $input['name'];
             // }
@@ -210,7 +219,7 @@ class PluginEdit extends Component
             'name' => '',
             'required' => false,
             'type' => 'string',
-            'description' => ''
+            'description' => '',
         ]);
     }
 
@@ -219,12 +228,11 @@ class PluginEdit extends Component
         $this->inputs->pull($key);
     }
 
-
     public function addSecretInput()
     {
         $this->secrets->push([
             'key' => '',
-            'value' => ''
+            'value' => '',
         ]);
     }
 
@@ -233,23 +241,21 @@ class PluginEdit extends Component
         $this->secrets->pull($key);
     }
 
-
     public function setProperties()
     {
 
         $mini_template = json_decode($this->plugin->mini_template);
         $output_template = json_decode($this->plugin->output_template);
 
-
-        $this->name =  $this->plugin->name;
-        $this->description =  $this->plugin->description;
+        $this->name = $this->plugin->name;
+        $this->description = $this->plugin->description;
         $this->tos = $this->plugin->tos;
-        $this->privacy =  $this->plugin->privacy;
-        $this->author =  $this->plugin->author ? $this->author : $this->plugin->user->name;
+        $this->privacy = $this->plugin->privacy;
+        $this->author = $this->plugin->author ? $this->author : $this->plugin->user->name;
         $this->payment = $this->plugin->payment ? $this->plugin->payment : $this->plugin->user->lightning_address;
-        $this->web =  $this->plugin->web;
-        $this->picture =  $this->plugin->picture;
-        $this->tags =  $this->plugin->tags;
+        $this->web = $this->plugin->web;
+        $this->picture = $this->plugin->picture;
+        $this->tags = $this->plugin->tags;
         $this->inputs = collect(json_decode($this->plugin->input_template, true));
         $this->secrets = collect(json_decode($this->plugin->secrets, true));
         $this->plugin_input = $this->plugin->plugin_input;
@@ -258,7 +264,6 @@ class PluginEdit extends Component
         $this->output_type = $output_template->type;
 
     }
-
 
     public function render()
     {

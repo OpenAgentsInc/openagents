@@ -3,9 +3,9 @@
 namespace App\Rules;
 
 use Closure;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class WasmUrl implements ValidationRule
 {
@@ -30,7 +30,7 @@ class WasmUrl implements ValidationRule
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        if (!Str::endsWith($value, '.wasm')) {
+        if (! Str::endsWith($value, '.wasm')) {
             $fail(__('The :attribute must be a valid WASM file', ['attribute' => $attribute]));
         }
 

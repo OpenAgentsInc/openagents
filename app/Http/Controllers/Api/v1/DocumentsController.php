@@ -2,19 +2,20 @@
 
 namespace App\Http\Controllers\Api\v1;
 
+use App\Http\Controllers\Controller;
+use App\Http\Resources\DocumentResource;
 use App\Models\Agent;
 use App\Models\AgentFile;
 use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
-use App\Http\Resources\DocumentResource;
 
 class DocumentsController extends Controller
 {
     /**
-      *  Get agents documents
+     *  Get agents documents
+     *
      * @response  DocumentResource
      */
-    public function index(Request $request,Agent $agent)
+    public function index(Request $request, Agent $agent)
     {
 
         $secret = $request->query('secret');
