@@ -73,6 +73,15 @@ class Models
             'description' => 'Mistral Large is Mistral AI’s flagship model,
                               excelling in complex tasks requiring large reasoning capabilities or high specialization',
         ],
+        'codestral-latest' => [
+            'name' => 'Codestral',
+            'gateway' => 'mistral',
+            'access' => 'pro',
+            'max_tokens' => 32768,
+            'description' => 'Codestral is a cutting-edge Mistral model
+                              that has been specifically designed and optimized for code generation tasks,
+                              including fill-in-the-middle and code completion',
+        ],
 
         // OPENAI
         'gpt-3.5-turbo-16k' => [
