@@ -12,7 +12,7 @@ test('agent balances can be distributed to users', function () {
             'holder_type' => Agent::class,
             'holder_id' => $agent->id,
             'currency' => Currency::BTC,
-            'amount' => 100,
+            'amount' => 100000,
         ]);
     });
 
