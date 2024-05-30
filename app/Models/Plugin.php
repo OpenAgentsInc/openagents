@@ -21,14 +21,21 @@ class Plugin extends Model
         'mini_template',
         'input_template',
         'output_template',
+        'plugin_input',
+        'secrets',
+        'file_link',
         'user_id',
-        'author'
+        'author',
+        'payment',
+        'wasm_upload'
     ];
 
     protected $casts = [
         'tags' => 'json',
         'mini_template' => 'json',
-        'sockets' => 'json',
+        'secrets' => 'json',
+        'wasm_upload' => 'json',
+
     ];
 
 

@@ -5,15 +5,18 @@ namespace App\Livewire\Plugins;
 use App\Models\User;
 use App\Models\Plugin;
 use App\Rules\WasmUrl;
+use App\Rules\WasmFile;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
 
 class PluginCreate extends Component
 {
 
-    use LivewireAlert;
+    use LivewireAlert, WithFileUploads;
 
     public $kind;
     public $name;
@@ -23,19 +26,28 @@ class PluginCreate extends Component
     public $author;
     public $web;
     public $picture;
+    public $wasm_upload;
     public $tags;
     public $mini_template;
     public $sockets;
     public $input;
     public Collection $inputs;
     public $outputs = [];
-    public $file_link = 'http://';
+    public $file_link;
     public $output_description;
     public $output_type;
+    public Collection $secrets;
+    public $plugin_input;
+    public $payment;
+    public $user;
 
     public function mount()
     {
 
+        $this->user = auth()->check() ? auth()->user() : User::first();
+
+        $this->author = $this->user->name;
+        $this->payment = $this->user->lightning_address;
 
         $this->fill([
             'inputs' => collect([[
@@ -44,7 +56,14 @@ class PluginCreate extends Component
                 'type' => 'string',
                 'description' => ''
             ]]),
+            'secrets' => collect([[
+                'key' => '',
+                'value' => '',
+            ]]),
         ]);
+
+
+
     }
 
     public function rules()
@@ -56,12 +75,17 @@ class PluginCreate extends Component
             'tos' => 'required|string',
             'privacy' => 'required|string',
             'author' => 'nullable|string',
+            'payment' => 'nullable|string',
             'web' => 'nullable|string',
             // 'picture' => 'nullable|string',
             // 'tags' => 'required|array',
             // 'mini_template' => 'required|array',
-            // 'sockets' => 'required|array',
-            // 'input' => 'required|string',
+            // 'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
+            'wasm_upload' =>['required','file',new WasmFile()],
+            'secrets' => 'nullable|array',
+            'secrets.*.key' => 'required_with:secrets.*.value|string',
+            'secrets.*.value' => 'required_with:secrets.*.key|string',
+            'plugin_input' => 'required|string',
             'inputs' => 'required|array',
             'inputs.*.name' => 'required|string',
             'inputs.*.description' => 'required|string',
@@ -69,7 +93,7 @@ class PluginCreate extends Component
             'inputs.*.type' => 'required|string|in:string,integer,json,array',
             'output_type' => 'required|string|in:string,integer,json,array',
             'output_description' => 'required|string',
-            'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
+
         ];
     }
 
@@ -80,9 +104,37 @@ class PluginCreate extends Component
         // dd($this->inputs);
 
         $validated = $this->validate();
-
-        // dd($validated);
         $good = false;
+
+
+        if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
+
+            $disk = config('filesystems.media_disk');
+
+            // Get filename with extension
+            $filenamewithextension = $this->wasm_upload->getClientOriginalName();
+
+            // Get filename without extension
+            $filename = pathinfo($filenamewithextension, PATHINFO_FILENAME);
+
+            // Get file extension
+            $extension = $this->wasm_upload->getClientOriginalExtension();
+
+            // Filename to store with directory
+            $filenametostore = 'wasm/uploads/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
+
+            // Upload File to public
+            Storage::disk($disk)->put($filenametostore, fopen($this->wasm_upload->getRealPath(), 'r+'), 'public');
+            $url = Storage::disk($disk)->url($filenametostore);
+            $savewasm_upload = [
+                'disk' => $disk,
+                'path' => $filenametostore,
+                'url' => $url,
+            ];
+            $wasm_upload = collect($savewasm_upload);
+            $this->file_link = $url;
+        }
+
 
         try {
 
@@ -92,15 +144,19 @@ class PluginCreate extends Component
             $plugin->description = $this->description;
             $plugin->tos = $this->tos;
             $plugin->privacy = $this->privacy;
-            $plugin->author = $this->author;
             $plugin->web = $this->web;
             $plugin->picture = $this->picture;
             $plugin->tags = json_encode($this->tags);
             $plugin->mini_template = $this->generateMiniTemplate();
             $plugin->output_template = $this->generateOutputTemplate();
             $plugin->input_template =  $this->inputs->toJson();
-            $plugin->user_id =  User::first()->id;
-            // $plugin->authu
+            $plugin->secrets =  $this->secrets->toJson();
+            $plugin->plugin_input = $this->plugin_input;
+            $plugin->file_link = $this->file_link;
+            $plugin->user_id =  $this->user->id;
+            $plugin->author = $this->author;
+            $plugin->payment = $this->payment;
+            $plugin->wasm_upload = $wasm_upload->toJson();
             $plugin->save();
 
             $good = true;
@@ -164,6 +220,19 @@ class PluginCreate extends Component
     public function removeInput($key)
     {
         $this->inputs->pull($key);
+    }
+
+    public function addSecretInput()
+    {
+        $this->secrets->push([
+            'key' => '',
+            'value' => ''
+        ]);
+    }
+
+    public function removeSecretInput($key)
+    {
+        $this->secrets->pull($key);
     }
 
 

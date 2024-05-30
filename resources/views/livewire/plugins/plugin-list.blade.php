@@ -2,7 +2,7 @@
     {{-- Knowing others is intelligence; knowing yourself is true wisdom. --}}
 
 
-    <div class="max-w-screen-xl mx-auto mt-14 mb-6 px-4 pt-4 md:px-8">
+    <div class=" mx-auto mt-14 mb-6 px-4 pt-4 md:px-8">
         <div class="items-center justify-between gap-x-1 py-4 border-b border-offblack md:flex">
             <div class="md:max-w-md lg:max-w-lg">
                 <h3 class="text-gray-800 text-2xl font-bold">
@@ -36,12 +36,11 @@
         </div>
     </div>
 
-    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3" @plugin_deleted="$refresh">
+    <div class="grid gap-2 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 my-4 p-4 sm:p-10">
         @forelse ($this->plugins as $plugin)
-            <div class="mt-0 max-w-2xl">
 
 
-                <div class="m-16">
+                <div class="p-2 sm:1-4">
                     <x-pane title="">
                         <div class="items-center gap-1.5 pr-2  group-hover:flex">
                             @auth
@@ -86,7 +85,6 @@
                     </x-pane>
                 </div>
 
-            </div>
         @empty
 
             <div class="col-span-full my-auto mx-auto flex">

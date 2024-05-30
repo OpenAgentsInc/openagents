@@ -5,6 +5,7 @@ namespace App\Livewire\Plugins;
 use App\Models\User;
 use App\Models\Plugin;
 use Livewire\Component;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
 use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\Auth;
@@ -18,6 +19,8 @@ class PluginList extends Component
     #[Computed]
     public function plugins()
     {
+
+        Auth::login(User::first());
 
         return Plugin::query()->when($this->search, function ($query) {
             return $query->where('name', 'like', '%'.$this->search.'%');

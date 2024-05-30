@@ -23,7 +23,12 @@ return new class extends Migration
             $table->json('tags')->nullable();
             $table->json('mini_template')->nullable();
             $table->json('output_template')->nullable();
-            $table->string('input_template')->nullable();
+            $table->json('input_template')->nullable();
+            $table->json('secrets')->nullable();
+            $table->json('wasm_upload')->nullable();
+            $table->string('plugin_input')->nullable();
+            $table->string('file_link')->nullable();
+            $table->string('payment')->nullable();
             $table->string('author')->nullable();
             $table->foreignId('user_id')->nullable();
             $table->timestamps();
