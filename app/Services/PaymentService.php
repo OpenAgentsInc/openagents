@@ -56,7 +56,7 @@ class PaymentService
                         $agentAuthor->deposit($agentAuthorShare, Currency::BTC);
 
                         // Record the payment
-                        $payment = $agent->recordPayment($agentAuthorShare, Currency::BTC, 'Swept agent balance to author', $agent);
+                        $payment = $agent->recordPayment($agentAuthorShare, Currency::BTC, "Swept agent '$agent->name' balance to author ", $agent);
 
                         // Record the payment destination
                         $agent->recordPaymentDestination($payment, $agentAuthor);

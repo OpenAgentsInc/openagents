@@ -41,11 +41,9 @@
                     @foreach($received_payments as $payment)
                         <div class="p-4 border-b border-offblack">
                             <div class="flex justify-between">
-
                                 <div>{{ $payment->amount / 1000 }} sats</div>
-                                <div>{{ $payment->description }} sats</div>
+                                <div>{{ $payment->description }}</div>
                                 <div>{{ $payment->created_at->diffForHumans() }}</div>
-
                             </div>
                         </div>
                     @endforeach
