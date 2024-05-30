@@ -11,20 +11,27 @@
                 <div class="alert alert-danger">{{ session('error') }}</div>
             @endif
 
-            <!-- Balance Display -->
-            <h4>Balance: {{ $balance_btc }} sats</h4>
+            <x-pane title="Bitcoin balance">
+                <h4 class="text-center">{{ $balance_btc }} sats</h4>
+            </x-pane>
 
-            <!-- Payment Request Form -->
-            <form class="mt-8" wire:submit.prevent="submitPaymentRequest">
-                <div>
-                    <label for="payment_request">Bolt11 invoice:</label>
-                    <x-chat.textarea type="text" id="payment_request" wire:model="payment_request"
-                                     required></x-chat.textarea>
-                    @error('payment_request') <span class="error">{{ $message }}</span> @enderror
-                </div>
+            <div class="my-16">
+                <x-pane title="Withdraw bitcoin">
+                    <!-- Payment Request Form -->
+                    <form class="p-4" wire:submit.prevent="submitPaymentRequest">
+                        <div>
+                            <label for="payment_request">Bolt11 invoice:</label>
+                            <x-chat.textarea type="text" id="payment_request" wire:model="payment_request"
+                                             required></x-chat.textarea>
+                            @error('payment_request') <span class="error">{{ $message }}</span> @enderror
+                        </div>
 
-                <x-secondary-button class="mt-4" type="submit">Withdraw to invoice</x-secondary-button>
-            </form>
+                        <x-secondary-button class="mt-4" type="submit">Withdraw to invoice</x-secondary-button>
+                    </form>
+                </x-pane>
+            </div>
+
+            <livewire:agent-balance-summary/>
         </div>
 
     </div>
