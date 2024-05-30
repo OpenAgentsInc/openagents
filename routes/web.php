@@ -1,26 +1,28 @@
 <?php
 
 
-use App\Http\Controllers\ExplorerController;
-use App\Livewire\Agents\Create;
-use App\Livewire\Agents\Edit;
-use App\Livewire\Agents\Index;
-use App\Livewire\Agents\Profile;
 use App\Livewire\Blog;
-use App\Livewire\Changelog;
 use App\Livewire\Chat;
 use App\Livewire\Logs;
-use App\Livewire\MarkdownPage;
-use App\Livewire\ProWelcome;
-use App\Livewire\Settings;
 use App\Livewire\Store;
+use App\Livewire\Settings;
+use App\Livewire\Changelog;
+use App\Livewire\ProWelcome;
+use App\Livewire\Agents\Edit;
+use App\Livewire\Agents\Index;
+use App\Livewire\MarkdownPage;
 use App\Livewire\WalletScreen;
+use App\Livewire\Agents\Create;
+use App\Livewire\Agents\Profile;
+use App\Livewire\Plugins\PluginEdit;
+use App\Livewire\Plugins\PluginList;
 use Illuminate\Support\Facades\Route;
 use App\Livewire\Plugins\PluginCreate;
 use App\Http\Controllers\StaticController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\ExplorerController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\Htmx\ThreadController;
