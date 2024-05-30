@@ -33,13 +33,14 @@ class Edit extends Component
 
     public $message;
 
+    public $sats_per_message;
+
     public Agent $agent;
 
     public $useTools = false;
 
     public function mount()
     {
-
         $user = auth()->user();
 
         abort_if($user->id !== $this->agent->user_id, 403, 'permission denied').
@@ -49,6 +50,7 @@ class Edit extends Component
         $this->prompt = $this->agent->prompt;
         $this->rag_prompt = $this->agent->rag_prompt;
         $this->is_public = $this->agent->is_public;
+        $this->sats_per_message = $this->agent->sats_per_message;
         $this->message = $this->agent->message;
         $this->useTools = $this->agent->use_tools;
 
@@ -79,6 +81,7 @@ class Edit extends Component
             'image' => 'nullable|image|max:2048',
             'urls' => 'nullable|string',
             'useTools' => 'required|boolean',
+            'sats_per_message' => 'required|integer|min:3|max:3000',
         ];
     }
 
@@ -137,6 +140,7 @@ class Edit extends Component
         $agent->rag_prompt = $this->rag_prompt;
         $agent->is_public = $this->is_public;
         $agent->message = $this->message;
+        $agent->sats_per_message = $this->sats_per_message;
         if ($this->image) {
             $agent->image = json_encode($saveimage);
         }

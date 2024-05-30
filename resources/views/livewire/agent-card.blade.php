@@ -6,6 +6,7 @@
     </div>
 
     <div class="font-bold text-xl">{{ $agent['name'] }}</div>
+    <p class="mb-0 text-sm text-gray leading-none">{{ $agent->sats_per_message }} sats per message</p>
     <div class="flex items-center">
         <div class="text-xs">
             <p class="text-sm text-gray leading-none">From: {{ $agent->creator_username }}</p>

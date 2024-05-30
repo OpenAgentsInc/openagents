@@ -70,25 +70,14 @@
                     @enderror
                 </div>
 
-                {{--                <div class="mt-5">--}}
-                {{--                    <label for="rag_prompt"> RAG Prompt</label>--}}
-                {{--                    <x-textarea wire:model='rag_prompt' placeholder="Add your RAG prompt?" id="rag_prompt"--}}
-                {{--                        class="block mt-1 w-full" rows="5" min-rows="5" name="rag_prompt" required />--}}
-                {{--                    @error('rag_prompt')--}}
-                {{--                        <span class="text-red mt-2 text-xs">{{ $message }}</span>--}}
-                {{--                    @enderror--}}
-                {{--                </div>--}}
-
-                {{--                <div class="mt-5">--}}
-                {{--                    <label for="message"> Welcome Message</label>--}}
-                {{--                    <x-textarea wire:model='message' placeholder="How this agent starts conversation." id="message"--}}
-                {{--                                class="block mt-1 w-full" rows="5" min-rows="5" name="message" required/>--}}
-                {{--                    @error('message')--}}
-                {{--                    <span class="text-red mt-2 text-xs">{{ $message }}</span>--}}
-                {{--                    @enderror--}}
-                {{--                </div>--}}
-
-
+                <div class="form-group flex-col flex mt-5">
+                    <label class="mb-1" for="sats_per_message">Sats Per Message <span class="text-darkgray">(min 3, max 3000)</span></label>
+                    <input type="number" id="sats_per_message" wire:model="sats_per_message"
+                           class="rounded-md border-2 border-[#3D3E42] focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white w-[150px] bg-black"
+                           min="3" max="3000">
+                    @error('sats_per_message') <span class="text-danger">{{ $message }}</span> @enderror
+                </div>
+                
                 <div class="my-6 block">
                     <label for="files">Knowledge Files</label>
                     <div class="my-2 text-neutral-400 text-sm font-normal font-['JetBrains Mono']">If you upload files
