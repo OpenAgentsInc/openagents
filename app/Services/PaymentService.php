@@ -40,10 +40,13 @@ class PaymentService
                 if ($balance) {
                     $amount = $balance->amount;
 
-                    // Calculate the distribution
-                    $agentAuthorShare = 0.80 * $amount; // 80% to agent author
+                    // Calculate the distribution in msats
+                    $agentAuthorShare = 0.80 * $amount;
 
-                    // Withdraw balance from agent
+                    // Round that down to the nearest integer number of msats, but no less than 1000 msats
+                    $agentAuthorShare = max(1000, floor($agentAuthorShare / 1000) * 1000);
+
+                    // Withdraw balance from agent (in msats)
                     $agent->withdraw($amount, Currency::BTC);
 
                     // Distribution to Agent Author
@@ -53,14 +56,13 @@ class PaymentService
                         $agentAuthor->deposit($agentAuthorShare, Currency::BTC);
 
                         // Record the payment
-                        $payment = $agent->recordPayment($agentAuthorShare, Currency::BTC, 'Swept balance to author',
-                            $agent);
+                        $payment = $agent->recordPayment($agentAuthorShare, Currency::BTC, 'Swept agent balance to author', $agent);
 
                         // Record the payment destination
                         $agent->recordPaymentDestination($payment, $agentAuthor);
 
                         // Log the payment
-                        Log::info("Swept {$agentAuthorShare} msats from agent {$agent->name} (ID {$agent->id}) to user $agentAuthor->name (ID {$agentAuthor->id})");
+                        Log::info('Swept '.($agentAuthorShare / 1000)." sats from agent {$agent->name} (ID {$agent->id}) to user $agentAuthor->name (ID {$agentAuthor->id})");
                     } else {
                         throw new Exception('Agent author not found');
                     }
