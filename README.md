@@ -26,7 +26,7 @@ OpenAgents is a platform for building, selling and using AI agents.
     - Tailwind
     - Alpine
     - Laravel
-    - Livewire (-> HTMX)
+    - Livewire
 
 ## Video series
 
