@@ -30,7 +30,7 @@ trait Payable
     {
         $balance = $this->balances()->where('currency', Currency::BTC)->first();
 
-        return $balance ? (int) $balance->amount : 0;
+        return $balance ? (int) $balance->amount / 1000 : 0;
     }
 
     public function balances()
