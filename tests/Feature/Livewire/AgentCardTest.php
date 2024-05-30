@@ -24,6 +24,7 @@ it('renders successfully', function () {
 
 it('renders correct sats_earned based on payments', function () {
     $agent = Agent::factory()->create();
+    $agent = Agent::factory()->create();
     $agent->about = 'About this agent';
     $agent->thread_count = 8;
 

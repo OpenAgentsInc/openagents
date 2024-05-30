@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\Currency;
 use App\Traits\Payable;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -69,10 +68,10 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     // has an attribute sats_balance that gets the bitcoin balance divided by 1000
-    public function getSatsBalanceAttribute(): int
-    {
-        return (int) $this->checkBalance(Currency::BTC) / 1000;
-    }
+    //    public function getSatsBalanceAttribute(): int
+    //    {
+    //        return (int) $this->checkBalance(Currency::BTC) / 1000;
+    //    }
 
     public function getIsProAttribute(): bool
     {
