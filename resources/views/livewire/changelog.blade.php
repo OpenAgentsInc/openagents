@@ -18,6 +18,9 @@
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/441">
                         Improved wallet UI
                     </x-changelog-item>
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/442">
+                        Added Codestral model
+                    </x-changelog-item>
                 </x-pane>
 
                 <x-pane title="May 29, 2024" borderColor="border-darkgray">
