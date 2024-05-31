@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Agents;
 
+use App\AI\Models;
 use App\Models\Agent;
 use App\Utils\PoolUtils;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +22,12 @@ class Create extends Component
     public $codebase_search;
 
     public $prompt;
+
+    public $model;
+
+    public $pro_model;
+
+    public $models = Models::MODELS;
 
     public $rag_prompt;
 
@@ -49,6 +56,8 @@ class Create extends Component
             'name' => 'required|string|max:255',
             'about' => 'required|string',
             'prompt' => 'required|string',
+            'model' => 'nullable|string',
+            'pro_model' => 'nullable|string',
             //            'rag_prompt' => 'nullable|string',
             'message' => 'required|string',
             'is_public' => 'required|boolean',
@@ -110,6 +119,8 @@ class Create extends Component
         $agent->name = $this->name;
         $agent->about = $this->about;
         $agent->prompt = $this->prompt;
+        $agent->model = $this->model;
+        $agent->pro_model = $this->pro_model;
 
         if ($this->codebase_search) {
             $agent->capabilities = json_encode(['codebase_search' => true]);
@@ -120,7 +131,7 @@ class Create extends Component
         $agent->message = $this->message;
         $agent->image = json_encode($saveimage);
         $agent->user_id = $user->id;
-        $agent->is_rag_ready = ! empty($this->files) ? false : true;
+        $agent->is_rag_ready = empty($this->files);
         $agent->use_tools = $this->useTools;
         $agent->save();
 

@@ -40,6 +40,8 @@ trait SelectedModelOrAgentTrait
             'name' => $agent->name,
             'description' => $agent->about,
             'instructions' => $agent->prompt,
+            'model' => $agent->model,
+            'pro_model' => $agent->pro_model,
             'sats_per_message' => $agent->sats_per_message,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,
@@ -57,7 +59,7 @@ trait SelectedModelOrAgentTrait
     public function setModelOrAgentForThread(Thread $thread): void
     {
         $messages = $this->thread->messages()
-            ->with('agent:image,id,name,about,prompt,sats_per_message,is_rag_ready,created_at,updated_at,use_tools,capabilities')
+            ->with('agent:image,id,name,about,prompt,model,pro_model,sats_per_message,is_rag_ready,created_at,updated_at,use_tools,capabilities')
             ->orderBy('created_at', 'asc')
             ->get()
             ->toArray();
@@ -92,6 +94,8 @@ trait SelectedModelOrAgentTrait
             'name' => $message['agent']['name'],
             'description' => $message['agent']['about'],
             'instructions' => $message['agent']['prompt'],
+            'model' => $message['agent']['model'],
+            'pro_model' => $message['agent']['pro_model'],
             'sats_per_message' => $message['agent']['sats_per_message'],
             'image' => $message['agent']['image_url'],
             'is_rag_ready' => $message['agent']['is_rag_ready'],
@@ -108,6 +112,8 @@ trait SelectedModelOrAgentTrait
             'name' => $this->thread->agent->name,
             'description' => $this->thread->agent->about,
             'instructions' => $this->thread->agent->prompt,
+            'model' => $this->thread->agent->model,
+            'pro_model' => $this->thread->agent->pro_model,
             'sats_per_message' => $this->thread->agent->sats_per_message,
             'image' => $this->thread->agent->image_url,
             'is_rag_ready' => $this->thread->agent->is_rag_ready,
@@ -128,6 +134,8 @@ trait SelectedModelOrAgentTrait
             'description' => $agent->about,
             'sats_per_message' => $agent->sats_per_message,
             'instructions' => $agent->prompt,
+            'model' => $agent->model,
+            'pro_model' => $agent->pro_model,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,
             'use_tools' => $agent->use_tools,

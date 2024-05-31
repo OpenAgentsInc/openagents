@@ -174,6 +174,8 @@ class Chat extends Component
                 'sats_per_message' => $agent->sats_per_message,
                 'description' => $agent->about,
                 'instructions' => $agent->prompt,
+                'model' => $agent->model,
+                'pro_model' => $agent->pro_model,
                 'image' => $agent->image_url,
                 'is_rag_ready' => $agent->is_rag_ready,
                 'use_tools' => $agent->use_tools,
@@ -182,7 +184,7 @@ class Chat extends Component
             $this->selectedModel = '';
         } else {
             // dd('Agent not found');
-            $this->selectedAgent = null;
+            $this->selectedAgent = [];
         }
     }
 
@@ -297,13 +299,11 @@ class Chat extends Component
             'user_id' => auth()->id() ?? null,
         ]);
 
-        $model = 'command-r-plus';
-
-        //        if (auth()->check()) {
-        //            $model = auth()->user()->isPro() ? 'command-r-plus' : 'command-r';
-        //        } else {
-        //            $model = 'command-r';
-        //        }
+        if (auth()->check() && auth()->user()->isPro() && $this->selectedAgent['pro_model']) {
+            $model = $this->selectedAgent['pro_model'];
+        } else {
+            $model = $this->selectedAgent['model'] ?? 'command-r-plus';
+        }
 
         $inference = new SimpleInferencer();
         $output = $inference->inference($userInput, $model, $this->thread, $this->getStreamingCallback(), $systemPrompt);

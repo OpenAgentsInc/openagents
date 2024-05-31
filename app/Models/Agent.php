@@ -19,6 +19,8 @@ class Agent extends Model
         'about',
         'message',
         'prompt',
+        'model',
+        'pro_model',
         'rag_prompt',
         'is_public',
         'user_id',

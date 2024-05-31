@@ -103,6 +103,34 @@
                 {{--                </div> --}}
 
 
+                <div class="mt-5">
+                    <label for="model">AI model for chats</label>
+                    <select wire:model="model" id="model" class="block mt-1 w-full p-2 border rounded">
+                        @foreach ($models as $modelKey => $modelData)
+                            @if ($modelData['access'] !== 'pro')
+                                <option value="{{ $modelKey }}">{{ $modelData['name'] }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                    @error('model')
+                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="mt-5">
+                    <label for="pro_model">AI model for pro-chats</label>
+                    <select wire:model="pro_model" id="pro_model" class="block mt-1 w-full p-2 border rounded">
+                        @foreach ($models as $modelKey => $modelData)
+                            @if ($modelData['access'] === 'pro')
+                                <option value="{{ $modelKey }}">{{ $modelData['name'] }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                    @error('pro_model')
+                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                    @enderror
+                </div>
+
                 <div class="my-5 rounded border border-gray p-3">
                     <x-switch label="Use community tools" description="Make this agent use community tools"
                               wire:model='useTools'/>

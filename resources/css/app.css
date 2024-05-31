@@ -43,6 +43,14 @@
     border-right-color: #a9a9a9;
 }
 
+select {
+    background-color: #000000;
+}
+
+option {
+  background-color: #000000;
+  color: #ffffff;
+}
 
 .filepond--credits {
     display: none;
