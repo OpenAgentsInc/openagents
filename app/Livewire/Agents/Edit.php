@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Agents;
 
+use App\AI\Models;
 use App\Livewire\Agents\Partials\Documents;
 use App\Models\Agent;
 use App\Models\AgentFile;
@@ -20,6 +21,12 @@ class Edit extends Component
     public $about;
 
     public $prompt;
+
+    public $model;
+
+    public $pro_model;
+
+    public $models = Models::MODELS;
 
     public $rag_prompt;
 
@@ -48,6 +55,8 @@ class Edit extends Component
         $this->name = $this->agent->name;
         $this->about = $this->agent->about;
         $this->prompt = $this->agent->prompt;
+        $this->model = $this->agent->model;
+        $this->pro_model = $this->agent->pro_model;
         $this->rag_prompt = $this->agent->rag_prompt;
         $this->is_public = $this->agent->is_public;
         $this->sats_per_message = $this->agent->sats_per_message;
@@ -73,6 +82,8 @@ class Edit extends Component
             'name' => 'required|string|max:255',
             'about' => 'required|string',
             'prompt' => 'required|string',
+            'model' => 'nullable|string',
+            'pro_model' => 'nullable|string',
             'rag_prompt' => 'nullable|string',
             //            'message' => 'required|string',
             'is_public' => 'required|boolean',
@@ -137,6 +148,8 @@ class Edit extends Component
         $agent->name = $this->name;
         $agent->about = $this->about;
         $agent->prompt = $this->prompt;
+        $agent->model = $this->model;
+        $agent->pro_model = $this->pro_model;
         $agent->rag_prompt = $this->rag_prompt;
         $agent->is_public = $this->is_public;
         $agent->message = $this->message;
@@ -145,7 +158,7 @@ class Edit extends Component
             $agent->image = json_encode($saveimage);
         }
 
-        $agent->is_rag_ready = ! empty($this->files) ? false : true;
+        $agent->is_rag_ready = empty($this->files);
         $agent->use_tools = $this->useTools;
         $agent->user_id = $user->id;
         $agent->save();
