@@ -77,7 +77,7 @@
                            min="3" max="3000">
                     @error('sats_per_message') <span class="text-danger">{{ $message }}</span> @enderror
                 </div>
-                
+
                 <div class="my-6 block">
                     <label for="files">Knowledge Files</label>
                     <div class="my-2 text-neutral-400 text-sm font-normal font-['JetBrains Mono']">If you upload files
@@ -110,6 +110,34 @@
                     <x-textarea wire:model='urls' dusk="urls" id="urls" class="block mt-1 w-full" min-rows="3"
                                 name="urls"/>
                     @error('urls')
+                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="mt-5">
+                    <label for="model">AI model for chats</label>
+                    <select wire:model="model" id="model" class="block mt-1 w-full p-2 border rounded">
+                        @foreach ($models as $modelKey => $modelData)
+                            @if ($modelData['access'] !== 'pro')
+                                <option value="{{ $modelKey }}">{{ $modelData['name'] }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                    @error('model')
+                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="mt-5">
+                    <label for="pro_model">AI model for pro-chats</label>
+                    <select wire:model="pro_model" id="pro_model" class="block mt-1 w-full p-2 border rounded">
+                        @foreach ($models as $modelKey => $modelData)
+                            @if ($modelData['access'] === 'pro')
+                                <option value="{{ $modelKey }}">{{ $modelData['name'] }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                    @error('pro_model')
                     <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
