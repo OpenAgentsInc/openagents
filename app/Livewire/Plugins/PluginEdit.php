@@ -100,8 +100,7 @@ class PluginEdit extends Component
             'inputs.*.name' => 'required|string',
             'inputs.*.description' => 'required|string',
             'inputs.*.required' => 'required|boolean',
-            'inputs.*.type' => 'required|string|in:string,integer,json,array',
-            'output_type' => 'required|string|in:string,integer,json,array',
+            'inputs.*.type' => 'required|string|in:string,integer,object,array',
             'output_description' => 'required|string',
 
         ];
