@@ -46,7 +46,7 @@ class Edit extends Component
 
     public $useTools = false;
 
-    public function mount()
+    public function mount(): void
     {
         $user = auth()->user();
 
@@ -71,9 +71,6 @@ class Edit extends Component
         });
         $docs = $docs->pluck('url')->implode("\n");
         $this->urls = $docs;
-        // public $files = [];
-        // public $image;
-
     }
 
     public function rules()
@@ -82,8 +79,8 @@ class Edit extends Component
             'name' => 'required|string|max:255',
             'about' => 'required|string',
             'prompt' => 'required|string',
-            'model' => 'nullable|string',
-            'pro_model' => 'nullable|string',
+            'model' => 'nullable|in:'.implode(',', Models::getModelsForUserTypes(['guest', 'user'])),
+            'pro_model' => 'nullable|in:'.implode(',', Models::getModelsForUserTypes(['pro'])),
             'rag_prompt' => 'nullable|string',
             //            'message' => 'required|string',
             'is_public' => 'required|boolean',

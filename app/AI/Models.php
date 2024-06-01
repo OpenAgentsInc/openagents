@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Auth;
 
 class Models
 {
-    public const MODELS = [
+    public const array MODELS = [
         // LLAMA
         'meta-llama/llama-3-8b-chat-hf' => [
             'name' => 'Llama 3 8B',
@@ -336,5 +336,12 @@ class Models
         }
 
         return null;
+    }
+
+    public static function getModelsForUserTypes(array $types): array
+    {
+        return array_keys(array_filter(self::MODELS, function ($model) use ($types) {
+            return in_array($model['access'], $types);
+        }));
     }
 }
