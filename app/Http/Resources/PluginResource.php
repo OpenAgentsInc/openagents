@@ -24,7 +24,7 @@ class PluginResource extends JsonResource
 
         // Prepare the sockets data
         $sockets = [
-            'in' => json_decode($this->input_template, true),
+            'in' => json_decode($this->input_sockets, true),
             'out' => json_decode($this->output_sockets, true),
         ];
 
@@ -51,7 +51,7 @@ class PluginResource extends JsonResource
             ],
             'mini-template' => [
                 'main' => $this->file_link,
-                'input' => $this->plugin_input,
+                'input' => $this->input_template,
             ],
             'sockets' => $sockets,
         ];
