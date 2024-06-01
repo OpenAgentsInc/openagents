@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
@@ -13,6 +12,7 @@ return new class extends Migration
     {
         Schema::create('plugins', function (Blueprint $table) {
             $table->id();
+            $table->string('kind')->nullable();
             $table->string('name')->nullable();
             $table->string('description')->nullable();
             $table->string('tos')->nullable();
@@ -20,11 +20,12 @@ return new class extends Migration
             $table->string('web')->nullable();
             $table->string('picture')->nullable();
             $table->json('tags')->nullable();
-            $table->json('output_sockets')->nullable();
-            $table->json('input_sockets')->nullable();
+            $table->json('mini_template')->nullable();
+            $table->json('output_template')->nullable();
+            $table->json('input_template')->nullable();
             $table->json('secrets')->nullable();
             $table->json('wasm_upload')->nullable();
-            $table->string('input_template')->nullable();
+            $table->string('plugin_input')->nullable();
             $table->string('file_link')->nullable();
             $table->string('payment')->nullable();
             $table->string('author')->nullable();
