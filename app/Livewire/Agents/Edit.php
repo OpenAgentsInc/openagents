@@ -48,9 +48,15 @@ class Edit extends Component
 
     public function mount(): void
     {
+
+
+        if (! auth()->check()) {
+            return redirect('/');
+        }
+
         $user = auth()->user();
 
-        abort_if($user->id !== $this->agent->user_id, 403, 'permission denied').
+        abort_if($user->id !== $this->agent->user_id, 403, 'permission denied');
 
         $this->name = $this->agent->name;
         $this->about = $this->agent->about;
