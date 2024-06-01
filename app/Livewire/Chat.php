@@ -9,6 +9,7 @@ use App\Models\Agent;
 use App\Models\AgentFile;
 use App\Models\NostrJob;
 use App\Models\Thread;
+use App\Models\User;
 use App\Services\ImageService;
 use App\Services\LocalLogger;
 use App\Services\PaymentService;
@@ -455,7 +456,7 @@ class Chat extends Component
     #[On('echo:threads.{thread.id},NostrJobReady')]
     public function process_nostr($event): void
     {
-        $this->selectedModel = 'command-r-plus';
+        $this->setAgentModel($event['job'] ?? []);
 
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
@@ -495,6 +496,25 @@ class Chat extends Component
         }
     }
 
+    public function setAgentModel(array $job): void
+    {
+        $this->selectedModel = 'command-r-plus';
+        if (! $this->selectedAgent && ! empty($job['agent_id'])) {
+            $this->selectedAgent = Agent::find($job['agent_id'])->toArray();
+        }
+        if ($this->selectedAgent) {
+            if ($this->selectedAgent['model']) {
+                $this->selectedModel = $this->selectedAgent['model'];
+            }
+            if ($this->selectedAgent['pro_model']) {
+                $user = User::find($this->thread->user_id);
+                if ($user && $user->isPro()) {
+                    $this->selectedModel = $this->selectedAgent['pro_model'];
+                }
+            }
+        }
+    }
+
     // #[On('echo:rags.{rag.id},AgentRagReady')]
     // public function process_agent_rag($event){
     //     $agent = Agent::find($event['agent_id']);
@@ -518,5 +538,4 @@ class Chat extends Component
     //     }
 
     // }
-
 }

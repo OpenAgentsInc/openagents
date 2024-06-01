@@ -12,6 +12,7 @@ it('renders successfully', function () {
             'Mistral Small',
             'Mistral Medium', 'Join',
             'Mistral Large', 'Pro',
+            'Codestral', 'Pro',
             'GPT-3.5 Turbo 16K', 'Join',
             'GPT-4 Turbo Preview', 'Join',
             'GPT-4 Turbo 2024-04-09', 'Join',
