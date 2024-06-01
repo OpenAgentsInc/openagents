@@ -2,12 +2,12 @@
 
 namespace App\Livewire;
 
-use App\AI\NostrInference;
-use App\AI\NostrRag;
+use App\AI\PoolInference;
+use App\AI\PoolRag;
 use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\AgentFile;
-use App\Models\NostrJob;
+use App\Models\PoolJob;
 use App\Models\Thread;
 use App\Models\User;
 use App\Services\ImageService;
@@ -437,8 +437,8 @@ class Chat extends Component
                 'agent_id' => $this->selectedAgent['id'] ?? null,
             ]);
 
-            $nostrRag = new NostrRag(); // Generate history
-            $query = $nostrRag->history($this->thread)->summary();
+            $poolRag = new PoolRag(); // Generate history
+            $query = $poolRag->history($this->thread)->summary();
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
@@ -453,20 +453,20 @@ class Chat extends Component
         }
     }
 
-    #[On('echo:threads.{thread.id},NostrJobReady')]
-    public function process_nostr($event): void
+    #[On('echo:threads.{thread.id},PoolJobReady')]
+    public function processPoolJob($event): void
     {
         $this->setAgentModel($event['job'] ?? []);
 
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
 
-        $job = NostrJob::where('thread_id', $this->thread->id)->find($event['job']['id']);
+        $job = PoolJob::where('thread_id', $this->thread->id)->find($event['job']['id']);
 
-        // Log::debug('Processing NostrJobReady event for thread '.$this->thread->id.' and job '.$event['job']['id']);
+        // Log::debug('Processing PoolJobReady event for thread '.$this->thread->id.' and job '.$event['job']['id']);
 
         // Simply do it
-        $inferencer = new NostrInference();
+        $inferencer = new PoolInference();
         $output = $inferencer->inference($this->selectedModel, $job, $this->getStreamingCallback());
 
         // Append the response to the chat

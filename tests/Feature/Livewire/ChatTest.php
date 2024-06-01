@@ -2,7 +2,7 @@
 
 use App\Livewire\Chat;
 use App\Models\Agent;
-use App\Models\NostrJob;
+use App\Models\PoolJob;
 use App\Models\Thread;
 use App\Models\User;
 use Livewire\Livewire;
@@ -36,7 +36,7 @@ test('Chat can get agent model from a job', function () {
         'model' => 'mistral-small-latest',
         'pro_model' => 'codestral-latest',
     ]);
-    $job = NostrJob::factory()->create([
+    $job = PoolJob::factory()->create([
         'thread_id' => $thread->id,
         'agent_id' => $agent->id,
     ]);
@@ -56,7 +56,7 @@ test('Chat can get agent pro model from a job if user is a pro', function () {
         'pro_model' => 'codestral-latest',
     ]);
 
-    $job = NostrJob::factory()->create([
+    $job = PoolJob::factory()->create([
         'thread_id' => $thread->id,
         'agent_id' => $agent->id,
     ]);
@@ -71,7 +71,7 @@ test('Chat uses default selectedModel if no agent model is set', function () {
     $this->actingAs($user);
 
     $thread = Thread::factory()->create(['user_id' => $user->id]);
-    $job = NostrJob::factory()->create(['thread_id' => $thread->id]);
+    $job = PoolJob::factory()->create(['thread_id' => $thread->id]);
 
     Livewire::test(Chat::class, ['id' => $thread->id])
         ->call('setAgentModel', $job->toArray())

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 // TODO: Rename this to AgentService
-class NostrService
+class PoolService
 {
     protected $poolAddress;
 
@@ -205,9 +205,9 @@ class NostrService
         }
 
         $opts = [
-            'credentials' => config('nostr.pool_ssl') ? ChannelCredentials::createSsl() : ChannelCredentials::createInsecure(),
+            'credentials' => config('pool.address_ssl') ? ChannelCredentials::createSsl() : ChannelCredentials::createInsecure(),
             'update_metadata' => function ($metaData) {
-                $metaData['authorization'] = [config('nostr.node_token')];
+                $metaData['authorization'] = [config('pool.node_token')];
 
                 return $metaData;
             },

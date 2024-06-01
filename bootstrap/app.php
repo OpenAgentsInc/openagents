@@ -20,7 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->validateCsrfTokens(except: [
             'stripe/*',
-            'webhook/nostr',
+            'webhook/nostr', // DEPRECATED
+            'webhook/pool',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

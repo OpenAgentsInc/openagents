@@ -39,7 +39,7 @@ class DumpRelevantTables extends Command
                 'balances',
                 'messages',
                 'nostr_accounts',
-                'nostr_jobs',
+                'pool_jobs',
                 'payment_destinations',
                 'payment_sources',
                 'payments',

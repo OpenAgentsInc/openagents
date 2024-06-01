@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\AI;
 
 use App\Models\Agent;
-use App\Models\NostrJob;
+use App\Models\PoolJob;
 use App\Models\Thread;
 use App\Services\OpenObserveLogger;
 use GuzzleHttp\Client;
 
-class NostrInference
+class PoolInference
 {
     private ?Client $httpClient;
 
@@ -19,7 +19,7 @@ class NostrInference
         $this->httpClient = $httpClient;
     }
 
-    public function inference(string $model, NostrJob $job, callable $streamFunction): array
+    public function inference(string $model, PoolJob $job, callable $streamFunction): array
     {
         $thread = Thread::find($job->thread_id);
         $agent = Agent::find($job->agent_id);

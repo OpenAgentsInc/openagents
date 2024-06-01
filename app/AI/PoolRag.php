@@ -8,13 +8,13 @@ use App\Models\Thread;
 use App\Services\OpenObserveLogger;
 use OpenAI;
 
-class NostrRag
+class PoolRag
 {
     protected array $messages;
 
     protected string $prompt;
 
-    public function history(Thread $thread, int $maxTokens = 14000): NostrRag
+    public function history(Thread $thread, int $maxTokens = 14000): PoolRag
     {
         $inference = new SimpleInferencer();
         $this->messages = $inference->getTruncatedMessages($thread, $maxTokens);

@@ -1,10 +1,10 @@
 <?php
 
-use App\Services\NostrService;
+use App\Services\PoolService;
 
 test('can connect to nostr service via grpc', function () {
-    $res = (new NostrService())
-        ->poolAddress(env('NOSTR_POOL'))
+    $res = (new PoolService())
+        ->poolAddress(env('POOL_ADDRESS'))
         ->query('Who is satoshi')
         ->execute();
 
@@ -12,13 +12,13 @@ test('can connect to nostr service via grpc', function () {
     // expect($res)->toBeString()->toBeGreaterThan(30);
     expect($res)->toBeString();
     expect(strlen($res))->toBeGreaterThan(30);
-})->skip(empty(env('NOSTR_POOL')));
+})->skip(empty(env('POOL_ADDRESS')));
 
 test('testing for RAG request', function () {
     $documents = ['https://bitcoin.org/bitcoin.pdf'];
 
-    $res = (new NostrService())
-        ->poolAddress(env('NOSTR_POOL'))
+    $res = (new PoolService())
+        ->poolAddress(env('POOL_ADDRESS'))
         ->query('Who is satoshi')
         ->documents($documents)
         ->k(1)
@@ -30,13 +30,13 @@ test('testing for RAG request', function () {
     // expect($res)->toBeString()->toBeGreaterThan(30);
     expect($res)->toBeString();
     expect(strlen($res))->toBeGreaterThan(30);
-})->skip(empty(env('NOSTR_POOL')));
+})->skip(empty(env('POOL_ADDRESS')));
 
 test('testing for RAG request warm up for the node server', function () {
     $documents = ['https://bitcoin.org/bitcoin.pdf'];
 
-    $res = (new NostrService())
-        ->poolAddress(env('NOSTR_POOL'))
+    $res = (new PoolService())
+        ->poolAddress(env('POOL_ADDRESS'))
         ->query('Who is satoshi')
         ->documents($documents)
         ->k(1)
@@ -50,4 +50,4 @@ test('testing for RAG request warm up for the node server', function () {
     // expect($res)->toBeString()->toBeGreaterThan(30);
     expect($res)->toBeString();
     expect(strlen($res))->toBeGreaterThan(30);
-})->skip(empty(env('NOSTR_POOL')));
+})->skip(empty(env('POOL_ADDRESS')));

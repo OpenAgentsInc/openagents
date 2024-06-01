@@ -3,9 +3,9 @@
 namespace App\Jobs;
 
 use App\Events\AgentRagReady;
-use App\Events\NostrJobReady;
+use App\Events\PoolJobReady;
 use App\Models\Agent;
-use App\Models\NostrJob;
+use App\Models\PoolJob;
 use App\Services\OpenObserveLogger;
 use App\Utils\PoolUtils;
 use Exception;
@@ -53,23 +53,23 @@ class JobResultReceiverJob implements ShouldQueue
         ]);
 
         try {
-            $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
-            if ($nostr_job) {
+            $poolJob = PoolJob::where('job_id', $this->job_id)->first();
+            if ($poolJob) {
 
                 // any warmup message will warm up the agent
-                $isWarmUp = $nostr_job->warmup;
+                $isWarmUp = $poolJob->warmup;
                 if ($isWarmUp) {
-                    $agent = Agent::find($nostr_job->agent_id);
+                    $agent = Agent::find($poolJob->agent_id);
                     if (! $agent) {
-                        throw new Exception('Agent not found '.$nostr_job->agent_id);
+                        throw new Exception('Agent not found '.$poolJob->agent_id);
                     }
-                    $logger->log('info', 'Agent WarmUp completed for agent '.$nostr_job->agent_id);
+                    $logger->log('info', 'Agent WarmUp completed for agent '.$poolJob->agent_id);
                     $agent->is_rag_ready = true;
                     $agent->save();
-                    AgentRagReady::dispatch($nostr_job->agent_id);
+                    AgentRagReady::dispatch($poolJob->agent_id);
                 }
 
-                if (! $nostr_job->content) { // set content only once
+                if (! $poolJob->content) { // set content only once
                     $logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
                     $logger->log('info', 'Propagating content '.$this->content);
 
@@ -98,9 +98,9 @@ class JobResultReceiverJob implements ShouldQueue
                     }
                     /////
 
-                    $nostr_job->content = $content;
-                    $nostr_job->save();
-                    NostrJobReady::dispatch($nostr_job);
+                    $poolJob->content = $content;
+                    $poolJob->save();
+                    PoolJobReady::dispatch($poolJob);
                 } else {
                     $logger->log('fine', 'Job already processed: '.$this->job_id);
                 }

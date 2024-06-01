@@ -20,12 +20,12 @@ class DocumentsController extends Controller
 
         $secret = $request->query('secret');
 
-        if (config('nostr.webhook_secret') && $secret !== config('nostr.webhook_secret')) {
+        if (config('pool.webhook_secret') && $secret !== config('pool.webhook_secret')) {
             return response()->json(['message' => 'Invalid token'], 403);
         }
         $secret = request()->query('secret');
 
-        if (config('nostr.webhook_secret') && $secret !== config('nostr.webhook_secret')) {
+        if (config('pool.webhook_secret') && $secret !== config('pool.webhook_secret')) {
             return response()->json(['error' => 'Invalid token'], 403);
         }
         $files = AgentFile::where('agent_id', $agent->id)->get();
