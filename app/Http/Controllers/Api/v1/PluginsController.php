@@ -36,6 +36,11 @@ class PluginsController extends Controller
         // Extract the plugins URLs using the 'through' method
         $pluginsUrls = collect($pluginsArray)->pluck('0')->toArray();
 
+        // append ?secret=XXX to the plugin urls
+        for ($i = 0; $i < count($pluginsUrls); $i++) {
+            $pluginsUrls[$i] = $pluginsUrls[$i] . '?secret=' . $secret;
+        }
+
         return response()->json($pluginsUrls, 200);
 
     }
