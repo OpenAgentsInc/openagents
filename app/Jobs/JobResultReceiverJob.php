@@ -3,9 +3,9 @@
 namespace App\Jobs;
 
 use App\Events\AgentRagReady;
-use App\Events\NostrJobReady;
+use App\Events\PoolJobReady;
 use App\Models\Agent;
-use App\Models\NostrJob;
+use App\Models\PoolJob;
 use App\Services\OpenObserveLogger;
 use App\Utils\PoolUtils;
 use Exception;
@@ -53,7 +53,7 @@ class JobResultReceiverJob implements ShouldQueue
         ]);
 
         try {
-            $nostr_job = NostrJob::where('job_id', $this->job_id)->first();
+            $nostr_job = PoolJob::where('job_id', $this->job_id)->first();
             if ($nostr_job) {
 
                 // any warmup message will warm up the agent
@@ -100,7 +100,7 @@ class JobResultReceiverJob implements ShouldQueue
 
                     $nostr_job->content = $content;
                     $nostr_job->save();
-                    NostrJobReady::dispatch($nostr_job);
+                    PoolJobReady::dispatch($nostr_job);
                 } else {
                     $logger->log('fine', 'Job already processed: '.$this->job_id);
                 }

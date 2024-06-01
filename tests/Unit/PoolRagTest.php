@@ -1,6 +1,6 @@
 <?php
 
-use App\AI\NostrRag;
+use App\AI\PoolRag;
 use App\Models\Thread;
 use App\Models\User;
 
@@ -30,13 +30,13 @@ it('sets the conversation history for the given Thread', function () {
         ['role' => 'user', 'content' => $newPrompt],
     ];
 
-    $nostrRag = (new NostrRag())->history($thread, 100);
+    $nostrRag = (new PoolRag())->history($thread, 100);
 
     expect($nostrRag->getMessages())->toBe($messages);
 
     // If messages do not fit into maxTokens, lose oldest message first
     array_shift($messages);
-    $nostrRag = (new NostrRag())->history($thread, 13);
+    $nostrRag = (new PoolRag())->history($thread, 13);
 
     expect($nostrRag->getMessages())->toBe($messages);
 });

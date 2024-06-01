@@ -5,9 +5,9 @@ namespace App\Utils;
 use App\Grpc\nostr\PoolConnectorClient;
 use App\Grpc\nostr\RpcDiscoverNearbyActionsRequest;
 use App\Grpc\nostr\RpcDiscoverNearbyActionsResponse;
-use App\Models\NostrJob;
-use App\Services\NostrService;
+use App\Models\PoolJob;
 use App\Services\OpenObserveLogger;
+use App\Services\PoolService;
 use Exception;
 use Grpc\ChannelCredentials;
 use Illuminate\Support\Facades\Log;
@@ -32,7 +32,7 @@ class PoolUtils
 
         ]);
 
-        $job_id = (new NostrService())
+        $job_id = (new PoolService())
             ->poolAddress(config('nostr.pool'))
             ->query($query)
             ->useTools($withTools)
@@ -44,7 +44,7 @@ class PoolUtils
             ->execute();
 
         $logger->log('info', 'Requesting '.($warmUp ? 'warm up' : '').'Job with ID: '.$job_id.' for Agent: '.$agentId.' Thread: '.$threadId);
-        $job = new NostrJob();
+        $job = new PoolJob();
         $job->agent_id = $agentId;
         $job->job_id = $job_id;
         $job->status = 'pending';

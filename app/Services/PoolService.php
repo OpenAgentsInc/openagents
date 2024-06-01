@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 // TODO: Rename this to AgentService
-class NostrService
+class PoolService
 {
     protected $poolAddress;
 

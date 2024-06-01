@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 /**
  * @extends Factory<Thread>
  */
-class NostrJobFactory extends Factory
+class PoolJobFactory extends Factory
 {
     /**
      * Define the model's default state.
