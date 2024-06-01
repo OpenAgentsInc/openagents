@@ -98,7 +98,7 @@ class PluginCreate extends Component
             'inputs.*.name' => 'required|string',
             'inputs.*.description' => 'required|string',
             'inputs.*.required' => 'required|boolean',
-            'inputs.*.type' => 'required|string|in:string,integer,json,array',
+            'inputs.*.type' => 'required|string|in:string,integer,object,array',
 
         ];
     }
