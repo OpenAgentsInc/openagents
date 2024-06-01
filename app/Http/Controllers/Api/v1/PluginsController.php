@@ -38,7 +38,7 @@ class PluginsController extends Controller
 
         // append ?secret=XXX to the plugin urls
         for ($i = 0; $i < count($pluginsUrls); $i++) {
-            $pluginsUrls[$i] = $pluginsUrls[$i] . '?secret=' . $secret;
+            $pluginsUrls[$i] = $pluginsUrls[$i].'?secret='.$secret;
         }
 
         return response()->json($pluginsUrls, 200);
