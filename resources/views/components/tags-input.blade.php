@@ -6,9 +6,12 @@
         type="text"
         placeholder="Add a new tag..."
         class="px-4 py-2 my-2 border border-darkgray bg-black text-white rounded-md focus:outline-none focus:ring-2 focus:ring-white focus:border-white"
-        @keydown.enter="addTag(newTag); newTag = ''"
-        @keydown="handleKeyDown($event)"
-
+        @keyup="enterTag($event)"
+        @blur="addTag(newTag)"
+        @keydown.enter.stop
+        @keyup.enter.stop
+        @keydown.enter.prevent
+        @keyup.enter.prevent
     >
     <div class="flex flex-wrap gap-2 mt-2">
         <template x-for="tag in tags" :key="tag">
@@ -16,6 +19,11 @@
                 <span x-text="tag"></span>
                 <button
                     @click="removeTag(tag)"
+                    @keydown.enter.stop
+                    @keyup.enter.stop
+                    @keydown.enter.prevent
+                    @keyup.enter.prevent
+                    tabindex="-1"
                     class="ml-2  hover:text-black focus:outline-none"
                 >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -33,18 +41,26 @@ function tagsComponent() {
         newTag: '',
         tags: @json($tags),
         addTag(newTag) {
-            if (newTag.trim() !== '') {
-                this.tags.push(newTag.trim());
+            newTag=newTag.trim();
+            if (newTag !== '') {
+                if(!this.tags.includes(newTag)){
+                    this.tags.push(newTag);
+                }
                 this.newTag = '';
             }
         },
         removeTag(tag) {
             this.tags = this.tags.filter(t => t !== tag);
         },
-        handleKeyDown(event) {
-            if (event.key === ',' || event.code === 'Comma') {
-                this.addTag(this.newTag);
-                this.newTag = '';
+        enterTag(event) {
+            if (event.key === ',' || event.code === 'Comma' || event.code === 'Enter') {
+                if(event.key === ',' || event.code === 'Comma' ){
+                    this.addTag(this.newTag.slice(0, -1));
+                }else{
+                    this.addTag(this.newTag);
+                }
+                event.preventDefault();
+                event.stopPropagation();
             }
         }
     }
