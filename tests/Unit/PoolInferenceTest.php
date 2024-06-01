@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-use App\AI\NostrInference;
+use App\AI\PoolInference;
 use App\Models\Agent;
-use App\Models\NostrJob;
+use App\Models\PoolJob;
 use App\Models\Thread;
 
-test('NostrInferencer can inference', function () {
+test('PoolInferencer can inference', function () {
     $thread = Thread::factory()->create();
     $agent = Agent::factory()->create([
         'prompt' => 'You are an AI agent',
     ]);
-    $job = NostrJob::factory()->create([
+    $job = PoolJob::factory()->create([
         'agent_id' => $agent->id,
         'thread_id' => $thread->id,
         'content' => 'Matching RAG context.',
@@ -47,7 +47,7 @@ test('NostrInferencer can inference', function () {
     $requestContainer = [];
     $httpClient = mockGuzzleClient($mockResponse, $requestContainer);
 
-    $inference = new NostrInference($httpClient);
+    $inference = new PoolInference($httpClient);
     $result = $inference->inference('sonar-small-online', $job, $streamFunction);
 
     $payload = json_decode($requestContainer[0]->getBody()->getContents(), true);

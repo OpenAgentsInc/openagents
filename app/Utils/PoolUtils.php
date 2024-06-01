@@ -5,9 +5,9 @@ namespace App\Utils;
 use App\Grpc\nostr\PoolConnectorClient;
 use App\Grpc\nostr\RpcDiscoverNearbyActionsRequest;
 use App\Grpc\nostr\RpcDiscoverNearbyActionsResponse;
-use App\Models\NostrJob;
-use App\Services\NostrService;
+use App\Models\PoolJob;
 use App\Services\OpenObserveLogger;
+use App\Services\PoolService;
 use Exception;
 use Grpc\ChannelCredentials;
 use Illuminate\Support\Facades\Log;
@@ -32,19 +32,19 @@ class PoolUtils
 
         ]);
 
-        $job_id = (new NostrService())
-            ->poolAddress(config('nostr.pool'))
+        $job_id = (new PoolService())
+            ->poolAddress(config('pool.address'))
             ->query($query)
             ->useTools($withTools)
             ->documents($documents)
             ->uuid('openagents.com-'.$userId.'-'.$threadId)
             ->warmUp($warmUp)
             ->cacheDurationhint(-1)
-            ->encryptFor(config('nostr.encrypt'))
+            ->encryptFor(config('pool.encrypt'))
             ->execute();
 
         $logger->log('info', 'Requesting '.($warmUp ? 'warm up' : '').'Job with ID: '.$job_id.' for Agent: '.$agentId.' Thread: '.$threadId);
-        $job = new NostrJob();
+        $job = new PoolJob();
         $job->agent_id = $agentId;
         $job->job_id = $job_id;
         $job->status = 'pending';
@@ -56,11 +56,11 @@ class PoolUtils
 
     public static function getTools()
     {
-        $hostname = config('nostr.pool');
+        $hostname = config('pool.address');
         $opts = [
-            'credentials' => config('nostr.pool_ssl') ? ChannelCredentials::createSsl() : ChannelCredentials::createInsecure(),
+            'credentials' => config('pool.address_ssl') ? ChannelCredentials::createSsl() : ChannelCredentials::createInsecure(),
             'update_metadata' => function ($metaData) {
-                $metaData['authorization'] = [config('nostr.node_token')];
+                $metaData['authorization'] = [config('pool.node_token')];
 
                 return $metaData;
             },
