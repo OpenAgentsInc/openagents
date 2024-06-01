@@ -12,16 +12,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('payments', function (Blueprint $table) {
-            $table->id();
-            $table->morphs('payer');
-            $table->enum('currency', array_column(Currency::cases(), 'value'));
-            $table->bigInteger('amount'); // Smallest denomination: msats, cents, etc.
-            $table->json('metadata')->nullable();
-            $table->text('description')->nullable();
-            $table->timestamps();
-            $table->softDeletes();
-        });
+        if (!Schema::hasTable('payments')) {
+            Schema::create('payments', function (Blueprint $table) {
+                $table->id();
+                $table->morphs('payer');
+                $table->enum('currency', array_column(Currency::cases(), 'value'));
+                $table->bigInteger('amount'); // Smallest denomination: msats, cents, etc.
+                $table->json('metadata')->nullable();
+                $table->text('description')->nullable();
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
     }
 
     /**
