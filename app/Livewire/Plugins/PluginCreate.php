@@ -3,9 +3,7 @@
 namespace App\Livewire\Plugins;
 
 use App\Models\Plugin;
-use App\Models\User;
 use App\Rules\WasmFile;
-use App\Rules\WasmUrl;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -45,7 +43,6 @@ class PluginCreate extends Component
 
     public Collection $inputs;
 
-
     public $file_link;
 
     public $output_description;
@@ -65,8 +62,6 @@ class PluginCreate extends Component
             return redirect('/');
         }
 
-
-
         $this->fill([
             'inputs' => collect([[
                 'name' => '',
@@ -85,7 +80,6 @@ class PluginCreate extends Component
     public function rules()
     {
         return [
-            // 'kind' => 'required|string',
             'name' => 'required|string',
             'description' => 'required|string',
             'tos' => 'required|string',
@@ -94,7 +88,6 @@ class PluginCreate extends Component
             'web' => 'nullable|string',
             // 'picture' => 'nullable|string',
             // 'tags' => 'required|array',
-            // 'mini_template' => 'required|array',
             // 'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
             'wasm_upload' => ['required', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
@@ -107,17 +100,12 @@ class PluginCreate extends Component
             'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,json,array',
 
-
         ];
     }
 
     public function submit()
     {
-
-        // dd($this->inputs);
-
         $validated = $this->validate();
-        $good = false;
 
         if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
 
@@ -148,9 +136,7 @@ class PluginCreate extends Component
         }
 
         try {
-
             $plugin = new Plugin();
-            // $plugin->kind = 5003; // TODO: remove unused
             $plugin->name = $this->name;
             $plugin->description = $this->description;
             $plugin->tos = $this->tos;
@@ -158,21 +144,20 @@ class PluginCreate extends Component
             $plugin->web = $this->web;
             $plugin->picture = $this->picture;
             $plugin->tags = json_encode($this->tags);
-            //$plugin->mini_template = $this->generateMiniTemplate(); // TODO : remove unused
-            $plugin->output_template =  json_encode([
-                "output" => [
-                    "title" => "Output",
-                    "description" => "The output",
-                    "type" => "string"
-                ]
-            ]); // TODO rename in output_sockets
-            $plugin->input_template = $this->inputs->toJson(); // TODO rename in input_sockets
-            $plugin->plugin_input = $this->plugin_input; // TODO rename to input_template
+            $plugin->output_sockets = json_encode([
+                'output' => [
+                    'title' => 'Output',
+                    'description' => 'The output',
+                    'type' => 'string',
+                ],
+            ]);
+            $plugin->input_sockets = $this->inputs->toJson();
+            $plugin->input_template = $this->plugin_input;
 
             $plugin->secrets = $this->secrets->toJson();
             $plugin->file_link = $this->file_link;
             $plugin->user_id = auth()->user()->id;
-            $plugin->author =  auth()->user()->name;
+            $plugin->author = auth()->user()->name;
             $plugin->payment = $this->payment;
             $plugin->wasm_upload = $wasm_upload->toJson();
             $plugin->save();
@@ -190,14 +175,6 @@ class PluginCreate extends Component
         } else {
             $this->alert('error', 'An error occured');
         }
-    }
-
-    public function generateOutputTemplate()
-    {
-        return json_encode([
-            'type' => $this->output_type,
-            'description' => $this->output_description,
-        ]);
     }
 
     public function addInput()

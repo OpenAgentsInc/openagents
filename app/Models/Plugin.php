@@ -10,7 +10,6 @@ class Plugin extends Model
     use HasFactory;
 
     protected $fillable = [
-        'kind', // TODO: remove unused
         'name',
         'description',
         'tos',
@@ -18,10 +17,8 @@ class Plugin extends Model
         'web',
         'picture',
         'tags',
-        'mini_template', // TODO: unused, remove
-        'input_template', // TODO: rename to input_sockets
-        'output_template',// TODO: remove unused
-        'plugin_input', // TODO: rename to input_template
+        'input_sockets',
+        'input_template',
         'secrets',
         'file_link',
         'user_id',
@@ -32,7 +29,6 @@ class Plugin extends Model
 
     protected $casts = [
         'tags' => 'json',
-        'mini_template' => 'json',
         'secrets' => 'json',
         'wasm_upload' => 'json',
 

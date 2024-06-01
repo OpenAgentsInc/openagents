@@ -49,7 +49,6 @@ class Edit extends Component
     public function mount()
     {
 
-
         if (! auth()->check()) {
             return redirect('/');
         }

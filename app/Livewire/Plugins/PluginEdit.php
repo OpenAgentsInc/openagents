@@ -4,7 +4,6 @@ namespace App\Livewire\Plugins;
 
 use App\Models\Plugin;
 use App\Rules\WasmFile;
-use App\Rules\WasmUrl;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -82,7 +81,6 @@ class PluginEdit extends Component
     public function rules()
     {
         return [
-            // 'kind' => 'required|string',
             'name' => 'required|string',
             'description' => 'required|string',
             'tos' => 'required|string',
@@ -92,7 +90,6 @@ class PluginEdit extends Component
             'web' => 'nullable|string',
             // 'picture' => 'nullable|string',
             // 'tags' => 'required|array',
-            // 'mini_template' => 'required|array',
             // 'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
             'wasm_upload' => ['nullable', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
@@ -159,7 +156,6 @@ class PluginEdit extends Component
                 $this->file_link = $url;
             }
 
-            // $plugin->kind = 5003;
             $plugin->name = $this->name;
             $plugin->description = $this->description;
             $plugin->tos = $this->tos;
@@ -167,16 +163,15 @@ class PluginEdit extends Component
             $plugin->web = $this->web;
             $plugin->picture = $this->picture;
             $plugin->tags = json_encode($this->tags);
-            // $plugin->mini_template = $this->generateMiniTemplate();
-            $plugin->output_template = json_encode([
-                "output" => [
-                    "title" => "Output",
-                    "description" => "The output",
-                    "type" => "string"
-                ]
-            ]); // TODO rename in output_sockets
-            $plugin->input_template = $this->inputs->toJson(); // TODO rename in input_sockets
-            $plugin->plugin_input = $this->plugin_input; // TODO rename to input_template
+            $plugin->output_sockets = json_encode([
+                'output' => [
+                    'title' => 'Output',
+                    'description' => 'The output',
+                    'type' => 'string',
+                ],
+            ]);
+            $plugin->input_sockets = $this->inputs->toJson();
+            $plugin->input_template = $this->plugin_input;
 
             $plugin->secrets = $this->secrets->toJson();
             $plugin->file_link = $this->file_link;
@@ -199,38 +194,6 @@ class PluginEdit extends Component
             $this->alert('error', 'An error occured');
         }
     }
-
-    // public function generateOutputTemplate()
-    // {
-    //     return json_encode([
-    //         'type' => $this->output_type,
-    //         'description' => $this->output_description,
-    //     ]);
-    // }
-
-    // public function generateMiniTemplate()
-    // {
-    //     return json_encode([
-    //         'main' => $this->file_link,
-    //         'input' => $this->generateInputMoustacheTemplate(),
-    //     ]);
-    // }
-
-    // public function generateInputMoustacheTemplate()
-    // {
-
-    //     $template = '';
-
-    //     foreach ($this->inputs as $input) {
-    //         $template .= '{{in.'.$input['name'].'}}';
-    //         // if (isset($input['type']) && $input['type'] === 'string') {
-    //         //     $template .= '|' . $input['name'];
-    //         // }
-    //         $template .= ' ';
-    //     }
-
-    //     return $template;
-    // }
 
     public function addInput()
     {
@@ -262,10 +225,6 @@ class PluginEdit extends Component
 
     public function setProperties()
     {
-
-        // $mini_template = json_decode($this->plugin->mini_template);
-        // $output_template = json_decode($this->plugin->output_template);
-
         $this->name = $this->plugin->name;
         $this->description = $this->plugin->description;
         $this->tos = $this->plugin->tos;
