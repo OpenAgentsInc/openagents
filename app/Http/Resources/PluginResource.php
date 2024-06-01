@@ -29,6 +29,14 @@ class PluginResource extends JsonResource
         ];
 
 
+        $payment="";
+        if($this->payment){
+            $payment = "lightning:".$this->payment;
+        }else if($this->user->lightning_address){
+            $payment = "lightning:".$this->user->lightning_address;
+        }else{
+            // TODO: pay to user id?
+        }
 
         return [
             'meta' => [
@@ -41,7 +49,7 @@ class PluginResource extends JsonResource
                 'web' => $this->web,
                 'picture' => $this->picture ?? '',
                 'tags' => ['tool'],
-                'payment' => 'lightning:'.($this->payment ? $this->payment : $this->user->lightning_address),
+                'payment' => $payment,
             ],
             'mini-template' => [
                 'main' => $this->file_link,
