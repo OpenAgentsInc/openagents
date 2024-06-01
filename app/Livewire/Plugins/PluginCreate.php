@@ -17,7 +17,7 @@ class PluginCreate extends Component
 {
     use LivewireAlert, WithFileUploads;
 
-    public $kind;
+    // public $kind;
 
     public $name;
 
@@ -39,13 +39,12 @@ class PluginCreate extends Component
 
     public $mini_template;
 
-    public $sockets;
+    // public $sockets;
 
     public $input;
 
     public Collection $inputs;
 
-    public $outputs = [];
 
     public $file_link;
 
@@ -59,8 +58,6 @@ class PluginCreate extends Component
 
     public $payment;
 
-    public $user;
-
     public function mount()
     {
 
@@ -68,10 +65,7 @@ class PluginCreate extends Component
             return redirect('/');
         }
 
-        $this->user = auth()->user();
 
-        $this->author = $this->user->name;
-        $this->payment = $this->user->lightning_address;
 
         $this->fill([
             'inputs' => collect([[
@@ -96,7 +90,6 @@ class PluginCreate extends Component
             'description' => 'required|string',
             'tos' => 'required|string',
             'privacy' => 'required|string',
-            'author' => 'nullable|string',
             'payment' => 'nullable|string',
             'web' => 'nullable|string',
             // 'picture' => 'nullable|string',
@@ -113,8 +106,7 @@ class PluginCreate extends Component
             'inputs.*.description' => 'required|string',
             'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,json,array',
-            'output_type' => 'required|string|in:string,integer,json,array',
-            'output_description' => 'required|string',
+
 
         ];
     }
@@ -158,7 +150,7 @@ class PluginCreate extends Component
         try {
 
             $plugin = new Plugin();
-            $plugin->kind = 5003;
+            // $plugin->kind = 5003; // TODO: remove unused
             $plugin->name = $this->name;
             $plugin->description = $this->description;
             $plugin->tos = $this->tos;
@@ -166,14 +158,21 @@ class PluginCreate extends Component
             $plugin->web = $this->web;
             $plugin->picture = $this->picture;
             $plugin->tags = json_encode($this->tags);
-            $plugin->mini_template = $this->generateMiniTemplate();
-            $plugin->output_template = $this->generateOutputTemplate();
-            $plugin->input_template = $this->inputs->toJson();
+            //$plugin->mini_template = $this->generateMiniTemplate(); // TODO : remove unused
+            $plugin->output_template =  json_encode([
+                "output" => [
+                    "title" => "Output",
+                    "description" => "The output",
+                    "type" => "string"
+                ]
+            ]); // TODO rename in output_sockets
+            $plugin->input_template = $this->inputs->toJson(); // TODO rename in input_sockets
+            $plugin->plugin_input = $this->plugin_input; // TODO rename to input_template
+
             $plugin->secrets = $this->secrets->toJson();
-            $plugin->plugin_input = $this->plugin_input;
             $plugin->file_link = $this->file_link;
-            $plugin->user_id = $this->user->id;
-            $plugin->author = $this->author;
+            $plugin->user_id = auth()->user()->id;
+            $plugin->author =  auth()->user()->name;
             $plugin->payment = $this->payment;
             $plugin->wasm_upload = $wasm_upload->toJson();
             $plugin->save();
@@ -199,29 +198,6 @@ class PluginCreate extends Component
             'type' => $this->output_type,
             'description' => $this->output_description,
         ]);
-    }
-
-    public function generateMiniTemplate()
-    {
-        return json_encode([
-            'main' => $this->file_link,
-            'input' => $this->generateInputMoustacheTemplate(),
-        ]);
-    }
-
-    public function generateInputMoustacheTemplate()
-    {
-        $template = '';
-
-        foreach ($this->inputs as $input) {
-            $template .= '{{in.'.$input['name'].'}}';
-            // if (isset($input['type']) && $input['type'] === 'string') {
-            //     $template .= '|' . $input['name'];
-            // }
-            $template .= ' ';
-        }
-
-        return $template;
     }
 
     public function addInput()

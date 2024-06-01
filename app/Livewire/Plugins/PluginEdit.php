@@ -16,7 +16,7 @@ class PluginEdit extends Component
 {
     use LivewireAlert, WithFileUploads;
 
-    public $kind;
+    // public $kind;
 
     public $name;
 
@@ -38,19 +38,19 @@ class PluginEdit extends Component
 
     public $mini_template;
 
-    public $sockets;
+    // public $sockets;
 
     public $input;
 
     public Collection $inputs;
 
-    public $outputs = [];
+    // public $outputs = [];
 
     public $file_link;
 
-    public $output_description;
+    // public $output_description;
 
-    public $output_type;
+    // public $output_type;
 
     public Collection $secrets;
 
@@ -159,7 +159,7 @@ class PluginEdit extends Component
                 $this->file_link = $url;
             }
 
-            $plugin->kind = 5003;
+            // $plugin->kind = 5003;
             $plugin->name = $this->name;
             $plugin->description = $this->description;
             $plugin->tos = $this->tos;
@@ -167,13 +167,21 @@ class PluginEdit extends Component
             $plugin->web = $this->web;
             $plugin->picture = $this->picture;
             $plugin->tags = json_encode($this->tags);
-            $plugin->mini_template = $this->generateMiniTemplate();
-            $plugin->output_template = $this->generateOutputTemplate();
-            $plugin->input_template = $this->inputs->toJson();
+            // $plugin->mini_template = $this->generateMiniTemplate();
+            $plugin->output_template = json_encode([
+                "output" => [
+                    "title" => "Output",
+                    "description" => "The output",
+                    "type" => "string"
+                ]
+            ]); // TODO rename in output_sockets
+            $plugin->input_template = $this->inputs->toJson(); // TODO rename in input_sockets
+            $plugin->plugin_input = $this->plugin_input; // TODO rename to input_template
+
             $plugin->secrets = $this->secrets->toJson();
-            $plugin->plugin_input = $this->plugin_input;
             $plugin->file_link = $this->file_link;
-            $plugin->author = $this->author;
+            // $plugin->user_id = auth()->user()->id;
+            // $plugin->author = auth()->user()->name;
             $plugin->payment = $this->payment;
             $plugin->save();
 
@@ -192,37 +200,37 @@ class PluginEdit extends Component
         }
     }
 
-    public function generateOutputTemplate()
-    {
-        return json_encode([
-            'type' => $this->output_type,
-            'description' => $this->output_description,
-        ]);
-    }
+    // public function generateOutputTemplate()
+    // {
+    //     return json_encode([
+    //         'type' => $this->output_type,
+    //         'description' => $this->output_description,
+    //     ]);
+    // }
 
-    public function generateMiniTemplate()
-    {
-        return json_encode([
-            'main' => $this->file_link,
-            'input' => $this->generateInputMoustacheTemplate(),
-        ]);
-    }
+    // public function generateMiniTemplate()
+    // {
+    //     return json_encode([
+    //         'main' => $this->file_link,
+    //         'input' => $this->generateInputMoustacheTemplate(),
+    //     ]);
+    // }
 
-    public function generateInputMoustacheTemplate()
-    {
+    // public function generateInputMoustacheTemplate()
+    // {
 
-        $template = '';
+    //     $template = '';
 
-        foreach ($this->inputs as $input) {
-            $template .= '{{in.'.$input['name'].'}}';
-            // if (isset($input['type']) && $input['type'] === 'string') {
-            //     $template .= '|' . $input['name'];
-            // }
-            $template .= ' ';
-        }
+    //     foreach ($this->inputs as $input) {
+    //         $template .= '{{in.'.$input['name'].'}}';
+    //         // if (isset($input['type']) && $input['type'] === 'string') {
+    //         //     $template .= '|' . $input['name'];
+    //         // }
+    //         $template .= ' ';
+    //     }
 
-        return $template;
-    }
+    //     return $template;
+    // }
 
     public function addInput()
     {
@@ -255,8 +263,8 @@ class PluginEdit extends Component
     public function setProperties()
     {
 
-        $mini_template = json_decode($this->plugin->mini_template);
-        $output_template = json_decode($this->plugin->output_template);
+        // $mini_template = json_decode($this->plugin->mini_template);
+        // $output_template = json_decode($this->plugin->output_template);
 
         $this->name = $this->plugin->name;
         $this->description = $this->plugin->description;
@@ -271,8 +279,8 @@ class PluginEdit extends Component
         $this->secrets = collect(json_decode($this->plugin->secrets, true));
         $this->plugin_input = $this->plugin->plugin_input;
         $this->file_link = $this->plugin->file_link;
-        $this->output_description = $output_template->description;
-        $this->output_type = $output_template->type;
+        // $this->output_description = $output_template->description;
+        // $this->output_type = $output_template->type;
 
     }
 
