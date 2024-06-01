@@ -30,13 +30,13 @@ it('sets the conversation history for the given Thread', function () {
         ['role' => 'user', 'content' => $newPrompt],
     ];
 
-    $nostrRag = (new PoolRag())->history($thread, 100);
+    $poolRag = (new PoolRag())->history($thread, 100);
 
-    expect($nostrRag->getMessages())->toBe($messages);
+    expect($poolRag->getMessages())->toBe($messages);
 
     // If messages do not fit into maxTokens, lose oldest message first
     array_shift($messages);
-    $nostrRag = (new PoolRag())->history($thread, 13);
+    $poolRag = (new PoolRag())->history($thread, 13);
 
-    expect($nostrRag->getMessages())->toBe($messages);
+    expect($poolRag->getMessages())->toBe($messages);
 });

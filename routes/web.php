@@ -114,8 +114,10 @@ Route::get('/docs', function () {
 // ADMIN
 Route::get('/logs', Logs::class)->name('logs');
 
-// Nostr Webhook
+// DEPRECATED: Nostr Webhook
 Route::post('/webhook/nostr', [PoolWebhookReceiver::class, 'handleEvent']);
+
+// Pool Webhook
 Route::post('/webhook/pool', [PoolWebhookReceiver::class, 'handleEvent']);
 
 // Logout via GET not just POST

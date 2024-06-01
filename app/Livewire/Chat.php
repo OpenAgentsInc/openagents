@@ -437,8 +437,8 @@ class Chat extends Component
                 'agent_id' => $this->selectedAgent['id'] ?? null,
             ]);
 
-            $nostrRag = new PoolRag(); // Generate history
-            $query = $nostrRag->history($this->thread)->summary();
+            $poolRag = new PoolRag(); // Generate history
+            $query = $poolRag->history($this->thread)->summary();
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
@@ -454,7 +454,7 @@ class Chat extends Component
     }
 
     #[On('echo:threads.{thread.id},PoolJobReady')]
-    public function process_nostr($event): void
+    public function processPoolJob($event): void
     {
         $this->setAgentModel($event['job'] ?? []);
 
