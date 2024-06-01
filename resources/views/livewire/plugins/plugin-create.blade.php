@@ -34,7 +34,7 @@
 
 
                 <div class="mt-5">
-                    <label for="privacy">Privacy</label>
+                    <label for="privacy">Link to Privacy Policy</label>
                     <x-input id="privacy" class="block mt-1 w-full " type="text" name="privacy"
                         wire:model='privacy' dusk="privacy" placeholder="Your plugin privacy policy" />
                     @error('privacy')
@@ -44,7 +44,7 @@
 
 
                 <div class="mt-5">
-                    <label for="tos">Tos</label>
+                    <label for="tos">Link to Terms of Service</label>
                     <x-input id="tos" class="block mt-1 w-full " type="text" name="tos" wire:model='tos'
                         dusk="tos" placeholder="Name your plugin" />
                     @error('name')
@@ -52,14 +52,7 @@
                     @enderror
                 </div>
 
-                {{-- <div class="mt-5">
-                    <label for="file_link">File Url</label>
-                    <x-input id="file_link" class="block mt-1 w-full " type="url" name="web"
-                        wire:model='file_link' dusk="web" placeholder="Url to the wasm file" />
-                    @error('file_link')
-                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
-                    @enderror
-                </div> --}}
+
 
                 <div class="mt-5 select-none">
                     <label for="files">WASM File</label>
@@ -84,6 +77,19 @@
                         <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
+
+
+                 <div class="mt-5 col-span-full">
+                    <label for="about">Input Template</label>
+                    <x-textarea wire:model='plugin_input'
+                        {{-- placeholder='{{ '{' }}text{{ '}' }}: {{ '{' }}{in.text}}{{ '}' }}, {{ '{' }}to{{ '}' }}: {{ '{' }}{in.target_lang}}{{ '}' }}, {{ '{' }}api_key{{ '}' }}: "%secret.api_key%"' --}}
+                        id="34rqwerrty" class="block mt-1 w-full" dusk="description" min-rows="3"
+                        name="plugin_input" />
+                    @error('plugin_input')
+                        <span class="text-xs text-red">{{ $message }}</span>
+                    @enderror
+                </div>
+
 
                 <div
                     class="border-b border-t font-bold rounded border-gray mt-6 sm:mt-10 mb-4 p-2 col-span-full text-center">
@@ -119,7 +125,7 @@
                                     <option value="string">String</option>
                                     <option value="integer">Integer</option>
                                     <option value="array">Array</option>
-                                    <option value="json">Json</option>
+                                    <option value="json">Object</option>
                                 </select>
                                 @error('inputs.' . $key . '.type')
                                     <span class="text-xs text-red">{{ $message }}</span>
@@ -165,6 +171,20 @@
                         <p class="ml-2">Add New Input</p>
                     </div>
                 </div>
+
+
+
+
+
+                <div class="mt-5">
+                    <label for="payment">Lightning Address (optional)</label>
+                    <x-input id="name" class="block mt-1 w-full " type="text" name="payment"
+                        wire:model='payment' dusk="payment" placeholder="Bitcoin lightning address" />
+                    @error('payment')
+                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                    @enderror
+                </div>
+
 
 
                 <div
@@ -224,82 +244,6 @@
                         <p class="ml-2">Add Secret</p>
                     </div>
                 </div>
-
-
-                <div class="border-b border-t font-bold rounded border-gray p-2 my-4 col-span-full text-center">
-                    Existism input template
-                </div>
-
-                <div class="mt-5 col-span-full">
-                    <label for="about">Input Template</label>
-                    <x-textarea wire:model='plugin_input'
-                        {{-- placeholder='{{ '{' }}text{{ '}' }}: {{ '{' }}{in.text}}{{ '}' }}, {{ '{' }}to{{ '}' }}: {{ '{' }}{in.target_lang}}{{ '}' }}, {{ '{' }}api_key{{ '}' }}: "%secret.api_key%"' --}}
-                        id="34rqwerrty" class="block mt-1 w-full" dusk="description" min-rows="3"
-                        name="plugin_input" />
-                    @error('plugin_input')
-                        <span class="text-xs text-red">{{ $message }}</span>
-                    @enderror
-                </div>
-
-
-
-                <div class="border-b border-t font-bold rounded border-gray p-2 my-4 col-span-full text-center">
-                    Outputs
-                </div>
-
-
-                <div class="my-5 flex items-center  rounded p-1 col-span-full">
-                    <select wire:model='output_type'
-                        class="w-full border-darkgray bg-black text-white focus:border-white focus:ring-white rounded-md shadow-sm">
-
-                        <option value="">Select output type</option>
-                        <option value="string">String</option>
-                        <option value="integer">Integer</option>
-                        <option value="array">Array</option>
-                        <option value="json">Json</option>
-                    </select>
-                    @error('output_type')
-                        <span class="text-xs text-red">{{ $message }}</span>
-                    @enderror
-
-                </div>
-
-                <div class="mt-5 col-span-full">
-                    <label for="about">Description</label>
-                    <x-textarea wire:model='output_description' placeholder="A description about this output"
-                        id="output_description" class="block mt-1 w-full" dusk="description" min-rows="3"
-                        name="about" />
-                    @error('output_description')
-                        <span class="text-xs text-red">{{ $message }}</span>
-                    @enderror
-                </div>
-
-
-                <div class="border-b border-t font-bold rounded border-gray p-2 my-4 col-span-full text-center">
-                    Author Info
-                </div>
-
-
-                <div class="mt-5">
-                    <label for="author">Author</label>
-                    <x-input id="author" class="block mt-1 w-full " type="text" name="author"
-                        wire:model='author' dusk="author" placeholder="Name of plugin author" />
-                    @error('author')
-                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
-                    @enderror
-                </div>
-
-
-                <div class="mt-5">
-                    <label for="payment">Payment</label>
-                    <x-input id="name" class="block mt-1 w-full " type="text" name="payment"
-                        wire:model='payment' dusk="payment" placeholder="Bitcoin lightning address" />
-                    @error('payment')
-                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
-                    @enderror
-                </div>
-
-
 
 
                 <div class="mt-5 w-full text-center">
