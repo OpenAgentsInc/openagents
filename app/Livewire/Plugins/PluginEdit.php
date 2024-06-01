@@ -238,9 +238,6 @@ class PluginEdit extends Component
         $this->secrets = collect(json_decode($this->plugin->secrets, true));
         $this->plugin_input = $this->plugin->plugin_input;
         $this->file_link = $this->plugin->file_link;
-        // $this->output_description = $output_template->description;
-        // $this->output_type = $output_template->type;
-
     }
 
     public function render()

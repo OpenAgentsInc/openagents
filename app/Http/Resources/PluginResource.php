@@ -25,7 +25,7 @@ class PluginResource extends JsonResource
         // Prepare the sockets data
         $sockets = [
             'in' => json_decode($this->input_template, true),
-            'out' => json_decode($this->output_template, true),
+            'out' => json_decode($this->output_sockets, true),
         ];
 
         $payment = '';
