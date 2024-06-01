@@ -125,7 +125,7 @@
                                     <option value="string">String</option>
                                     <option value="integer">Integer</option>
                                     <option value="array">Array</option>
-                                    <option value="json">Object</option>
+                                    <option value="object">Object</option>
                                 </select>
                                 @error('inputs.' . $key . '.type')
                                     <span class="text-xs text-red">{{ $message }}</span>
