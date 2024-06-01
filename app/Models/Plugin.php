@@ -18,6 +18,7 @@ class Plugin extends Model
         'picture',
         'tags',
         'input_sockets',
+        'output_sockets',
         'input_template',
         'secrets',
         'file_link',
