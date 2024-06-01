@@ -46,7 +46,7 @@ class Edit extends Component
 
     public $useTools = false;
 
-    public function mount(): void
+    public function mount()
     {
 
 
