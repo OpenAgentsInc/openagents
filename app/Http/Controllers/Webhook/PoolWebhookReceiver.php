@@ -18,7 +18,7 @@ class PoolWebhookReceiver extends Controller
         $data = $request->all();
         $secret = $request->query('secret');
 
-        if (config('nostr.webhook_secret') && $secret !== config('nostr.webhook_secret')) {
+        if (config('pool.webhook_secret') && $secret !== config('pool.webhook_secret')) {
             return response()->json(['error' => 'Invalid token'], 403);
         }
 

@@ -33,14 +33,14 @@ class PoolUtils
         ]);
 
         $job_id = (new PoolService())
-            ->poolAddress(config('nostr.pool'))
+            ->poolAddress(config('pool.address'))
             ->query($query)
             ->useTools($withTools)
             ->documents($documents)
             ->uuid('openagents.com-'.$userId.'-'.$threadId)
             ->warmUp($warmUp)
             ->cacheDurationhint(-1)
-            ->encryptFor(config('nostr.encrypt'))
+            ->encryptFor(config('pool.encrypt'))
             ->execute();
 
         $logger->log('info', 'Requesting '.($warmUp ? 'warm up' : '').'Job with ID: '.$job_id.' for Agent: '.$agentId.' Thread: '.$threadId);
@@ -56,11 +56,11 @@ class PoolUtils
 
     public static function getTools()
     {
-        $hostname = config('nostr.pool');
+        $hostname = config('pool.address');
         $opts = [
-            'credentials' => config('nostr.pool_ssl') ? ChannelCredentials::createSsl() : ChannelCredentials::createInsecure(),
+            'credentials' => config('pool.address_ssl') ? ChannelCredentials::createSsl() : ChannelCredentials::createInsecure(),
             'update_metadata' => function ($metaData) {
-                $metaData['authorization'] = [config('nostr.node_token')];
+                $metaData['authorization'] = [config('pool.node_token')];
 
                 return $metaData;
             },

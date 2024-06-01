@@ -116,6 +116,7 @@ Route::get('/logs', Logs::class)->name('logs');
 
 // Nostr Webhook
 Route::post('/webhook/nostr', [PoolWebhookReceiver::class, 'handleEvent']);
+Route::post('/webhook/pool', [PoolWebhookReceiver::class, 'handleEvent']);
 
 // Logout via GET not just POST
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
