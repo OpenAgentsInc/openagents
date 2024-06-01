@@ -385,7 +385,7 @@ class Chat extends Component
             'output_tokens' => null,
         ]);
 
-        $systemPrompt = auth()->user()->system_prompt;
+        $systemPrompt = auth()->user()->system_prompt ?? '';
         $inference = new SimpleInferencer();
         $output = $inference->inference($this->input, $this->selectedModel, $this->thread, $this->getStreamingCallback(), $systemPrompt);
 
