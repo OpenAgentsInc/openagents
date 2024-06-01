@@ -6,7 +6,6 @@ use App\Http\Controllers\ExplorerController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SocialAuthController;
-use App\Http\Controllers\StaticController;
 use App\Http\Controllers\Webhook\PoolWebhookReceiver;
 use App\Livewire\Agents\Create;
 use App\Livewire\Agents\Edit;
@@ -17,6 +16,9 @@ use App\Livewire\Changelog;
 use App\Livewire\Chat;
 use App\Livewire\Logs;
 use App\Livewire\MarkdownPage;
+use App\Livewire\Plugins\PluginCreate;
+use App\Livewire\Plugins\PluginEdit;
+use App\Livewire\Plugins\PluginList;
 use App\Livewire\MyAgentsScreen;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
@@ -82,7 +84,9 @@ Route::get('/upgrade', [BillingController::class, 'stripe_subscribe']);
 Route::get('/pro', ProWelcome::class)->name('pro');
 
 // PLUGIN REGISTRY
-Route::get('/plugins', [StaticController::class, 'plugins']);
+Route::get('/plugins', PluginList::class)->name('plugins.index');
+Route::get('/plugins/create', PluginCreate::class)->name('plugins.create');
+Route::get('/plugins/edit/{plugin}', PluginEdit::class)->name('plugins.edit');
 
 // BLOG
 Route::get('/blog', Blog::class);

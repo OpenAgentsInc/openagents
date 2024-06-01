@@ -1,4 +1,4 @@
-<div x-data="{ enabled: @entangle($attributes->wire('model')) }" class="flex items-center justify-between">
+<div x-data="{ enabled: @entangle($attributes->wire('model')) }" class="flex items-center justify-between w-full">
     <span class="flex flex-grow flex-col p-3">
         <span class="text-sm font-medium leading-6 text-gray" id="availability-label">{{ $label }}</span>
         <span class="text-sm text-slate-100" id="availability-description">{{ $description }}</span>
