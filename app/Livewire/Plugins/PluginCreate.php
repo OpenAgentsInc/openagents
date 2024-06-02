@@ -61,22 +61,23 @@ class PluginCreate extends Component
         $user = auth()->user();
         $this->user = $user;
 
-        if(isset($this->plugin)){
-            abort_if($user->id !== $this->plugin->user_id, 403, 'permission denied');
-            $this->loadPluginProperties();
-        }
-
-        $this->inputs[]= [
+        $this->inputs[] = [
             'name' => 'Input0',
             'required' => true,
             'type' => 'string',
             'description' => 'An input',
         ];
 
-        $this->secrets[]= [
-            'key' => '',
-            'value' => '',
-        ];
+        // $this->secrets[] = [
+        //     'key' => '',
+        //     'value' => '',
+        // ];
+        if(isset($this->plugin)){
+            abort_if($user->id !== $this->plugin->user_id, 403, 'permission denied');
+            $this->loadPluginProperties();
+        }
+
+
     }
 
     public function loadPluginProperties()
@@ -116,7 +117,7 @@ class PluginCreate extends Component
             'inputs' => 'required|array',
             'inputs.*.name' => 'required|string',
             'inputs.*.description' => 'required|string',
-            'inputs.*.default' => 'required|string',
+            'inputs.*.default' => 'nullable|string',
             'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,object,array',
 
