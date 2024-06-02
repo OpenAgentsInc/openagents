@@ -135,11 +135,12 @@
                                                 wire:model='inputs.{{ $key }}.required' /></td>
                                         <td class="border px-4 py-2 ">
                                             <div class="flex justify-between">
-                                                <x-iconpark-copylink class="w-4 h-4 m-2 cursor-pointer"
+
+                                                <x-icon.copy class="h-4 w-4 m-2 cursor-pointer"
                                                 onclick="navigator.clipboard.writeText('\{\{in.'+document.querySelector('#inputs_{{ $key }}_name').value+'\}\}'); alert('TAG copied')"
                                                 />
                                                 @if ($key > 0)
-                                                    <x-iconpark-delete  wire:click="removeInput({{ $key }})" class="w-4 h-4 m-2 cursor-pointer"  />
+                                                    <x-icon.trash  wire:click="removeInput({{ $key }})" class="w-4 h-4 m-2 cursor-pointer"  />
                                                 @endif
                                             </div>
                                         </td>
@@ -205,11 +206,11 @@
                                     </td>
                                      <td class="border px-4 py-2 ">
                                             <div class="flex justify-between">
-                                                <x-iconpark-copylink class="w-4 h-4 m-2 cursor-pointer"
+                                                <x-icon.copy class="w-4 h-4 m-2 cursor-pointer"
                                                 onclick="navigator.clipboard.writeText('%secret.'+(document.querySelector('#secrets_{{ $key }}_key').value)+'%');alert('TAG copied');  "
                                                 />
                                                 @if ($key > 0)
-                                                    <x-iconpark-delete   wire:click="removeSecretInput({{ $key }})" class="w-4 h-4 m-2 cursor-pointer"  />
+                                                    <x-icon.trash   wire:click="removeSecretInput({{ $key }})" class="w-4 h-4 m-2 cursor-pointer"  />
 
                                                 @endif
                                             </div>
@@ -254,7 +255,7 @@
                                        Current timestamp in seconds
                                     </td>
                                      <td class="border px-4 py-2  ">
-                                        <x-iconpark-copylink class="w-4 h-4 m-2 cursor-pointer"
+                                        <x-icon.copy class="w-4 h-4 m-2 cursor-pointer"
                                         onclick="navigator.clipboard.writeText('\{\{sys.timestamp_seconts\}\}');alert('TAG copied');  "
                                         />
                                     </td>
@@ -267,7 +268,7 @@
                                        The expiration timestamp in seconds for the current job
                                     </td>
                                      <td class="border px-4 py-2  ">
-                                        <x-iconpark-copylink class="w-4 h-4 m-2 cursor-pointer"
+                                        <x-icon.copy class="w-4 h-4 m-2 cursor-pointer"
                                         onclick="navigator.clipboard.writeText('\{\{sys.expiration_timestamp_seconds\}\}');alert('TAG copied');  "
                                         />
                                     </td>
@@ -280,7 +281,7 @@
                                        The amount bidded for the current job
                                     </td>
                                      <td class="border px-4 py-2 ">
-                                        <x-iconpark-copylink class="w-4 h-4 m-2 cursor-pointer"
+                                        <x-icon.copy class="w-4 h-4 m-2 cursor-pointer"
                                         onclick="navigator.clipboard.writeText('\{\{sys.bidAmount\}\}');alert('TAG copied');  "
                                         />
                                     </td>
@@ -293,7 +294,7 @@
                                         The currency bidded for the current job
                                     </td>
                                      <td class="border px-4 py-2 ">
-                                        <x-iconpark-copylink class="w-4 h-4 m-2 cursor-pointer"
+                                        <x-icon.copy class="w-4 h-4 m-2 cursor-pointer"
                                         onclick="navigator.clipboard.writeText('\{\{sys.bidCurrency\}\}');alert('TAG copied');  "
                                         />
                                     </td>
@@ -306,7 +307,7 @@
                                         The protocol used to bid for the current job
                                     </td>
                                      <td class="border px-4 py-2 ">
-                                        <x-iconpark-copylink class="w-4 h-4 m-2 cursor-pointer"
+                                        <x-icon.copy class="w-4 h-4 m-2 cursor-pointer"
                                         onclick="navigator.clipboard.writeText('\{\{sys.bidProtocol\}\}');alert('TAG copied');  "
                                         />
                                     </td>
@@ -324,7 +325,7 @@
                     <p class="mt-1 mb-4">
                         The <a href="https://mustache.github.io/" target="_blank">@{{mustache}}</a> template to define the layout of the input.
                         <br>
-                        Click on the <x-iconpark-copylink class="w-4 h-4   inline-block" /> icons on this page
+                        Click on the <x-icon.copy class="w-4 h-4   inline-block" /> icons on this page
                          to copy the mustache TAGs for variables and secrets.
 
                     </p>
