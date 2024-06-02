@@ -161,12 +161,12 @@ class PluginCreate extends Component
             // Upload File to public
             Storage::disk($disk)->put($path, fopen($this->wasm_upload->getRealPath(), 'r+'), 'public');
             $url = Storage::disk($disk)->url($path);
-            // $savewasm_upload = [
-            //     'disk' => $disk,
-            //     'path' => $path,
-            //     'url' => $url,
-            // ];
-            // $wasm_upload = collect($savewasm_upload);
+
+            $plugin -> wasm_upload = json_encode([
+                'disk' => $disk,
+                'path' => $path,
+                'url' => $url,
+            ]);
             $this->file_link = $url;
         }
 

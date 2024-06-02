@@ -25,7 +25,7 @@ class Plugin extends Model
         'user_id',
         'author',
         'payment',
-        'wasm_upload', //TODO unused, remove
+        'wasm_upload'
     ];
 
     protected $casts = [
