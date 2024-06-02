@@ -188,10 +188,10 @@ class PluginCreate extends Component
                     'type' => 'string',
                 ],
             ]);
-            $plugin->input_sockets = $this->inputs->toJson();
+            $plugin->input_sockets = json_encode($this->inputs);
             $plugin->input_template = $this->input_template;
 
-            $plugin->secrets = $this->secrets->toJson();
+            $plugin->secrets = json_encode($this->secrets);
             $plugin->file_link = $this->file_link;
             $plugin->user_id = auth()->user()->id;
             $plugin->author = auth()->user()->name;
