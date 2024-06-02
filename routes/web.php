@@ -3,6 +3,7 @@
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExplorerController;
+use App\Http\Controllers\LnAddressController;
 use App\Http\Controllers\NostrAuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SocialAuthController;
@@ -58,6 +59,10 @@ Route::get('/create', Create::class)->name('agents.create');
 Route::get('/agents/{agent}', Profile::class)->name('agents.profile');
 Route::get('/agents/{agent}/edit', Edit::class)->name('agents.edit');
 Route::get('/my-agents', MyAgentsScreen::class)->name('myagents');
+
+// LNURLP
+Route::get('/.well-known/lnurlp/{user}', [LnAddressController::class, 'handleLnurlp']);
+Route::get('/lnurlp/callback', [LnAddressController::class, 'handleCallback']);
 
 // PROFILES
 Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile');
