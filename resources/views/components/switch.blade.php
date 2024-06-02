@@ -1,7 +1,7 @@
 <div x-data="{ enabled: @entangle($attributes->wire('model')) }" class="flex items-center justify-between w-full">
     <span class="flex flex-grow flex-col p-3">
-        <span class="text-sm font-medium leading-6 text-gray" id="availability-label">{{ $label }}</span>
-        <span class="text-sm text-slate-100" id="availability-description">{{ $description }}</span>
+        <span class="text-sm font-medium leading-6 text-gray" id="availability-label">@if(isset($label)){{ $label }}@endif</span>
+        <span class="text-sm text-slate-100" id="availability-description">@if(isset($description)){{ $description }}@endif</span>
     </span>
     <!-- Enabled: "bg-indigo-600", Not Enabled: "bg-gray-200" -->
     <button @click="enabled = !enabled" x-bind:class="{ 'bg-white': enabled, 'bg-black border border-white': !enabled }" type="button" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2" role="switch" aria-checked="false" aria-labelledby="availability-label" aria-describedby="availability-description">

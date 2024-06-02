@@ -23,7 +23,7 @@
                             class="bg-black w-full text-darkgray rounded border-0 py-1.5 pl-10 text-sm leading-6 text-gray-900 ring-1 ring-darkgray ring-inset ring-gray-300 placeholder:text-darkgray focus:ring-2 focus:ring-inset focus:ring-gray sm:block"
                             placeholder="Search plugins" wire:model.live='search' />
                     </div>
-                    <a href="{{ route('plugins.create') }}" type="button" wire:navigate
+                    <a href="{{ route('plugins.edit') }}" type="button" wire:navigate
                         class="relative sm:-ml-px inline-flex items-center gap-x-1 sm:gap-x-1.5 rounded px-3 py-2 text-xs sm:text-sm sm:font-semibold text-gray-900 ring-1 ring-inset ring-gray/50 hover:bg-gray/50">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
                             stroke="currentColor" class="w-5 h-5">
