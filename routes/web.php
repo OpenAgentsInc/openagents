@@ -90,8 +90,7 @@ Route::get('/pro', ProWelcome::class)->name('pro');
 
 // PLUGIN REGISTRY
 Route::get('/plugins', PluginList::class)->name('plugins.index');
-Route::get('/plugins/create', PluginCreate::class)->name('plugins.create');
-Route::get('/plugins/edit/{plugin}', PluginEdit::class)->name('plugins.edit');
+Route::get('/plugins/edit/{plugin?}', PluginCreate::class)->name('plugins.edit');
 
 // BLOG
 Route::get('/blog', Blog::class);
