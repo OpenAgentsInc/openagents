@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\LnAddress;
 use Illuminate\Http\Request;
 
 class LnAddressController extends Controller
 {
     public function handleLnurlp($user)
     {
-        $lnAddress = LnAddress::where('email', $user)->first();
+        dd($user);
 
         if (! $lnAddress) {
             return response()->json(['status' => 'ERROR', 'reason' => 'User not found'], 404);
