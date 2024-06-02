@@ -9,8 +9,6 @@
   "license": "MIT",
   "require": {
     "php": "^8.3",
-    "blade-ui-kit/blade-icons": "^1.6",
-    "codeat3/blade-iconpark": "^1.6",
     "dedoc/scramble": "^0.10.11",
     "doctrine/dbal": "^4.0",
     "google/protobuf": "^3.22.0",
