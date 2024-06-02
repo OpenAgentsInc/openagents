@@ -27,6 +27,19 @@
             <li>
                 <div class="relative z-[15]">
                     <div class="group relative rounded-lg active:opacity-90 px-3">
+                        <a class="hover:text-white flex flex-row items-center gap-2 py-1" wire:navigate
+                           href="{{route('plugins.index')}}">
+                            <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">
+                                Plugins
+                            </div>
+                            <div class="text-xs text-gray opacity-50">Beta</div>
+                        </a>
+                    </div>
+                </div>
+            </li>
+            <li>
+                <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
                         <a class="flex items-center gap-2 py-1"
                            wire:navigate
                            href="/blog"
