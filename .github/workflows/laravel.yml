@@ -59,6 +59,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: vendor/bin/pest --testdox > test-summary.txt
+      - name: Upload Test Result to artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: test-summary
+          path: test-summary.txt
       - name: Comment PR on Test Result
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v5
@@ -67,18 +72,18 @@ jobs:
             const fs = require('fs');
             const prNumber = context.issue.number;
             let message = '';
-            
+
             // Read the test summary file if it exists
             if (fs.existsSync('test-summary.txt')) {
               const testSummary = fs.readFileSync('test-summary.txt', { encoding: 'utf8' });
               const testSummaryLines = testSummary.split('\n');
-            
+
               // Initialize an array to hold our formatted failing test lines
               const failingTests = [];
               let captureTrace = false;
               let currentTest = [];
               let passingTests = 0;
-            
+
               // Iterate over each line of the test summary
               for (const line of testSummaryLines) {
                 // Check if the line is a file path and reset capture if we hit a new file
@@ -113,12 +118,12 @@ jobs:
                   }
                 }
               }
-            
+
               // Check if there's a leftover test case at the end of the file
               if (currentTest.length > 0) {
                 failingTests.push(currentTest.join('\n'));
               }
-            
+
               if (failingTests.length > 0) {
                 // Join the failing tests with two new lines and wrap in a code block for markdown
                 message = `❌ Tests failed. Below are the details:\n\`\`\`\n${failingTests.join('\n\n')}\n\`\`\``;
