@@ -128,11 +128,13 @@ class PluginCreate extends Component
     {
         $validated = $this->validate();
 
-        $plugin = $this->plugin;
+        $plugin = null;
         $update = true;
-        if(!isset($plugin)){
+        if(!isset($this->plugin)){
             $plugin = new Plugin();
             $update = false;
+        }else{
+            $plugin = $this->plugin;
         }
 
         if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
