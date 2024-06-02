@@ -35,46 +35,65 @@ class PluginCreate extends Component
 
     public $tags;
 
-    public $mini_template;
-
-    // public $sockets;
-
-    public $input;
-
-    public Collection $inputs;
+    public $inputs=[];
 
     public $file_link;
 
-    public $output_description;
+    public $secrets=[];
 
-    public $output_type;
-
-    public Collection $secrets;
-
-    public $plugin_input;
+    public $input_template="{{in.input0}}";
 
     public $payment;
 
+    public $user;
+
+    public Plugin $plugin;
+
+
     public function mount()
     {
+
 
         if (! auth()->check()) {
             return redirect('/');
         }
 
-        $this->fill([
-            'inputs' => collect([[
-                'name' => '',
-                'required' => true,
-                'type' => 'string',
-                'description' => '',
-            ]]),
-            'secrets' => collect([[
-                'key' => '',
-                'value' => '',
-            ]]),
-        ]);
+        $user = auth()->user();
+        $this->user = $user;
 
+        if(isset($this->plugin)){
+            abort_if($user->id !== $this->plugin->user_id, 403, 'permission denied');
+            $this->loadPluginProperties();
+        }
+
+        $this->inputs[]= [
+            'name' => 'Input0',
+            'required' => true,
+            'type' => 'string',
+            'description' => 'An input',
+        ];
+
+        $this->secrets[]= [
+            'key' => '',
+            'value' => '',
+        ];
+    }
+
+    public function loadPluginProperties()
+    {
+        $this->name = $this->plugin->name;
+        $this->description = $this->plugin->description;
+        $this->tos = $this->plugin->tos;
+        $this->privacy = $this->plugin->privacy;
+        $this->author = $this->plugin->author ? $this->author : $this->plugin->user->name;
+        $this->payment = $this->plugin->payment ? $this->plugin->payment : $this->plugin->user->lightning_address;
+        $this->web = $this->plugin->web;
+        $this->picture = $this->plugin->picture;
+        $this->tags = $this->plugin->tags;
+        $this->inputs = json_decode($this->plugin->input_sockets, true);
+        $this->secrets = json_decode($this->plugin->secrets, true);
+        $this->input_template = $this->plugin->input_template;
+        $this->file_link = $this->plugin->file_link;
     }
 
     public function rules()
@@ -93,10 +112,11 @@ class PluginCreate extends Component
             'secrets' => 'nullable|array',
             'secrets.*.key' => 'required_with:secrets.*.value|string',
             'secrets.*.value' => 'required_with:secrets.*.key|string',
-            'plugin_input' => 'required|string',
+            'input_template' => 'required|string',
             'inputs' => 'required|array',
             'inputs.*.name' => 'required|string',
             'inputs.*.description' => 'required|string',
+            'inputs.*.default' => 'required|string',
             'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,object,array',
 
@@ -107,36 +127,50 @@ class PluginCreate extends Component
     {
         $validated = $this->validate();
 
+        $plugin = $this->plugin;
+        $update = true;
+        if(!isset($plugin)){
+            $plugin = new Plugin();
+            $update = false;
+        }
+
         if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
+
+            if($update){
+                $oldFile = json_decode($plugin->wasm_upload);
+                if ($oldFile && isset($oldFile->path)) {
+                    Storage::disk($oldFile->disk)->delete($oldFile->path);
+                }
+
+            }
 
             $disk = config('filesystems.media_disk');
 
             // Get filename with extension
-            $filenamewithextension = $this->wasm_upload->getClientOriginalName();
+            $filenameWithExt = $this->wasm_upload->getClientOriginalName();
 
             // Get filename without extension
-            $filename = pathinfo($filenamewithextension, PATHINFO_FILENAME);
+            $filename = pathinfo($filenameWithExt, PATHINFO_FILENAME);
 
             // Get file extension
             $extension = $this->wasm_upload->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'wasm/uploads/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
+            $path = 'wasm/uploads/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
 
             // Upload File to public
-            Storage::disk($disk)->put($filenametostore, fopen($this->wasm_upload->getRealPath(), 'r+'), 'public');
-            $url = Storage::disk($disk)->url($filenametostore);
-            $savewasm_upload = [
-                'disk' => $disk,
-                'path' => $filenametostore,
-                'url' => $url,
-            ];
-            $wasm_upload = collect($savewasm_upload);
+            Storage::disk($disk)->put($path, fopen($this->wasm_upload->getRealPath(), 'r+'), 'public');
+            $url = Storage::disk($disk)->url($path);
+            // $savewasm_upload = [
+            //     'disk' => $disk,
+            //     'path' => $path,
+            //     'url' => $url,
+            // ];
+            // $wasm_upload = collect($savewasm_upload);
             $this->file_link = $url;
         }
 
         try {
-            $plugin = new Plugin();
             $plugin->name = $this->name;
             $plugin->description = $this->description;
             $plugin->tos = $this->tos;
@@ -152,14 +186,13 @@ class PluginCreate extends Component
                 ],
             ]);
             $plugin->input_sockets = $this->inputs->toJson();
-            $plugin->input_template = $this->plugin_input;
+            $plugin->input_template = $this->input_template;
 
             $plugin->secrets = $this->secrets->toJson();
             $plugin->file_link = $this->file_link;
             $plugin->user_id = auth()->user()->id;
             $plugin->author = auth()->user()->name;
             $plugin->payment = $this->payment;
-            $plugin->wasm_upload = $wasm_upload->toJson();
             $plugin->save();
 
             $good = true;
@@ -179,34 +212,40 @@ class PluginCreate extends Component
 
     public function addInput()
     {
-        $this->inputs->push([
+        $this->inputs[]=[
             'name' => '',
             'required' => false,
             'type' => 'string',
             'description' => '',
-        ]);
+            'default' => ''
+        ];
     }
 
     public function removeInput($key)
     {
-        $this->inputs->pull($key);
+        unset($this->inputs[$key]);
+        $this->inputs = array_values($this->inputs);
     }
 
     public function addSecretInput()
     {
-        $this->secrets->push([
+        $this->secrets[] = [
             'key' => '',
             'value' => '',
-        ]);
+        ];
     }
 
     public function removeSecretInput($key)
     {
-        $this->secrets->pull($key);
+        unset($this->secrets[$key]);
+        $this->secrets = array_values($this->secrets);
+
     }
 
     public function render()
     {
         return view('livewire.plugins.plugin-create');
     }
+
+
 }
