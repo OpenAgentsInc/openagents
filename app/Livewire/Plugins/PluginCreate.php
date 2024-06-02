@@ -41,7 +41,7 @@ class PluginCreate extends Component
 
     public $secrets=[];
 
-    public $input_template="{{in.input0}}";
+    public $input_template="{{in.Input0}}";
 
     public $payment;
 
