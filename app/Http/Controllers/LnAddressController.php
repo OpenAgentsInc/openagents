@@ -2,20 +2,22 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class LnAddressController extends Controller
 {
-    public function handleLnurlp($user)
+    public function handleLnurlp($username)
     {
-        dd($user);
+        // First see if there is a user with this username
+        $user = User::where('username', $username)->first();
 
-        if (! $lnAddress) {
+        if (! $user) {
             return response()->json(['status' => 'ERROR', 'reason' => 'User not found'], 404);
         }
 
-        $callbackUrl = url("/lnurlp/callback?user={$user}");
-        $metadata = json_encode([['text/plain', "Payment to {$user}@openagents.com"]]);
+        $callbackUrl = url("/lnurlp/callback?user={$username}");
+        $metadata = json_encode([['text/plain', "Test! Payment to {$username}@openagents.com"]]);
 
         $response = [
             'callback' => $callbackUrl,
