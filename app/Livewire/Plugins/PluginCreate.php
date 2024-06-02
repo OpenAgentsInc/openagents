@@ -109,7 +109,7 @@ class PluginCreate extends Component
             // 'picture' => 'nullable|string',
             // 'tags' => 'required|array',
             // 'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
-            'wasm_upload' => ['required', 'file', new WasmFile()],
+            'wasm_upload' => ['nullable', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
             'secrets.*.key' => 'required_with:secrets.*.value|string',
             'secrets.*.value' => 'required_with:secrets.*.key|string',
@@ -171,6 +171,9 @@ class PluginCreate extends Component
                 'url' => $url,
             ]);
             $this->file_link = $url;
+        }else if(!$update){
+            $this->alert('error', 'Wasm file is required');
+            return;
         }
 
         try {
