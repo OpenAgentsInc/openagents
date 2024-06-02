@@ -60,6 +60,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: vendor/bin/pest --testdox > test-summary.txt
       - name: Upload Test Result to artifacts
+        if: always()
         uses: actions/upload-artifact@v2
         with:
           name: test-summary
