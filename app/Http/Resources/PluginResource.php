@@ -48,6 +48,7 @@ class PluginResource extends JsonResource
                 'picture' => $this->picture ?? '',
                 'tags' => ['tool'],
                 'payment' => $payment,
+                'allowed_hosts' => json_decode($this->allowed_hosts,true),
             ],
             'mini-template' => [
                 'main' => $this->file_link,

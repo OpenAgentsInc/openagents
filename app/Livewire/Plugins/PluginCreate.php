@@ -49,6 +49,7 @@ class PluginCreate extends Component
 
     public Plugin $plugin;
 
+    public $allowed_hosts=[];
 
     public function mount()
     {
@@ -95,6 +96,12 @@ class PluginCreate extends Component
         $this->secrets = json_decode($this->plugin->secrets, true);
         $this->input_template = $this->plugin->input_template;
         $this->file_link = $this->plugin->file_link;
+        if(isset($this->plugin->wasm_upload)){
+            $this->wasm_upload = json_decode($this->plugin->wasm_upload)->url;
+        }
+        if(isset($this->plugin->allowed_hosts)){
+            $this->allowed_hosts = json_decode($this->plugin->allowed_hosts, true);
+        }
     }
 
     public function rules()
@@ -120,6 +127,8 @@ class PluginCreate extends Component
             'inputs.*.default' => 'nullable|string',
             'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,object,array',
+            'allowed_hosts' => 'nullable|array',
+            'allowed_hosts.*' => 'required|string',
 
         ];
     }
@@ -199,6 +208,7 @@ class PluginCreate extends Component
             $plugin->user_id = auth()->user()->id;
             $plugin->author = auth()->user()->name;
             $plugin->payment = $this->payment;
+            $plugin->allowed_hosts = json_encode($this->allowed_hosts);
             $plugin->save();
 
             $good = true;
@@ -231,6 +241,17 @@ class PluginCreate extends Component
     {
         unset($this->inputs[$key]);
         $this->inputs = array_values($this->inputs);
+    }
+
+    public function addAllowedHost()
+    {
+        $this->allowed_hosts[] = '';
+    }
+
+    public function removeAllowedHost($key)
+    {
+        unset($this->allowed_hosts[$key]);
+        $this->allowed_hosts = array_values($this->allowed_hosts);
     }
 
     public function addSecretInput()
