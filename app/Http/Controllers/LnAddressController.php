@@ -4,9 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class LnAddressController extends Controller
 {
+    private string $albyAccessToken;
+
+    public function __construct()
+    {
+        $this->albyAccessToken = env('ALBY_ACCESS_TOKEN', 'none');
+    }
+
     public function handleLnurlp($username)
     {
         // First see if there is a user with this username
@@ -38,7 +46,7 @@ class LnAddressController extends Controller
         $metadata = json_encode([['text/plain', "Payment to {$user}@openagents.com"]]);
 
         $descriptionHash = hash('sha256', $metadata);
-        // Assuming you have a method to create an invoice via Voltage
+        // Assuming you have a method to create an invoice
         $invoice = $this->createInvoice($amount, $descriptionHash);
 
         return response()->json(['pr' => $invoice]);
@@ -46,7 +54,20 @@ class LnAddressController extends Controller
 
     private function createInvoice($amount, $descriptionHash)
     {
-        // Example of creating an invoice with Voltage API
-        // Replace with actual implementation
+        $response = Http::withHeaders([
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer '.$this->albyAccessToken,
+        ])->post('https://api.getalby.com/invoices', [
+            'amount' => $amount,
+            'descriptionHash' => $descriptionHash,
+        ]);
+
+        if (! $response->ok()) {
+            return response()->json(['status' => 'ERROR', 'reason' => 'Failed to create invoice'], 500);
+        }
+
+        $invoice = $response->json();
+
+        return $invoice['paymentRequest'];
     }
 }
