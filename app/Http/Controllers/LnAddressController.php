@@ -29,7 +29,7 @@ class LnAddressController extends Controller
 
         $response = [
             'callback' => $callbackUrl,
-            'maxSendable' => 1000000000,
+            'maxSendable' => 10000000,
             'minSendable' => 1000,
             'metadata' => $metadata,
             'commentAllowed' => 240,
