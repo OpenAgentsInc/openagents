@@ -71,7 +71,10 @@
 
                 <x-pane title="WASM File">
                     <p class="mt-1 mb-4">Upload the WebAssembly file for your plugin</p>
-                    <div class="mt-1 border-2 border-darkgray rounded-md">
+                    @error('wasm_upload')
+                            <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                    @enderror
+                    <div class="mt-1 border-2 border-darkgray rounded-md cursor-pointer">
                         <x-filepond ref="wasmFile" wire:model="wasm_upload" allowFileTypeValidation
                             imagePreviewMaxHeight="300" acceptedFileTypes="['application/wasm']"
                             fileValidateTypeLabelExpectedTypesMap="{{ json_encode([
@@ -79,9 +82,7 @@
                             ]) }}"
                             allowFileSizeValidation maxFileSize="10MB" />
                     </div>
-                     @error('wasm_upload')
-                            <span class="text-red mt-2 text-xs">{{ $message }}</span>
-                        @enderror
+
                 </x-pane>
 
 
