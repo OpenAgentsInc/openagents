@@ -94,6 +94,7 @@
                     <table class="table-auto w-full">
                         <thead>
                             <tr>
+                                @if (count($inputs) > 0)
                                 <th class="px-4 py-2">Key</th>
                                 <th class="px-4 py-2">Type</th>
                                 <th class="px-4 py-2">Default</th>
@@ -101,6 +102,7 @@
                                 <th class="px-4 py-2">Description</th>
                                 <th class="px-4 py-2">Required</th>
                                 <th></th>
+                                @endif
                             </tr>
                         </thead>
                         <tbody>
@@ -188,9 +190,11 @@
                     <table class="table-auto w-full">
                         <thead>
                             <tr>
+                                @if (count($secrets) > 0)
                                 <th class="px-4 py-2">Key</th>
                                 <th class="px-4 py-2">Value</th>
                                 <th></th>
+                                @endif
                             </tr>
                         </thead>
                         <tbody>
@@ -338,6 +342,57 @@
                     @error('input_template')
                         <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
+                </x-pane>
+
+                <div class="my-12" />
+                  <x-pane title="Allowed Hosts">
+                    <p>The hosts to which the plugin can connect to</p>
+
+                    <table class="table-auto w-full">
+                        <thead>
+                            <tr>
+                                @if (count($allowed_hosts) > 0)
+                                <th class="px-4 py-2">Host</th>
+                                <th></th>
+                                @endif
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($allowed_hosts as $key => $host)
+                                <tr>
+                                    <td class="border px-4 py-2">
+                                        <x-input type="text"
+                                            wire:model="allowed_hosts.{{ $key }}"
+                                            class="text-sm block mt-1 w-full "
+                                            placeholder="example.com" autocomplete="off" />
+                                    </td>
+
+                                    <td class="border px-4 py-2 ">
+                                        <div class="flex justify-between">
+                                            <x-icon.trash wire:click="removeAllowedHost({{ $key }})"
+                                                class="w-4 h-4 m-2 cursor-pointer" />
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                    <div class="flex flex-col">
+                        @error('allowed_hosts.' . $key )
+                            <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        @enderror
+
+                    </div>
+                    <div wire:click="addAllowedHost"
+                        class="flex items-center justify-center text-white text-sm py-4 w-full cursor-pointer">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path fill-rule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"
+                                clip-rule="evenodd"></path>
+                        </svg>
+                        <p class="ml-2">Add Host</p>
+                    </div>
                 </x-pane>
 
 
