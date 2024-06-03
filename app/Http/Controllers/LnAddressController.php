@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Payin;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -43,19 +44,33 @@ class LnAddressController extends Controller
     public function handleCallback(Request $request)
     {
         $amount = $request->query('amount');
-        $user = $request->query('user');
-        $metadata = json_encode([['text/plain', "Payment to {$user}@openagents.com"]]);
+        $username = $request->query('user');
+
+        $user = User::where('username', $username)->first();
+        if (! $user) {
+            return response()->json(['status' => 'ERROR', 'reason' => 'User not found'], 404);
+        }
+
+        $metadata = json_encode([['text/plain', "Payment to {$username}@openagents.com"]]);
 
         $descriptionHash = hash('sha256', $metadata);
 
         // Create the invoice
         $invoice = $this->createInvoice($amount, $descriptionHash);
 
+        // Create a Payin entry
+        $payin = Payin::create([
+            'user_id' => $user->id,
+            'amount' => $amount,
+            'payment_request' => $invoice,
+            'description_hash' => $descriptionHash,
+        ]);
+
         // Define the success action pointing to the new route
         $successAction = [
             'tag' => 'url',
             'description' => 'Heyooooo did that work',
-            'url' => url('/lnurlp/payment/callback'),
+            'url' => url("/payin/{$payin->id}"),
         ];
 
         return response()->json([
@@ -89,10 +104,11 @@ class LnAddressController extends Controller
         return $invoice['payment_request'];
     }
 
-    public function logPaymentSuccess(Request $request)
+    public function showPayinStatus($id)
     {
-        Log::info('Payment callback received with payload:', ['payload' => $request->all()]);
+        $payin = Payin::findOrFail($id);
 
-        return response()->json(['status' => 'SUCCESS']);
+        // You can return a view with the payin information
+        return view('payin-status', ['payin' => $payin]);
     }
 }
