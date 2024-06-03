@@ -4,7 +4,6 @@ namespace App\Livewire\Plugins;
 
 use App\Models\Plugin;
 use App\Rules\WasmFile;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
@@ -14,6 +13,8 @@ use Livewire\WithFileUploads;
 class PluginCreate extends Component
 {
     use LivewireAlert, WithFileUploads;
+
+    protected $listeners = ['tags-updated' => 'updateTags'];
 
     // public $kind;
 
@@ -35,13 +36,13 @@ class PluginCreate extends Component
 
     public $tags = [];
 
-    public $inputs=[];
+    public $inputs = [];
 
     public $file_link;
 
-    public $secrets=[];
+    public $secrets = [];
 
-    public $input_template="{{in.input0}}";
+    public $input_template = '{{in.Input0}}';
 
     public $payment;
 
@@ -49,10 +50,10 @@ class PluginCreate extends Component
 
     public Plugin $plugin;
 
+    public $allowed_hosts = [];
 
     public function mount()
     {
-
 
         if (! auth()->check()) {
             return redirect('/');
@@ -61,22 +62,22 @@ class PluginCreate extends Component
         $user = auth()->user();
         $this->user = $user;
 
-        if(isset($this->plugin)){
-            abort_if($user->id !== $this->plugin->user_id, 403, 'permission denied');
-            $this->loadPluginProperties();
-        }
-
-        $this->inputs[]= [
+        $this->inputs[] = [
             'name' => 'Input0',
             'required' => true,
             'type' => 'string',
             'description' => 'An input',
         ];
 
-        $this->secrets[]= [
-            'key' => '',
-            'value' => '',
-        ];
+        // $this->secrets[] = [
+        //     'key' => '',
+        //     'value' => '',
+        // ];
+        if (isset($this->plugin)) {
+            abort_if($user->id !== $this->plugin->user_id, 403, 'permission denied');
+            $this->loadPluginProperties();
+        }
+
     }
 
     public function loadPluginProperties()
@@ -94,6 +95,19 @@ class PluginCreate extends Component
         $this->secrets = json_decode($this->plugin->secrets, true);
         $this->input_template = $this->plugin->input_template;
         $this->file_link = $this->plugin->file_link;
+        if (isset($this->plugin->wasm_upload)) {
+            $this->wasm_upload = json_decode($this->plugin->wasm_upload)->url;
+        }
+        if (isset($this->plugin->allowed_hosts)) {
+            $this->allowed_hosts = json_decode($this->plugin->allowed_hosts, true);
+        }
+        if (isset($this->plugin->tags)) {
+            $this->tags = json_decode($this->plugin->tags, true);
+        }
+        // HOTFIX: if not array reset to empty array
+        if (! is_array($this->tags)) {
+            $this->tags = '[]';
+        }
     }
 
     public function rules()
@@ -105,10 +119,8 @@ class PluginCreate extends Component
             'privacy' => 'required|string',
             'payment' => 'nullable|string',
             'web' => 'nullable|string',
-            // 'picture' => 'nullable|string',
-            // 'tags' => 'required|array',
-            // 'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
-            'wasm_upload' => ['required', 'file', new WasmFile()],
+
+            'wasm_upload' => ['nullable', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
             'secrets.*.key' => 'required_with:secrets.*.value|string',
             'secrets.*.value' => 'required_with:secrets.*.key|string',
@@ -116,9 +128,11 @@ class PluginCreate extends Component
             'inputs' => 'required|array',
             'inputs.*.name' => 'required|string',
             'inputs.*.description' => 'required|string',
-            'inputs.*.default' => 'required|string',
+            'inputs.*.default' => 'nullable|string',
             'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,object,array',
+            'allowed_hosts' => 'nullable|array',
+            'allowed_hosts.*' => 'required|string',
 
         ];
     }
@@ -129,16 +143,18 @@ class PluginCreate extends Component
 
         $validated = $this->validate();
 
-        $plugin = $this->plugin;
+        $plugin = null;
         $update = true;
-        if(!isset($plugin)){
+        if (! isset($this->plugin)) {
             $plugin = new Plugin();
             $update = false;
+        } else {
+            $plugin = $this->plugin;
         }
 
         if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
 
-            if($update){
+            if ($update) {
                 $oldFile = json_decode($plugin->wasm_upload);
                 if ($oldFile && isset($oldFile->path)) {
                     Storage::disk($oldFile->disk)->delete($oldFile->path);
@@ -164,13 +180,17 @@ class PluginCreate extends Component
             Storage::disk($disk)->put($path, fopen($this->wasm_upload->getRealPath(), 'r+'), 'public');
             $url = Storage::disk($disk)->url($path);
 
-            $plugin -> wasm_upload = json_encode([
+            $plugin->wasm_upload = json_encode([
                 'disk' => $disk,
                 'path' => $path,
                 'url' => $url,
                 'name' =>  $filenameWithExt,
             ]);
             $this->file_link = $url;
+        } elseif (! $update) {
+            $this->alert('error', 'Wasm file is required');
+
+            return;
         }
 
         try {
@@ -188,16 +208,18 @@ class PluginCreate extends Component
                     'type' => 'string',
                 ],
             ]);
-            $plugin->input_sockets = $this->inputs->toJson();
+            $plugin->input_sockets = json_encode($this->inputs);
             $plugin->input_template = $this->input_template;
 
-            $plugin->secrets = $this->secrets->toJson();
+            $plugin->secrets = isset($this->secrets) ? json_encode($this->secrets) : '[]';
             $plugin->file_link = $this->file_link;
             $plugin->user_id = auth()->user()->id;
             $plugin->author = auth()->user()->name;
             $plugin->payment = $this->payment;
-            $plugin->save();
+            $plugin->allowed_hosts = isset($this->allowed_hosts) ? json_encode($this->allowed_hosts) : '[]';
+            $plugin->tags = isset($this->tags) ? json_encode($this->tags) : '[]';
 
+            $plugin->save();
             $good = true;
         } catch (\Throwable $th) {
             Log::error('error forom plugin : '.$th);
@@ -215,12 +237,12 @@ class PluginCreate extends Component
 
     public function addInput()
     {
-        $this->inputs[]=[
+        $this->inputs[] = [
             'name' => '',
             'required' => false,
             'type' => 'string',
             'description' => '',
-            'default' => ''
+            'default' => '',
         ];
     }
 
@@ -228,6 +250,17 @@ class PluginCreate extends Component
     {
         unset($this->inputs[$key]);
         $this->inputs = array_values($this->inputs);
+    }
+
+    public function addAllowedHost()
+    {
+        $this->allowed_hosts[] = '';
+    }
+
+    public function removeAllowedHost($key)
+    {
+        unset($this->allowed_hosts[$key]);
+        $this->allowed_hosts = array_values($this->allowed_hosts);
     }
 
     public function addSecretInput()
@@ -250,5 +283,8 @@ class PluginCreate extends Component
         return view('livewire.plugins.plugin-create');
     }
 
-
+    public function updateTags($tags)
+    {
+        $this->tags = $tags;
+    }
 }

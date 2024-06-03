@@ -49,6 +49,30 @@
                     @endforeach
                 </x-pane>
             </div>
+
+            <div class="my-16">
+                <x-pane title="Deposit bitcoin">
+                    <div class="px-4">
+                        <p>Send between 1 and 10000 sats to Lightning Address <strong>{{ $lightning_address }}</strong>
+                        </p>
+                        <p>This feature is experimental. Do not send anything you aren't willing to lose!</p>
+                    </div>
+                </x-pane>
+            </div>
+
+            <div class="my-16">
+                <x-pane title="Recent deposits">
+                    @foreach($payins as $payin)
+                        <div class="p-4 border-b border-offblack">
+                            <div class="flex justify-between">
+                                <div>{{ $payin->amount / 1000 }} sats</div>
+                                <div>{{ $payin->description }}</div>
+                                <div>{{ $payin->created_at->diffForHumans() }}</div>
+                            </div>
+                        </div>
+                    @endforeach
+                </x-pane>
+            </div>
         </div>
     </div>
 </div>

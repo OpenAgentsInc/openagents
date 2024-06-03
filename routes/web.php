@@ -19,7 +19,6 @@ use App\Livewire\Logs;
 use App\Livewire\MarkdownPage;
 use App\Livewire\MyAgentsScreen;
 use App\Livewire\Plugins\PluginCreate;
-use App\Livewire\Plugins\PluginEdit;
 use App\Livewire\Plugins\PluginList;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
@@ -63,6 +62,7 @@ Route::get('/my-agents', MyAgentsScreen::class)->name('myagents');
 // LNURLP
 Route::get('/.well-known/lnurlp/{user}', [LnAddressController::class, 'handleLnurlp']);
 Route::get('/lnurlp/callback', [LnAddressController::class, 'handleCallback']);
+Route::get('/payin/{id}', [LnAddressController::class, 'showPayinStatus']);
 
 // PROFILES
 Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile');
