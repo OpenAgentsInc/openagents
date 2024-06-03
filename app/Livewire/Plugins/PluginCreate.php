@@ -33,7 +33,7 @@ class PluginCreate extends Component
 
     public $wasm_upload;
 
-    public $tags;
+    public $tags = [];
 
     public $inputs=[];
 
@@ -125,6 +125,8 @@ class PluginCreate extends Component
 
     public function submit()
     {
+
+
         $validated = $this->validate();
 
         $plugin = $this->plugin;
@@ -166,6 +168,7 @@ class PluginCreate extends Component
                 'disk' => $disk,
                 'path' => $path,
                 'url' => $url,
+                'name' =>  $filenameWithExt,
             ]);
             $this->file_link = $url;
         }
