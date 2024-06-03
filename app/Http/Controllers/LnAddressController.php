@@ -89,9 +89,10 @@ class LnAddressController extends Controller
         return $invoice['payment_request'];
     }
 
-    public function logPaymentSuccess(Request $request)
+    public function logPaymentSuccess()
     {
-        Log::info('Payment callback received with payload:', ['payload' => $request->all()]);
+        dd('what is this');
+        //        Log::info('Payment callback received with payload:', ['payload' => $request->all()]);
 
         return response()->json(['status' => 'SUCCESS']);
     }

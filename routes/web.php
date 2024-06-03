@@ -62,7 +62,7 @@ Route::get('/my-agents', MyAgentsScreen::class)->name('myagents');
 // LNURLP
 Route::get('/.well-known/lnurlp/{user}', [LnAddressController::class, 'handleLnurlp']);
 Route::get('/lnurlp/callback', [LnAddressController::class, 'handleCallback']);
-Route::post('/lnurlp/payment/callback', [LnAddressController::class, 'logPaymentSuccess']);
+Route::get('/', [LnAddressController::class, 'logPaymentSuccess']);
 
 // PROFILES
 Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile');
