@@ -45,12 +45,12 @@ class PluginCreate extends Component
     public $input_template = '{{in.Input0}}';
 
     public $payment;
+    public $allowed_hosts = [];
 
     public $user;
 
     public Plugin $plugin;
 
-    public $allowed_hosts = [];
 
     public function mount()
     {
@@ -95,10 +95,12 @@ class PluginCreate extends Component
         $this->secrets = json_decode($this->plugin->secrets, true);
         $this->input_template = $this->plugin->input_template;
         $this->file_link = $this->plugin->file_link;
-        if (isset($this->plugin->wasm_upload)) {
-            $this->wasm_upload = json_decode($this->plugin->wasm_upload)->url;
-        }
-        if (isset($this->plugin->allowed_hosts)) {
+
+        // if(isset($this->plugin->wasm_upload)){
+        //     $this->wasm_upload = json_decode($this->plugin->wasm_upload);
+        // }
+
+        if(isset($this->plugin->allowed_hosts)){
             $this->allowed_hosts = json_decode($this->plugin->allowed_hosts, true);
         }
         if (isset($this->plugin->tags)) {
