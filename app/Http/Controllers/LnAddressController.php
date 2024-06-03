@@ -111,4 +111,20 @@ class LnAddressController extends Controller
         // You can return a view with the payin information
         return view('payin-status', ['payin' => $payin]);
     }
+
+    public function getInvoiceStatus($paymentHash)
+    {
+        $response = Http::withHeaders([
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer '.$this->albyAccessToken,
+        ])->get("https://api.getalby.com/invoices/{$paymentHash}");
+
+        if ($response->status() !== 200) {
+            Log::info("Failed to get invoice status: {$response->body()}");
+
+            return null;
+        }
+
+        return $response->json();
+    }
 }
