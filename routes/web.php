@@ -19,7 +19,6 @@ use App\Livewire\Logs;
 use App\Livewire\MarkdownPage;
 use App\Livewire\MyAgentsScreen;
 use App\Livewire\Plugins\PluginCreate;
-use App\Livewire\Plugins\PluginEdit;
 use App\Livewire\Plugins\PluginList;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;

@@ -26,7 +26,7 @@ class Plugin extends Model
         'author',
         'payment',
         'wasm_upload',
-        'allowed_hosts'
+        'allowed_hosts',
     ];
 
     protected $casts = [
