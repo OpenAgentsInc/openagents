@@ -22,7 +22,7 @@ class CheckPendingPayins extends Command
         $controller = new LnAddressController();
 
         foreach ($pendingPayins as $payin) {
-            $invoiceStatus = $controller->getInvoiceStatus($payin->payment_request);  // Or payment_hash if you store hashes
+            $invoiceStatus = $controller->getInvoiceStatus($payin->payment_hash);
 
             if (! $invoiceStatus) {
                 continue;

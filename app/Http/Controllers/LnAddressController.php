@@ -62,7 +62,8 @@ class LnAddressController extends Controller
         $payin = Payin::create([
             'user_id' => $user->id,
             'amount' => $amount,
-            'payment_request' => $invoice,
+            'payment_request' => $invoice['payment_request'],
+            'payment_hash' => $invoice['payment_hash'],
             'description_hash' => $descriptionHash,
         ]);
 
@@ -74,7 +75,7 @@ class LnAddressController extends Controller
         ];
 
         return response()->json([
-            'pr' => $invoice,
+            'pr' => $invoice['payment_request'],
             'successAction' => $successAction,
             'disposable' => false,
         ]);
@@ -101,7 +102,10 @@ class LnAddressController extends Controller
 
         $invoice = $response->json();
 
-        return $invoice['payment_request'];
+        return [
+            'payment_request' => $invoice['payment_request'],
+            'payment_hash' => $invoice['payment_hash'],
+        ];
     }
 
     public function showPayinStatus($id)
