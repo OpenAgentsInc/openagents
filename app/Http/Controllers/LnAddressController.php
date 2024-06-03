@@ -66,7 +66,7 @@ class LnAddressController extends Controller
             'descriptionHash' => $descriptionHash,
         ]);
 
-        if ($response->status() !== 200) {
+        if ($response->status() !== 201) {
             Log::info('Resposne status: '.$response->status());
             Log::info('Failed to create invoice: '.$response->body());
 
