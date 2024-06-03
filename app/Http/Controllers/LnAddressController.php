@@ -42,15 +42,11 @@ class LnAddressController extends Controller
 
     public function handleCallback(Request $request)
     {
-        Log::info('Callback request: '.$request->query('amount'));
-        Log::info('Callback request: '.$request->query('user'));
-
         $amount = $request->query('amount');
         $user = $request->query('user');
         $metadata = json_encode([['text/plain', "Payment to {$user}@openagents.com"]]);
 
         $descriptionHash = hash('sha256', $metadata);
-        Log::info('Description hash: '.$descriptionHash);
 
         $invoice = $this->createInvoice($amount, $descriptionHash);
 
@@ -59,6 +55,9 @@ class LnAddressController extends Controller
 
     private function createInvoice($amount, $descriptionHash)
     {
+        // Amount is msats, convert it to sats
+        $amount = $amount / 1000;
+
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
             'Authorization' => 'Bearer '.$this->albyAccessToken,
@@ -74,8 +73,7 @@ class LnAddressController extends Controller
         }
 
         $invoice = $response->json();
-        Log::info('response obj stringified: '.json_encode($invoice));
-        Log::info('Invoice: '.$invoice['paymentRequest']);
+        Log::info('Invoice response: '.json_encode($invoice));
 
         return $invoice['paymentRequest'];
     }
