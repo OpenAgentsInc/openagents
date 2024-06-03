@@ -14,6 +14,7 @@ use Livewire\WithFileUploads;
 class PluginCreate extends Component
 {
     use LivewireAlert, WithFileUploads;
+    protected $listeners = ['tags-updated' => 'updateTags'];
 
     // public $kind;
 
@@ -33,7 +34,7 @@ class PluginCreate extends Component
 
     public $wasm_upload;
 
-    public $tags;
+    public $tags=[];
 
     public $inputs=[];
 
@@ -102,6 +103,13 @@ class PluginCreate extends Component
         if(isset($this->plugin->allowed_hosts)){
             $this->allowed_hosts = json_decode($this->plugin->allowed_hosts, true);
         }
+        if(isset($this->plugin->tags)){
+            $this->tags = json_decode($this->plugin->tags, true);
+        }
+        // HOTFIX: if not array reset to empty array
+        if (!is_array($this->tags)) {
+            $this->tags = '[]';
+        }
     }
 
     public function rules()
@@ -113,9 +121,7 @@ class PluginCreate extends Component
             'privacy' => 'required|string',
             'payment' => 'nullable|string',
             'web' => 'nullable|string',
-            // 'picture' => 'nullable|string',
-            // 'tags' => 'required|array',
-            // 'file_link' => ['required', 'string', 'url', 'active_url', new WasmUrl()],
+
             'wasm_upload' => ['nullable', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
             'secrets.*.key' => 'required_with:secrets.*.value|string',
@@ -128,7 +134,8 @@ class PluginCreate extends Component
             'inputs.*.required' => 'required|boolean',
             'inputs.*.type' => 'required|string|in:string,integer,object,array',
             'allowed_hosts' => 'nullable|array',
-            'allowed_hosts.*' => 'required|string',
+            'allowed_hosts.*' => 'required|string'
+
 
         ];
     }
@@ -203,14 +210,16 @@ class PluginCreate extends Component
             $plugin->input_sockets = json_encode($this->inputs);
             $plugin->input_template = $this->input_template;
 
-            $plugin->secrets = json_encode($this->secrets);
+            $plugin->secrets = isset($this->secrets) ? json_encode($this->secrets) : '[]';
             $plugin->file_link = $this->file_link;
             $plugin->user_id = auth()->user()->id;
             $plugin->author = auth()->user()->name;
             $plugin->payment = $this->payment;
-            $plugin->allowed_hosts = json_encode($this->allowed_hosts);
-            $plugin->save();
+            $plugin->allowed_hosts = isset($this->allowed_hosts)?json_encode($this->allowed_hosts) : '[]';
+            $plugin->tags = isset($this->tags) ? json_encode($this->tags) : '[]';
 
+
+            $plugin->save();
             $good = true;
         } catch (\Throwable $th) {
             Log::error('error forom plugin : '.$th);
@@ -275,4 +284,8 @@ class PluginCreate extends Component
     }
 
 
+    public function updateTags($tags)
+    {
+        $this->tags = $tags;
+    }
 }
