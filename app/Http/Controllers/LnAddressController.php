@@ -74,6 +74,7 @@ class LnAddressController extends Controller
 
         $invoice = $response->json();
         Log::info('Invoice response: '.json_encode($invoice));
+        Log::info('wtf is this?: '.$invoice['payment_request']);
 
         return $invoice['payment_request'];
     }
