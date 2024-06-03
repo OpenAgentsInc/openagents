@@ -36,7 +36,6 @@ class PluginResource extends JsonResource
         } else {
             // TODO: pay to user id?
         }
-
         return [
             'meta' => [
                 'name' => $this->name,
@@ -46,7 +45,7 @@ class PluginResource extends JsonResource
                 'author' => $this->author,
                 'web' => $this->web,
                 'picture' => $this->picture ?? '',
-                'tags' => ['tool'],
+                'tags' => array_merge(['tool'], json_decode($this->tags,true)),
                 'payment' => $payment,
                 'allowed_hosts' => json_decode($this->allowed_hosts,true),
             ],

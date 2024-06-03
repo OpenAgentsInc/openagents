@@ -37,9 +37,12 @@
 
 <script>
 function tagsComponent() {
+    let initialTags =@json($tags);
+    if(!Array.isArray(initialTags))  initialTags=[];
+
     return {
         newTag: '',
-        tags: @json($tags),
+        tags: initialTags,
         addTag(newTag) {
             newTag=newTag.trim();
             if (newTag !== '') {
@@ -48,9 +51,11 @@ function tagsComponent() {
                 }
                 this.newTag = '';
             }
+            this.$dispatch('tags-updated', [this.tags]);
         },
         removeTag(tag) {
             this.tags = this.tags.filter(t => t !== tag);
+            this.$dispatch('tags-updated', [this.tags]);
         },
         enterTag(event) {
             if (event.key === ',' || event.code === 'Comma' || event.code === 'Enter') {

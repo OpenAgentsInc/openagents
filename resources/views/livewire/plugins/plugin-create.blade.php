@@ -59,7 +59,7 @@
                     </div>
                     <div class="my-5">
                         <label for="tags">Tags</label>
-                        <x-tags-input wire:model='tags' name="tags" :tags="[]" />
+                        <x-tags-input  name="tags" :tags="$tags" />
                         @error('tags')
                             <span class="text-red mt-2 text-xs">{{ $message }}</span>
                         @enderror
