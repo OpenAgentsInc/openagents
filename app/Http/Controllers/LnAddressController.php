@@ -67,15 +67,12 @@ class LnAddressController extends Controller
         ]);
 
         if ($response->status() !== 201) {
-            Log::info('Resposne status: '.$response->status());
             Log::info('Failed to create invoice: '.$response->body());
 
             return response()->json(['status' => 'ERROR', 'reason' => 'Failed to create invoice'], 500);
         }
 
         $invoice = $response->json();
-        Log::info('Invoice response: '.json_encode($invoice));
-        Log::info('wtf is this?: '.$invoice['payment_request']);
 
         return $invoice['payment_request'];
     }
