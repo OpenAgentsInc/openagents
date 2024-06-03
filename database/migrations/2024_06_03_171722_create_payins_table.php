@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained('users');
             $table->bigInteger('amount');
-            $table->string('payment_request');
+            $table->text('payment_request');
             $table->string('description_hash');
             $table->string('status')->default('pending');  // To track the status of the payment
             $table->timestamps();
