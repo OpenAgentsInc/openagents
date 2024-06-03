@@ -14,6 +14,8 @@ class WalletScreen extends Component
 
     public $received_payments;
 
+    public $lightning_address;
+
     public $payins; // Add this line
 
     protected $rules = [
@@ -32,6 +34,12 @@ class WalletScreen extends Component
         $user = auth()->user();
         $this->balance_btc = $user->getSatsBalanceAttribute();
         $this->received_payments = $user->receivedPayments()->get()->reverse();
+
+        // $this->lightning_address is the user's username if they have one, otherwise their name, "@openagents.com"
+        $prefix = $user->username ?? $user->name;
+        // staging.openagents.com if env is staging, otherwise openagents.com
+        $suffix = env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com';
+        $this->lightning_address = "{$prefix}@{$suffix}";
 
         // Fetch the payins
         $this->payins = $user->payins()->get()->reverse(); // Assumes there's a payins() relationship

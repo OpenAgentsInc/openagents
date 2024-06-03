@@ -51,6 +51,15 @@
             </div>
 
             <div class="my-16">
+                <x-pane title="Deposit bitcoin via Lightning">
+                    <div class="px-4">
+                        <p>Send between 1 and 10000 sats to Lightning Address {{ $lightning_address }}.</p>
+                        <p>This feature is experimental. Do not send anything you aren't willing to lose!</p>
+                    </div>
+                </x-pane>
+            </div>
+
+            <div class="my-16">
                 <x-pane title="Recent deposits">
                     @foreach($payins as $payin)
                         <div class="p-4 border-b border-offblack">
