@@ -89,6 +89,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->username === 'AtlantisPleb';
     }
 
+    public function payins(): HasMany
+    {
+        return $this->hasMany(Payin::class);
+    }
+
     public function agents(): HasMany
     {
         return $this->hasMany(Agent::class);

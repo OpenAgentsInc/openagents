@@ -14,11 +14,13 @@ class WalletScreen extends Component
 
     public $received_payments;
 
+    public $payins; // Add this line
+
     protected $rules = [
         'payment_request' => 'required|string',
     ];
 
-    // On mount, grab the user's bitcoin balance
+    // On mount, grab the user's bitcoin balance and payins
     public function mount()
     {
         // If the user is not logged in, redirect to the homepage
@@ -29,9 +31,10 @@ class WalletScreen extends Component
         /** @var User $user */
         $user = auth()->user();
         $this->balance_btc = $user->getSatsBalanceAttribute();
-
-        // Get the user's received payments
         $this->received_payments = $user->receivedPayments()->get()->reverse();
+
+        // Fetch the payins
+        $this->payins = $user->payins()->get()->reverse(); // Assumes there's a payins() relationship
     }
 
     public function submitPaymentRequest(PaymentService $paymentService): void
@@ -46,8 +49,10 @@ class WalletScreen extends Component
             session()->flash('error', $response['error'] ?? 'Something went wrong.');
         }
 
-        // Optionally update the balance after processing the payment
-        $this->balance_btc = auth()->user()->fresh()->getSatsBalanceAttribute();
+        // Optionally update the balance and payins after processing the payment
+        $user = auth()->user()->fresh();
+        $this->balance_btc = $user->getSatsBalanceAttribute();
+        $this->payins = $user->payins()->get()->reverse();
     }
 
     public function render()
