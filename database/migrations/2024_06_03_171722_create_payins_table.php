@@ -13,6 +13,11 @@ return new class extends Migration
     {
         Schema::create('payins', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->nullable()->constrained('users');
+            $table->bigInteger('amount');
+            $table->string('payment_request');
+            $table->string('description_hash');
+            $table->string('status')->default('pending');  // To track the status of the payment
             $table->timestamps();
         });
     }
