@@ -69,7 +69,7 @@ class LnAddressController extends Controller
         // Define the success action pointing to the new route
         $successAction = [
             'tag' => 'url',
-            'description' => 'Heyooooo did that work',
+            'description' => 'Received! Balance will be updated in <1 minute. Track it here:',
             'url' => url("/payin/{$payin->id}"),
         ];
 
