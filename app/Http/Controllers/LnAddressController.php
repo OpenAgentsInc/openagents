@@ -48,9 +48,21 @@ class LnAddressController extends Controller
 
         $descriptionHash = hash('sha256', $metadata);
 
+        // Create the invoice
         $invoice = $this->createInvoice($amount, $descriptionHash);
 
-        return response()->json(['pr' => $invoice]);
+        // Define the success action pointing to the new route
+        $successAction = [
+            'tag' => 'url',
+            'description' => 'Heyooooo did that work',
+            'url' => url('/lnurlp/payment/callback'),
+        ];
+
+        return response()->json([
+            'pr' => $invoice,
+            'successAction' => $successAction,
+            'disposable' => false,
+        ]);
     }
 
     private function createInvoice($amount, $descriptionHash)
@@ -75,5 +87,12 @@ class LnAddressController extends Controller
         $invoice = $response->json();
 
         return $invoice['payment_request'];
+    }
+
+    public function logPaymentSuccess(Request $request)
+    {
+        Log::info('Payment callback received with payload:', ['payload' => $request->all()]);
+
+        return response()->json(['status' => 'SUCCESS']);
     }
 }
