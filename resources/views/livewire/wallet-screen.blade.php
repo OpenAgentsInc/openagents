@@ -51,9 +51,10 @@
             </div>
 
             <div class="my-16">
-                <x-pane title="Deposit bitcoin via Lightning">
+                <x-pane title="Deposit bitcoin">
                     <div class="px-4">
-                        <p>Send between 1 and 10000 sats to Lightning Address {{ $lightning_address }}.</p>
+                        <p>Send between 1 and 10000 sats to Lightning Address <strong>{{ $lightning_address }}</strong>
+                        </p>
                         <p>This feature is experimental. Do not send anything you aren't willing to lose!</p>
                     </div>
                 </x-pane>
