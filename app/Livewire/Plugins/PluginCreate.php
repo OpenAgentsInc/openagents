@@ -45,6 +45,7 @@ class PluginCreate extends Component
     public $input_template = '{{in.Input0}}';
 
     public $payment;
+
     public $allowed_hosts = [];
 
     public $filename = '';
@@ -53,11 +54,10 @@ class PluginCreate extends Component
 
     public Plugin $plugin;
 
-
     public function mount()
     {
 
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             return redirect('/');
         }
 
@@ -108,7 +108,7 @@ class PluginCreate extends Component
             $this->tags = json_decode($this->plugin->tags, true);
         }
         // HOTFIX: if not array reset to empty array
-        if (!is_array($this->tags)) {
+        if (! is_array($this->tags)) {
             $this->tags = [];
         }
     }
@@ -143,14 +143,13 @@ class PluginCreate extends Component
     public function submit()
     {
 
-
         $validated = $this->validate();
 
         $saveimage = null;
 
         $plugin = null;
         $update = true;
-        if (!isset($this->plugin)) {
+        if (! isset($this->plugin)) {
             $plugin = new Plugin();
             $update = false;
         } else {
@@ -158,8 +157,7 @@ class PluginCreate extends Component
             $saveimage = json_decode($this->plugin->picture);
         }
 
-
-        if (!is_null($this->picture) || !empty($this->picture)) {
+        if (! is_null($this->picture) || ! empty($this->picture)) {
 
             if ($update) {
                 $oldimage = json_decode($this->plugin->picture);
@@ -183,7 +181,7 @@ class PluginCreate extends Component
             $extension = $this->picture->getClientOriginalExtension();
 
             // Filename to store with directory
-            $imagenametostore = 'plugins/profile/images/' . str($filename)->slug()->toString() . '_' . time() . '.' . $extension;
+            $imagenametostore = 'plugins/profile/images/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
 
             // Upload File to public
             Storage::disk($disk)->put($imagenametostore, fopen($this->picture->getRealPath(), 'r+'), 'public');
@@ -195,10 +193,7 @@ class PluginCreate extends Component
             ];
         }
 
-
-
-
-        if (!is_null($this->wasm_upload) || !empty($this->wasm_upload)) {
+        if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
 
             if ($update) {
                 $oldFile = json_decode($plugin->wasm_upload);
@@ -219,7 +214,7 @@ class PluginCreate extends Component
             $extension = $this->wasm_upload->getClientOriginalExtension();
 
             // Filename to store with directory
-            $path = 'wasm/uploads/' . str($filename)->slug()->toString() . '_' . time() . '.' . $extension;
+            $path = 'wasm/uploads/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
 
             // Upload File to public
             Storage::disk($disk)->put($path, fopen($this->wasm_upload->getRealPath(), 'r+'), 'public');
@@ -229,10 +224,10 @@ class PluginCreate extends Component
                 'disk' => $disk,
                 'path' => $path,
                 'url' => $url,
-                'name' =>  $filenameWithExt,
+                'name' => $filenameWithExt,
             ]);
             $this->file_link = $url;
-        } elseif (!$update) {
+        } elseif (! $update) {
             $this->alert('error', 'Wasm file is required');
 
             return;
@@ -248,7 +243,7 @@ class PluginCreate extends Component
                 $plugin->picture = json_encode($saveimage);
             }
             // $plugin->tags = json_encode($this->tags);
-            $plugin->tags = isset($this->tags) ? json_encode($this->tags) :  json_encode([]);
+            $plugin->tags = isset($this->tags) ? json_encode($this->tags) : json_encode([]);
             $plugin->output_sockets = json_encode([
                 'output' => [
                     'title' => 'Output',
@@ -268,7 +263,7 @@ class PluginCreate extends Component
             $plugin->save();
             $good = true;
         } catch (\Throwable $th) {
-            Log::error('error forom plugin : ' . $th);
+            Log::error('error forom plugin : '.$th);
             $good = false;
         }
 

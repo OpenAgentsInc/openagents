@@ -36,7 +36,6 @@ class Plugin extends Model
 
     ];
 
-
     protected $appends = ['image_url'];
 
     public function getImageUrlAttribute()

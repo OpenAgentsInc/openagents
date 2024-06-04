@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Enums;
 
 enum UserRole: int
@@ -16,8 +17,10 @@ enum UserRole: int
                 return $enum;
             }
         }
+
         return self::USER;
     }
+
     public function getLabel(): string
     {
         return match ($this->value) {
@@ -28,7 +31,6 @@ enum UserRole: int
             default => 'User',
         };
     }
-
 
     public function canModerate(self $other): bool
     {
@@ -44,7 +46,7 @@ enum UserRole: int
                 $assignableRoles[] = $role;
             }
         }
+
         return $assignableRoles;
     }
-
 }
