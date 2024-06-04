@@ -36,6 +36,35 @@ class Plugin extends Model
 
     ];
 
+    protected $appends = ['image_url'];
+
+    public function getImageUrlAttribute()
+    {
+        if (is_null($this->picture) || empty($this->picture)) {  // Check if $this->image is null
+            return url('/images/sqlogo.png'); // Return default URL if null
+        }
+        $imageData = json_decode($this->picture, true); // Cast to array for access
+        if ($imageData && isset($imageData['url']) && ! empty($imageData['url'])) {  // Check for non-empty URL
+            $url = $imageData['url'];
+
+            // If it starts with "/storage" then it's a local file and we need to resolve the path
+            if (strpos($url, '/storage') === 0) {
+                //                dd($url);
+                // But first remove the /storage at the beginning
+                $url = substr($url, 9);
+
+                return url(Storage::url($url));
+            } else {
+                return $url;
+
+            }
+
+            //            return $imageData['url'];
+        }
+
+        return url('/images/sqlogo.png'); // Return default URL if no image data or empty URL
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);
