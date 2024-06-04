@@ -23,7 +23,7 @@
                             class="bg-black w-full text-darkgray rounded border-0 py-1.5 pl-10 text-sm leading-6 text-gray-900 ring-1 ring-darkgray ring-inset ring-gray-300 placeholder:text-darkgray focus:ring-2 focus:ring-inset focus:ring-gray sm:block"
                             placeholder="Search plugins" wire:model.live='search' />
                     </div>
-                    <a href="{{ route('plugins.edit') }}" type="button" wire:navigate
+                    <a href="{{ route('plugins.create') }}" type="button" wire:navigate
                         class="relative sm:-ml-px inline-flex items-center gap-x-1 sm:gap-x-1.5 rounded px-3 py-2 text-xs sm:text-sm sm:font-semibold text-gray-900 ring-1 ring-inset ring-gray/50 hover:bg-gray/50">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
                             stroke="currentColor" class="w-5 h-5">
@@ -42,7 +42,10 @@
 
                 <div class="p-2 sm:1-4">
                     <x-pane title="">
-                        <div class="items-center gap-1.5 pr-2  group-hover:flex">
+                        <div class="items-center gap-1.5 pr-2  group-hover:flex flex justify-between">
+                            <div class="mt-1 mb-3 w-[20px] h-[20px] sm:w-[60px] sm:h-[60px] rounded-md">
+                                <img src="{{ $plugin->image_url }}" alt="Plugin" class="w-full h-full rounded-md border border-gray">
+                            </div>
                             @auth
                                 @if ($plugin->user_id == auth()->user()->id)
                                     <div x-data="{ isOpen: false }" class="relative flex-1 text-right">
@@ -66,7 +69,7 @@
                                 @endif
                             @endauth
                         </div>
-                        <div class="font-bold text-md"> {{ $plugin->name }}</div>
+                        <div class="font-bold text-md my-2 border-y border-gray p-2"> {{ $plugin->name }}</div>
 
                         <div class="flex-grow my-1">
                             <strong class="text-white"> Description: </strong>
