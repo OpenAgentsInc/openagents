@@ -12,6 +12,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Cashier\Billable;
 use Laravel\Jetstream\HasProfilePhoto;
 use Laravel\Sanctum\HasApiTokens;
+use App\Enums\UserRole;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -37,6 +38,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'system_prompt',
         'autoscroll',
         'lightning_address',
+        'role' // 0 = user, 1 = moderator, 2 = admin
     ];
 
     /**
@@ -84,9 +86,39 @@ class User extends Authenticatable implements MustVerifyEmail
         return env('APP_ENV') === 'local' || $this->subscribed('default');
     }
 
+
+    /**
+     * @deprecated Use getRole()>=UserRole::SUPER_ADMIN instead
+     */
+    public function isSuperAdmin(): bool
+    {
+        return $this->getRole() >= UserRole::SUPER_ADMIN;
+    }
+
+    /**
+     * @deprecated Use getRole()>=UserRole::MOD instead
+     */
+    public function isModerator(): bool
+    {
+        return $this->getRole() >= UserRole::MOD;
+    }
+
+    /**
+     * @deprecated Use getRole()>=UserRole::ADMIN instead
+     */
     public function isAdmin(): bool
     {
-        return $this->username === 'AtlantisPleb';
+        return $this->getRole() >= UserRole::ADMIN;
+    }
+
+    public function getRole(): UserRole    {
+        $forceSuperAdmin = 'AtlantisPleb';
+        if($forceSuperAdmin){
+            if ($this->username === $forceSuperAdmin) return UserRole::SUPER_ADMIN;
+            // When super admin is forced, all other super admins are downgraded to admin
+            if ($this->role > UserRole::ADMIN->value ) return UserRole::ADMIN;
+        }
+        return UserRole::fromInt($this->role);
     }
 
     public function payins(): HasMany
