@@ -46,6 +46,8 @@ class PluginCreate extends Component
 
     public $payment;
 
+    public $filename = '';
+
     public $user;
 
     public Plugin $plugin;
@@ -55,7 +57,7 @@ class PluginCreate extends Component
     public function mount()
     {
 
-        if (! auth()->check()) {
+        if (!auth()->check()) {
             return redirect('/');
         }
 
@@ -77,7 +79,6 @@ class PluginCreate extends Component
             abort_if($user->id !== $this->plugin->user_id, 403, 'permission denied');
             $this->loadPluginProperties();
         }
-
     }
 
     public function loadPluginProperties()
@@ -89,14 +90,16 @@ class PluginCreate extends Component
         $this->author = $this->plugin->author ? $this->author : $this->plugin->user->name;
         $this->payment = $this->plugin->payment ? $this->plugin->payment : $this->plugin->user->lightning_address;
         $this->web = $this->plugin->web;
-        $this->picture = $this->plugin->picture;
+        // $this->picture = $this->plugin->picture;
         $this->tags = $this->plugin->tags;
         $this->inputs = json_decode($this->plugin->input_sockets, true);
         $this->secrets = json_decode($this->plugin->secrets, true);
         $this->input_template = $this->plugin->input_template;
         $this->file_link = $this->plugin->file_link;
         if (isset($this->plugin->wasm_upload)) {
-            $this->wasm_upload = json_decode($this->plugin->wasm_upload)->url;
+            $wasm_file = json_decode($this->plugin->wasm_upload);
+            // $this->wasm_upload = json_decode($this->plugin->wasm_upload)->url;
+            $this->filename = $wasm_file->name;
         }
         if (isset($this->plugin->allowed_hosts)) {
             $this->allowed_hosts = json_decode($this->plugin->allowed_hosts, true);
@@ -105,8 +108,8 @@ class PluginCreate extends Component
             $this->tags = json_decode($this->plugin->tags, true);
         }
         // HOTFIX: if not array reset to empty array
-        if (! is_array($this->tags)) {
-            $this->tags = '[]';
+        if (!is_array($this->tags)) {
+            $this->tags = [];
         }
     }
 
@@ -119,7 +122,7 @@ class PluginCreate extends Component
             'privacy' => 'required|string',
             'payment' => 'nullable|string',
             'web' => 'nullable|string',
-
+            'picture' => 'nullable|image|max:2048',
             'wasm_upload' => ['nullable', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
             'secrets.*.key' => 'required_with:secrets.*.value|string',
@@ -143,23 +146,65 @@ class PluginCreate extends Component
 
         $validated = $this->validate();
 
+        $saveimage = null;
+
         $plugin = null;
         $update = true;
-        if (! isset($this->plugin)) {
+        if (!isset($this->plugin)) {
             $plugin = new Plugin();
             $update = false;
         } else {
             $plugin = $this->plugin;
+            $saveimage = json_decode($this->plugin->picture);
         }
 
-        if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
+
+        if (!is_null($this->picture) || !empty($this->picture)) {
+
+            if ($update) {
+                $oldimage = json_decode($this->plugin->picture);
+
+                if ($oldimage && isset($oldimage->path)) {
+                    $path = $oldimage->path;
+                    $disk = $oldimage->disk;
+                    Storage::disk($disk)->delete($path);
+                }
+            }
+
+            $disk = config('filesystems.media_disk');
+
+            // Get filename with extension
+            $filenamewithextension = $this->picture->getClientOriginalName();
+
+            // Get filename without extension
+            $filename = pathinfo($filenamewithextension, PATHINFO_FILENAME);
+
+            // Get file extension
+            $extension = $this->picture->getClientOriginalExtension();
+
+            // Filename to store with directory
+            $imagenametostore = 'plugins/profile/images/' . str($filename)->slug()->toString() . '_' . time() . '.' . $extension;
+
+            // Upload File to public
+            Storage::disk($disk)->put($imagenametostore, fopen($this->picture->getRealPath(), 'r+'), 'public');
+
+            $saveimage = [
+                'disk' => $disk,
+                'path' => $imagenametostore,
+                'url' => Storage::disk($disk)->url($imagenametostore),
+            ];
+        }
+
+
+
+
+        if (!is_null($this->wasm_upload) || !empty($this->wasm_upload)) {
 
             if ($update) {
                 $oldFile = json_decode($plugin->wasm_upload);
                 if ($oldFile && isset($oldFile->path)) {
                     Storage::disk($oldFile->disk)->delete($oldFile->path);
                 }
-
             }
 
             $disk = config('filesystems.media_disk');
@@ -174,7 +219,7 @@ class PluginCreate extends Component
             $extension = $this->wasm_upload->getClientOriginalExtension();
 
             // Filename to store with directory
-            $path = 'wasm/uploads/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
+            $path = 'wasm/uploads/' . str($filename)->slug()->toString() . '_' . time() . '.' . $extension;
 
             // Upload File to public
             Storage::disk($disk)->put($path, fopen($this->wasm_upload->getRealPath(), 'r+'), 'public');
@@ -187,7 +232,7 @@ class PluginCreate extends Component
                 'name' =>  $filenameWithExt,
             ]);
             $this->file_link = $url;
-        } elseif (! $update) {
+        } elseif (!$update) {
             $this->alert('error', 'Wasm file is required');
 
             return;
@@ -199,8 +244,11 @@ class PluginCreate extends Component
             $plugin->tos = $this->tos;
             $plugin->privacy = $this->privacy;
             $plugin->web = $this->web;
-            $plugin->picture = $this->picture;
-            $plugin->tags = json_encode($this->tags);
+            if ($this->picture) {
+                $plugin->picture = json_encode($saveimage);
+            }
+            // $plugin->tags = json_encode($this->tags);
+            $plugin->tags = isset($this->tags) ? json_encode($this->tags) :  json_encode([]);
             $plugin->output_sockets = json_encode([
                 'output' => [
                     'title' => 'Output',
@@ -217,12 +265,10 @@ class PluginCreate extends Component
             $plugin->author = auth()->user()->name;
             $plugin->payment = $this->payment;
             $plugin->allowed_hosts = isset($this->allowed_hosts) ? json_encode($this->allowed_hosts) : '[]';
-            $plugin->tags = isset($this->tags) ? json_encode($this->tags) : '[]';
-
             $plugin->save();
             $good = true;
         } catch (\Throwable $th) {
-            Log::error('error forom plugin : '.$th);
+            Log::error('error forom plugin : ' . $th);
             $good = false;
         }
 
@@ -275,7 +321,6 @@ class PluginCreate extends Component
     {
         unset($this->secrets[$key]);
         $this->secrets = array_values($this->secrets);
-
     }
 
     public function render()
