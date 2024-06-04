@@ -26,6 +26,7 @@ use App\Livewire\Store;
 use App\Livewire\WalletScreen;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
+use App\Livewire\AdminPanel;
 
 // REDIRECT DEFAULT AUTH TO HOME
 // Define an array of default authentication routes
@@ -117,6 +118,7 @@ Route::get('/docs', function () {
 
 // ADMIN
 Route::get('/logs', Logs::class)->name('logs');
+Route::get('/admin', AdminPanel::class)->name('admin');
 
 // DEPRECATED: Nostr Webhook
 Route::post('/webhook/nostr', [PoolWebhookReceiver::class, 'handleEvent']);
