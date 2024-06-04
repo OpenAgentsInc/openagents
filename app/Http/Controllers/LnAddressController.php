@@ -47,12 +47,6 @@ class LnAddressController extends Controller
         $username = $request->query('user');
 
         $user = User::where('username', $username)->first();
-
-        // If there's no user with this username, they may be a nostr user so check the name field too
-        if (! $user) {
-            $user = User::where('name', $username)->first();
-        }
-
         if (! $user) {
             return response()->json(['status' => 'ERROR', 'reason' => 'User not found'], 404);
         }

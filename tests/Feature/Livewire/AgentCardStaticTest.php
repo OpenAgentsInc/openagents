@@ -14,7 +14,7 @@ it('renders static card successfully', function () {
         ->assertStatus(200)
         ->assertSeeHtml("<img src=\"{$agent->image_url}\" alt=\"Agent\"")
         ->assertSeeHtml(">{$agent->name}</div>")
-        ->assertSeeHtml(">From: {$agent->creator_username}</p>")
+        ->assertSeeHtml(">From: {$agent->user->name}</p>")
         ->assertSeeHtml(">{$agent->about}</p>")
         ->assertSeeHtml("<span>{$agent->sats_earned}</span>")
         ->assertSeeHtml("<span>{$agent->thread_count}</span>");

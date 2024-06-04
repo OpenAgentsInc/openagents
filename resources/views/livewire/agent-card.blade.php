@@ -9,10 +9,10 @@
     <p class="mb-0 text-sm text-gray leading-none">{{ $agent->sats_per_message }} sats per message</p>
     <div class="flex items-center">
         <div class="text-xs">
-            <p class="text-sm text-gray leading-none">From: {{ $agent->creator_username }}</p>
+            <p class="text-sm text-gray leading-none">From: {{ $agent->user->name }}</p>
         </div>
-        <img class="w-5 h-5 rounded-full mx-4" src="{{ $agent->creator_picture }}"
-             alt="Avatar of {{ $agent->creator_username }}">
+        <img class="w-5 h-5 rounded-full mx-4" src="{{ $agent->user->profile_photo_path }}"
+             alt="Avatar of {{ $agent->user->name }}">
     </div>
     <div class="flex-grow">
         <p class="text-sm text-text my-1">{{ $agent['about'] }}</p>
