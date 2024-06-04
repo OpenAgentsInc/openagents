@@ -114,7 +114,9 @@ class User extends Authenticatable implements MustVerifyEmail
     public function getRole(): UserRole    {
         $forceSuperAdmin = 'AtlantisPleb';
         if($forceSuperAdmin){
-            if ($this->username === $forceSuperAdmin) return UserRole::SUPER_ADMIN;
+            if (
+                $this->name == $forceSuperAdmin
+            ) return UserRole::SUPER_ADMIN;
             // When super admin is forced, all other super admins are downgraded to admin
             if ($this->role > UserRole::ADMIN->value ) return UserRole::ADMIN;
         }
