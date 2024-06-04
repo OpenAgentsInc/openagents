@@ -8,7 +8,7 @@
 
             <div class="flex flex-col justify-center">
                 <h1>{{ $user->name }}</h1>
-                @if ($user->username)<h2 class="text-gray">{{ $user->username }}</h2>@endif
+                @if ($user->username)<h2 class="text-gray text-xs">{{ $user->username }}</h2>@endif
                 <div class="flex flex-col justify-center">
                     <select id="role" wire:change="handleChange($event.target.value)"
                         class="@if(!$viewerCanModerate) pointer-events-none @endif">
@@ -35,12 +35,15 @@
 
 
             @if ($user->username)
-                <div class="flex flex-col justify-center">
-                    <a href="https://x.com/{{ $user->username }}" target="_blank"
-                       class="p-1.5 border border-offblack hover:bg-offblack rounded">
-                        <x-icon.x class="h-6 w-6"/>
-                    </a>
-                </div>
+                @if ($user->auth_provider=="X")
+                    <div class="flex flex-col justify-center">
+                        <a href="https://x.com/{{ $user->username }}" target="_blank"
+                        class="p-1.5 border border-offblack hover:bg-offblack rounded">
+                            <x-icon.x class="h-6 w-6"/>
+                        </a>
+                    </div>
+                @endif
+
             @endif
         </div>
 
