@@ -96,22 +96,25 @@ class NostrAuthController extends Controller
             ]);
         }
 
+        // Log in this user
+        auth()->login($user, true);
+
         try {
             $npubResolver = str_replace('{{$npub}}', $user->username, config('nostr.npub_resolver'));
             $npubDataResponse = Http::timeout(5)->get($npubResolver);
-            $npubData = $npubDataResponse->json()['items'][1];
-            $npubContent = json_decode($npubData['content'] ?? '{}', true);
+            $npubData = $npubDataResponse->json();
+            if (isset($npubData['items']) && isset($npubData['items'][1])) {
+                $npubData = $npubDataResponse->json()['items'][1];
+                $npubContent = json_decode($npubData['content'] ?? '{}', true);
 
-            $user->profile_photo_path = $npubContent['picture'] ?? '/images/nostrich.jpeg';
-            $user->name = $npubContent['name'] ?? substr($event->pubkey, 0, 8);
+                $user->profile_photo_path = $npubContent['picture'] ?? '/images/nostrich.jpeg';
+                $user->name = $npubContent['name'] ?? substr($event->pubkey, 0, 8);
 
-            $user->save();
+                $user->save();
+            }
         } catch (Exception $e) {
             Log::error('Error fetching npub data: '.$e->getMessage());
         }
-
-        // Log in this user
-        auth()->login($user, true);
 
         return redirect('/')->with('success', 'Logged in successfully');
     }
