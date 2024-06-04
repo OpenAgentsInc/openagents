@@ -46,6 +46,8 @@ class PluginCreate extends Component
 
     public $allowed_hosts = [];
 
+    public $filename = '';
+
     public $user;
 
     public Plugin $plugin;
@@ -86,7 +88,7 @@ class PluginCreate extends Component
         $this->privacy = $this->plugin->privacy;
         $this->payment = $this->plugin->payment ? $this->plugin->payment : $this->plugin->user->lightning_address;
         $this->web = $this->plugin->web;
-        $this->picture = $this->plugin->picture;
+        // $this->picture = $this->plugin->picture;
         $this->tags = $this->plugin->tags;
         $this->inputs = json_decode($this->plugin->input_sockets, true);
         $this->secrets = json_decode($this->plugin->secrets, true);
@@ -105,7 +107,7 @@ class PluginCreate extends Component
         }
         // HOTFIX: if not array reset to empty array
         if (! is_array($this->tags)) {
-            $this->tags = '[]';
+            $this->tags = [];
         }
     }
 
@@ -118,7 +120,7 @@ class PluginCreate extends Component
             'privacy' => 'required|string',
             'payment' => 'nullable|string',
             'web' => 'nullable|string',
-
+            'picture' => 'nullable|image|max:2048',
             'wasm_upload' => ['nullable', 'file', new WasmFile()],
             'secrets' => 'nullable|array',
             'secrets.*.key' => 'required_with:secrets.*.value|string',
@@ -140,6 +142,8 @@ class PluginCreate extends Component
     {
         $validated = $this->validate();
 
+        $saveimage = null;
+
         $plugin = null;
         $update = true;
         if (! isset($this->plugin)) {
@@ -149,6 +153,43 @@ class PluginCreate extends Component
         } else {
             abort_if(auth()->user()->id !== $this->plugin->user_id, 403, 'permission denied');
             $plugin = $this->plugin;
+            $saveimage = json_decode($this->plugin->picture);
+        }
+
+        if (! is_null($this->picture) || ! empty($this->picture)) {
+
+            if ($update) {
+                $oldimage = json_decode($this->plugin->picture);
+
+                if ($oldimage && isset($oldimage->path)) {
+                    $path = $oldimage->path;
+                    $disk = $oldimage->disk;
+                    Storage::disk($disk)->delete($path);
+                }
+            }
+
+            $disk = config('filesystems.media_disk');
+
+            // Get filename with extension
+            $filenamewithextension = $this->picture->getClientOriginalName();
+
+            // Get filename without extension
+            $filename = pathinfo($filenamewithextension, PATHINFO_FILENAME);
+
+            // Get file extension
+            $extension = $this->picture->getClientOriginalExtension();
+
+            // Filename to store with directory
+            $imagenametostore = 'plugins/profile/images/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
+
+            // Upload File to public
+            Storage::disk($disk)->put($imagenametostore, fopen($this->picture->getRealPath(), 'r+'), 'public');
+
+            $saveimage = [
+                'disk' => $disk,
+                'path' => $imagenametostore,
+                'url' => Storage::disk($disk)->url($imagenametostore),
+            ];
         }
 
         if (! is_null($this->wasm_upload) || ! empty($this->wasm_upload)) {
@@ -182,6 +223,7 @@ class PluginCreate extends Component
                 'disk' => $disk,
                 'path' => $path,
                 'url' => $url,
+                'name' => $filenameWithExt,
             ]);
             $this->file_link = $url;
         } elseif (! $update) {
@@ -196,8 +238,11 @@ class PluginCreate extends Component
             $plugin->tos = $this->tos;
             $plugin->privacy = $this->privacy;
             $plugin->web = $this->web;
-            $plugin->picture = $this->picture;
-            $plugin->tags = json_encode($this->tags);
+            if ($this->picture) {
+                $plugin->picture = json_encode($saveimage);
+            }
+            // $plugin->tags = json_encode($this->tags);
+            $plugin->tags = isset($this->tags) ? json_encode($this->tags) : json_encode([]);
             $plugin->output_sockets = json_encode([
                 'output' => [
                     'title' => 'Output',
@@ -213,8 +258,6 @@ class PluginCreate extends Component
 
             $plugin->payment = $this->payment;
             $plugin->allowed_hosts = isset($this->allowed_hosts) ? json_encode($this->allowed_hosts) : '[]';
-            $plugin->tags = isset($this->tags) ? json_encode($this->tags) : '[]';
-
             $plugin->save();
             $good = true;
         } catch (\Throwable $th) {

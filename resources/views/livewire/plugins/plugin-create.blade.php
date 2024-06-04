@@ -10,6 +10,36 @@
             <form wire:submit.prevent="submit">
                 <x-pane title="Metadata">
 
+
+                    <div class="col-span-full flex items-center gap-x-8 my-5">
+                        @if ($picture)
+                            <img src="{{ $picture->temporaryUrl() }}"
+                                 class="h-24 w-24 flex-none rounded-lg bg-gray-800 object-cover">
+                        @elseif (isset($plugin))
+                            <img src="{{ $plugin->image_url }}" alt=""
+                                 class="h-24 w-24 flex-none rounded-lg bg-gray-800 object-cover">
+                        @else
+                        <img src="{{ url('/images/sqlogo.png') }}" alt=""
+                        class="h-24 w-24 flex-none rounded-lg bg-gray-800 object-cover">
+                        @endif
+
+                        <div>
+                            <button type="button" x-on:click="$refs.imageUpload.click()"
+                                    class="rounded-md bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-white/20">
+                                Change
+                                image
+                            </button>
+                            <input type="file" x-ref="imageUpload" class="hidden" accept="image/jpg, image/png"
+                                   wire:model="picture">
+                            <p class="mt-2 text-xs leading-5 text-gray-400">JPG, PNG. 2MB max.</p>
+                            @error('picture')
+                            <div class="my-2">
+                                <span class="error">{{ $message }}</span>
+                            </div>
+                            @enderror
+                        </div>
+                    </div>
+
                     <div class="mt-5">
                         <label for="name">Name</label>
                         <x-input id="name" class="block mt-1 w-full " type="text" name="name"
@@ -72,7 +102,7 @@
                 <x-pane title="WASM File">
                     <p class="mt-1 mb-4">Upload the WebAssembly file for your plugin</p>
                     @error('wasm_upload')
-                            <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                     <div class="mt-1 border-2 border-darkgray rounded-md cursor-pointer">
                         <x-filepond ref="wasmFile" wire:model="wasm_upload" allowFileTypeValidation
@@ -82,6 +112,11 @@
                             ]) }}"
                             allowFileSizeValidation maxFileSize="10MB" />
                     </div>
+                    @if($this->filename)
+                    <div class="my-1 rounded-md">
+                        <p class="text-sm font-bold border-t p-[0.5rem] border-darkgray">Uploaded file: {{ $this->filename }}</p>
+                    </div>
+                    @endif
 
                 </x-pane>
 
