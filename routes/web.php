@@ -5,7 +5,7 @@ use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExplorerController;
 use App\Http\Controllers\LnAddressController;
 use App\Http\Controllers\NostrAuthController;
-use App\Http\Controllers\ProfileController;
+use App\Livewire\UserProfile;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\Webhook\PoolWebhookReceiver;
 use App\Livewire\Agents\Create;
@@ -26,6 +26,7 @@ use App\Livewire\Store;
 use App\Livewire\WalletScreen;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
+use App\Livewire\AdminPanel;
 
 // REDIRECT DEFAULT AUTH TO HOME
 // Define an array of default authentication routes
@@ -65,7 +66,7 @@ Route::get('/lnurlp/callback', [LnAddressController::class, 'handleCallback']);
 Route::get('/payin/{id}', [LnAddressController::class, 'showPayinStatus']);
 
 // PROFILES
-Route::get('/u/{username}', [ProfileController::class, 'show'])->name('profile');
+Route::get('/u/{username}', UserProfile::class)->name('user.profile');
 
 // STORE
 Route::get('/store', Store::class)->name('store');
@@ -118,6 +119,7 @@ Route::get('/docs', function () {
 
 // ADMIN
 Route::get('/logs', Logs::class)->name('logs');
+Route::get('/admin', AdminPanel::class)->name('admin');
 
 // DEPRECATED: Nostr Webhook
 Route::post('/webhook/nostr', [PoolWebhookReceiver::class, 'handleEvent']);

@@ -7,6 +7,12 @@
 
     <x-menu.items>
         <x-menu.close>
+            <x-menu.item>
+                <a href="{{ route('user.profile', ['username' => $user->username ?? $user->name]) }}">
+                    View Profile
+                </a>
+            </x-menu.item>
+
             <x-menu.item
                     wire:click="delete({{ $user->id }})"
                     wire:confirm="Are you sure you want to delete {{ $user->name }}?"

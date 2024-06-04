@@ -45,6 +45,7 @@ class PluginCreate extends Component
     public $input_template = '{{in.Input0}}';
 
     public $payment;
+    public $allowed_hosts = [];
 
     public $filename = '';
 
@@ -52,7 +53,6 @@ class PluginCreate extends Component
 
     public Plugin $plugin;
 
-    public $allowed_hosts = [];
 
     public function mount()
     {
