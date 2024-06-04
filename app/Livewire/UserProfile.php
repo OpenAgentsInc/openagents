@@ -3,10 +3,8 @@
 namespace App\Livewire;
 
 use App\Models\User;
-use Livewire\Component;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
-use App\Enums\UserRole;
-use Illuminate\Support\Facades\Log;
+use Livewire\Component;
 
 class UserProfile extends Component
 {
@@ -15,33 +13,40 @@ class UserProfile extends Component
     // protected $listeners = ['change-role' => 'changeRole'];
 
     public $user;
+
     public $assignableRolesByViewer;
+
     public $viewerCanModerate;
 
-
-
-    private function getUser($username){
+    private function getUser($username)
+    {
         $user = User::where('username', $username)->firstOrFail();
-        if (!$user) {
+        if (! $user) {
             $this->alert('error', 'User not found');
+
             return;
         }
+
         return $user;
     }
 
-    private function getCanModerate($currentUser, $user) {
-        if(!$currentUser) {
+    private function getCanModerate($currentUser, $user)
+    {
+        if (! $currentUser) {
             return false;
         }
-        return  $currentUser->username !== $user->username && // user cannot change its own role
+
+        return $currentUser->username !== $user->username && // user cannot change its own role
             $currentUser->getRole()->canModerate($user->getRole()); // user cannot change role of higher role
     }
 
-    private function getAssignableRoles($currentUser) {
-        if(!$currentUser) {
+    private function getAssignableRoles($currentUser)
+    {
+        if (! $currentUser) {
             return [];
         }
         $assignableRoles = $currentUser->getRole()->getAssignableRoles();
+
         return $assignableRoles;
     }
 
@@ -61,28 +66,34 @@ class UserProfile extends Component
         $username = $this->user->username;
 
         $currentUser = auth()->user();
-        if(!$currentUser) {
+        if (! $currentUser) {
             $this->alert('error', 'You must be logged in to change user role');
+
             return;
         }
 
         $this->user = $this->getUser($username);
-        if(!$this->user) {
+        if (! $this->user) {
             $this->alert('error', 'User not found');
+
             return;
         }
 
         $this->viewerCanModerate = $this->getCanModerate($currentUser, $this->user);
         $this->assignableRolesByViewer = $this->getAssignableRoles($currentUser);
 
-        if(!$this->viewerCanModerate) {
+        if (! $this->viewerCanModerate) {
             $this->alert('error', 'You do not have permission to change this user role');
+
             return;
         }
 
-        if(!in_array($role, array_map(function($role) { return $role->value; }, $this->assignableRolesByViewer))) {
+        if (! in_array($role, array_map(function ($role) {
+            return $role->value;
+        }, $this->assignableRolesByViewer))) {
 
             $this->alert('error', 'Invalid role '.$role);
+
             return;
         }
 
@@ -90,6 +101,7 @@ class UserProfile extends Component
         $this->user->save();
         $this->alert('success', 'Role changed successfully');
     }
+
     public function render()
     {
         return view('livewire.user-profile');

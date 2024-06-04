@@ -2,29 +2,29 @@
 
 namespace App\Livewire;
 
+use App\Enums\UserRole;
+use App\Models\User;
+use Livewire\Component;
 use Livewire\WithPagination;
 
-use Livewire\Component;
-use App\Models\User;
-use Livewire\Attributes\Computed;
-use App\Enums\UserRole;
 class AdminPanel extends Component
 {
     use WithPagination;
 
-
-    public function checkPermissions(){
+    public function checkPermissions()
+    {
         // Redirect to the homepage if the user is not an admin
-        if (! auth()->check() || auth()->user()->getRole()->value < UserRole::ADMIN->value){
+        if (! auth()->check() || auth()->user()->getRole()->value < UserRole::ADMIN->value) {
             return false;
         }
+
         return true;
     }
 
     public function mount()
     {
-        if(!$this->checkPermissions()){
-           return  redirect()->route('home');
+        if (! $this->checkPermissions()) {
+            return redirect()->route('home');
         }
     }
 
@@ -33,10 +33,9 @@ class AdminPanel extends Component
         return User::count();
     }
 
-
     public function render()
     {
-        if(!$this->checkPermissions()){
+        if (! $this->checkPermissions()) {
             return;
         }
 

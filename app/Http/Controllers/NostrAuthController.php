@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\NostrAccount;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\RedirectResponse;
@@ -87,7 +86,7 @@ class NostrAuthController extends Controller
         if (! $user) {
             $user = User::create([
                 'external_id' => $event->pubkey,
-                "profile_photo_path"=>'/images/nostrich.jpeg',
+                'profile_photo_path' => '/images/nostrich.jpeg',
                 'username' => $bech32_public,
                 'auth_provider' => 'nostr',
                 'name' => substr($event->pubkey, 0, 8),
@@ -98,7 +97,6 @@ class NostrAuthController extends Controller
         // update profile data
         $user->profile_photo_path = '/images/nostrich.jpeg';
         $user->save();
-
 
         // Log in this user
         auth()->login($user, true);
