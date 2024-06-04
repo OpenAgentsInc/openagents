@@ -28,8 +28,6 @@ class Agent extends Model
         'use_tools',
     ];
 
-
-
     public function getImageUrlAttribute()
     {
         if (is_null($this->image) || empty($this->image)) {  // Check if $this->image is null

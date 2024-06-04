@@ -43,7 +43,7 @@ class SocialAuthController extends Controller
                 'name' => $socialUser->name,
                 'username' => $username,
                 'external_id' => $socialUser->nickname,
-                'auth_provider' => 'X'
+                'auth_provider' => 'X',
             ]);
 
             // Set the profile photo path from the social provider

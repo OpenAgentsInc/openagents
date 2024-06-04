@@ -43,12 +43,12 @@ class PluginCreate extends Component
     public $input_template = '{{in.Input0}}';
 
     public $payment;
+
     public $allowed_hosts = [];
 
     public $user;
 
     public Plugin $plugin;
-
 
     public function mount()
     {
@@ -59,8 +59,6 @@ class PluginCreate extends Component
 
         $user = auth()->user();
         $this->user = $user;
-
-
 
         $this->inputs[] = [
             'name' => 'Input0',
@@ -99,7 +97,7 @@ class PluginCreate extends Component
         //     $this->wasm_upload = json_decode($this->plugin->wasm_upload);
         // }
 
-        if(isset($this->plugin->allowed_hosts)){
+        if (isset($this->plugin->allowed_hosts)) {
             $this->allowed_hosts = json_decode($this->plugin->allowed_hosts, true);
         }
         if (isset($this->plugin->tags)) {

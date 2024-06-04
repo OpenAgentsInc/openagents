@@ -5,9 +5,9 @@ use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExplorerController;
 use App\Http\Controllers\LnAddressController;
 use App\Http\Controllers\NostrAuthController;
-use App\Livewire\UserProfile;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\Webhook\PoolWebhookReceiver;
+use App\Livewire\AdminPanel;
 use App\Livewire\Agents\Create;
 use App\Livewire\Agents\Edit;
 use App\Livewire\Agents\Index;
@@ -23,10 +23,10 @@ use App\Livewire\Plugins\PluginList;
 use App\Livewire\ProWelcome;
 use App\Livewire\Settings;
 use App\Livewire\Store;
+use App\Livewire\UserProfile;
 use App\Livewire\WalletScreen;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
-use App\Livewire\AdminPanel;
 
 // REDIRECT DEFAULT AUTH TO HOME
 // Define an array of default authentication routes

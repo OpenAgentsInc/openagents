@@ -1,10 +1,10 @@
 <?php
 
+use App\Models\NostrAccount;
+use App\Models\User;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use App\Models\NostrAccount;
-use App\Models\User;
 use swentel\nostr\Key\Key;
 
 return new class extends Migration
@@ -15,15 +15,14 @@ return new class extends Migration
     public function up()
     {
         Schema::table('users', function (Blueprint $table) {
-            if(!Schema::hasColumn('users', 'external_id')){
+            if (! Schema::hasColumn('users', 'external_id')) {
                 $table->string('external_id')->nullable()->after('email');
             }
-            if(!Schema::hasColumn('users', 'auth_provider')){
+            if (! Schema::hasColumn('users', 'auth_provider')) {
                 $table->string('auth_provider')->nullable()->after('email');
             }
 
         });
-
 
         DB::table('users')->whereNotNull('username')->update(['external_id' => DB::raw('username')]);
 
@@ -45,8 +44,6 @@ return new class extends Migration
         DB::table('users')
             ->whereNull('auth_provider')
             ->update(['auth_provider' => 'X']);
-
-
 
     }
 
