@@ -92,7 +92,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function isSuperAdmin(): bool
     {
-        return $this->getRole() >= UserRole::SUPER_ADMIN;
+        return $this->getRole()->value >= UserRole::SUPER_ADMIN->value;
     }
 
     /**
@@ -100,7 +100,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function isModerator(): bool
     {
-        return $this->getRole() >= UserRole::MOD;
+        return $this->getRole()->value >= UserRole::MOD->value;
     }
 
     /**
@@ -108,7 +108,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function isAdmin(): bool
     {
-        return $this->getRole() >= UserRole::ADMIN;
+        return $this->getRole()->value >= UserRole::ADMIN->value;
     }
 
     public function getRole(): UserRole    {
