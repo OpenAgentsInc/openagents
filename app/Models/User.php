@@ -115,12 +115,12 @@ class User extends Authenticatable implements MustVerifyEmail
         $forceSuperAdmin = 'AtlantisPleb';
         if($forceSuperAdmin){
             if (
-                $this->name == $forceSuperAdmin
+                $this->username == $forceSuperAdmin
             ) return UserRole::SUPER_ADMIN;
             // When super admin is forced, all other super admins are downgraded to admin
             if ($this->role > UserRole::ADMIN->value ) return UserRole::ADMIN;
         }
-        return UserRole::fromInt($this->role);
+        return UserRole::fromInt($this->role ?? 0);
     }
 
     public function payins(): HasMany
