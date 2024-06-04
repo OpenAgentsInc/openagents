@@ -26,8 +26,6 @@ class PluginCreate extends Component
 
     public $privacy;
 
-    public $author;
-
     public $web;
 
     public $picture;
@@ -62,6 +60,8 @@ class PluginCreate extends Component
         $user = auth()->user();
         $this->user = $user;
 
+
+
         $this->inputs[] = [
             'name' => 'Input0',
             'required' => true,
@@ -86,7 +86,6 @@ class PluginCreate extends Component
         $this->description = $this->plugin->description;
         $this->tos = $this->plugin->tos;
         $this->privacy = $this->plugin->privacy;
-        $this->author = $this->plugin->author ? $this->author : $this->plugin->user->name;
         $this->payment = $this->plugin->payment ? $this->plugin->payment : $this->plugin->user->lightning_address;
         $this->web = $this->plugin->web;
         $this->picture = $this->plugin->picture;
@@ -148,7 +147,9 @@ class PluginCreate extends Component
         if (! isset($this->plugin)) {
             $plugin = new Plugin();
             $update = false;
+            $plugin->user_id = auth()->user()->id;
         } else {
+            abort_if(auth()->user()->id !== $this->plugin->user_id, 403, 'permission denied');
             $plugin = $this->plugin;
         }
 
@@ -159,7 +160,6 @@ class PluginCreate extends Component
                 if ($oldFile && isset($oldFile->path)) {
                     Storage::disk($oldFile->disk)->delete($oldFile->path);
                 }
-
             }
 
             $disk = config('filesystems.media_disk');
@@ -212,8 +212,7 @@ class PluginCreate extends Component
 
             $plugin->secrets = isset($this->secrets) ? json_encode($this->secrets) : '[]';
             $plugin->file_link = $this->file_link;
-            $plugin->user_id = auth()->user()->id;
-            $plugin->author = auth()->user()->name;
+
             $plugin->payment = $this->payment;
             $plugin->allowed_hosts = isset($this->allowed_hosts) ? json_encode($this->allowed_hosts) : '[]';
             $plugin->tags = isset($this->tags) ? json_encode($this->tags) : '[]';

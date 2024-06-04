@@ -21,10 +21,7 @@ class UserProfile extends Component
 
 
     private function getUser($username){
-        $user = User::where('username', $username)->first();
-        if (!$user) {
-            $user = User::where('name', $username)->firstOrFail();
-        }
+        $user = User::where('username', $username)->firstOrFail();
         if (!$user) {
             $this->alert('error', 'User not found');
             return;
@@ -33,11 +30,17 @@ class UserProfile extends Component
     }
 
     private function getCanModerate($currentUser, $user) {
+        if(!$currentUser) {
+            return false;
+        }
         return  $currentUser->username !== $user->username && // user cannot change its own role
             $currentUser->getRole()->canModerate($user->getRole()); // user cannot change role of higher role
     }
 
     private function getAssignableRoles($currentUser) {
+        if(!$currentUser) {
+            return [];
+        }
         $assignableRoles = $currentUser->getRole()->getAssignableRoles();
         return $assignableRoles;
     }
@@ -55,7 +58,7 @@ class UserProfile extends Component
     {
 
         $role = intval($role);
-        $username = $this->user->username ?? $this->user->name;
+        $username = $this->user->username;
 
         $currentUser = auth()->user();
         if(!$currentUser) {

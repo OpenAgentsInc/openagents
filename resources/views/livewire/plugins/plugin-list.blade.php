@@ -80,7 +80,7 @@
 
                         <p>
                             <b>Author: </b>
-                            {{ $plugin->user ? $plugin->user->name : $plugin->author }}
+                            {{  $plugin->user->name }}
                         </p>
                     </x-pane>
                 </div>
