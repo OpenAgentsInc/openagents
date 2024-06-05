@@ -22,6 +22,30 @@
         }
     </style>
 
+    <script>
+        window.addEventListener('refresh', event => {
+            window.location.reload();
+        });
+
+        window.addEventListener('show-input-string-dialog', event => {
+            const args=event.detail[0];
+
+            Swal.fire({
+                title: args.title,
+                text: args.text,
+                input: 'text',
+                inputAttributes: {
+                    maxlength: 255,
+                    required: true
+                },
+                showCancelButton: true,
+                confirmButtonText: args.confirmButton || "Confirm",
+                preConfirm: (inp) => {
+                    Livewire.dispatch(args.confirmFunction, [inp])
+                }
+            })
+        });
+    </script>
     @stack('styles')
 </head>
 
