@@ -8,6 +8,37 @@
         <div class="my-5 mx-auto max-w-5xl">
 
             <form wire:submit.prevent="submit">
+
+                 @if($suspended)
+                    <x-pane title="Plugin Suspended">
+                        <p class="text-center">
+                        This plugin is suspended with the following reason
+                        </p>
+                        <p class="my-2 text-red text-sm text-center font-bold">
+                            {{$suspended}}
+                        </p>
+                        <p class="text-center">
+
+                        It will not be available for use until a moderator approves the changes
+                        </p>
+                    </x-pane>
+                @endif
+                 @if($pending_revision_reason)
+                    <x-pane title="Pending Revision">
+                        <p class="text-center">
+                        This plugin has a pending revision with the following reason
+                        </p>
+                        <p class="my-2  text-sm text-center font-bold text-purple-500">
+                            {{$pending_revision_reason}}
+                        </p>
+                        <p class="text-center">
+                            It will not be available for use until a moderator approves the changes
+                        </p>
+                    </x-pane>
+                @endif
+
+                <div class="my-12" />
+
                 <x-pane title="Metadata">
 
 
@@ -94,6 +125,7 @@
                             <span class="text-red mt-2 text-xs">{{ $message }}</span>
                         @enderror
                     </div>
+
                 </x-pane>
 
                 <div class="my-12" />
@@ -443,13 +475,35 @@
                 </x-pane>
 
                 <div class="my-12" />
-
+<div class="my-5 rounded border border-gray p-3">
+                    <x-switch name="enabled" label="Enabled"/>
+                </div>
+                <div class="my-12" />
 
                 <div class="mt-5 w-full text-center">
-                    <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4"
-                        dusk="create-plugin-button">
-                        Save
-                    </x-button>
+
+                    @if ($user->isModerator())
+                        <x-button  type="submit" class="text-center justify-center gap-2 py-2 my-4"
+                            dusk="create-plugin-button">
+                            Save and approve
+                        </x-button>
+
+                        <x-button  type="button" wire:click="suspend" class="text-center justify-center gap-2 py-2 my-4"
+                            dusk="suspend-plugin-button">
+                            Suspend Plugin
+                        </x-button>
+
+                        <x-button  type="button" wire:click="reject" class="text-center justify-center gap-2 py-2 my-4"
+                            dusk="reject-plugin-button">
+                            Reject Revision
+                        </x-button>
+
+                    @else
+                        <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4"
+                            dusk="create-plugin-button">
+                            Save
+                        </x-button>
+                    @endif
                 </div>
             </form>
         </div>

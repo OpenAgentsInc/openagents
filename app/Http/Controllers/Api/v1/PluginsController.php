@@ -25,7 +25,7 @@ class PluginsController extends Controller
             return response()->json(['error' => 'Invalid token'], 403);
         }
 
-        $plugins = Plugin::query()->oldest('created_at')->paginate(100);
+        $plugins = Plugin::query()->where('suspended', '')->oldest('created_at')->paginate(100);
 
         // Transform the paginated plugins collection using PluginsResource
         $transformedPlugins = PluginsResource::collection($plugins);
