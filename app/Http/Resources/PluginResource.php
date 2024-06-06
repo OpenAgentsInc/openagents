@@ -39,6 +39,7 @@ class PluginResource extends JsonResource
 
         return [
             'meta' => [
+                'id' => 'oaplugin'.$this->id,
                 'name' => $this->name,
                 'description' => $this->description,
                 'tos' => $this->tos,
