@@ -454,3 +454,13 @@ input.choices__input.choices__input--cloned {
   color: #fff;
   display: none;
 }
+
+
+.choices[data-type*=select-one] .choices__input {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+  background-color: #000;
+  margin: 0;
+}

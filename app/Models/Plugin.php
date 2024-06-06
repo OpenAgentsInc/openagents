@@ -69,4 +69,9 @@ class Plugin extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function agents()
+    {
+        return $this->belongsToMany(Agent::class);
+    }
 }

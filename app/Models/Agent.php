@@ -82,6 +82,12 @@ class Agent extends Model
         return $this->belongsTo(User::class);
     }
 
+
+    public function plugins()
+    {
+        return $this->belongsToMany(Plugin::class);
+    }
+
     public function getThreadCount()
     {
         return $this->messages()->distinct('thread_id')->count('thread_id');
