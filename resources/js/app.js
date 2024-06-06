@@ -6,11 +6,17 @@ import * as FilePond from 'filepond';
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 import FilePondPluginFileValidateSize from 'filepond-plugin-file-validate-size';
 import FilePondPluginFileValidateType from 'filepond-plugin-file-validate-type';
+import Choices from 'choices.js';
+// import  '../../public/library/simple-tags-input/simple-tags-input';
 
+
+// window.simpleTagsInput = simpleTagsInput;
 
 window.Swal = Swal;
 
 window.FilePond = FilePond;
+
+window.Choices = Choices;
 
 // Register the plugin
 FilePond.registerPlugin(FilePondPluginImagePreview);
