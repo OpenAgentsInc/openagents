@@ -84,6 +84,10 @@ class Plugin extends Model
         $pluginAuthor = $this->user;
 
         return $user->getRole()->canModerate($pluginAuthor->getRole());
+    }
 
+    public function agents()
+    {
+        return $this->belongsToMany(Agent::class);
     }
 }

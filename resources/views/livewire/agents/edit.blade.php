@@ -18,25 +18,25 @@
                 <div class="col-span-full flex items-center gap-x-8 my-5">
                     @if ($image)
                         <img src="{{ $image->temporaryUrl() }}"
-                             class="h-24 w-24 flex-none rounded-lg bg-gray-800 object-cover">
+                            class="h-24 w-24 flex-none rounded-lg bg-gray-800 object-cover">
                     @else
                         <img src="{{ $agent->image_url }}" alt=""
-                             class="h-24 w-24 flex-none rounded-lg bg-gray-800 object-cover">
+                            class="h-24 w-24 flex-none rounded-lg bg-gray-800 object-cover">
                     @endif
 
                     <div>
                         <button type="button" x-on:click="$refs.imageUpload.click()"
-                                class="rounded-md bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-white/20">
+                            class="rounded-md bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-white/20">
                             Change
                             image
                         </button>
                         <input type="file" x-ref="imageUpload" class="hidden" accept="image/jpg, image/png"
-                               wire:model="image">
+                            wire:model="image">
                         <p class="mt-2 text-xs leading-5 text-gray-400">JPG, PNG. 2MB max.</p>
                         @error('image')
-                        <div class="my-2">
-                            <span class="error">{{ $message }}</span>
-                        </div>
+                            <div class="my-2">
+                                <span class="error">{{ $message }}</span>
+                            </div>
                         @enderror
                     </div>
                 </div>
@@ -44,38 +44,41 @@
                 <div class="mt-5">
                     <label for="name">Name</label>
                     <x-input id="name" class="block mt-1 w-full " type="text" name="name" wire:model='name'
-                             required placeholder="Agent name"/>
+                        required placeholder="Agent name" />
                     @error('name')
-                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
 
                 <div class="mt-5">
                     <label for="about"> About</label>
                     <x-textarea wire:model='about' placeholder="about" id="about" class="block mt-1 w-full"
-                                rows="1" min-rows="1" name="about" required/>
+                        rows="1" min-rows="1" name="about" required />
                     @error('about')
-                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
 
                 <div class="mt-5">
                     <label for="prompt"> Instructions</label>
                     <x-textarea wire:model='prompt'
-                                placeholder="What does this agent do? How does it behave? What should it avoid doing?"
-                                id="about" class="block mt-1 w-full" rows="5" min-rows="5" name="prompt"
-                                required/>
+                        placeholder="What does this agent do? How does it behave? What should it avoid doing?"
+                        id="about" class="block mt-1 w-full" rows="5" min-rows="5" name="prompt"
+                        required />
                     @error('prompt')
-                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
 
                 <div class="form-group flex-col flex mt-5">
-                    <label class="mb-1" for="sats_per_message">Sats Per Message <span class="text-darkgray">(min 3, max 3000)</span></label>
+                    <label class="mb-1" for="sats_per_message">Sats Per Message <span class="text-darkgray">(min 3,
+                            max 3000)</span></label>
                     <input type="number" id="sats_per_message" wire:model="sats_per_message"
-                           class="rounded-md border-2 border-[#3D3E42] focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white w-[150px] bg-black"
-                           min="3" max="3000">
-                    @error('sats_per_message') <span class="text-danger">{{ $message }}</span> @enderror
+                        class="rounded-md border-2 border-[#3D3E42] focus-visible:ring-0 focus-visible:border-white focus-visible:ring-white w-[150px] bg-black"
+                        min="3" max="3000">
+                    @error('sats_per_message')
+                        <span class="text-danger">{{ $message }}</span>
+                    @enderror
                 </div>
 
                 <div class="my-6 block">
@@ -83,22 +86,22 @@
                     <div class="my-2 text-neutral-400 text-sm font-normal font-['JetBrains Mono']">If you upload files
                         under Knowledge, conversations with your Agent may include its contents.
                     </div>
-                    @livewire('agents.partials.documents',['agent_id' => $agent->id])
+                    @livewire('agents.partials.documents', ['agent_id' => $agent->id])
                     <div class="mt-1 border-2 border-darkgray rounded-md">
                         @error('files.*')
-                        <span class="error">{{ $message }}</span>
+                            <span class="error">{{ $message }}</span>
                         @enderror
                         <x-filepond ref="myFilepond" wire:model="files" multiple allowFileTypeValidation
-                                    imagePreviewMaxHeight="300"
-                                    acceptedFileTypes="['application/pdf', 'text/markdown','text/html', 'text/csv', 'text/plain']"
-                                    fileValidateTypeLabelExpectedTypesMap="{{ json_encode([
-                            'application/pdf' => '.pdf',
-                            'text/plain' => '.txt',
-                            'text/markdown' => '.md',
-                            'text/html' => '.html',
-                            'text/csv' => '.csv'
+                            imagePreviewMaxHeight="300"
+                            acceptedFileTypes="['application/pdf', 'text/markdown','text/html', 'text/csv', 'text/plain']"
+                            fileValidateTypeLabelExpectedTypesMap="{{ json_encode([
+                                'application/pdf' => '.pdf',
+                                'text/plain' => '.txt',
+                                'text/markdown' => '.md',
+                                'text/html' => '.html',
+                                'text/csv' => '.csv',
                             ]) }}"
-                                    allowFileSizeValidation maxFileSize="20MB"/>
+                            allowFileSizeValidation maxFileSize="20MB" />
                     </div>
                 </div>
 
@@ -108,9 +111,9 @@
                         If you add URLs under Knowledge, conversations with your Agent may include its contents.
                     </div>
                     <x-textarea wire:model='urls' dusk="urls" id="urls" class="block mt-1 w-full" min-rows="3"
-                                name="urls"/>
+                        name="urls" />
                     @error('urls')
-                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
 
@@ -124,7 +127,7 @@
                         @endforeach
                     </select>
                     @error('model')
-                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
 
@@ -138,19 +141,26 @@
                         @endforeach
                     </select>
                     @error('pro_model')
-                    <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
                     @enderror
                 </div>
 
                 <div class="my-5 rounded border border-gray p-3">
                     <x-switch label="Visibility" description="Make this agent personal or for public use"
-                              wire:model='is_public'/>
+                        wire:model='is_public' />
                 </div>
 
 
                 <div class="my-5 rounded border border-gray p-3">
                     <x-switch label="Use community tools" description="Make this agent use community tools"
-                              wire:model='useTools'/>
+                        wire:model='useTools' />
+                </div>
+
+
+                <div class="my-5 w-full ">
+                    <label for="plugins" class="my-1">Select plugins</label>
+                    <x-select-search :data="$this->list_plugins" wire:model="plugins" placeholder="Select something!"
+                        multiple />
                 </div>
 
                 <div class="mt-5 w-full text-center">
