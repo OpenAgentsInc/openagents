@@ -179,7 +179,7 @@ class Chat extends Component
                 'pro_model' => $agent->pro_model,
                 'image' => $agent->image_url,
                 'is_rag_ready' => $agent->is_rag_ready,
-                'use_tools' => $agent->use_tools,
+                'tools_uids' => $agent->externalTools()->pluck('external_uid')->toArray(),
                 'created_at' => $agent->updated_at,
             ];
             $this->selectedModel = '';
@@ -265,7 +265,7 @@ class Chat extends Component
                 $this->js('$wire.runAgentWithoutRag()');
             } else {
                 $docCount = AgentFile::where('agent_id', $this->selectedAgent['id'])->count();
-                if ($docCount > 0 || $agent->use_tools) {
+                if ($docCount > 0 || count($agent->externalTools()->pluck('external_uid')->toArray()) > 0) {
                     // Log::debug('RAG Run');
                     $this->js('$wire.ragRun()');
                 } else {
@@ -442,10 +442,10 @@ class Chat extends Component
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
-            $withTools = (bool) $this->selectedAgent['use_tools'];
+            $tools = $this->selectedAgent['tools_uids'];
 
             // Send RAG Job
-            PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $withTools);
+            PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $tools);
 
         } catch (Exception $e) {
             $this->alert('error', 'An Error occurred, please try again later');

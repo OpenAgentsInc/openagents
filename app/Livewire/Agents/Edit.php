@@ -6,7 +6,6 @@ use App\AI\Models;
 use App\Livewire\Agents\Partials\Documents;
 use App\Models\Agent;
 use App\Models\AgentFile;
-use App\Models\Plugin;
 use App\Utils\PoolUtils;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
@@ -46,8 +45,6 @@ class Edit extends Component
 
     public Agent $agent;
 
-    public $useTools = false;
-
     public $plugins = [];
 
     public function mount()
@@ -70,8 +67,7 @@ class Edit extends Component
         $this->is_public = $this->agent->is_public;
         $this->sats_per_message = $this->agent->sats_per_message;
         $this->message = $this->agent->message;
-        $this->useTools = $this->agent->use_tools;
-        $this->plugins = $this->agent->plugins->pluck('id');
+        $this->plugins = $this->agent->externalTools()->pluck('external_uid');
 
         $docs = AgentFile::with('agent')
             ->where('agent_id', $this->agent->id)
@@ -98,7 +94,6 @@ class Edit extends Component
             'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
             'image' => 'nullable|image|max:2048',
             'urls' => 'nullable|string',
-            'useTools' => 'required|boolean',
             'sats_per_message' => 'required|integer|min:3|max:3000',
         ];
     }
@@ -166,7 +161,6 @@ class Edit extends Component
         }
 
         $agent->is_rag_ready = empty($this->files);
-        $agent->use_tools = $this->useTools;
         $agent->user_id = $user->id;
         $agent->save();
 
@@ -228,7 +222,12 @@ class Edit extends Component
 
         $agent->save();
 
-        $agent->plugins()->sync($this->plugins);
+        $agent->externalTools()->delete();
+        foreach ($this->plugins as $plugin) {
+            $agent->externalTools()->create([
+                'external_uid' => $plugin,
+            ]);
+        }
 
         if ($needWarmUp) {
             // Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
@@ -246,12 +245,21 @@ class Edit extends Component
     #[Computed]
     public function list_plugins()
     {
-        return Plugin::query()
-            //  ->where('name', 'like', "%$value%")
-            //  ->take(5)
-            //  ->orderBy('name')
-            ->pluck('name', 'id');
-        //  ->get();
+        $currentToolsIds = $this->agent->externalTools()->pluck('id')->toArray();
+
+        $tools = PoolUtils::getTools();
+        $out = [];
+
+        // maintain offline tools
+        foreach ($currentToolsIds as $id) {
+            $out[$id] = $id;
+        }
+
+        foreach ($tools as $tool) {
+            $out[$tool['id']] = $tool['meta']['name'];
+        }
+
+        return $out;
     }
 
     public function render()

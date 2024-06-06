@@ -4,7 +4,6 @@ namespace App\Livewire\Agents;
 
 use App\AI\Models;
 use App\Models\Agent;
-use App\Models\Plugin;
 use App\Utils\PoolUtils;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -43,8 +42,6 @@ class Create extends Component
 
     public $message;
 
-    public $useTools = false;
-
     public $plugins = [];
 
     public function mount()
@@ -69,7 +66,6 @@ class Create extends Component
             'files.*' => 'nullable|file|mimes:txt,pdf,xls,doc,docx,xlsx,csv|max:10240',
             'image' => 'nullable|image|max:2048',
             'urls' => 'nullable|string',
-            'useTools' => 'required|boolean',
         ];
     }
 
@@ -136,7 +132,6 @@ class Create extends Component
         $agent->image = json_encode($saveimage);
         $agent->user_id = $user->id;
         $agent->is_rag_ready = empty($this->files);
-        $agent->use_tools = $this->useTools;
         $agent->save();
 
         $needWarmUp = false;
@@ -187,7 +182,11 @@ class Create extends Component
 
         $agent->save();
 
-        $agent->plugins()->sync($this->plugins);
+        foreach ($this->plugins as $plugin) {
+            $agent->externalTools()->create([
+                'external_uid' => $plugin,
+            ]);
+        }
 
         if ($needWarmUp) {
             // Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
@@ -206,12 +205,14 @@ class Create extends Component
     #[Computed]
     public function list_plugins()
     {
-        return Plugin::query()
-            //  ->where('name', 'like', "%$value%")
-            //  ->take(5)
-            //  ->orderBy('name')
-            ->pluck('name', 'id');
-        //  ->get();
+
+        $tools = PoolUtils::getTools();
+        $out = [];
+        foreach ($tools as $tool) {
+            $out[$tool['id']] = $tool['meta']['name'];
+        }
+
+        return $out;
     }
 
     public function render()

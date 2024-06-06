@@ -151,10 +151,6 @@
                 </div>
 
 
-                <div class="my-5 rounded border border-gray p-3">
-                    <x-switch label="Use community tools" description="Make this agent use community tools"
-                        wire:model='useTools' />
-                </div>
 
 
                 <div class="my-5 w-full ">
