@@ -45,7 +45,7 @@ trait SelectedModelOrAgentTrait
             'sats_per_message' => $agent->sats_per_message,
             'image' => $agent->image_url,
             'is_rag_ready' => $agent->is_rag_ready,
-            'use_tools' => $agent->use_tools,
+            'tools_uids' => $agent->externalTools()->pluck('external_uid')->toArray(),
             'created_at' => $agent->updated_at,
             'capabilities' => $this->safeDecode($agent->capabilities),
         ];

@@ -23,11 +23,13 @@ class PoolUtils
     public static function sendRAGWarmUp($agentId, $threadId, $userId, $documents)
     {
 
-        PoolUtils::sendRAGJob($agentId, $threadId, $userId, $documents, '', false, true);
+        PoolUtils::sendRAGJob($agentId, $threadId, $userId, $documents, '', [], true);
     }
 
-    public static function sendRAGJob($agentId, $threadId, $userId, $documents, $query, $withTools = false, $warmUp = false)
+    public static function sendRAGJob($agentId, $threadId, $userId, $documents, $query, $tools = [], $warmUp = false)
     {
+        $withTools = count($tools) > 0;
+
         $logger = new OpenObserveLogger([
 
         ]);
@@ -36,6 +38,7 @@ class PoolUtils
             ->poolAddress(config('pool.address'))
             ->query($query)
             ->useTools($withTools)
+            ->setToolsWhitelist($tools)
             ->documents($documents)
             ->uuid('openagents.com-'.$userId.'-'.$threadId)
             ->warmUp($warmUp)

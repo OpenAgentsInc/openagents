@@ -25,7 +25,6 @@ class Agent extends Model
         'is_public',
         'user_id',
         'is_rag_ready',
-        'use_tools',
     ];
 
     public function getImageUrlAttribute()
@@ -67,9 +66,9 @@ class Agent extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function plugins()
+    public function externalTools()
     {
-        return $this->belongsToMany(Plugin::class);
+        return $this->hasMany(ExternalTool::class);
     }
 
     public function getThreadCount()
@@ -95,13 +94,6 @@ class Agent extends Model
         // If the capability is in the array, return true
         return in_array($capability, $capabilities);
     }
-
-    // In Agent.php
-
-    //    public function getUniqueUsersCountAttribute()
-    //    {
-    //        return $this->threads()->distinct('user_id')->count('user_id');
-    //    }
 
     public function getUniqueUsersCountAttribute()
     {
