@@ -67,7 +67,6 @@ class Agent extends Model
         return $this->belongsTo(User::class);
     }
 
-
     public function plugins()
     {
         return $this->belongsToMany(Plugin::class);
