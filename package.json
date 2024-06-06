@@ -22,6 +22,7 @@
         "@ryangjchandler/alpine-tooltip": "^2.0.0",
         "@sweetalert2/theme-dark": "^5.0.16",
         "@sweetalert2/themes": "^5.0.16",
+        "choices.js": "^10.2.0",
         "filepond": "^4.31.1",
         "filepond-plugin-file-validate-size": "^2.2.8",
         "filepond-plugin-file-validate-type": "^1.2.9",

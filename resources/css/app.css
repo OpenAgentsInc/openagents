@@ -3,6 +3,8 @@
 @import '/node_modules/filepond/dist/filepond.min.css';
 @import '/node_modules/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
+@import '/node_modules/choices.js/public/assets/styles/choices.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -420,4 +422,35 @@ pre.shiki:hover .copy-button {
     src: url('/fonts/JetBrainsMono-ExtraBoldItalic.woff2') format('woff2');
     font-weight: 800; /* ExtraBold */
     font-style: italic;
+}
+
+
+input.choices__input.choices__input--cloned {
+  background-color: #000;
+  border: darkslategray 1px solid;
+}
+
+.choices__inner {
+  background-color: #000;
+}
+
+input.choices__input.choices__input--cloned {
+  /* min-width: 12ch;
+  width: 1ch; */
+  width: 100% !important;
+}
+
+
+.choices__list--dropdown, .choices__list[aria-expanded] {
+  background-color: #000;
+  border: 1px solid #ddd;
+  color: white;
+}
+
+.choices__list--multiple .choices__item {
+  /* display: inline-block; */
+  background-color: #000000;
+  border: 1px solid #7a7a7a;
+  color: #fff;
+  display: none;
 }
