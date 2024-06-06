@@ -3,14 +3,16 @@
 namespace App\Livewire\Agents;
 
 use App\AI\Models;
-use App\Livewire\Agents\Partials\Documents;
 use App\Models\Agent;
-use App\Models\AgentFile;
-use App\Utils\PoolUtils;
-use Illuminate\Support\Facades\Storage;
-use Jantinnerezo\LivewireAlert\LivewireAlert;
+use App\Models\Plugin;
 use Livewire\Component;
+use App\Utils\PoolUtils;
+use App\Models\AgentFile;
 use Livewire\WithFileUploads;
+use Livewire\Attributes\Computed;
+use Illuminate\Support\Facades\Storage;
+use App\Livewire\Agents\Partials\Documents;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 
 class Edit extends Component
 {
@@ -46,6 +48,8 @@ class Edit extends Component
 
     public $useTools = false;
 
+    public $plugins = [];
+
     public function mount()
     {
 
@@ -67,6 +71,7 @@ class Edit extends Component
         $this->sats_per_message = $this->agent->sats_per_message;
         $this->message = $this->agent->message;
         $this->useTools = $this->agent->use_tools;
+        $this->plugins = $this->agent->plugins->pluck('id');
 
         $docs = AgentFile::with('agent')
             ->where('agent_id', $this->agent->id)
@@ -223,6 +228,9 @@ class Edit extends Component
 
         $agent->save();
 
+
+        $agent->plugins()->sync($this->plugins);
+
         if ($needWarmUp) {
             // Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
             // Send RAG warmup request
@@ -234,6 +242,18 @@ class Edit extends Component
 
         $this->alert('success', 'Agent updated successfully');
 
+    }
+
+
+    #[Computed]
+    public function list_plugins()
+    {
+        return Plugin::query()
+            //  ->where('name', 'like', "%$value%")
+            //  ->take(5)
+            //  ->orderBy('name')
+            ->pluck('name','id');
+            //  ->get();
     }
 
     public function render()
