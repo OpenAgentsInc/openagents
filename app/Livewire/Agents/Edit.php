@@ -3,16 +3,16 @@
 namespace App\Livewire\Agents;
 
 use App\AI\Models;
-use App\Models\Agent;
-use App\Models\Plugin;
-use Livewire\Component;
-use App\Utils\PoolUtils;
-use App\Models\AgentFile;
-use Livewire\WithFileUploads;
-use Livewire\Attributes\Computed;
-use Illuminate\Support\Facades\Storage;
 use App\Livewire\Agents\Partials\Documents;
+use App\Models\Agent;
+use App\Models\AgentFile;
+use App\Models\Plugin;
+use App\Utils\PoolUtils;
+use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Attributes\Computed;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Edit extends Component
 {
@@ -228,7 +228,6 @@ class Edit extends Component
 
         $agent->save();
 
-
         $agent->plugins()->sync($this->plugins);
 
         if ($needWarmUp) {
@@ -244,7 +243,6 @@ class Edit extends Component
 
     }
 
-
     #[Computed]
     public function list_plugins()
     {
@@ -252,8 +250,8 @@ class Edit extends Component
             //  ->where('name', 'like', "%$value%")
             //  ->take(5)
             //  ->orderBy('name')
-            ->pluck('name','id');
-            //  ->get();
+            ->pluck('name', 'id');
+        //  ->get();
     }
 
     public function render()

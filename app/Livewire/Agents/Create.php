@@ -5,13 +5,13 @@ namespace App\Livewire\Agents;
 use App\AI\Models;
 use App\Models\Agent;
 use App\Models\Plugin;
-use Livewire\Component;
 use App\Utils\PoolUtils;
-use Livewire\WithFileUploads;
-use Livewire\Attributes\Computed;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Jantinnerezo\LivewireAlert\LivewireAlert;
+use Livewire\Attributes\Computed;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Create extends Component
 {
@@ -45,12 +45,11 @@ class Create extends Component
 
     public $useTools = false;
 
-
     public $plugins = [];
 
     public function mount()
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             return redirect('/');
         }
     }
@@ -61,8 +60,8 @@ class Create extends Component
             'name' => 'required|string|max:255',
             'about' => 'required|string',
             'prompt' => 'required|string',
-            'model' => 'nullable|in:' . implode(',', Models::getModelsForUserTypes(['guest', 'user'])),
-            'pro_model' => 'nullable|in:' . implode(',', Models::getModelsForUserTypes(['pro'])),
+            'model' => 'nullable|in:'.implode(',', Models::getModelsForUserTypes(['guest', 'user'])),
+            'pro_model' => 'nullable|in:'.implode(',', Models::getModelsForUserTypes(['pro'])),
             //            'rag_prompt' => 'nullable|string',
             'message' => 'required|string',
             'is_public' => 'required|boolean',
@@ -79,7 +78,7 @@ class Create extends Component
         //    $this->validate();
 
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             Log::error('User not found');
 
             return redirect('/');
@@ -89,7 +88,7 @@ class Create extends Component
 
         // Upload file
 
-        if (!is_null($this->image) || !empty($this->image)) {
+        if (! is_null($this->image) || ! empty($this->image)) {
 
             $disk = config('filesystems.media_disk');
 
@@ -103,7 +102,7 @@ class Create extends Component
             $extension = $this->image->getClientOriginalExtension();
 
             // Filename to store with directory
-            $filenametostore = 'agents/profile/images/' . str($filename)->slug()->toString() . '_' . time() . '.' . $extension;
+            $filenametostore = 'agents/profile/images/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
 
             // Upload File to public
             Storage::disk($disk)->put($filenametostore, fopen($this->image->getRealPath(), 'r+'), 'public');
@@ -141,7 +140,7 @@ class Create extends Component
         $agent->save();
 
         $needWarmUp = false;
-        if (!empty($this->files)) {
+        if (! empty($this->files)) {
             $needWarmUp = true;
             $disk = config('documents.disk');
             foreach ($this->files as $file) {
@@ -155,7 +154,7 @@ class Create extends Component
                 $extension = $file->getClientOriginalExtension();
 
                 // Filename to store with directory
-                $filenametostore = 'agents/files/' . str($filename)->slug()->toString() . '_' . time() . '.' . $extension;
+                $filenametostore = 'agents/files/'.str($filename)->slug()->toString().'_'.time().'.'.$extension;
 
                 // Upload File to public
                 Storage::disk($disk)->put($filenametostore, fopen($file->getRealPath(), 'r+'), 'public');
@@ -172,7 +171,7 @@ class Create extends Component
             }
         }
 
-        if (!empty($this->urls)) {
+        if (! empty($this->urls)) {
             $needWarmUp = true;
             $urls = explode("\n", $this->urls);
             foreach ($urls as $url) {
@@ -188,13 +187,12 @@ class Create extends Component
 
         $agent->save();
 
-
         $agent->plugins()->sync($this->plugins);
 
         if ($needWarmUp) {
             // Log::info('Agent created with documents', ['agent' => $agent->id, 'documents' => $agent->documents()->pluck('url')->toArray()]);
             // Send RAG warmup request
-            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder' . PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
+            PoolUtils::sendRAGWarmUp($agent->id, -1, 'agentbuilder'.PoolUtils::uuid(), $agent->documents()->pluck('url')->toArray());
             $this->alert('success', 'Agent training process has now begin ..');
         } else {
             $this->alert('success', 'Agent created successfully..');
@@ -205,9 +203,6 @@ class Create extends Component
         return redirect("/chat?agent={$agent->id}");
     }
 
-
-
-
     #[Computed]
     public function list_plugins()
     {
@@ -215,8 +210,8 @@ class Create extends Component
             //  ->where('name', 'like', "%$value%")
             //  ->take(5)
             //  ->orderBy('name')
-            ->pluck('name','id');
-            //  ->get();
+            ->pluck('name', 'id');
+        //  ->get();
     }
 
     public function render()
