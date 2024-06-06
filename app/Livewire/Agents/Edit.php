@@ -245,7 +245,7 @@ class Edit extends Component
     #[Computed]
     public function list_plugins()
     {
-        $currentToolsIds = $this->agent->externalTools()->pluck('id')->toArray();
+        $currentToolsIds = $this->agent->externalTools()->pluck('external_uid')->toArray();
 
         $tools = PoolUtils::getTools();
         $out = [];
