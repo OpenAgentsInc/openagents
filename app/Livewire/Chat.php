@@ -179,7 +179,7 @@ class Chat extends Component
                 'pro_model' => $agent->pro_model,
                 'image' => $agent->image_url,
                 'is_rag_ready' => $agent->is_rag_ready,
-                'tools_uids' => $agent->externalTools()->pluck('external_uid')->toArray(),
+                'tools_uids' => $agent->externalTools()->pluck('external_uid')->toArray() ?? [],
                 'created_at' => $agent->updated_at,
             ];
             $this->selectedModel = '';
@@ -446,7 +446,7 @@ class Chat extends Component
 
             $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
 
-            $tools = $this->selectedAgent['tools_uids'];
+            $tools = $this->selectedAgent['tools_uids'] ?? [];
 
             // Send RAG Job
             PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $tools);
