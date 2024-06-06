@@ -14,7 +14,11 @@ class PluginCreate extends Component
 {
     use LivewireAlert, WithFileUploads;
 
-    protected $listeners = ['tags-updated' => 'updateTags'];
+    protected $listeners = [
+        'tags-updated' => 'updateTags',
+        'confirm-suspension' => 'confirmedSuspend',
+        'confirm-rejection' => 'confirmedReject',
+    ];
 
     // public $kind;
 
@@ -25,8 +29,6 @@ class PluginCreate extends Component
     public $tos;
 
     public $privacy;
-
-    public $author;
 
     public $web;
 
@@ -54,10 +56,32 @@ class PluginCreate extends Component
 
     public Plugin $plugin;
 
+
+    public $suspended = '';
+
+    public $pending_revision_reason = '';
+
+    public $enabled = true;
+
+    private function checkPermissions(): bool
+    {
+        if (! auth()->check()) {
+            return false;
+        }
+        $user = auth()->user();
+        if (isset($this->plugin)) {
+            if (! $this->plugin->isEditableBy($user)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+  
     public function mount()
     {
 
-        if (! auth()->check()) {
+        if (! $this->checkPermissions()) {
             return redirect('/');
         }
 
@@ -76,37 +100,36 @@ class PluginCreate extends Component
         //     'value' => '',
         // ];
         if (isset($this->plugin)) {
-            abort_if($user->id !== $this->plugin->user_id, 403, 'permission denied');
             $this->loadPluginProperties();
         }
     }
 
     public function loadPluginProperties()
     {
-        $this->name = $this->plugin->name;
-        $this->description = $this->plugin->description;
-        $this->tos = $this->plugin->tos;
-        $this->privacy = $this->plugin->privacy;
-        $this->author = $this->plugin->author ? $this->author : $this->plugin->user->name;
-        $this->payment = $this->plugin->payment ? $this->plugin->payment : $this->plugin->user->lightning_address;
-        $this->web = $this->plugin->web;
-        // $this->picture = $this->plugin->picture;
-        $this->tags = $this->plugin->tags;
-        $this->inputs = json_decode($this->plugin->input_sockets, true);
-        $this->secrets = json_decode($this->plugin->secrets, true);
-        $this->input_template = $this->plugin->input_template;
-        $this->file_link = $this->plugin->file_link;
-        if (isset($this->plugin->wasm_upload)) {
-            $wasm_file = json_decode($this->plugin->wasm_upload);
-            // $this->wasm_upload = json_decode($this->plugin->wasm_upload)->url;
-            $this->filename = $wasm_file->name;
+
+        if (isset($this->plugin->pending_revision) && ! empty($this->plugin->pending_revision)) {
+            $revision = json_decode($this->plugin->pending_revision, true);
+        } else {
+            $revision = [];
         }
-        if (isset($this->plugin->allowed_hosts)) {
-            $this->allowed_hosts = json_decode($this->plugin->allowed_hosts, true);
-        }
-        if (isset($this->plugin->tags)) {
-            $this->tags = json_decode($this->plugin->tags, true);
-        }
+
+        $this->name = $revision['name'] ?? $this->plugin->name;
+        $this->description = $revision['description'] ?? $this->plugin->description;
+        $this->tos = $revision['tos'] ?? $this->plugin->tos;
+        $this->privacy = $revision['privacy'] ?? $this->plugin->privacy;
+        $this->payment = $revision['payment'] ?? $this->plugin->payment;
+        $this->web = $revision['web'] ?? $this->plugin->web;
+        $this->tags = $revision['tags'] ?? $this->plugin->tags;
+        $this->inputs = $revision['inputs'] ?? json_decode($this->plugin->input_sockets, true);
+        $this->secrets = $revision['secrets'] ?? json_decode($this->plugin->secrets, true);
+        $this->input_template = $revision['input_template'] ?? $this->plugin->input_template;
+        $this->file_link = $revision['file_link'] ?? $this->plugin->file_link;
+        $this->enabled = $revision['enabled'] ?? $this->plugin->enabled;
+        $this->suspended = $this->plugin->suspended;
+        $this->pending_revision_reason = $this->plugin->pending_revision_reason;
+        $this->allowed_hosts = $revision['allowed_hosts'] ?? json_decode($this->plugin->allowed_hosts ?? '[]', true);
+        $this->tags = $revision['tags'] ?? json_decode($this->plugin->tags ?? '[]', true);
+
         // HOTFIX: if not array reset to empty array
         if (! is_array($this->tags)) {
             $this->tags = [];
@@ -140,6 +163,58 @@ class PluginCreate extends Component
         ];
     }
 
+    public function suspend()
+    {
+        $this->dispatch('show-input-string-dialog', [
+            'confirmFunction' => 'confirm-suspension',
+            'title' => 'Please enter a reason for suspension',
+        ]);
+
+    }
+
+    public function confirmedSuspend($reason)
+    {
+        $user = auth()->user();
+        if (! $user->isModerator()) {
+            $this->alert('error', 'Permission denied');
+
+            return;
+        }
+        $this->plugin->update([
+            'suspended' => $reason,
+        ]);
+        $this->dispatch('refresh');
+
+    }
+
+    public function reject()
+    {
+        $this->dispatch('show-input-string-dialog', [
+            'confirmFunction' => 'confirm-rejection',
+            'title' => 'Please enter a reason for rejection',
+        ]);
+    }
+
+    public function confirmedReject($reason)
+    {
+        $user = auth()->user();
+        if (! $user->isModerator()) {
+            $this->alert('error', 'Permission denied');
+
+            return;
+        }
+        if ($this->plugin->pending_revision) {
+            $this->plugin->update([
+                'pending_revision_reason' => $reason,
+            ]);
+        } else {
+            $this->plugin->update([
+                'suspended' => $reason,
+            ]);
+        }
+        redirect()->refresh();
+    }
+
     public function submit()
     {
 
@@ -148,11 +223,14 @@ class PluginCreate extends Component
         $saveimage = null;
 
         $plugin = null;
+
         $update = true;
         if (! isset($this->plugin)) {
             $plugin = new Plugin();
             $update = false;
+            $plugin->user_id = auth()->user()->id;
         } else {
+            abort_if(! $this->checkPermissions(), 403, 'permission denied');
             $plugin = $this->plugin;
             $saveimage = json_decode($this->plugin->picture);
         }
@@ -234,46 +312,79 @@ class PluginCreate extends Component
         }
 
         try {
-            $plugin->name = $this->name;
-            $plugin->description = $this->description;
-            $plugin->tos = $this->tos;
-            $plugin->privacy = $this->privacy;
-            $plugin->web = $this->web;
-            if ($this->picture) {
-                $plugin->picture = json_encode($saveimage);
-            }
-            // $plugin->tags = json_encode($this->tags);
-            $plugin->tags = isset($this->tags) ? json_encode($this->tags) : json_encode([]);
-            $plugin->output_sockets = json_encode([
-                'output' => [
-                    'title' => 'Output',
-                    'description' => 'The output',
-                    'type' => 'string',
-                ],
-            ]);
-            $plugin->input_sockets = json_encode($this->inputs);
-            $plugin->input_template = $this->input_template;
 
-            $plugin->secrets = isset($this->secrets) ? json_encode($this->secrets) : '[]';
-            $plugin->file_link = $this->file_link;
-            $plugin->user_id = auth()->user()->id;
-            $plugin->author = auth()->user()->name;
-            $plugin->payment = $this->payment;
-            $plugin->allowed_hosts = isset($this->allowed_hosts) ? json_encode($this->allowed_hosts) : '[]';
-            $plugin->save();
-            $good = true;
+            $user = auth()->user();
+
+            if ($user->isModerator()) {
+
+                $plugin->name = $this->name;
+                $plugin->description = $this->description;
+                $plugin->tos = $this->tos;
+                $plugin->privacy = $this->privacy;
+                $plugin->web = $this->web;
+                if ($this->picture) {
+                    $plugin->picture = json_encode($saveimage);
+                }
+                // $plugin->tags = json_encode($this->tags);
+                $plugin->tags = isset($this->tags) ? json_encode($this->tags) : json_encode([]);
+                $plugin->output_sockets = json_encode([
+                    'output' => [
+                        'title' => 'Output',
+                        'description' => 'The output',
+                        'type' => 'string',
+                    ],
+                ]);
+                $plugin->input_sockets = json_encode($this->inputs);
+                $plugin->input_template = $this->input_template;
+
+                $plugin->secrets = isset($this->secrets) ? json_encode($this->secrets) : '[]';
+                $plugin->file_link = $this->file_link;
+
+                $plugin->payment = $this->payment;
+                $plugin->allowed_hosts = isset($this->allowed_hosts) ? json_encode($this->allowed_hosts) : '[]';
+
+                $plugin->enabled = $this->enabled;
+
+                $plugin->pending_revision = '';
+                $plugin->pending_revision_reason = '';
+                $plugin->suspended = '';
+                $plugin->save();
+            } else {
+                if (! $update) {
+                    $plugin->suspended = 'Pending approval';
+                    $plugin->save();
+                } else {
+                    $plugin->pending_revision = json_encode([
+                        'name' => $this->name,
+                        'description' => $this->description,
+                        'tos' => $this->tos,
+                        'privacy' => $this->privacy,
+                        'web' => $this->web,
+                        'picture' => $this->picture,
+                        'tags' => $this->tags,
+                        'inputs' => $this->inputs,
+                        'secrets' => $this->secrets,
+                        'input_template' => $this->input_template,
+                        'file_link' => $this->file_link,
+                        'payment' => $this->payment,
+                        'allowed_hosts' => $this->allowed_hosts,
+                        'enabled' => $this->enabled,
+
+                    ]);
+                    $plugin->pending_revision_reason = 'Pending approval';
+                    $plugin->save();
+                }
+            }
+
+            $this->alert('success', 'Success');
+
+            $this->dispatch('refresh');
+
         } catch (\Throwable $th) {
             Log::error('error forom plugin : '.$th);
-            $good = false;
-        }
-
-        if ($good) {
-            $this->alert('success', 'Plugin successfully created.');
-
-            return redirect()->route('plugins.index');
-        } else {
             $this->alert('error', 'An error occured');
         }
+
     }
 
     public function addInput()

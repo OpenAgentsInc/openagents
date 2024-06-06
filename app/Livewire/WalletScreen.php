@@ -35,8 +35,8 @@ class WalletScreen extends Component
         $this->balance_btc = $user->getSatsBalanceAttribute();
         $this->received_payments = $user->receivedPayments()->get()->reverse();
 
-        // $this->lightning_address is the user's username if they have one, otherwise their name, "@openagents.com"
-        $prefix = $user->username ?? $user->name;
+        // $this->lightning_address is the user's username
+        $prefix = $user->username;
         // staging.openagents.com if env is staging, otherwise openagents.com
         $suffix = env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com';
         $this->lightning_address = "{$prefix}@{$suffix}";

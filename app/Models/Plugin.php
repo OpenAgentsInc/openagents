@@ -27,6 +27,10 @@ class Plugin extends Model
         'payment',
         'wasm_upload',
         'allowed_hosts',
+        'enabled',
+        'suspended',
+        'pending_revision',
+        'pending_revision_reason',
     ];
 
     protected $casts = [
@@ -68,6 +72,19 @@ class Plugin extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+
+    public function isEditableBy($user)
+    {
+
+        if ($this->user_id == $user->id) {
+            return true;
+        }
+
+        $pluginAuthor = $this->user;
+
+        return $user->getRole()->canModerate($pluginAuthor->getRole());
     }
 
     public function agents()

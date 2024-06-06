@@ -33,10 +33,17 @@ class SocialAuthController extends Controller
                 $email = $socialUser->email;
             }
 
+            $username = $socialUser->nickname;
+            if (strpos($username, 'npub') === 0) {
+                $username = 'x-'.$username;
+            }
+
             $user = User::create([
                 'email' => $email,
                 'name' => $socialUser->name,
-                'username' => $socialUser->nickname,
+                'username' => $username,
+                'external_id' => $socialUser->nickname,
+                'auth_provider' => 'X',
             ]);
 
             // Set the profile photo path from the social provider

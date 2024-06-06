@@ -32,9 +32,13 @@ enum UserRole: int
         };
     }
 
+
+    /*
+    * Must be higher than the other role to moderate
+    */
     public function canModerate(self $other): bool
     {
-        return $this->value > $other->value; // higher value means more permissions
+        return $this->value > $other->value;
     }
 
     public function getAssignableRoles(): array

@@ -11,7 +11,7 @@ class Agent extends Model
 {
     use HasFactory, Payable;
 
-    protected $appends = ['sats_balance', 'sats_earned', 'image_url', 'thread_count', 'unique_users_count', 'creator_username'];
+    protected $appends = ['sats_balance', 'sats_earned', 'image_url', 'thread_count', 'unique_users_count'];
 
     protected $fillable = [
         'name',
@@ -27,21 +27,6 @@ class Agent extends Model
         'is_rag_ready',
         'use_tools',
     ];
-
-    public function getCreatorPictureAttribute()
-    {
-        return $this->user->profile_photo_path ?? '/images/nostrich.jpeg';
-    }
-
-    public function getCreatorUsernameAttribute()
-    {
-        if (! $this->user) {
-            return 'Unknown';
-        }
-
-        // If there's a user, return the username, otherwise assume Nostr user and use name
-        return $this->user->username ?? $this->user->name;
-    }
 
     public function getImageUrlAttribute()
     {

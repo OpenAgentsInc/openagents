@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\NostrAccount;
 use App\Models\User;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use swentel\nostr\Event\Event;
+use swentel\nostr\Key\Key;
 
 class NostrAuthController extends Controller
 {
@@ -72,30 +74,47 @@ class NostrAuthController extends Controller
             return redirect('#error')->with('error', 'Invalid event signature');
         }
 
-        // Find a user with this pubkey
+        // Find
         try {
-            $user = User::whereHas('nostrAccount', function ($query) use ($event) {
-                $query->where('pubkey', $event->pubkey);
-            })->first();
+            // find user with auth_provider == nostr and external_id == pubkey
+            $user = User::where('auth_provider', 'nostr')->where('external_id', $event->pubkey)->first();
         } catch (Exception $e) {
             return redirect('#error')->with('error', 'Database error: '.$e->getMessage());
         }
 
+        $key = new Key();
+        $bech32_public = $key->convertPublicKeyToBech32($event->pubkey);
         // If user not found, create a new user
         if (! $user) {
             $user = User::create([
+                'external_id' => $event->pubkey,
+                'profile_photo_path' => '/images/nostrich.jpeg',
+                'username' => $bech32_public,
+                'auth_provider' => 'nostr',
                 'name' => substr($event->pubkey, 0, 8),
                 'email' => substr($event->pubkey, 0, 8).'@notanemail.com',
-            ]);
-
-            NostrAccount::create([
-                'user_id' => $user->id,
-                'pubkey' => $event->pubkey,
             ]);
         }
 
         // Log in this user
         auth()->login($user, true);
+
+        try {
+            $npubResolver = str_replace('{{$npub}}', $user->username, config('nostr.npub_resolver'));
+            $npubDataResponse = Http::timeout(5)->get($npubResolver);
+            $npubData = $npubDataResponse->json();
+            if (isset($npubData['items']) && isset($npubData['items'][1])) {
+                $npubData = $npubDataResponse->json()['items'][1];
+                $npubContent = json_decode($npubData['content'] ?? '{}', true);
+
+                $user->profile_photo_path = $npubContent['picture'] ?? '/images/nostrich.jpeg';
+                $user->name = $npubContent['name'] ?? substr($event->pubkey, 0, 8);
+
+                $user->save();
+            }
+        } catch (Exception $e) {
+            Log::error('Error fetching npub data: '.$e->getMessage());
+        }
 
         return redirect('/')->with('success', 'Logged in successfully');
     }
