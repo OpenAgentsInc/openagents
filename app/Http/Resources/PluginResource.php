@@ -37,7 +37,7 @@ class PluginResource extends JsonResource
             // TODO: pay to user id?
         }
 
-        return [
+        $out = [
             'meta' => [
                 'id' => 'oaplugin'.$this->id,
                 'name' => $this->name,
@@ -57,5 +57,18 @@ class PluginResource extends JsonResource
             ],
             'sockets' => $sockets,
         ];
+
+        if ($this->price_msats) {
+            if (! isset($out['meta']['prices'])) {
+                $out['meta']['prices'] = [];
+            }
+            $out['meta']['prices'][] = [
+                'amount' => $this->price_msats,
+                'currency' => 'bitcoin',
+                'protocol' => 'lightning',
+            ];
+        }
+
+        return $out;
     }
 }
