@@ -149,6 +149,16 @@ class Models
                              excelling in highly complex tasks and demonstrating fluency and human-like understanding',
         ],
 
+        // GEMINI
+        'gemini-1.5-pro-latest' => [
+            'name' => 'Gemini 1.5 Pro',
+            'gateway' => 'gemini',
+            'access' => 'user',
+            'max_tokens' => 60000,
+            'description' => 'Gemini 1.5 Pro is a mid-size multimodal model
+                              that is optimized for a wide-range of reasoning tasks.',
+        ],
+
         // PERPLEXITY
         'sonar-small-online' => [
             'name' => 'Sonar Small Online',

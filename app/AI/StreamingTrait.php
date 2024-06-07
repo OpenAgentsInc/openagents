@@ -17,6 +17,11 @@ trait StreamingTrait
         }
         $responseData = json_decode($response->getBody()->getContents(), true);
 
+        return $this->extractFromJson($responseData);
+    }
+
+    protected function extractFromJson(array $responseData): array
+    {
         return [
             'content' => $responseData['choices'][0]['message']['content'] ?? '',
             'output_tokens' => $responseData['usage']['completion_tokens'] ?? 0,

@@ -49,6 +49,9 @@ class SimpleInferencer
                 case 'meta':
                     $client = new TogetherAIGateway($this->httpClient);
                     break;
+                case 'gemini':
+                    $client = new NewGeminiAIGateway($this->httpClient);
+                    break;
                 case 'groq':
                     $client = new GroqAIGateway($this->httpClient);
                     break;
