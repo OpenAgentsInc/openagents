@@ -62,6 +62,8 @@ class PluginCreate extends Component
 
     public $enabled = true;
 
+    public $cost_sats = 0;
+
     private function checkPermissions(): bool
     {
         if (! auth()->check()) {
@@ -128,6 +130,7 @@ class PluginCreate extends Component
         $this->pending_revision_reason = $this->plugin->pending_revision_reason;
         $this->allowed_hosts = $revision['allowed_hosts'] ?? json_decode($this->plugin->allowed_hosts ?? '[]', true);
         $this->tags = $revision['tags'] ?? json_decode($this->plugin->tags ?? '[]', true);
+        $this->cost_sats = $revision['cost_sats'] ?? $this->plugin->price_msats / 1000;
 
         // HOTFIX: if not array reset to empty array
         if (! is_array($this->tags)) {
@@ -158,7 +161,10 @@ class PluginCreate extends Component
             'inputs.*.type' => 'required|string|in:string,integer,object,array',
             'allowed_hosts' => 'nullable|array',
             'allowed_hosts.*' => 'required|string',
-
+            'tags' => 'nullable|array',
+            'tags.*' => 'required|string',
+            'enabled' => 'required|boolean',
+            'cost_sats' => 'nullable|integer',
         ];
     }
 
@@ -319,6 +325,8 @@ class PluginCreate extends Component
                 $plugin->tos = $this->tos;
                 $plugin->privacy = $this->privacy;
                 $plugin->web = $this->web;
+                $plugin->price_msats = ($this->cost_sats ?? 0) * 1000;
+
                 if ($this->picture) {
                     $plugin->picture = json_encode($saveimage);
                 }
@@ -366,6 +374,7 @@ class PluginCreate extends Component
                         'payment' => $this->payment,
                         'allowed_hosts' => $this->allowed_hosts,
                         'enabled' => $this->enabled,
+                        'cost_sats' => $this->cost_sats,
 
                     ]);
                     $plugin->pending_revision_reason = 'Pending approval';

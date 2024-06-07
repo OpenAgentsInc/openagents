@@ -467,11 +467,25 @@
                 <div class="my-12" />
 
                 <x-pane title="Payments">
-                    <x-input id="name" class="block mt-1 w-full " type="text" name="payment"
-                        wire:model='payment' dusk="payment" placeholder="Bitcoin lightning address" />
-                    @error('payment')
-                        <span class="text-red mt-2 text-xs">{{ $message }}</span>
-                    @enderror
+                    <div class="mt-5">
+
+                        <label for="cost_sats">Cost per use</label>
+                        <p class="text-xs">How much the user will be charged to use this plugin</p>
+                        <x-input id="cost_sats" class="block mt-1 w-full " type="number" name="cost_sats" step="1"
+                            wire:model='cost_sats' dusk="cost_sats" placeholder="Amount in sats"   />
+                        </div>
+                        @error('cost_sats')
+                            <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        @enderror
+                    <div class="mt-5">
+                        <label for="ln">Lightning address</label>
+                        <p class="text-xs">This is the address where the payments will be sent, if empty the default address for this account will be used</p>
+                        <x-input id="ln" class="block mt-1 w-full " type="text" name="payment"
+                            wire:model='payment' dusk="payment" placeholder="Bitcoin lightning address" />
+                        @error('payment')
+                            <span class="text-red mt-2 text-xs">{{ $message }}</span>
+                        @enderror
+                    </div>
                 </x-pane>
 
                 <div class="my-12" />

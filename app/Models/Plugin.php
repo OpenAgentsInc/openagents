@@ -31,6 +31,8 @@ class Plugin extends Model
         'suspended',
         'pending_revision',
         'pending_revision_reason',
+        'price_msats',
+
     ];
 
     protected $casts = [
