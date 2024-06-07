@@ -66,7 +66,7 @@ function createRequestHistoryMiddleware(array &$container): callable
 function mockGuzzleClient(array $mockResponse, array &$requestContainer = []): Client
 {
     $mockResponseStream = fopen('php://memory', 'r+');
-    if (isset($mockResponse['text']) || isset($mockResponse['choices'])) {
+    if (isset($mockResponse['text']) || isset($mockResponse['choices']) || isset($mockResponse['candidates'])) {
         fwrite(
             $mockResponseStream,
             json_encode($mockResponse)."\n"
