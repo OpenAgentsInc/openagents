@@ -58,7 +58,7 @@ class Create extends Component
             'about' => 'required|string',
             'prompt' => 'required|string',
             'model' => 'nullable|in:'.implode(',', Models::getModelsForUserTypes(['guest', 'user'])),
-            'pro_model' => 'nullable|in:'.implode(',', Models::getModelsForUserTypes(['pro'])),
+            'pro_model' => 'nullable|in:'.implode(',', Models::getModelsForUserTypes(['guest', 'user', 'pro'])),
             //            'rag_prompt' => 'nullable|string',
             'message' => 'required|string',
             'is_public' => 'required|boolean',
