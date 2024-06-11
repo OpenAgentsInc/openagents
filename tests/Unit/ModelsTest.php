@@ -31,3 +31,12 @@ it('returns non-pro models for non-pro users', function () {
         expect(Models::isProModelSelected($model))->toBeFalse();
     }
 });
+
+it('gets non-pro models for non-pro users selector', function () {
+    $userTypes = ['guest', 'user'];
+    $models = Models::getSelectModelsForUserTypes($userTypes);
+
+    foreach ($models as $model => $name) {
+        expect(Models::isProModelSelected($model))->toBeFalse();
+    }
+});
