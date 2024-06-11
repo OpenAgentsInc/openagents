@@ -334,7 +334,7 @@ class PluginCreate extends Component
                 $plugin->tags = isset($this->tags) ? json_encode($this->tags) : json_encode([]);
                 $plugin->output_sockets = json_encode([
                     'output' => [
-                        'title' => 'Output',
+                        'name' => 'Output',
                         'description' => 'The output',
                         'type' => 'string',
                     ],

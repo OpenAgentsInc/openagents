@@ -71,6 +71,11 @@ class PluginsController extends Controller
         }
 
         foreach ($outputs as $output) {
+            // HOTFIX
+            if (! isset($output['name'])) {
+                $output['name'] = $output['title'];
+            }
+
             $sockets['out'][$output['name']] = [
                 'name' => $output['name'],
                 'type' => $output['type'],
