@@ -143,8 +143,8 @@ class PluginCreate extends Component
         return [
             'name' => 'required|string',
             'description' => 'required|string',
-            'tos' => 'required|string',
-            'privacy' => 'required|string',
+            'tos' => 'nullable|string',
+            'privacy' => 'nullable|string',
             'payment' => 'nullable|string',
             'web' => 'nullable|string',
             'picture' => 'nullable|image|max:2048',
@@ -322,9 +322,9 @@ class PluginCreate extends Component
 
                 $plugin->name = $this->name;
                 $plugin->description = $this->description;
-                $plugin->tos = $this->tos;
-                $plugin->privacy = $this->privacy;
-                $plugin->web = $this->web;
+                $plugin->tos = $this->tos ?? '';
+                $plugin->privacy = $this->privacy ?? '';
+                $plugin->web = $this->web ?? '';
                 $plugin->price_msats = ($this->cost_sats ?? 0) * 1000;
 
                 if ($this->picture) {
@@ -362,9 +362,9 @@ class PluginCreate extends Component
                     $plugin->pending_revision = json_encode([
                         'name' => $this->name,
                         'description' => $this->description,
-                        'tos' => $this->tos,
-                        'privacy' => $this->privacy,
-                        'web' => $this->web,
+                        'tos' => $this->tos ?? '',
+                        'privacy' => $this->privacy ?? '',
+                        'web' => $this->web ?? '',
                         'picture' => $this->picture,
                         'tags' => $this->tags,
                         'inputs' => $this->inputs,
