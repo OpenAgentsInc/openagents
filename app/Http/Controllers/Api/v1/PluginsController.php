@@ -85,6 +85,7 @@ class PluginsController extends Controller
 
         $out = [
             'meta' => [
+                'kind' => 5003,
                 'id' => 'oaplugin'.$plugin->id,
                 'name' => $plugin->name,
                 'description' => $plugin->description,
