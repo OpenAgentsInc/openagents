@@ -3,9 +3,7 @@
 namespace App\Http\Controllers\Api\v1;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\PluginResource;
 use App\Http\Resources\PluginSecretResource;
-use App\Http\Resources\PluginsResource;
 use App\Models\Plugin;
 use Illuminate\Http\Request;
 
@@ -18,31 +16,81 @@ class PluginsController extends Controller
      */
     public function index(Request $request)
     {
+        $limit = intval($request->query('limit', 100));
+        if ($limit > 1000) {
+            $limit = 1000;
+        }
 
-        $plugins = Plugin::query()->where('suspended', '')->oldest('created_at')->paginate(100);
+        $offset = intval($request->query('offset', 0));
+        $plugins = Plugin::query()
+            ->where('suspended', '')
+            ->where('enabled', true)
+            ->oldest('created_at')
+            ->skip($offset)
+            ->take($limit)->get();
 
-        // Transform the paginated plugins collection using PluginsResource
-        $transformedPlugins = PluginsResource::collection($plugins);
+        $pluginViews = [];
+        foreach ($plugins as $plugin) {
+            $url = route('api.plugins.view', ['plugin' => $plugin->id]);
+            $pluginViews[] = $url;
+        }
 
-        // Get the array of transformed plugins using the toArray() method
-        $pluginsArray = $transformedPlugins->toArray($request);
-
-        // Extract the plugins URLs using the 'through' method
-        $pluginsUrls = collect($pluginsArray)->pluck('0')->toArray();
-
-        return response()->json($pluginsUrls, 200);
-
+        return response()->json($pluginViews, 200);
     }
 
     /**
      *  View a plugin
-     *
-     * @response PluginResource
      */
     public function show(Request $request, Plugin $plugin)
     {
 
-        return new PluginResource($plugin);
+        $payment = '';
+        if ($plugin->payment) {
+            $payment = 'lightning:'.$plugin->payment;
+        } elseif ($plugin->user->lightning_address) {
+            $payment = 'lightning:'.$plugin->user->lightning_address;
+        } else {
+            // TODO: pay to user id?
+        }
+
+        $picture = $plugin->picture ? json_decode($plugin->picture, true) : null;
+
+        $out = [
+            'meta' => [
+                'id' => 'oaplugin'.$plugin->id,
+                'name' => $plugin->name,
+                'description' => $plugin->description,
+                'tos' => $plugin->tos,
+                'privacy' => $plugin->privacy,
+                'author' => $plugin->user->name,
+                'web' => $plugin->web,
+                'picture' => $picture ? $picture['url'] : '',
+                'tags' => array_merge(['tool'], json_decode($plugin->tags, true)),
+                'payment' => $payment,
+            ],
+            'mini-template' => [
+                'main' => $plugin->file_link,
+                'input' => $plugin->input_template,
+                'allowed_hosts' => json_decode($plugin->allowed_hosts, true),
+            ],
+            'sockets' => [
+                'in' => json_decode($plugin->input_sockets, true),
+                'out' => json_decode($plugin->output_sockets, true),
+            ],
+        ];
+
+        if ($plugin->price_msats) {
+            if (! isset($out['meta']['prices'])) {
+                $out['meta']['prices'] = [];
+            }
+            $out['meta']['prices'][] = [
+                'amount' => $plugin->price_msats,
+                'currency' => 'bitcoin',
+                'protocol' => 'lightning',
+            ];
+        }
+
+        return response()->json($out, 200);
     }
 
     /**
