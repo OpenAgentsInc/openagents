@@ -37,6 +37,7 @@ class PluginResource extends JsonResource
             // TODO: pay to user id?
         }
 
+        $picture = $this->picture ? json_decode($this->picture, true) : null;
         $out = [
             'meta' => [
                 'id' => 'oaplugin'.$this->id,
@@ -44,9 +45,9 @@ class PluginResource extends JsonResource
                 'description' => $this->description,
                 'tos' => $this->tos,
                 'privacy' => $this->privacy,
-                'author' => $this->author,
+                'author' => $this->user->name,
                 'web' => $this->web,
-                'picture' => $this->picture ?? '',
+                'picture' => $picture ? $picture['url'] : '',
                 'tags' => array_merge(['tool'], json_decode($this->tags, true)),
                 'payment' => $payment,
             ],
