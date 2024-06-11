@@ -54,6 +54,29 @@ class PluginsController extends Controller
         }
 
         $picture = $plugin->picture ? json_decode($plugin->picture, true) : null;
+        $sockets = [
+            'in' => [],
+            'out' => [],
+        ];
+
+        $inputs = json_decode($plugin->input_sockets, true);
+        $outputs = json_decode($plugin->output_sockets, true);
+
+        foreach ($inputs as $input) {
+            $sockets['in'][$input['name']] = [
+                'name' => $input['name'],
+                'type' => $input['type'],
+                'description' => $input['description'],
+            ];
+        }
+
+        foreach ($outputs as $output) {
+            $sockets['out'][$output['name']] = [
+                'name' => $output['name'],
+                'type' => $output['type'],
+                'description' => $output['description'],
+            ];
+        }
 
         $out = [
             'meta' => [
@@ -73,10 +96,7 @@ class PluginsController extends Controller
                 'input' => $plugin->input_template,
                 'allowed_hosts' => json_decode($plugin->allowed_hosts, true),
             ],
-            'sockets' => [
-                'in' => json_decode($plugin->input_sockets, true),
-                'out' => json_decode($plugin->output_sockets, true),
-            ],
+            'sockets' => $sockets,
         ];
 
         if ($plugin->price_msats) {
