@@ -354,4 +354,13 @@ class Models
             return in_array($model['access'], $types);
         }));
     }
+
+    public static function getSelectModelsForUserTypes(array $types): array
+    {
+        return array_map(function ($model) {
+            return $model['name'];
+        }, array_filter(self::MODELS, function ($model) use ($types) {
+            return in_array($model['access'], $types);
+        }));
+    }
 }

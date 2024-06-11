@@ -30,6 +30,10 @@ class Create extends Component
 
     public $models = Models::MODELS;
 
+    public $free_agent_models = [];
+
+    public $all_agent_models = [];
+
     public $rag_prompt;
 
     public $is_public = true;
@@ -49,6 +53,8 @@ class Create extends Component
         if (! auth()->check()) {
             return redirect('/');
         }
+        $this->free_agent_models = Models::getSelectModelsForUserTypes(['guest', 'user']);
+        $this->all_agent_models = Models::getSelectModelsForUserTypes(['guest', 'user', 'pro']);
     }
 
     public function rules()

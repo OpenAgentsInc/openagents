@@ -29,6 +29,10 @@ class Edit extends Component
 
     public $models = Models::MODELS;
 
+    public $free_agent_models = [];
+
+    public $all_agent_models = [];
+
     public $rag_prompt;
 
     public $is_public;
@@ -68,6 +72,9 @@ class Edit extends Component
         $this->sats_per_message = $this->agent->sats_per_message;
         $this->message = $this->agent->message;
         $this->plugins = $this->agent->externalTools()->pluck('external_uid');
+
+        $this->free_agent_models = Models::getSelectModelsForUserTypes(['guest', 'user']);
+        $this->all_agent_models = Models::getSelectModelsForUserTypes(['guest', 'user', 'pro']);
 
         $docs = AgentFile::with('agent')
             ->where('agent_id', $this->agent->id)
