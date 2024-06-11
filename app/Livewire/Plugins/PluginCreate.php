@@ -384,7 +384,11 @@ class PluginCreate extends Component
 
             $this->alert('success', 'Success');
 
-            $this->dispatch('refresh');
+            if ($update) {
+                $this->dispatch('refresh');
+            } else {
+                return redirect()->route('plugins.index', ['plugin' => $plugin]);
+            }
 
         } catch (\Throwable $th) {
             Log::error('error forom plugin : '.$th);
