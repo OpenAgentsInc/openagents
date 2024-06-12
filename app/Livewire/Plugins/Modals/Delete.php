@@ -28,12 +28,16 @@ class Delete extends ModalComponent
     {
 
         $plugin = Plugin::with('user')->find($this->plugin_id);
-
-        if ($plugin && $plugin->user_id !== auth()->user()->id) {
-
-            $this->alert('error', 'Permission Denied..');
+        if (! $plugin) {
+            $this->alert('error', 'Plugin not found..');
             $this->closeModal();
 
+            return;
+        }
+
+        if ($plugin->user->id !== auth()->user()->id && ! auth()->user()->isModerator()) {
+            $this->alert('error', 'Permission Denied..');
+            $this->closeModal();
         } else {
 
             //delete the file first
