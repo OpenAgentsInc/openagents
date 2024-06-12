@@ -133,7 +133,7 @@ class PluginsController extends Controller
             return response()->json(['message' => 'Invalid token'], 403);
         }
 
-        $file_link = $request->query('plugin-url');
+        $file_link = $request->query('namespace');
         $plugin = Plugin::where('file_link', $file_link)->first();
         if ($plugin) {
             return new PluginSecretResource($plugin);
