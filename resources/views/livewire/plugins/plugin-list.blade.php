@@ -39,7 +39,7 @@
     <div class="grid gap-2 p-8  md:gap-2 xl:gap-4 md:grid-cols-2 xl:grid-cols-4">
 
         @forelse ($this->plugins as $plugin)
-            @if ($plugin->suspended && !$plugin->isEditableBy(auth()->user()))
+            @if ($plugin->suspended && (!auth()->check() || !$plugin->isEditableBy(auth()->user())))
                 @continue
             @endif
 
@@ -47,7 +47,7 @@
                 class="h-64 overflow-auto flex flex-col justify-between">
                 <div class="items-center gap-1.5 pr-2  group-hover:flex">
                     @auth
-                        @if ($plugin->isEditableBy(auth()->user()))
+                        @if (auth()->check() && $plugin->isEditableBy(auth()->user()))
                             <div x-data="{ isOpen: false }" class="relative flex-1 text-right">
                                 <button @click="isOpen = !isOpen" class="p-1.5 rounded-md text-gray hover:bg-[#262626]">
                                     <x-icon.dots role='button' class="w-4 h-4"></x-icon.dots>
@@ -72,13 +72,13 @@
                     {{ $plugin->description }}
                 </p>
 
-                @if ($plugin->suspended && $plugin->isEditableBy(auth()->user()))
+                @if ($plugin->suspended && auth()->check() && $plugin->isEditableBy(auth()->user()))
                     <div class="mt-5 w-full">
                         <p class="my-2 text-red text-sm text-center font-bold">
                             {{ $plugin->suspended }}
                         </p>
                     </div>
-                @elseif ($plugin->pending_revision && $plugin->isEditableBy(auth()->user()))
+                @elseif ($plugin->pending_revision && auth()->check() && $plugin->isEditableBy(auth()->user()))
                     <div class="mt-5 w-full">
                         <p class="my-2 text-red text-sm text-center font-bold">
                             {{ $plugin->pending_revision_reason }}
