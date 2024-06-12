@@ -464,3 +464,16 @@ input.choices__input.choices__input--cloned {
   background-color: #000;
   margin: 0;
 }
+
+
+
+ul.pagination{
+  display: flex;
+  gap: 1rem;
+  color: #7a7a7a;
+}
+
+/*aria-current="page"*/
+ul.pagination li[aria-current="page"] {
+  color: #fff;
+}

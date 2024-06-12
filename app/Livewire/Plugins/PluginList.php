@@ -33,6 +33,6 @@ class PluginList extends Component
 
     public function render()
     {
-        return view('livewire.plugins.plugin-list');
+        return view('livewire.plugins.plugin-list', ['plugins' => $this->plugins()]);
     }
 }
