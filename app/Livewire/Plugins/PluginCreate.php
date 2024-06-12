@@ -318,8 +318,7 @@ class PluginCreate extends Component
         try {
             $user = auth()->user();
 
-            if ($user->isModerator()) {
-
+            if ($user->isModerator() || ! $update) {
                 $plugin->name = $this->name;
                 $plugin->description = $this->description;
                 $plugin->tos = $this->tos ?? '';
@@ -352,34 +351,34 @@ class PluginCreate extends Component
 
                 $plugin->pending_revision = '';
                 $plugin->pending_revision_reason = '';
-                $plugin->suspended = '';
+                if (! $user->isModerator()) {
+                    $plugin->suspended = 'Pending approval';
+                } else {
+                    $plugin->suspended = '';
+                }
+
                 $plugin->save();
             } else {
-                if (! $update) {
-                    $plugin->suspended = 'Pending approval';
-                    $plugin->save();
-                } else {
-                    $plugin->pending_revision = json_encode([
-                        'name' => $this->name,
-                        'description' => $this->description,
-                        'tos' => $this->tos ?? '',
-                        'privacy' => $this->privacy ?? '',
-                        'web' => $this->web ?? '',
-                        'picture' => $this->picture,
-                        'tags' => $this->tags,
-                        'inputs' => $this->inputs,
-                        'secrets' => $this->secrets,
-                        'input_template' => $this->input_template,
-                        'file_link' => $this->file_link,
-                        'payment' => $this->payment,
-                        'allowed_hosts' => $this->allowed_hosts,
-                        'enabled' => $this->enabled,
-                        'cost_sats' => $this->cost_sats,
+                $plugin->pending_revision = json_encode([
+                    'name' => $this->name,
+                    'description' => $this->description,
+                    'tos' => $this->tos ?? '',
+                    'privacy' => $this->privacy ?? '',
+                    'web' => $this->web ?? '',
+                    'picture' => $this->picture,
+                    'tags' => $this->tags,
+                    'inputs' => $this->inputs,
+                    'secrets' => $this->secrets,
+                    'input_template' => $this->input_template,
+                    'file_link' => $this->file_link,
+                    'payment' => $this->payment,
+                    'allowed_hosts' => $this->allowed_hosts,
+                    'enabled' => $this->enabled,
+                    'cost_sats' => $this->cost_sats,
 
-                    ]);
-                    $plugin->pending_revision_reason = 'Pending approval';
-                    $plugin->save();
-                }
+                ]);
+                $plugin->pending_revision_reason = 'Pending approval';
+                $plugin->save();
             }
 
             $this->alert('success', 'Success');
