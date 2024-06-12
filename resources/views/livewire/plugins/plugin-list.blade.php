@@ -88,15 +88,21 @@
 
                 <div class="mt-5 w-full flex justify-center items-center gap-4">
 
-                    <a href="{{ $plugin->web }}" target="_blank" title="Visit website">
-                        <x-icon.link class="h-4 w-4 text-white" style="stroke: white;" />
-                    </a>
-                    <a href="{{ $plugin->tos }}" target="_blank" title="Terms of Service">
-                        <x-icon.link class="h-4 w-4 text-white" style="stroke: white;" />
-                    </a>
-                    <a href="{{ $plugin->privacy }}" target="_blank" title="Privacy Policy">
-                        <x-icon.link class="h-4 w-4 text-white" style="stroke: white;" />
-                    </a>
+                    @if ($plugin->web)
+                        <a href="{{ $plugin->web }}" target="_blank" title="Visit website">
+                            <x-icon.link class="h-4 w-4 text-white" style="stroke: white;" />
+                        </a>
+                    @endif
+                    @if ($plugin->tos)
+                        <a href="{{ $plugin->tos }}" target="_blank" title="Terms of Service">
+                            <x-icon.link class="h-4 w-4 text-white" style="stroke: white;" />
+                        </a>
+                    @endif
+                    @if ($plugin->privacy)
+                        <a href="{{ $plugin->privacy }}" target="_blank" title="Privacy Policy">
+                            <x-icon.link class="h-4 w-4 text-white" style="stroke: white;" />
+                        </a>
+                    @endif
                 </div>
 
 
