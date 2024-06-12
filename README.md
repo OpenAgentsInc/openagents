@@ -7,9 +7,9 @@ OpenAgents is a platform for building, selling and using AI agents.
 ## Roadmap
 
 - [x] ~~Chat with top LLMs~~
-- [x] ~~Agent Store~~
-- [x] ~~Pay-as-you-go revenue sharing~~
-- [x] ~~Agent plugins UI~~
+- [x] ~~Agent Store~~ ([Video](https://x.com/OpenAgentsInc/status/1790500162491523138))
+- [x] ~~Pay-as-you-go revenue sharing~~ ([Video](https://x.com/OpenAgentsInc/status/1796195661752246705))
+- [x] ~~Agent plugins UI~~ ([Video](https://x.com/OpenAgentsInc/status/1800665114573521029))
 - [ ] Profiles & comments
 - [ ] Drag & drop node builder
 
