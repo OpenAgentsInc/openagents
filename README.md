@@ -30,7 +30,7 @@ OpenAgents is a platform for building, selling and using AI agents.
 
 ## Video series
 
-We've chronicled most of the development of this platform over multiple months and 90+ videos on X.
+We've chronicled most of the development of this platform over multiple months and 100+ videos on X.
 
 See [episode one](https://twitter.com/OpenAgentsInc/status/1721942435125715086) or
 the [full episode list](https://github.com/OpenAgentsInc/openagents/wiki/Video-Series).
