@@ -128,8 +128,12 @@ class PluginsController extends Controller
     {
 
         $secret = $request->query('secret');
+        $requiredSecret = config('plugins.secret');
+        if (! $requiredSecret) {
+            return response()->json(['message' => 'Secret not set on the backend'], 403);
+        }
 
-        if (config('pool.webhook_secret') && $secret !== config('pool.webhook_secret')) {
+        if ($secret !== $requiredSecret) {
             return response()->json(['message' => 'Invalid token'], 403);
         }
 
