@@ -79,7 +79,7 @@ class Plugin extends Model
     public function isEditableBy($user)
     {
 
-        if ($this->user_id == $user->id) {
+        if ($this->user->id == $user->id) {
             return true;
         }
 
