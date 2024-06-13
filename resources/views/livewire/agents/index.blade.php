@@ -105,5 +105,8 @@
                 </div>
             @endforelse
         </div>
+        <div class="flex flex-row justify-center items-center gap-4">
+            {{ $this->agents->links('pagination::bootstrap-4') }}
+        </div>
     </div>
 </div>
