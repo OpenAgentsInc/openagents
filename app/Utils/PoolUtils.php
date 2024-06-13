@@ -57,6 +57,36 @@ class PoolUtils
         $logger->close();
     }
 
+    public static function getToolByUID($uid)
+    {
+        $tools = PoolUtils::getTools();
+        foreach ($tools as $tool) {
+            if ($tool['id'] == $uid) {
+                return $tool;
+            }
+        }
+    }
+
+    public static function getToolPriceInSats($tool)
+    {
+        $price_msats = 0;
+        $meta = $tool['meta'];
+        if (! isset($meta['prices'])) {
+            return 0;
+        }
+        $prices = $meta['prices'];
+        foreach ($prices as $price) {
+            if ($price['currency'] == 'bitcoin' && $price['protocol'] == 'lightning') {
+                $price_msats = $price['amount'];
+                break;
+            }
+        }
+
+        $sats = ceil($price_msats / 1000);
+
+        return $sats;
+    }
+
     public static function getTools()
     {
         $hostname = config('pool.address');

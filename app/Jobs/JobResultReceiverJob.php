@@ -14,6 +14,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class JobResultReceiverJob implements ShouldQueue
 {
@@ -58,8 +59,9 @@ class JobResultReceiverJob implements ShouldQueue
 
                 // any warmup message will warm up the agent
                 $isWarmUp = $poolJob->warmup;
+                $agent = Agent::find($poolJob->agent_id);
+
                 if ($isWarmUp) {
-                    $agent = Agent::find($poolJob->agent_id);
                     if (! $agent) {
                         throw new Exception('Agent not found '.$poolJob->agent_id);
                     }
@@ -80,6 +82,7 @@ class JobResultReceiverJob implements ShouldQueue
 
                     // Track plugin usage
                     $availableTools = PoolUtils::getTools();
+                    $usedTools = [];
                     if (count($usedToolIds) > 0) {
                         foreach ($usedToolIds as $toolId) {
                             $tool = null;
@@ -93,10 +96,30 @@ class JobResultReceiverJob implements ShouldQueue
                             }
                             if (isset($tool)) {
                                 $logger->log('info', 'Used tool '.$tool['meta']['name']);
+                                $usedTools[] = $tool;
                             }
                         }
                     }
-                    /////
+
+                    // For each used tool extract payment info and pay the author
+                    $totalCost = 0;
+                    foreach ($usedTools as $usedTool) {
+                        $sats = PoolUtils::getToolPriceInSats($usedTool);
+
+                        $lnAddress = $meta['payment'];
+                        if (strpos($lnAddress, 'lightning"') === 0) {
+                            $lnAddress = substr($lnAddress, 11, -1);
+
+                            // PAY
+                            Log::info('Simulate payment to '.$lnAddress.' for '.$sats.' sats');
+
+                            $totalCost += $sats;
+                        }
+                    }
+
+                    // Track total cost for average stats
+                    $agent->trackToolsCost($totalCost);
+                    //
 
                     $poolJob->content = $content;
                     $poolJob->save();
