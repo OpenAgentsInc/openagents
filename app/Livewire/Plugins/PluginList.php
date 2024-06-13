@@ -37,7 +37,7 @@ class PluginList extends Component
             ->latest()
             ->get()
             ->filter(function ($plugin) use ($user) {
-                return $plugin->isEditableBy($user);
+                return $user && $plugin->isEditableBy($user);
             });
     }
 
