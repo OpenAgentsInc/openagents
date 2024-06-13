@@ -52,6 +52,15 @@
 <body class="h-full bg-black antialiased" x-cloak
       x-data="{ sidebarOpen: window.innerWidth > 768, collapsed: false }">
 
+  <div class="absolute top-0 right-4 h-[52px]  px-5 ">
+    @auth
+        <x-user-menu/>
+    @else
+        <div class="mt-2 flex flex-row items-center">
+            <x-login-buttons/>
+        </div>
+    @endauth
+</div>
 <div class="relative z-0 flex h-full w-full overflow-hidden">
 
     <div class="h-[54px] flex justify-between items-center absolute top-0 left-0 py-2 px-4 w-[259px]">
