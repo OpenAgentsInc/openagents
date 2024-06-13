@@ -3,7 +3,7 @@
     <div class="flex-1 overflow-hidden">
         <x-chatbox :autoscroll="auth()->check() ? auth()->user()->autoscroll : true">
 
-            <div class="h-[52px] sticky top-0 flex flex-row items-center justify-between z-10 px-5 bg-black">
+            <div class="h-[52px] sticky top-0 flex flex-row items-center justify-between z- px-5 ">
                 <div class="absolute left-1/2 -translate-x-1/2"></div>
                 <livewire:model-selector :thread="$thread"/>
 

@@ -52,14 +52,9 @@
 <body class="h-full bg-black antialiased" x-cloak
       x-data="{ sidebarOpen: window.innerWidth > 768, collapsed: false }">
 
-  <div class="absolute top-0 right-4 h-[52px]  px-5 ">
-    @auth
-        <x-user-menu/>
-    @else
-        <div class="mt-2 flex flex-row items-center">
-            <x-login-buttons/>
-        </div>
-    @endauth
+  <div class="absolute top-4 right-4 h-[52px] z-10  px-5 ">
+     <livewire:layouts.user-menu/>
+
 </div>
 <div class="relative z-0 flex h-full w-full overflow-hidden">
 
@@ -118,6 +113,7 @@
 <x-livewire-alert::scripts/>
 
 @include('partials.copyblocks')
+
 
 </body>
 
