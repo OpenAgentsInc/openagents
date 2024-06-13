@@ -8,9 +8,12 @@ class AgentCard extends Component
 {
     public $agent;
 
-    public function mount($agent)
+    public $showChatButton = true;
+
+    public function mount($agent, $showChatButton = true)
     {
         $this->agent = $agent;
+        $this->showChatButton = $showChatButton;
     }
 
     public function render()

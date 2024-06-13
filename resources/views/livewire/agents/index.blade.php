@@ -39,55 +39,6 @@
             @forelse ($this->agents as $agent)
                 <livewire:agent-card :agent="$agent" :key="$agent->id"/>
 
-                {{--                <li class="border border-offblack p-4 rounded-xl">--}}
-
-
-                {{--                    <div class="flex justify-between items-center">--}}
-                {{--                        <div class="flex items-center gap-x-4">--}}
-                {{--                            <img src="{{ $agent->image_url }}" class="w-14 h-14 object-cover rounded-full"--}}
-                {{--                                 alt="{{$agent->name}}">--}}
-                {{--                            <div>--}}
-                {{--                                <span class="block text-gray-800 font-semibold">{{ $agent->name }}</span>--}}
-                {{--                                <span class="inline-flex items-center my-1 px-1 py-1 {{ $agent->is_rag_ready == false && $agent->created_at->diffInMinutes() > 30 ? 'bg-red text-white' : ($agent->is_rag_ready ? 'bg-white text-black' : 'bg-yellow-500 text-black') }}    text-xs font-bold rounded-md">--}}
-                {{--                                        {{ $agent->is_rag_ready == false && $agent->created_at->diffInMinutes() > 30 ? 'Error' : ($agent->is_rag_ready ? 'Active' : 'Learning') }}--}}
-                {{--                                      </span>--}}
-                {{--                            </div>--}}
-                {{--                        </div>--}}
-                {{--                        <div class="items-center gap-1.5 pr-2  group-hover:flex">--}}
-                {{--                            @auth--}}
-                {{--                                @if ($agent->user_id == auth()->user()->id)--}}
-                {{--                                    <div x-data="{ isOpen: false }" class="relative flex-1 text-right">--}}
-                {{--                                        <button @click="isOpen = !isOpen"--}}
-                {{--                                                class="p-1.5 rounded-md text-gray hover:bg-[#262626]">--}}
-                {{--                                            <x-icon.dots role='button' class="w-4 h-4"></x-icon.dots>--}}
-                {{--                                        </button>--}}
-                {{--                                        <div x-show="isOpen" @click.away="isOpen = false"--}}
-                {{--                                             class="absolute z-10 top-12 right-0 w-64 rounded-lg bg-black border border-gray shadow-md  text-sm text-gray">--}}
-                {{--                                            <div class="p-2 text-left">--}}
-                {{--                                                <a href="{{ route('agents.edit', ['agent' => $agent]) }}"--}}
-                {{--                                                   wire:navigate--}}
-                {{--                                                   class="block w-full p-2 text-left rounded-md hover:text-white  hover:bg-[#262626] duration-150"--}}
-                {{--                                                   rel="nofollow">Edit</a>--}}
-                {{--                                                <a role="button"--}}
-                {{--                                                   x-on:click="Livewire.dispatch('openModal', { component: 'agents.modals.delete', arguments: { agent: {{ $agent->id }} } })"--}}
-                {{--                                                   class="block w-full p-2 text-left rounded-md text-red hover:bg-[#262626] duration-150"--}}
-                {{--                                                   rel="nofollow">Delete</a>--}}
-                {{--                                            </div>--}}
-                {{--                                        </div>--}}
-                {{--                                    </div>--}}
-                {{--                                @endif--}}
-                {{--                            @endauth--}}
-                {{--                        </div>--}}
-                {{--                    </div>--}}
-                {{--                    <blockquote>--}}
-                {{--                        <p class="mt-6 text-gray-700">--}}
-                {{--                            {{ substr($agent->about, 0, 100) }}{{ strlen($agent->about) > 100 ? '...' : '' }}--}}
-
-                {{--                        </p>--}}
-                {{--                    </blockquote>--}}
-
-
-                {{--                </li>--}}
 
             @empty
 

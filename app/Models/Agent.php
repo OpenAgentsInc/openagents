@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\Payable;
+use App\Utils\PoolUtils;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
@@ -25,6 +26,10 @@ class Agent extends Model
         'is_public',
         'user_id',
         'is_rag_ready',
+        'sats_per_message',
+        'max_tool_calls',
+        'tools_cost_average',
+        'num_tools_calls',
     ];
 
     public function getImageUrlAttribute()
@@ -108,5 +113,58 @@ class Agent extends Model
     public function getThreadCountAttribute()
     {
         return $this->messages()->distinct('thread_id')->count('thread_id');
+    }
+
+    public function getPriceRange()
+    {
+        $minPrice = $this->sats_per_message;
+        $maxPrice = $this->sats_per_message;
+        $maxToolCalls = $this->max_tool_calls;
+
+        $maxToolPrice = 0;
+        foreach ($this->externalTools as $tool) {
+            $tool = PoolUtils::getToolByUID($tool->external_uid);
+            if (! $tool) {
+                continue;
+            }
+            $price = PoolUtils::getToolPriceInSats($tool);
+            if ($price > $maxToolPrice) {
+                $maxToolPrice = $price;
+            }
+        }
+
+        $maxPrice = $maxToolPrice * $maxToolCalls + $this->sats_per_message;
+
+        $averagePrice = $this->tools_cost_average;
+        if ($averagePrice < $minPrice) {
+            $averagePrice = ceil(($maxPrice + $minPrice) / 2);
+        } else {
+            $averagePrice += $this->sats_per_message;
+        }
+
+        return [
+            'min' => $minPrice,
+            'max' => $maxPrice,
+            'avg' => $averagePrice,
+        ];
+    }
+
+    public function trackToolsCost($cost)
+    {
+        $this->num_tools_calls += 1;
+        $this->tools_cost_average = ceil(($this->tools_cost_average + $cost) / $this->num_tools_calls);
+        $this->save();
+    }
+
+    public function isEditableBy($user)
+    {
+
+        if ($this->user->id == $user->id) {
+            return true;
+        }
+
+        $author = $this->user;
+
+        return $user->getRole()->canModerate($author->getRole());
     }
 }
