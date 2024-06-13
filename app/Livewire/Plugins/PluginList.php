@@ -20,9 +20,25 @@ class PluginList extends Component
         return Plugin::query()->when($this->search, function ($query) {
             return $query->where('name', 'like', '%'.$this->search.'%');
         })
+            ->where('suspended', '')
             ->with('user')
             ->latest()
             ->paginate(12);
+    }
+
+    #[Computed]
+    public function suspendedPlugins()
+    {
+        $user = auth()->user();
+
+        return Plugin::query()
+            ->whereNot('suspended', '')
+            ->with('user')
+            ->latest()
+            ->get()
+            ->filter(function ($plugin) use ($user) {
+                return $plugin->isEditableBy($user);
+            });
     }
 
     #[On('plugin_updated')]
