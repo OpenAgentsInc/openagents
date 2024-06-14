@@ -14,7 +14,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class JobResultReceiverJob implements ShouldQueue
 {
@@ -115,9 +114,14 @@ class JobResultReceiverJob implements ShouldQueue
                         if (strpos($lnAddress, 'lightning:') === 0) {
                             $lnAddress = substr($lnAddress, 10);
 
-                            // PAY
-                            Log::info('Simulate payment to '.$lnAddress.' for '.$sats.' sats');
-
+                            // Add payment request
+                            $poolJob->paymentRequests()->create([
+                                'amount' => $sats,
+                                'protocol' => 'lightning',
+                                'currency' => 'bitcoin',
+                                'target' => $lnAddress,
+                                'paid' => false,
+                            ]);
                             $totalCost += $sats;
                         }
                     }
