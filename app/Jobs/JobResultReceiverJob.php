@@ -105,6 +105,9 @@ class JobResultReceiverJob implements ShouldQueue
                     $totalCost = 0;
                     foreach ($usedTools as $usedTool) {
                         $sats = PoolUtils::getToolPriceInSats($usedTool);
+                        if (! isset($meta['payment'])) {
+                            continue;
+                        }
 
                         $lnAddress = $meta['payment'];
                         if (strpos($lnAddress, 'lightning"') === 0) {
