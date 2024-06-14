@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useCallback, useState } from 'react'
 import { Head } from '@inertiajs/react'
-import { Page, Badge, LegacyCard, Button, CalloutCard, FormLayout, TextField } from '@shopify/polaris';
+import {NoteIcon} from '@shopify/polaris-icons';
+import { DropZone, Page, Badge, LegacyCard, Button, ButtonGroup, CalloutCard, FormLayout, TextField, MediaCard, RangeSlider, LegacyStack, Thumbnail, Text } from '@shopify/polaris';
 
 export default function Welcome({ user }) {
   return (
@@ -41,8 +42,16 @@ export default function Welcome({ user }) {
           hasNext: true,
         }}
       >
+
         <LegacyCard sectioned>
           <Button onClick={() => alert('Button clicked!')}>Example button</Button>
+        </LegacyCard>
+
+        <LegacyCard sectioned>
+          <ButtonGroup>
+            <Button>Cancel</Button>
+            <Button variant="primary">Save</Button>
+          </ButtonGroup>
         </LegacyCard>
 
         <CalloutCard
@@ -67,7 +76,107 @@ export default function Welcome({ user }) {
             />
           </FormLayout>
         </LegacyCard>
+
+        <LegacyCard sectioned>
+          <DropZoneExample />
+        </LegacyCard>
+
+        <RangeSliderExample />
+
+        <MediaCardExample />
       </Page>
     </>
   )
+}
+
+function MediaCardExample() {
+  return (
+    <MediaCard
+      title="Getting Started"
+      primaryAction={{
+        content: 'Learn about getting started',
+        onAction: () => { },
+      }}
+      description="Discover how OpenAgents can power up your entrepreneurial journey."
+      popoverActions={[{ content: 'Dismiss', onAction: () => { } }]}
+    >
+      <img
+        alt=""
+        width="100%"
+        height="100%"
+        style={{
+          objectFit: 'cover',
+          objectPosition: 'center',
+        }}
+        src="https://burst.shopifycdn.com/photos/business-woman-smiling-in-office.jpg?width=1850"
+      />
+    </MediaCard>
+  );
+}
+
+function RangeSliderExample() {
+  const [rangeValue, setRangeValue] = useState(32);
+
+  const handleRangeSliderChange = useCallback(
+    (value) => setRangeValue(value),
+    [],
+  );
+
+  return (
+    <LegacyCard sectioned title="Background color">
+      <RangeSlider
+        label="Opacity percentage"
+        value={rangeValue}
+        onChange={handleRangeSliderChange}
+        output
+      />
+    </LegacyCard>
+  );
+}
+
+function DropZoneExample() {
+  const [files, setFiles] = useState([]);
+
+  const handleDropZoneDrop = useCallback(
+    (_dropFiles, acceptedFiles, _rejectedFiles) =>
+      setFiles((files) => [...files, ...acceptedFiles]),
+    [],
+  );
+
+  const validImageTypes = ['image/gif', 'image/jpeg', 'image/png'];
+
+  const fileUpload = !files.length && (
+    <DropZone.FileUpload actionHint="Accepts .gif, .jpg, and .png" />
+  );
+
+  const uploadedFiles = files.length > 0 && (
+    <LegacyStack vertical>
+      {files.map((file, index) => (
+        <LegacyStack alignment="center" key={index}>
+          <Thumbnail
+            size="small"
+            alt={file.name}
+            source={
+              validImageTypes.includes(file.type)
+                ? window.URL.createObjectURL(file)
+                : NoteIcon
+            }
+          />
+          <div>
+            {file.name}{' '}
+            <Text variant="bodySm" as="p">
+              {file.size} bytes
+            </Text>
+          </div>
+        </LegacyStack>
+      ))}
+    </LegacyStack>
+  );
+
+  return (
+    <DropZone onDrop={handleDropZoneDrop} variableHeight>
+      {uploadedFiles}
+      {fileUpload}
+    </DropZone>
+  );
 }
