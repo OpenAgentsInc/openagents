@@ -64,9 +64,9 @@ function NavigationIs() {
       <Navigation.Section
         items={[
           {
-            url: '/',
+            url: '/dashboard',
             excludePaths: ['#'],
-            label: 'Home',
+            label: 'Dashboard',
             icon: HomeIcon,
             selected: false,
           },
