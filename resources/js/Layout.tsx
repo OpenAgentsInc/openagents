@@ -4,6 +4,7 @@ import {
   HomeIcon,
   PlusCircleIcon,
   ProductIcon,
+  ExitIcon,
   MinusCircleIcon,
   OrderIcon,
 } from '@shopify/polaris-icons';
@@ -19,16 +20,17 @@ export default function Layout({ children }) {
   const userMenuMarkup = (
     <TopBar.UserMenu
       actions={[
-        // {
-        //   items: [{ content: 'Back to OpenAgents', icon: ArrowLeftIcon }],
-        // },
-        // {
-        //   items: [{ content: 'Community forums' }],
-        // },
+        {
+          items: [{
+            content: 'Log out', icon: ExitIcon, onAction: () => {
+              console.log("log out placeholder")
+            }
+          }],
+        },
       ]}
       name="TestUser"
-      // detail="Agent Builder"
-      initials="T"
+      initials="TU"
+      avatar="https://i.pravatar.cc/150?img=14"
       open={isUserMenuOpen}
       onToggle={toggleIsUserMenuOpen}
     />
