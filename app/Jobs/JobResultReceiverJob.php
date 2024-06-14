@@ -104,6 +104,8 @@ class JobResultReceiverJob implements ShouldQueue
                     // For each used tool extract payment info and pay the author
                     $totalCost = 0;
                     foreach ($usedTools as $usedTool) {
+                        $meta = $usedTool['meta'];
+
                         $sats = PoolUtils::getToolPriceInSats($usedTool);
                         if (! isset($meta['payment'])) {
                             continue;
