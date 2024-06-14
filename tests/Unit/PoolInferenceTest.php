@@ -56,9 +56,11 @@ test('PoolInferencer can inference', function () {
         'messages' => [
             [
                 'role' => 'system',
-                'content' => $agent->prompt."\n".
-                    "You can use the following extracted parts of a long document to help you answer the user's questions.\n".
-                    $job->content,
+                'content' => "Your name is $agent->name.\n".
+                "Your description is: $agent->about\n".
+                "Your instructions are: $agent->prompt.\n".
+                "You can use the following extracted parts of a long document to help you answer the user\'s questions:\n".
+                 $job->content,
             ],
             [
                 'role' => 'user',
@@ -66,7 +68,7 @@ test('PoolInferencer can inference', function () {
             ],
         ],
         'stream' => true,
-        'max_tokens' => 1962,
+        'max_tokens' => 1945,
     ], $payload);
 
     expect($result)->toBeArray();
