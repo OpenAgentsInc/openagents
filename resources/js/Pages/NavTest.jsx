@@ -54,15 +54,15 @@ function TopBarExample() {
     <TopBar.UserMenu
       actions={[
         {
-          items: [{ content: 'Back to Shopify', icon: ArrowLeftIcon }],
+          items: [{ content: 'Back to OpenAgents', icon: ArrowLeftIcon }],
         },
         {
           items: [{ content: 'Community forums' }],
         },
       ]}
-      name="Dharma"
-      detail="Jaded Pixel"
-      initials="D"
+      name="TestUser"
+      detail="Agent Builder"
+      initials="T"
       open={isUserMenuOpen}
       onToggle={toggleIsUserMenuOpen}
     />
@@ -70,7 +70,7 @@ function TopBarExample() {
 
   const searchResultsMarkup = (
     <ActionList
-      items={[{ content: 'Shopify help center' }, { content: 'Community forums' }]}
+      items={[{ content: 'OpenAgents help center' }, { content: 'Community forums' }]}
     />
   );
 
