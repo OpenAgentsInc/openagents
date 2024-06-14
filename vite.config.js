@@ -18,6 +18,7 @@ export default defineConfig(({command}) => {
                 input: [
                     'resources/css/app.css',
                     'resources/js/app.js',
+                    'resources/js/inertia.js',
                 ],
                 refresh: [...refreshPaths, 'app/Livewire/**'],
             }),
