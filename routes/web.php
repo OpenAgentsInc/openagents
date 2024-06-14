@@ -45,6 +45,9 @@ Route::get('/test', function () {
         'user' => ['name' => 'Test Man']
     ]);
 });
+Route::get('/test2', function () {
+    return Inertia::render('NavTest');
+});
 
 // Redirect all authentication routes to home
 Route::match(['get', 'post'], '/{authRoute}', function () {
