@@ -24,14 +24,20 @@ class PoolInference
         $thread = Thread::find($job->thread_id);
         $agent = Agent::find($job->agent_id);
 
-        $prePrompt = 'You can use the following extracted parts of a long document to help you answer the user\'s questions.';
+        $systemPrompt = implode("\n", [
+            "Your name is {$agent->name}.",
+            "Your description is: {$agent->about}",
+            "Your instructions are: {$agent->prompt}.",
+        ]);
 
-        $systemPrompt = $agent->prompt."\n".$prePrompt."\n".$job->content;
+        if ($job->content) {
+            $systemPrompt .= "\nYou can use the following extracted parts of a long document to help you answer the user\'s questions:\n".$job->content;
+        }
 
         $logger = new OpenObserveLogger([
             'jobId' => $job->job_id,
         ]);
-        $logger->log('info', 'Using Augmented prompt '.$systemPrompt);
+        $logger->log('info', 'Using Agent prompt '.$systemPrompt);
         $logger->close();
 
         $inferencer = new SimpleInferencer($this->httpClient);

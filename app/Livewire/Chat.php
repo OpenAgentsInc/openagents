@@ -23,8 +23,6 @@ use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
-use function implode;
-
 class Chat extends Component
 {
     use LivewireAlert, SelectedModelOrAgentTrait, WithFileUploads;
@@ -65,8 +63,6 @@ class Chat extends Component
             $agent = Agent::find(request()->query('agent'));
             if ($agent) {
                 $this->ensureThread();
-                //                $this->pending = $agent->is_rag_ready;
-                //                $this->selectedAgent = $this->getSelectedAgentFromId($agent->id);
             }
         }
 
@@ -199,40 +195,13 @@ class Chat extends Component
     public function sendMessage(): void
     {
         if (! empty($this->selectedAgent)) {
-            // Check if the action should be stopped
+            // Check if user can afford agent
+            // and lock funds
+            $agent = Agent::find($this->selectedAgent['id']);
+            $maxCost = $agent->getPriceRange()['max'];
+            // TODO
+            Log::info('Lock funds for agent '.$agent->id.' for '.$maxCost.' sats');
 
-            // TODO: This must be refactored to allow for agents that do not have files, for which RAG is irrelevant
-            //            if ($this->selectedAgent['is_rag_ready'] == false && $this->selectedAgent['created_at']->diffInMinutes() > 30) {
-            //                // Stop the action
-            //                // You can either return from a function, exit the script, throw an exception, etc., depending on the context
-            //                $this->alert('error', 'Agent is not available for interactions');
-            //
-            //                return; // or exit(); or throw new Exception('Action stopped due to Learning or Error state.');
-            //            } elseif ($this->selectedAgent['is_rag_ready'] == false) {
-            //
-            //                $this->alert('warning', 'Agent is still training..');
-            //
-            //                return;
-            //            }
-
-            // Agent is ready for chat. Deduct sats_per_message from user balance.
-            if (env('APP_ENV') === 'staging' && auth()->check() && auth()->user()->isAdmin()) {
-                $this->alert('info', 'Bypassed payment of '.$this->selectedAgent['sats_per_message'].' sats');
-            } else {
-                $payService = app(PaymentService::class);
-                try {
-                    $paid = $payService->payAgentForMessage($this->selectedAgent['id'], $this->selectedAgent['sats_per_message']);
-                    if (! $paid) {
-                        $this->alert('error', 'Failed to pay '.$this->selectedAgent['sats_per_message'].' sats');
-
-                        return;
-                    }
-                } catch (Exception $e) {
-                    $this->alert('error', 'Failed to pay '.$this->selectedAgent['sats_per_message'].' sats');
-
-                    return;
-                }
-            }
         }
 
         // Save this input even after we clear the form this variable is tied to
@@ -263,83 +232,8 @@ class Chat extends Component
             $this->js('$wire.simpleRun()');
         } else {
             $agent = Agent::find($this->selectedAgent['id']);
-            $isRagReady = $agent->is_rag_ready;
-            if (! $isRagReady) {
-                // Log::debug('RAG not ready. Skip for now...');
-                $this->js('$wire.runAgentWithoutRag()');
-            } else {
-                $docCount = AgentFile::where('agent_id', $this->selectedAgent['id'])->count();
-                if ($docCount > 0 || count($agent->externalTools()->pluck('external_uid')->toArray()) > 0) {
-                    // Log::debug('RAG Run');
-                    $this->js('$wire.ragRun()');
-                } else {
-                    // Log::debug('No document, skip RAG');
-                    $this->js('$wire.runAgentWithoutRag()');
-                }
-            }
-        }
-    }
+            $this->js('$wire.agentRun()');
 
-    public function runAgentWithoutRag(): void
-    {
-        $logger = new LocalLogger();
-        $logger->log("Running agent without RAG. Input: {$this->input}");
-
-        $userInput = $this->handleImageInput().$this->input;
-
-        $systemPrompt = implode("\n\n", [
-            "Your name is {$this->selectedAgent['name']}.",
-            "Your description is: {$this->selectedAgent['description']}",
-            "Your instructions are: {$this->selectedAgent['instructions']}.",
-            'Respond to the following user input:',
-        ]);
-
-        // Authenticate user session or proceed without it
-        $sessionId = auth()->check() ? null : Session::getId();
-
-        // Save user message to the thread
-        $userMessage = $this->thread->messages()->create([
-            'body' => $userInput,
-            'session_id' => $sessionId,
-            'user_id' => auth()->id() ?? null,
-        ]);
-
-        if (auth()->check() && auth()->user()->isPro() && $this->selectedAgent['pro_model']) {
-            $model = $this->selectedAgent['pro_model'];
-        } else {
-            $model = $this->selectedAgent['model'] ?? 'command-r-plus';
-        }
-
-        $inference = new SimpleInferencer();
-        $output = $inference->inference($userInput, $model, $this->thread, $this->getStreamingCallback(), $systemPrompt);
-
-        // Append the response to the chat
-        $message = [
-            'agent_id' => $this->selectedAgent['id'],
-            'agent' => $this->selectedAgent,
-            'body' => $output['content'],
-            'model' => null,
-            'user_id' => null,
-            'session_id' => $sessionId,
-            'input_tokens' => $output['input_tokens'],
-            'output_tokens' => $output['output_tokens'],
-        ];
-        $this->messages[] = $message;
-
-        // Save the agent's response to the thread
-        $this->thread->messages()->create($message);
-
-        // Update the original user message with the input tokens
-        $userMessage->update(['input_tokens' => $output['prompt_tokens']]);
-
-        // Reset pending status and scroll to the latest message
-        $this->pending = false;
-
-        // Optionally notify other components of the new message
-        $this->dispatch('message-created');
-
-        if (isset($output['error'])) {
-            $this->alert('error', $output['error']);
         }
     }
 
@@ -423,7 +317,7 @@ class Chat extends Component
         }
     }
 
-    public function ragRun(): void
+    public function agentRun(): void
     {
         $logger = new LocalLogger();
         $logger->log("Running agent with RAG. Input: {$this->input}");
@@ -448,7 +342,13 @@ class Chat extends Component
 
             $tools = $this->selectedAgent['tools_uids'] ?? [];
 
-            // Send RAG Job
+            $agent = Agent::find($this->selectedAgent['id']);
+            if (count($documents) > 0 && $agent->is_rag_ready) {
+                $this->alert('warning', 'Agent is still training..');
+
+                return;
+            }
+
             PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $tools);
 
         } catch (Exception $e) {
@@ -466,12 +366,50 @@ class Chat extends Component
         $sessionId = auth()->check() ? null : Session::getId();
 
         $job = PoolJob::where('thread_id', $this->thread->id)->find($event['job']['id']);
+        $agent = Agent::find($job->agent_id);
 
-        // Log::debug('Processing PoolJobReady event for thread '.$this->thread->id.' and job '.$event['job']['id']);
+        /////////////// PAYMENTS
+
+        // Agent is ready for chat. Deduct sats_per_message from user balance.
+        if (env('APP_ENV') === 'staging' && auth()->check() && auth()->user()->isAdmin()) {
+            $this->alert('info', 'Bypassed payment of '.$agent->sats_per_message.' sats');
+        } else {
+            $payService = app(PaymentService::class);
+            try {
+                $paid = $payService->payAgentForMessage($agent->id, $$agent->sats_per_message);
+                if (! $paid) {
+                    throw new Exception('Failed to pay '.$$agent->sats_per_message.' sats');
+                }
+            } catch (Exception $e) {
+                $this->alert('error', $e->getMessage());
+
+                return;
+            }
+        }
+
+        $paymentRequests = $job->paymentRequests();
+        foreach ($paymentRequests as $paymentRequest) {
+            $amount = $paymentRequest->amount;
+            $protocol = $paymentRequest->protocol;
+            $currency = $paymentRequest->currency;
+            $target = $paymentRequest->target;
+
+            Log::info('Simulate payment to '.$target.' of '.$amount.' '.$currency.' via '.$protocol);
+            // TODO
+            $paymentRequest->paid = true;
+            $paymentRequest->save();
+        }
+        ///////////////
 
         // Simply do it
+        if (auth()->check() && auth()->user()->isPro() && $this->selectedAgent['pro_model']) {
+            $model = $this->selectedAgent['pro_model'];
+        } else {
+            $model = $this->selectedAgent['model'] ?? 'command-r-plus';
+        }
+
         $inferencer = new PoolInference();
-        $output = $inferencer->inference($this->selectedModel, $job, $this->getStreamingCallback());
+        $output = $inferencer->inference($model, $job, $this->getStreamingCallback());
 
         // Append the response to the chat
         $message = [
