@@ -122,6 +122,7 @@ class JobResultReceiverJob implements ShouldQueue
                                 'target' => $lnAddress,
                                 'paid' => false,
                             ]);
+                            $logger->log('info', 'Added payment request for '.$sats.' sats to '.$lnAddress);
                             $totalCost += $sats;
                         }
                     }
