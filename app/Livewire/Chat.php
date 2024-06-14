@@ -387,7 +387,7 @@ class Chat extends Component
             }
         }
 
-        $paymentRequests = $job->paymentRequests();
+        $paymentRequests = $job->paymentRequests()->get();
         foreach ($paymentRequests as $paymentRequest) {
             $amount = $paymentRequest->amount;
             $protocol = $paymentRequest->protocol;
