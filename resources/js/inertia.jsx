@@ -12,7 +12,7 @@ createInertiaApp({
   },
   setup({ el, App, props }) {
     createRoot(el).render(
-      <AppProvider i18n={enTranslations}>
+      <AppProvider i18n={enTranslations} theme="dark-experimental">
         <App {...props} />
       </AppProvider>
     )
