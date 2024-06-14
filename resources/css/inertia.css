@@ -34,7 +34,7 @@
   --p-color-bg-fill-tertiary-hover: rgba(255,255,255,0.13) !important;
   --p-color-bg-fill-tertiary-active: rgba(255,255,255,0.13) !important;
   --p-color-bg-fill-hover: #000000 !important;
-  --p-color-bg-inverse: rgba(0, 0, 0, 0) !important; /* Inverse of dark is light */
+  --p-color-bg-inverse: rgba(0, 0, 0, 1) !important; /* Inverse of dark is light */
   --p-color-bg-surface: rgba(0, 0, 0, 1) !important; /* Black surface */
   --p-color-bg-surface-hover: rgba(20, 20, 20, 1) !important; /* Slightly lighter black for hover */
   --p-color-bg-surface-active: rgba(30, 30, 30, 1) !important; /* Slightly even lighter for active */
