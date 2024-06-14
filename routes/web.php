@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExplorerController;
 use App\Http\Controllers\LnAddressController;
 use App\Http\Controllers\NostrAuthController;
@@ -39,6 +40,8 @@ $authRoutes = [
     '/password/confirm',
     '/password/email',
 ];
+
+Route::get('/dashboard', [DashboardController::class, 'dashboard']);
 
 Route::get('/test', function () {
     return Inertia::render('Welcome', [

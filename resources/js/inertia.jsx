@@ -7,8 +7,8 @@ import {AppProvider} from '@shopify/polaris';
 
 createInertiaApp({
   resolve: name => {
-    const pages = import.meta.glob('./Pages/**/*.jsx', { eager: true })
-    return pages[`./Pages/${name}.jsx`]
+    const pages = import.meta.glob('./Pages/**/*.{jsx,tsx}', { eager: true });
+    return pages[`./Pages/${name}.jsx`] || pages[`./Pages/${name}.tsx`];
   },
   setup({ el, App, props }) {
     createRoot(el).render(
