@@ -22,7 +22,7 @@ class OpenObserveLogger
         $this->options = $options;
         if (! isset($this->options['stream'])) {
             $isProduction = env('APP_ENV') === 'production';
-            $this->options['stream'] = $isProduction ? 'logs' : 'playground_logs';
+            $this->options['stream'] = env('OPENOBSERVE_STREAM') ?? $isProduction ? 'logs' : 'playground_logs';
         }
         if (! isset($this->options['baseUrl'])) {
             $this->options['baseUrl'] = 'https://pool.openagents.com:5080';
