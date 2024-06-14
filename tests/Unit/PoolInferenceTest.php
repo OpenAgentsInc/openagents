@@ -11,6 +11,8 @@ test('PoolInferencer can inference', function () {
     $thread = Thread::factory()->create();
     $agent = Agent::factory()->create([
         'prompt' => 'You are an AI agent',
+        'name' => 'Test Agent',
+        'about' => 'Test Agent description',
     ]);
     $job = PoolJob::factory()->create([
         'agent_id' => $agent->id,
@@ -57,10 +59,9 @@ test('PoolInferencer can inference', function () {
             [
                 'role' => 'system',
                 'content' => "Your name is $agent->name.\n".
-                "Your description is: $agent->about\n".
-                "Your instructions are: $agent->prompt.\n".
-                "You can use the following extracted parts of a long document to help you answer the user\'s questions:\n".
-                 $job->content,
+                "Your description is: $agent->about.\n".
+                "Your instructions are: $agent->prompt.".
+                ($job->content ? "\nYou can use the following extracted parts of a long document to help you answer the user\'s questions:\n".$job->content : ''),
             ],
             [
                 'role' => 'user',
@@ -68,7 +69,7 @@ test('PoolInferencer can inference', function () {
             ],
         ],
         'stream' => true,
-        'max_tokens' => 1945,
+        'max_tokens' => 1943,
     ], $payload);
 
     expect($result)->toBeArray();
