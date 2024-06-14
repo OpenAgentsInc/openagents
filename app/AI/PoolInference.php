@@ -26,7 +26,7 @@ class PoolInference
 
         $systemPrompt = implode("\n", [
             "Your name is {$agent->name}.",
-            "Your description is: {$agent->about}",
+            "Your description is: {$agent->about}.",
             "Your instructions are: {$agent->prompt}.",
         ]);
 
