@@ -403,9 +403,9 @@ class Chat extends Component
 
         // Simply do it
         if (auth()->check() && auth()->user()->isPro() && $this->selectedAgent['pro_model']) {
-            $model = $this->selectedAgent['pro_model'];
+            $model = $agent->pro_model ?? 'command-r-plus';
         } else {
-            $model = $this->selectedAgent['model'] ?? 'command-r-plus';
+            $model = $agent->model ?? 'command-r-plus';
         }
 
         $inferencer = new PoolInference();
