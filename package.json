@@ -19,6 +19,7 @@
     },
     "dependencies": {
         "@getalby/sdk": "^3.4.0",
+        "@inertiajs/react": "^1.2.0",
         "@ryangjchandler/alpine-tooltip": "^2.0.0",
         "@sweetalert2/theme-dark": "^5.0.16",
         "@sweetalert2/themes": "^5.0.16",
