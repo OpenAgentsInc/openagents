@@ -26,6 +26,7 @@ use App\Livewire\Store;
 use App\Livewire\UserProfile;
 use App\Livewire\WalletScreen;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // REDIRECT DEFAULT AUTH TO HOME
@@ -38,6 +39,12 @@ $authRoutes = [
     '/password/confirm',
     '/password/email',
 ];
+
+Route::get('/test', function () {
+    return Inertia::render('Welcome', [
+        'user' => ['name' => 'Test Man']
+    ]);
+});
 
 // Redirect all authentication routes to home
 Route::match(['get', 'post'], '/{authRoute}', function () {

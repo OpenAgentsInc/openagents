@@ -1,6 +1,5 @@
 import {defineConfig} from 'vite';
 import laravel, {refreshPaths} from 'laravel-vite-plugin';
-import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig(({command}) => {
@@ -15,7 +14,6 @@ export default defineConfig(({command}) => {
 
     return {
         plugins: [
-            react(),
             laravel({
                 input: [
                     'resources/css/app.css',
