@@ -1,6 +1,9 @@
 import React from 'react'
 import { createInertiaApp } from '@inertiajs/react'
 import { createRoot } from 'react-dom/client'
+import '@shopify/polaris/build/esm/styles.css';
+import enTranslations from '@shopify/polaris/locales/en.json';
+import {AppProvider} from '@shopify/polaris';
 
 createInertiaApp({
   resolve: name => {
@@ -8,6 +11,10 @@ createInertiaApp({
     return pages[`./Pages/${name}.jsx`]
   },
   setup({ el, App, props }) {
-    createRoot(el).render(<App {...props} />)
+    createRoot(el).render(
+      <AppProvider i18n={enTranslations}>
+        <App {...props} />
+      </AppProvider>
+    )
   },
 })
