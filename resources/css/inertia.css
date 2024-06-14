@@ -13,9 +13,19 @@
   border-radius: 8px;
 }
 
+.Button.Button:active {
+  fill:rgba(7, 7, 7, 1) !important;
+}
+
 :root {
   --p-color-bg: #000000 !important;
-  --p-color-bg-fill-tertiary: #262626 !important;
+  --p-color-bg-fill: #000000 !important;
+  --pc-button-bg_active: #000000 !important;
+  --pc-button-icon-fill_active: #000000 !important;
+  --p-color-bg-fill-tertiary: #1a1a1a !important;
+  --p-color-bg-fill-tertiary-hover: rgba(255,255,255,0.13) !important;
+  --p-color-bg-fill-tertiary-active: rgba(255,255,255,0.13) !important;
+  --p-color-bg-fill-hover: #000000 !important;
   --p-color-bg-inverse: rgba(241, 241, 241, 1) !important; /* Inverse of dark is light */
   --p-color-bg-surface: rgba(0, 0, 0, 1) !important; /* Black surface */
   --p-color-bg-surface-hover: rgba(20, 20, 20, 1) !important; /* Slightly lighter black for hover */
@@ -28,8 +38,8 @@
   --p-color-bg-surface-secondary-selected: rgba(50, 50, 50, 1) !important; /* Same as active for selected state */
   --p-color-bg-surface-tertiary: rgba(30, 30, 30, 1) !important; /* Lighter than secondary */
   --p-color-bg-surface-tertiary-hover: rgba(50, 50, 50, 1) !important; /* Slightly lighter for hover on tertiary */
-  --p-color-bg-surface-tertiary-active: rgba(70, 70, 70, 1) !important; /* Even lighter for active */
-  --p-color-bg-surface-brand: rgba(70, 70, 70, 1) !important; /* Similar shade for brand */
+  --p-color-bg-surface-tertiary-active: rgba(7, 7, 7, 1) !important; /* Even lighter for active */
+  --p-color-bg-surface-brand: rgba(7, 7, 7, 1) !important; /* Similar shade for brand */
   --p-color-bg-surface-brand-hover: rgba(50, 50, 50, 1) !important; /* Slightly lighter for hover */
   --p-color-bg-surface-brand-active: rgba(35, 35, 35, 1) !important; /* Slightly darker for active */
 }
