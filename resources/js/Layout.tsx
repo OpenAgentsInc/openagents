@@ -1,6 +1,12 @@
 import React, { useCallback, useState } from 'react';
-import { Frame, TopBar } from "@shopify/polaris";
-import { ArrowLeftIcon } from '@shopify/polaris-icons';
+import { Frame, Navigation, TopBar } from "@shopify/polaris";
+import {
+  HomeIcon,
+  PlusCircleIcon,
+  ProductIcon,
+  MinusCircleIcon,
+  OrderIcon,
+} from '@shopify/polaris-icons';
 
 export default function Layout({ children }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -44,8 +50,67 @@ export default function Layout({ children }) {
   };
 
   return (
-    <Frame logo={logo} topBar={topBar}>
+    <Frame logo={logo} topBar={topBar} navigation={<NavigationIs />}>
       {children}
     </Frame>
+  )
+}
+
+function NavigationIs() {
+  return (
+    <Navigation location="/dashboard">
+      <Navigation.Section
+        items={[
+          {
+            url: '/',
+            excludePaths: ['#'],
+            label: 'Home',
+            icon: HomeIcon,
+            selected: false,
+          },
+          {
+            url: '#',
+            excludePaths: ['#'],
+            label: 'Orders',
+            icon: OrderIcon,
+            badge: '2',
+            secondaryActions: [
+              {
+                url: '#',
+                accessibilityLabel: 'Add a product',
+                icon: PlusCircleIcon,
+                tooltip: {
+                  content: 'Create new order',
+                },
+              },
+            ],
+          },
+          {
+            url: '#',
+            excludePaths: ['#'],
+            label: 'Products',
+            icon: ProductIcon,
+            secondaryActions: [
+              {
+                url: '#',
+                accessibilityLabel: 'Add a product',
+                icon: PlusCircleIcon,
+                tooltip: {
+                  content: 'Add a product',
+                },
+              },
+              {
+                accessibilityLabel: 'Remove a product',
+                icon: MinusCircleIcon,
+                onClick: () => { },
+                tooltip: {
+                  content: 'Remove a product',
+                },
+              },
+            ],
+          },
+        ]}
+      />
+    </Navigation>
   )
 }
