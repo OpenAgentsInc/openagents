@@ -1,0 +1,152 @@
+* {
+  font-family: 'JetBrains Mono' !important;
+}
+
+.Polaris-TextField {
+  border-color: #262626;
+  border-width: 3px;
+}
+
+.Polaris-TextField input {
+  background-color: black;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px;
+}
+
+.Button.Button:active {
+  fill:rgba(7, 7, 7, 1) !important;
+}
+
+:root {
+  --p-color-input-bg-surface: #000000 !important;
+  --p-color-input-bg-surface-hover: #0a0a0a !important;
+  --p-color-bg: #000000 !important;
+  --p-color-bg-fill: #000000 !important;
+  --pc-button-bg_active: #000000 !important;
+  --pc-button-icon-fill_active: #000000 !important;
+  --p-color-bg-fill-tertiary: #1a1a1a !important;
+  --p-color-bg-fill-tertiary-hover: rgba(255,255,255,0.13) !important;
+  --p-color-bg-fill-tertiary-active: rgba(255,255,255,0.13) !important;
+  --p-color-bg-fill-hover: #000000 !important;
+  --p-color-bg-inverse: rgba(241, 241, 241, 1) !important; /* Inverse of dark is light */
+  --p-color-bg-surface: rgba(0, 0, 0, 1) !important; /* Black surface */
+  --p-color-bg-surface-hover: rgba(20, 20, 20, 1) !important; /* Slightly lighter black for hover */
+  --p-color-bg-surface-active: rgba(30, 30, 30, 1) !important; /* Slightly even lighter for active */
+  --p-color-bg-surface-selected: rgba(35, 35, 35, 1) !important; /* Slightly lighter for selected */
+  --p-color-bg-surface-disabled: rgba(255, 255, 255, 0.05) !important; /* Disabled surface with slight transparency */
+  --p-color-bg-surface-secondary: rgba(20, 20, 20, 1) !important; /* Slightly lighter than primary surface */
+  --p-color-bg-surface-secondary-hover: rgba(35, 35, 35, 1) !important; /* Slightly lighter than secondary for hover */
+  --p-color-bg-surface-secondary-active: rgba(50, 50, 50, 1) !important; /* Slightly lighter for active state */
+  --p-color-bg-surface-secondary-selected: rgba(50, 50, 50, 1) !important; /* Same as active for selected state */
+  --p-color-bg-surface-tertiary: rgba(30, 30, 30, 1) !important; /* Lighter than secondary */
+  --p-color-bg-surface-tertiary-hover: rgba(50, 50, 50, 1) !important; /* Slightly lighter for hover on tertiary */
+  --p-color-bg-surface-tertiary-active: rgba(7, 7, 7, 1) !important; /* Even lighter for active */
+  --p-color-bg-surface-brand: rgba(7, 7, 7, 1) !important; /* Similar shade for brand */
+  --p-color-bg-surface-brand-hover: rgba(50, 50, 50, 1) !important; /* Slightly lighter for hover */
+  --p-color-bg-surface-brand-active: rgba(35, 35, 35, 1) !important; /* Slightly darker for active */
+}
+
+font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Thin.woff2') format('woff2');
+  font-weight: 100; /* Thin */
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-ThinItalic.woff2') format('woff2');
+  font-weight: 100; /* Thin */
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-ExtraLight.woff2') format('woff2');
+  font-weight: 200; /* ExtraLight */
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-ExtraLightItalic.woff2') format('woff2');
+  font-weight: 200; /* ExtraLight */
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Light.woff2') format('woff2');
+  font-weight: 300; /* Light */
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-LightItalic.woff2') format('woff2');
+  font-weight: 300; /* Light */
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+  font-weight: 500; /* Medium */
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-MediumItalic.woff2') format('woff2');
+  font-weight: 500; /* Medium */
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-SemiBold.woff2') format('woff2');
+  font-weight: 600; /* SemiBold */
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-SemiBoldItalic.woff2') format('woff2');
+  font-weight: 600; /* SemiBold */
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+  font-weight: 700; /* Bold */
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-BoldItalic.woff2') format('woff2');
+  font-weight: 700; /* Bold */
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-ExtraBold.woff2') format('woff2');
+  font-weight: 800; /* ExtraBold */
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-ExtraBoldItalic.woff2') format('woff2');
+  font-weight: 800; /* ExtraBold */
+  font-style: italic;
+}
