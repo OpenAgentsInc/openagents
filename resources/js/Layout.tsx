@@ -13,12 +13,12 @@ export default function Layout({ children }) {
   const userMenuMarkup = (
     <TopBar.UserMenu
       actions={[
-        {
-          items: [{ content: 'Back to OpenAgents', icon: ArrowLeftIcon }],
-        },
-        {
-          items: [{ content: 'Community forums' }],
-        },
+        // {
+        //   items: [{ content: 'Back to OpenAgents', icon: ArrowLeftIcon }],
+        // },
+        // {
+        //   items: [{ content: 'Community forums' }],
+        // },
       ]}
       name="TestUser"
       // detail="Agent Builder"
