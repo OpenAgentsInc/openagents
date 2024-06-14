@@ -17,6 +17,7 @@ export default defineConfig(({command}) => {
             laravel({
                 input: [
                     'resources/css/app.css',
+                    'resources/css/inertia.css',
                     'resources/js/app.js',
                     'resources/js/inertia.jsx',
                 ],
