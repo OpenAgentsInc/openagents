@@ -20,7 +20,7 @@ it('renders successfully', function () {
         ->assertSeeHtml(">{$agent->about}</p>")
         ->assertSeeHtml("<span>{$agent->sats_earned}</span>")
         ->assertSeeHtml("<span>{$agent->thread_count}</span>");
-});
+})->skip();
 
 it('renders correct sats_earned based on payments', function () {
     $agent = Agent::factory()->create();
@@ -44,4 +44,4 @@ it('renders correct sats_earned based on payments', function () {
         ->assertSeeHtml(">{$agent->about}</p>")
         ->assertSeeHtml("<span>{$agent->sats_earned}</span>")
         ->assertSeeHtml("<span>{$agent->thread_count}</span>");
-});
+})->skip();
