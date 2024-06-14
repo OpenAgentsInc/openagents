@@ -394,10 +394,12 @@ class Chat extends Component
             $currency = $paymentRequest->currency;
             $target = $paymentRequest->target;
 
-            Log::info('Simulate payment to '.$target.' of '.$amount.' '.$currency.' via '.$protocol);
-            // TODO
-            $paymentRequest->paid = true;
-            $paymentRequest->save();
+            if (! $paymentRequest->paid) {
+                Log::info('Simulate payment to '.$target.' of '.$amount.' '.$currency.' via '.$protocol);
+                // TODO
+                $paymentRequest->paid = true;
+                $paymentRequest->save();
+            }
         }
         ///////////////
 
