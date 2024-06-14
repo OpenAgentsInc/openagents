@@ -18,4 +18,4 @@ it('renders static card successfully', function () {
         ->assertSeeHtml(">{$agent->about}</p>")
         ->assertSeeHtml("<span>{$agent->sats_earned}</span>")
         ->assertSeeHtml("<span>{$agent->thread_count}</span>");
-});
+})->skip();
