@@ -76,9 +76,9 @@ class JobResultReceiverJob implements ShouldQueue
                     $logger->log('info', 'Propagating content '.$this->content);
 
                     $contentData = json_decode($this->content, true);
-                    $content = $contentData['content'];
-                    $meta = $contentData['meta'];
-                    $usedToolIds = $meta['usedTools'];
+                    $content = $contentData['content'] ?? '';
+                    $meta = $contentData['meta'] ?? [];
+                    $usedToolIds = $meta['usedTools'] ?? [];
 
                     // Track plugin usage
                     $availableTools = PoolUtils::getTools();
@@ -112,8 +112,8 @@ class JobResultReceiverJob implements ShouldQueue
                         }
 
                         $lnAddress = $meta['payment'];
-                        if (strpos($lnAddress, 'lightning"') === 0) {
-                            $lnAddress = substr($lnAddress, 11, -1);
+                        if (strpos($lnAddress, 'lightning:') === 0) {
+                            $lnAddress = substr($lnAddress, 10);
 
                             // PAY
                             Log::info('Simulate payment to '.$lnAddress.' for '.$sats.' sats');
