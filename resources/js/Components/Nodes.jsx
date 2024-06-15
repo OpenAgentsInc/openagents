@@ -106,9 +106,10 @@ export const Node = forwardRef(
 
     return (
       <group>
-        <Circle ref={ref} {...bind()} opacity={0.2} radius={0.5} color={color} position={pos} {...props}>
-          {/* Optional: Visual representation */}
+        <Circle args={[0.4, 99, 8]} ref={ref} {...bind()} opacity={0.02} radius={0.01} color="red" position={pos} {...props}>
+
         </Circle>
+
         <Html position={pos.toArray()}>
           <div onPointerOver={() => setHovered(true)} onPointerOut={() => setHovered(false)}>
             <CustomCard title={name} description={description} />

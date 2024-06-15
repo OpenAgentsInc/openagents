@@ -1,18 +1,19 @@
 import React, { createRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Page } from '@shopify/polaris';
+import { AppProvider, Page } from '@shopify/polaris';
 import { Node, Nodes } from '../Components/Nodes'
+import enTranslations from '@shopify/polaris/locales/en.json';
 
 export default function PluginMap() {
   const [[a, b, c, d, e]] = useState(() => [...Array(5)].map(createRef))
   return (
     <Canvas orthographic camera={{ zoom: 80 }}>
       <Nodes>
-        <Node ref={a} name="a" color="#525458" position={[-2, 2, 0]} connectedTo={[b, c, e]} />
-        <Node ref={b} name="b" color="#525458" position={[2, -3, 0]} connectedTo={[d, a]} />
-        <Node ref={c} name="c" color="#525458" position={[-0.25, 0, 0]} />
-        <Node ref={d} name="d" color="#525458" position={[0.5, -0.75, 0]} />
-        <Node ref={e} name="e" color="#525458" position={[-0.5, -1, 0]} />
+        <Node ref={a} position={[-6, 3, 0]} name="Plugin A" description="Here's an example" color="#525458" connectedTo={[b, c, e]} />
+        <Node ref={b} position={[4, 3.4, 0]} name="Plugin B" description="Hello a test description" color="#525458" connectedTo={[d, a]} />
+        <Node ref={c} position={[-3.35, 1.2, 0]} name="Plugin C" color="#525458" />
+        <Node ref={d} position={[0.5, -0.75, 0]} name="Plugin D" color="#525458" />
+        <Node ref={e} position={[-3.5, -2, 0]} name="Plugin E" color="#525458" />
       </Nodes>
     </Canvas>
   )
