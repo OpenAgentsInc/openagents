@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExplorerController;
 use App\Http\Controllers\LnAddressController;
 use App\Http\Controllers\NostrAuthController;
@@ -40,14 +41,9 @@ $authRoutes = [
     '/password/email',
 ];
 
-Route::get('/test', function () {
-    return Inertia::render('Welcome', [
-        'user' => ['name' => 'Test Man']
-    ]);
-});
-Route::get('/test2', function () {
-    return Inertia::render('NavTest');
-});
+Route::get('/dashboard', [DashboardController::class, 'dashboard']);
+Route::get('/test', [DashboardController::class, 'test']);
+Route::get('/test2', [DashboardController::class, 'test2']);
 
 // Redirect all authentication routes to home
 Route::match(['get', 'post'], '/{authRoute}', function () {
