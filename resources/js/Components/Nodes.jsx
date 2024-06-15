@@ -10,20 +10,11 @@ import React, {
 } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
-import { QuadraticBezierLine, Text } from "@react-three/drei";
+import { Circle, QuadraticBezierLine, Html } from "@react-three/drei";
 import { useDrag } from "@use-gesture/react";
+import CustomCard from './CustomCard'; // Import your CustomCard component
 
 const context = createContext();
-
-const Circle = forwardRef(
-  ({ children, opacity = 1, radius = 0.05, segments = 32, color = "#ff1050", ...props }, ref) => (
-    <mesh ref={ref} {...props}>
-      <circleGeometry args={[radius, segments]} />
-      <meshBasicMaterial transparent={opacity < 1} opacity={opacity} color={color} />
-      {children}
-    </mesh>
-  )
-);
 
 export function Nodes({ children }) {
   const group = useRef();
@@ -68,8 +59,7 @@ export function Nodes({ children }) {
       {children}
       {lines.map(({ start, end }, index) => (
         <group key={index} position-z={1}>
-          <Circle position={start} />
-          <Circle position={end} />
+          {/* Optional: Add visual indicators like circles here if needed */}
         </group>
       ))}
     </context.Provider>
@@ -77,7 +67,7 @@ export function Nodes({ children }) {
 }
 
 export const Node = forwardRef(
-  ({ color = "black", name, connectedTo = [], position = [0, 0, 0], ...props }, ref) => {
+  ({ color = "black", name, connectedTo = [], position = [0, 0, 0], description = 'No description', ...props }, ref) => {
     const set = useContext(context);
     const { size, camera, gl } = useThree();
     const [pos, setPos] = useState(() => new THREE.Vector3(...position));
@@ -115,19 +105,16 @@ export const Node = forwardRef(
     });
 
     return (
-      <Circle ref={ref} {...bind()} opacity={0.2} radius={0.5} color={color} position={pos} {...props}>
-        <Circle
-          radius={0.25}
-          position={[0, 0, 0.1]}
-          onPointerOver={() => setHovered(true)}
-          onPointerOut={() => setHovered(false)}
-          color={hovered ? "rgba(56,56,56)" : color}
-        >
-          <Text position={[0, 0, 1]} fontSize={0.25}>
-            {name}
-          </Text>
+      <group>
+        <Circle ref={ref} {...bind()} opacity={0.2} radius={0.5} color={color} position={pos} {...props}>
+          {/* Optional: Visual representation */}
         </Circle>
-      </Circle>
+        <Html position={pos.toArray()}>
+          <div onPointerOver={() => setHovered(true)} onPointerOut={() => setHovered(false)}>
+            <CustomCard title={name} description={description} />
+          </div>
+        </Html>
+      </group>
     );
   }
 );
