@@ -2,13 +2,10 @@ import React, { useCallback, useState } from 'react';
 import { Frame, Navigation, TopBar } from "@shopify/polaris";
 import {
   HomeIcon,
-  PlusCircleIcon,
-  ProductIcon,
   ExitIcon,
   AppExtensionIcon,
   AffiliateIcon,
-  MinusCircleIcon,
-  OrderIcon,
+  GaugeIcon,
 } from '@shopify/polaris-icons';
 import { Head } from '@inertiajs/react';
 
@@ -70,9 +67,15 @@ function NavigationIs() {
       <Navigation.Section
         items={[
           {
+            url: '/',
+            label: 'Home',
+            icon: HomeIcon,
+            selected: false,
+          },
+          {
             url: '/dashboard',
             label: 'Dashboard',
-            icon: HomeIcon,
+            icon: GaugeIcon,
             selected: true,
           },
           {
