@@ -12,6 +12,10 @@ class DashboardController extends Controller
         return Inertia::render('Dashboard');
     }
 
+    public function plugin_map () {
+        return Inertia::render('PluginMap');
+    }
+
     public function test () {
         return Inertia::render('Welcome', [
             'user' => ['name' => 'Test Man']

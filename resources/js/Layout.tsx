@@ -9,7 +9,7 @@ import {
   PlusCircleIcon,
   ChatIcon
 } from '@shopify/polaris-icons';
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 
 export default function Layout({ children }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -64,33 +64,35 @@ export default function Layout({ children }) {
 }
 
 function NavigationIs() {
+  const { url } = usePage()
   return (
-    <Navigation location="/dashboard">
+    <Navigation location={url}>
       <Navigation.Section
         items={[
           {
             url: '/',
             label: 'Home',
             icon: HomeIcon,
-            selected: false,
+            selected: url === '/',
           },
           {
             url: '/dashboard',
             label: 'Dashboard',
             icon: GaugeIcon,
-            selected: true,
+            selected: url === '/dashboard',
           },
+          // {
+          //   url: '/agents',
+          //   label: 'Agents',
+          //   icon: AffiliateIcon,
+          //   badge: '2',
+          // },
           {
-            url: '/agents',
-            label: 'Agents',
-            icon: AffiliateIcon,
-            badge: '2',
-          },
-          {
-            url: '/plugins',
-            label: 'Plugins',
+            url: '/plugin-map',
+            label: 'Plugin Map',
             icon: AppExtensionIcon,
-            badge: '4',
+            selected: url === '/plugin-map'
+            // badge: '4',
           },
           // {
           //   url: '#',
@@ -118,7 +120,7 @@ function NavigationIs() {
           // },
         ]}
       />
-      <Navigation.Section
+      {/* <Navigation.Section
         title="Chats"
         items={[
           {
@@ -133,7 +135,7 @@ function NavigationIs() {
           icon: PlusCircleIcon,
           onClick: () => { },
         }}
-      />
+      /> */}
     </Navigation>
   )
 }
