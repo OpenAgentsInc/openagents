@@ -15,7 +15,7 @@ function Node() {
   const [hovered, setHovered] = useState(false);
   return (
     <Html>
-      <div onPointerOver={() => setHovered(true)} onPointerOut={() => setHovered(false)}>
+      <div className="cursor-pointer" onPointerOver={() => setHovered(true)} onPointerOut={() => setHovered(false)}>
         <CustomCard title="Test Node" description={`Test Description. Hovered ${hovered}`} />
       </div>
     </Html>
