@@ -20,8 +20,10 @@
     "dependencies": {
         "@getalby/sdk": "^3.4.0",
         "@inertiajs/react": "^1.2.0",
+        "@react-spring/web": "^9.7.3",
         "@react-three/drei": "^9.106.2",
         "@react-three/fiber": "^8.16.8",
+        "@react-three/postprocessing": "^2.16.2",
         "@ryangjchandler/alpine-tooltip": "^2.0.0",
         "@shopify/polaris": "^13.5.0",
         "@sweetalert2/theme-dark": "^5.0.16",
@@ -37,6 +39,7 @@
         "shiki": "^1.1.7",
         "sweetalert2": "^11.10.7",
         "three": "^0.165.0",
+        "three-stdlib": "^2.30.3",
         "tippy.js": "^6.3.7"
     }
 }

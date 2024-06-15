@@ -14,6 +14,9 @@ export default {
 
     theme: {
         extend: {
+            boxShadow: {
+              'white-glow': '20px 20px 20px rgba(255, 255, 255, 0.8)',
+            },
             fontFamily: {
                 mono: ['"JetBrains Mono"', ...defaultTheme.fontFamily.mono],
                 berkeley: ['"Berkeley Mono"', ...defaultTheme.fontFamily.mono]
