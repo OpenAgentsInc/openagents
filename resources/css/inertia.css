@@ -2,6 +2,10 @@
   font-family: 'JetBrains Mono' !important;
 }
 
+.Polaris-Box {
+  min-width: 300px !important;
+}
+
 .Polaris-TextField {
   border-color: #262626;
   border-width: 3px;
