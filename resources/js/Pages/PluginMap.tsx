@@ -6,7 +6,6 @@ import { Node, Nodes } from '../Components/Nodes'
 export default function PluginMap() {
   const [[a, b, c, d, e]] = useState(() => [...Array(5)].map(createRef))
   return (
-
     <Canvas orthographic camera={{ zoom: 80 }}>
       <Nodes>
         <Node ref={a} name="a" color="#204090" position={[-2, 2, 0]} connectedTo={[b, c, e]} />
@@ -16,12 +15,5 @@ export default function PluginMap() {
         <Node ref={e} name="e" color="#204090" position={[-0.5, -1, 0]} />
       </Nodes>
     </Canvas>
-
   )
-
-  // return (
-  //
-
-  //   </Page>
-  // )
 }
