@@ -20,11 +20,13 @@
     "dependencies": {
         "@getalby/sdk": "^3.4.0",
         "@inertiajs/react": "^1.2.0",
+        "@react-three/drei": "^9.106.2",
         "@react-three/fiber": "^8.16.8",
         "@ryangjchandler/alpine-tooltip": "^2.0.0",
         "@shopify/polaris": "^13.5.0",
         "@sweetalert2/theme-dark": "^5.0.16",
         "@sweetalert2/themes": "^5.0.16",
+        "@use-gesture/react": "^10.3.1",
         "choices.js": "^10.2.0",
         "filepond": "^4.31.1",
         "filepond-plugin-file-validate-size": "^2.2.8",
