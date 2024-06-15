@@ -6,6 +6,8 @@ import {
   AppExtensionIcon,
   AffiliateIcon,
   GaugeIcon,
+  PlusCircleIcon,
+  ChatIcon
 } from '@shopify/polaris-icons';
 import { Head } from '@inertiajs/react';
 
@@ -115,6 +117,22 @@ function NavigationIs() {
           //   ],
           // },
         ]}
+      />
+      <Navigation.Section
+        title="Chats"
+        items={[
+          {
+            url: '#',
+            excludePaths: ['#'],
+            label: 'How does this work',
+            icon: ChatIcon,
+          },
+        ]}
+        action={{
+          accessibilityLabel: 'Add sales channel',
+          icon: PlusCircleIcon,
+          onClick: () => { },
+        }}
       />
     </Navigation>
   )
