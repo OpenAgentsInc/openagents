@@ -43,6 +43,7 @@ $authRoutes = [
 
 Route::get('/dashboard', [DashboardController::class, 'dashboard']);
 Route::get('/plugin-map', [DashboardController::class, 'plugin_map']);
+Route::get('/scratchpad', [DashboardController::class, 'scratchpad']);
 Route::get('/test', [DashboardController::class, 'test']);
 Route::get('/test2', [DashboardController::class, 'test2']);
 

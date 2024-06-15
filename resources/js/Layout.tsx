@@ -94,6 +94,12 @@ function NavigationIs() {
             selected: url === '/plugin-map'
             // badge: '4',
           },
+          {
+            url: '/scratchpad',
+            label: 'Scratchpad',
+            icon: AppExtensionIcon,
+            selected: url === '/scratchpad'
+          }
           // {
           //   url: '#',
           //   excludePaths: ['#'],
