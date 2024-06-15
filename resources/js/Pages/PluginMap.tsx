@@ -1,8 +1,6 @@
 import React, { createRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { AppProvider, Page } from '@shopify/polaris';
 import { Node, Nodes } from '../Components/Nodes'
-import enTranslations from '@shopify/polaris/locales/en.json';
 
 export default function PluginMap() {
   const [[a, b, c, d, e]] = useState(() => [...Array(5)].map(createRef))
