@@ -10,6 +10,7 @@ import {
   MinusCircleIcon,
   OrderIcon,
 } from '@shopify/polaris-icons';
+import { Head } from '@inertiajs/react';
 
 export default function Layout({ children }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -54,9 +55,12 @@ export default function Layout({ children }) {
   };
 
   return (
-    <Frame logo={logo} topBar={topBar} navigation={<NavigationIs />}>
-      {children}
-    </Frame>
+    <>
+      <Head title="OpenAgents" />
+      <Frame logo={logo} topBar={topBar} navigation={<NavigationIs />}>
+        {children}
+      </Frame>
+    </>
   )
 }
 
