@@ -25,13 +25,19 @@
   background-color: transparent;
 }
 
+.Polaris-Navigation__Item--selected .Polaris-Navigation__Icon svg, .Polaris-Navigation__Item--selected:hover .Polaris-Navigation__Icon svg, .Polaris-Navigation--subNavigationActive .Polaris-Navigation__Icon svg, .Polaris-Navigation--subNavigationActive:hover .Polaris-Navigation__Icon svg, .Polaris-Navigation--itemChildActive .Polaris-Navigation__Icon svg, .Polaris-Navigation--itemChildActive:hover .Polaris-Navigation__Icon svg, .Polaris-Navigation__Item--selected:focus-visible .Polaris-Navigation__Icon svg {
+  fill: #ffffff !important;
+}
+
 :root {
   --p-color-input-bg-surface: #000000 !important;
   --p-color-input-bg-surface-hover: #0a0a0a !important;
   --p-color-nav-bg-surface-active: #2a2a2a !important;
   --p-color-nav-bg-surface-hover: #1a1a1a !important;
   --p-color-avatar-one-bg-fill: #1a1a1a !important;
+  --p-color-nav-bg-surface-selected: #1a1a1a !important;
   --p-color-bg: #000000 !important;
+  --p-color-text: #ffffff !important;
   --p-color-nav-bg: #000000 !important;
   --p-color-bg-fill: #000000 !important;
   --pc-button-bg_active: #000000 !important;

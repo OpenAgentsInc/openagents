@@ -5,6 +5,8 @@ import {
   PlusCircleIcon,
   ProductIcon,
   ExitIcon,
+  AppExtensionIcon,
+  AffiliateIcon,
   MinusCircleIcon,
   OrderIcon,
 } from '@shopify/polaris-icons';
@@ -65,52 +67,46 @@ function NavigationIs() {
         items={[
           {
             url: '/dashboard',
-            excludePaths: ['#'],
             label: 'Dashboard',
             icon: HomeIcon,
-            selected: false,
+            selected: true,
           },
           {
-            url: '#',
-            excludePaths: ['#'],
-            label: 'Orders',
-            icon: OrderIcon,
+            url: '/agents',
+            label: 'Agents',
+            icon: AffiliateIcon,
             badge: '2',
-            secondaryActions: [
-              {
-                url: '#',
-                accessibilityLabel: 'Add a product',
-                icon: PlusCircleIcon,
-                tooltip: {
-                  content: 'Create new order',
-                },
-              },
-            ],
           },
           {
-            url: '#',
-            excludePaths: ['#'],
-            label: 'Products',
-            icon: ProductIcon,
-            secondaryActions: [
-              {
-                url: '#',
-                accessibilityLabel: 'Add a product',
-                icon: PlusCircleIcon,
-                tooltip: {
-                  content: 'Add a product',
-                },
-              },
-              {
-                accessibilityLabel: 'Remove a product',
-                icon: MinusCircleIcon,
-                onClick: () => { },
-                tooltip: {
-                  content: 'Remove a product',
-                },
-              },
-            ],
+            url: '/plugins',
+            label: 'Plugins',
+            icon: AppExtensionIcon,
+            badge: '4',
           },
+          // {
+          //   url: '#',
+          //   excludePaths: ['#'],
+          //   label: 'Products',
+          //   icon: ProductIcon,
+          //   secondaryActions: [
+          //     {
+          //       url: '#',
+          //       accessibilityLabel: 'Add a product',
+          //       icon: PlusCircleIcon,
+          //       tooltip: {
+          //         content: 'Add a product',
+          //       },
+          //     },
+          //     {
+          //       accessibilityLabel: 'Remove a product',
+          //       icon: MinusCircleIcon,
+          //       onClick: () => { },
+          //       tooltip: {
+          //         content: 'Remove a product',
+          //       },
+          //     },
+          //   ],
+          // },
         ]}
       />
     </Navigation>
