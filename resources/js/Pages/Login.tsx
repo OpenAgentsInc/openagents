@@ -7,10 +7,12 @@ function LoginPage () {
       <div className="mb-8 gap-y-6 w-full flex flex-col items-center justify-center">
         <img className="w-20 h-20" src="/images/sqlogo-t.png" />
         <h1 className="text-xl font-bold">Log in to OpenAgents</h1>
-            <button className="w-full flex justify-center gap-2 mb-0 h-[44px]">
-                <div className="h-5 w-5 rounded-full bg-offblack" />
-                <span className="">Continue with X</span>
-            </button>
+        <a href="/login/x">
+        <button className="inline-flex items-center px-4 py-2 bg-black border border-gray-300 dark:border-gray-500 rounded-md font-semibold text-gray-700 dark:text-gray-300 tracking-wide shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none disabled:opacity-25 transition ease-in-out duration-150 w-full flex justify-center gap-2 mb-0 h-[44px]">
+          <div className="h-5 w-5 rounded-full bg-white" />
+          <span className="text-md">Continue with X</span>
+        </button>
+        </a>
       </div>
     </div>
   );
