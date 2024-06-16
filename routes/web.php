@@ -141,11 +141,6 @@ Route::post('/webhook/pool', [PoolWebhookReceiver::class, 'handleEvent']);
 // Logout via GET not just POST
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
-// Catch-all redirect to the homepage
-Route::get('/login', function () {
-    return redirect('/');
-});
-
 Route::get('/{any}', function () {
     return redirect('/');
 })->where('any', '.*');
