@@ -164,13 +164,14 @@ class Chat extends Component
     {
         $this->hasSelection = true;
         $this->ensureThread();
-        $ac = Models::hasModelAccess($model);
+        $ac = $model ? Models::hasModelAccess($model) : false;
         if ($ac) {
             $this->thread->model = $model;
         } else {
             $defaultModel = Models::getDefaultModel();
             $this->thread->model = $defaultModel;
         }
+
         session()->put('lastModel', $this->thread->model);
         session()->forget('lastAgent');
         $this->thread->agent_id = null;
