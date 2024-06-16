@@ -1,10 +1,13 @@
 <?php
 
 use App\Livewire\ModelSelector;
+use App\Models\Thread;
 use Livewire\Livewire;
 
 it('renders successfully', function () {
-    Livewire::test(ModelSelector::class)
+
+    $thread = Thread::factory()->create([]);
+    Livewire::test(ModelSelector::class, ['thread' => $thread])
         ->assertStatus(200)
         ->assertSeeInOrder([
             'Llama 3 8B', 'Join',
