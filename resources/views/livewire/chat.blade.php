@@ -3,7 +3,7 @@
     <div class="flex-1 overflow-hidden">
         <x-chatbox :autoscroll="auth()->check() ? auth()->user()->autoscroll : true">
 
-            <div class="h-[52px] sticky top-0 flex flex-row items-center justify-between z- px-5 ">
+            <div class="h-[52px] sticky top-0 flex flex-row items-center justify-between z- px-5 z-10 bg-black">
                 <div class="absolute left-1/2 -translate-x-1/2"></div>
                 <livewire:model-selector :thread="$thread"/>
 
@@ -11,51 +11,47 @@
             <div class="w-full overflow-y-auto flex flex-col items-center">
                 <div class="w-full prose prose-invert messages max-w-4xl flex flex-col text-sm pb-9" style="">
                     <div class="xl:-ml-[50px] pt-8 chat">
-                        @if (count($messages) === 0 && !$hasSelection)
-                            <div class="w-full h-[70vh] flex flex-col justify-center">
-                                <div
-                                        class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
-                                    <x-logomark :size="1"></x-logomark>
-                                    <h3 class="mt-[36px] text-center leading-relaxed">How can we help you today?</h3>
-                                    <livewire:featured-agents/>
-                                </div>
-                            </div>
-                        @elseif (count($messages) === 0 && $selectedAgent)
-                            @livewire('agents.partials.card', ['selectedAgent' => $selectedAgent])
-                        @elseif (count($messages) === 0 && $selectedModel)
-                            <div class="w-full h-[70vh] flex flex-col justify-center">
-                                <div
-                                        class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
-                                    <p class="text-[16px] text-gray">Now speaking with...</p>
-                                    <div class="max-w-[400px] border border-darkgray rounded p-4">
-                                        @php
-                                            $modelDetail = Models::MODELS[$selectedModel];
-                                            $userAccess = Models::getUserAccess($selectedModel);
-                                            $indicator = Models::isProModelSelected($selectedModel) ? 'Pro' : 'Free';
-                                        @endphp
-                                        <img src="{{ Models::getModelPicture($selectedModel) }}"
-                                             alt="{{ $modelDetail['name'] }}"
-                                             class="w-[100px] h-[100px] rounded-full object-cover">
-                                        <div class="flex gap-4 items-center">
-                                            <h3 class="mt-4">{{ $modelDetail['name'] }}</h3>
-                                            <span
-                                                    @if ($indicator == 'Free') class="bg-opacity-15 bg-white rounded-md px-2 py-1 text-green text-sm flex justify-center items-center w-[44px] h-[20px]"
-                                                    @elseif($indicator == 'Pro')
-                                                        class="bg-opacity-15 bg-white rounded-md px-1 py-1 text-gray-500 text-sm flex justify-center items-center w-[56px] h-[20px]" @endif>
-                                            @if ($indicator == 'Pro')
-                                                    <x-icon.logo class="w-[12px] h-[12px] mr-[4px]"/>
-                                                @endif
-                                                {{ $indicator }}
-                                        </span>
+                        @if($showNoMoreMessages)
+                            <!-- spacer -->
+                            <div class="h-[40vh]"></div>
+                        @else
+                            @if (count($messages) === 0 && $thread->agent )
+                                @livewire('agents.partials.card', ['selectedAgent' => $thread->agent, 'show_chat_button' => false])
+                            @elseif (count($messages) === 0 && $thread->model)
+                                <div class="w-full h-[70vh] flex flex-col justify-center">
+                                    <div
+                                            class="pointer-events-none select-none flex flex-col justify-center items-center px-8 sm:w-[584px] lg:w-[768px] mx-auto">
+                                        <p class="text-[16px] text-gray">Now speaking with...</p>
+                                        <div class="max-w-[400px] border border-darkgray rounded p-4">
+                                            @php
+                                                $modelDetail = Models::MODELS[$thread->model];
+                                                $userAccess = Models::getUserAccess($thread->model);
+                                                $indicator = Models::isProModelSelected($thread->model) ? 'Pro' : 'Free';
+                                            @endphp
+                                            <img src="{{ Models::getModelPicture($thread->model) }}"
+                                                alt="{{ $modelDetail['name'] }}"
+                                                class="w-[100px] h-[100px] rounded-full object-cover">
+                                            <div class="flex gap-4 items-center">
+                                                <h3 class="mt-4">{{ $modelDetail['name'] }}</h3>
+                                                <span
+                                                        @if ($indicator == 'Free') class="bg-opacity-15 bg-white rounded-md px-2 py-1 text-green text-sm flex justify-center items-center w-[44px] h-[20px]"
+                                                        @elseif($indicator == 'Pro')
+                                                            class="bg-opacity-15 bg-white rounded-md px-1 py-1 text-gray-500 text-sm flex justify-center items-center w-[56px] h-[20px]" @endif>
+                                                @if ($indicator == 'Pro')
+                                                        <x-icon.logo class="w-[12px] h-[12px] mr-[4px]"/>
+                                                    @endif
+                                                    {{ $indicator }}
+                                            </span>
+                                            </div>
+                                            <p class="text-[14px] text-gray mb-0">{{ $modelDetail['description'] }}</p>
+                                            @if (!empty($modelDetailModel['capabilities']))
+                                                <p class="text-[14px] text-gray mb-0">
+                                                    {{ json_encode($modelDetail['capabilities']) }}</p>
+                                            @endif
                                         </div>
-                                        <p class="text-[14px] text-gray mb-0">{{ $modelDetail['description'] }}</p>
-                                        @if (!empty($modelDetailModel['capabilities']))
-                                            <p class="text-[14px] text-gray mb-0">
-                                                {{ json_encode($modelDetail['capabilities']) }}</p>
-                                        @endif
                                     </div>
                                 </div>
-                            </div>
+                            @endif
                         @endif
 
                         @php
@@ -68,17 +64,17 @@
                                 // dd($message);
                                 try {
                                     if (
-                                        !empty($message['agent_id']) &&
-                                        !empty($message['input_tokens']) &&
-                                        !empty($message['output_tokens'])
+                                        !empty($message["agent_id"]) &&
+                                        !empty($message["input_tokens"]) &&
+                                        !empty($message["output_tokens"])
                                     ) {
-                                        $author = $message['agent']['name']; // hacky but whatever
+                                        $author = $message["agent"]["name"]; // hacky but whatever
                                     } elseif (
-                                        !empty($message['model']) &&
-                                        empty($message['agent_id']) &&
-                                        is_numeric($message['output_tokens'])
+                                        !empty($message["model"]) &&
+                                        empty($message["agent_id"]) &&
+                                        is_numeric($message["output_tokens"])
                                     ) {
-                                        $author = $models[$message['model']]['name'] ?? 'Model';
+                                        $author = $models[$message["model"]]['name'] ?? 'Model';
                                     }
                                     else{
                                         $author = 'You';
@@ -92,42 +88,38 @@
                             @endphp
                             <div class="pl-[50px]">
                                 @php
-                                    // If $message['agent'] is set, dump the agent's image URL
-                                            $image = null;
-                                            $model_image = null;
-                                            if (isset($message['agent'])) {
-                                                $agent = $message['agent'];
-                                                if (isset($agent['image_url'])) {
-                                                    $image = $agent['image_url'];
-                                                } elseif (isset($agent['image'])) {
-                                                    $image = $agent['image'];
-                                                }
-                                            } elseif (isset($message['model'])) {
-                                                // Use the model image
-                                                // First get the gateway
-                                                $gateway = $models[$message['model']]['gateway'];
-                                                $model_image = asset('images/icons/' . $gateway . '.png');
-                                                                            }
+                                    $image = null;
+                                    if (isset($message["agent"])) {
+
+                                        $image = $message["agent"]["image_url"];
+                                    } elseif (isset($message["model"])) {
+                                        $gateway = $models[$message["model"]]['gateway'];
+                                        $image = asset('images/icons/' . $gateway . '.png');
+                                    }
 
                                 @endphp
 
                             </div>
                             <x-chat.message :author="$author" :message="$message['body']" :promptClass="$promptClass"
-                                            :agent-image="$image"
-                                            :model-image="$model_image"></x-chat.message>
+                                            :image="$image"
+                                            ></x-chat.message>
                         @endforeach
 
                         @if ($pending)
                             @php
                                 // If there's a selected agent, use agent name, otherwise use $models[$selectedModel]['name']
-                                $author = $selectedAgent ? $selectedAgent['name'] : $models[$selectedModel]['name'];
-                                $image = $selectedAgent ? $selectedAgent['image'] : null;
-
-                                $model_image = $selectedModel
-                                    ? asset('images/icons/' . $models[$selectedModel]['gateway'] . '.png') : null;
+                                $author = null;
+                                $image = null;
+                                if($thread->agent){
+                                    $image = $thread->agent->getImageUrlAttribute();
+                                    $author = $thread->agent->name;
+                                }else{
+                                    $image = $thread->model? asset('images/icons/' . $models[$thread->model]['gateway'] . '.png') : null;
+                                    $author = $models[$thread->model]['name'];
+                                }
                             @endphp
 
-                            <x-chat.messagestreaming :author="$author" :agent-image="$image" :model-image="$model_image"
+                            <x-chat.messagestreaming :author="$author" :image="$image"
                                                      :thread="$thread->id">
                             </x-chat.messagestreaming>
                         @endif
@@ -204,8 +196,8 @@
                     <button dusk="send-message" class="hidden" id="send-message" type="submit"></button>
                 </form>
                 {{-- If selected agent, show agent usage component. Otherwise show messages-remaining--}}
-                @if ($selectedAgent)
-                    <livewire:agent-usage :selectedAgent="$selectedAgent"/>
+                @if ($thread->agent)
+                    <livewire:agent-usage :selectedAgent="$thread->agent"/>
                 @else
                     <livewire:messages-remaining/>
                 @endif

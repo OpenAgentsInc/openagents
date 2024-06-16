@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\AI\Models;
 use App\AI\PoolInference;
 use App\AI\PoolRag;
 use App\AI\SimpleInferencer;
@@ -13,7 +14,6 @@ use App\Models\User;
 use App\Services\ImageService;
 use App\Services\LocalLogger;
 use App\Services\PaymentService;
-use App\Traits\SelectedModelOrAgentTrait;
 use App\Utils\PoolUtils;
 use Exception;
 use Illuminate\Support\Facades\Log;
@@ -25,7 +25,7 @@ use Livewire\WithFileUploads;
 
 class Chat extends Component
 {
-    use LivewireAlert, SelectedModelOrAgentTrait, WithFileUploads;
+    use LivewireAlert,  WithFileUploads;
 
     public $images = [];
 
@@ -48,56 +48,56 @@ class Chat extends Component
     // The saved input
     public $pending = false;
 
+    public bool $hasSelection = false;
+
     // The thread we're chatting in
 
     public function mount($id = null)
     {
-        if (request()->query('model')) {
-            session()->put('selectedModel', request()->query('model'));
-        }
-
-        // User clicked a link to chat with a specific agent. We need to redirect to the thread with the agent selected.
-        if (request()->query('agent')) {
-            session()->put('selectedAgent', request()->query('agent'));
-            session()->put('redirecting-with-selection', true);
-            $agent = Agent::find(request()->query('agent'));
-            if ($agent) {
-                $this->ensureThread();
-            }
-        }
 
         // If ID is not null, we're in a thread. But if thread doesn't exist or doesn't belong to the user and doesn't match the session ID, redirect to homepage.
         if ($id) {
-            $thread = Thread::find($id);
-            if (! $thread || (auth()->check() && $thread->user_id !== auth()->id()) || (! auth()->check() && $thread->session_id !== session()->getId())) {
-                return $this->redirect('/', true);
-            } else {
-                // Notify the sidebar component of the active thread
-                $this->dispatch('active-thread', $id);
-            }
-        } else {
-            $this->ensureThread();
+            $this->thread = Thread::find($id);
 
-            return;
+            if (! $this->thread) {
+                Log::info('Thread not found');
+
+                return $this->redirect('/', true);
+            }
+            if (auth()->check() && $this->thread->user_id !== auth()->id()) {
+                Log::info('Thread does not belong to user');
+
+                return $this->redirect('/', true);
+            }
+            if (! auth()->check() && $this->thread->session_id !== session()->getId()) {
+                Log::info('Thread does not match session ID');
+
+                return $this->redirect('/', true);
+            }
+
+            // Notify the sidebar component of the active thread
+            $this->dispatch('active-thread', $id);
+
         }
+        $this->ensureThread();
 
         if (session()->get('redirecting-with-selection')) {
             $this->hasSelection = true;
             session()->forget('redirecting-with-selection');
         }
 
-        // Set the thread and its messages
-        $this->thread = $thread;
-        $messages = $this->thread->messages()
+        if (request()->query('model')) {
+            $this->selectedModel(request()->query('model'));
+        }
+
+        if (request()->query('agent')) {
+            $this->selectAgent(request()->query('agent'));
+        }
+
+        $this->messages = $this->thread->messages()
             ->with('agent') // fetch the agent relationship
             ->orderBy('created_at', 'asc')
-            ->get()
-            ->toArray();
-
-        $this->messages = $messages;
-
-        $this->setModelOrAgentForThread($this->thread);
-
+            ->get()->toArray();
         // if the campaign_subid exists, pop open a modal
         if (session()->has('campaign_subid')) {
             $this->openModal();
@@ -106,47 +106,23 @@ class Chat extends Component
 
     private function ensureThread()
     {
-        if (empty($this->thread)) {
+        if (empty($this->thread) || ! $this->thread) {
             // Check if the user or guest has a recent thread with no messages
 
-            if (auth()->check()) {
-                $recentThread = Thread::where('user_id', auth()->id())
-                    ->whereDoesntHave('messages')
-                    ->latest()
-                    ->first();
-            } else {
-                $recentThread = Thread::where('session_id', Session::getId())
-                    ->whereDoesntHave('messages')
-                    ->latest()
-                    ->first();
-            }
-
-            if ($recentThread) {
-                $this->thread = $recentThread;
-                $this->dispatch('thread-update');
-
-                return $this->redirect('/chat/'.$this->thread->id, true);
-            }
-
-            // If no recent thread found, create a new one
-            $data = [
+            $this->thread = Thread::create([
                 'title' => 'New chat',
                 'session_id' => auth()->check() ? null : Session::getId(),
-            ];
+                'model' => Models::getDefaultModel(),
+                'user_id' => auth()->check() ? auth()->id() : null,
+            ]);
 
-            if (auth()->check()) {
-                $data['user_id'] = auth()->id();
+            $lastModel = session()->get('lastModel') ?? Models::getDefaultModel();
+            $lastAgent = session()->get('lastAgent');
+            $this->selectModel($lastModel);
+            if ($lastAgent) {
+                $this->selectAgent($lastAgent);
             }
-
-            // If selected agent, set agent_id
-            if ($this->selectedAgent) {
-                $data['agent_id'] = $this->selectedAgent['id'];
-            }
-
-            $thread = Thread::create($data);
-            $this->thread = $thread;
             $this->dispatch('thread-update');
-            //            session()->put('redirecting-with-selection', true);
 
             return $this->redirect('/chat/'.$this->thread->id, true);
         }
@@ -162,27 +138,43 @@ class Chat extends Component
     #[On('select-agent')]
     public function selectAgent($agentId)
     {
+        $this->hasSelection = true;
+
+        $this->ensureThread();
         $agent = Agent::find($agentId);
         if ($agent) {
-            $this->hasSelection = true;
-            $this->selectedAgent = [
-                'id' => $agent->id,
-                'name' => $agent->name,
-                'sats_per_message' => $agent->sats_per_message,
-                'description' => $agent->about,
-                'instructions' => $agent->prompt,
-                'model' => $agent->model,
-                'pro_model' => $agent->pro_model,
-                'image' => $agent->image_url,
-                'is_rag_ready' => $agent->is_rag_ready,
-                'tools_uids' => $agent->externalTools()->pluck('external_uid')->toArray() ?? [],
-                'created_at' => $agent->updated_at,
-            ];
-            $this->selectedModel = '';
-        } else {
-            // dd('Agent not found');
-            $this->selectedAgent = [];
+            $this->thread->agent_id = $agent->id;
+            $this->thread->model = 'command-r-plus';
+            if ($agent->model) {
+                $this->thread->model = $agent->model;
+            }
+            if (auth()->user()->isPro()) {
+                if ($agent->pro_model) {
+                    $this->thread->model = $agent->pro_model;
+                }
+            }
+            session()->put('lastModel', $this->thread->model);
+            session()->put('lastAgent', $agent->id);
+            $this->thread->save();
         }
+    }
+
+    #[On('select-model')]
+    public function selectModel($model): void
+    {
+        $this->hasSelection = true;
+        $this->ensureThread();
+        $ac = Models::hasModelAccess($model);
+        if ($ac) {
+            $this->thread->model = $model;
+        } else {
+            $defaultModel = Models::getDefaultModel();
+            $this->thread->model = $defaultModel;
+        }
+        session()->put('lastModel', $this->thread->model);
+        session()->forget('lastAgent');
+        $this->thread->agent_id = null;
+        $this->thread->save();
     }
 
     #[On('no-more-messages')]
@@ -194,13 +186,14 @@ class Chat extends Component
 
     public function sendMessage(): void
     {
-        if (! empty($this->selectedAgent)) {
+        $useModel = $this->thread->model;
+        $useAgent = $this->thread->agent;
+        if ($useAgent) {
             // Check if user can afford agent
             // and lock funds
-            $agent = Agent::find($this->selectedAgent['id']);
-            $maxCost = $agent->getPriceRange()['max'];
+            $maxCost = $useAgent->getPriceRange()['max'];
             // TODO
-            Log::info('Lock funds for agent '.$agent->id.' for '.$maxCost.' sats');
+            Log::info('Lock funds for agent '.$useAgent->name.' for '.$maxCost.' sats');
 
         }
 
@@ -214,9 +207,8 @@ class Chat extends Component
             'sender' => 'You',
             'user_id' => auth()->id(), // Add user_id if logged in
             'session_id' => auth()->check() ? null : Session::getId(), // Add session_id if not logged in
-            'agent_id' => $this->selectedAgent['id'] ?? null,
-            'agent' => $this->selectedAgent,
-            'model' => ! $this->selectedAgent ? $this->selectedModel : null,
+            'agent_id' => $useAgent->id ?? null,
+            'model' => ! $useAgent ? $useModel : null,
             'input_tokens' => null,
             'output_tokens' => null,
         ];
@@ -228,12 +220,10 @@ class Chat extends Component
 
         // Call simpleRun after the next render
         $this->dispatch('message-created');
-        if (! $this->selectedAgent) {
+        if (! $useAgent) {
             $this->js('$wire.simpleRun()');
         } else {
-            $agent = Agent::find($this->selectedAgent['id']);
             $this->js('$wire.agentRun()');
-
         }
     }
 
@@ -285,23 +275,20 @@ class Chat extends Component
 
         $systemPrompt = auth()->user()->system_prompt ?? '';
         $inference = new SimpleInferencer();
-        $output = $inference->inference($this->input, $this->selectedModel, $this->thread, $this->getStreamingCallback(), $systemPrompt);
+        $output = $inference->inference($this->input, $this->thread->model, $this->thread, $this->getStreamingCallback(), $systemPrompt);
 
         // Append the response to the chat
-        $message = [
+        // Save the agent's response to the thread
+        $message = $this->thread->messages()->create([
             'body' => $output['content'],
-            'model' => $this->selectedModel,
+            'model' => $this->thread->model,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
             'agent_id' => null,
-            'agent' => null,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
-        ];
+        ])->toArray();
         $this->messages[] = $message;
-
-        // Save the agent's response to the thread
-        $this->thread->messages()->create($message);
 
         // Update the original user message with the input tokens
         $userMessage->update(['input_tokens' => $output['prompt_tokens']]);
@@ -332,24 +319,29 @@ class Chat extends Component
                 'body' => $this->input,
                 'session_id' => $sessionId,
                 'user_id' => auth()->id() ?? null,
-                'agent_id' => $this->selectedAgent['id'] ?? null,
+                'agent_id' => $this->thread->agent->id,
             ]);
 
             $poolRag = new PoolRag(); // Generate history
             $query = $poolRag->history($this->thread)->summary();
 
-            $documents = AgentFile::where('agent_id', $this->selectedAgent['id'])->pluck('url')->toArray();
+            $agent = $this->thread->agent;
+            if (! $agent) {
+                $this->alert('error', 'Agent not found');
 
-            $tools = $this->selectedAgent['tools_uids'] ?? [];
+                return;
+            }
 
-            $agent = Agent::find($this->selectedAgent['id']);
+            $documents = AgentFile::where('agent_id', $agent->id)->pluck('url')->toArray();
+            $tools = $agent->externalTools()->pluck('external_uid')->toArray();
+
             if (count($documents) > 0 && $agent->is_rag_ready) {
                 $this->alert('warning', 'Agent is still training..');
 
                 return;
             }
 
-            PoolUtils::sendRAGJob($this->selectedAgent['id'], $this->thread->id, $uuid, $documents, $query, $tools);
+            PoolUtils::sendRAGJob($agent->id, $this->thread->id, $uuid, $documents, $query, $tools);
 
         } catch (Exception $e) {
             $this->alert('error', 'An Error occurred, please try again later');
@@ -360,13 +352,14 @@ class Chat extends Component
     #[On('echo:threads.{thread.id},PoolJobReady')]
     public function processPoolJob($event): void
     {
-        $this->setAgentModel($event['job'] ?? []);
 
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
 
         $job = PoolJob::where('thread_id', $this->thread->id)->find($event['job']['id']);
-        $agent = Agent::find($job->agent_id);
+        $this->selectAgent($job['agent_id']);
+
+        $agent = $job->agent;
 
         /////////////// PAYMENTS
 
@@ -395,7 +388,9 @@ class Chat extends Component
             $target = $paymentRequest->target;
 
             if (! $paymentRequest->paid) {
-                Log::info('Simulate payment to '.$target.' of '.$amount.' '.$currency.' via '.$protocol);
+                if (env('APP_ENV') === 'staging' && auth()->check() && auth()->user()->isAdmin()) {
+                    $this->alert('info', 'Simulate payment to '.$target.' of '.$amount.' '.$currency.' via '.$protocol);
+                }
                 // TODO
                 $paymentRequest->paid = true;
                 $paymentRequest->save();
@@ -404,30 +399,22 @@ class Chat extends Component
         ///////////////
 
         // Simply do it
-        if (auth()->check() && auth()->user()->isPro() && $this->selectedAgent['pro_model']) {
-            $model = $agent->pro_model ?? 'command-r-plus';
-        } else {
-            $model = $agent->model ?? 'command-r-plus';
-        }
-
         $inferencer = new PoolInference();
-        $output = $inferencer->inference($model, $job, $this->getStreamingCallback());
+        $output = $inferencer->inference($this->thread->model, $job, $this->getStreamingCallback());
 
         // Append the response to the chat
-        $message = [
+        // Save the agent's response to the thread
+        $message = $this->thread->messages()->create([
             'body' => $output['content'],
-            'model' => $this->selectedModel,
+            'model' => $this->thread->model,
             'user_id' => auth()->id() ?? null,
             'session_id' => $sessionId,
-            'agent_id' => $this->selectedAgent ? $this->selectedAgent['id'] : null,
-            'agent' => $this->selectedAgent,
+            'agent_id' => $this->thread->agent->id,
             'input_tokens' => $output['input_tokens'],
             'output_tokens' => $output['output_tokens'],
-        ];
-        $this->messages[] = $message;
+        ])->load('agent')->toArray();
 
-        // Save the agent's response to the thread
-        $this->thread->messages()->create($message);
+        $this->messages[] = $message;
 
         // Reset pending status and scroll to the latest message
         $this->pending = false;
@@ -437,25 +424,6 @@ class Chat extends Component
 
         if (isset($output['error'])) {
             $this->alert('error', $output['error']);
-        }
-    }
-
-    public function setAgentModel(array $job): void
-    {
-        $this->selectedModel = 'command-r-plus';
-        if (! $this->selectedAgent && ! empty($job['agent_id'])) {
-            $this->selectedAgent = Agent::find($job['agent_id'])->toArray();
-        }
-        if ($this->selectedAgent) {
-            if ($this->selectedAgent['model']) {
-                $this->selectedModel = $this->selectedAgent['model'];
-            }
-            if ($this->selectedAgent['pro_model']) {
-                $user = User::find($this->thread->user_id);
-                if ($user && $user->isPro()) {
-                    $this->selectedModel = $this->selectedAgent['pro_model'];
-                }
-            }
         }
     }
 
@@ -473,13 +441,4 @@ class Chat extends Component
     {
         return view('livewire.chat');
     }
-
-    // #[On('echo:agent_warmup.{selectedAgent.id},AgentRagReady')]
-    // public function processRagWarmUp($event)
-    // {
-    //     if ($this->selectedAgent['id'] == $event["agentId"]) {
-    //         $this->pending = false;
-    //     }
-
-    // }
 }
