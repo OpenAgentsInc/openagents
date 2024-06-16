@@ -3,13 +3,9 @@
         <div
                 class="flex flex-1 text-base mx-auto gap-3 md:px-5 lg:px-1 xl:px-5 md:max-w-3xl lg:max-w-[800px]">
             <div class="flex-shrink-0 flex flex-col relative items-end not-prose">
-                @if ($agentImage)
+                @if ($image)
                     <div class="m-[1px] w-[28px] p-[2px] border border-darkgray rounded">
-                        <img src="{{ $agentImage }}" alt="Agent Image">
-                    </div>
-                @elseif ($modelImage)
-                    <div class="m-[1px] w-[28px] p-[2px] ">
-                        <img src="{{ $modelImage }}" alt="Model Image">
+                        <img src="{{ $image }}" alt="Image" />
                     </div>
                 @else
                     <div class="m-[1px] w-[28px] p-[5px] border border-darkgray rounded">

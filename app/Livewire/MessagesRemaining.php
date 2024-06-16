@@ -5,11 +5,14 @@ namespace App\Livewire;
 use App\Models\Message;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
 class MessagesRemaining extends Component
 {
+    use LivewireAlert;
+
     public $remaining = 0;
 
     public function mount()
@@ -19,9 +22,15 @@ class MessagesRemaining extends Component
 
     protected function calculateRemainingMessages()
     {
+
         $messagesToday = 0;
         if (Auth::check()) {
             $user = Auth::user();
+            if ($user->isAdmin() && env('APP_ENV') === 'staging') {
+                $this->alert('info', 'Bypassing message limit for admin user in staging environment');
+
+                return;
+            }
             $messagesToday = Message::where('user_id', $user->id)
                 ->whereDate('created_at', today())
                 ->whereNotNull('model')

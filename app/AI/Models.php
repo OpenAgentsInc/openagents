@@ -305,10 +305,12 @@ class Models
         return 'mistral-medium-latest';
     }
 
-    public static function hasModelAccess($model, $userAccess): bool
+    public static function hasModelAccess($model, $userAccess = null): bool
     {
+        if (! $userAccess) {
+            $userAccess = self::getUserAccess();
+        }
         $modelDetails = self::MODELS[$model] ?? null;
-
         if ($modelDetails) {
             $requiredAccess = $modelDetails['access'];
             $accessLevels = ['guest', 'user', 'pro'];

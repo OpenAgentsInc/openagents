@@ -30,6 +30,7 @@ class Agent extends Model
         'max_tool_calls',
         'tools_cost_average',
         'num_tools_calls',
+        'image_url',
     ];
 
     public function getImageUrlAttribute()

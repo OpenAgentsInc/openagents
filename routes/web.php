@@ -27,7 +27,6 @@ use App\Livewire\Store;
 use App\Livewire\UserProfile;
 use App\Livewire\WalletScreen;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 
 // REDIRECT DEFAULT AUTH TO HOME

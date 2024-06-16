@@ -11,7 +11,17 @@ class Thread extends Model
 {
     use HasFactory;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'model',
+        'session_id',
+        'user_id',
+        'agent_id',
+        'title',
+    ];
+
+    protected $guarded = [
+        'session_id',
+    ];
 
     public function messages(): HasMany
     {
