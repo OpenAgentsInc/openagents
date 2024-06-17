@@ -42,4 +42,15 @@ class Thread extends Model
     {
         return $query->where('session_id', $sessionId);
     }
+
+    public function getModelAttribute($value)
+    {
+        $model = $value;
+        if (! $model && $this->messages->count() > 0) {
+            $lastMessage = $this->messages->last();
+            $model = $lastMessage->model;
+        }
+
+        return $model;
+    }
 }
