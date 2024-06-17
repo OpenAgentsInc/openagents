@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\DashboardController;
@@ -32,7 +33,7 @@ use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
 // REDIRECT DEFAULT AUTH TO HOME
 // Define an array of default authentication routes
 $authRoutes = [
-    '/login',
+//    '/login',
     '/register',
     '/password/reset',
     '/password/reset/{token}',
@@ -40,6 +41,10 @@ $authRoutes = [
     '/password/email',
 ];
 
+// New auth routes
+Route::get('/login', [AuthController::class, 'login_page']);
+
+// Experimental Inertia routes
 Route::get('/dashboard', [DashboardController::class, 'dashboard']);
 Route::get('/plugin-map', [DashboardController::class, 'plugin_map']);
 Route::get('/scratchpad', [DashboardController::class, 'scratchpad']);
@@ -135,11 +140,6 @@ Route::post('/webhook/pool', [PoolWebhookReceiver::class, 'handleEvent']);
 
 // Logout via GET not just POST
 Route::get('/logout', [AuthenticatedSessionController::class, 'destroy']);
-
-// Catch-all redirect to the homepage
-Route::get('/login', function () {
-    return redirect('/');
-});
 
 Route::get('/{any}', function () {
     return redirect('/');
