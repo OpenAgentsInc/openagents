@@ -1,4 +1,5 @@
 import React from "react";
+import { XIcon } from "../Components/XIcon";
 import AuthLayout from "../Layouts/AuthLayout";
 
 function LoginPage() {
@@ -16,7 +17,7 @@ function LoginPage() {
         <div className="mt-2 w-[350px]">
           <a href="/login/x">
             <button className="inline-flex items-center justify-center text-[16px] w-full h-[48px] border border-white rounded-md gap-2">
-              <div className="h-5 w-5 rounded-full bg-white" />
+              <XIcon className="h-5 w-5" />
               <span>Continue with X</span>
             </button>
           </a>
