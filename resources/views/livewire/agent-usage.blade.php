@@ -1,7 +1,7 @@
 <div class="text-center text-gray text-xs my-3">
     @auth
-        This agent costs <span class="text-white">{{ $selectedAgent['sats_per_message'] }}</span> sats per message. Your
-        balance: <span class="text-white">{{ $this->sats_balance }}</span> sats.
+        <x-agent-price  prefix='This agent costs' :agent="$selectedAgent" />
+    Your balance: <span class="text-white">{{ $this->sats_balance }}</span> sats.
     @endauth
 
     @guest
