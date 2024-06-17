@@ -5,34 +5,9 @@
     </div>
 
     <div class="font-bold text-xl">{{ $agent['name'] }}</div>
-    @php
-        $priceRange = $agent->getPriceRange();
-    @endphp
-    @if($priceRange["min"]==$priceRange["max"])
-        <div >
-            <p class="mb-0 text-sm cursor-pointer text-gray leading-none">
-                Cost: {{ $priceRange['max'] }} sats per message
-            </p>
-        </div>
-    @else
-        <div x-data="{ open: false }" class="relative">
-            <p class="mb-0 text-sm cursor-pointer text-gray leading-none" @mouseover="open=true" @mouseout="open = false">
-                Cost: ~{{ $priceRange['avg'] }} sats per message
-                <x-icon.info class="w-3 h-3 inline-block" />
-            </p>
-            <div x-show="open"
-                class="
-            absolute  p-2 rounded z-[50] text-xs text-gray-800 bg-opacity-90   bg-black
-            border border-gray-300 shadow-lg
-            my-2
-            "
-                style="min-width: 200px;">
-                Min: {{ $priceRange['min'] }}<br>
-                Max: {{ $priceRange['max'] }}<br>
-                Avg: {{ $priceRange['avg'] }}
-            </div>
-        </div>
-    @endif
+
+    <x-agent-price :agent="$agent" class="text-sm"/>
+
     <div class="flex items-center">
         <div class="text-xs">
 
