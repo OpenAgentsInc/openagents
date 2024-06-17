@@ -17,6 +17,11 @@ class SocialAuthController extends Controller
 
     public function login_x_callback()
     {
+        // If query string 'denied' exists, redirect to homepage
+        if (request()->query('denied')) {
+            return redirect('/');
+        }
+
         $socialUser = Socialite::driver('twitter')->user();
         // Check if user already exists in your database based on their email
         $alternativeEmail = $socialUser->nickname.'@fakeemail.com';
