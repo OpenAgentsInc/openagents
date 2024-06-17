@@ -65,12 +65,10 @@ class Chat extends Component
                 return $this->redirect('/', true);
             }
             if (auth()->check() && $this->thread->user_id !== auth()->id()) {
-                Log::info('Thread does not belong to user');
 
                 return $this->redirect('/', true);
             }
             if (! auth()->check() && $this->thread->session_id !== session()->getId()) {
-                Log::info('Thread does not match session ID');
 
                 return $this->redirect('/', true);
             }
