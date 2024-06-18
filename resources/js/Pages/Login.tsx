@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { Icon, TextField } from "@shopify/polaris";
 import { EmailIcon, LogoGoogleIcon, LogoXIcon } from "@shopify/polaris-icons";
+import NostrIcon from "./nostr.svg";
 import AuthLayout from "../Layouts/AuthLayout";
 
 function LoginPage() {
@@ -14,11 +15,11 @@ function LoginPage() {
         background: "linear-gradient(rgb(12, 13, 14) 0%, rgb(8, 8, 8) 50%)",
       }}
     >
-      <div className="mb-8 gap-y-6 w-full flex flex-col items-center justify-center">
-        <img className="w-20 h-20" src="/images/sqlogo-t.png" />
-        <h1 className="text-xl font-bold">Log in to OpenAgents</h1>
+      <div className="-mt-4 mb-8 gap-y-6 w-full flex flex-col items-center justify-center">
+        <img className="w-24 h-24" src="/images/sqlogo-t.png" />
+        <h1 className="text-2xl font-bold">Log in to OpenAgents</h1>
 
-        <div className="flex flex-col gap-y-5 mt-2 w-[350px]">
+        <div className="flex flex-col gap-y-5 mt-4 w-[350px]">
           <form>
             <label for="email" class="pl-1">
               Email
@@ -46,22 +47,17 @@ function LoginPage() {
 
           <p class="text-center">or</p>
 
-          <a href="/login/x">
-            <button className="inline-flex items-center justify-center text-[16px] w-full h-[48px] border border-white rounded-md gap-2">
-              <div>
-                <Icon source={LogoXIcon} className="h-5 w-5" />
-              </div>
-              <span>Continue with X</span>
+          <div class="flex flex-row gap-x-2">
+            <button className="w-full h-[48px] border border-white rounded-md">
+              <Icon source={LogoGoogleIcon} className="h-5 w-5" />
             </button>
-          </a>
-          <a href="/login/google">
-            <button className="inline-flex items-center justify-center text-[16px] w-full h-[48px] border border-white rounded-md gap-2">
-              <div>
-                <Icon source={LogoGoogleIcon} className="h-5 w-5" />
-              </div>
-              <span>Continue with Google</span>
+            <button className="w-full h-[48px] border border-white rounded-md">
+              <Icon source={LogoXIcon} className="h-5 w-5" />
             </button>
-          </a>
+            <button className="flex justify-center items-center w-full h-[48px] border border-white rounded-md">
+              <img src={NostrIcon} className="h-5 w-5" alt="Nostr" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
