@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState } from "react";
 import { Frame, Navigation, TopBar } from "@shopify/polaris";
 import {
   HomeIcon,
@@ -7,27 +7,31 @@ import {
   AffiliateIcon,
   GaugeIcon,
   PlusCircleIcon,
-  ChatIcon
-} from '@shopify/polaris-icons';
-import { Head, usePage } from '@inertiajs/react';
+  ChatIcon,
+} from "@shopify/polaris-icons";
+import { Head, usePage } from "@inertiajs/react";
 
 export default function Layout({ children }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const toggleIsUserMenuOpen = useCallback(
     () => setIsUserMenuOpen((isUserMenuOpen) => !isUserMenuOpen),
-    [],
+    []
   );
 
   const userMenuMarkup = (
     <TopBar.UserMenu
       actions={[
         {
-          items: [{
-            content: 'Log out', icon: ExitIcon, onAction: () => {
-              console.log("log out placeholder")
-            }
-          }],
+          items: [
+            {
+              content: "Log out",
+              icon: ExitIcon,
+              onAction: () => {
+                console.log("log out placeholder");
+              },
+            },
+          ],
         },
       ]}
       name="TestUser"
@@ -38,19 +42,13 @@ export default function Layout({ children }) {
     />
   );
 
-  const topBar = (
-    <TopBar
-      showNavigationToggle
-      userMenu={userMenuMarkup}
-    />
-  )
+  const topBar = <TopBar showNavigationToggle userMenu={userMenuMarkup} />;
 
   const logo = {
-    topBarSource:
-      '/images/oarect.png',
+    topBarSource: "/images/oarect.png",
     width: 146,
-    url: '/',
-    accessibilityLabel: 'OpenAgents',
+    url: "/",
+    accessibilityLabel: "OpenAgents",
   };
 
   return (
@@ -60,26 +58,26 @@ export default function Layout({ children }) {
         {children}
       </Frame>
     </>
-  )
+  );
 }
 
 function NavigationIs() {
-  const { url } = usePage()
+  const { url } = usePage();
   return (
     <Navigation location={url}>
       <Navigation.Section
         items={[
           {
-            url: '/',
-            label: 'Home',
+            url: "/",
+            label: "Home",
             icon: HomeIcon,
-            selected: url === '/',
+            selected: url === "/",
           },
           {
-            url: '/dashboard',
-            label: 'Dashboard',
+            url: "/dashboard",
+            label: "Dashboard",
             icon: GaugeIcon,
-            selected: url === '/dashboard',
+            selected: url === "/dashboard",
           },
           // {
           //   url: '/agents',
@@ -88,18 +86,25 @@ function NavigationIs() {
           //   badge: '2',
           // },
           {
-            url: '/plugin-map',
-            label: 'Plugin Map',
+            url: "/plugin-map",
+            label: "Plugin Map",
             icon: AppExtensionIcon,
-            selected: url === '/plugin-map'
+            selected: url === "/plugin-map",
             // badge: '4',
           },
           {
-            url: '/scratchpad',
-            label: 'Scratchpad',
+            url: "/plugin-registry",
+            label: "Plugin Registry",
             icon: AppExtensionIcon,
-            selected: url === '/scratchpad'
-          }
+            selected: url === "/plugin-registry",
+            // badge: '4',
+          },
+          {
+            url: "/scratchpad",
+            label: "Scratchpad",
+            icon: AppExtensionIcon,
+            selected: url === "/scratchpad",
+          },
           // {
           //   url: '#',
           //   excludePaths: ['#'],
@@ -143,5 +148,5 @@ function NavigationIs() {
         }}
       /> */}
     </Navigation>
-  )
+  );
 }

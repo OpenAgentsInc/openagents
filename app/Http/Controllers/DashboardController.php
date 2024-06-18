@@ -16,6 +16,10 @@ class DashboardController extends Controller
         return Inertia::render('PluginMap');
     }
 
+    public function plugin_registry () {
+        return Inertia::render('PluginRegistry');
+    }
+
     public function scratchpad () {
         return Inertia::render('Scratchpad');
     }
