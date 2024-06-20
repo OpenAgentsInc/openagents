@@ -216,7 +216,7 @@ class Chat extends Component
                     try {
                         $lockId = $user->lockSats($maxCost);
                         $this->fundLocksIds[] = $lockId;
-                        Log::info('Locked funds for agent '.$useAgent->name.' for '.$maxCost.' sats');
+                        // Log::info('Locked funds for agent '.$useAgent->name.' for '.$maxCost.' sats');
                     } catch (Exception $e) {
                         $this->alert('error', 'Failed to lock funds');
                         Log::error($e);
@@ -490,7 +490,7 @@ class Chat extends Component
 
         // unlock funds
         foreach ($this->fundLocksIds as $lockId) {
-            Log::info('Unlocking funds for lock '.$lockId);
+            // Log::info('Unlocking funds for lock '.$lockId);
             auth()->user()->unlockSats($lockId);
         }
         $this->fundLocksIds = [];
