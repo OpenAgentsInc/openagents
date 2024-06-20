@@ -150,7 +150,7 @@ class Chat extends Component
             if ($agent->model) {
                 $this->thread->model = $agent->model;
             }
-            if (auth()->user()->isPro()) {
+            if (auth()->check() && auth()->user()->isPro()) {
                 if ($agent->pro_model) {
                     $this->thread->model = $agent->pro_model;
                 }
