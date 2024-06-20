@@ -50,7 +50,7 @@
                 <x-icon.link class="h-4 w-4 text-white" style="stroke: white;" fill="grey" />
             </a>
         @endif
-        @if ($plugin->web)
+        @if ($plugin->tos)
             <a href="{{ $plugin->tos }}" target="_blank" title="Terms of Service">
                 <x-icon.law class="h-4 w-4 text-white" style="stroke: white;" fill="grey" />
             </a>
