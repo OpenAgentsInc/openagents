@@ -31,7 +31,7 @@ class Models
         'llama3-8b-8192' => [
             'name' => 'Llama 3 8B 8192',
             'gateway' => 'groq',
-            'access' => 'user',
+            'access' => 'hidden',
             'max_tokens' => 8192,
             'description' => 'Llama 3 8B is a language model by Meta,
                              optimized for efficient deployment on consumer-size GPUs,
@@ -41,7 +41,7 @@ class Models
         'llama3-70b-8192' => [
             'name' => 'Llama 3 70B 8192',
             'gateway' => 'groq',
-            'access' => 'pro',
+            'access' => 'hidden',
             'max_tokens' => 8192,
             'description' => 'Llama 3 70B is a larger language model by Meta,
                               designed for complex tasks, and excels in various natural language processing tasks.',
@@ -95,7 +95,7 @@ class Models
         'gpt-4-turbo-preview' => [
             'name' => 'GPT-4 Turbo Preview',
             'gateway' => 'openai',
-            'access' => 'user',
+            'access' => 'hidden',
             'max_tokens' => 2000,
             'description' => 'GPT-4 Turbo Preview is OpenAI’s latest model, offering advanced reasoning,
                               a 128k context window, and cost-effective token usage',
@@ -207,7 +207,7 @@ class Models
         'satoshi-7b' => [
             'name' => 'Satoshi 7B',
             'gateway' => 'satoshi',
-            'access' => 'guest',
+            'access' => 'hidden',
             'max_tokens' => 2000,
             'description' => 'Satoshi 7B, developed by LaierTwoLabsInc,
                               is a 7-billion parameter language model fine-tuned on Bitcoin principles, technology, culture,
