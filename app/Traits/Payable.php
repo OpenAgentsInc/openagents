@@ -27,7 +27,7 @@ trait Payable
             ->leftJoin('payments', 'payment_destinations.payment_id', '=', 'payments.id');
     }
 
-    private function getLockedSats()
+    private function getLockedMSats()
     {
         $this->lockedBalances()
             ->where('currency', Currency::BTC)
@@ -48,7 +48,7 @@ trait Payable
             $lockedBalanceAmmount = 0;
         }
 
-        return (int) ($lockedBalanceAmmount / 1000.0);
+        return $lockedBalanceAmmount;
 
     }
 
@@ -67,7 +67,7 @@ trait Payable
             if (! $balance) {
                 return 0;
             }
-            $lockedBalanceAmountSats = $this->getLockedSats();
+            $lockedBalanceAmountSats = (int) ($this->getLockedMSats() / 1000);
 
             return (int) ($balance->amount / 1000) - $lockedBalanceAmountSats;
         });
@@ -76,7 +76,7 @@ trait Payable
     public function getLockedSatsBalanceAttribute(): int
     {
         return DB::transaction(function () {
-            $lockedBalanceAmountSats = $this->getLockedSats();
+            $lockedBalanceAmountSats = (int) ($this->getLockedMSats() / 1000);
 
             return $lockedBalanceAmountSats;
         });
@@ -245,9 +245,19 @@ trait Payable
     {
         if ($currency == Currency::BTC) {
             if ($unlocked) {
-                return $this->getAvailableSatsBalanceAttribute();
+                return DB::transaction(function () {
+                    $balance = $this->balances()->where('currency', Currency::BTC)->lockForUpdate()->first();
+                    if (! $balance) {
+                        return 0;
+                    }
+                    $lockedBalanceAmountSats = $this->getLockedMSats();
+
+                    return $balance->amount - $lockedBalanceAmountSats;
+                });
             } else {
-                return $this->getSatsBalanceAttribute();
+                $balance = $this->balances()->where('currency', Currency::BTC)->lockForUpdate()->first();
+
+                return $balance ? $balance->amount : 0;
             }
         } else {
             throw new Exception('Unsupported currency');
