@@ -9,11 +9,13 @@ class SweepAgentBalancesToUsers extends Command
 {
     protected $signature = 'sweep';
 
-    protected $description = 'Sweep agent balances to users';
+    protected $description = 'Sweep agent and plugin balances to users';
 
     public function handle()
     {
         $payService = new PaymentService();
         $payService->sweepAllAgentBalances();
+
+        $payService->sweepAllPluginBalances();
     }
 }

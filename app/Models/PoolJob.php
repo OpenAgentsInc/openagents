@@ -11,7 +11,7 @@ class PoolJob extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['payload', 'status', 'job_id', 'thread_id', 'content', 'agent_id', 'warmup'];
+    protected $fillable = ['payload', 'status', 'job_id', 'thread_id', 'content', 'agent_id', 'warmup', 'meta'];
 
     public function agent(): BelongsTo
     {

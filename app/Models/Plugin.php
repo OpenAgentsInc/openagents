@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\Payable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Plugin extends Model
 {
     use HasFactory;
+    use Payable;
 
     protected $fillable = [
         'name',

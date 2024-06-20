@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Enums\Currency;
 use App\Models\Agent;
 use App\Models\Balance;
+use App\Models\LockedBalance;
 use App\Models\Payment;
 use App\Models\PaymentDestination;
 use App\Models\PaymentSource;
@@ -26,16 +27,101 @@ trait Payable
             ->leftJoin('payments', 'payment_destinations.payment_id', '=', 'payments.id');
     }
 
+    private function getLockedSats()
+    {
+        $this->lockedBalances()
+            ->where('currency', Currency::BTC)
+            ->where('expires_at', '<', now())
+            ->delete();
+
+        $lockedBalances = $this->lockedBalances()
+            ->where('currency', Currency::BTC)
+            ->where('expires_at', '>', now())
+            ->lockForUpdate();
+
+        if ($lockedBalances->count() == 0) {
+            return 0;
+        }
+
+        $lockedBalanceAmmount = $lockedBalances->sum('amount');
+        if ($lockedBalanceAmmount < 0) {
+            $lockedBalanceAmmount = 0;
+        }
+
+        return (int) ($lockedBalanceAmmount / 1000.0);
+
+    }
+
     public function getSatsBalanceAttribute(): int
     {
-        $balance = $this->balances()->where('currency', Currency::BTC)->first();
 
-        return $balance ? (int) $balance->amount / 1000 : 0;
+        $balance = $this->balances()->where('currency', Currency::BTC)->lockForUpdate()->first();
+
+        return $balance ? (int) ($balance->amount / 1000) : 0;
+    }
+
+    public function getAvailableSatsBalanceAttribute(): int
+    {
+        return DB::transaction(function () {
+            $balance = $this->balances()->where('currency', Currency::BTC)->lockForUpdate()->first();
+            if (! $balance) {
+                return 0;
+            }
+            $lockedBalanceAmountSats = $this->getLockedSats();
+
+            return (int) ($balance->amount / 1000) - $lockedBalanceAmountSats;
+        });
+    }
+
+    public function getLockedSatsBalanceAttribute(): int
+    {
+        return DB::transaction(function () {
+            $lockedBalanceAmountSats = $this->getLockedSats();
+
+            return $lockedBalanceAmountSats;
+        });
+    }
+
+    public function unlockSats(int $lockId)
+    {
+        DB::transaction(function () use ($lockId) {
+            $lock = $this->lockedBalances()->where('id', $lockId)->lockForUpdate()->first();
+            if ($lock) {
+                $lock->delete();
+            }
+        });
+    }
+
+    public function lockSats(int $amount): int
+    {
+        return DB::transaction(function () use ($amount) {
+            $amount_msats = $amount * 1000;
+            $balance = $this->balances()->where('currency', Currency::BTC)->lockForUpdate()
+                ->firstOrFail();
+            $lockedBalances = $this->lockedBalances()->where('currency', Currency::BTC)->lockForUpdate();
+            $lockedBalanceAmmount = $lockedBalances->sum('amount');
+            if (($balance->amount - $lockedBalanceAmmount) < $amount_msats) {
+                throw new Exception('Insufficient balance');
+            }
+            // create new locked balance
+            $lock = $this->lockedBalances()->create([
+                'currency' => Currency::BTC,
+                'amount' => $amount_msats,
+                'expires_at' => now()->addMinutes(15),
+            ]);
+
+            return $lock->id;
+        });
     }
 
     public function balances()
     {
         return $this->morphMany(Balance::class, 'holder');
+    }
+
+    public function lockedBalances()
+    {
+        return $this->morphMany(LockedBalance::class, 'holder');
     }
 
     public function multipay(array $recipients): void
@@ -53,22 +139,28 @@ trait Payable
 
     public function withdraw(int $amount, Currency $currency)
     {
-        $balance = $this->balances()->where('currency', $currency->value)->firstOrFail();
-        if ($balance->amount < $amount) {
-            throw new Exception('Insufficient balance');
-        }
-        $balance->amount -= $amount;
-        $balance->save();
+        DB::transaction(function () use ($amount, $currency) {
+            $balance = $this->balances()->where('currency', $currency->value)->lockForUpdate()
+                ->firstOrFail();
+            if ($balance->amount < $amount) {
+                throw new Exception('Insufficient balance');
+            }
+            $balance->amount -= $amount;
+            $balance->save();
+        });
     }
 
     public function deposit(int $amount, Currency $currency)
     {
-        $balance = $this->balances()->firstOrCreate(
-            ['currency' => $currency->value],
-            ['amount' => 0]
-        );
-        $balance->amount += $amount;
-        $balance->save();
+        DB::transaction(function () use ($amount, $currency) {
+            $balance = $this->balances()->lockForUpdate()
+                ->firstOrCreate(
+                    ['currency' => $currency->value],
+                    ['amount' => 0]
+                );
+            $balance->amount += $amount;
+            $balance->save();
+        });
     }
 
     public function recordPayment(int $amount, Currency $currency, ?string $description = null, $payer = null)
@@ -149,11 +241,17 @@ trait Payable
         });
     }
 
-    public function checkBalance(Currency $currency)
+    public function checkBalance(Currency $currency, $unlocked = false)
     {
-        $balance = $this->balances()->where('currency', $currency->value)->first();
-
-        return $balance ? $balance->amount : 0;
+        if ($currency == Currency::BTC) {
+            if ($unlocked) {
+                return $this->getAvailableSatsBalanceAttribute();
+            } else {
+                return $this->getSatsBalanceAttribute();
+            }
+        } else {
+            throw new Exception('Unsupported currency');
+        }
     }
 
     public function getBalanceAttribute()

@@ -7,7 +7,6 @@ use App\Events\PoolJobReady;
 use App\Models\Agent;
 use App\Models\PoolJob;
 use App\Services\OpenObserveLogger;
-use App\Utils\PoolUtils;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -90,61 +89,9 @@ class JobResultReceiverJob implements ShouldQueue
                     }
                     $content = $contentData['content'] ?? '';
 
-                    $usedToolIds = $meta['usedTools'] ?? [];
                     $poolJob->content = $content;
                     $poolJob->status = 'success';
-
-                    // Track plugin usage
-                    $availableTools = PoolUtils::getTools();
-                    $usedTools = [];
-                    if (count($usedToolIds) > 0) {
-                        foreach ($usedToolIds as $toolId) {
-                            $tool = null;
-                            foreach ($availableTools as $availableTool) {
-                                $logger->log('info', 'Checking tool '.json_encode($availableTool).$toolId);
-                                if (isset($availableTool['id']) && $availableTool['id'] == $toolId) {
-                                    $logger->log('info', 'Found tool '.$toolId);
-                                    $tool = $availableTool;
-                                    break;
-                                }
-                            }
-                            if (isset($tool)) {
-                                $logger->log('info', 'Used tool '.$tool['meta']['name']);
-                                $usedTools[] = $tool;
-                            }
-                        }
-                    }
-
-                    // For each used tool extract payment info and pay the author
-                    $totalCost = 0;
-                    foreach ($usedTools as $usedTool) {
-                        $meta = $usedTool['meta'];
-
-                        $sats = PoolUtils::getToolPriceInSats($usedTool);
-                        if (! isset($meta['payment'])) {
-                            continue;
-                        }
-
-                        $lnAddress = $meta['payment'];
-                        if (strpos($lnAddress, 'lightning:') === 0) {
-                            $lnAddress = substr($lnAddress, 10);
-
-                            // Add payment request
-                            $poolJob->paymentRequests()->create([
-                                'amount' => $sats,
-                                'protocol' => 'lightning',
-                                'currency' => 'bitcoin',
-                                'target' => $lnAddress,
-                                'paid' => false,
-                            ]);
-                            $logger->log('info', 'Added payment request for '.$sats.' sats to '.$lnAddress);
-                            $totalCost += $sats;
-                        }
-                    }
-
-                    // Track total cost for average stats
-                    $agent->trackToolsCost($totalCost);
-                    //
+                    $poolJob->meta = json_encode($meta);
 
                     $poolJob->save();
                     PoolJobReady::dispatch($poolJob);
