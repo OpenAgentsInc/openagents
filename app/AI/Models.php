@@ -140,6 +140,13 @@ class Models
             'description' => 'Claude 3 Sonnet is Anthropic’s balanced AI model,
                                 excelling in reasoning, multilingual tasks, and visual interpretation, released on February 29, 2024.',
         ],
+        'claude-3-5-sonnet-20240620' => [
+            'name' => 'Claude 3.5 Sonnet',
+            'gateway' => 'anthropic',
+            'access' => 'pro',
+            'max_tokens' => 4096,
+            'description' => "Claude 3.5 Sonnet is Anthropic's most powerful model (as of June 20!)"
+        ],
         'claude-3-opus-20240229' => [
             'name' => 'Claude Opus',
             'gateway' => 'anthropic',
