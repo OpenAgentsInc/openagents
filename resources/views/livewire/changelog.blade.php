@@ -8,6 +8,17 @@
 
         <div class="w-full sm:max-w-2xl mt-6 p-6 bg-black shadow-md overflow-hidden sm:rounded-lg prose prose-invert">
             <div class="mt-6 grid grid-cols-1 gap-10">
+                <x-pane title="June 20, 2024" borderColor="border-darkgray">
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/467">
+                        Add Claude 3.5 Sonnet
+                    </x-changelog-item>
+                    <x-changelog-item>
+                        Fix Gemini 1.5 Pro
+                    </x-changelog-item>
+                    <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/467">
+                        Hide smaller/older models
+                    </x-changelog-item>
+                </x-pane>
                 <x-pane title="May 30, 2024" borderColor="border-darkgray">
                     <x-changelog-item code="https://github.com/OpenAgentsInc/openagents/pull/441"
                                       post="https://x.com/OpenAgentsInc/status/1796195661752246705">
