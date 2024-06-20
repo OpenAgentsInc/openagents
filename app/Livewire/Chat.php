@@ -68,11 +68,11 @@ class Chat extends Component
 
                 return $this->redirect('/', true);
             }
-            if (auth()->check() && $this->thread->user_id !== auth()->id()) {
+            if (auth()->check() && $thread->user_id !== auth()->id()) {
 
                 return $this->redirect('/', true);
             }
-            if (! auth()->check() && $this->thread->session_id !== session()->getId()) {
+            if (! auth()->check() && $thread->session_id !== session()->getId()) {
 
                 return $this->redirect('/', true);
             }
