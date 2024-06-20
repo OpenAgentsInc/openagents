@@ -197,25 +197,33 @@ class Chat extends Component
         $useAgent = $this->thread->agent;
         if ($useAgent) {
             $maxCost = $useAgent->getPriceRange()['max'];
-            if (auth()->check() && auth()->user()->canBypassPayments()) {
-                $user = auth()->user();
-                if ($user->getAvailableSatsBalanceAttribute() < $maxCost) {
-                    $this->alert('error', 'You need at least '.$maxCost.' sats to chat with this agent');
+            if ($maxCost > 0) {
+                if (! auth()->check()) {
+                    $this->alert('error', 'You need to login to chat with this agent');
 
                     return;
                 }
-                try {
-                    $lockId = $user->lockSats($maxCost);
-                    $this->fundLocksIds[] = $lockId;
-                    Log::info('Locked funds for agent '.$useAgent->name.' for '.$maxCost.' sats');
-                } catch (Exception $e) {
-                    $this->alert('error', 'Failed to lock funds');
-                    Log::error($e);
+                if (auth()->user()->canBypassPayments()) {
+                    $this->alert('info', 'Bypassed funds lock for '.$maxCost.' sats');
+                } else {
 
-                    return;
+                    $user = auth()->user();
+                    if ($user->getAvailableSatsBalanceAttribute() < $maxCost) {
+                        $this->alert('error', 'You need at least '.$maxCost.' sats to chat with this agent');
+
+                        return;
+                    }
+                    try {
+                        $lockId = $user->lockSats($maxCost);
+                        $this->fundLocksIds[] = $lockId;
+                        Log::info('Locked funds for agent '.$useAgent->name.' for '.$maxCost.' sats');
+                    } catch (Exception $e) {
+                        $this->alert('error', 'Failed to lock funds');
+                        Log::error($e);
+
+                        return;
+                    }
                 }
-            } else {
-                $this->alert('info', 'Bypassed funds lock for '.$maxCost.' sats');
             }
 
         }
@@ -391,18 +399,20 @@ class Chat extends Component
         $payService = app(PaymentService::class);
 
         // Pay agent with user balance
-        if (auth()->check() && auth()->user()->canBypassPayments()) {
-            $this->alert('info', 'Bypassed payment of '.$agent->sats_per_message.' sats');
-        } else {
-            try {
-                $paid = $payService->payAgentForMessage($agent->id, $agent->sats_per_message);
-                if (! $paid) {
-                    throw new Exception('Failed to pay '.$agent->sats_per_message.' sats');
-                }
-            } catch (Exception $e) {
-                $this->alert('error', $e->getMessage());
+        if ($agent->sats_per_message > 0) {
+            if (auth()->check() && auth()->user()->canBypassPayments()) {
+                $this->alert('info', 'Bypassed payment of '.$agent->sats_per_message.' sats');
+            } else {
+                try {
+                    $paid = $payService->payAgentForMessage($agent->id, $agent->sats_per_message);
+                    if (! $paid) {
+                        throw new Exception('Failed to pay '.$agent->sats_per_message.' sats');
+                    }
+                } catch (Exception $e) {
+                    $this->alert('error', $e->getMessage());
 
-                return;
+                    return;
+                }
             }
         }
 
@@ -434,7 +444,7 @@ class Chat extends Component
                 $meta = $usedTool['meta'];
 
                 $sats = PoolUtils::getToolPriceInSats($usedTool);
-                if (! isset($meta['payment'])) {
+                if ($sats == 0) {
                     continue;
                 }
 
@@ -453,10 +463,10 @@ class Chat extends Component
                     if (auth()->check() && auth()->user()->canBypassPayments()) {
                         $this->alert('info', 'Bypassed payment of '.$sats.' sats to plugin '.$plugin->name);
                     } else {
-                        $payService->payPluginForMessage($plugin, $sats);
+                        $payService->payPluginForMessage($plugin->id, $sats);
                     }
                 } else { // If external tool pay with lightning
-                    if (strpos($lnAddress, 'lightning:') === 0) {
+                    if (isset($lnAddress) && $lnAddress && strpos($lnAddress, 'lightning:') === 0) {
                         if (auth()->check() && auth()->user()->canBypassPayments()) {
                             $this->alert('info', 'Bypassed payment of '.$sats.' sats to untracked tool '.$usedTool);
                         } else {
