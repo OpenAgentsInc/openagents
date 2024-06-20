@@ -79,6 +79,14 @@ class JobResultReceiverJob implements ShouldQueue
                 }
 
                 if (! $poolJob->content && $poolJob->status != 'success') { // set content only once
+
+                    if (! $agent->is_rag_ready) {
+                        $logger->log('info', 'Agent WarmUp completed for agent '.$poolJob->agent_id.' during normal job execution');
+                        $agent->is_rag_ready = true;
+                        $agent->save();
+                        AgentRagReady::dispatch($poolJob->agent_id);
+                    }
+
                     $logger->log('info', 'Found Job: '.$this->job_id.' propagating content of length '.strlen($this->content));
                     $logger->log('info', 'Propagating content '.$this->content);
 
