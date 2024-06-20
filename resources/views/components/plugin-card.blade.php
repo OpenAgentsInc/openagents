@@ -37,6 +37,12 @@
     <p class="mb-0 text-sm text-gray leading-none">Price: {{ $plugin->price_msats/1000 }} sats per call</p>
 
 
+   <div class="text-gray mt-4 gap-x-6 flex justify-end items-center">
+        <div class="flex items-center">
+            <x-icon.bitcoin class="w-4 h-4 mr-1" />
+            <span>{{ $plugin->sats_earned ?? 0 }}</span>
+        </div>
+    </div>
 
     <div class="text-gray mt-4 gap-x-6 flex justify-end items-center">
         @if ($plugin->web)

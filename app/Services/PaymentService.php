@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\Currency;
 use App\Models\Agent;
+use App\Models\Plugin;
 use App\Models\User;
 use App\Traits\Payable;
 use Exception;
@@ -21,6 +22,99 @@ class PaymentService
     public function __construct()
     {
         $this->albyAccessToken = env('ALBY_ACCESS_TOKEN', 'none');
+    }
+
+    public function sweepAllPluginBalances()
+    {
+        $minAmountForLightningPayout_msats = 100 * 1000;
+
+        $plugins = Plugin::whereHas('balances', function ($query) {
+            $query->where('currency', Currency::BTC)->where('amount', '>', 0);
+        })->get();
+
+        DB::beginTransaction();
+        $lightningPayOuts = [];
+
+        try {
+            foreach ($plugins as $plugin) {
+                // Get plugin's BTC balance
+                $balance = $plugin->balances()->where('currency', Currency::BTC)->first();
+
+                if ($balance) {
+                    $amount = $balance->amount;
+
+                    // Distribution to plugin Author
+                    $pluginAuthor = User::find($plugin->user_id);
+
+                    // If plugin has an ln addr, use it instead
+                    $pluginPaymentAddr = $plugin->payment;
+
+                    // Calculate the distribution in msats
+                    $pluginAuthorShare = 0.80 * $amount;
+
+                    // If we need to send to a ln addr we ensure the amount is above the minimum, avoid wasting too much on fees
+                    if ($pluginPaymentAddr && $pluginAuthorShare < $minAmountForLightningPayout_msats) {
+                        Log::info('Skipping lightning payout for plugin '.$plugin->name.': amount too low');
+
+                        continue;
+                    }
+
+                    // Round that down to the nearest integer number of msats, but no less than 1000 msats
+                    $pluginAuthorShare = max(1000, floor($pluginAuthorShare / 1000) * 1000);
+
+                    if ($pluginAuthor) {
+                        // Withdraw balance from plugin (in msats)
+                        $plugin->withdraw($amount, Currency::BTC);
+
+                        // We store the ln payout info for later
+                        if ($pluginPaymentAddr) {
+                            $lightningPayOuts[] = [
+                                'addr' => $pluginPaymentAddr,
+                                'amount_msats' => $pluginAuthorShare,
+                                'description' => "Plugin payout '$plugin->name",
+                                'user' => $pluginAuthor,
+                            ];
+                        }
+
+                        // Deposit balance to plugin author
+                        $pluginAuthor->deposit($pluginAuthorShare, Currency::BTC);
+
+                        // Record the payment
+                        $payment = $plugin->recordPayment($pluginAuthorShare, Currency::BTC, "Swept plugin '$plugin->name' balance to author ", $plugin);
+
+                        // Record the payment destination
+                        $plugin->recordPaymentDestination($payment, $pluginAuthor);
+
+                        // Log the payment
+                        Log::info('Swept '.($pluginAuthorShare / 1000)." sats from plugin {$plugin->name} (ID {$plugin->id}) to user $pluginAuthor->name (ID {$pluginAuthor->id})");
+                    } else {
+                        throw new Exception('Plugin author not found');
+                    }
+                }
+            }
+
+            DB::commit();
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            // Log exception or handle it as needed
+            throw $e;
+        }
+
+        // Process lightning payouts
+        foreach ($lightningPayOuts as $lightningPayOut) {
+            try {
+                $user = $lightningPayOut['user'];
+                $addr = $lightningPayOut['addr'];
+                $amount = $lightningPayOut['amount_msats'];
+                $description = $lightningPayOut['description'];
+                $invoice = $this->getInvoiceFromLNAddress($addr, $amount / 1000, $description);
+                $this->processPaymentRequest($invoice, $user);
+            } catch (Exception $e) {
+                Log::error('Error processing lightning payout for plugin '.$lightningPayOut['owner']->name.' ('.$lightningPayOut['owner']->id.'): '.$e->getMessage());
+            }
+        }
+
     }
 
     public function sweepAllAgentBalances()
@@ -78,6 +172,37 @@ class PaymentService
         }
     }
 
+    public function getInvoiceFromLNAddress(string $addr, int $amount_sats, ?string $desc = null): string
+    {
+        $addrParts = explode('@', $addr);
+        $identifier = $addrParts[0];
+        $domain = $addrParts[1];
+        $url = "https://$domain/.well-known/lnurlp/$identifier";
+        $lnAddrData = Http::get($url);
+        if (! $lnAddrData->ok()) {
+            throw new Exception('Error fetching LN address data');
+        }
+        $lnAddrData = $lnAddrData->json();
+        $callback = $lnAddrData['callback'];
+        $amount_msats = $amount_sats * 1000;
+        $callback = $callback.(strpos($callback, '?') === false ? '?' : '&').'amount='.$amount_msats;
+        if ($desc) {
+            $callback = $callback.'&comment='.urlencode($desc);
+        }
+
+        $invoiceData = Http::get($callback);
+        if (! $invoiceData->ok()) {
+            throw new Exception('Error fetching invoice data');
+        }
+        $invoiceData = $invoiceData->json();
+        if ($invoiceData['status'] !== 'OK') {
+            throw new Exception('Error fetching invoice data');
+        }
+
+        return $invoiceData['pr'];
+
+    }
+
     public function payAgentForMessage(int $agentId, int $amount): bool
     {
         // amount comes in as sats, we have to convert to msats
@@ -131,6 +256,59 @@ class PaymentService
         }
     }
 
+    public function payPluginForMessage(int $pluginId, int $amount): bool
+    {
+        // amount comes in as sats, we have to convert to msats
+        $amount = $amount * 1000;
+
+        /** @var User $user */
+        $user = Auth::user();
+
+        if (! $user) {
+            return false;
+        }
+
+        $plugin = Plugin::find($pluginId);
+
+        if (! $plugin) {
+            return false;
+        }
+
+        DB::beginTransaction();
+
+        try {
+            // Lock user balance for update
+            DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
+
+            $currentBalance = $user->checkBalance(Currency::BTC); // Using method from Payable trait
+
+            if ($currentBalance < $amount) {
+                throw new Exception('Insufficient balance');
+            }
+
+            // Withdraw balance from user
+            $user->withdraw($amount, Currency::BTC);
+
+            // Deposit balance to agent
+            $plugin->deposit($amount, Currency::BTC);
+
+            // Record the payment
+            $payment = $user->recordPayment($amount, Currency::BTC, 'Payment for message', $user);
+
+            // Record the payment destination
+            $user->recordPaymentDestination($payment, $plugin);
+
+            DB::commit();
+
+            return true;
+        } catch (Exception $e) {
+            //            dd($e->getMessage());
+            DB::rollBack();
+
+            return false;
+        }
+    }
+
     public function paySystemBonusToMultipleRecipients(iterable $recipients, int $amount, Currency $currency, ?string $description = 'System bonus')
     {
         DB::transaction(function () use ($recipients, $amount, $currency, $description) {
@@ -140,10 +318,10 @@ class PaymentService
         });
     }
 
-    public function processPaymentRequest($payment_request)
+    public function processPaymentRequest($payment_request, $user = null, $onlyUnlockedFunds = false)
     {
         /** @var User $user */
-        $authedUser = Auth::user();
+        $authedUser = $user ?? Auth::user();
 
         if (! $authedUser) {
             return response()->json(['message' => 'Unauthorized'], 401);
@@ -170,7 +348,8 @@ class PaymentService
 
         try {
             DB::table('users')->where('id', $authedUser->id)->lockForUpdate()->first();
-            $currentBalance = $authedUser->getSatsBalanceAttribute();
+            $currentBalance = $onlyUnlockedFunds ? $authedUser->getAvailableSatsBalanceAttribute()
+            : $authedUser->getSatsBalanceAttribute();
 
             if ($currentBalance < $amount) {
                 throw new Exception('Insufficient balance');

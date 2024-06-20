@@ -32,7 +32,7 @@ class WalletScreen extends Component
 
         /** @var User $user */
         $user = auth()->user();
-        $this->balance_btc = $user->getSatsBalanceAttribute();
+        $this->balance_btc = $user->getAvailableSatsBalanceAttribute();
         $this->received_payments = $user->receivedPayments()->get()->reverse();
 
         // $this->lightning_address is the user's username
@@ -49,7 +49,7 @@ class WalletScreen extends Component
     {
         $this->validate();
 
-        $response = $paymentService->processPaymentRequest($this->payment_request);
+        $response = $paymentService->processPaymentRequest($this->payment_request, null, true);
 
         if ($response['ok']) {
             session()->flash('message', 'Payment processed successfully.');
@@ -59,7 +59,7 @@ class WalletScreen extends Component
 
         // Optionally update the balance and payins after processing the payment
         $user = auth()->user()->fresh();
-        $this->balance_btc = $user->getSatsBalanceAttribute();
+        $this->balance_btc = $user->getAvailableSatsBalanceAttribute();
         $this->payins = $user->payins()->get()->reverse();
     }
 

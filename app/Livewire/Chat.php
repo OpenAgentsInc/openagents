@@ -8,11 +8,13 @@ use App\AI\PoolRag;
 use App\AI\SimpleInferencer;
 use App\Models\Agent;
 use App\Models\AgentFile;
+use App\Models\Plugin;
 use App\Models\PoolJob;
 use App\Models\Thread;
 use App\Models\User;
 use App\Services\ImageService;
 use App\Services\LocalLogger;
+use App\Services\OpenObserveLogger;
 use App\Services\PaymentService;
 use App\Utils\PoolUtils;
 use Exception;
@@ -49,6 +51,8 @@ class Chat extends Component
     public $pending = false;
 
     public bool $hasSelection = false;
+
+    public $fundLocksIds = [];
 
     // The thread we're chatting in
 
@@ -185,14 +189,34 @@ class Chat extends Component
 
     public function sendMessage(): void
     {
+        if ($this->pending) {
+            return;
+        }
+
         $useModel = $this->thread->model;
         $useAgent = $this->thread->agent;
         if ($useAgent) {
-            // Check if user can afford agent
-            // and lock funds
             $maxCost = $useAgent->getPriceRange()['max'];
-            // TODO
-            Log::info('Lock funds for agent '.$useAgent->name.' for '.$maxCost.' sats');
+            if (auth()->check() && auth()->user()->canBypassPayments()) {
+                $user = auth()->user();
+                if ($user->getAvailableSatsBalanceAttribute() < $maxCost) {
+                    $this->alert('error', 'You need at least '.$maxCost.' sats to chat with this agent');
+
+                    return;
+                }
+                try {
+                    $lockId = $user->lockSats($maxCost);
+                    $this->fundLocksIds[] = $lockId;
+                    Log::info('Locked funds for agent '.$useAgent->name.' for '.$maxCost.' sats');
+                } catch (Exception $e) {
+                    $this->alert('error', 'Failed to lock funds');
+                    Log::error($e);
+
+                    return;
+                }
+            } else {
+                $this->alert('info', 'Bypassed funds lock for '.$maxCost.' sats');
+            }
 
         }
 
@@ -352,6 +376,9 @@ class Chat extends Component
     public function processPoolJob($event): void
     {
 
+        $logger = new OpenObserveLogger([
+
+        ]);
         // Authenticate user session or proceed without it
         $sessionId = auth()->check() ? null : Session::getId();
 
@@ -361,16 +388,16 @@ class Chat extends Component
         $agent = $job->agent;
 
         /////////////// PAYMENTS
+        $payService = app(PaymentService::class);
 
-        // Agent is ready for chat. Deduct sats_per_message from user balance.
-        if (env('APP_ENV') === 'staging' && auth()->check() && auth()->user()->isAdmin()) {
+        // Pay agent with user balance
+        if (auth()->check() && auth()->user()->canBypassPayments()) {
             $this->alert('info', 'Bypassed payment of '.$agent->sats_per_message.' sats');
         } else {
-            $payService = app(PaymentService::class);
             try {
-                $paid = $payService->payAgentForMessage($agent->id, $$agent->sats_per_message);
+                $paid = $payService->payAgentForMessage($agent->id, $agent->sats_per_message);
                 if (! $paid) {
-                    throw new Exception('Failed to pay '.$$agent->sats_per_message.' sats');
+                    throw new Exception('Failed to pay '.$agent->sats_per_message.' sats');
                 }
             } catch (Exception $e) {
                 $this->alert('error', $e->getMessage());
@@ -379,23 +406,84 @@ class Chat extends Component
             }
         }
 
-        $paymentRequests = $job->paymentRequests()->get();
-        foreach ($paymentRequests as $paymentRequest) {
-            $amount = $paymentRequest->amount;
-            $protocol = $paymentRequest->protocol;
-            $currency = $paymentRequest->currency;
-            $target = $paymentRequest->target;
-
-            if (! $paymentRequest->paid) {
-                if (env('APP_ENV') === 'staging' && auth()->check() && auth()->user()->isAdmin()) {
-                    $this->alert('info', 'Simulate payment to '.$target.' of '.$amount.' '.$currency.' via '.$protocol);
+        // Track and pay tools with user balance
+        $meta = json_decode($job->meta, true);
+        $usedToolIds = $meta['usedTools'] ?? [];
+        $usedTools = [];
+        $availableTools = PoolUtils::getTools();
+        foreach ($usedToolIds as $toolId) {
+            $tool = null;
+            foreach ($availableTools as $availableTool) {
+                $logger->log('info', 'Checking tool '.json_encode($availableTool).$toolId);
+                if (isset($availableTool['id']) && $availableTool['id'] == $toolId) {
+                    $logger->log('info', 'Found tool '.$toolId);
+                    $tool = $availableTool;
+                    break;
                 }
-                // TODO
-                $paymentRequest->paid = true;
-                $paymentRequest->save();
+            }
+            if (isset($tool)) {
+                $logger->log('info', 'Used tool '.$tool['meta']['name']);
+                $usedTools[] = $tool;
             }
         }
-        ///////////////
+
+        // Pay and compute total tool cost
+        $totalToolsCost = 0;
+        foreach ($usedTools as $usedTool) {
+            try {
+                $meta = $usedTool['meta'];
+
+                $sats = PoolUtils::getToolPriceInSats($usedTool);
+                if (! isset($meta['payment'])) {
+                    continue;
+                }
+
+                $lnAddress = $meta['payment'];
+                $id = $meta['id'];
+
+                $plugin = null;
+
+                // check if it's a platform plugin
+                if (strpos($id, 'oaplugin') === 0) {
+                    $id = substr($id, 8);
+                    $plugin = Plugin::find($id);
+                }
+
+                if ($plugin) { // If plugin pay with internal payment system
+                    if (auth()->check() && auth()->user()->canBypassPayments()) {
+                        $this->alert('info', 'Bypassed payment of '.$sats.' sats to plugin '.$plugin->name);
+                    } else {
+                        $payService->payPluginForMessage($plugin, $sats);
+                    }
+                } else { // If external tool pay with lightning
+                    if (strpos($lnAddress, 'lightning:') === 0) {
+                        if (auth()->check() && auth()->user()->canBypassPayments()) {
+                            $this->alert('info', 'Bypassed payment of '.$sats.' sats to untracked tool '.$usedTool);
+                        } else {
+                            $lnAddress = substr($lnAddress, 10);
+                            // TODO (?)
+                            $logger->log('info', 'Currently unsupported: Requested payment for untracked tool '.$usedTool.' to '.$lnAddress.' for '.$sats.' sats');
+                            $totalToolsCost += $sats;
+                        }
+                    } else {
+                        $logger->log('info', 'Unsupported payment address for tool '.$usedTool.': '.$lnAddress);
+                    }
+                }
+            } catch (Exception $e) {
+                $this->alert('error', $e->getMessage());
+                Log::error($e);
+            }
+        }
+
+        // Track total cost for average stats
+        $agent->trackToolsCost($totalToolsCost + $agent->sats_per_message);
+
+        // unlock funds
+        foreach ($this->fundLocksIds as $lockId) {
+            Log::info('Unlocking funds for lock '.$lockId);
+            auth()->user()->unlockSats($lockId);
+        }
+        $this->fundLocksIds = [];
 
         // Simply do it
         $inferencer = new PoolInference();

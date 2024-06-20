@@ -172,4 +172,9 @@ class User extends Authenticatable implements MustVerifyEmail
             'password' => 'hashed',
         ];
     }
+
+    public function canBypassPayments(): bool
+    {
+        return env('ADMIN_CAN_BYPASS_PAYMENTS', env('APP_ENV') === 'staging' && $this->isAdmin());
+    }
 }
