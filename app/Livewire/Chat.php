@@ -370,8 +370,6 @@ class Chat extends Component
 
             if (count($documents) > 0 && $agent->is_rag_ready) {
                 $this->alert('warning', 'Agent is still training..');
-
-                return;
             }
 
             PoolUtils::sendRAGJob($agent->id, $this->thread->id, $uuid, $documents, $query, $tools);
