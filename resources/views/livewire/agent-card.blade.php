@@ -6,20 +6,22 @@
 
     <div class="font-bold text-xl">{{ $agent['name'] }}</div>
 
-    <x-agent-price :agent="$agent" class="text-sm"/>
 
     <div class="flex items-center">
         <div class="text-xs">
-
             <p class="text-sm text-gray leading-none">By: <a
                     href="/u/{{ $agent->user->username }}">{{ $agent->user->name }}</a></p>
         </div>
         <img class="w-5 h-5 rounded-full mx-4" src="{{ $agent->user->profile_photo_path }}"
             alt="Avatar of {{ $agent->user->name }}">
     </div>
+
     <div class="flex-grow">
         <p class="text-sm text-text my-1">{{ $agent['about'] }}</p>
     </div>
+
+
+    <x-agent-price :agent="$agent" class="text-sm"/>
 
 
     <div class="text-gray mt-4 gap-x-6 flex justify-end items-center">

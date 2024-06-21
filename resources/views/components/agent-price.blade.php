@@ -2,23 +2,23 @@
     $priceRange = $agent->getPriceRange();
 @endphp
 @if($priceRange["min"]==$priceRange["max"])
-    <span  {{ $attributes->merge(['class' => 'mb-0 cursor-pointer text-gray leading-none']) }}>
+    <span  {{ $attributes->merge(['class' => 'mb-0  text-sm ursor-pointer text-gray leading-none']) }}>
         @if (isset($prefix))
             {{ $prefix }}
         @else
-            Cost:
+            Price:
         @endif
         {{ $priceRange['max'] }} sats per message
     </span>
 @else
   <span x-data="{ open: false, openUpwards: false }" class="relative">
-    <span {{ $attributes->merge(['class' => 'mb-0 cursor-pointer text-gray leading-none']) }}
+    <span {{ $attributes->merge(['class' => 'mb-0 cursor-pointer  text-sm text-gray leading-none']) }}
         @mouseover="open=true; $nextTick(() => { openUpwards = $el.getBoundingClientRect().bottom + 200 > window.innerHeight })"
         @mouseout="open = false">
         @if (isset($prefix))
             {{ $prefix }}
         @else
-            Cost:
+            Price:
         @endif
 
         ~{{ $priceRange['avg'] }} sats per message

@@ -11,13 +11,14 @@
     <div class="font-bold text-xl">{{ $plugin->name }}</div>
     <div class="flex items-center">
         <div class="text-xs">
-            <p class="text-sm text-gray leading-none">By: {{ $plugin->user->name }}</p>
+             <p class="text-sm text-gray leading-none">By: <a
+                    href="/u/{{ $plugin->user->username }}">{{ $plugin->user->name }}</a></p>
         </div>
         <img class="w-5 h-5 rounded-full mx-4" src="{{ $plugin->user->profile_photo_path }}"
              alt="Avatar of {{ $plugin->user->name }}" />
     </div>
     <div class="flex-grow">
-        <p class="text-sm text-text my-1">{{ $plugin->description }}</p>
+        <p class="text-sm text-text my-1">{{ $plugin->short_description }}</p>
     </div>
 
     @if ($plugin->suspended && auth()->check() && $plugin->isEditableBy(auth()->user()))
