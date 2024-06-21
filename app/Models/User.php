@@ -193,7 +193,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public static function fromLightningAddress(string $addr): ?self
     {
-        $username = explode('@', $addr)[0];
+        $username = strpos($addr, '@') === false ? $addr : explode('@', $addr)[0];
 
         return self::where('username', $username)->first();
     }
