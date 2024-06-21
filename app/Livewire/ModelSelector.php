@@ -3,13 +3,10 @@
 namespace App\Livewire;
 
 use App\AI\Models;
-use App\Traits\SelectedModelOrAgentTrait;
 use Livewire\Component;
 
 class ModelSelector extends Component
 {
-    use SelectedModelOrAgentTrait;
-
     public $models;
 
     public $thread;
@@ -22,7 +19,7 @@ class ModelSelector extends Component
             return;
         }
 
-        $this->setModelOrAgentForThread($this->thread);
+        // $this->setModelOrAgentForThread($this->thread);
     }
 
     public function render()
