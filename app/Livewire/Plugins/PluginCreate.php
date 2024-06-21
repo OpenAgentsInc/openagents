@@ -355,6 +355,7 @@ class PluginCreate extends Component
                     $plugin->suspended = 'Pending approval';
                 } else {
                     $plugin->suspended = '';
+                    $plugin->short_description = '';
                 }
 
                 $plugin->save();

@@ -14,6 +14,7 @@ class Plugin extends Model
     protected $fillable = [
         'name',
         'description',
+        'short_description',
         'tos',
         'privacy',
         'web',
@@ -71,6 +72,18 @@ class Plugin extends Model
         }
 
         return url('/images/sqlogo.png'); // Return default URL if no image data or empty URL
+    }
+
+    public function getShortDescriptionAttribute()
+    {
+        if ($this->attributes['short_description']) {
+            return $this->attributes['short_description'];
+        } else {
+            $words = explode(' ', $this->attributes['description']);
+            $description = implode(' ', array_slice($words, 0, 32));
+
+            return str_word_count($this->attributes['description']) > 32 ? $description.'...' : $description;
+        }
     }
 
     public function user()
