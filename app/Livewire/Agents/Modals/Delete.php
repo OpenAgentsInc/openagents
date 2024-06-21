@@ -64,6 +64,9 @@ class Delete extends ModalComponent
 
             $this->alert('success', 'Agent deleted successfully');
 
+            // refresh
+            $this->dispatch('refresh');
+
         }
 
     }
