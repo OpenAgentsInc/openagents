@@ -47,11 +47,23 @@
             @endif
         </div>
 
-        <h3 class="mt-12 mb-6">Agents</h3>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-6">
-            @foreach($user->agents as $agent)
-                <livewire:agent-card :agent="$agent" :key="$agent->id"/>
-            @endforeach
-        </div>
+        @if(count($user->agents)>0)
+            <h3 class="mt-12 mb-6">Agents</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-6">
+                @foreach($user->agents as $agent)
+                    <livewire:agent-card :agent="$agent" :key="$agent->id"/>
+                @endforeach
+            </div>
+        @endif
+
+        @if(count($user->plugins)>0)
+            <h3 class="mt-12 mb-6">Plugins</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-6">
+                @foreach($user->plugins as $plugin)
+                    <x-plugin-card :plugin="$plugin" />
+
+                @endforeach
+            </div>
+        @endif
     </main>
 
