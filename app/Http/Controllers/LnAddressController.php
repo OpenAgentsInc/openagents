@@ -19,8 +19,7 @@ class LnAddressController extends Controller
 
     public function handleLnurlp($username)
     {
-        // First see if there is a user with this username
-        $user = User::where('username', $username)->first();
+        $user = User::fromLightningAddress($username);
 
         if (! $user) {
             return response()->json(['status' => 'ERROR', 'reason' => 'User not found'], 404);
