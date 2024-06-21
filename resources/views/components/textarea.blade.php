@@ -45,6 +45,7 @@
         x-ref="textarea"
         autocomplete="off"
         @input="update(); inputVal = $event.target.value; isDisabled = inputVal.length === 0"
+        x-init="setTimeout(() => update(), 10)"
         placeholder="{{ $placeholder }}"
         :rows="minRows"
             {{ $attributes->merge([
@@ -52,4 +53,3 @@
             ]) }}
     ></textarea>
 </div>
-
