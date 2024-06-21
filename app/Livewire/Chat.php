@@ -368,11 +368,18 @@ class Chat extends Component
             $documents = AgentFile::where('agent_id', $agent->id)->pluck('url')->toArray();
             $tools = $agent->externalTools()->pluck('external_uid')->toArray();
 
-            if (count($documents) > 0 && ! $agent->is_rag_ready) {
-                $this->alert('warning', 'Agent is still training..');
+            // if agents are still training after 1 hour, we assume something went wrong during warmup and we just
+            // send the job without warmup, this will give a chance to complete the warm up implicitly as part of the
+            // job execution, it will be slower though.
+            $agentTime = $agent->created_at->timestamp;
+            $todayTime = now()->timestamp;
+            $isOld = $todayTime - $agentTime > 3600; // older than 1 hour
+            if (count($documents) > 0 && ! $agent->is_rag_ready && ! $isOld) {
+                $this->alert('warning', 'Agent is still training...');
+                PoolUtils::sendRAGJob($agent->id, $this->thread->id, $uuid, [], $query, $tools);
+            } else {
+                PoolUtils::sendRAGJob($agent->id, $this->thread->id, $uuid, $documents, $query, $tools);
             }
-
-            PoolUtils::sendRAGJob($agent->id, $this->thread->id, $uuid, $documents, $query, $tools);
 
         } catch (Exception $e) {
             $this->alert('error', 'An Error occurred, please try again later');
