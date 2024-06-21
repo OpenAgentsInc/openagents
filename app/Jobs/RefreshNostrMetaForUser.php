@@ -45,11 +45,23 @@ class RefreshNostrMetaForUser implements ShouldQueue
                     $npubResolver = str_replace('{{$npub}}', $user->username, config('nostr.npub_resolver'));
                     $npubDataResponse = Http::timeout(5)->get($npubResolver);
                     $npubData = $npubDataResponse->json();
-                    if (isset($npubData['items']) && isset($npubData['items'][1])) {
-                        $npubData = $npubDataResponse->json()['items'][1];
-                        $npubContent = json_decode($npubData['content'] ?? '{}', true);
-                        $user->profile_photo_path = $npubContent['picture'] ?? '/images/nostrich.jpeg';
-                        $user->name = $npubContent['name'] ?? substr($this->pubkey, 0, 8);
+                    $picture = null;
+                    $name = null;
+                    if (isset($npubData['items']) && count($npubData['items']) > 0) {
+                        for ($i = count($npubData['items']) - 1; $i >= 0; $i--) {
+                            $npubContent = json_decode($npubData['items'][$i]['content'] ?? '{}', true);
+                            if (! $picture && isset($npubContent['picture'])) {
+                                $picture = $npubContent['picture'];
+                            }
+                            if (! $name && isset($npubContent['name'])) {
+                                $name = $npubContent['name'];
+                            }
+                            if ($picture && $name) {
+                                break;
+                            }
+                        }
+                        $user->profile_photo_path = $picture ?? ($user->profile_photo_path ?? '/images/nostrich.jpeg');
+                        $user->name = $name ?? ($user->name ?? substr($this->pubkey, 0, 8));
                         $user->save();
                     }
                 }
