@@ -214,15 +214,18 @@ class Edit extends Component
         $agent->documents()->where('type', 'url')->delete();
         if (! empty($this->urls)) {
             $needWarmUp = true;
-            $urls = explode("\n", $this->urls);
+            $urls = explode("\n", trim($this->urls));
             foreach ($urls as $url) {
-                $agent->documents()->create([
-                    'name' => $url,
-                    'path' => $url,
-                    'url' => $url,
-                    'disk' => 'url',
-                    'type' => 'url',
-                ]);
+                $url = trim($url);
+                if (! empty($url) && filter_var($url, FILTER_VALIDATE_URL)) {
+                    $agent->documents()->create([
+                        'name' => $url,
+                        'path' => $url,
+                        'url' => $url,
+                        'disk' => 'url',
+                        'type' => 'url',
+                    ]);
+                }
             }
         }
 
