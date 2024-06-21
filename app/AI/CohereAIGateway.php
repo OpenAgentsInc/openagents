@@ -18,13 +18,16 @@ class CohereAIGateway implements GatewayInterface
         $this->httpClient = $httpClient;
     }
 
-    public function summarize(string $conversationText): ?string
+    public function summarize(string $conversationText, $maxTokens = 10, $prompt = null): ?string
     {
+        if (! $prompt) {
+            $prompt = 'What is a 3- to 5-word phrase that summarizes the following conversation? Capitalize the first letter of each word. Respond only with the phrase, no other words.';
+        }
         $data = [
-            'message' => "What is a 3- to 5-word phrase that summarizes the following conversation? Capitalize the first letter of each word. Respond only with the phrase, no other words.\n\n$conversationText",
+            'message' => "$prompt\n\n$conversationText",
             'model' => 'command-r',
             'temperature' => 0,
-            'max_tokens' => 10,
+            'max_tokens' => $maxTokens,
         ];
 
         try {
