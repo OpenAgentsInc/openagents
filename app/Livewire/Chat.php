@@ -368,7 +368,7 @@ class Chat extends Component
             $documents = AgentFile::where('agent_id', $agent->id)->pluck('url')->toArray();
             $tools = $agent->externalTools()->pluck('external_uid')->toArray();
 
-            if (count($documents) > 0 && $agent->is_rag_ready) {
+            if (count($documents) > 0 && ! $agent->is_rag_ready) {
                 $this->alert('warning', 'Agent is still training..');
             }
 
