@@ -64,7 +64,6 @@ class Chat extends Component
             $thread = Thread::find($id);
 
             if (! $thread) {
-                Log::info('Thread not found');
 
                 return $this->redirect('/', true);
             }
