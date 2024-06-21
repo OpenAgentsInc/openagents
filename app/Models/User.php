@@ -182,4 +182,19 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return env('ADMIN_CAN_BYPASS_PAYMENTS', env('APP_ENV') === 'staging' && $this->isAdmin());
     }
+
+    public function getLightningAddress(): string
+    {
+        $prefix = $this->username;
+        $suffix = env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com';
+
+        return "{$prefix}@{$suffix}";
+    }
+
+    public static function fromLightningAddress(string $addr): ?self
+    {
+        $username = explode('@', $addr)[0];
+
+        return self::where('username', $username)->first();
+    }
 }

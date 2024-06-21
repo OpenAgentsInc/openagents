@@ -4,10 +4,13 @@ namespace App\Livewire;
 
 use App\Models\User;
 use App\Services\PaymentService;
+use Jantinnerezo\LivewireAlert\LivewireAlert;
 use Livewire\Component;
 
 class WalletScreen extends Component
 {
+    use LivewireAlert;
+
     public $balance_btc = 1;
 
     public $payment_request;
@@ -22,6 +25,8 @@ class WalletScreen extends Component
         'payment_request' => 'required|string',
     ];
 
+    protected $listeners = ['copiedToClipboard' => 'copiedToClipboard'];
+
     // On mount, grab the user's bitcoin balance and payins
     public function mount()
     {
@@ -35,11 +40,7 @@ class WalletScreen extends Component
         $this->balance_btc = $user->getAvailableSatsBalanceAttribute();
         $this->received_payments = $user->receivedPayments()->get()->reverse();
 
-        // $this->lightning_address is the user's username
-        $prefix = $user->username;
-        // staging.openagents.com if env is staging, otherwise openagents.com
-        $suffix = env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com';
-        $this->lightning_address = "{$prefix}@{$suffix}";
+        $this->lightning_address = $user->getLightningAddress();
 
         // Fetch the payins
         $this->payins = $user->payins()->get()->reverse(); // Assumes there's a payins() relationship
@@ -66,5 +67,11 @@ class WalletScreen extends Component
     public function render()
     {
         return view('livewire.wallet-screen');
+    }
+
+    public function copiedToClipboard()
+    {
+        $this->alert('success', 'Copied to clipboard');
+
     }
 }
