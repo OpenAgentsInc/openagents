@@ -67,7 +67,7 @@ class RefreshNostrMetaForUser implements ShouldQueue
                 }
             });
         } catch (Exception $e) {
-            Log::error('Error fetching npub data: '.$e->getMessage());
+            // Log::error('Error fetching npub data: '.$e->getMessage());
             $this->release(2);
         }
     }
