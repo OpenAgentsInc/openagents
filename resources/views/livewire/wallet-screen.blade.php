@@ -53,8 +53,10 @@
             <div class="my-16">
                 <x-pane title="Deposit bitcoin">
                     <div class="px-4">
-                        <p>Send between 1 and 10000 sats to Lightning Address <strong>{{ $lightning_address }}</strong>
+                        <p>Send between 1 and 10000 sats to Lightning Address
                         </p>
+                      <x-input type="text" value="{{ $lightning_address }}" class="block mt-1 w-full text-xs"
+                      x-data x-ref="input" @click="$refs.input.select(); document.execCommand('copy');$dispatch('copiedToClipboard');" readonly />
                         <p>This feature is experimental. Do not send anything you aren't willing to lose!</p>
                     </div>
                 </x-pane>
