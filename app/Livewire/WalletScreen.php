@@ -25,8 +25,6 @@ class WalletScreen extends Component
         'payment_request' => 'required|string',
     ];
 
-    protected $listeners = ['copiedToClipboard' => 'copiedToClipboard'];
-
     // On mount, grab the user's bitcoin balance and payins
     public function mount()
     {
@@ -67,11 +65,5 @@ class WalletScreen extends Component
     public function render()
     {
         return view('livewire.wallet-screen');
-    }
-
-    public function copiedToClipboard()
-    {
-        $this->alert('success', 'Copied to clipboard');
-
     }
 }
