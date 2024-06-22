@@ -7,11 +7,10 @@
             @endif
 
             <div class="flex flex-col justify-center">
-                <h1>{{ $user->name }}</h1>
-                @if ($user->username)<h2 class="text-gray text-xs">{{ $user->username }}</h2>@endif
-                <div class="flex flex-col justify-center">
-                    <select id="role" wire:change="handleChange($event.target.value)"
-                        class="@if(!$viewerCanModerate) pointer-events-none @endif">
+                <h1>{{ $user->name }}
+
+                 <select id="role" wire:change="handleChange($event.target.value)"
+                        class="@if(!$viewerCanModerate) pointer-events-none @endif text-xs">
 
                     >
                         @if($viewerCanModerate)
@@ -28,23 +27,33 @@
                             </option>
                         @endif
                     </select>
-                </div>
+
+                </h1>
+
+                <livewire:lightning-address-display :lightning-address="$user->getLightningAddress()" />
+                @if ($user->auth_provider=="X")
+                    <a href="https://x.com/{{ $user->username }}" target="_blank" class="text-gray text-xs inline-flex items-center m-2">
+                        <x-icon.x class="h-4 w-4 mr-1"/> {{ "@".$user->username }}
+                    </a>
+                @endif
+                @if ($user->auth_provider=="nostr")
+                    <a href="https://njump.me/{{ $user->username }}" target="_blank" class="text-gray text-xs inline-flex items-center m-2">
+                    <img src="/images/nostrich.jpeg" alt="{{ $user->name }}" class="rounded-xl w-4 h-4  mr-1"/>
+                    <span>{{ Str::limit($user->username, 64, '...') }}</span>
+                    </a>
+                @endif
+
+
+
+
+
+
 
             </div>
 
 
 
-            @if ($user->username)
-                @if ($user->auth_provider=="X")
-                    <div class="flex flex-col justify-center">
-                        <a href="https://x.com/{{ $user->username }}" target="_blank"
-                        class="p-1.5 border border-offblack hover:bg-offblack rounded">
-                            <x-icon.x class="h-6 w-6"/>
-                        </a>
-                    </div>
-                @endif
 
-            @endif
         </div>
 
         @if(count($user->agents)>0)

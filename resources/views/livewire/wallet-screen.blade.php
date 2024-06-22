@@ -55,8 +55,7 @@
                     <div class="px-4">
                         <p>Send between 1 and 10000 sats to Lightning Address
                         </p>
-                      <x-input type="text" value="{{ $lightning_address }}" class="block mt-1 w-full text-xs"
-                      x-data x-ref="input" @click="$refs.input.select(); document.execCommand('copy');$dispatch('copiedToClipboard');" readonly />
+                        <livewire:lightning-address-display :lightning-address="$lightning_address" />
                         <p>This feature is experimental. Do not send anything you aren't willing to lose!</p>
                     </div>
                 </x-pane>
