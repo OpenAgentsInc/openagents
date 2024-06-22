@@ -51,6 +51,8 @@ class Edit extends Component
 
     public $plugins = [];
 
+    public $ownerId;
+
     public function mount()
     {
 
@@ -74,6 +76,7 @@ class Edit extends Component
 
         $this->free_agent_models = Models::getSelectModelsForUserTypes(['guest', 'user']);
         $this->all_agent_models = Models::getSelectModelsForUserTypes(['guest', 'user', 'pro']);
+        $this->ownerId = $this->agent->user_id;
 
         $docs = AgentFile::with('agent')
             ->where('agent_id', $this->agent->id)
@@ -108,6 +111,7 @@ class Edit extends Component
     {
 
         $user = auth()->user();
+        abort_if($user->id != $this->agent->user_id && ! $user->getRole()->canModerate($this->agent->user->getRole()), 403, 'permission denied');
 
         $agent = $this->agent;
 
@@ -167,7 +171,9 @@ class Edit extends Component
         }
 
         $agent->is_rag_ready = empty($this->files);
-        $agent->user_id = $user->id;
+        if ($user->isModerator()) {
+            $agent->user_id = $this->ownerId;
+        }
         $agent->save();
 
         $needWarmUp = false;
