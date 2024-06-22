@@ -142,11 +142,20 @@
                                      multiple/>
                 </div>
 
+                @if(auth()->user()->isModerator())
+                    <div class="my-5 w-full ">
+                        <label for="plugins" class="my-1">Owner Id</label>
+                        <x-input id="owner" class="block mt-1 w-full " type="text" name="owner" wire:model='ownerId'
+                                required placeholder="Owner"/>
+                    </div>
+                @endif
+
                 <div class="mt-5 w-full text-center">
                     <x-button type="submit" class="text-center justify-center gap-2 py-2 my-4">
                         Update Agent
                     </x-button>
                 </div>
+
             </form>
         </div>
     </div>
