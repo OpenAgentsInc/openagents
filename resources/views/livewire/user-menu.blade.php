@@ -16,9 +16,9 @@
                 <div x-popover:panel x-cloak x-transition x-show="open"
                     class="fixed right-[8px] mt-2 shadow-md text-white bg-black border border-darkgray"
                     style="border-radius: 3px !important;">
-                    <a wire:navigate href="{{ route('myagents') }}"
+                    <a wire:navigate href="{{ route('user.profile', ['username' => Auth::user()->username  ]) }}"
                     class="block px-4 py-2 text-sm text-white hover:bg-white/20">
-                        My Agents
+                        User Profile
                     </a>
                     <a wire:navigate href="{{ route('wallet') }}"
                     class="block px-4 py-2 text-sm text-white hover:bg-white/20">
