@@ -17,7 +17,9 @@ class CheckPendingPayins extends Command
 
     public function handle()
     {
-        $pendingPayins = Payin::where('status', 'pending')->get();
+        $pendingPayins = Payin::where('status', 'pending')
+            ->where('updated_at', '>', now()->subDay())
+            ->get();
 
         $controller = new LnAddressController();
 
@@ -42,7 +44,7 @@ class CheckPendingPayins extends Command
 
                 Log::info('Payin settled: '.$payin->id);
             } else {
-                Log::info('Payin still pending: '.$payin->id);
+                // Log::info('Payin still pending: '.$payin->id);
             }
         }
 
