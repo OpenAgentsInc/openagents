@@ -60,7 +60,8 @@ class CheckPendingPayins extends Command
 
                 Log::info('Payin settled: '.$payin->id);
             } else {
-                Log::info('Payin still pending: '.$payin->id);
+                $nextExpectedDelaySeconds = min(10 * (2 ** ($retry + 1)), 600);
+                Log::info('Payin still pending: '.$payin->id.' next attempt in '.$nextExpectedDelaySeconds.' seconds');
             }
         }
 
