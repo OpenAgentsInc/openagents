@@ -24,7 +24,8 @@
     "vite": "^5.0"
   },
   "dependencies": {
-    "@arwes/react-frames": "^1.0.0-next.24061301",
+    "@arwes/react-bgs": "1.0.0-alpha.23",
+    "@arwes/react-frames": "1.0.0-alpha.23",
     "arwes": "1.0.0-alpha.23"
   }
 }

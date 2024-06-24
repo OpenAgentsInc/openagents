@@ -1,24 +1,28 @@
-import { FrameSVGNefrex } from "@arwes/react-frames";
+import React, { useState, useEffect } from "react";
+import { Animator } from "@arwes/react-animator";
+import { Dots } from "@arwes/react-bgs";
 
 export default function Demo() {
+  const [active, setActive] = useState(true);
+
+  useEffect(() => {
+    const iid = setInterval(() => setActive((active) => !active), 3000);
+    return () => clearInterval(iid);
+  }, []);
+
   return (
-    <div
-      style={{
-        position: "relative",
-        width: 300,
-        height: 300,
-      }}
-    >
-      <FrameSVGNefrex
-        css={{
-          "[data-name=bg]": {
-            color: "hsl(180, 75%, 10%)",
-          },
-          "[data-name=line]": {
-            color: "hsl(180, 75%, 50%)",
-          },
+    <Animator active={active} duration={{ enter: 2, exit: 2 }}>
+      <div
+        style={{
+          position: "relative",
+          width: "100vw",
+          height: "100vh",
+          backgroundColor: "black",
         }}
-      />
-    </div>
+      >
+        {/* Canvas element will ocupy the positioned parent element. */}
+        <Dots color="rgba(255,255,255,0.25)" />
+      </div>
+    </Animator>
   );
 }
