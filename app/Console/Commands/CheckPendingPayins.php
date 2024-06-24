@@ -6,6 +6,7 @@ use App\Enums\Currency;
 use App\Http\Controllers\LnAddressController;
 use App\Models\Payin;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Log;
 
@@ -29,6 +30,7 @@ class CheckPendingPayins extends Command
             $retry = $payin->retry_check;
 
             $expectedDelaySeconds = min(10 * (2 ** $retry), 600);
+            $last_check = $last_check instanceof Carbon ? $last_check : new Carbon($last_check);
 
             if (now()->timestamp - $last_check->timestamp < $expectedDelaySeconds) {
                 continue;
