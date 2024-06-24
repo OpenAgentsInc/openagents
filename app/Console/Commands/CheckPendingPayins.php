@@ -29,7 +29,7 @@ class CheckPendingPayins extends Command
             $last_check = $payin->last_check;
             $retry = $payin->retry_check;
 
-            $expectedDelaySeconds = min(10 * (2 ** $retry), 600);
+            $expectedDelaySeconds = min(10 * (2 ** $retry), 1800);
             $last_check = $last_check instanceof Carbon ? $last_check : new Carbon($last_check);
 
             if (now()->timestamp - $last_check->timestamp < $expectedDelaySeconds) {
@@ -60,7 +60,7 @@ class CheckPendingPayins extends Command
 
                 Log::info('Payin settled: '.$payin->id);
             } else {
-                $nextExpectedDelaySeconds = min(10 * (2 ** ($retry + 1)), 600);
+                $nextExpectedDelaySeconds = min(10 * (2 ** ($retry + 1)), 1800);
                 Log::info('Payin still pending: '.$payin->id.' next attempt in '.$nextExpectedDelaySeconds.' seconds');
             }
         }
