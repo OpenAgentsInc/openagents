@@ -24,6 +24,20 @@ class CheckPendingPayins extends Command
         $controller = new LnAddressController();
 
         foreach ($pendingPayins as $payin) {
+
+            $last_check = $payin->last_check;
+            $retry = $payin->retry_check;
+
+            $expectedDelaySeconds = min(10 * (2 ** $retry), 600);
+
+            if (now()->timestamp - $last_check->timestamp < $expectedDelaySeconds) {
+                continue;
+            }
+
+            $payin->last_check = now();
+            $payin->retry_check = $retry + 1;
+            $payin->save();
+
             $invoiceStatus = $controller->getInvoiceStatus($payin->payment_hash);
 
             if (! $invoiceStatus) {
@@ -44,7 +58,7 @@ class CheckPendingPayins extends Command
 
                 Log::info('Payin settled: '.$payin->id);
             } else {
-                // Log::info('Payin still pending: '.$payin->id);
+                Log::info('Payin still pending: '.$payin->id);
             }
         }
 
