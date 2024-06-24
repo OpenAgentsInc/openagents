@@ -9,6 +9,8 @@ class Payin extends Model
 {
     use HasFactory;
 
+    protected $dates = ['last_check'];
+
     protected $guarded = [];
 
     public function user()
