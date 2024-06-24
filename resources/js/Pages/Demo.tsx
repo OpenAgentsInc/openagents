@@ -25,6 +25,18 @@ export default function Demo() {
         >
           {/* Canvas element will ocupy the positioned parent element. */}
           <Dots color="rgba(255,255,255,0.25)" />
+          <iframe
+            src="https://wanix.openagents.com"
+            title="Example iframe"
+            width="100%"
+            height="100%"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              border: "none",
+            }}
+          />
         </div>
       </Animator>
     </>
