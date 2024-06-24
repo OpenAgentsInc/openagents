@@ -165,6 +165,10 @@ class Chat extends Component
     #[On('select-model')]
     public function selectModel($model): void
     {
+        if (! $model) {
+            $model = Models::getDefaultModel();
+        }
+
         $this->hasSelection = true;
         $this->ensureThread();
         $ac = $model ? Models::hasModelAccess($model) : false;
