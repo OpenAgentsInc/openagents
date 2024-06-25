@@ -12,27 +12,94 @@
             @endif
 
             <x-pane title="Your bitcoin balance">
-                <h4 class="text-center">{{ $balance_btc }} sats</h4>
+                <table class="w-full">
+                    <tr>
+                        <th  class="text-center">Available</th>                         <th   class="text-center">Pending</th>
+
+                    </tr>
+                    <tr>
+                        <td  class="text-center">{{ $balance_btc }} sats</td>
+                        <th  class="text-center">{{ $balance_btc }} sats</th>
+
+                    </tr>
+
+                </table>
+
+                </p>
+
+                <div class="px-4 mt-6 pt-2 flex justify-evenly">
+                    <x-secondary-button  wire:click="withdraw">Withdraw</x-secondary-button>
+                    <x-secondary-button  wire:click="deposit">Deposit</x-secondary-button>
+                </div>
+
+                <p class="text-gray mt-4 text-xs text-center">
+                    Pending balances comprise payouts from agents, plugins and other revenue sources owned by you.
+                    They become unlocked once per minute.
+                    20% of the rewards are held by OpenAgents as platform fees.
+                </p>
+
             </x-pane>
 
-            <div class="my-16">
-                <livewire:agent-balance-summary/>
-            </div>
 
-            <div class="my-16">
-                <x-pane title="Withdraw bitcoin">
-                    <div class="px-4 pt-2 text-gray">You can withdraw any amount up to {{ $balance_btc }} sats.</div>
 
-                    <form class="p-4" wire:submit.prevent="submitPaymentRequest">
-                        <div>
-                            <label for="payment_request">Lightning invoice:</label>
-                            <x-chat.textarea type="text" id="payment_request" wire:model="payment_request"
-                                             required default="lnbc..."></x-chat.textarea>
-                            @error('payment_request') <span class="error">{{ $message }}</span> @enderror
+
+              <div class="my-16">
+                <x-pane title="Your Lightning Address">
+                    <div class="px-4 pt-2 ">
+                        <p class=" text-gray">
+                        You can receive payments between 1 and 10000 sats to this Lightning Address and they will be credited to your account.
+                        </p>
+                        <p class="text-xs text-gray
+                        ">This feature is experimental. Do not send anything you aren't willing to lose!</p>
+                         <p>
+                            <livewire:lightning-address-display :lightning-address="$lightning_address" />
+                        </p>
+
+                    </div>
+                    <div class="px-4 pt-2 ">
+                        <h4>Custom address
+                            <span class="inline-flex bg-opacity-15 bg-white rounded-md px-1 py-1 text-gray-500 text-sm flex justify-center items-center w-[56px] h-[20px]" >
+                                <x-icon.logo class="w-[12px] h-[12px] mr-[4px]"/> Pro
+                            </span>
+                        </h4>
+                        <p class="text-gray">
+                            Pro users can choose a custom Lightning Address.
+                        </p>
+                        <p class="text-xs text-gray">
+                            Valid characters: A-Z, a-z, 0-9, _, -, .
+                        </p>
+                        <div class="flex items-center gap-2
+                        justify-start mt-2
+                        ">
+
+                        <x-input id="custom_lightning_address"
+                         class="block mt-1 w-32 text-right"
+                        placeholder="your_new_address"
+
+                        pattern="[A-Za-z0-9_\-\.]*"
+                        type="text" name="custom_lightning_address"
+                        wire:model='custom_lightning_address'
+                              required placeholder=""/>{{"@".$lightning_domain}}
+                        <x-secondary-button class="h-6 ml-4"
+                         wire:click="updateCustomLightningAddress">Save</x-secondary-button>
+
+                        </div>
+                        <div class="mt-4">
+                            <h5>Address history</h5>
+                            <p class="text-gray text-xs">You can use any address you've used before.</p>
+                            <div class="flex flex-col gap-2">
+                                @foreach($address_history as $address)
+                                <livewire:lightning-address-display :lightning-address="$address" />
+
+
+                                @endforeach
+                            </div>
                         </div>
 
-                        <x-secondary-button class="mt-4" type="submit">Withdraw to invoice</x-secondary-button>
-                    </form>
+
+                    </div>
+
+
                 </x-pane>
             </div>
 
@@ -50,16 +117,6 @@
                 </x-pane>
             </div>
 
-            <div class="my-16">
-                <x-pane title="Deposit bitcoin">
-                    <div class="px-4">
-                        <p>Send between 1 and 10000 sats to Lightning Address
-                        </p>
-                        <livewire:lightning-address-display :lightning-address="$lightning_address" />
-                        <p>This feature is experimental. Do not send anything you aren't willing to lose!</p>
-                    </div>
-                </x-pane>
-            </div>
 
             <div class="my-16">
                 <x-pane title="Recent deposits">

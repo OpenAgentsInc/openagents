@@ -9,6 +9,7 @@
   "license": "MIT",
   "require": {
     "php": "^8.3",
+    "bacon/bacon-qr-code": "^3.0",
     "dedoc/scramble": "^0.10.11",
     "doctrine/dbal": "^4.0",
     "google/protobuf": "^3.22.0",

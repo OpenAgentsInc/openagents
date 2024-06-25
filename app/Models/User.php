@@ -4,12 +4,14 @@ namespace App\Models;
 
 use App\Enums\UserRole;
 use App\Traits\Payable;
+use Exception;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Laravel\Cashier\Billable;
 use Laravel\Jetstream\HasProfilePhoto;
 use Laravel\Sanctum\HasApiTokens;
@@ -85,7 +87,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isPro(): bool
     {
-        return env('APP_ENV') === 'local' || $this->subscribed('default');
+        return env('APP_ENV') === 'local' || $this->subscribed('default') || $this->isAdmin();
     }
 
     /**
@@ -183,18 +185,136 @@ class User extends Authenticatable implements MustVerifyEmail
         return env('ADMIN_CAN_BYPASS_PAYMENTS', env('APP_ENV') === 'staging' && $this->isAdmin());
     }
 
+    public function lightningAddresses()
+    {
+        return $this->hasMany(LightningAddress::class);
+    }
+
     public function getLightningAddress(): string
     {
-        $prefix = $this->username;
-        $suffix = env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com';
 
-        return "{$prefix}@{$suffix}";
+        $lnDomain = env('LIGHTNING_ADDR_DOMAIN', env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com');
+
+        // first we look for a "vanity" address
+        $vanityAddress = $this->lightningAddresses()
+            ->where('vanity', true)
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if ($vanityAddress) {
+            return $vanityAddress->address;
+        }
+
+        return DB::transaction(function () use ($lnDomain) {
+
+            // if not found we look for a "system" address
+            $systemAddress = $this->lightningAddresses()
+                ->where('vanity', false)
+                ->orderByDesc('updated_at')
+                ->first();
+
+            // if not found we create it
+            if (! $systemAddress) {
+                // we will try to assign a system address, however there might be a vanity address that uses the same identifier
+                // if that's the case we add a number and increment by 1 until we find a free address
+                $i = 0;
+                do {
+                    $newSystemAddress = $this->username;
+                    if ($i > 0) { // first attempt is without the number
+                        $newSystemAddress .= $i;
+                    }
+                    $newSystemAddress .= '@';
+                    $newSystemAddress .= $lnDomain;
+                    $systemAddress = LightningAddress::where('address', $newSystemAddress)->first();
+                    if (! $systemAddress) { // found a free address
+                        // Use the address and break the loop
+                        $systemAddress = $this->lightningAddresses()->create([
+                            'address' => $newSystemAddress,
+                            'vanity' => false,
+                        ]);
+                        break;
+                    }
+                    $i++;
+                } while (true);
+            }
+
+            return $systemAddress->address;
+        }, 5);
+    }
+
+    /**
+     * Assign a vanity address to the user
+     * If the user already used the same vanity address it will just reuse it
+     * If another user is using the same vanity address it will return an error
+     * If the vanity address is an username it will return an error as if the address was already used (this is to make it backward compatible)
+     *
+     * @param  string  $identifier  The first part of the address before @ (xxx@openagents.com)
+     */
+    public function setVanityAddress(string $identifier): string
+    {
+        if (strpos($identifier, '@') !== false) {
+            $identifier = explode('@', $identifier)[0];
+        }
+        $lnDomain = env('LIGHTNING_ADDR_DOMAIN', env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com');
+
+        return DB::transaction(function () use ($identifier, $lnDomain) {
+
+            $vanityAddress = $identifier.'@'.$lnDomain;
+
+            // let's check if the address is already in use
+            $existingAddress = LightningAddress::where('address', $vanityAddress)->first();
+
+            if ($existingAddress) {
+                // its the same user, so we just update the updated_at date to move the address on top and then return
+                if ($existingAddress->user_id == $this->id) {
+                    $existingAddress->touch();
+                    $existingAddress->save();
+
+                    return $vanityAddress;
+                } else {
+                    throw new Exception('Address already in use');
+                }
+            }
+
+            // now let's check if the $identifier is an existing username
+            $existingUser = User::where('username', $identifier)->first();
+            if ($existingUser) {
+                throw new Exception('Address already in use');
+            }
+
+            // Check if there is a vanity address created in the last 6 hours
+            $hasRecentVanityAddress = $this->lightningAddresses()
+                ->where('vanity', true)
+                ->where('created_at', '>=', now()->subHours(6))
+                ->exists();
+
+            if ($hasRecentVanityAddress) {
+                throw new Exception('You have already changed your address recently. Please wait a few hours before trying again.');
+            }
+
+            // Address is free, let's use it
+            $this->lightningAddresses()->create([
+                'address' => $vanityAddress,
+                'vanity' => true,
+            ]);
+
+            return $vanityAddress;
+        }, 5);
     }
 
     public static function fromLightningAddress(string $addr): ?self
     {
-        $username = strpos($addr, '@') === false ? $addr : explode('@', $addr)[0];
+        if (strpos($addr, '@') === false) {
+            $lnDomain = env('LIGHTNING_ADDR_DOMAIN', env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com');
+            $addr = $addr.'@'.$lnDomain;
+        }
 
-        return self::where('username', $username)->first();
+        // find the user by the address (system or vanity)
+        $addr = LightningAddress::where('address', $addr)->first();
+        if (! $addr) {
+            return null;
+        }
+
+        return $addr->user;
     }
 }
