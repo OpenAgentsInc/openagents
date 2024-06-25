@@ -23,13 +23,14 @@ class CheckPendingPayins extends Command
             ->get();
 
         $controller = new LnAddressController();
+        $delayLimit = 21600; // 6 hours
 
         foreach ($pendingPayins as $payin) {
 
             $last_check = $payin->last_check;
             $retry = $payin->retry_check;
 
-            $expectedDelaySeconds = min(10 * (2 ** $retry), 1800);
+            $expectedDelaySeconds = min(10 * (2 ** $retry), $delayLimit);
             $last_check = $last_check instanceof Carbon ? $last_check : new Carbon($last_check);
 
             if (now()->timestamp - $last_check->timestamp < $expectedDelaySeconds) {
@@ -60,7 +61,7 @@ class CheckPendingPayins extends Command
 
                 Log::info('Payin settled: '.$payin->id);
             } else {
-                $nextExpectedDelaySeconds = min(10 * (2 ** ($retry + 1)), 1800);
+                $nextExpectedDelaySeconds = min(10 * (2 ** ($retry + 1)), $delayLimit);
                 Log::info('Payin still pending: '.$payin->id.' next attempt in '.$nextExpectedDelaySeconds.' seconds');
             }
         }
