@@ -14,12 +14,13 @@
             <x-pane title="Your bitcoin balance">
                 <table class="w-full">
                     <tr>
-                        <th  class="text-center">Available</th>                         <th   class="text-center">Pending</th>
+                        <th  class="text-center">Available</th>
+                        <th   class="text-center">Pending</th>
 
                     </tr>
                     <tr>
                         <td  class="text-center">{{ $balance_btc }} sats</td>
-                        <th  class="text-center">{{ $balance_btc }} sats</th>
+                        <th  class="text-center">{{ $pending_balance_btc }} sats</th>
 
                     </tr>
 

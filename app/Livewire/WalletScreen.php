@@ -13,6 +13,8 @@ class WalletScreen extends Component
 
     public $balance_btc = 1;
 
+    public $pending_balance_btc = 0;
+
     public $payment_request;
 
     public $received_payments;
@@ -42,6 +44,11 @@ class WalletScreen extends Component
         /** @var User $user */
         $user = auth()->user();
         $this->balance_btc = $user->getAvailableSatsBalanceAttribute();
+
+        $agentsBalance = $user->agents->sum('sats_balance');
+        $pluginBalance = $user->plugins->sum('sats_balance');
+        $this->pending_balance_btc = $agentsBalance + $pluginBalance;
+
         $this->received_payments = $user->receivedPayments()->get()->reverse();
 
         $this->lightning_address = $user->getLightningAddress();
