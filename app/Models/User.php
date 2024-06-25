@@ -252,9 +252,15 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function setVanityAddress(string $identifier): string
     {
+
         if (strpos($identifier, '@') !== false) {
             $identifier = explode('@', $identifier)[0];
         }
+
+        if (! $identifier || strlen($identifier) < 3) {
+            throw new Exception('Identifier too short. Must be at least 3 characters');
+        }
+
         $lnDomain = env('LIGHTNING_ADDR_DOMAIN', env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com');
 
         // Only A-Z, a-z, 0-9, _, -, . are allowed in the identifier, replace everything else with _
@@ -294,10 +300,9 @@ class User extends Authenticatable implements MustVerifyEmail
                     ->where('vanity', true)
                     ->where('created_at', '>=', now()->subHours(6))
                     ->exists();
-            }
-
-            if ($hasRecentVanityAddress) {
-                throw new Exception('You have already changed your address recently. Please wait a few hours before trying again.');
+                if ($hasRecentVanityAddress) {
+                    throw new Exception('You have already changed your address recently. Please wait a few hours before trying again.');
+                }
             }
 
             // Address is free, let's use it
