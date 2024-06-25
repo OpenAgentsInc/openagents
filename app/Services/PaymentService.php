@@ -195,7 +195,8 @@ class PaymentService
             throw new Exception('Error fetching invoice data');
         }
         $invoiceData = $invoiceData->json();
-        if ($invoiceData['status'] !== 'OK') {
+
+        if (! isset($invoiceData['pr']) || ! $invoiceData['pr']) {
             throw new Exception('Error fetching invoice data');
         }
 

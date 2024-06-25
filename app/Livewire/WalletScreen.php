@@ -21,6 +21,12 @@ class WalletScreen extends Component
 
     public $payins; // Add this line
 
+    public $custom_lightning_address;
+
+    public $lightning_domain;
+
+    public $address_history;
+
     protected $rules = [
         'payment_request' => 'required|string',
     ];
@@ -39,7 +45,10 @@ class WalletScreen extends Component
         $this->received_payments = $user->receivedPayments()->get()->reverse();
 
         $this->lightning_address = $user->getLightningAddress();
+        $this->custom_lightning_address = explode('@', $this->lightning_address)[0];
+        $this->lightning_domain = explode('@', $this->lightning_address)[1];
 
+        $this->address_history = $user->lightningAddresses()->pluck('address')->toArray();
         // Fetch the payins
         $this->payins = $user->payins()->get()->reverse(); // Assumes there's a payins() relationship
     }
@@ -62,8 +71,36 @@ class WalletScreen extends Component
         $this->payins = $user->payins()->get()->reverse();
     }
 
+    public function withdraw()
+    {
+        $this->js('setTimeout(() => { Livewire.dispatch("openModal", { component: "modals.withdraw" }) }, 100)');
+    }
+
+    public function deposit()
+    {
+        $this->js('setTimeout(() => { Livewire.dispatch("openModal", { component: "modals.deposit" }) }, 100)');
+    }
+
     public function render()
     {
         return view('livewire.wallet-screen');
+    }
+
+    public function updateCustomLightningAddress()
+    {
+        try {
+            $user = auth()->user();
+            if (! $user->isPro()) {
+                $this->alert('error', 'You must be a pro user to set a custom lightning address');
+
+                return;
+            }
+            $user->setVanityAddress($this->custom_lightning_address);
+            $this->alert('success', 'Updated Lightning address');
+
+            return redirect()->route('wallet');
+        } catch (\Exception $e) {
+            $this->alert('error', $e->getMessage());
+        }
     }
 }

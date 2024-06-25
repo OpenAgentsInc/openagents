@@ -17,16 +17,17 @@ class LnAddressController extends Controller
         $this->albyAccessToken = env('ALBY_ACCESS_TOKEN', 'none');
     }
 
-    public function handleLnurlp($username)
+    public function handleLnurlp($addr)
     {
-        $user = User::fromLightningAddress($username);
+        $user = User::fromLightningAddress($addr);
+        $username = $user->username;
 
         if (! $user) {
             return response()->json(['status' => 'ERROR', 'reason' => 'User not found'], 404);
         }
 
         $callbackUrl = url("/lnurlp/callback?user={$username}");
-        $metadata = json_encode([['text/plain', "Test! Payment to {$username}@openagents.com"]]);
+        $metadata = json_encode([['text/plain', "Test! Payment to {$username}"]]);
 
         $response = [
             'callback' => $callbackUrl,
