@@ -174,6 +174,10 @@ class PaymentService
 
     public function getInvoiceFromLNAddress(string $addr, int $amount_sats, ?string $desc = null): string
     {
+        if ($amount_sats <= 0) {
+            throw new Exception('Invalid amount');
+        }
+
         $addrParts = explode('@', $addr);
         $identifier = $addrParts[0];
         $domain = $addrParts[1];
@@ -208,7 +212,9 @@ class PaymentService
     {
         // amount comes in as sats, we have to convert to msats
         $amount = $amount * 1000;
-
+        if ($amount < 0) {
+            throw new Exception('Invalid amount');
+        }
         /** @var User $user */
         $user = Auth::user();
 
@@ -261,6 +267,9 @@ class PaymentService
     {
         // amount comes in as sats, we have to convert to msats
         $amount = $amount * 1000;
+        if ($amount < 0) {
+            throw new Exception('Invalid amount');
+        }
 
         /** @var User $user */
         $user = Auth::user();
@@ -344,6 +353,10 @@ class PaymentService
             'payment_hash' => $payment_hash,
             'payment_request' => $payment_request,
         ];
+
+        if ($amount <= 0) {
+            return ['ok' => false, 'error' => 'Invalid amount'];
+        }
 
         DB::beginTransaction();
 
