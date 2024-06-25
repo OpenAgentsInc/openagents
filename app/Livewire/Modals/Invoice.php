@@ -2,7 +2,7 @@
 
 namespace App\Livewire\Modals;
 
-use App\Http\Controllers\LnAddressController;
+use App\Models\Payin;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
@@ -42,9 +42,14 @@ class Invoice extends ModalComponent
 
     public function checkInvoiceStatus()
     {
-        $controller = new LnAddressController();
-        $invoiceStatus = $controller->getInvoiceStatus($this->invoice);
-        if ($invoiceStatus && $invoiceStatus['settled']) {
+
+        $payin = Payin::where('payment_request', $this->invoice)->first();
+        if (! $payin) {
+            $this->alert('error', 'Invoice not found');
+
+            return;
+        }
+        if ($payin->status == 'settled') {
             $this->alert('success', 'Payment received');
             $this->closeModal();
         }
