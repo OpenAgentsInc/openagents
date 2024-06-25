@@ -202,7 +202,7 @@ class User extends Authenticatable implements MustVerifyEmail
             ->first();
 
         if ($vanityAddress) {
-            return $vanityAddress->address;
+            return strtolower($vanityAddress->address);
         }
 
         return DB::transaction(function () use ($lnDomain) {
@@ -219,13 +219,13 @@ class User extends Authenticatable implements MustVerifyEmail
                 // if that's the case we add a number and increment by 1 until we find a free address
                 $i = 0;
                 do {
-                    $newSystemAddress = $this->username;
+                    $newSystemAddress = strtolower($this->username);
                     if ($i > 0) { // first attempt is without the number
                         $newSystemAddress .= $i;
                     }
                     $newSystemAddress .= '@';
                     $newSystemAddress .= $lnDomain;
-                    $systemAddress = LightningAddress::where('address', $newSystemAddress)->first();
+                    $systemAddress = LightningAddress::whereRaw('LOWER(address) = ?', [$newSystemAddress])->first();
                     if (! $systemAddress) { // found a free address
                         // Use the address and break the loop
                         $systemAddress = $this->lightningAddresses()->create([
@@ -238,7 +238,7 @@ class User extends Authenticatable implements MustVerifyEmail
                 } while (true);
             }
 
-            return $systemAddress->address;
+            return strtolower($systemAddress->address);
         }, 5);
     }
 
@@ -257,12 +257,18 @@ class User extends Authenticatable implements MustVerifyEmail
         }
         $lnDomain = env('LIGHTNING_ADDR_DOMAIN', env('APP_ENV') === 'staging' ? 'staging.openagents.com' : 'openagents.com');
 
+        // Only A-Z, a-z, 0-9, _, -, . are allowed in the identifier, replace everything else with _
+        $identifier = preg_replace('/[^A-Za-z0-9_\-\.]/', '_', $identifier);
+
+        // to lower case
+        $identifier = strtolower($identifier);
+
         return DB::transaction(function () use ($identifier, $lnDomain) {
 
             $vanityAddress = $identifier.'@'.$lnDomain;
 
             // let's check if the address is already in use
-            $existingAddress = LightningAddress::where('address', $vanityAddress)->first();
+            $existingAddress = LightningAddress::whereRaw('LOWER(address) = ?', [$vanityAddress])->first();
 
             if ($existingAddress) {
                 // its the same user, so we just update the updated_at date to move the address on top and then return
@@ -270,23 +276,25 @@ class User extends Authenticatable implements MustVerifyEmail
                     $existingAddress->touch();
                     $existingAddress->save();
 
-                    return $vanityAddress;
+                    return strtolower($vanityAddress);
                 } else {
                     throw new Exception('Address already in use');
                 }
             }
 
             // now let's check if the $identifier is an existing username
-            $existingUser = User::where('username', $identifier)->first();
+            $existingUser = User::whereRaw('LOWER(username) = ?', [$identifier])->first();
             if ($existingUser) {
                 throw new Exception('Address already in use');
             }
 
             // Check if there is a vanity address created in the last 6 hours
-            $hasRecentVanityAddress = $this->lightningAddresses()
-                ->where('vanity', true)
-                ->where('created_at', '>=', now()->subHours(6))
-                ->exists();
+            if (! $this->isAdmin()) {
+                $hasRecentVanityAddress = $this->lightningAddresses()
+                    ->where('vanity', true)
+                    ->where('created_at', '>=', now()->subHours(6))
+                    ->exists();
+            }
 
             if ($hasRecentVanityAddress) {
                 throw new Exception('You have already changed your address recently. Please wait a few hours before trying again.');
@@ -310,7 +318,7 @@ class User extends Authenticatable implements MustVerifyEmail
         }
 
         // find the user by the address (system or vanity)
-        $addr = LightningAddress::where('address', $addr)->first();
+        $addr = LightningAddress::whereRaw('LOWER(address) = LOWER(?)', [$addr])->first();
         if (! $addr) {
             return null;
         }
