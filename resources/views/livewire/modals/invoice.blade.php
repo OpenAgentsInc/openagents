@@ -1,18 +1,16 @@
 
-<script>
-    document.addEventListener('livewire:load', function () {
-        // Set up the interval to call checkInvoiceStatus every 1000ms
-        var intervalId = setInterval(function () {
-            @this.call('checkInvoiceStatus');
-        }, 1000);
 
-        // Listen for the Livewire 'hook' for component destruction
-        @this.on('hook:destroyed', function () {
-            clearInterval(intervalId);
-        });
+<div
+x-data="{}" x-init="
+    const intervalId = setInterval(() => {
+        @this.call('checkInvoiceStatus');
+    }, 5000);
+
+    @this.on('hook:destroyed', () => {
+        clearInterval(intervalId);
     });
-</script>
-<div class="p-4"  class="p-4 w-full flex-col items-center justify-center">
+"
+class="p-4 w-full flex-col items-center justify-center">
 
 
 
@@ -26,4 +24,3 @@
     @click="window.webln?window.webln.enable().then(()=>window.webln.sendPayment('{{$invoice}}')):window.open(`lightning:{{$invoice}}`);"
     >Pay with app</x-secondary-button>
 </div>
-
