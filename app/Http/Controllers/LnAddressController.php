@@ -20,11 +20,12 @@ class LnAddressController extends Controller
     public function handleLnurlp($addr)
     {
         $user = User::fromLightningAddress($addr);
-        $username = $user->username;
 
         if (! $user) {
             return response()->json(['status' => 'ERROR', 'reason' => 'User not found'], 404);
         }
+
+        $username = $user->username;
 
         $callbackUrl = url("/lnurlp/callback?user={$username}");
         $metadata = json_encode([['text/plain', "Test! Payment to {$username}"]]);
