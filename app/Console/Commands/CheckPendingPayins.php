@@ -19,7 +19,7 @@ class CheckPendingPayins extends Command
     public function handle()
     {
         $pendingPayins = Payin::where('status', 'pending')
-            ->where('updated_at', '>', now()->subDay())
+            ->where('created_at', '>', now()->subDay())
             ->get();
 
         $controller = new LnAddressController();
