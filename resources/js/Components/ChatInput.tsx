@@ -122,9 +122,11 @@ export const ChatInput = () => {
           </div>
         </div>
       </fieldset>
+      {/*
       <button type="button" onClick={handleSubmit} disabled={processing}>
         Submit
       </button>
+      */}
       {errors.content && <div>{errors.content}</div>}
     </form>
   );
