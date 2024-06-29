@@ -1,6 +1,8 @@
 import { ChatInput } from "../Components/ChatInput";
+import { useMessageStore } from "../store";
 
 export default function AutoDev() {
+  const messages = useMessageStore()((state) => state.messages);
   return (
     <div className="from-[#0a0a0a] to-black text-white font-mono min-h-screen bg-gradient-to-b bg-fixed tracking-tight">
       <div className="flex min-h-screen w-full">
@@ -40,8 +42,19 @@ export default function AutoDev() {
             </div>
             <div className="relative flex w-full flex-1 overflow-x-hidden overflow-y-scroll pt-6 md:pr-8">
               <div className="relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col md:px-2">
-                <div className="flex-1  flex  flex-col  gap-3  px-4  max-w-3xl  mx-auto  w-full pt-1">
-                  <p className="mt-6">AutoDev awaiting instructions.</p>
+                <div className="flex-1 flex flex-col gap-3 px-4 max-w-3xl mx-auto w-full pt-6">
+                  {messages.length === 0 ? (
+                    <p className="mt-6">AutoDev awaiting instructions.</p>
+                  ) : (
+                    messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`p-2 rounded ${message.isUser ? "bg-zinc-900" : "bg-zinc-800"}`}
+                      >
+                        {message.content}
+                      </div>
+                    ))
+                  )}
                 </div>
                 <div className="sticky bottom-0 mx-auto w-full pt-6">
                   <ChatInput />

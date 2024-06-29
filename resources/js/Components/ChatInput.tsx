@@ -13,6 +13,7 @@ import {
 import "prosemirror-view/style/prosemirror.css";
 import { ProseMirror, useEditorEffect } from "@nytimes/react-prosemirror";
 import { useForm } from "@inertiajs/react";
+import { useMessageStore } from "../store";
 
 const schema = new Schema({
   nodes: {
@@ -62,6 +63,7 @@ export const ChatInput = () => {
   const [mount, setMount] = useState<HTMLElement | null>(null);
   const [editorState, setEditorState] = useState(createDefaultState);
   const [shouldReset, setShouldReset] = useState(false);
+  const addMessage = useMessageStore()((state) => state.addMessage);
 
   const { data, setData, post, processing, errors, reset } = useForm({
     content: "",
@@ -77,6 +79,7 @@ export const ChatInput = () => {
 
   const handleSubmit = useCallback(() => {
     if (data.content.trim()) {
+      addMessage(data.content, true);
       post("/message", {
         preserveScroll: true,
         onSuccess: () => {
