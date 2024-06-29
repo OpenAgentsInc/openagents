@@ -41,11 +41,7 @@ export default function AutoDev() {
             <div className="relative flex w-full flex-1 overflow-x-hidden overflow-y-scroll pt-6 md:pr-8">
               <div className="relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col md:px-2">
                 <div className="flex-1  flex  flex-col  gap-3  px-4  max-w-3xl  mx-auto  w-full pt-1">
-                  {[...Array(20)].map((_, i) => (
-                    <p className="mt-6" key={i}>
-                      AutoDev awaiting instructions.
-                    </p>
-                  ))}
+                  <p className="mt-6">AutoDev awaiting instructions.</p>
                 </div>
                 <div className="sticky bottom-0 mx-auto w-full pt-6">
                   <ChatInput />
