@@ -1,27 +1,70 @@
-import { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { EditorState } from "prosemirror-state";
 import { schema } from "prosemirror-schema-basic";
 import "prosemirror-view/style/prosemirror.css";
 import { ProseMirror } from "@nytimes/react-prosemirror";
+import { useForm } from "@inertiajs/react";
 
-const defaultState = EditorState.create({ schema });
+const createDefaultState = () => EditorState.create({ schema });
 
 export const ChatInput = () => {
   const [mount, setMount] = useState<HTMLElement | null>(null);
+  const [editorState, setEditorState] = useState(createDefaultState);
+
+  const { data, setData, post, processing, errors, reset } = useForm({
+    content: "",
+  });
+
+  const handleEditorStateChange = useCallback(
+    (state: EditorState) => {
+      setEditorState(state);
+      setData("content", state.doc.textContent);
+    },
+    [setData]
+  );
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      post("/message", {
+        preserveScroll: true,
+        onSuccess: () => {
+          console.log("test success");
+          setEditorState(createDefaultState());
+          reset("content");
+        },
+      });
+    },
+    [post, reset]
+  );
+
   return (
-    <fieldset className="flex w-full min-w-0 flex-col-reverse">
-      <div className="flex  flex-col  bg-zinc-900  gap-1.5  border-0.5  border-border-300  pl-4  pt-2.5  pr-2.5  pb-2.5  -mx-1  sm:mx-0  items-stretch  transition-all  duration-200  relative  shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.035)]  focus-within:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.075)]  hover:border-border-200  focus-within:border-border-200  cursor-text  z-10 rounded-t-2xl border-b-0">
-        <div className="flex gap-2">
-          <div
-            aria-label="Write your prompt"
-            className="mt-1 max-h-96 w-full overflow-y-auto break-words outline-none focus:outline-none"
-          >
-            <ProseMirror mount={mount} defaultState={defaultState}>
-              <div ref={setMount} />
-            </ProseMirror>
+    <form onSubmit={handleSubmit}>
+      <fieldset className="flex w-full min-w-0 flex-col-reverse">
+        <div className="flex flex-col bg-zinc-900 gap-1.5 border-0.5 border-border-300 pl-4 pt-2.5 pr-2.5 pb-2.5 -mx-1 sm:mx-0 items-stretch transition-all duration-200 relative shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.035)] focus-within:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.075)] hover:border-border-200 focus-within:border-border-200 cursor-text z-10 rounded-t-2xl border-b-0">
+          <div className="flex gap-2">
+            <div
+              aria-label="Write your prompt"
+              className="mt-1 max-h-96 w-full overflow-y-auto break-words outline-none focus:outline-none"
+            >
+              <ProseMirror
+                mount={mount}
+                state={editorState}
+                dispatchTransaction={(tr) => {
+                  const newState = editorState.apply(tr);
+                  handleEditorStateChange(newState);
+                }}
+              >
+                <div ref={setMount} />
+              </ProseMirror>
+            </div>
           </div>
         </div>
-      </div>
-    </fieldset>
+      </fieldset>
+      <button type="submit" disabled={processing}>
+        Submit
+      </button>
+      {errors.content && <div>{errors.content}</div>}
+    </form>
   );
 };

@@ -8,12 +8,10 @@ use Inertia\Inertia;
 Route::get('/', function () {
     return Inertia::render('AutoDev');
     // return Inertia::render('Demo2');
-//    return Inertia::render('Welcome', [
-//        'canLogin' => Route::has('login'),
-//        'canRegister' => Route::has('register'),
-//        'laravelVersion' => Application::VERSION,
-//        'phpVersion' => PHP_VERSION,
-//    ]);
+})->name('home');
+
+Route::post('/message', function () {
+    return to_route('home')->with('success', 'Message sent successfully');
 });
 
 Route::get('/dashboard', function () {
