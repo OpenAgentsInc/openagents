@@ -8,7 +8,7 @@ export const ChatInput = () => {
             className="mt-1 max-h-96 w-full overflow-y-auto break-words"
           >
             <div
-              contenteditable="true"
+              contentEeditable="true"
               translate="no"
               enterkeyhint="enter"
               tabindex="0"
