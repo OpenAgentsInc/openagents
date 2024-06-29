@@ -1,11 +1,61 @@
 import React, { useCallback, useState } from "react";
 import { EditorState } from "prosemirror-state";
-import { schema } from "prosemirror-schema-basic";
-import "prosemirror-view/style/prosemirror.css";
+import { Schema } from "prosemirror-model";
+import { keymap } from "prosemirror-keymap";
+import {
+  baseKeymap,
+  chainCommands,
+  newlineInCode,
+  createParagraphNear,
+  liftEmptyBlock,
+  splitBlock,
+} from "prosemirror-commands";
 import { ProseMirror } from "@nytimes/react-prosemirror";
 import { useForm } from "@inertiajs/react";
 
-const createDefaultState = () => EditorState.create({ schema });
+const schema = new Schema({
+  nodes: {
+    doc: {
+      content: "block+",
+    },
+    paragraph: {
+      group: "block",
+      content: "inline*",
+      toDOM() {
+        return ["p", 0];
+      },
+    },
+    text: {
+      group: "inline",
+    },
+  },
+});
+
+const createDefaultState = () => {
+  return EditorState.create({
+    schema,
+    plugins: [
+      keymap({
+        ...baseKeymap,
+        Enter: chainCommands(
+          (state, dispatch) => {
+            if (state.doc.content.size > 0) {
+              if (dispatch) {
+                dispatch(state.tr.setMeta("isEnter", true));
+              }
+              return true;
+            }
+            return false;
+          },
+          newlineInCode,
+          createParagraphNear,
+          liftEmptyBlock,
+          splitBlock
+        ),
+      }),
+    ],
+  });
+};
 
 export const ChatInput = () => {
   const [mount, setMount] = useState<HTMLElement | null>(null);
@@ -23,9 +73,8 @@ export const ChatInput = () => {
     [setData]
   );
 
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
+  const handleSubmit = useCallback(() => {
+    if (data.content.trim()) {
       post("/message", {
         preserveScroll: true,
         onSuccess: () => {
@@ -34,12 +83,11 @@ export const ChatInput = () => {
           reset("content");
         },
       });
-    },
-    [post, reset]
-  );
+    }
+  }, [data.content, post, reset]);
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={(e) => e.preventDefault()}>
       <fieldset className="flex w-full min-w-0 flex-col-reverse">
         <div className="flex flex-col bg-zinc-900 gap-1.5 border-0.5 border-border-300 pl-4 pt-2.5 pr-2.5 pb-2.5 -mx-1 sm:mx-0 items-stretch transition-all duration-200 relative shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.035)] focus-within:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.075)] hover:border-border-200 focus-within:border-border-200 cursor-text z-10 rounded-t-2xl border-b-0">
           <div className="flex gap-2">
@@ -53,6 +101,10 @@ export const ChatInput = () => {
                 dispatchTransaction={(tr) => {
                   const newState = editorState.apply(tr);
                   handleEditorStateChange(newState);
+
+                  if (tr.getMeta("isEnter")) {
+                    handleSubmit();
+                  }
                 }}
               >
                 <div ref={setMount} />
@@ -61,7 +113,7 @@ export const ChatInput = () => {
           </div>
         </div>
       </fieldset>
-      <button type="submit" disabled={processing}>
+      <button type="button" onClick={handleSubmit} disabled={processing}>
         Submit
       </button>
       {errors.content && <div>{errors.content}</div>}

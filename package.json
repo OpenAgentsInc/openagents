@@ -29,6 +29,8 @@
     "@nytimes/react-prosemirror": "^0.6.1",
     "arwes": "1.0.0-alpha.23",
     "lucide-react": "^0.396.0",
+    "prosemirror-commands": "^1.5.2",
+    "prosemirror-keymap": "^1.2.2",
     "prosemirror-schema-basic": "^1.2.2"
   }
 }
