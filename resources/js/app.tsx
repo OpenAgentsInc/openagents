@@ -8,7 +8,6 @@ import { resolvePageComponent } from "laravel-vite-plugin/inertia-helpers";
 const appName = import.meta.env.VITE_APP_NAME || "OpenAgents";
 
 createInertiaApp({
-  //title: (title) => `${title} - ${appName}`,
   title: (title) => "OpenAgents",
   resolve: (name) =>
     resolvePageComponent(
@@ -17,8 +16,12 @@ createInertiaApp({
     ),
   setup({ el, App, props }) {
     const root = createRoot(el);
-
-    root.render(<App {...props} />);
+    root.render(
+      <div className="fixed inset-0 overflow-hidden bg-black">
+        <App {...props} />
+      </div>
+    );
+    document.body.classList.add("overflow-hidden", "h-full");
   },
   progress: {
     color: "#4B5563",
