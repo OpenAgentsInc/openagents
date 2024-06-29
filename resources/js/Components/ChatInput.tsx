@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useRef, useEffect } from "react";
 import { EditorState } from "prosemirror-state";
 import { Schema } from "prosemirror-model";
 import { keymap } from "prosemirror-keymap";
@@ -10,7 +10,7 @@ import {
   liftEmptyBlock,
   splitBlock,
 } from "prosemirror-commands";
-import { ProseMirror } from "@nytimes/react-prosemirror";
+import { ProseMirror, useEditorEffect } from "@nytimes/react-prosemirror";
 import { useForm } from "@inertiajs/react";
 
 const schema = new Schema({
@@ -97,7 +97,7 @@ export const ChatInput = () => {
             >
               <ProseMirror
                 mount={mount}
-                state={editorState}
+                defaultState={editorState}
                 dispatchTransaction={(tr) => {
                   const newState = editorState.apply(tr);
                   handleEditorStateChange(newState);
@@ -108,6 +108,7 @@ export const ChatInput = () => {
                 }}
               >
                 <div ref={setMount} />
+                <EditorFocuser />
               </ProseMirror>
             </div>
           </div>
@@ -119,4 +120,21 @@ export const ChatInput = () => {
       {errors.content && <div>{errors.content}</div>}
     </form>
   );
+};
+
+const EditorFocuser = () => {
+  const focusRef = useRef<(() => void) | null>(null);
+
+  useEditorEffect((view) => {
+    focusRef.current = () => view.focus();
+
+    // Focus the editor after a short delay
+    setTimeout(() => focusRef.current?.(), 0);
+
+    return () => {
+      focusRef.current = null;
+    };
+  }, []);
+
+  return null;
 };
