@@ -1,3 +1,5 @@
+import { ChatInput } from "../Components/ChatInput";
+
 export default function AutoDev() {
   return (
     <div className="from-[#0a0a0a] to-black text-white font-mono min-h-screen bg-gradient-to-b bg-fixed tracking-tight">
@@ -46,7 +48,7 @@ export default function AutoDev() {
                   ))}
                 </div>
                 <div className="sticky bottom-0 mx-auto w-full pt-6">
-                  <p>Enter your text here</p>
+                  <ChatInput />
                 </div>
               </div>
             </div>
