@@ -60,6 +60,7 @@ const createDefaultState = () => {
 export const ChatInput = () => {
   const [mount, setMount] = useState<HTMLElement | null>(null);
   const [editorState, setEditorState] = useState(createDefaultState);
+  const [shouldReset, setShouldReset] = useState(false);
 
   const { data, setData, post, processing, errors, reset } = useForm({
     content: "",
@@ -79,12 +80,19 @@ export const ChatInput = () => {
         preserveScroll: true,
         onSuccess: () => {
           console.log("test success");
-          setEditorState(createDefaultState());
+          setShouldReset(true);
           reset("content");
         },
       });
     }
   }, [data.content, post, reset]);
+
+  useEffect(() => {
+    if (shouldReset) {
+      setEditorState(createDefaultState());
+      setShouldReset(false);
+    }
+  }, [shouldReset]);
 
   return (
     <form onSubmit={(e) => e.preventDefault()}>
@@ -97,7 +105,7 @@ export const ChatInput = () => {
             >
               <ProseMirror
                 mount={mount}
-                defaultState={editorState}
+                state={editorState}
                 dispatchTransaction={(tr) => {
                   const newState = editorState.apply(tr);
                   handleEditorStateChange(newState);
@@ -108,7 +116,7 @@ export const ChatInput = () => {
                 }}
               >
                 <div ref={setMount} />
-                <EditorFocuser />
+                <EditorFocuser shouldReset={shouldReset} />
               </ProseMirror>
             </div>
           </div>
@@ -122,19 +130,22 @@ export const ChatInput = () => {
   );
 };
 
-const EditorFocuser = () => {
+const EditorFocuser = ({ shouldReset }: { shouldReset: boolean }) => {
   const focusRef = useRef<(() => void) | null>(null);
 
-  useEditorEffect((view) => {
-    focusRef.current = () => view.focus();
+  useEditorEffect(
+    (view) => {
+      focusRef.current = () => view.focus();
 
-    // Focus the editor after a short delay
-    setTimeout(() => focusRef.current?.(), 0);
+      // Focus the editor after a short delay
+      setTimeout(() => focusRef.current?.(), 0);
 
-    return () => {
-      focusRef.current = null;
-    };
-  }, []);
+      return () => {
+        focusRef.current = null;
+      };
+    },
+    [shouldReset]
+  ); // Re-run when shouldReset changes
 
   return null;
 };
