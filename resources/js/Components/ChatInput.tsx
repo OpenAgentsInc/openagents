@@ -10,6 +10,7 @@ import {
   liftEmptyBlock,
   splitBlock,
 } from "prosemirror-commands";
+import "prosemirror-view/style/prosemirror.css";
 import { ProseMirror, useEditorEffect } from "@nytimes/react-prosemirror";
 import { useForm } from "@inertiajs/react";
 
@@ -37,16 +38,16 @@ const createDefaultState = () => {
     plugins: [
       keymap({
         ...baseKeymap,
-        Enter: chainCommands(
-          (state, dispatch) => {
-            if (state.doc.content.size > 0) {
-              if (dispatch) {
-                dispatch(state.tr.setMeta("isEnter", true));
-              }
-              return true;
+        Enter: (state, dispatch) => {
+          if (state.selection.empty && state.doc.content.size > 0) {
+            if (dispatch) {
+              dispatch(state.tr.setMeta("isEnter", true));
             }
-            return false;
-          },
+            return true;
+          }
+          return false;
+        },
+        "Shift-Enter": chainCommands(
           newlineInCode,
           createParagraphNear,
           liftEmptyBlock,
