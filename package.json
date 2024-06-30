@@ -28,6 +28,7 @@
     "@arwes/react-bgs": "1.0.0-alpha.23",
     "@arwes/react-frames": "1.0.0-alpha.23",
     "@nytimes/react-prosemirror": "^0.6.1",
+    "@react-spring/web": "^9.7.3",
     "arwes": "1.0.0-alpha.23",
     "lucide-react": "^0.396.0",
     "prosemirror-commands": "^1.5.2",
