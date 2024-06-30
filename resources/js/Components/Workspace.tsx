@@ -8,7 +8,7 @@ import { Codebases } from "./tabs/Codebases";
 import { Artifacts } from "./tabs/Artifacts";
 
 export function Workspace() {
-  const [selected, setSelected] = useState(0);
+  const [selected, setSelected] = useState(3);
 
   const handleTabChange = useCallback(
     (selectedTabIndex: number) => setSelected(selectedTabIndex),

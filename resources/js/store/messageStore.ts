@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { create, StateCreator } from "zustand";
 import { v4 as uuidv4 } from "uuid";
 
 interface Message {
@@ -15,54 +15,58 @@ interface MessageState {
   setLastMessageComplete: () => void;
 }
 
-export const createMessageStore = () =>
-  create<MessageState>((set) => ({
-    messages: [],
-    addMessage: (content, isUser) =>
-      set((state) => ({
+const createMessageSlice: StateCreator<MessageState> = (set) => ({
+  messages: [],
+  addMessage: (content, isUser) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: uuidv4(),
+          content,
+          isUser,
+          isComplete: true,
+        },
+      ],
+    })),
+  updateLastMessage: (content) =>
+    set((state) => {
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (!lastMessage || lastMessage.isUser || lastMessage.isComplete) {
+        return {
+          messages: [
+            ...state.messages,
+            {
+              id: uuidv4(),
+              content,
+              isUser: false,
+              isComplete: false,
+            },
+          ],
+        };
+      }
+      return {
         messages: [
-          ...state.messages,
-          {
-            id: uuidv4(),
-            content,
-            isUser,
-            isComplete: isUser,
-          },
+          ...state.messages.slice(0, -1),
+          { ...lastMessage, content: lastMessage.content + content },
         ],
-      })),
-    updateLastMessage: (content) =>
-      set((state) => {
-        const lastMessage = state.messages[state.messages.length - 1];
-        if (!lastMessage || lastMessage.isUser || lastMessage.isComplete) {
-          return {
-            messages: [
-              ...state.messages,
-              {
-                id: uuidv4(),
-                content,
-                isUser: false,
-                isComplete: false,
-              },
-            ],
-          };
-        }
-        return {
-          messages: [
-            ...state.messages.slice(0, -1),
-            { ...lastMessage, content: lastMessage.content + content },
-          ],
-        };
-      }),
-    setLastMessageComplete: () =>
-      set((state) => {
-        const lastMessage = state.messages[state.messages.length - 1];
-        if (!lastMessage || lastMessage.isUser || lastMessage.isComplete)
-          return state;
-        return {
-          messages: [
-            ...state.messages.slice(0, -1),
-            { ...lastMessage, isComplete: true },
-          ],
-        };
-      }),
-  }));
+      };
+    }),
+  setLastMessageComplete: () =>
+    set((state) => {
+      const lastMessage = state.messages[state.messages.length - 1];
+      if (!lastMessage || lastMessage.isUser || lastMessage.isComplete)
+        return state;
+      return {
+        messages: [
+          ...state.messages.slice(0, -1),
+          { ...lastMessage, isComplete: true },
+        ],
+      };
+    }),
+});
+
+export const createMessageStore = () =>
+  create<MessageState>(createMessageSlice);
+
+export const useMessageStore = createMessageStore();
