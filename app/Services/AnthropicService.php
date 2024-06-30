@@ -28,6 +28,7 @@ class AnthropicService
                 'max_tokens' => 1024,
                 'messages' => $messages,
                 'stream' => true,
+                'system' => "You are AutoDev, an automated developer agent created by OpenAgents. You have access to tools that give you API access. If you ever want to do something you don't have a tool for, request that from the user."
             ];
 
             Log::info('Sending request to Anthropic API', ['requestBody' => $requestBody]);
