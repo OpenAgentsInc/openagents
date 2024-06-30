@@ -99,18 +99,23 @@ function AnimatedMessage({
 }) {
   const [animatedContent, setAnimatedContent] = useState("");
   const [index, setIndex] = useState(0);
+  const previousContentRef = useRef("");
 
   useEffect(() => {
-    setAnimatedContent("");
-    setIndex(0);
+    if (content.length > previousContentRef.current.length) {
+      setIndex(previousContentRef.current.length);
+    } else {
+      setIndex(0);
+    }
+    previousContentRef.current = content;
   }, [content]);
 
   useEffect(() => {
     if (index < content.length) {
       const timer = setTimeout(() => {
-        setAnimatedContent((prev) => prev + content[index]);
+        setAnimatedContent(content.slice(0, index + 1));
         setIndex((prev) => prev + 1);
-      }, 15); // Adjust this value to control the speed of appearance
+      }, 25); // Adjust this value to control the speed of appearance
 
       return () => clearTimeout(timer);
     }
@@ -126,7 +131,7 @@ function AnimatedMessage({
       from: { opacity: 0 },
       enter: { opacity: 1 },
       leave: { opacity: 0 },
-      config: config.gentle,
+      config: config.stiff,
     }
   );
 
