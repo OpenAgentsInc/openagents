@@ -79,11 +79,7 @@ export default function AutoDev() {
                         key={message.id}
                         className={`p-2 rounded ${message.isUser ? "bg-zinc-900" : "bg-zinc-800"}`}
                       >
-                        <span
-                          className={
-                            message.isUser ? "text-blue-400" : "text-green-400"
-                          }
-                        >
+                        <span>
                           {message.content.slice(
                             0,
                             lastContentLengthRef.current[message.id] || 0
@@ -98,11 +94,6 @@ export default function AutoDev() {
                               opacity: style.opacity,
                               transform: style.transform,
                             }}
-                            className={
-                              message.isUser
-                                ? "text-blue-400"
-                                : "text-green-400"
-                            }
                           >
                             {char}
                           </animated.span>
