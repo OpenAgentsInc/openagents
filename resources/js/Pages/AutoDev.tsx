@@ -82,9 +82,9 @@ export default function AutoDev() {
                   <ChatInput />
                 </div>
               </div>
-              <div className="w-1/2 min-w-[650px] min-h-full bg-bg-100 border-l border-border-300">
+              <div className="w-1/2 min-w-[650px] min-h-full bg-bg-100 border-l border-zinc-800">
                 <div className="h-full flex flex-col">
-                  <div className="border-b border-border-400 sticky top-0 flex items-center gap-1 px-4 py-2">
+                  <div className="border-b border-zinc-800 sticky top-0 flex items-center gap-1 px-4 py-2">
                     <button className="text-text-200 hover:bg-bg-500/40 hover:text-text-100 h-8 w-8 rounded-md">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -114,7 +114,7 @@ export default function AutoDev() {
                   <div className="relative flex w-full flex-1 overflow-x-auto overflow-y-scroll">
                     <div className="code-block__code bg-zinc-900 !my-0 h-fit min-h-full w-fit min-w-full !rounded-none !text-sm !leading-relaxed"></div>
                   </div>
-                  <div class="flex   items-center   justify-between   text-sm   text-text-500   py-2   px-2   border-t   border-border-400">
+                  <div class="flex   items-center   justify-between   text-sm   text-text-500   py-2   px-2   border-t   border-zinc-800">
                     <div class="flex-1">
                       <div class="flex">
                         <button
