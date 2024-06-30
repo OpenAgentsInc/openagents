@@ -1,24 +1,8 @@
-import React, { useRef, useEffect, useState } from "react";
-import { ChatInput } from "../Components/ChatInput";
-import { useMessageStore } from "../store";
-import { useTransition, animated, config } from "@react-spring/web";
+import React from "react";
+import { Chat } from "../Components/Chat";
 import { Workspace } from "../Components/Workspace";
 
 export default function AutoDev() {
-  const messages = useMessageStore((state) => state.messages);
-  const [animatingMessages, setAnimatingMessages] = useState<
-    Array<{ id: string; content: string }>
-  >([]);
-
-  useEffect(() => {
-    setAnimatingMessages(
-      messages.map((message) => ({
-        id: message.id,
-        content: message.content,
-      }))
-    );
-  }, [messages]);
-
   return (
     <div className="from-[#0a0a0a] to-black text-white font-mono min-h-screen bg-gradient-to-b bg-fixed tracking-tight">
       <div className="flex min-h-screen w-full">
@@ -57,89 +41,12 @@ export default function AutoDev() {
               </div>
             </div>
             <div className="relative flex w-full flex-1 overflow-x-hidden overflow-y-scroll pt-6 md:pr-8">
-              <div className="relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col md:px-2">
-                <div className="flex-1 flex flex-col gap-3 px-4 max-w-3xl mx-auto w-full pt-6">
-                  {animatingMessages.length === 0 ? (
-                    <p className="mt-6">AutoDev awaiting instructions.</p>
-                  ) : (
-                    animatingMessages.map((message, index) => (
-                      <div
-                        key={message.id}
-                        className={`p-2 rounded ${messages[index].isUser ? "bg-zinc-900" : "bg-zinc-800"}`}
-                      >
-                        <AnimatedMessage
-                          content={message.content}
-                          messageId={message.id}
-                        />
-                        {!messages[index].isComplete &&
-                          !messages[index].isUser && (
-                            <span className="animate-pulse">▌</span>
-                          )}
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="sticky bottom-0 mx-auto w-full pt-6">
-                  <ChatInput />
-                </div>
-              </div>
+              <Chat />
               <Workspace />
             </div>
           </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function AnimatedMessage({
-  content,
-  messageId,
-}: {
-  content: string;
-  messageId: string;
-}) {
-  const [animatedContent, setAnimatedContent] = useState<string>("");
-  const queueRef = useRef<string>("");
-  const animatingRef = useRef(false);
-
-  useEffect(() => {
-    if (content.length > animatedContent.length) {
-      queueRef.current = content.slice(animatedContent.length);
-      animateNextChar();
-    }
-  }, [content, animatedContent]);
-
-  const animateNextChar = () => {
-    if (animatingRef.current || queueRef.current.length === 0) return;
-
-    animatingRef.current = true;
-    const nextChar = queueRef.current[0];
-
-    setAnimatedContent((prev) => prev + nextChar);
-    queueRef.current = queueRef.current.slice(1);
-
-    setTimeout(() => {
-      animatingRef.current = false;
-      animateNextChar();
-    }, 5); // Adjust this value to control animation speed
-  };
-
-  const tokens = animatedContent.match(/\S+|\s+/g) || [];
-
-  const transitions = useTransition(tokens, {
-    keys: (item, index) => `${messageId}-${index}`,
-    from: { opacity: 0, transform: "translateY(5px)" },
-    enter: { opacity: 1, transform: "translateY(0px)" },
-    leave: { opacity: 0 },
-    config: config.stiff,
-  });
-
-  return (
-    <span>
-      {transitions((style, item) => (
-        <animated.span style={style}>{item}</animated.span>
-      ))}
-    </span>
   );
 }
