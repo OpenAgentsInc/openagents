@@ -97,45 +97,46 @@ function AnimatedMessage({
   content: string;
   messageId: string;
 }) {
-  const [animatedContent, setAnimatedContent] = useState("");
-  const [index, setIndex] = useState(0);
-  const previousContentRef = useRef("");
+  const [animatedContent, setAnimatedContent] = useState<string[]>([]);
+  const queueRef = useRef<string[]>([]);
+  const animatingRef = useRef(false);
 
   useEffect(() => {
-    if (content.length > previousContentRef.current.length) {
-      setIndex(previousContentRef.current.length);
-    } else {
-      setIndex(0);
-    }
-    previousContentRef.current = content;
+    const newContent = content.slice(animatedContent.join("").length);
+    // Split content into tokens, preserving spaces and punctuation
+    queueRef.current = queueRef.current.concat(
+      newContent.match(/\S+|\s+/g) || []
+    );
+    animateNextToken();
   }, [content]);
 
-  useEffect(() => {
-    if (index < content.length) {
-      const timer = setTimeout(() => {
-        setAnimatedContent(content.slice(0, index + 1));
-        setIndex((prev) => prev + 1);
-      }, 25); // Adjust this value to control the speed of appearance
+  const animateNextToken = () => {
+    if (animatingRef.current || queueRef.current.length === 0) return;
 
-      return () => clearTimeout(timer);
-    }
-  }, [content, index]);
+    animatingRef.current = true;
+    const nextToken = queueRef.current.shift() || "";
 
-  const transitions = useTransition(
-    animatedContent.split("").map((char, i) => ({
-      char,
-      key: `${messageId}-${i}`,
-    })),
-    {
-      keys: (item) => item.key,
-      from: { opacity: 0 },
-      enter: { opacity: 1 },
-      leave: { opacity: 0 },
-      config: config.stiff,
-    }
+    setAnimatedContent((prev) => [...prev, nextToken]);
+
+    setTimeout(() => {
+      animatingRef.current = false;
+      animateNextToken();
+    }, 25); // Adjust this value to control animation speed
+  };
+
+  const transitions = useTransition(animatedContent, {
+    keys: (item, index) => `${messageId}-${index}`,
+    from: { opacity: 0, transform: "translateY(5px)" },
+    enter: { opacity: 1, transform: "translateY(0px)" },
+    leave: { opacity: 0 },
+    config: config.stiff,
+  });
+
+  return (
+    <span>
+      {transitions((style, item) => (
+        <animated.span style={style}>{item}</animated.span>
+      ))}
+    </span>
   );
-
-  return transitions((style, item) => (
-    <animated.span style={style}>{item.char}</animated.span>
-  ));
 }
