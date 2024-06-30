@@ -82,10 +82,34 @@ export default function AutoDev() {
                   <ChatInput />
                 </div>
               </div>
-              <div className="w-1/2 min-h-full bg-bg-100 border-l border-border-300">
+              <div className="w-1/2 min-w-[650px] min-h-full bg-bg-100 border-l border-border-300">
                 <div className="h-full flex flex-col">
                   <div className="border-b border-border-400 sticky top-0 flex items-center gap-1 px-4 py-2">
-                    <p>hi</p>
+                    <button className="text-text-200 hover:bg-bg-500/40 hover:text-text-100 h-8 w-8 rounded-md">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        fill="currentColor"
+                        viewBox="0 0 256 256"
+                      >
+                        <path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"></path>
+                      </svg>
+                    </button>
+                    <h3 className="text-text-100 font-tiempos truncate text-sm flex-1">
+                      Updated Greptile Integration Code
+                    </h3>
+                    <button className="text-text-200 hover:bg-bg-500/40 hover:text-text-100 h-8 w-8 rounded-md">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        fill="currentColor"
+                        viewBox="0 0 256 256"
+                      >
+                        <path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
