@@ -63,7 +63,7 @@ export const ChatInput = () => {
   const [mount, setMount] = useState<HTMLElement | null>(null);
   const [editorState, setEditorState] = useState(createDefaultState);
   const [shouldReset, setShouldReset] = useState(false);
-  const addMessage = useMessageStore()((state) => state.addMessage);
+  const addMessage = useMessageStore((state) => state.addMessage);
 
   const { data, setData, post, processing, errors, reset } = useForm({
     content: "",

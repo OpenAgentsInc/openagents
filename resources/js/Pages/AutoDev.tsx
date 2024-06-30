@@ -3,8 +3,8 @@ import { useSSE } from "../hooks/useSSE";
 import { useMessageStore } from "../store";
 
 export default function AutoDev() {
-  const messages = useMessageStore()((state) => state.messages);
-  useSSE("/sse-stream");
+  const messages = useMessageStore((state) => state.messages);
+  //  useSSE("/sse-stream");
   return (
     <div className="from-[#0a0a0a] to-black text-white font-mono min-h-screen bg-gradient-to-b bg-fixed tracking-tight">
       <div className="flex min-h-screen w-full">

@@ -16,7 +16,7 @@ interface MessageState {
 
 export const createMessageStore = () =>
   create<MessageState>((set) => ({
-    messages: [],
+    messages: [], // Make sure this is initialized as an empty array
     addMessage: (content, isUser) =>
       set((state) => ({
         messages: [
@@ -25,7 +25,7 @@ export const createMessageStore = () =>
             id: Date.now().toString(),
             content,
             isUser,
-            isComplete: isUser, // User messages are always complete
+            isComplete: isUser,
           },
         ],
       })),
@@ -33,8 +33,6 @@ export const createMessageStore = () =>
       set((state) => {
         const lastMessage = state.messages[state.messages.length - 1];
         if (!lastMessage || lastMessage.isUser || lastMessage.isComplete) {
-          // If there's no last message, or it's a user message, or it's already complete,
-          // add a new message instead of updating
           return {
             messages: [
               ...state.messages,

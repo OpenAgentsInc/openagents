@@ -1,21 +1,33 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useMessageStore } from "../store";
 
 export const useSSE = (url: string) => {
-  const { updateLastMessage, setLastMessageComplete } = useMessageStore();
+  const updateLastMessage = useMessageStore((state) => state.updateLastMessage);
+  const setLastMessageComplete = useMessageStore(
+    (state) => state.setLastMessageComplete
+  );
+
+  const updateLastMessageRef = useRef(updateLastMessage);
+  const setLastMessageCompleteRef = useRef(setLastMessageComplete);
+
+  useEffect(() => {
+    updateLastMessageRef.current = updateLastMessage;
+    setLastMessageCompleteRef.current = setLastMessageComplete;
+  }, [updateLastMessage, setLastMessageComplete]);
 
   useEffect(() => {
     const eventSource = new EventSource(url);
 
-    eventSource.onmessage = (event) => {
-      console.log("SSE message:", event.data);
+    const handleMessage = (event: MessageEvent) => {
       const data = JSON.parse(event.data);
       if (data.type === "token") {
-        updateLastMessage(data.content);
+        updateLastMessageRef.current(data.content);
       } else if (data.type === "end") {
-        setLastMessageComplete();
+        setLastMessageCompleteRef.current();
       }
     };
+
+    eventSource.onmessage = handleMessage;
 
     eventSource.onerror = (error) => {
       console.error("SSE error:", error);
@@ -25,5 +37,5 @@ export const useSSE = (url: string) => {
     return () => {
       eventSource.close();
     };
-  }, [url, updateLastMessage, setLastMessageComplete]);
+  }, [url]);
 };
