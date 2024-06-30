@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SSEController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -13,6 +14,8 @@ Route::get('/', function () {
 Route::post('/message', function () {
     return to_route('home')->with('success', 'Message sent successfully');
 });
+
+Route::get('/sse-stream', [SSEController::class, 'stream']);
 
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
