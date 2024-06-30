@@ -97,34 +97,35 @@ function AnimatedMessage({
   content: string;
   messageId: string;
 }) {
-  const [animatedContent, setAnimatedContent] = useState<string[]>([]);
-  const queueRef = useRef<string[]>([]);
+  const [animatedContent, setAnimatedContent] = useState<string>("");
+  const queueRef = useRef<string>("");
   const animatingRef = useRef(false);
 
   useEffect(() => {
-    const newContent = content.slice(animatedContent.join("").length);
-    // Split content into tokens, preserving spaces and punctuation
-    queueRef.current = queueRef.current.concat(
-      newContent.match(/\S+|\s+/g) || []
-    );
-    animateNextToken();
-  }, [content]);
+    if (content.length > animatedContent.length) {
+      queueRef.current = content.slice(animatedContent.length);
+      animateNextChar();
+    }
+  }, [content, animatedContent]);
 
-  const animateNextToken = () => {
+  const animateNextChar = () => {
     if (animatingRef.current || queueRef.current.length === 0) return;
 
     animatingRef.current = true;
-    const nextToken = queueRef.current.shift() || "";
+    const nextChar = queueRef.current[0];
 
-    setAnimatedContent((prev) => [...prev, nextToken]);
+    setAnimatedContent((prev) => prev + nextChar);
+    queueRef.current = queueRef.current.slice(1);
 
     setTimeout(() => {
       animatingRef.current = false;
-      animateNextToken();
+      animateNextChar();
     }, 25); // Adjust this value to control animation speed
   };
 
-  const transitions = useTransition(animatedContent, {
+  const tokens = animatedContent.match(/\S+|\s+/g) || [];
+
+  const transitions = useTransition(tokens, {
     keys: (item, index) => `${messageId}-${index}`,
     from: { opacity: 0, transform: "translateY(5px)" },
     enter: { opacity: 1, transform: "translateY(0px)" },
