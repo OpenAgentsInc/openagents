@@ -14,6 +14,7 @@ import "prosemirror-view/style/prosemirror.css";
 import { ProseMirror, useEditorEffect } from "@nytimes/react-prosemirror";
 import { useForm } from "@inertiajs/react";
 import { useMessageStore } from "../store";
+import { useSSE } from "../hooks/useSSE";
 
 const schema = new Schema({
   nodes: {
@@ -69,6 +70,8 @@ export const ChatInput = () => {
     content: "",
   });
 
+  const { startSSEConnection } = useSSE("/api/sse-stream");
+
   const handleEditorStateChange = useCallback(
     (state: EditorState) => {
       setEditorState(state);
@@ -79,17 +82,12 @@ export const ChatInput = () => {
 
   const handleSubmit = useCallback(() => {
     if (data.content.trim()) {
-      addMessage(data.content, true);
-      post("/message", {
-        preserveScroll: true,
-        onSuccess: () => {
-          console.log("test success");
-          setShouldReset(true);
-          reset("content");
-        },
-      });
+      addMessage(data.content, true); // Add user message to the store
+      startSSEConnection(data.content); // Start SSE connection with user's message
+      setEditorState(createDefaultState());
+      reset("content");
     }
-  }, [data.content, post, reset]);
+  }, [data.content, addMessage, startSSEConnection, reset]);
 
   useEffect(() => {
     if (shouldReset) {

@@ -1,41 +1,42 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useCallback } from "react";
 import { useMessageStore } from "../store";
 
-export const useSSE = (url: string) => {
+export const useSSE = (baseUrl: string) => {
   const updateLastMessage = useMessageStore((state) => state.updateLastMessage);
   const setLastMessageComplete = useMessageStore(
     (state) => state.setLastMessageComplete
   );
+  const addMessage = useMessageStore((state) => state.addMessage);
 
-  const updateLastMessageRef = useRef(updateLastMessage);
-  const setLastMessageCompleteRef = useRef(setLastMessageComplete);
+  const startSSEConnection = useCallback(
+    (message: string) => {
+      const url = `${baseUrl}?message=${encodeURIComponent(message)}`;
+      const eventSource = new EventSource(url);
 
-  useEffect(() => {
-    updateLastMessageRef.current = updateLastMessage;
-    setLastMessageCompleteRef.current = setLastMessageComplete;
-  }, [updateLastMessage, setLastMessageComplete]);
+      addMessage("", false); // Add an empty message for the AI response
 
-  useEffect(() => {
-    const eventSource = new EventSource(url);
+      eventSource.onopen = (event) => {
+        console.log("SSE connection opened:", event);
+      };
 
-    const handleMessage = (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "token") {
-        updateLastMessageRef.current(data.content);
-      } else if (data.type === "end") {
-        setLastMessageCompleteRef.current();
-      }
-    };
+      eventSource.addEventListener("message", (event) => {
+        console.log("Received event:", event);
+        const data = JSON.parse(event.data);
+        if (data.type === "token") {
+          updateLastMessage(data.content);
+        } else if (data.type === "end") {
+          setLastMessageComplete();
+          eventSource.close();
+        }
+      });
 
-    eventSource.onmessage = handleMessage;
+      eventSource.onerror = (error) => {
+        console.error("SSE error:", error);
+        eventSource.close();
+      };
+    },
+    [baseUrl, updateLastMessage, setLastMessageComplete, addMessage]
+  );
 
-    eventSource.onerror = (error) => {
-      console.error("SSE error:", error);
-      eventSource.close();
-    };
-
-    return () => {
-      eventSource.close();
-    };
-  }, [url]);
+  return { startSSEConnection };
 };
