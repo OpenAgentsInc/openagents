@@ -9,30 +9,59 @@ export const useSSE = (baseUrl: string) => {
   const addMessage = useMessageStore((state) => state.addMessage);
 
   const startSSEConnection = useCallback(
-    (message: string) => {
-      const url = `${baseUrl}?message=${encodeURIComponent(message)}`;
-      const eventSource = new EventSource(url);
-
+    async (messages: Array<{ role: string; content: string }>) => {
       addMessage("", false); // Add an empty message for the AI response
 
-      eventSource.onopen = (event) => {
-        // console.log("SSE connection opened:", event);
-      };
+      try {
+        const response = await fetch(baseUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({ messages: messages }),
+        });
 
-      eventSource.addEventListener("message", (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === "token") {
-          updateLastMessage(data.content);
-        } else if (data.type === "end") {
-          setLastMessageComplete();
-          eventSource.close();
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      });
 
-      eventSource.onerror = (error) => {
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === "token") {
+                updateLastMessage(data.content);
+              } else if (data.type === "end") {
+                setLastMessageComplete();
+                return;
+              } else if (data.type === "error") {
+                console.error("Error from server:", data.content);
+                updateLastMessage(
+                  "An error occurred while processing your request. Please try again."
+                );
+                setLastMessageComplete();
+                return;
+              }
+            }
+          }
+        }
+      } catch (error) {
         console.error("SSE error:", error);
-        eventSource.close();
-      };
+        updateLastMessage(
+          "An error occurred while connecting to the server. Please try again."
+        );
+        setLastMessageComplete();
+      }
     },
     [baseUrl, updateLastMessage, setLastMessageComplete, addMessage]
   );

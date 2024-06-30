@@ -2,21 +2,38 @@ import React, { useEffect } from "react";
 import { ChatInput } from "./ChatInput";
 import { AnimatedMessage } from "./AnimatedMessage";
 import { useMessageStore } from "../store";
+import { useSSE } from "../hooks/useSSE";
 import { initialMessage } from "../dummydata";
 
 export function Chat() {
-  const { messages, addMessage, updateLastMessage } = useMessageStore();
+  const { messages, addMessage } = useMessageStore();
+  const { startSSEConnection } = useSSE("/api/sse-stream");
 
   useEffect(() => {
     if (messages.length === 0) {
-      addMessage(initialMessage, false, true);
+      addMessage(initialMessage, true, true); // Add initial user message
+      addMessage("Acknowledged.", false, true); // Add dummy assistant message
     }
   }, [messages.length, addMessage]);
+
+  const sendMessage = (content: string) => {
+    addMessage(content, true, true);
+
+    // Prepare the message history
+    const messageHistory = messages
+      .concat({ content, isUser: true })
+      .map((msg) => ({
+        role: msg.isUser ? "user" : "assistant",
+        content: msg.content,
+      }));
+
+    // Start SSE connection with full message history
+    startSSEConnection(messageHistory);
+  };
 
   const renderMessage = (message, index) => {
     const isLastAIMessage = !message.isUser && index === messages.length - 1;
 
-    // Don't render empty messages
     if (!message.content.trim()) return null;
 
     return (
@@ -39,7 +56,7 @@ export function Chat() {
         {messages.map(renderMessage)}
       </div>
       <div className="sticky bottom-0 mx-auto w-full pt-6">
-        <ChatInput onSend={(content) => addMessage(content, true, true)} />
+        <ChatInput onSend={sendMessage} />
       </div>
     </div>
   );

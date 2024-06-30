@@ -15,7 +15,7 @@ Route::post('/message', function () {
     return to_route('home')->with('success', 'Message sent successfully');
 });
 
-Route::get('/api/sse-stream', [SSEController::class, 'stream']);
+Route::post('/api/sse-stream', [SSEController::class, 'stream']);
 
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');

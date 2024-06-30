@@ -18,43 +18,63 @@ class SSEController extends Controller
 
     public function stream(Request $request)
     {
-        $userMessage = $request->input('message', '');
+        $messagesInput = $request->input('messages');
+        Log::info('Received messages input', ['messages' => $messagesInput]);
 
-        return Response::stream(function() use ($userMessage) {
-            // Disable output buffering
+        $messages = $this->parseMessages($messagesInput);
+
+        if (empty($messages)) {
+            Log::error('Invalid or empty message format', ['input' => $messagesInput]);
+            return Response::json(['error' => 'Invalid or empty message format'], 400);
+        }
+
+        Log::info('Parsed messages', ['messages' => $messages]);
+
+        return Response::stream(function() use ($messages) {
+            Log::info('Starting SSE stream', ['messageCount' => count($messages)]);
+
             if (ob_get_level() > 0) {
                 ob_end_clean();
             }
 
-            // Set headers
             header('Content-Type: text/event-stream');
             header('Cache-Control: no-cache');
             header('Connection: keep-alive');
             header('X-Accel-Buffering: no');
 
-            // Send an initial message to establish the connection
-            echo "event: connection\n";
-            echo "data: Connected\n\n";
+            echo "data: " . json_encode(['type' => 'connection', 'content' => 'Connected']) . "\n\n";
             flush();
+            Log::info('Sent connection event');
 
-            $this->anthropicService->streamResponse($userMessage, function($data) {
-                echo "event: message\n";
+            $this->anthropicService->streamResponse($messages, function($data) {
                 echo "data: " . json_encode($data) . "\n\n";
-
                 flush();
-
                 Log::info('Sent data to client', ['data' => $data]);
             });
 
-            // Send a final message to close the connection
-            echo "event: close\n";
-            echo "data: Stream closed\n\n";
+            echo "data: " . json_encode(['type' => 'close', 'content' => 'Stream closed']) . "\n\n";
             flush();
+            Log::info('Sent close event');
         }, 200, [
             'Cache-Control' => 'no-cache',
             'Content-Type' => 'text/event-stream',
             'Connection' => 'keep-alive',
             'X-Accel-Buffering' => 'no',
         ]);
+    }
+
+    private function parseMessages($input)
+    {
+        if (is_string($input)) {
+            $decoded = json_decode($input, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+            return [['role' => 'user', 'content' => $input]];
+        }
+        if (is_array($input)) {
+            return $input;
+        }
+        return [];
     }
 }

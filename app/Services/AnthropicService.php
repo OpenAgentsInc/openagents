@@ -2,110 +2,71 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Support\Facades\Log;
 
 class AnthropicService
 {
-    private $apiKey;
-    private $baseUrl = 'https://api.anthropic.com/v1';
-    private $model = 'claude-3-5-sonnet-20240620';
+    protected $apiKey;
+    protected $apiUrl = 'https://api.anthropic.com/v1/messages';
 
     public function __construct()
     {
-        $this->apiKey = config('services.anthropic.api_key');
+        $this->apiKey = env('ANTHROPIC_API_KEY');
     }
 
-    public function streamResponse($userMessage, $callback)
+    public function streamResponse($messages, $callback)
     {
-        $url = $this->baseUrl . '/messages';
-        $data = [
-            'model' => $this->model,
-            'max_tokens' => 1024,
-            'messages' => [
-                ['role' => 'user', 'content' => $userMessage]
-            ],
-            'stream' => true
-        ];
+        Log::info('Starting streamResponse', ['messageCount' => count($messages)]);
 
-        Log::info('Sending request to Anthropic API', ['url' => $url, 'data' => $data]);
+        $client = new Client();
 
         try {
-            $client = new Client();
-            $response = $client->post($url, [
+            $response = $client->post($this->apiUrl, [
                 'headers' => [
+                    'Content-Type' => 'application/json',
                     'x-api-key' => $this->apiKey,
                     'anthropic-version' => '2023-06-01',
-                    'content-type' => 'application/json',
                 ],
-                'json' => $data,
+                'json' => [
+                    'model' => 'claude-3-5-sonnet-20240620',
+                    'max_tokens' => 1024,
+                    'messages' => $messages,
+                    'stream' => true,
+                ],
                 'stream' => true,
             ]);
 
             $body = $response->getBody();
-            $buffer = '';
 
             while (!$body->eof()) {
-                $chunk = $body->read(1024);
-                Log::info('Received chunk from Anthropic API', ['chunk' => $chunk]);
-                $buffer .= $chunk;
-                $events = explode("\n\n", $buffer);
+                $line = $body->read(1024);
+                $lines = explode("\n", $line);
 
-                foreach ($events as $i => $event) {
-                    if ($i === count($events) - 1) {
-                        $buffer = $event;
-                        break;
-                    }
-
-                    $lines = explode("\n", $event);
-                    $eventType = null;
-                    $eventData = null;
-
-                    foreach ($lines as $line) {
-                        if (str_starts_with($line, 'event: ')) {
-                            $eventType = trim(substr($line, 7));
-                        } elseif (str_starts_with($line, 'data: ')) {
-                            $eventData = json_decode(trim(substr($line, 6)), true);
+                foreach ($lines as $line) {
+                    if (str_starts_with($line, 'data: ')) {
+                        $data = json_decode(substr($line, 6), true);
+                        if (isset($data['type']) && $data['type'] === 'content_block_delta') {
+                            $callback([
+                                'type' => 'token',
+                                'content' => $data['delta']['text'],
+                            ]);
                         }
-                    }
-
-                    if ($eventType && $eventData) {
-                        $this->processEvent($eventType, $eventData, $callback);
                     }
                 }
             }
+
+            $callback([
+                'type' => 'end',
+            ]);
+            Log::info('Finished streaming response');
         } catch (RequestException $e) {
-            Log::error('Error in Anthropic API request: ' . $e->getMessage());
-            Log::error($e->getTraceAsString());
-            throw $e;
-        }
-    }
-
-    private function processEvent($eventType, $eventData, $callback)
-    {
-        Log::info('Processing event', ['type' => $eventType, 'data' => $eventData]);
-
-        switch ($eventType) {
-            case 'content_block_start':
-                // Ignore this event as it doesn't contain any content
-                break;
-            case 'content_block_delta':
-                if (isset($eventData['delta']['text'])) {
-                    $callback(['type' => 'token', 'content' => $eventData['delta']['text']]);
-                }
-                break;
-            case 'message_stop':
-                $callback(['type' => 'end']);
-                break;
-            case 'ping':
-                // Ignore ping events
-                break;
-            default:
-                // Log other event types for debugging
-                Log::info('Unhandled event type', ['type' => $eventType, 'data' => $eventData]);
-                break;
+            Log::error('Error in streamResponse', ['error' => $e->getMessage()]);
+            $callback([
+                'type' => 'error',
+                'content' => 'An error occurred while processing your request: ' . $e->getMessage(),
+            ]);
         }
     }
 }
