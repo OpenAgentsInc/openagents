@@ -1,6 +1,8 @@
 import "./bootstrap";
 import "../css/app.css";
+import "@shopify/polaris/build/esm/styles.css";
 
+import { AppProvider } from "@shopify/polaris";
 import { createRoot } from "react-dom/client";
 import { createInertiaApp } from "@inertiajs/react";
 import { resolvePageComponent } from "laravel-vite-plugin/inertia-helpers";
@@ -18,7 +20,9 @@ createInertiaApp({
     const root = createRoot(el);
     root.render(
       <div className="fixed inset-0 overflow-hidden bg-black">
-        <App {...props} />
+        <AppProvider i18n={{}}>
+          <App {...props} />
+        </AppProvider>
       </div>
     );
     document.body.classList.add("overflow-hidden", "h-full");
