@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { v4 as uuidv4 } from "uuid";
 
 interface Message {
   id: string;
@@ -16,13 +17,13 @@ interface MessageState {
 
 export const createMessageStore = () =>
   create<MessageState>((set) => ({
-    messages: [], // Make sure this is initialized as an empty array
+    messages: [],
     addMessage: (content, isUser) =>
       set((state) => ({
         messages: [
           ...state.messages,
           {
-            id: Date.now().toString(),
+            id: uuidv4(),
             content,
             isUser,
             isComplete: isUser,
@@ -37,7 +38,7 @@ export const createMessageStore = () =>
             messages: [
               ...state.messages,
               {
-                id: Date.now().toString(),
+                id: uuidv4(),
                 content,
                 isUser: false,
                 isComplete: false,

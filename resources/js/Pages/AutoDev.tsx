@@ -52,6 +52,9 @@ export default function AutoDev() {
                         className={`p-2 rounded ${message.isUser ? "bg-zinc-900" : "bg-zinc-800"}`}
                       >
                         {message.content}
+                        {!message.isComplete && !message.isUser && (
+                          <span className="animate-pulse">▌</span>
+                        )}
                       </div>
                     ))
                   )}

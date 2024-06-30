@@ -12,6 +12,7 @@
     "@types/node": "^18.13.0",
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.10",
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.2.0",
     "autoprefixer": "^10.4.12",
     "axios": "^1.6.4",
@@ -32,6 +33,7 @@
     "prosemirror-commands": "^1.5.2",
     "prosemirror-keymap": "^1.2.2",
     "prosemirror-schema-basic": "^1.2.2",
+    "uuid": "^10.0.0",
     "zustand": "^4.5.4"
   }
 }
