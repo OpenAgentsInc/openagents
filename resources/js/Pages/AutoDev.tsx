@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import React, { useRef, useEffect } from "react";
 import { ChatInput } from "../Components/ChatInput";
 import { useMessageStore } from "../store";
 import { useTransition, animated, config } from "@react-spring/web";
@@ -7,26 +7,11 @@ export default function AutoDev() {
   const messages = useMessageStore((state) => state.messages);
   const lastContentLengthRef = useRef<{ [key: string]: number }>({});
 
-  const transitions = useTransition(
-    messages.map((message) => ({
-      ...message,
-      newContent: message.content.slice(
-        lastContentLengthRef.current[message.id] || 0
-      ),
-    })),
-    {
-      keys: (message) => message.id,
-      from: { opacity: 0, transform: "translateY(10px)" },
-      enter: { opacity: 1, transform: "translateY(0px)" },
-      leave: { display: "none" },
-      trail: 25,
-      config: config.gentle,
-    }
-  );
-
   useEffect(() => {
     messages.forEach((message) => {
-      lastContentLengthRef.current[message.id] = message.content.length;
+      if (!lastContentLengthRef.current[message.id]) {
+        lastContentLengthRef.current[message.id] = 0;
+      }
     });
   }, [messages]);
 
@@ -73,35 +58,30 @@ export default function AutoDev() {
                   {messages.length === 0 ? (
                     <p className="mt-6">AutoDev awaiting instructions.</p>
                   ) : (
-                    transitions((style, message) => (
-                      <animated.div
-                        style={style}
+                    messages.map((message) => (
+                      <div
                         key={message.id}
                         className={`p-2 rounded ${message.isUser ? "bg-zinc-900" : "bg-zinc-800"}`}
                       >
                         <span>
                           {message.content.slice(
                             0,
-                            lastContentLengthRef.current[message.id] || 0
+                            lastContentLengthRef.current[message.id]
                           )}
                         </span>
-                        {message.newContent.split("").map((char, index) => (
-                          <animated.span
-                            key={`${message.id}-${index}`}
-                            style={{
-                              ...style,
-                              display: "inline-block",
-                              opacity: style.opacity,
-                              transform: style.transform,
-                            }}
-                          >
-                            {char}
-                          </animated.span>
-                        ))}
+                        <AnimatedTokens
+                          content={message.content.slice(
+                            lastContentLengthRef.current[message.id]
+                          )}
+                          onComplete={() => {
+                            lastContentLengthRef.current[message.id] =
+                              message.content.length;
+                          }}
+                        />
                         {!message.isComplete && !message.isUser && (
                           <span className="animate-pulse">▌</span>
                         )}
-                      </animated.div>
+                      </div>
                     ))
                   )}
                 </div>
@@ -115,4 +95,29 @@ export default function AutoDev() {
       </div>
     </div>
   );
+}
+
+function AnimatedTokens({
+  content,
+  onComplete,
+}: {
+  content: string;
+  onComplete: () => void;
+}) {
+  const transitions = useTransition(content.split(""), {
+    from: { opacity: 0 },
+    enter: { opacity: 1 },
+    leave: { display: "none" },
+    trail: 25,
+    config: config.gentle,
+    onRest: (result, ctrl, item) => {
+      if (item === content[content.length - 1]) {
+        onComplete();
+      }
+    },
+  });
+
+  return transitions((style, item) => (
+    <animated.span style={style}>{item}</animated.span>
+  ));
 }
