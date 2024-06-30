@@ -17,8 +17,6 @@ export const useSSE = (baseUrl: string) => {
     async (messages: Message[]) => {
       addMessage("", false); // Add an empty message for the AI response
 
-      console.log("Sending messages to server:", messages);
-
       try {
         const response = await fetch(baseUrl, {
           method: "POST",

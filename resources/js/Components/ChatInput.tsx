@@ -83,7 +83,6 @@ export const ChatInput = () => {
 
   const handleSubmit = useCallback(() => {
     if (data.content.trim()) {
-      console.log("Submitting message:", data.content);
       addMessage(data.content, true, true); // Add user message to the store
 
       // Prepare the message history
@@ -94,7 +93,6 @@ export const ChatInput = () => {
           content: msg.content,
         }));
 
-      console.log("Sending message history:", messageHistory);
       startSSEConnection(messageHistory); // Start SSE connection with full message history
 
       setEditorState(createDefaultState());
