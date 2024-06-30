@@ -120,7 +120,7 @@ function AnimatedMessage({
     setTimeout(() => {
       animatingRef.current = false;
       animateNextChar();
-    }, 25); // Adjust this value to control animation speed
+    }, 5); // Adjust this value to control animation speed
   };
 
   const tokens = animatedContent.match(/\S+|\s+/g) || [];
