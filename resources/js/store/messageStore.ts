@@ -10,22 +10,22 @@ interface Message {
 
 interface MessageState {
   messages: Message[];
-  addMessage: (content: string, isUser: boolean) => void;
+  addMessage: (content: string, isUser: boolean, isComplete?: boolean) => void;
   updateLastMessage: (content: string) => void;
   setLastMessageComplete: () => void;
 }
 
 const createMessageSlice: StateCreator<MessageState> = (set) => ({
   messages: [],
-  addMessage: (content, isUser) =>
+  addMessage: (content, isUser, isComplete = false) =>
     set((state) => ({
       messages: [
         ...state.messages,
         {
           id: uuidv4(),
-          content,
+          content: content.trim(),
           isUser,
-          isComplete: true,
+          isComplete,
         },
       ],
     })),
@@ -38,7 +38,7 @@ const createMessageSlice: StateCreator<MessageState> = (set) => ({
             ...state.messages,
             {
               id: uuidv4(),
-              content,
+              content: content.trim(),
               isUser: false,
               isComplete: false,
             },
@@ -48,7 +48,7 @@ const createMessageSlice: StateCreator<MessageState> = (set) => ({
       return {
         messages: [
           ...state.messages.slice(0, -1),
-          { ...lastMessage, content: lastMessage.content + content },
+          { ...lastMessage, content: (lastMessage.content + content).trim() },
         ],
       };
     }),
