@@ -4,39 +4,51 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
+use App\Services\AnthropicService;
+use Illuminate\Support\Facades\Log;
 
 class SSEController extends Controller
 {
+    protected $anthropicService;
+
+    public function __construct(AnthropicService $anthropicService)
+    {
+        $this->anthropicService = $anthropicService;
+    }
+
     public function stream(Request $request)
     {
         $userMessage = $request->input('message', '');
 
         return Response::stream(function() use ($userMessage) {
-            if (ob_get_level()) ob_end_clean();
+            // Disable output buffering
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
 
+            // Set headers
             header('Content-Type: text/event-stream');
             header('Cache-Control: no-cache');
             header('Connection: keep-alive');
             header('X-Accel-Buffering: no');
 
-            // Generate a response based on user input
-            $response = $this->generateResponse($userMessage);
-            $tokens = explode(' ', $response);
+            // Send an initial message to establish the connection
+            echo "event: connection\n";
+            echo "data: Connected\n\n";
+            flush();
 
-            foreach ($tokens as $token) {
+            $this->anthropicService->streamResponse($userMessage, function($data) {
                 echo "event: message\n";
-                echo "data: " . json_encode(['type' => 'token', 'content' => $token . ' ']) . "\n\n";
+                echo "data: " . json_encode($data) . "\n\n";
 
-                if (ob_get_level() > 0) ob_flush();
                 flush();
 
-                usleep(100000); // 0.1 second delay between tokens
-            }
+                Log::info('Sent data to client', ['data' => $data]);
+            });
 
-            echo "event: message\n";
-            echo "data: " . json_encode(['type' => 'end']) . "\n\n";
-
-            if (ob_get_level() > 0) ob_flush();
+            // Send a final message to close the connection
+            echo "event: close\n";
+            echo "data: Stream closed\n\n";
             flush();
         }, 200, [
             'Cache-Control' => 'no-cache',
@@ -44,20 +56,5 @@ class SSEController extends Controller
             'Connection' => 'keep-alive',
             'X-Accel-Buffering' => 'no',
         ]);
-    }
-
-    private function generateResponse($userMessage)
-    {
-        // Simple demo response generator
-        $responses = [
-            "Hello! How can I assist you today?",
-            "That's an interesting question. Let me think about it.",
-            "I understand your concern. Here's what I think:",
-            "Based on what you've said, I would suggest the following:",
-            "Thank you for sharing that. Here's my perspective:",
-        ];
-
-        $baseResponse = $responses[array_rand($responses)];
-        return $baseResponse . " You said: '" . $userMessage . "'. Is there anything else you'd like to know?";
     }
 }
