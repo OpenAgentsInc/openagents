@@ -82,6 +82,13 @@ export default function AutoDev() {
                   <ChatInput />
                 </div>
               </div>
+              <div className="w-1/2 min-h-full bg-bg-100 border-l border-border-300">
+                <div className="h-full flex flex-col">
+                  <div className="border-b border-border-400 sticky top-0 flex items-center gap-1 px-4 py-2">
+                    <p>hi</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
