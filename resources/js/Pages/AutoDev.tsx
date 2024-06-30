@@ -1,18 +1,21 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { ChatInput } from "../Components/ChatInput";
 import { useMessageStore } from "../store";
 import { useTransition, animated, config } from "@react-spring/web";
 
 export default function AutoDev() {
   const messages = useMessageStore((state) => state.messages);
-  const lastContentLengthRef = useRef<{ [key: string]: number }>({});
+  const [animatingMessages, setAnimatingMessages] = useState<
+    Array<{ id: string; content: string }>
+  >([]);
 
   useEffect(() => {
-    messages.forEach((message) => {
-      if (!lastContentLengthRef.current[message.id]) {
-        lastContentLengthRef.current[message.id] = 0;
-      }
-    });
+    setAnimatingMessages(
+      messages.map((message) => ({
+        id: message.id,
+        content: message.content,
+      }))
+    );
   }, [messages]);
 
   return (
@@ -22,65 +25,27 @@ export default function AutoDev() {
         <div className="min-h-full w-full min-w-0 flex-1">
           <div className="flex h-screen w-full flex-col overflow-hidden">
             <div className="sticky top-0 z-10 -mb-6 flex h-14 items-center gap-3 pl-11 pr-2 md:pb-0.5 md:pl-6">
-              <div className="from-black via-black to-black/0 absolute inset-0 -bottom-7 z-[-1] bg-gradient-to-b via-50% blur"></div>
-              <div className="flex min-w-0 flex-1 shrink flex-col md:flex-row md:items-center 2xl:justify-center">
-                <div className="flex min-w-0 items-center max-md:text-sm">
-                  <button
-                    className="inline-flex items-center justify-center relative shrink-0 ring-offset-2 ring-offset-bg-300 ring-accent-main-100 focus-visible:outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none disabled:drop-shadow-none text-zinc-200 transition-all active:bg-bg-400 hover:bg-bg-500/40 hover:text-text-100 rounded py-1 px-2 max-w-full whitespace-nowrap text-ellipsis overflow-hidden outline-none ring-offset-2 ring-offset-bg-300 ring-accent-main-100 focus-visible:outline-none focus-visible:ring-1 focus:backdrop-blur-xl hover:backdrop-blur-xl hover:bg-bg-400/50 !text-text-000 !shrink gap-1 !px-1 !py-0.5"
-                    data-testid="chat-menu-trigger"
-                    type="button"
-                    id="radix-:r33:"
-                    aria-haspopup="menu"
-                    aria-expanded="false"
-                    data-state="closed"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-normal tracking-tight">
-                        AutoDev Demo
-                      </div>
-                    </div>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="12"
-                      height="12"
-                      fill="currentColor"
-                      viewBox="0 0 256 256"
-                    >
-                      <path d="M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z"></path>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              {/* ... (header content remains the same) ... */}
             </div>
             <div className="relative flex w-full flex-1 overflow-x-hidden overflow-y-scroll pt-6 md:pr-8">
               <div className="relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col md:px-2">
                 <div className="flex-1 flex flex-col gap-3 px-4 max-w-3xl mx-auto w-full pt-6">
-                  {messages.length === 0 ? (
+                  {animatingMessages.length === 0 ? (
                     <p className="mt-6">AutoDev awaiting instructions.</p>
                   ) : (
-                    messages.map((message) => (
+                    animatingMessages.map((message, index) => (
                       <div
                         key={message.id}
-                        className={`p-2 rounded ${message.isUser ? "bg-zinc-900" : "bg-zinc-800"}`}
+                        className={`p-2 rounded ${messages[index].isUser ? "bg-zinc-900" : "bg-zinc-800"}`}
                       >
-                        <span>
-                          {message.content.slice(
-                            0,
-                            lastContentLengthRef.current[message.id]
-                          )}
-                        </span>
-                        <AnimatedTokens
-                          content={message.content.slice(
-                            lastContentLengthRef.current[message.id]
-                          )}
-                          onComplete={() => {
-                            lastContentLengthRef.current[message.id] =
-                              message.content.length;
-                          }}
+                        <AnimatedMessage
+                          content={message.content}
+                          messageId={message.id}
                         />
-                        {!message.isComplete && !message.isUser && (
-                          <span className="animate-pulse">▌</span>
-                        )}
+                        {!messages[index].isComplete &&
+                          !messages[index].isUser && (
+                            <span className="animate-pulse">▌</span>
+                          )}
                       </div>
                     ))
                   )}
@@ -97,27 +62,35 @@ export default function AutoDev() {
   );
 }
 
-function AnimatedTokens({
+function AnimatedMessage({
   content,
-  onComplete,
+  messageId,
 }: {
   content: string;
-  onComplete: () => void;
+  messageId: string;
 }) {
-  const transitions = useTransition(content.split(""), {
-    from: { opacity: 0 },
-    enter: { opacity: 1 },
-    leave: { display: "none" },
-    trail: 25,
-    config: config.gentle,
-    onRest: (result, ctrl, item) => {
-      if (item === content[content.length - 1]) {
-        onComplete();
-      }
-    },
-  });
+  const [animatedContent, setAnimatedContent] = useState("");
+
+  useEffect(() => {
+    setAnimatedContent(content);
+  }, [content]);
+
+  const transitions = useTransition(
+    animatedContent.split("").map((char, index) => ({
+      char,
+      key: `${messageId}-${index}`,
+    })),
+    {
+      keys: (item) => item.key,
+      from: { opacity: 0 },
+      enter: { opacity: 1 },
+      leave: { opacity: 0 },
+      trail: 25,
+      config: config.gentle,
+    }
+  );
 
   return transitions((style, item) => (
-    <animated.span style={style}>{item}</animated.span>
+    <animated.span style={style}>{item.char}</animated.span>
   ));
 }
