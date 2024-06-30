@@ -21,9 +21,6 @@ export function Chat() {
                 content={message.content}
                 messageId={message.id}
               />
-              {!message.isComplete && !message.isUser && (
-                <span className="animate-pulse">▌</span>
-              )}
             </div>
           ))
         )}
