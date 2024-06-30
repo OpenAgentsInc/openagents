@@ -70,22 +70,34 @@ function AnimatedMessage({
   messageId: string;
 }) {
   const [animatedContent, setAnimatedContent] = useState("");
+  const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    setAnimatedContent(content);
+    setAnimatedContent("");
+    setIndex(0);
   }, [content]);
 
+  useEffect(() => {
+    if (index < content.length) {
+      const timer = setTimeout(() => {
+        setAnimatedContent((prev) => prev + content[index]);
+        setIndex((prev) => prev + 1);
+      }, 15); // Adjust this value to control the speed of appearance
+
+      return () => clearTimeout(timer);
+    }
+  }, [content, index]);
+
   const transitions = useTransition(
-    animatedContent.split("").map((char, index) => ({
+    animatedContent.split("").map((char, i) => ({
       char,
-      key: `${messageId}-${index}`,
+      key: `${messageId}-${i}`,
     })),
     {
       keys: (item) => item.key,
       from: { opacity: 0 },
       enter: { opacity: 1 },
       leave: { opacity: 0 },
-      trail: 25,
       config: config.gentle,
     }
   );
