@@ -8,8 +8,8 @@ export default function AutoDev() {
       <div className="flex min-h-screen w-full">
         <nav className="z-20 h-screen max-md:pointer-events-none max-md:fixed"></nav>
         <div className="min-h-full w-full min-w-0 flex-1">
-          <div className="flex h-screen w-full flex-col overflow-hidden">
-            <div className="sticky top-0 z-10 -mb-6 flex h-14 items-center gap-3 pl-11 pr-2 md:pb-0.5 md:pl-6">
+          <div className="flex h-screen w-full flex-col">
+            <div className="sticky top-0 z-10 flex h-14 items-center gap-3 pl-11 pr-2 md:pb-0.5 md:pl-6">
               <div className="from-black via-black to-black/0 absolute inset-0 -bottom-7 z-[-1] bg-gradient-to-b via-50% blur"></div>
               <div className="flex min-w-0 flex-1 shrink flex-col md:flex-row md:items-center 2xl:justify-center">
                 <div className="flex min-w-0 items-center max-md:text-sm">
@@ -40,9 +40,13 @@ export default function AutoDev() {
                 </div>
               </div>
             </div>
-            <div className="relative flex w-full flex-1 overflow-x-hidden overflow-y-scroll pt-6 md:pr-8">
-              <Chat />
-              <Workspace />
+            <div className="flex flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto">
+                <Chat />
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <Workspace />
+              </div>
             </div>
           </div>
         </div>
