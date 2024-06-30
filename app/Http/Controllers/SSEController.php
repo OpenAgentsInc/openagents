@@ -19,7 +19,7 @@ class SSEController extends Controller
     public function stream(Request $request)
     {
         $messagesInput = $request->input('messages');
-        Log::info('Received messages input', ['messages' => $messagesInput]);
+        Log::info('Received raw messages input', ['rawMessages' => $messagesInput]);
 
         $messages = $this->parseMessages($messagesInput);
 
@@ -31,7 +31,7 @@ class SSEController extends Controller
         Log::info('Parsed messages', ['messages' => $messages]);
 
         return Response::stream(function() use ($messages) {
-            Log::info('Starting SSE stream', ['messageCount' => count($messages)]);
+            Log::info('Starting SSE stream', ['messageCount' => count($messages), 'messages' => $messages]);
 
             if (ob_get_level() > 0) {
                 ob_end_clean();
@@ -65,16 +65,21 @@ class SSEController extends Controller
 
     private function parseMessages($input)
     {
+        Log::info('Parsing messages input', ['input' => $input]);
         if (is_string($input)) {
             $decoded = json_decode($input, true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                Log::info('Decoded JSON string to array', ['decoded' => $decoded]);
                 return $decoded;
             }
+            Log::info('Treating input as single user message', ['message' => $input]);
             return [['role' => 'user', 'content' => $input]];
         }
         if (is_array($input)) {
+            Log::info('Input is already an array', ['array' => $input]);
             return $input;
         }
+        Log::warning('Input is neither string nor array, returning empty array');
         return [];
     }
 }

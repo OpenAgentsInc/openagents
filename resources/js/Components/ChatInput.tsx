@@ -65,8 +65,9 @@ export const ChatInput = () => {
   const [editorState, setEditorState] = useState(createDefaultState);
   const [shouldReset, setShouldReset] = useState(false);
   const addMessage = useMessageStore((state) => state.addMessage);
+  const messages = useMessageStore((state) => state.messages);
 
-  const { data, setData, post, processing, errors, reset } = useForm({
+  const { data, setData, reset } = useForm({
     content: "",
   });
 
@@ -82,12 +83,24 @@ export const ChatInput = () => {
 
   const handleSubmit = useCallback(() => {
     if (data.content.trim()) {
-      addMessage(data.content, true); // Add user message to the store
-      startSSEConnection(data.content); // Start SSE connection with user's message
+      console.log("Submitting message:", data.content);
+      addMessage(data.content, true, true); // Add user message to the store
+
+      // Prepare the message history
+      const messageHistory = messages
+        .concat({ content: data.content, isUser: true })
+        .map((msg) => ({
+          role: msg.isUser ? "user" : "assistant",
+          content: msg.content,
+        }));
+
+      console.log("Sending message history:", messageHistory);
+      startSSEConnection(messageHistory); // Start SSE connection with full message history
+
       setEditorState(createDefaultState());
       reset("content");
     }
-  }, [data.content, addMessage, startSSEConnection, reset]);
+  }, [data.content, addMessage, messages, startSSEConnection, reset]);
 
   useEffect(() => {
     if (shouldReset) {
@@ -124,12 +137,6 @@ export const ChatInput = () => {
           </div>
         </div>
       </fieldset>
-      {/*
-      <button type="button" onClick={handleSubmit} disabled={processing}>
-        Submit
-      </button>
-      */}
-      {errors.content && <div>{errors.content}</div>}
     </form>
   );
 };

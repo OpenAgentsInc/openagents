@@ -1,6 +1,11 @@
 import { useCallback } from "react";
 import { useMessageStore } from "../store";
 
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export const useSSE = (baseUrl: string) => {
   const updateLastMessage = useMessageStore((state) => state.updateLastMessage);
   const setLastMessageComplete = useMessageStore(
@@ -9,8 +14,10 @@ export const useSSE = (baseUrl: string) => {
   const addMessage = useMessageStore((state) => state.addMessage);
 
   const startSSEConnection = useCallback(
-    async (messages: Array<{ role: string; content: string }>) => {
+    async (messages: Message[]) => {
       addMessage("", false); // Add an empty message for the AI response
+
+      console.log("Sending messages to server:", messages);
 
       try {
         const response = await fetch(baseUrl, {
@@ -19,7 +26,7 @@ export const useSSE = (baseUrl: string) => {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify({ messages: messages }),
+          body: JSON.stringify({ messages }),
         });
 
         if (!response.ok) {

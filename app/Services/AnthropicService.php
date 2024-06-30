@@ -18,23 +18,27 @@ class AnthropicService
 
     public function streamResponse($messages, $callback)
     {
-        Log::info('Starting streamResponse', ['messageCount' => count($messages)]);
+        Log::info('Starting streamResponse', ['messageCount' => count($messages), 'messages' => $messages]);
 
         $client = new Client();
 
         try {
+            $requestBody = [
+                'model' => 'claude-3-5-sonnet-20240620',
+                'max_tokens' => 1024,
+                'messages' => $messages,
+                'stream' => true,
+            ];
+
+            Log::info('Sending request to Anthropic API', ['requestBody' => $requestBody]);
+
             $response = $client->post($this->apiUrl, [
                 'headers' => [
                     'Content-Type' => 'application/json',
                     'x-api-key' => $this->apiKey,
                     'anthropic-version' => '2023-06-01',
                 ],
-                'json' => [
-                    'model' => 'claude-3-5-sonnet-20240620',
-                    'max_tokens' => 1024,
-                    'messages' => $messages,
-                    'stream' => true,
-                ],
+                'json' => $requestBody,
                 'stream' => true,
             ]);
 
@@ -62,7 +66,11 @@ class AnthropicService
             ]);
             Log::info('Finished streaming response');
         } catch (RequestException $e) {
-            Log::error('Error in streamResponse', ['error' => $e->getMessage()]);
+            Log::error('Error in streamResponse', [
+                'error' => $e->getMessage(),
+                'requestBody' => $requestBody ?? null,
+                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
+            ]);
             $callback([
                 'type' => 'error',
                 'content' => 'An error occurred while processing your request: ' . $e->getMessage(),
