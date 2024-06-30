@@ -16,11 +16,10 @@ export const useSSE = (baseUrl: string) => {
       addMessage("", false); // Add an empty message for the AI response
 
       eventSource.onopen = (event) => {
-        console.log("SSE connection opened:", event);
+        // console.log("SSE connection opened:", event);
       };
 
       eventSource.addEventListener("message", (event) => {
-        console.log("Received event:", event);
         const data = JSON.parse(event.data);
         if (data.type === "token") {
           updateLastMessage(data.content);
