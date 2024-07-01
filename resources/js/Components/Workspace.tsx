@@ -32,7 +32,6 @@ export function Workspace() {
   return (
     <div className="w-full h-full flex flex-col bg-zinc-900/25 text-white font-sans">
       <div className="p-4 flex-shrink-0">
-        <h2 className="text-lg font-semibold mb-4">AutoDev Workspace</h2>
         <div className="flex space-x-1">
           {tabs.map((tab) => (
             <button
