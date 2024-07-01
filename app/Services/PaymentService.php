@@ -54,7 +54,7 @@ class PaymentService
 
                     // If we need to send to a ln addr we ensure the amount is above the minimum, avoid wasting too much on fees
                     if ($pluginPaymentAddr && $pluginAuthorShare < $minAmountForLightningPayout_msats) {
-                        Log::info('Skipping lightning payout for plugin '.$plugin->name.': amount too low');
+                        // Log::info('Skipping lightning payout for plugin '.$plugin->name.': amount too low');
 
                         continue;
                     }
