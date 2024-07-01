@@ -85,9 +85,8 @@ export const ChatInput = () => {
 
   const handleSubmit = useCallback(() => {
     if (data.content.trim()) {
-      addMessage(data.content, true, true); // Add user message to the store
+      addMessage(data.content, true, true);
 
-      // Prepare the message history
       const messageHistory = messages
         .concat({ content: data.content, isUser: true })
         .map((msg) => ({
@@ -95,12 +94,23 @@ export const ChatInput = () => {
           content: msg.content,
         }));
 
-      startSSEConnection(messageHistory); // Start SSE connection with full message history
+      const selectedCodebases = codebases
+        .filter((codebase) => codebase.isSelected)
+        .map(({ id, name, branch }) => ({ id, name, branch }));
+
+      startSSEConnection(messageHistory, selectedCodebases);
 
       setEditorState(createDefaultState());
       reset("content");
     }
-  }, [data.content, addMessage, messages, startSSEConnection, reset]);
+  }, [
+    data.content,
+    addMessage,
+    messages,
+    codebases,
+    startSSEConnection,
+    reset,
+  ]);
 
   useEffect(() => {
     if (shouldReset) {

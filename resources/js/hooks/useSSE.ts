@@ -6,6 +6,12 @@ interface Message {
   content: string;
 }
 
+interface Codebase {
+  id: string;
+  name: string;
+  branch: string;
+}
+
 export const useSSE = (baseUrl: string) => {
   const updateLastMessage = useMessageStore((state) => state.updateLastMessage);
   const setLastMessageComplete = useMessageStore(
@@ -16,7 +22,7 @@ export const useSSE = (baseUrl: string) => {
   const appendToPlan = useMessageStore((state) => state.appendToPlan);
 
   const startSSEConnection = useCallback(
-    async (messages: Message[]) => {
+    async (messages: Message[], selectedCodebases: Codebase[]) => {
       addMessage("", false); // Add an empty message for the AI response
       let isStreamingPlan = false;
       let planBuffer = "";
@@ -97,7 +103,7 @@ export const useSSE = (baseUrl: string) => {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify({ messages }),
+          body: JSON.stringify({ messages, codebases: selectedCodebases }),
         });
 
         if (!response.ok) {
