@@ -1,6 +1,8 @@
 import { create, StateCreator } from "zustand";
+import { v4 as uuidv4 } from "uuid";
 
 interface Codebase {
+  id: string;
   name: string;
   branch: string;
   isSelected: boolean;
@@ -8,30 +10,38 @@ interface Codebase {
 
 interface CodebaseState {
   codebases: Codebase[];
-  toggleCodebase: (name: string) => void;
+  toggleCodebase: (id: string) => void;
   addCodebase: (name: string, branch: string) => void;
-  removeCodebase: (name: string) => void;
+  removeCodebase: (id: string) => void;
 }
 
 const createCodebaseSlice: StateCreator<CodebaseState> = (set) => ({
   codebases: [
-    { name: "openagentsinc/openagents", branch: "v2", isSelected: true },
+    {
+      id: uuidv4(),
+      name: "openagentsinc/openagents",
+      branch: "v2",
+      isSelected: true,
+    },
   ],
-  toggleCodebase: (name: string) =>
+  toggleCodebase: (id: string) =>
     set((state) => ({
       codebases: state.codebases.map((codebase) =>
-        codebase.name === name
+        codebase.id === id
           ? { ...codebase, isSelected: !codebase.isSelected }
           : codebase
       ),
     })),
   addCodebase: (name: string, branch: string) =>
     set((state) => ({
-      codebases: [...state.codebases, { name, branch, isSelected: true }],
+      codebases: [
+        ...state.codebases,
+        { id: uuidv4(), name, branch, isSelected: true },
+      ],
     })),
-  removeCodebase: (name: string) =>
+  removeCodebase: (id: string) =>
     set((state) => ({
-      codebases: state.codebases.filter((codebase) => codebase.name !== name),
+      codebases: state.codebases.filter((codebase) => codebase.id !== id),
     })),
 });
 

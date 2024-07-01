@@ -21,12 +21,12 @@ export function Codebases() {
       <h2 className="text-2xl font-bold mb-4">Codebases</h2>
       <ul>
         {codebases.map((codebase) => (
-          <li key={codebase.name} className="mb-2 flex items-center">
+          <li key={codebase.id} className="mb-2 flex items-center">
             <label className="flex items-center flex-grow">
               <input
                 type="checkbox"
                 checked={codebase.isSelected}
-                onChange={() => toggleCodebase(codebase.name)}
+                onChange={() => toggleCodebase(codebase.id)}
                 className="mr-2"
               />
               <span>
@@ -34,7 +34,7 @@ export function Codebases() {
               </span>
             </label>
             <button
-              onClick={() => removeCodebase(codebase.name)}
+              onClick={() => removeCodebase(codebase.id)}
               className="ml-2 text-red-500 hover:text-red-700"
             >
               Remove
