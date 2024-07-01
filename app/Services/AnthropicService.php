@@ -18,64 +18,92 @@ class AnthropicService
 
     public function streamResponse($messages, $callback)
     {
-        Log::info('Starting streamResponse', ['messageCount' => count($messages), 'messages' => $messages]);
+        Log::info('Starting streamResponse', ['messageCount' => count($messages)]);
 
         $client = new Client();
 
         try {
-            $requestBody = [
-                'model' => 'claude-3-5-sonnet-20240620',
-                'max_tokens' => 1024,
-                'messages' => $messages,
-                'stream' => true,
-                'system' => "You are AutoDev, an automated developer agent created by OpenAgents. You have access to tools that give you API access. If you ever want to do something you don't have a tool for, request that from the user."
-            ];
-
-            Log::info('Sending request to Anthropic API', ['requestBody' => $requestBody]);
-
             $response = $client->post($this->apiUrl, [
                 'headers' => [
                     'Content-Type' => 'application/json',
                     'x-api-key' => $this->apiKey,
                     'anthropic-version' => '2023-06-01',
                 ],
-                'json' => $requestBody,
+                'json' => [
+                    'model' => 'claude-3-5-sonnet-20240620',
+                    'max_tokens' => 1024,
+                    'messages' => $messages,
+                    'stream' => true,
+                ],
                 'stream' => true,
             ]);
 
             $body = $response->getBody();
+            $buffer = '';
 
             while (!$body->eof()) {
-                $line = $body->read(1024);
-                $lines = explode("\n", $line);
+                $chunk = $body->read(1024);
+                $buffer .= $chunk;
+
+                $lines = explode("\n", $buffer);
+                $buffer = array_pop($lines);  // Keep the last incomplete line in the buffer
 
                 foreach ($lines as $line) {
-                    if (str_starts_with($line, 'data: ')) {
-                        $data = json_decode(substr($line, 6), true);
-                        if (isset($data['type']) && $data['type'] === 'content_block_delta') {
-                            $callback([
-                                'type' => 'token',
-                                'content' => $data['delta']['text'],
-                            ]);
-                        }
-                    }
+                    $this->processLine($line, $callback);
                 }
             }
 
-            $callback([
-                'type' => 'end',
-            ]);
+            // Process any remaining data in the buffer
+            if (!empty($buffer)) {
+                $this->processLine($buffer, $callback);
+            }
+
             Log::info('Finished streaming response');
         } catch (RequestException $e) {
             Log::error('Error in streamResponse', [
                 'error' => $e->getMessage(),
-                'requestBody' => $requestBody ?? null,
                 'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null
             ]);
-            $callback([
-                'type' => 'error',
-                'content' => 'An error occurred while processing your request: ' . $e->getMessage(),
-            ]);
+            throw $e;
+        }
+    }
+
+    private function processLine($line, $callback)
+    {
+        if (str_starts_with($line, 'data: ')) {
+            $data = json_decode(substr($line, 6), true);
+            Log::debug('Received data from Anthropic API', ['data' => $data]);
+
+            if ($data === null) {
+                Log::info('Received null data (likely a ping)');
+                return;
+            }
+
+            switch ($data['type']) {
+                case 'content_block_delta':
+                    if (isset($data['delta']['text'])) {
+                        $callback([
+                            'type' => 'token',
+                            'content' => $data['delta']['text'],
+                        ]);
+                    }
+                    break;
+                case 'message_start':
+                case 'content_block_start':
+                case 'content_block_stop':
+                case 'message_delta':
+                case 'message_stop':
+                    $callback([
+                        'type' => $data['type'],
+                        'content' => json_encode($data),
+                    ]);
+                    break;
+                case 'ping':
+                    Log::info('Received ping');
+                    break;
+                default:
+                    Log::warning('Received unknown event type', ['data' => $data]);
+            }
         }
     }
 }
