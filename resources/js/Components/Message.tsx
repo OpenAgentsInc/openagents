@@ -1,8 +1,8 @@
 import React from "react";
-import { AnimatedMessage } from "./AnimatedMessage";
+import { ReactNode } from "react";
 
 interface MessageProps {
-  content: string;
+  content: ReactNode;
   isUser: boolean;
   isComplete: boolean;
   messageId: string;
@@ -15,13 +15,13 @@ export const Message: React.FC<MessageProps> = ({
   messageId,
 }) => {
   // If the content is empty, don't render anything
-  if (!content.trim()) {
+  if (React.isValidElement(content) && !content.props.children) {
     return null;
   }
 
   const userMessageClasses = `
     group relative inline-flex gap-2 bg-gradient-to-b from-zinc-800 from-50% to-zinc-900 
-    rounded-xl ml-px pl-2.5 py-2.5 break-words text-zinc-100 transition-all 
+    rounded-xl ml-px px-6 break-words text-zinc-100 transition-all 
     max-w-[75ch] flex-col shadow-[0_2px_16px_rgba(0,0,0,0.025)] min-w-[16ch] pr-6
   `;
 
@@ -39,16 +39,10 @@ export const Message: React.FC<MessageProps> = ({
 
   return (
     <div
-      className={isUser ? userMessageClasses : aiMessageClasses}
+      className={`${isUser ? userMessageClasses : aiMessageClasses} prose prose-invert max-w-none`}
       data-streaming={(!isComplete).toString()}
     >
-      {!isUser && !isComplete ? (
-        <pre className="whitespace-pre-wrap">
-          <AnimatedMessage content={content} messageId={messageId} />
-        </pre>
-      ) : (
-        <pre className="relative whitespace-pre-wrap">{content}</pre>
-      )}
+      <div className="relative">{content}</div>
     </div>
   );
 };

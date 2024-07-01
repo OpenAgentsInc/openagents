@@ -4,6 +4,7 @@ import { Message } from "./Message";
 import { useMessageStore } from "../store";
 import { useSSE } from "../hooks/useSSE";
 import { initialMessage } from "../dummydata";
+import ReactMarkdown from "react-markdown";
 
 interface MessageType {
   role: "user" | "assistant";
@@ -49,7 +50,9 @@ export function Chat() {
     (message, index) => (
       <Message
         key={message.id}
-        content={message.content}
+        content={
+          <ReactMarkdown className="markdown">{message.content}</ReactMarkdown>
+        }
         isUser={message.isUser}
         isComplete={message.isComplete}
         messageId={message.id}

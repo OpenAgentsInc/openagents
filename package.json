@@ -9,6 +9,7 @@
     "@headlessui/react": "^2.0.0",
     "@inertiajs/react": "^1.0.0",
     "@tailwindcss/forms": "^0.5.3",
+    "@tailwindcss/typography": "^0.5.13",
     "@types/node": "^18.13.0",
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.10",
@@ -35,6 +36,7 @@
     "prosemirror-commands": "^1.5.2",
     "prosemirror-keymap": "^1.2.2",
     "prosemirror-schema-basic": "^1.2.2",
+    "react-markdown": "^9.0.1",
     "uuid": "^10.0.0",
     "zustand": "^4.5.4"
   }
