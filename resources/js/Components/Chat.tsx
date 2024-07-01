@@ -13,8 +13,14 @@ interface MessageType {
 }
 
 export function Chat() {
-  const { messages, addMessage, updateLastMessage, updateCurrentPlan } =
-    useMessageStore();
+  const {
+    messages,
+    addMessage,
+    updateLastMessage,
+    updateCurrentPlan,
+    appendToPlan,
+    currentPlan,
+  } = useMessageStore();
   const { startSSEConnection } = useSSE("/api/sse-stream");
   const [messageHistory, setMessageHistory] = useState<MessageType[]>([]);
   const [isStreamingPlan, setIsStreamingPlan] = useState(false);
@@ -37,6 +43,73 @@ export function Chat() {
     }
   }, [messages.length, addMessage]);
 
+  const processStreamedContent = useCallback(
+    (content: string) => {
+      console.log("Processing streamed content:", content);
+      console.log("Current isStreamingPlan state:", isStreamingPlan);
+
+      const planStartTag = "<plan>";
+      const planEndTag = "</plan>";
+      const planStartIndex = content.indexOf(planStartTag);
+      const planEndIndex = content.indexOf(planEndTag);
+
+      console.log("Plan start index:", planStartIndex);
+      console.log("Plan end index:", planEndIndex);
+
+      if (planStartIndex !== -1) {
+        if (planEndIndex !== -1) {
+          // Complete plan
+          console.log("Found complete plan");
+          const beforePlan = content.substring(0, planStartIndex);
+          const plan = content.substring(
+            planStartIndex + planStartTag.length,
+            planEndIndex
+          );
+          const afterPlan = content.substring(planEndIndex + planEndTag.length);
+
+          console.log("Before plan:", beforePlan);
+          console.log("Plan content:", plan);
+          console.log("After plan:", afterPlan);
+
+          updateLastMessage(beforePlan + afterPlan);
+          updateCurrentPlan(plan);
+          setIsStreamingPlan(false);
+        } else {
+          // Start of plan
+          console.log("Found start of plan");
+          const beforePlan = content.substring(0, planStartIndex);
+          const incompletePlan = content.substring(
+            planStartIndex + planStartTag.length
+          );
+
+          console.log("Before plan:", beforePlan);
+          console.log("Incomplete plan:", incompletePlan);
+
+          updateLastMessage(beforePlan);
+          updateCurrentPlan(incompletePlan);
+          setIsStreamingPlan(true);
+        }
+      } else if (isStreamingPlan) {
+        // Continuing plan
+        console.log("Continuing plan:", content);
+        appendToPlan(content);
+      } else {
+        // Regular content
+        console.log("Regular content:", content);
+        updateLastMessage(content);
+      }
+
+      console.log("Current plan after processing:", currentPlan);
+    },
+    [
+      updateLastMessage,
+      updateCurrentPlan,
+      appendToPlan,
+      isStreamingPlan,
+      currentPlan,
+    ]
+  );
+
   const sendMessage = useCallback(
     (content: string) => {
       const newUserMessage: MessageType = { role: "user", content };
@@ -46,51 +119,9 @@ export function Chat() {
       setMessageHistory(updatedHistory);
 
       console.log("Sending message history:", updatedHistory);
-      startSSEConnection(updatedHistory);
+      startSSEConnection(updatedHistory, processStreamedContent);
     },
-    [messageHistory, addMessage, startSSEConnection]
-  );
-
-  const processStreamedContent = useCallback(
-    (content: string) => {
-      const planStartTag = "<plan>";
-      const planEndTag = "</plan>";
-      const planStartIndex = content.indexOf(planStartTag);
-      const planEndIndex = content.indexOf(planEndTag);
-
-      if (planStartIndex !== -1) {
-        if (planEndIndex !== -1) {
-          // Complete plan
-          const beforePlan = content.substring(0, planStartIndex);
-          const plan = content.substring(
-            planStartIndex + planStartTag.length,
-            planEndIndex
-          );
-          const afterPlan = content.substring(planEndIndex + planEndTag.length);
-
-          updateLastMessage(beforePlan + afterPlan);
-          updateCurrentPlan(plan);
-          setIsStreamingPlan(false);
-        } else {
-          // Start of plan
-          const beforePlan = content.substring(0, planStartIndex);
-          const incompletePlan = content.substring(
-            planStartIndex + planStartTag.length
-          );
-
-          updateLastMessage(beforePlan);
-          updateCurrentPlan(incompletePlan);
-          setIsStreamingPlan(true);
-        }
-      } else if (isStreamingPlan) {
-        // Continuing plan
-        updateCurrentPlan(content);
-      } else {
-        // Regular content
-        updateLastMessage(content);
-      }
-    },
-    [updateLastMessage, updateCurrentPlan, isStreamingPlan]
+    [messageHistory, addMessage, startSSEConnection, processStreamedContent]
   );
 
   const renderMessage = useCallback(

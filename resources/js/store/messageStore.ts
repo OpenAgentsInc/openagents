@@ -15,11 +15,12 @@ interface MessageState {
   updateLastMessage: (content: string) => void;
   setLastMessageComplete: () => void;
   updateCurrentPlan: (planContent: string) => void;
+  appendToPlan: (planContent: string) => void;
 }
 
 const createMessageSlice: StateCreator<MessageState> = (set) => ({
   messages: [],
-  currentPlan: "",
+  currentPlan: "test",
   addMessage: (content, isUser, isComplete = false) =>
     set((state) => ({
       messages: [
@@ -68,8 +69,12 @@ const createMessageSlice: StateCreator<MessageState> = (set) => ({
       };
     }),
   updateCurrentPlan: (planContent) =>
-    set((state) => ({
+    set(() => ({
       currentPlan: planContent,
+    })),
+  appendToPlan: (planContent) =>
+    set((state) => ({
+      currentPlan: state.currentPlan + planContent,
     })),
 });
 
