@@ -17,7 +17,7 @@ export function Chat() {
   const { startSSEConnection } = useSSE("/api/sse-stream");
   const [messageHistory, setMessageHistory] = useState<MessageType[]>([]);
 
-  // Use the chat scroll hook
+  // Use the improved chat scroll hook
   const chatContainerRef = useChatScroll(messages);
 
   useEffect(() => {
