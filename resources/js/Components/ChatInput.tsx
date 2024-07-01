@@ -114,7 +114,7 @@ export const ChatInput = () => {
           <div className="flex gap-2">
             <div
               aria-label="Write your prompt"
-              className="mt-1 max-h-96 w-full overflow-y-auto break-words outline-none focus:outline-none"
+              className="text-[16px] mt-1 max-h-96 w-full overflow-y-auto break-words outline-none focus:outline-none"
             >
               <ProseMirror
                 mount={mount}
