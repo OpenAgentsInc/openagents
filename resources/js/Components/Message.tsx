@@ -14,12 +14,15 @@ export const Message: React.FC<MessageProps> = ({
   isComplete,
   messageId,
 }) => {
-  const isStreaming = !isUser && !isComplete;
+  // If the content is empty, don't render anything
+  if (!content.trim()) {
+    return null;
+  }
 
   const userMessageClasses = `
     group relative inline-flex gap-2 bg-gradient-to-b from-zinc-800 from-50% to-zinc-900 
     rounded-xl ml-px pl-2.5 py-2.5 break-words text-zinc-100 transition-all 
-    flex-col shadow-[0_2px_16px_rgba(0,0,0,0.025)] min-w-[16ch] pr-6
+    max-w-[75ch] flex-col shadow-[0_2px_16px_rgba(0,0,0,0.025)] min-w-[16ch] pr-6
   `;
 
   const aiMessageClasses = `
@@ -30,16 +33,16 @@ export const Message: React.FC<MessageProps> = ({
     before:rounded-2xl before:border-[0.5px] before:border-zinc-700/15
     before:shadow-[0_4px_24px_rgba(0,0,0,0.05)]
     before:transition-[opacity,transform] before:duration-250 before:ease-out
-    before:z-0 ${isStreaming ? "before:opacity-0 before:scale-[0.995]" : ""}
+    before:z-0 ${!isComplete ? "before:opacity-0 before:scale-[0.995]" : ""}
     bg-zinc-800
   `;
 
   return (
     <div
       className={isUser ? userMessageClasses : aiMessageClasses}
-      data-is-streaming={isStreaming.toString()}
+      data-streaming={(!isComplete).toString()}
     >
-      {isStreaming ? (
+      {!isUser && !isComplete ? (
         <AnimatedMessage content={content} messageId={messageId} />
       ) : (
         <div className="relative z-10">{content}</div>
