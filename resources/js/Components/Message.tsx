@@ -20,21 +20,20 @@ export const Message: React.FC<MessageProps> = ({
   }
 
   const userMessageClasses = `
-    group relative inline-flex gap-2 bg-gradient-to-b from-zinc-900 from-50% to-[#1a1a1a] 
+    group relative inline-flex gap-2 bg-gradient-to-b from-[#1a1a1a]/25 from-50% to-[#0a0a0a] 
     rounded-xl ml-px px-6 break-words text-zinc-100 transition-all 
     max-w-[75ch] flex-col shadow-[0_2px_16px_rgba(0,0,0,0.025)] min-w-[16ch] pr-6
   `;
 
   const aiMessageClasses = `
     group relative pt-3.5 pb-[1.125rem] px-4 rounded-2xl -tracking-[0.015em]
-    bg-gradient-to-b from-zinc-900/75 to-black/0
+    bg-zinc-900/50
     before:absolute before:inset-0
     before:bg-[radial-gradient(ellipse_at_left_top,_theme(colors.zinc.800/50%)_0%,_theme(colors.zinc.900/30%)_60%)]
     before:rounded-2xl before:border-[0.5px] before:border-zinc-700/15
     before:shadow-[0_4px_24px_rgba(0,0,0,0.05)]
     before:transition-[opacity,transform] before:duration-250 before:ease-out
     before:z-0 ${!isComplete ? "before:opacity-0 before:scale-[0.995]" : ""}
-    bg-zinc-800
   `;
 
   return (
