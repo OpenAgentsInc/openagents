@@ -20,7 +20,7 @@ export const Message: React.FC<MessageProps> = ({
   }
 
   const userMessageClasses = `
-    group relative inline-flex gap-2 bg-gradient-to-b from-zinc-800 from-50% to-zinc-900 
+    group relative inline-flex gap-2 bg-gradient-to-b from-zinc-900 from-50% to-[#1a1a1a] 
     rounded-xl ml-px px-6 break-words text-zinc-100 transition-all 
     max-w-[75ch] flex-col shadow-[0_2px_16px_rgba(0,0,0,0.025)] min-w-[16ch] pr-6
   `;

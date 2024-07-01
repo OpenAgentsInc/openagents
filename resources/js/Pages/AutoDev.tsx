@@ -23,7 +23,7 @@ export default function AutoDev() {
                     data-state="closed"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-normal tracking-tight">
+                      <div className="truncate font-normal tracking-tight text-lg mr-1">
                         AutoDev Demo
                       </div>
                     </div>
