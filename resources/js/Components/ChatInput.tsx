@@ -13,7 +13,7 @@ import {
 import "prosemirror-view/style/prosemirror.css";
 import { ProseMirror, useEditorEffect } from "@nytimes/react-prosemirror";
 import { useForm } from "@inertiajs/react";
-import { useMessageStore } from "../store";
+import { useMessageStore, useCodebaseStore } from "../store";
 import { useSSE } from "../hooks/useSSE";
 
 const schema = new Schema({
@@ -66,6 +66,8 @@ export const ChatInput = () => {
   const [shouldReset, setShouldReset] = useState(false);
   const addMessage = useMessageStore((state) => state.addMessage);
   const messages = useMessageStore((state) => state.messages);
+  const codebases = useCodebaseStore((state) => state.codebases);
+  console.log(codebases);
 
   const { data, setData, reset } = useForm({
     content: "",
