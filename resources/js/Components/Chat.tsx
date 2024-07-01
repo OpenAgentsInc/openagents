@@ -1,27 +1,27 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { ChatInput } from "./ChatInput";
-import { AnimatedMessage } from "./AnimatedMessage";
+import { Message } from "./Message";
 import { useMessageStore } from "../store";
 import { useSSE } from "../hooks/useSSE";
 import { initialMessage } from "../dummydata";
 
-interface Message {
+interface MessageType {
   role: "user" | "assistant";
   content: string;
 }
 
 export function Chat() {
-  const { messages, addMessage } = useMessageStore();
+  const { messages, addMessage, updateLastMessage } = useMessageStore();
   const { startSSEConnection } = useSSE("/api/sse-stream");
-  const [messageHistory, setMessageHistory] = useState<Message[]>([]);
+  const [messageHistory, setMessageHistory] = useState<MessageType[]>([]);
 
   useEffect(() => {
     if (messages.length === 0) {
-      const initialUserMessage: Message = {
+      const initialUserMessage: MessageType = {
         role: "user",
         content: initialMessage,
       };
-      const initialAssistantMessage: Message = {
+      const initialAssistantMessage: MessageType = {
         role: "assistant",
         content: "Acknowledged.",
       };
@@ -31,48 +31,32 @@ export function Chat() {
     }
   }, [messages.length, addMessage]);
 
-  const sendMessage = (content: string) => {
-    const newUserMessage: Message = { role: "user", content };
-    addMessage(content, true, true);
+  const sendMessage = useCallback(
+    (content: string) => {
+      const newUserMessage: MessageType = { role: "user", content };
+      addMessage(content, true, true);
 
-    const updatedHistory = [...messageHistory, newUserMessage];
-    setMessageHistory(updatedHistory);
+      const updatedHistory = [...messageHistory, newUserMessage];
+      setMessageHistory(updatedHistory);
 
-    console.log("Sending message history:", updatedHistory);
-    startSSEConnection(updatedHistory);
-  };
+      console.log("Sending message history:", updatedHistory);
+      startSSEConnection(updatedHistory);
+    },
+    [messageHistory, addMessage, startSSEConnection]
+  );
 
-  useEffect(() => {
-    // Update message history when a new AI message is added
-    if (messages.length > 0 && !messages[messages.length - 1].isUser) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.isComplete) {
-        setMessageHistory((prev) => [
-          ...prev,
-          { role: "assistant", content: lastMessage.content },
-        ]);
-      }
-    }
-  }, [messages]);
-
-  const renderMessage = (message, index) => {
-    const isLastAIMessage = !message.isUser && index === messages.length - 1;
-
-    if (!message.content.trim()) return null;
-
-    return (
-      <div
+  const renderMessage = useCallback(
+    (message, index) => (
+      <Message
         key={message.id}
-        className={`p-2 rounded ${message.isUser ? "bg-zinc-900" : "bg-zinc-800"}`}
-      >
-        {isLastAIMessage && !message.isComplete ? (
-          <AnimatedMessage content={message.content} messageId={message.id} />
-        ) : (
-          <div>{message.content}</div>
-        )}
-      </div>
-    );
-  };
+        content={message.content}
+        isUser={message.isUser}
+        isComplete={message.isComplete}
+        messageId={message.id}
+      />
+    ),
+    []
+  );
 
   return (
     <div className="relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col md:px-2">
