@@ -3,6 +3,15 @@ import { useEffect, useRef } from "react";
 function useChatScroll<T>(dep: T): React.RefObject<HTMLDivElement> {
   const ref = useRef<HTMLDivElement>(null);
 
+  // Scroll to bottom once on initial load
+  useEffect(() => {
+    if (ref.current) {
+      setTimeout(() => {
+        ref.current.scrollTop = ref.current.scrollHeight;
+      }, 1);
+    }
+  }, []);
+
   useEffect(() => {
     const scrollToBottom = () => {
       if (ref.current) {
