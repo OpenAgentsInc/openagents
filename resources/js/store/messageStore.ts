@@ -20,7 +20,7 @@ interface MessageState {
 
 const createMessageSlice: StateCreator<MessageState> = (set) => ({
   messages: [],
-  currentPlan: "test",
+  currentPlan: "",
   addMessage: (content, isUser, isComplete = false) =>
     set((state) => ({
       messages: [

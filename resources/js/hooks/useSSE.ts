@@ -19,6 +19,7 @@ export const useSSE = (baseUrl: string) => {
     async (messages: Message[]) => {
       addMessage("", false); // Add an empty message for the AI response
       let isStreamingPlan = false;
+      let planBuffer = "";
 
       const processStreamedContent = (content: string) => {
         console.log("Processing streamed content:", content);
@@ -26,55 +27,66 @@ export const useSSE = (baseUrl: string) => {
 
         const planStartTag = "<plan>";
         const planEndTag = "</plan>";
-        const planStartIndex = content.indexOf(planStartTag);
-        const planEndIndex = content.indexOf(planEndTag);
 
-        console.log("Plan start index:", planStartIndex);
-        console.log("Plan end index:", planEndIndex);
-
-        if (planStartIndex !== -1) {
-          if (planEndIndex !== -1) {
-            // Complete plan
-            console.log("Found complete plan");
-            const beforePlan = content.substring(0, planStartIndex);
-            const plan = content.substring(
-              planStartIndex + planStartTag.length,
-              planEndIndex
-            );
-            const afterPlan = content.substring(
-              planEndIndex + planEndTag.length
-            );
-
-            console.log("Before plan:", beforePlan);
-            console.log("Plan content:", plan);
-            console.log("After plan:", afterPlan);
-
-            updateLastMessage(beforePlan + afterPlan);
-            updateCurrentPlan(plan);
+        if (isStreamingPlan) {
+          const endTagIndex = content.indexOf(planEndTag);
+          if (endTagIndex !== -1) {
+            // End of plan found
+            const planContent = content.substring(0, endTagIndex);
+            appendToPlan(planContent);
+            updateCurrentPlan(planBuffer + planContent);
             isStreamingPlan = false;
-          } else {
-            // Start of plan
-            console.log("Found start of plan");
-            const beforePlan = content.substring(0, planStartIndex);
-            const incompletePlan = content.substring(
-              planStartIndex + planStartTag.length
+            planBuffer = "";
+
+            // Process the rest of the content after </plan>
+            const remainingContent = content.substring(
+              endTagIndex + planEndTag.length
             );
-
-            console.log("Before plan:", beforePlan);
-            console.log("Incomplete plan:", incompletePlan);
-
-            updateLastMessage(beforePlan);
-            updateCurrentPlan(incompletePlan);
-            isStreamingPlan = true;
+            updateLastMessage(remainingContent);
+            console.log("Plan ended. Remaining content:", remainingContent);
+          } else {
+            // Still in plan, append to buffer
+            planBuffer += content;
+            appendToPlan(content);
           }
-        } else if (isStreamingPlan) {
-          // Continuing plan
-          console.log("Continuing plan:", content);
-          appendToPlan(content);
         } else {
-          // Regular content
-          console.log("Regular content:", content);
-          updateLastMessage(content);
+          const startTagIndex = content.indexOf(planStartTag);
+          if (startTagIndex !== -1) {
+            // Start of plan found
+            const beforePlan = content.substring(0, startTagIndex);
+            updateLastMessage(beforePlan);
+
+            // Process the plan content
+            const afterStartTag = content.substring(
+              startTagIndex + planStartTag.length
+            );
+            const endTagIndex = afterStartTag.indexOf(planEndTag);
+            if (endTagIndex !== -1) {
+              // Complete plan in this chunk
+              const planContent = afterStartTag.substring(0, endTagIndex);
+              updateCurrentPlan(planContent);
+
+              // Process content after the plan
+              const afterPlan = afterStartTag.substring(
+                endTagIndex + planEndTag.length
+              );
+              updateLastMessage(afterPlan);
+              console.log(
+                "Complete plan found in chunk. After plan:",
+                afterPlan
+              );
+            } else {
+              // Start of plan, but not complete
+              isStreamingPlan = true;
+              planBuffer = afterStartTag;
+              updateCurrentPlan(afterStartTag);
+              console.log("Start of plan found, streaming begins");
+            }
+          } else {
+            // Regular content
+            updateLastMessage(content);
+            console.log("Regular content:", content);
+          }
         }
       };
 
