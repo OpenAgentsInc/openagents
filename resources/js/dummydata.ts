@@ -29,3 +29,15 @@ The Building Blocks section contains six boxes arranged vertically, with a mix o
 
 The diagram suggests a process flow where the Agentic Loop represents the high-level steps of an automated development process, while the Building Blocks represent the underlying components or actions that support each step in the loop.
 </image>`;
+
+export const examplePlan = `
+Current Focus: Read the README and any additional documentation to understand the project setup and requirements.
+
+Plan:
+
+-[x] Clone the repository from the provided GitHub link.
+-[ ] Read the README and any additional documentation to understand the project setup and requirements.
+-[ ] Identify the package manager aand install necessary dependencies.
+-[ ] Set up the development environment according to the project's instructions.
+-[ ] Run the project locally to ensure it's working correctly.
+-[ ] Test the project UI to confirm functionality.`;
