@@ -5,6 +5,7 @@ import { useMessageStore } from "../store";
 import { useSSE } from "../hooks/useSSE";
 import { initialMessage } from "../dummydata";
 import ReactMarkdown from "react-markdown";
+import useChatScroll from "../hooks/useChatScroll";
 
 interface MessageType {
   role: "user" | "assistant";
@@ -15,6 +16,9 @@ export function Chat() {
   const { messages, addMessage, updateLastMessage } = useMessageStore();
   const { startSSEConnection } = useSSE("/api/sse-stream");
   const [messageHistory, setMessageHistory] = useState<MessageType[]>([]);
+
+  // Use the chat scroll hook
+  const chatContainerRef = useChatScroll(messages);
 
   useEffect(() => {
     if (messages.length === 0) {
@@ -63,7 +67,10 @@ export function Chat() {
 
   return (
     <div className="relative mx-auto flex h-full w-full max-w-3xl flex-1 flex-col md:px-2">
-      <div className="flex-1 flex flex-col gap-3 px-4 max-w-3xl mx-auto w-full pt-6">
+      <div
+        ref={chatContainerRef}
+        className="flex-1 flex flex-col gap-3 px-4 max-w-3xl mx-auto w-full pt-6 overflow-y-auto"
+      >
         {messages.map(renderMessage)}
       </div>
       <div className="sticky bottom-0 mx-auto w-full pt-6">
