@@ -16,9 +16,9 @@ class AnthropicService
         $this->apiKey = env('ANTHROPIC_API_KEY');
     }
 
-    public function streamResponse($messages, $systemPrompt, $callback)
+    public function streamResponse($messages, $systemPrompt, $codebases, $callback)
     {
-        Log::info('Starting streamResponse', ['messageCount' => count($messages)]);
+        Log::info('Starting streamResponse', ['messageCount' => count($messages), 'codebaseCount' => count($codebases)]);
 
         $client = new Client();
 
@@ -35,6 +35,31 @@ class AnthropicService
                     'messages' => $messages,
                     'stream' => true,
                     'system' => $systemPrompt,
+                    'tool_choice' => ['type' => 'auto'],
+                    'tools' => [
+                        [
+                            'name' => 'search_codebase',
+                            'description' => 'Search for code snippets or information within the specified codebases. This tool allows you to find relevant code, documentation, or comments that might help answer the user\'s query. Use this when you need to reference specific code or gather information from the project repositories.',
+                            'input_schema' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'query' => [
+                                        'type' => 'string',
+                                        'description' => 'The search query to find relevant code or information'
+                                    ],
+                                    'codebase' => [
+                                        'type' => 'string',
+                                        'description' => 'The name of the codebase to search in, e.g., "openagentsinc/openagents"'
+                                    ],
+                                    'branch' => [
+                                        'type' => 'string',
+                                        'description' => 'The branch of the codebase to search in, e.g., "v2"'
+                                    ]
+                                ],
+                                'required' => ['query', 'codebase', 'branch']
+                            ]
+                        ]
+                    ]
                 ],
                 'stream' => true,
             ]);
@@ -88,6 +113,12 @@ class AnthropicService
                             'content' => $data['delta']['text'],
                         ]);
                     }
+                    break;
+                case 'tool_use':
+                    $callback([
+                        'type' => 'tool_use',
+                        'content' => json_encode($data),
+                    ]);
                     break;
                 case 'message_start':
                 case 'content_block_start':

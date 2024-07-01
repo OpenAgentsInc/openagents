@@ -5,15 +5,18 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use App\Services\AnthropicService;
+use App\Services\GreptileService;
 use Illuminate\Support\Facades\Log;
 
 class SSEController extends Controller
 {
     protected $anthropicService;
+    protected $greptileService;
 
-    public function __construct(AnthropicService $anthropicService)
+    public function __construct(AnthropicService $anthropicService, GreptileService $greptileService)
     {
         $this->anthropicService = $anthropicService;
+        $this->greptileService = $greptileService;
     }
 
     public function stream(Request $request)
@@ -36,7 +39,7 @@ class SSEController extends Controller
 
         $systemPrompt = $this->buildSystemPrompt($codebases);
 
-        return Response::stream(function() use ($messages, $systemPrompt) {
+        return Response::stream(function() use ($messages, $systemPrompt, $codebases) {
             Log::info('Starting SSE stream', ['messageCount' => count($messages)]);
 
             if (ob_get_level() > 0) {
@@ -51,8 +54,14 @@ class SSEController extends Controller
             $this->sendEvent('connection', 'Connected');
 
             try {
-                $this->anthropicService->streamResponse($messages, $systemPrompt, function($data) {
-                    $this->sendEvent($data['type'], $data['content']);
+                $this->anthropicService->streamResponse($messages, $systemPrompt, $codebases, function($data) use ($codebases) {
+                    if ($data['type'] === 'tool_use') {
+                        $toolUseData = json_decode($data['content'], true);
+                        $searchResult = $this->handleToolUse($toolUseData, $codebases);
+                        $this->sendEvent('tool_result', json_encode($searchResult));
+                    } else {
+                        $this->sendEvent($data['type'], $data['content']);
+                    }
                 });
             } catch (\Exception $e) {
                 Log::error('Error in streamResponse', ['error' => $e->getMessage()]);
@@ -67,6 +76,41 @@ class SSEController extends Controller
             'Connection' => 'keep-alive',
             'X-Accel-Buffering' => 'no',
         ]);
+    }
+
+    private function handleToolUse($toolUseData, $codebases)
+    {
+        if ($toolUseData['name'] === 'search_codebase') {
+            $input = $toolUseData['input'];
+            $codebase = $input['codebase'];
+            $branch = $input['branch'];
+            $query = $input['query'];
+
+            // Verify that the requested codebase is in the list of allowed codebases
+            $allowedCodebase = collect($codebases)->first(function ($c) use ($codebase, $branch) {
+                return $c['name'] === $codebase && $c['branch'] === $branch;
+            });
+
+            if (!$allowedCodebase) {
+                return [
+                    'error' => 'Requested codebase or branch is not allowed',
+                    'tool_use_id' => $toolUseData['id']
+                ];
+            }
+
+            // Perform the search using the GreptileService
+            $searchResult = $this->greptileService->searchCodebase($codebase, $branch, $query);
+
+            return [
+                'tool_use_id' => $toolUseData['id'],
+                'content' => $searchResult
+            ];
+        }
+
+        return [
+            'error' => 'Unknown tool',
+            'tool_use_id' => $toolUseData['id']
+        ];
     }
 
    private function sendEvent($type, $content)
