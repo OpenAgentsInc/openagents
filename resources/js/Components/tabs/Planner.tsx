@@ -1,7 +1,9 @@
 import React from "react";
-import { examplePlan } from "../../dummydata";
+import { useMessageStore } from "../../store";
 
 export function Planner() {
+  const { currentPlan } = useMessageStore();
+
   const parseMarkdown = (markdown) => {
     const lines = markdown.split("\n");
     const parsedLines = lines.map((line) => {
@@ -53,7 +55,7 @@ export function Planner() {
     }
   };
 
-  const parsedPlan = parseMarkdown(examplePlan);
+  const parsedPlan = parseMarkdown(currentPlan);
 
   return (
     <div className="text-white">

@@ -34,6 +34,7 @@ class AnthropicService
                     'max_tokens' => 1024,
                     'messages' => $messages,
                     'stream' => true,
+                    'system' => "You are a coding agent named AutoDev created by OpenAgents. You help the user create and execute plans to assist their coding goals. When asked to create a plan, you write it in Markdown and put it in tags <plan> and </plan> so it can be displayed separately to the user."
                 ],
                 'stream' => true,
             ]);

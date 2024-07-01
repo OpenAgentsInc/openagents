@@ -10,13 +10,16 @@ interface Message {
 
 interface MessageState {
   messages: Message[];
+  currentPlan: string;
   addMessage: (content: string, isUser: boolean, isComplete?: boolean) => void;
   updateLastMessage: (content: string) => void;
   setLastMessageComplete: () => void;
+  updateCurrentPlan: (planContent: string) => void;
 }
 
 const createMessageSlice: StateCreator<MessageState> = (set) => ({
   messages: [],
+  currentPlan: "",
   addMessage: (content, isUser, isComplete = false) =>
     set((state) => ({
       messages: [
@@ -64,6 +67,10 @@ const createMessageSlice: StateCreator<MessageState> = (set) => ({
         ],
       };
     }),
+  updateCurrentPlan: (planContent) =>
+    set((state) => ({
+      currentPlan: planContent,
+    })),
 });
 
 export const createMessageStore = () =>

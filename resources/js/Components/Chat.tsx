@@ -13,11 +13,12 @@ interface MessageType {
 }
 
 export function Chat() {
-  const { messages, addMessage, updateLastMessage } = useMessageStore();
+  const { messages, addMessage, updateLastMessage, updateCurrentPlan } =
+    useMessageStore();
   const { startSSEConnection } = useSSE("/api/sse-stream");
   const [messageHistory, setMessageHistory] = useState<MessageType[]>([]);
+  const [isStreamingPlan, setIsStreamingPlan] = useState(false);
 
-  // Use the improved chat scroll hook
   const chatContainerRef = useChatScroll(messages);
 
   useEffect(() => {
@@ -50,8 +51,50 @@ export function Chat() {
     [messageHistory, addMessage, startSSEConnection]
   );
 
+  const processStreamedContent = useCallback(
+    (content: string) => {
+      const planStartTag = "<plan>";
+      const planEndTag = "</plan>";
+      const planStartIndex = content.indexOf(planStartTag);
+      const planEndIndex = content.indexOf(planEndTag);
+
+      if (planStartIndex !== -1) {
+        if (planEndIndex !== -1) {
+          // Complete plan
+          const beforePlan = content.substring(0, planStartIndex);
+          const plan = content.substring(
+            planStartIndex + planStartTag.length,
+            planEndIndex
+          );
+          const afterPlan = content.substring(planEndIndex + planEndTag.length);
+
+          updateLastMessage(beforePlan + afterPlan);
+          updateCurrentPlan(plan);
+          setIsStreamingPlan(false);
+        } else {
+          // Start of plan
+          const beforePlan = content.substring(0, planStartIndex);
+          const incompletePlan = content.substring(
+            planStartIndex + planStartTag.length
+          );
+
+          updateLastMessage(beforePlan);
+          updateCurrentPlan(incompletePlan);
+          setIsStreamingPlan(true);
+        }
+      } else if (isStreamingPlan) {
+        // Continuing plan
+        updateCurrentPlan(content);
+      } else {
+        // Regular content
+        updateLastMessage(content);
+      }
+    },
+    [updateLastMessage, updateCurrentPlan, isStreamingPlan]
+  );
+
   const renderMessage = useCallback(
-    (message, index) => (
+    (message) => (
       <Message
         key={message.id}
         content={
