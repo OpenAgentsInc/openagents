@@ -109,7 +109,7 @@ export const ChatInput = () => {
 
   return (
     <form onSubmit={(e) => e.preventDefault()}>
-      <fieldset className="flex w-full min-w-0 flex-col-reverse">
+      <fieldset className="z-[1000] flex w-full min-w-0 flex-col-reverse">
         <div className="flex flex-col bg-zinc-900 gap-1.5 border-0.5 border-border-300 pl-4 pt-2.5 pr-2.5 pb-2.5 -mx-1 sm:mx-0 items-stretch transition-all duration-200 relative shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.035)] focus-within:shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.075)] hover:border-border-200 focus-within:border-border-200 cursor-text z-10 rounded-t-2xl border-b-0">
           <div className="flex gap-2">
             <div

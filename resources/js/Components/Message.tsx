@@ -43,9 +43,11 @@ export const Message: React.FC<MessageProps> = ({
       data-streaming={(!isComplete).toString()}
     >
       {!isUser && !isComplete ? (
-        <AnimatedMessage content={content} messageId={messageId} />
+        <pre className="whitespace-pre-wrap">
+          <AnimatedMessage content={content} messageId={messageId} />
+        </pre>
       ) : (
-        <div className="relative z-10">{content}</div>
+        <pre className="relative whitespace-pre-wrap">{content}</pre>
       )}
     </div>
   );
