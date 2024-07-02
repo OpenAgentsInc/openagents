@@ -16,7 +16,7 @@ class AnthropicService
         $this->apiKey = env('ANTHROPIC_API_KEY');
     }
 
-public function streamResponse($messages, $systemPrompt, $codebases, $callback)
+    public function streamResponse($messages, $systemPrompt, $codebases, $callback)
     {
         Log::info('Starting streamResponse', [
             'messageCount' => count($messages),
@@ -92,7 +92,7 @@ public function streamResponse($messages, $systemPrompt, $codebases, $callback)
         }
     }
 
-private function processLine($line, $callback)
+    private function processLine($line, $callback)
     {
         if (str_starts_with($line, 'data: ')) {
             $data = json_decode(substr($line, 6), true);
@@ -110,6 +110,12 @@ private function processLine($line, $callback)
                         $callback([
                             'type' => 'token',
                             'content' => $data['delta']['text'],
+                        ]);
+                    } elseif (isset($data['delta']['type']) && $data['delta']['type'] === 'input_json_delta') {
+                        Log::info('Received tool use input delta', ['partial_json' => $data['delta']['partial_json']]);
+                        $callback([
+                            'type' => 'tool_use_input',
+                            'content' => $data['delta']['partial_json'],
                         ]);
                     }
                     break;

@@ -20,7 +20,7 @@ const createCodebaseSlice: StateCreator<CodebaseState> = (set) => ({
     {
       id: uuidv4(),
       name: "openagentsinc/openagents",
-      branch: "v2",
+      branch: "main",
       isSelected: true,
     },
   ],
@@ -29,7 +29,7 @@ const createCodebaseSlice: StateCreator<CodebaseState> = (set) => ({
       codebases: state.codebases.map((codebase) =>
         codebase.id === id
           ? { ...codebase, isSelected: !codebase.isSelected }
-          : codebase
+          : codebase,
       ),
     })),
   addCodebase: (name: string, branch: string) =>

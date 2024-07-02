@@ -16,6 +16,7 @@ interface MessageState {
   setLastMessageComplete: () => void;
   updateCurrentPlan: (planContent: string) => void;
   appendToPlan: (planContent: string) => void;
+  addGreptileResult: (content: string) => void;
 }
 
 const createMessageSlice: StateCreator<MessageState> = (set) => ({
@@ -75,6 +76,19 @@ const createMessageSlice: StateCreator<MessageState> = (set) => ({
   appendToPlan: (planContent) =>
     set((state) => ({
       currentPlan: state.currentPlan + planContent,
+    })),
+  addGreptileResult: (content) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: uuidv4(),
+          content: `${content}`,
+          isUser: false,
+          isComplete: true,
+          isGreptileResult: true,
+        },
+      ],
     })),
 });
 

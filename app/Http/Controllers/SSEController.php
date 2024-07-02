@@ -69,20 +69,23 @@ class SSEController extends Controller
             $this->anthropicService->streamResponse($messages, $systemPrompt, $codebases, function ($data) use ($codebases, &$toolUseData, &$toolUseInput) {
                 Log::info('Received data from AnthropicService', ['data' => $data]);
 
-                $contentData = $this->parseContentData($data);
-
-                if ($data['type'] === 'content_block_start' && isset($contentData['type']) && $contentData['type'] === 'tool_use') {
-                    $toolUseData = $contentData;
+                if ($data['type'] === 'content_block_start' && strpos($data['content'], '"type":"tool_use"') !== false) {
+                    $contentData = json_decode($data['content'], true);
+                    $toolUseData = $contentData['content_block'];
                     $toolUseInput = '';
                     Log::info('Started receiving tool use data', ['toolUseData' => $toolUseData]);
-                } elseif ($data['type'] === 'content_block_delta' && isset($data['delta']['type']) && $data['delta']['type'] === 'input_json_delta') {
-                    $toolUseInput .= $data['delta']['partial_json'];
+                } elseif ($data['type'] === 'tool_use_input') {
+                    $toolUseInput .= $data['content'];
                     Log::info('Accumulating tool use input', ['toolUseInput' => $toolUseInput]);
                 } elseif ($data['type'] === 'content_block_stop' && $toolUseData !== null) {
                     Log::info('Attempting to process tool use', ['toolUseData' => $toolUseData, 'toolUseInput' => $toolUseInput]);
                     try {
-                        $toolUseData['input'] = json_decode($toolUseInput, true);
-                        Log::info('Parsed tool use input', ['parsedInput' => $toolUseData['input']]);
+                        $parsedInput = json_decode($toolUseInput, true);
+                        if (json_last_error() !== JSON_ERROR_NONE) {
+                            throw new \Exception('Invalid JSON in tool use input: ' . json_last_error_msg());
+                        }
+                        $toolUseData['input'] = $parsedInput;
+                        Log::info('Parsed tool use input', ['parsedInput' => $parsedInput]);
                         $searchResult = $this->handleToolUse($toolUseData, $codebases);
                         Log::info('Search result received', ['searchResult' => $searchResult]);
                         $this->sendEvent('tool_result', json_encode($searchResult));
@@ -177,6 +180,12 @@ class SSEController extends Controller
             $searchResult = $this->greptileService->searchCodebase($query, $repositories);
 
             Log::info('Greptile search result received', ['resultSize' => strlen(json_encode($searchResult))]);
+
+            // Send the Greptile response as a separate event
+            $this->sendEvent('greptile_result', json_encode([
+                'tool_use_id' => $toolUseData['id'],
+                'content' => $searchResult
+            ]));
 
             return [
                 'tool_use_id' => $toolUseData['id'],

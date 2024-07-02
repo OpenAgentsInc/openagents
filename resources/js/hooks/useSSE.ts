@@ -15,11 +15,12 @@ interface Codebase {
 export const useSSE = (baseUrl: string) => {
   const updateLastMessage = useMessageStore((state) => state.updateLastMessage);
   const setLastMessageComplete = useMessageStore(
-    (state) => state.setLastMessageComplete
+    (state) => state.setLastMessageComplete,
   );
   const addMessage = useMessageStore((state) => state.addMessage);
   const updateCurrentPlan = useMessageStore((state) => state.updateCurrentPlan);
   const appendToPlan = useMessageStore((state) => state.appendToPlan);
+  const addGreptileResult = useMessageStore((state) => state.addGreptileResult);
 
   const startSSEConnection = useCallback(
     async (messages: Message[], selectedCodebases: Codebase[]) => {
@@ -46,7 +47,7 @@ export const useSSE = (baseUrl: string) => {
 
             // Process the rest of the content after </plan>
             const remainingContent = content.substring(
-              endTagIndex + planEndTag.length
+              endTagIndex + planEndTag.length,
             );
             updateLastMessage(remainingContent);
             console.log("Plan ended. Remaining content:", remainingContent);
@@ -64,7 +65,7 @@ export const useSSE = (baseUrl: string) => {
 
             // Process the plan content
             const afterStartTag = content.substring(
-              startTagIndex + planStartTag.length
+              startTagIndex + planStartTag.length,
             );
             const endTagIndex = afterStartTag.indexOf(planEndTag);
             if (endTagIndex !== -1) {
@@ -74,12 +75,12 @@ export const useSSE = (baseUrl: string) => {
 
               // Process content after the plan
               const afterPlan = afterStartTag.substring(
-                endTagIndex + planEndTag.length
+                endTagIndex + planEndTag.length,
               );
               updateLastMessage(afterPlan);
               console.log(
                 "Complete plan found in chunk. After plan:",
-                afterPlan
+                afterPlan,
               );
             } else {
               // Start of plan, but not complete
@@ -131,10 +132,27 @@ export const useSSE = (baseUrl: string) => {
               } else if (data.type === "error") {
                 console.error("Error from server:", data.content);
                 updateLastMessage(
-                  "An error occurred while processing your request. Please try again."
+                  "An error occurred while processing your request. Please try again.",
                 );
                 setLastMessageComplete();
                 return;
+              } else if (data.type === "greptile_result") {
+                const greptileResult = JSON.parse(data.content);
+                if (
+                  Array.isArray(greptileResult.content) &&
+                  greptileResult.content.length > 0
+                ) {
+                  const summary = greptileResult.content[0].summary;
+                  addGreptileResult(summary);
+                } else {
+                  console.error(
+                    "Unexpected Greptile result format:",
+                    greptileResult,
+                  );
+                  addGreptileResult(
+                    "Unable to extract summary from Greptile result.",
+                  );
+                }
               }
             }
           }
@@ -142,7 +160,7 @@ export const useSSE = (baseUrl: string) => {
       } catch (error) {
         console.error("SSE error:", error);
         updateLastMessage(
-          "An error occurred while connecting to the server. Please try again."
+          "An error occurred while connecting to the server. Please try again.",
         );
         setLastMessageComplete();
       }
@@ -154,7 +172,8 @@ export const useSSE = (baseUrl: string) => {
       addMessage,
       updateCurrentPlan,
       appendToPlan,
-    ]
+      addGreptileResult,
+    ],
   );
 
   return { startSSEConnection };
