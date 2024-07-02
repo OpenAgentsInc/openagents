@@ -16,9 +16,13 @@ class AnthropicService
         $this->apiKey = env('ANTHROPIC_API_KEY');
     }
 
-    public function streamResponse($messages, $systemPrompt, $codebases, $callback)
+public function streamResponse($messages, $systemPrompt, $codebases, $callback)
     {
-        Log::info('Starting streamResponse', ['messageCount' => count($messages), 'codebaseCount' => count($codebases)]);
+        Log::info('Starting streamResponse', [
+            'messageCount' => count($messages),
+            'codebaseCount' => count($codebases),
+            'systemPrompt' => $systemPrompt
+        ]);
 
         $client = new Client();
 
@@ -45,24 +49,18 @@ class AnthropicService
                                 'properties' => [
                                     'query' => [
                                         'type' => 'string',
-                                        'description' => 'The search query to find relevant code or information'
-                                    ],
-                                    'codebase' => [
-                                        'type' => 'string',
-                                        'description' => 'The name of the codebase to search in, e.g., "openagentsinc/openagents"'
-                                    ],
-                                    'branch' => [
-                                        'type' => 'string',
-                                        'description' => 'The branch of the codebase to search in, e.g., "v2"'
+                                        'description' => 'The natural language search query to find the right code in the repo'
                                     ]
                                 ],
-                                'required' => ['query', 'codebase', 'branch']
+                                'required' => ['query']
                             ]
                         ]
                     ]
                 ],
                 'stream' => true,
             ]);
+
+            Log::info('Anthropic API request sent', ['url' => $this->apiUrl]);
 
             $body = $response->getBody();
             $buffer = '';
@@ -94,7 +92,7 @@ class AnthropicService
         }
     }
 
-    private function processLine($line, $callback)
+private function processLine($line, $callback)
     {
         if (str_starts_with($line, 'data: ')) {
             $data = json_decode(substr($line, 6), true);
@@ -108,6 +106,7 @@ class AnthropicService
             switch ($data['type']) {
                 case 'content_block_delta':
                     if (isset($data['delta']['text'])) {
+                        Log::info('Received content block delta', ['text' => $data['delta']['text']]);
                         $callback([
                             'type' => 'token',
                             'content' => $data['delta']['text'],
@@ -115,6 +114,7 @@ class AnthropicService
                     }
                     break;
                 case 'tool_use':
+                    Log::info('Received tool use request', ['data' => $data]);
                     $callback([
                         'type' => 'tool_use',
                         'content' => json_encode($data),

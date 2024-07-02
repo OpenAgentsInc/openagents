@@ -12,6 +12,8 @@ class SSEController extends Controller
 {
     protected $anthropicService;
     protected $greptileService;
+    private $toolUseData = null;
+    private $toolUseInput = '';
 
     public function __construct(AnthropicService $anthropicService, GreptileService $greptileService)
     {
@@ -23,8 +25,10 @@ class SSEController extends Controller
     {
         $messagesInput = $request->input('messages');
         $codebasesInput = $request->input('codebases');
-        Log::info('Received raw messages input', ['rawMessages' => $messagesInput]);
-        Log::info('Received codebases input', ['codebases' => $codebasesInput]);
+        Log::info('Received request', [
+            'rawMessages' => $messagesInput,
+            'codebases' => $codebasesInput
+        ]);
 
         $messages = $this->parseMessages($messagesInput);
         $codebases = $this->parseCodebases($codebasesInput);
@@ -34,13 +38,19 @@ class SSEController extends Controller
             return Response::json(['error' => 'Invalid or empty message format'], 400);
         }
 
-        Log::info('Parsed messages', ['messages' => $messages]);
-        Log::info('Parsed codebases', ['codebases' => $codebases]);
+        Log::info('Parsed input', [
+            'messages' => $messages,
+            'codebases' => $codebases
+        ]);
 
         $systemPrompt = $this->buildSystemPrompt($codebases);
+        Log::info('Built system prompt', ['systemPrompt' => $systemPrompt]);
 
-        return Response::stream(function() use ($messages, $systemPrompt, $codebases) {
-            Log::info('Starting SSE stream', ['messageCount' => count($messages)]);
+        return Response::stream(function () use ($messages, $systemPrompt, $codebases) {
+            Log::info('Starting SSE stream', [
+                'messageCount' => count($messages),
+                'codebaseCount' => count($codebases)
+            ]);
 
             if (ob_get_level() > 0) {
                 ob_end_clean();
@@ -53,23 +63,46 @@ class SSEController extends Controller
 
             $this->sendEvent('connection', 'Connected');
 
-            try {
-                $this->anthropicService->streamResponse($messages, $systemPrompt, $codebases, function($data) use ($codebases) {
-                    if ($data['type'] === 'tool_use') {
-                        $toolUseData = json_decode($data['content'], true);
+            $toolUseData = null;
+            $toolUseInput = '';
+
+            $this->anthropicService->streamResponse($messages, $systemPrompt, $codebases, function ($data) use ($codebases, &$toolUseData, &$toolUseInput) {
+                Log::info('Received data from AnthropicService', ['data' => $data]);
+
+                $contentData = $this->parseContentData($data);
+
+                if ($data['type'] === 'content_block_start' && isset($contentData['type']) && $contentData['type'] === 'tool_use') {
+                    $toolUseData = $contentData;
+                    $toolUseInput = '';
+                    Log::info('Started receiving tool use data', ['toolUseData' => $toolUseData]);
+                } elseif ($data['type'] === 'content_block_delta' && isset($data['delta']['type']) && $data['delta']['type'] === 'input_json_delta') {
+                    $toolUseInput .= $data['delta']['partial_json'];
+                    Log::info('Accumulating tool use input', ['toolUseInput' => $toolUseInput]);
+                } elseif ($data['type'] === 'content_block_stop' && $toolUseData !== null) {
+                    Log::info('Attempting to process tool use', ['toolUseData' => $toolUseData, 'toolUseInput' => $toolUseInput]);
+                    try {
+                        $toolUseData['input'] = json_decode($toolUseInput, true);
+                        Log::info('Parsed tool use input', ['parsedInput' => $toolUseData['input']]);
                         $searchResult = $this->handleToolUse($toolUseData, $codebases);
+                        Log::info('Search result received', ['searchResult' => $searchResult]);
                         $this->sendEvent('tool_result', json_encode($searchResult));
-                    } else {
-                        $this->sendEvent($data['type'], $data['content']);
+
+                        // Add the tool result to the chat history
+                        $this->sendEvent('chat_history', json_encode([
+                            'role' => 'system',
+                            'content' => "Tool result: " . json_encode($searchResult)
+                        ]));
+                    } catch (\Exception $e) {
+                        Log::error('Error handling tool use', ['error' => $e->getMessage(), 'toolUseData' => $toolUseData, 'toolUseInput' => $toolUseInput]);
                     }
-                });
-            } catch (\Exception $e) {
-                Log::error('Error in streamResponse', ['error' => $e->getMessage()]);
-                $this->sendEvent('error', 'An error occurred while processing your request');
-            }
+                    $toolUseData = null;
+                    $toolUseInput = '';
+                } else {
+                    $this->sendEvent($data['type'], $data['content']);
+                }
+            });
 
             $this->sendEvent('close', 'Stream closed');
-
         }, 200, [
             'Cache-Control' => 'no-cache',
             'Content-Type' => 'text/event-stream',
@@ -78,28 +111,72 @@ class SSEController extends Controller
         ]);
     }
 
+    private function parseContentData($data)
+    {
+        if (isset($data['content']) && is_string($data['content'])) {
+            $decodedContent = json_decode($data['content'], true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return isset($decodedContent['content_block']) ? $decodedContent['content_block'] : $decodedContent;
+            }
+        }
+        return $data['content'] ?? [];
+    }
+
+    private function processToolUse($codebases)
+    {
+        Log::info('Completed receiving tool use data', ['toolUseInput' => $this->toolUseInput]);
+        try {
+            $this->toolUseData['input'] = json_decode($this->toolUseInput, true);
+            Log::info('Parsed tool use input', ['parsedInput' => $this->toolUseData['input']]);
+            $searchResult = $this->handleToolUse($this->toolUseData, $codebases);
+            Log::info('Search result received', ['searchResult' => $searchResult]);
+            $this->sendEvent('tool_result', json_encode($searchResult));
+        } catch (\Exception $e) {
+            Log::error('Error handling tool use', ['error' => $e->getMessage(), 'toolUseData' => $this->toolUseData, 'toolUseInput' => $this->toolUseInput]);
+        }
+        $this->toolUseData = null;
+        $this->toolUseInput = '';
+    }
+
+    private function logDataDetails($data)
+    {
+        Log::info('Data type', ['type' => $data['type']]);
+        if (isset($data['content'])) {
+            Log::info('Data content', ['content' => $data['content']]);
+        }
+        if (isset($data['content_block'])) {
+            Log::info('Content block', ['content_block' => $data['content_block']]);
+        } elseif (isset($data['content']['content_block'])) {
+            Log::info('Content block', ['content_block' => $data['content']['content_block']]);
+        } else {
+            Log::info('No content block in data');
+        }
+    }
+
     private function handleToolUse($toolUseData, $codebases)
     {
+        Log::info('handleToolUse method called', ['toolUseData' => $toolUseData, 'codebases' => $codebases]);
+
         if ($toolUseData['name'] === 'search_codebase') {
-            $input = $toolUseData['input'];
-            $codebase = $input['codebase'];
-            $branch = $input['branch'];
-            $query = $input['query'];
+            $query = $toolUseData['input']['query'];
 
-            // Verify that the requested codebase is in the list of allowed codebases
-            $allowedCodebase = collect($codebases)->first(function ($c) use ($codebase, $branch) {
-                return $c['name'] === $codebase && $c['branch'] === $branch;
-            });
+            Log::info('Searching codebase', ['query' => $query]);
 
-            if (!$allowedCodebase) {
+            // Format repositories for Greptile API
+            $repositories = array_map(function ($codebase) {
                 return [
-                    'error' => 'Requested codebase or branch is not allowed',
-                    'tool_use_id' => $toolUseData['id']
+                    'remote' => 'github',
+                    'repository' => $codebase['name'],
+                    'branch' => $codebase['branch']
                 ];
-            }
+            }, $codebases);
+
+            Log::info('Formatted repositories for Greptile', ['repositories' => $repositories]);
 
             // Perform the search using the GreptileService
-            $searchResult = $this->greptileService->searchCodebase($codebase, $branch, $query);
+            $searchResult = $this->greptileService->searchCodebase($query, $repositories);
+
+            Log::info('Greptile search result received', ['resultSize' => strlen(json_encode($searchResult))]);
 
             return [
                 'tool_use_id' => $toolUseData['id'],
@@ -107,13 +184,14 @@ class SSEController extends Controller
             ];
         }
 
+        Log::warning('Unknown tool', ['toolName' => $toolUseData['name']]);
         return [
             'error' => 'Unknown tool',
             'tool_use_id' => $toolUseData['id']
         ];
     }
 
-   private function sendEvent($type, $content)
+    private function sendEvent($type, $content)
     {
         $data = json_encode(['type' => $type, 'content' => $content]);
         echo "id: " . microtime(true) . "\n";
@@ -125,7 +203,6 @@ class SSEController extends Controller
         }
         Log::info('Sent event', ['type' => $type, 'content' => $content]);
     }
-
 
     private function parseMessages($input)
     {
@@ -170,11 +247,11 @@ class SSEController extends Controller
         $basePrompt = "You are a coding agent named AutoDev created by OpenAgents. You help the user create and execute plans to assist their coding goals. When asked to create a plan, you write it in Markdown and put it in tags <plan> and </plan> so it can be displayed separately to the user.";
 
         if (!empty($codebases)) {
-            $codebaseList = implode(", ", array_map(function($codebase) {
+            $codebaseList = implode(", ", array_map(function ($codebase) {
                 return "{$codebase['name']} (branch: {$codebase['branch']})";
             }, $codebases));
 
-            $basePrompt .= " You have the ability to search the following codebases before responding to the user query: $codebaseList. If you decide to search these codebases, reply with a JSON blob for function calling that we'll use to call the Greptile API.";
+            $basePrompt .= " You have the ability to search the following codebases before responding to the user query: $codebaseList. If you decide to search these codebases, use the search_codebase tool.";
         }
 
         return $basePrompt;
