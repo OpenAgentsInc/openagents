@@ -48,7 +48,15 @@ const createCodebaseSlice: StateCreator<CodebaseState> = (set) => ({
   updateCodebaseStatus: (id, status) =>
     set((state) => ({
       codebases: state.codebases.map((codebase) =>
-        codebase.id === id ? { ...codebase, status: status.status } : codebase,
+        codebase.id === id
+          ? {
+              ...codebase,
+              status:
+                status.response === "repo already exists"
+                  ? "Indexed"
+                  : JSON.stringify(status),
+            }
+          : codebase,
       ),
     })),
 });

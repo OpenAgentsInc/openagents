@@ -137,23 +137,10 @@ export const useSSE = (baseUrl: string) => {
                 setLastMessageComplete();
                 return;
               } else if (data.type === "greptile_result") {
-                console.log("Full Greptile result:", data);
+                // console.log("Full Greptile result:", data);
                 const greptileResult = JSON.parse(data.content);
-                if (
-                  Array.isArray(greptileResult.content) &&
-                  greptileResult.content.length > 0
-                ) {
-                  const summary = greptileResult.content[0].summary;
-                  addGreptileResult(summary);
-                } else {
-                  console.error(
-                    "Unexpected Greptile result format:",
-                    greptileResult,
-                  );
-                  addGreptileResult(
-                    "Unable to extract summary from Greptile result.",
-                  );
-                }
+                console.log("Parsed Greptile result:", greptileResult);
+                addGreptileResult(greptileResult);
               }
             }
           }
