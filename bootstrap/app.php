@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->validateCsrfTokens(except: [
             'api/sse-stream',
+            'api/index-repository',
+            'api/repository-status/{repositoryId}',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

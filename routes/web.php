@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\GreptileController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SSEController;
 use Illuminate\Foundation\Application;
@@ -16,6 +17,9 @@ Route::post('/message', function () {
 });
 
 Route::post('/api/sse-stream', [SSEController::class, 'stream']);
+
+Route::post('/api/index-repository', [GreptileController::class, 'indexRepository']);
+Route::get('/api/repository-status/{repositoryId}', [GreptileController::class, 'getRepositoryStatus']);
 
 Route::get('/dashboard', function () {
     return Inertia::render('Dashboard');
