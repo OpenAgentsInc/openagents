@@ -24,7 +24,7 @@ class GreptileService
 
     public function generateRepositoryId($remote, $repository, $branch)
     {
-        return base64_encode("{$remote}:{$repository}:{$branch}");
+        return base64_encode("{$remote}:{$branch}:{$repository}");
     }
 
     public function searchCodebase($query, $repositories, $sessionId = null, $stream = false)

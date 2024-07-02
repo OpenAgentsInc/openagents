@@ -17,7 +17,15 @@ interface CodebaseState {
 }
 
 const createCodebaseSlice: StateCreator<CodebaseState> = (set) => ({
-  codebases: [],
+  codebases: [
+    {
+      id: "github:v2:openagentsinc/openagents",
+      name: "openagentsinc/openagents",
+      branch: "v2",
+      isSelected: true,
+      status: "Indexed",
+    },
+  ],
   toggleCodebase: (id) =>
     set((state) => ({
       codebases: state.codebases.map((codebase) =>

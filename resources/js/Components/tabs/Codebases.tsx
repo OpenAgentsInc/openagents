@@ -54,7 +54,9 @@ export function Codebases() {
 
   const checkCodebaseStatus = async (codebase) => {
     try {
-      const response = await fetch(`/api/repository-status/${codebase.id}`);
+      const response = await fetch(
+        `/api/repository-status?repositoryId=${encodeURIComponent(codebase.id)}`,
+      );
       if (!response.ok) {
         throw new Error("Failed to fetch repository status");
       }

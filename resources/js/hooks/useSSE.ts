@@ -137,6 +137,7 @@ export const useSSE = (baseUrl: string) => {
                 setLastMessageComplete();
                 return;
               } else if (data.type === "greptile_result") {
+                console.log("Full Greptile result:", data);
                 const greptileResult = JSON.parse(data.content);
                 if (
                   Array.isArray(greptileResult.content) &&
