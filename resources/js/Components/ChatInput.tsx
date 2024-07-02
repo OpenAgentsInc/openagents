@@ -53,7 +53,7 @@ const createDefaultState = () => {
           newlineInCode,
           createParagraphNear,
           liftEmptyBlock,
-          splitBlock
+          splitBlock,
         ),
       }),
     ],
@@ -67,7 +67,6 @@ export const ChatInput = () => {
   const addMessage = useMessageStore((state) => state.addMessage);
   const messages = useMessageStore((state) => state.messages);
   const codebases = useCodebaseStore((state) => state.codebases);
-  console.log(codebases);
 
   const { data, setData, reset } = useForm({
     content: "",
@@ -80,7 +79,7 @@ export const ChatInput = () => {
       setEditorState(state);
       setData("content", state.doc.textContent);
     },
-    [setData]
+    [setData],
   );
 
   const handleSubmit = useCallback(() => {
@@ -165,7 +164,7 @@ const EditorFocuser = ({ shouldReset }: { shouldReset: boolean }) => {
         focusRef.current = null;
       };
     },
-    [shouldReset]
+    [shouldReset],
   ); // Re-run when shouldReset changes
 
   return null;
