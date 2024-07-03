@@ -82,6 +82,10 @@ const handleSSEMessage = (
     const greptileResult = JSON.parse(data.content);
     console.log("Parsed Greptile result:", greptileResult);
     addGreptileResult(JSON.stringify(greptileResult));
+  } else if (data.type === "shell_command_result") {
+    console.log("LETS EXECUTE COMMAND", data);
+    const content = JSON.parse(data.content);
+    console.log("Parsed shell command result:", content);
   }
 };
 
