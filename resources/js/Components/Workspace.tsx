@@ -25,7 +25,7 @@ const tabComponents = {
 };
 
 export function Workspace() {
-  const [activeTab, setActiveTab] = useState("codebases");
+  const [activeTab, setActiveTab] = useState("shell");
 
   const ActiveComponent = tabComponents[activeTab];
 
