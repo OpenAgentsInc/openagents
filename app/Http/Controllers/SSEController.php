@@ -6,19 +6,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use App\Services\AnthropicService;
 use App\Services\GreptileService;
+use App\Services\ShellCommandService;
 use Illuminate\Support\Facades\Log;
 
 class SSEController extends Controller
 {
     protected $anthropicService;
     protected $greptileService;
+    protected $shellCommandService;
     private $toolUseData = null;
     private $toolUseInput = '';
 
-    public function __construct(AnthropicService $anthropicService, GreptileService $greptileService)
+    public function __construct(AnthropicService $anthropicService, GreptileService $greptileService, ShellCommandService $shellCommandService)
     {
         $this->anthropicService = $anthropicService;
         $this->greptileService = $greptileService;
+        $this->shellCommandService = $shellCommandService;
     }
 
     public function stream(Request $request)
@@ -191,6 +194,25 @@ class SSEController extends Controller
                 'tool_use_id' => $toolUseData['id'],
                 'content' => $searchResult
             ];
+        } elseif ($toolUseData['name'] === 'execute_shell_command') {
+            $command = $toolUseData['input']['command'];
+
+            Log::info('Executing shell command', ['command' => $command]);
+
+            $result = $this->shellCommandService->executeCommand($command);
+
+            Log::info('Shell command result received', ['result' => $result]);
+
+            // Send the shell command result as a separate event
+            $this->sendEvent('shell_command_result', json_encode([
+                'tool_use_id' => $toolUseData['id'],
+                'content' => $result
+            ]));
+
+            return [
+                'tool_use_id' => $toolUseData['id'],
+                'content' => $result
+            ];
         }
 
         Log::warning('Unknown tool', ['toolName' => $toolUseData['name']]);
@@ -253,7 +275,7 @@ class SSEController extends Controller
 
     private function buildSystemPrompt($codebases)
     {
-        $basePrompt = "You are a coding agent named AutoDev created by OpenAgents. You help the user create and execute plans to assist their coding goals. When asked to create a plan, you write it in Markdown and put it in tags <plan> and </plan> so it can be displayed separately to the user.";
+        $basePrompt = "You are a coding agent named AutoDev created by OpenAgents. You help the user create and execute plans to assist their coding goals. When asked to create a plan, you write it in Markdown and put it in tags <plan> and </plan> so it can be displayed separately to the user. You have access to an Amazon Linux shell and can execute shell commands. ";
 
         if (!empty($codebases)) {
             $codebaseList = implode(", ", array_map(function ($codebase) {
@@ -263,6 +285,9 @@ class SSEController extends Controller
             $basePrompt .= " You have the ability to search the following codebases before responding to the user query: $codebaseList. If you decide to search these codebases, use the search_codebase tool.";
         }
 
+        $basePrompt .= " You also have the ability to execute shell commands on the server using the execute_shell_command tool. Use this capability cautiously and only when necessary for the user's coding tasks.";
+
         return $basePrompt;
     }
+
 }

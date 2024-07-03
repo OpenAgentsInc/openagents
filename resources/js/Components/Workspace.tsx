@@ -31,7 +31,7 @@ export function Workspace() {
 
   return (
     <div className="w-full h-full flex flex-col bg-zinc-900/25 text-white font-sans">
-      <div className="p-4 flex-shrink-0">
+      <div className="pt-4 px-4 flex-shrink-0">
         <div className="flex space-x-1">
           {tabs.map((tab) => (
             <button
@@ -49,7 +49,7 @@ export function Workspace() {
         </div>
       </div>
       <div className="flex-grow overflow-auto mx-4">
-        <div className="bg-zinc-900 h-full rounded-md p-4">
+        <div className="bg-zinc-900 h-full rounded-b-md p-4">
           <ActiveComponent />
         </div>
       </div>

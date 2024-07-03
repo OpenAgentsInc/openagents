@@ -6,6 +6,7 @@ import "xterm/css/xterm.css";
 export function Shell() {
   const terminalRef = useRef(null);
   const terminalInstanceRef = useRef(null);
+  const socketRef = useRef(null);
 
   useEffect(() => {
     // Initialize xterm.js
@@ -23,6 +24,7 @@ export function Shell() {
 
     // Create WebSocket connection
     const socket = new WebSocket("wss://shell.openagents.com/ws");
+    socketRef.current = socket;
 
     socket.onopen = () => {
       console.log("WebSocket connection established");
@@ -30,7 +32,21 @@ export function Shell() {
     };
 
     socket.onmessage = (event) => {
-      term.write(event.data);
+      const data = JSON.parse(event.data);
+      console.log("Received message:", data);
+
+      switch (data.type) {
+        case "connection":
+          term.writeln(data.content);
+          break;
+        case "shell_command_result":
+          term.writeln("Shell command result:");
+          term.writeln(data.content);
+          break;
+        default:
+          console.log("Unknown message type:", data.type);
+          term.writeln(`Received: ${data.content}`);
+      }
     };
 
     socket.onerror = (error) => {
@@ -54,6 +70,20 @@ export function Shell() {
         fitAddon.fit();
       });
       resizeObserver.observe(terminalRef.current);
+
+      // Handle user input
+      term.onData((data) => {
+        if (data === "\r") {
+          // Enter key
+          const command = term.buffer.active
+            .getLine(term.buffer.active.cursorY)
+            .translateToString();
+          sendCommand(command.trim());
+          term.write("\r\n");
+        } else {
+          term.write(data);
+        }
+      });
     }
 
     // Clean up on unmount
@@ -61,9 +91,24 @@ export function Shell() {
       if (terminalInstanceRef.current) {
         terminalInstanceRef.current.dispose();
       }
-      socket.close();
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
     };
   }, []);
+
+  const sendCommand = (command) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: "shell_command",
+          content: command,
+        }),
+      );
+    } else {
+      console.error("WebSocket is not connected");
+    }
+  };
 
   return <div ref={terminalRef} className="w-full h-full" />;
 }

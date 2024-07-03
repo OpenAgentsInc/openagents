@@ -54,7 +54,21 @@ class AnthropicService
                                 ],
                                 'required' => ['query']
                             ]
-                        ]
+                        ],
+[
+    'name' => 'execute_shell_command',
+    'description' => 'Execute a shell command on the server. Use this tool with caution and only for safe, necessary operations.',
+    'input_schema' => [
+        'type' => 'object',
+        'properties' => [
+            'command' => [
+                'type' => 'string',
+                'description' => 'The shell command to execute'
+            ]
+        ],
+        'required' => ['command']
+    ]
+],
                     ]
                 ],
                 'stream' => true,
