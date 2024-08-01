@@ -23,28 +23,19 @@ class SocialAuthController extends Controller
         }
 
         $socialUser = Socialite::driver('twitter-oauth-2')->user();
-        // Check if user already exists in your database based on their email
-        $alternativeEmail = $socialUser->nickname.'@fakeemail.com';
-        $user = User::where('email', $socialUser->email)->orWhere('email', $alternativeEmail)->first();
         $sessionId = Session::getId(); // Get the current session ID
 
-        if (! $user) {
+        // Check if user already exists in your database based on their username
+        $user = User::where('username', $socialUser->nickname)->first();
+
+        if (!$user) {
             // User doesn't exist, so we create a new user
-
-            // Check if email is null or empty string, if so set it to the username plus @fakeemail.com
-            if (empty($socialUser->email)) {
-                $email = $socialUser->nickname.'@fakeemail.com';
-            } else {
-                $email = $socialUser->email;
-            }
-
             $username = $socialUser->nickname;
             if (strpos($username, 'npub') === 0) {
                 $username = 'x-'.$username;
             }
 
             $user = User::create([
-                'email' => $email,
                 'name' => $socialUser->name,
                 'username' => $username,
                 'external_id' => $socialUser->nickname,
