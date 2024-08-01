@@ -22,7 +22,7 @@ class SocialAuthController extends Controller
             return redirect('/');
         }
 
-        $socialUser = Socialite::driver('twitter')->user();
+        $socialUser = Socialite::driver('twitter-oauth-2')->user();
         // Check if user already exists in your database based on their email
         $alternativeEmail = $socialUser->nickname.'@fakeemail.com';
         $user = User::where('email', $socialUser->email)->orWhere('email', $alternativeEmail)->first();
