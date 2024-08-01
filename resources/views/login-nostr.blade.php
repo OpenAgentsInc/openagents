@@ -43,7 +43,7 @@
                         kind: 27235,
                         created_at: Math.round(Date.now() / 1000),
                         tags: [
-                            ["u", "https://openagents.com/login/nostr"],
+                            ["u", "https://chat.openagents.com/login/nostr"],
                             ["method", "POST"]
                         ],
                         content: "",
