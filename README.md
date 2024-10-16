@@ -4,6 +4,12 @@ OpenAgents is a platform for building, selling and using AI agents.
 
 We are building v3 from scratch here. ([Background](https://x.com/OpenPressAI/status/1846356233491730627))
 
+## Tech Stack
+
+- Vanillavel:
+  - Laravel
+  - [HTML, CSS, JS](https://x.com/OpenPressAI/status/1846356233491730627)
+
 ## Previous work
 
 - OpenAgents v1 (Laravel/Livewire) has moved to the [v1 branch](https://github.com/OpenAgentsInc/openagents/tree/v1).
@@ -14,12 +20,6 @@ We are building v3 from scratch here. ([Background](https://x.com/OpenPressAI/st
 - [Follow us on X](https://x.com/OpenAgentsInc)
 - [Wiki](https://github.com/OpenAgentsInc/openagents/wiki)
 - [Stacker News Community](https://stacker.news/~openagents)
-
-## Tech Stack
-
-"Vanillavel"
-- Laravel
-- [HTML, CSS, JS](https://x.com/OpenPressAI/status/1846356233491730627)
 
 ## Video series
 
