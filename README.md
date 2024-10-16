@@ -2,7 +2,7 @@
 
 OpenAgents is a platform for building, selling and using AI agents.
 
-We are building v3 from scratch here. ([Why](https://x.com/OpenPressAI/status/1846356233491730627))
+We are building v3 from scratch here. ([Background](https://x.com/OpenPressAI/status/1846356233491730627))
 
 ## Previous work
 
