@@ -6,7 +6,7 @@ We are building v3 from scratch here. ([Background](https://x.com/OpenPressAI/st
 
 ## Previous work
 
-- OpenAgents v1 (Laravel/Livewire) has moved to the [v1 branch](https://github.com/OpenAgentsInc/openagents/commits/v1).
+- OpenAgents v1 (Laravel/Livewire) has moved to the [v1 branch](https://github.com/OpenAgentsInc/openagents/tree/v1).
 - OpenAgents v2 (NextJS) has its own repo [here](https://github.com/OpenAgentsInc/v2)
 
 ## Resources
