@@ -31,7 +31,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('message-form');
-    const messagesContainer = document.getElementById('messages-container');
+    const messageList = document.getElementById('message-list');
 
     form.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -48,6 +48,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }).then(response => {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+
+            let systemMessageElement = null;
 
             function readStream() {
                 reader.read().then(({ done, value }) => {
@@ -68,7 +70,21 @@ document.addEventListener('DOMContentLoaded', function() {
                                 try {
                                     const parsedData = JSON.parse(data);
                                     console.log('Received message:', parsedData);
-                                    document.dispatchEvent(new CustomEvent('newMessage', { detail: parsedData }));
+                                    
+                                    if (parsedData.type === 'user' || parsedData.type === 'system') {
+                                        const tempDiv = document.createElement('div');
+                                        tempDiv.innerHTML = parsedData.html;
+                                        const newMessage = tempDiv.firstElementChild;
+                                        messageList.insertBefore(newMessage, messageList.firstChild);
+
+                                        if (parsedData.type === 'system') {
+                                            systemMessageElement = newMessage.querySelector('.message-content');
+                                        }
+                                    } else if (parsedData.type === 'word') {
+                                        if (systemMessageElement) {
+                                            systemMessageElement.textContent += parsedData.content;
+                                        }
+                                    }
                                 } catch (error) {
                                     console.error('Error parsing JSON:', error);
                                 }
