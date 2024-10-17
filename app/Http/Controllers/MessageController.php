@@ -85,7 +85,7 @@ class MessageController extends Controller
     {
         $response = new StreamedResponse(function() use ($message) {
             $userMessageHtml = view('partials.message', ['message' => $message])->render();
-            echo $userMessageHtml;
+            echo "data: " . json_encode(['html' => $userMessageHtml]) . "\n\n";
             ob_flush();
             flush();
 
@@ -96,22 +96,26 @@ class MessageController extends Controller
             ];
 
             foreach ($demoResponses as $index => $content) {
-                sleep(2);
+                usleep(500000); // 0.5 second delay
                 $demoMessage = new Message();
                 $demoMessage->content = $content;
                 $demoMessage->is_system_message = true;
-                $demoMessage->created_at = now()->addSeconds(($index + 1) * 2);
+                $demoMessage->created_at = now()->addSeconds(($index + 1) * 0.5);
                 
                 $demoMessageHtml = view('partials.message', ['message' => $demoMessage])->render();
-                echo $demoMessageHtml;
+                echo "data: " . json_encode(['html' => $demoMessageHtml]) . "\n\n";
                 ob_flush();
                 flush();
             }
+            echo "data: [DONE]\n\n";
+            ob_flush();
+            flush();
         });
 
-        $response->headers->set('Content-Type', 'text/html');
+        $response->headers->set('Content-Type', 'text/event-stream');
         $response->headers->set('Cache-Control', 'no-cache');
         $response->headers->set('Connection', 'keep-alive');
+        $response->headers->set('X-Accel-Buffering', 'no');
 
         return $response;
     }
