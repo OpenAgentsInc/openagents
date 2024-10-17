@@ -56,7 +56,8 @@ test('threads can be organized into projects', function () {
 test('threads can be organized into teams', function () {
     $user = User::factory()->create();
     $team = Team::factory()->create();
-    $thread = Thread::factory()->create(['team_id' => $team->id]);
+    $project = Project::factory()->create(['team_id' => $team->id]);
+    $thread = Thread::factory()->create(['project_id' => $project->id]);
 
     $response = $this->actingAs($user)->get("/teams/{$team->id}/threads");
 
