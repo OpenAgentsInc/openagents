@@ -6,9 +6,9 @@ We are building v3 from scratch here. ([Background](https://x.com/OpenPressAI/st
 
 ## Tech Stack
 
-- Vanillavel:
-  - Laravel
-  - [HTML, CSS, JS](https://x.com/OpenPressAI/status/1846356233491730627)
+- Laravel
+- Tailwind
+- No-build JS
 
 ## Previous work
 
