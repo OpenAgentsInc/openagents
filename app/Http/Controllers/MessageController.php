@@ -37,4 +37,18 @@ class MessageController extends Controller
 
         return response()->json($message, 201);
     }
+
+    public function sendMessage(Request $request)
+    {
+        $request->validate([
+            'message' => 'required|string|max:1000',
+        ]);
+
+        $message = new Message();
+        $message->user_id = auth()->id();
+        $message->content = $request->message;
+        $message->save();
+
+        return redirect()->back()->with('success', 'Message sent successfully!');
+    }
 }
