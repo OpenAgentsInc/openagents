@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable
 {
@@ -51,5 +52,20 @@ class User extends Authenticatable
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class);
+    }
+
+    public function threads(): HasMany
+    {
+        return $this->hasMany(Thread::class);
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(Message::class);
     }
 }
