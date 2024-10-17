@@ -5,6 +5,8 @@ use App\Models\Message;
 use App\Models\Thread;
 use App\Models\Project;
 use App\Models\Team;
+use App\Services\LlmService;
+use App\Services\GitHubApiService;
 
 test('user can send a message in a thread', function () {
     $user = User::factory()->create();
