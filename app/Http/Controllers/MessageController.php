@@ -78,25 +78,35 @@ class MessageController extends Controller
         
         $message->save();
 
-        return response()->json(['message' => 'Message sent successfully!', 'html' => view('partials.message', ['message' => $message])->render()]);
+        return $this->streamResponse($message);
     }
 
-    public function sseDemo()
+    private function streamResponse(Message $message)
     {
-        $response = new StreamedResponse(function() {
-            echo "data: " . json_encode(['html' => '<div class="message">This is a demo SSE message</div>']) . "\n\n";
+        $response = new StreamedResponse(function() use ($message) {
+            $userMessageHtml = view('partials.message', ['message' => $message])->render();
+            echo "data: " . json_encode(['html' => $userMessageHtml]) . "\n\n";
             ob_flush();
             flush();
-            sleep(2);
 
-            echo "data: " . json_encode(['html' => '<div class="message">Another demo SSE message</div>']) . "\n\n";
-            ob_flush();
-            flush();
-            sleep(2);
+            $demoResponses = [
+                'This is a demo SSE message',
+                'Another demo SSE message',
+                'Final demo SSE message',
+            ];
 
-            echo "data: " . json_encode(['html' => '<div class="message">Final demo SSE message</div>']) . "\n\n";
-            ob_flush();
-            flush();
+            foreach ($demoResponses as $index => $content) {
+                sleep(2);
+                $demoMessage = new Message();
+                $demoMessage->content = $content;
+                $demoMessage->is_system_message = true;
+                $demoMessage->created_at = now()->addSeconds(($index + 1) * 2);
+                
+                $demoMessageHtml = view('partials.message', ['message' => $demoMessage])->render();
+                echo "data: " . json_encode(['html' => $demoMessageHtml]) . "\n\n";
+                ob_flush();
+                flush();
+            }
         });
 
         $response->headers->set('Content-Type', 'text/event-stream');
