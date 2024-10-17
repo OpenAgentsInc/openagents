@@ -1,12 +1,9 @@
-// Import the default theme
-const defaultTheme = require('tailwindcss/defaultTheme')
-
 tailwind.config = {
     darkMode: 'class',
     theme: {
         extend: {
             fontFamily: {
-                mono: ['"JetBrains Mono"', ...defaultTheme.fontFamily.mono],
+                mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace'],
             },
             colors: {
                 background: 'hsl(var(--background))',
