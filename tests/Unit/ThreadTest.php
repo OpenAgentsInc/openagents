@@ -4,6 +4,7 @@ use App\Models\Thread;
 use App\Models\User;
 use App\Models\Project;
 use App\Models\Message;
+use App\Models\Team;
 
 test('a thread belongs to a user', function () {
     $user = User::factory()->create();
@@ -27,4 +28,13 @@ test('a thread has many messages', function () {
 
     expect($thread->messages)->toHaveCount(3);
     expect($thread->messages->first())->toBeInstanceOf(Message::class);
+});
+
+test('a thread belongs to a team through a project', function () {
+    $team = Team::factory()->create();
+    $project = Project::factory()->create(['team_id' => $team->id]);
+    $thread = Thread::factory()->create(['project_id' => $project->id]);
+
+    expect($thread->project->team)->toBeInstanceOf(Team::class);
+    expect($thread->project->team->id)->toBe($team->id);
 });
