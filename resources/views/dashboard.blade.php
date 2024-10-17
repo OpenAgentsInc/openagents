@@ -8,6 +8,19 @@
             </div>
         </div>
 
+        <!-- Top right buttons -->
+        <div class="absolute top-4 right-4 z-20 flex space-x-2">
+            <a href="{{ route('components') }}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 h-9 px-4 py-2">
+                View Components
+            </a>
+            <form method="POST" action="{{ route('logout') }}">
+                @csrf
+                <button type="submit" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-9 px-4 py-2">
+                    Logout
+                </button>
+            </form>
+        </div>
+
         <!-- Main content -->
         <main class="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
             <div class="flex h-full flex-col items-center justify-center text-zinc-200">
@@ -44,35 +57,10 @@
                             <div class="mt-5 leading-relaxed text-center relative w-full px-2 py-2 text-foreground/30 text-xs empty:hidden md:px-[30px]">
                                 <div class="min-h-4"><span class="text-xs select-none leading-none">By messaging OpenAgents, you agree to our <a href="https://openagents.com/terms" target="_blank" class="text-token-text-primary underline decoration-token-text-primary" rel="noreferrer">Terms</a> and <a href="https://openagents.com/privacy" target="_blank" class="text-token-text-primary underline decoration-token-text-primary" rel="noreferrer">Privacy Policy</a>.</span></div>
                             </div>
-                            <div class="mt-6 space-y-4">
-                                <a href="{{ route('components') }}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 h-9 px-4 py-2 w-full pointer-events-auto">
-                                    View Components
-                                </a>
-                                <form method="POST" action="{{ route('logout') }}" class="w-full">
-                                    @csrf
-                                    <button type="submit" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-9 px-4 py-2 w-full pointer-events-auto">
-                                        Logout
-                                    </button>
-                                </form>
-                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            {{-- Commented out center card --}}
-            {{--
-            <div class="pointer-events-none absolute select-none flex items-center justify-center">
-                <x-card class="-mt-6 px-6 py-2 w-[400px] bg-opacity-80 backdrop-blur-sm">
-                    <x-card-header>
-                        <x-card-title>Welcome to Your Dashboard</x-card-title>
-                    </x-card-header>
-                    <x-card-content>
-                        <p class="text-center -mt-2">You are logged in. Here's where you can manage your projects and teams.</p>
-                    </x-card-content>
-                </x-card>
-            </div>
-            --}}
         </main>
     </div>
 
