@@ -83,7 +83,7 @@ class MessageController extends Controller
 
     private function streamResponse(Message $message)
     {
-        $response = new StreamedResponse(function() use ($message) {
+        return response()->stream(function() use ($message) {
             $userMessageHtml = view('partials.message', ['message' => $message])->render();
             echo "data: " . json_encode(['html' => $userMessageHtml]) . "\n\n";
             ob_flush();
@@ -110,13 +110,11 @@ class MessageController extends Controller
             echo "data: [DONE]\n\n";
             ob_flush();
             flush();
-        });
-
-        $response->headers->set('Content-Type', 'text/event-stream');
-        $response->headers->set('Cache-Control', 'no-cache');
-        $response->headers->set('Connection', 'keep-alive');
-        $response->headers->set('X-Accel-Buffering', 'no');
-
-        return $response;
+        }, 200, [
+            'Cache-Control' => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'X-Accel-Buffering' => 'no',
+            'Connection' => 'keep-alive',
+        ]);
     }
 }
