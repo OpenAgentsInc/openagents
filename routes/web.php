@@ -6,7 +6,10 @@ use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TeamController;
 
-Route::view('/', 'homepage');
+Route::get('/', function () {
+    return auth()->check() ? view('dashboard') : view('homepage');
+});
+
 Route::view('/components', 'components')->name('components');
 
 Route::middleware(['auth'])->group(function () {
