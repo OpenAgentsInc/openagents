@@ -9,7 +9,7 @@ class TeamController extends Controller
 {
     public function threads(Team $team)
     {
-        $threads = $team->threads()->get();
+        $threads = $team->threads()->with('project')->get();
         return response()->json($threads, 200);
     }
 }
