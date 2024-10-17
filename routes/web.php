@@ -1,15 +1,14 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TeamController;
 
-Route::get('/', function () {
-    return auth()->check() ? view('dashboard') : view('homepage');
-});
+Route::get('/', [DashboardController::class, 'index']);
 
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::get('/register', [AuthController::class, 'showRegistrationForm'])->name('register');
