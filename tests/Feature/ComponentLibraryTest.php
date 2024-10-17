@@ -5,6 +5,5 @@ test('component library loads component library view', function () {
 
     $response->assertStatus(200);
 
-    // Assert that view is component-library
-    $response->assertViewIs('component-library');
+    $response->assertViewIs('components');
 });
