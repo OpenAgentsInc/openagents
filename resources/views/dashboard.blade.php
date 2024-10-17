@@ -33,11 +33,13 @@
                                 </div>
                             </div>
                             <div class="w-full">
-                                <form class="w-full">
+                                <form class="w-full" method="POST" action="{{ route('send-message') }}">
+                                    @csrf
                                     <div class="flex w-full flex-col gap-1.5 rounded-[30px] p-1 transition-colors bg-zinc-900">
                                         <div class="flex items-end gap-1.5 pl-4 py-0.5 md:gap-2">
                                             <div class="flex min-w-0 flex-1 flex-col">
                                                 <textarea
+                                                    name="message"
                                                     class="min-h-[46px] max-h-[300px] overflow-y-auto resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
                                                     placeholder="Message OpenAgents"
                                                     rows="1"
