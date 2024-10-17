@@ -1,10 +1,19 @@
 <?php
 
-test('homepage loads homepage view', function () {
+use App\Models\User;
+
+test('homepage loads homepage view for unauthenticated users', function () {
     $response = $this->get('/');
 
     $response->assertStatus(200);
-
-    // Assert that view is homepage
     $response->assertViewIs('homepage');
+});
+
+test('homepage loads dashboard view for authenticated users', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->get('/');
+
+    $response->assertStatus(200);
+    $response->assertViewIs('dashboard');
 });
