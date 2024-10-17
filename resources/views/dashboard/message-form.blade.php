@@ -1,5 +1,5 @@
 <div class="w-full">
-    <form class="w-full" id="message-form" hx-post="{{ route('send-message') }}" hx-target="#messages-container" hx-swap="afterbegin">
+    <form class="w-full" id="message-form">
         @csrf
         @if(auth()->user()->currentProject)
             <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('submit', function(e) {
         e.preventDefault();
         const formData = new FormData(form);
-        const url = form.getAttribute('hx-post');
+        const url = "{{ route('send-message') }}";
 
         fetch(url, {
             method: 'POST',
