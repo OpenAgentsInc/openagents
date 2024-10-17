@@ -1,56 +1,48 @@
 <?php
 
-namespace Tests\Unit;
-
 use App\Models\User;
 use App\Models\Team;
 use App\Models\Project;
 use App\Models\Thread;
 use App\Models\Message;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 
-class UserTest extends TestCase
-{
-    use RefreshDatabase;
+test('a user belongs to a team', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create(['team_id' => $team->id]);
 
-    /** @test */
-    public function a_user_belongs_to_a_team()
-    {
-        $team = Team::factory()->create();
-        $user = User::factory()->create(['team_id' => $team->id]);
+    expect($user->team)->toBeInstanceOf(Team::class);
+    expect($user->team->id)->toBe($team->id);
+});
 
-        $this->assertInstanceOf(Team::class, $user->team);
-        $this->assertEquals($team->id, $user->team->id);
-    }
+test('a user has many projects', function () {
+    $user = User::factory()->create();
+    $projects = Project::factory()->count(3)->create(['user_id' => $user->id]);
 
-    /** @test */
-    public function a_user_has_many_projects()
-    {
-        $user = User::factory()->create();
-        $projects = Project::factory()->count(3)->create(['user_id' => $user->id]);
+    expect($user->projects)->toHaveCount(3);
+    expect($user->projects->first())->toBeInstanceOf(Project::class);
+});
 
-        $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->projects);
-        $this->assertCount(3, $user->projects);
-    }
+test('a user has many threads', function () {
+    $user = User::factory()->create();
+    $threads = Thread::factory()->count(3)->create(['user_id' => $user->id]);
 
-    /** @test */
-    public function a_user_has_many_threads()
-    {
-        $user = User::factory()->create();
-        $threads = Thread::factory()->count(3)->create(['user_id' => $user->id]);
+    expect($user->threads)->toHaveCount(3);
+    expect($user->threads->first())->toBeInstanceOf(Thread::class);
+});
 
-        $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->threads);
-        $this->assertCount(3, $user->threads);
-    }
+test('a user has many messages', function () {
+    $user = User::factory()->create();
+    $messages = Message::factory()->count(3)->create(['user_id' => $user->id]);
 
-    /** @test */
-    public function a_user_has_many_messages()
-    {
-        $user = User::factory()->create();
-        $messages = Message::factory()->count(3)->create(['user_id' => $user->id]);
+    expect($user->messages)->toHaveCount(3);
+    expect($user->messages->first())->toBeInstanceOf(Message::class);
+});
 
-        $this->assertInstanceOf('Illuminate\Database\Eloquent\Collection', $user->messages);
-        $this->assertCount(3, $user->messages);
-    }
-}
+test('a user can have projects through their team', function () {
+    $team = Team::factory()->create();
+    $user = User::factory()->create(['team_id' => $team->id]);
+    $projects = Project::factory()->count(3)->create(['team_id' => $team->id]);
+
+    expect($user->team->projects)->toHaveCount(3);
+    expect($user->team->projects->first())->toBeInstanceOf(Project::class);
+});
