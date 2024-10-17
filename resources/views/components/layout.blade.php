@@ -11,11 +11,13 @@
     <script src="{{ asset('js/tailwind-config.js') }}"></script>
 </head>
 
-<body class="bg-background text-foreground font-mono fixed w-screen">
+<body class="bg-background text-foreground font-mono h-screen overflow-hidden">
     <div class="fixed top-4 left-4 z-50">
         <x-logo />
     </div>
-    {{ $slot }}
+    <main class="h-full overflow-auto">
+        {{ $slot }}
+    </main>
 </body>
 
 </html>
