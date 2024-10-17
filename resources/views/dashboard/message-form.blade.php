@@ -1,5 +1,5 @@
 <div class="w-full">
-    <form class="w-full" hx-post="{{ route('send-message') }}" hx-target="#messages-container" hx-swap="beforeend">
+    <form class="w-full" hx-post="{{ route('send-message') }}" hx-target="#messages-container" hx-swap="afterbegin">
         @csrf
         @if(auth()->user()->currentProject)
             <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
