@@ -64,7 +64,7 @@ class MessageController extends Controller
             $systemMessage = new Message();
             $systemMessage->thread_id = $userMessage->thread_id;
             $systemMessage->is_system_message = true;
-            $systemMessage->content = ''; // We'll stream the content word by word
+            $systemMessage->content = ''; // We'll accumulate the content
             $systemMessage->save();
 
             $systemMessageHtml = view('partials.message', ['message' => $systemMessage])->render();
@@ -78,10 +78,14 @@ class MessageController extends Controller
 
             foreach ($words as $word) {
                 usleep(200000); // 0.2 second delay between words
+                $systemMessage->content .= $word . ' ';
                 echo "data: " . json_encode(['type' => 'word', 'content' => $word . ' ']) . "\n\n";
                 ob_flush();
                 flush();
             }
+
+            // Save the complete system message
+            $systemMessage->save();
 
             echo "data: [DONE]\n\n";
             ob_flush();
