@@ -12,6 +12,9 @@
 </head>
 
 <body class="bg-background text-foreground font-mono fixed w-screen">
+    <div class="fixed top-4 left-4 z-50">
+        <x-logo />
+    </div>
     {{ $slot }}
 </body>
 
