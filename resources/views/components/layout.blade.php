@@ -11,7 +11,7 @@
     <script src="{{ asset('js/tailwind-config.js') }}"></script>
 </head>
 
-<body class="bg-background text-foreground font-mono h-screen overflow-hidden">
+<body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
     <div class="fixed top-4 left-4 z-50">
         <x-logo />
     </div>
