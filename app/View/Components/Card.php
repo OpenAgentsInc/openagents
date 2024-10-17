@@ -12,7 +12,7 @@ class Card extends Component
 
     public function render()
     {
-        $baseClasses = 'rounded-xl border bg-card text-card-foreground shadow bg-opacity-90 backdrop-blur-sm';
+        $baseClasses = 'rounded-xl border border-border bg-card text-card-foreground shadow bg-opacity-90 backdrop-blur-sm';
         $classes = $baseClasses . ' ' . $this->class;
 
         return <<<HTML
