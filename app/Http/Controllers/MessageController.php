@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Message;
 use App\Models\Thread;
+use App\Models\Project;
 use Illuminate\Http\Request;
 
 class MessageController extends Controller
@@ -42,6 +43,7 @@ class MessageController extends Controller
     {
         $request->validate([
             'message' => 'required|string|max:1000',
+            'project_id' => 'required|exists:projects,id',
         ]);
 
         $message = new Message();
@@ -51,7 +53,11 @@ class MessageController extends Controller
         
         // If no thread_id is provided, create a new thread
         if (!$request->has('thread_id')) {
-            $thread = Thread::create(['user_id' => auth()->id()]);
+            $project = Project::findOrFail($request->project_id);
+            $thread = $project->threads()->create([
+                'user_id' => auth()->id(),
+                'title' => substr($request->message, 0, 50) . '...' // Use first 50 characters of the message as the thread title
+            ]);
             $message->thread_id = $thread->id;
         } else {
             $message->thread_id = $request->thread_id;
