@@ -15,11 +15,17 @@ class Thread extends Model
     protected $fillable = [
         'title',
         'project_id',
+        'user_id',
     ];
 
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function messages(): HasMany
