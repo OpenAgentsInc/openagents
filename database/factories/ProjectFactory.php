@@ -21,9 +21,24 @@ class ProjectFactory extends Factory
         return [
             'name' => $this->faker->words(3, true),
             'description' => $this->faker->sentence,
-            'user_id' => User::factory(),
+            'user_id' => null,
             'team_id' => null,
         ];
+    }
+
+    /**
+     * Indicate that the project belongs to a user.
+     *
+     * @return \Illuminate\Database\Eloquent\Factories\Factory
+     */
+    public function forUser()
+    {
+        return $this->state(function (array $attributes) {
+            return [
+                'user_id' => User::factory(),
+                'team_id' => null,
+            ];
+        });
     }
 
     /**
