@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Models\Thread;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -18,6 +19,30 @@ test('authenticated user can send a message', function () {
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
+        'content' => 'Test message'
+    ]);
+
+    $this->assertDatabaseHas('threads', [
+        'user_id' => $user->id
+    ]);
+});
+
+test('authenticated user can send a message to an existing thread', function () {
+    $user = User::factory()->create();
+    $thread = Thread::factory()->create(['user_id' => $user->id]);
+
+    $response = $this->actingAs($user)
+        ->post('/send-message', [
+            'message' => 'Test message',
+            'thread_id' => $thread->id
+        ]);
+
+    $response->assertStatus(302);
+    $response->assertSessionHas('success', 'Message sent successfully!');
+
+    $this->assertDatabaseHas('messages', [
+        'user_id' => $user->id,
+        'thread_id' => $thread->id,
         'content' => 'Test message'
     ]);
 });
