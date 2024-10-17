@@ -1,3 +1,6 @@
+// Import the default theme
+const defaultTheme = require('tailwindcss/defaultTheme')
+
 tailwind.config = {
     darkMode: 'class',
     theme: {
