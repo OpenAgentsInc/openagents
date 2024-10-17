@@ -26,11 +26,12 @@ test('user can send a message in a thread', function () {
 });
 
 test('system can add a message to a thread', function () {
+    $user = User::factory()->create();
     $thread = Thread::factory()->create();
 
-    $response = $this->post('/system-messages', [
-        'thread_id' => $thread->id,
+    $response = $this->actingAs($user)->post("/threads/{$thread->id}/messages", [
         'content' => 'System response',
+        'user_id' => null,
     ]);
 
     $response->assertStatus(201);
@@ -42,26 +43,29 @@ test('system can add a message to a thread', function () {
 });
 
 test('threads can be organized into projects', function () {
+    $user = User::factory()->create();
     $project = Project::factory()->create();
     $thread = Thread::factory()->create(['project_id' => $project->id]);
 
-    $response = $this->get("/projects/{$project->id}/threads");
+    $response = $this->actingAs($user)->get("/projects/{$project->id}/threads");
 
     $response->assertStatus(200);
-    $response->assertJson([$thread->toArray()]);
+    $response->assertJsonFragment($thread->toArray());
 });
 
 test('threads can be organized into teams', function () {
+    $user = User::factory()->create();
     $team = Team::factory()->create();
     $thread = Thread::factory()->create(['team_id' => $team->id]);
 
-    $response = $this->get("/teams/{$team->id}/threads");
+    $response = $this->actingAs($user)->get("/teams/{$team->id}/threads");
 
     $response->assertStatus(200);
-    $response->assertJson([$thread->toArray()]);
+    $response->assertJsonFragment($thread->toArray());
 });
 
 test('system can make LLM tool calls with GitHub API', function () {
+    $user = User::factory()->create();
     $thread = Thread::factory()->create();
     $message = Message::factory()->create([
         'thread_id' => $thread->id,
@@ -83,7 +87,7 @@ test('system can make LLM tool calls with GitHub API', function () {
         $mock->shouldReceive('createFile')->andReturn(true);
     });
 
-    $response = $this->post("/threads/{$thread->id}/process", [
+    $response = $this->actingAs($user)->post("/threads/{$thread->id}/process", [
         'message_id' => $message->id,
     ]);
 
