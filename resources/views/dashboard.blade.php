@@ -35,7 +35,9 @@
                             <div class="w-full">
                                 <form class="w-full" method="POST" action="{{ route('send-message') }}">
                                     @csrf
-                                    <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
+                                    @if(auth()->user()->currentProject)
+                                        <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
+                                    @endif
                                     <div class="flex w-full flex-col gap-1.5 rounded-[30px] p-1 transition-colors bg-zinc-900">
                                         <div class="flex items-end gap-1.5 pl-4 py-0.5 md:gap-2">
                                             <div class="flex min-w-0 flex-1 flex-col">
