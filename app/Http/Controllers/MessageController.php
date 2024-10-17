@@ -51,7 +51,6 @@ class MessageController extends Controller
             $thread = Thread::findOrFail($request->thread_id);
         } else {
             $thread = new Thread();
-            $thread->user_id = auth()->id();
             $thread->title = substr($request->message, 0, 50) . '...';
             
             if ($request->has('project_id')) {
@@ -59,14 +58,22 @@ class MessageController extends Controller
                 $thread->project_id = $project->id;
             }
             
+            if (auth()->check()) {
+                $thread->user_id = auth()->id();
+            }
+            
             $thread->save();
         }
 
         $message = new Message();
-        $message->user_id = auth()->id();
         $message->thread_id = $thread->id;
         $message->content = $request->message;
         $message->is_system_message = false;
+        
+        if (auth()->check()) {
+            $message->user_id = auth()->id();
+        }
+        
         $message->save();
 
         return redirect()->back()->with('success', 'Message sent successfully!');
