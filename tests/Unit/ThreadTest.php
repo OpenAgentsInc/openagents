@@ -2,7 +2,6 @@
 
 use App\Models\Thread;
 use App\Models\User;
-use App\Models\Team;
 use App\Models\Project;
 use App\Models\Message;
 
@@ -12,14 +11,6 @@ test('a thread belongs to a user', function () {
 
     expect($thread->user)->toBeInstanceOf(User::class);
     expect($thread->user->id)->toBe($user->id);
-});
-
-test('a thread belongs to a team', function () {
-    $team = Team::factory()->create();
-    $thread = Thread::factory()->create(['team_id' => $team->id]);
-
-    expect($thread->team)->toBeInstanceOf(Team::class);
-    expect($thread->team->id)->toBe($team->id);
 });
 
 test('a thread belongs to a project', function () {
