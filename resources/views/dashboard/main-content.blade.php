@@ -12,7 +12,7 @@
                     
                     <div id="messages-container" class="mt-8">
                         <h2 class="text-xl font-semibold mb-4">Your Messages</h2>
-                        <ul class="space-y-4">
+                        <ul class="space-y-4" id="message-list">
                             @foreach($messages as $message)
                                 <li class="bg-zinc-800 p-4 rounded-lg">
                                     <p class="text-sm text-zinc-400">{{ $message->created_at->format('M d, Y H:i') }}</p>
@@ -28,3 +28,18 @@
         </div>
     </div>
 </main>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const messageList = document.getElementById('message-list');
+
+    // Custom event listener for new messages
+    document.addEventListener('newMessage', function(e) {
+        const messageHtml = e.detail.html;
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = messageHtml;
+        const newMessage = tempDiv.firstElementChild;
+        messageList.insertBefore(newMessage, messageList.firstChild);
+    });
+});
+</script>
