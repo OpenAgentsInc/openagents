@@ -1,3 +1,3 @@
-<div>
-    <!-- He who is contented is rich. - Laozi -->
-</div>
+<button {{ $attributes->merge(['class' => $classes()]) }}>
+    {{ $slot }}
+</button>
