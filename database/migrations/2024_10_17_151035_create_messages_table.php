@@ -13,6 +13,10 @@ return new class extends Migration
     {
         Schema::create('messages', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->nullable()->constrained()->onDelete('set null');
+            $table->foreignId('thread_id')->constrained()->onDelete('cascade');
+            $table->text('content');
+            $table->boolean('is_system_message')->default(false);
             $table->timestamps();
         });
     }
