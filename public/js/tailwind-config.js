@@ -2,6 +2,9 @@ tailwind.config = {
     darkMode: 'class',
     theme: {
         extend: {
+            fontFamily: {
+                mono: ['"JetBrains Mono"', ...defaultTheme.fontFamily.mono],
+            },
             colors: {
                 background: 'hsl(var(--background))',
                 foreground: 'hsl(var(--foreground))',
