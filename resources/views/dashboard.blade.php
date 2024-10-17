@@ -38,10 +38,10 @@
                                         <div class="flex items-end gap-1.5 pl-4 py-0.5 md:gap-2">
                                             <div class="flex min-w-0 flex-1 flex-col">
                                                 <textarea
-                                                    class="h-[46px] resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
+                                                    class="min-h-[46px] resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
                                                     placeholder="Message OpenAgents"
-                                                    rows="1"
-                                                ></textarea>
+                                                    rows="auto"
+                                                    autofocus></textarea>
                                             </div>
                                             <div class="mb-0.5">
                                                 <button type="submit" class="inline-flex items-center justify-center rounded-full h-[32px] w-[32px] transition-colors bg-zinc-700 hover:bg-zinc-600">
@@ -66,14 +66,14 @@
 
     <style>
         .bg-grid {
-            background-image: 
-                linear-gradient(to right, rgba(255,255,255,0.2) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255,255,255,0.2) 1px, transparent 1px);
+            background-image:
+                linear-gradient(to right, rgba(255, 255, 255, 0.2) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.2) 1px, transparent 1px);
             background-size: 40px 40px;
         }
 
         .neural-network {
-            background: 
+            background:
                 radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 25%),
                 radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 35%),
                 radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 35%);
@@ -84,6 +84,7 @@
             0% {
                 transform: translate(0, 0);
             }
+
             100% {
                 transform: translate(40px, 40px);
             }
