@@ -29,6 +29,9 @@ Route::middleware(['auth'])->group(function () {
 
     // Team routes
     Route::get('/teams/{team}/threads', [TeamController::class, 'threads']);
+
+    // SSE Demo route
+    Route::get('/sse-demo', [MessageController::class, 'sseDemo'])->name('sse-demo');
 });
 
 require __DIR__ . '/auth.php';
