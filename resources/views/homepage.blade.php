@@ -7,6 +7,7 @@
     <title>OpenAgents</title>
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/index.css') }}">
+    <script src="{{ asset('js/tailwind.min.js') }}"></script>
 </head>
 
 <body class="dark">
