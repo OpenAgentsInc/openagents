@@ -38,12 +38,14 @@
                                         <div class="flex items-end gap-1.5 pl-4 py-0.5 md:gap-2">
                                             <div class="flex min-w-0 flex-1 flex-col">
                                                 <textarea
-                                                    class="min-h-[46px] resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
+                                                    class="min-h-[46px] max-h-[300px] overflow-y-auto resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
                                                     placeholder="Message OpenAgents"
-                                                    rows="auto"
-                                                    autofocus></textarea>
+                                                    rows="1"
+                                                    autofocus
+                                                    oninput="this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; this.closest('.flex').style.height = 'auto'; this.closest('.flex').style.height = this.scrollHeight + 'px';"
+                                                ></textarea>
                                             </div>
-                                            <div class="mb-0.5">
+                                            <div class="mb-0.5 self-end">
                                                 <button type="submit" class="inline-flex items-center justify-center rounded-full h-[32px] w-[32px] transition-colors bg-zinc-700 hover:bg-zinc-600">
                                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" class="h-4 w-4 m-1 md:m-0" stroke-width="2">
                                                         <path d="M.5 1.163A1 1 0 0 1 1.97.28l12.868 6.837a1 1 0 0 1 0 1.766L1.969 15.72A1 1 0 0 1 .5 14.836V10.33a1 1 0 0 1 .816-.983L8.5 8 1.316 6.653A1 1 0 0 1 .5 5.67V1.163Z" fill="currentColor"></path>
