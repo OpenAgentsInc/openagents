@@ -1,17 +1,20 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenAgents</title>
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
-    @vite('resources/css/app.css')
+    <link rel="stylesheet" href="{{ asset('css/index.css') }}">
+    <script src="{{ asset('js/tailwind.min.js') }}"></script>
 </head>
-<body class="bg-background text-foreground">
-    <main class="flex flex-col items-center justify-center min-h-screen p-4">
-        <h1 class="text-4xl font-bold mb-8">OpenAgents</h1>
-        <div class="flex flex-wrap justify-center gap-4">
-            <x-button>
+
+<body class="dark">
+    <main>
+        <h1 class="hero">OpenAgents</h1>
+        <div class="button-demo">
+            <x-button variant="default" size="default">
                 Default Button
             </x-button>
 
@@ -23,7 +26,7 @@
                 Large Outline
             </x-button>
 
-            <x-button variant="secondary">
+            <x-button variant="secondary" size="default">
                 Secondary Button
             </x-button>
 
@@ -37,4 +40,5 @@
         </div>
     </main>
 </body>
+
 </html>
