@@ -5,12 +5,20 @@ use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\AuthController;
 
 Route::get('/', function () {
     return auth()->check() ? view('dashboard') : view('homepage');
 });
 
 Route::view('/components', 'components')->name('components');
+
+// Authentication Routes
+Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
+Route::post('/login', [AuthController::class, 'login']);
+Route::get('/register', [AuthController::class, 'showRegistrationForm'])->name('register');
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::middleware(['auth'])->group(function () {
     // Message routes
