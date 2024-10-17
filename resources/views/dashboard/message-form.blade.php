@@ -1,5 +1,5 @@
 <div class="w-full">
-    <form class="w-full" method="POST" action="{{ route('send-message') }}">
+    <form class="w-full" hx-post="{{ route('send-message') }}" hx-target="#chat-messages" hx-swap="beforeend">
         @csrf
         @if(auth()->user()->currentProject)
             <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
@@ -26,4 +26,8 @@
             </div>
         </div>
     </form>
+</div>
+
+<div id="chat-messages" hx-ext="sse" sse-connect="{{ route('sse-demo') }}" sse-swap="message">
+    <!-- Chat messages will be appended here -->
 </div>
