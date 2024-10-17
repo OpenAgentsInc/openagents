@@ -47,6 +47,16 @@ class MessageController extends Controller
         $message = new Message();
         $message->user_id = auth()->id();
         $message->content = $request->message;
+        $message->is_system_message = false;
+        
+        // If no thread_id is provided, create a new thread
+        if (!$request->has('thread_id')) {
+            $thread = Thread::create(['user_id' => auth()->id()]);
+            $message->thread_id = $thread->id;
+        } else {
+            $message->thread_id = $request->thread_id;
+        }
+
         $message->save();
 
         return redirect()->back()->with('success', 'Message sent successfully!');
