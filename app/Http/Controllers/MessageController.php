@@ -85,7 +85,7 @@ class MessageController extends Controller
     {
         $response = new StreamedResponse(function() use ($message) {
             $userMessageHtml = view('partials.message', ['message' => $message])->render();
-            echo "data: " . json_encode(['html' => $userMessageHtml]) . "\n\n";
+            echo $userMessageHtml;
             ob_flush();
             flush();
 
@@ -103,13 +103,13 @@ class MessageController extends Controller
                 $demoMessage->created_at = now()->addSeconds(($index + 1) * 2);
                 
                 $demoMessageHtml = view('partials.message', ['message' => $demoMessage])->render();
-                echo "data: " . json_encode(['html' => $demoMessageHtml]) . "\n\n";
+                echo $demoMessageHtml;
                 ob_flush();
                 flush();
             }
         });
 
-        $response->headers->set('Content-Type', 'text/event-stream');
+        $response->headers->set('Content-Type', 'text/html');
         $response->headers->set('Cache-Control', 'no-cache');
         $response->headers->set('Connection', 'keep-alive');
 
