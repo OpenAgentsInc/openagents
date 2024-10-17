@@ -6,7 +6,7 @@
 </head>
 
 <body>
-    OpenAgents
+    <h1 class="hero">OpenAgents</h1>
 </body>
 
 </html>

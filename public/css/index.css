@@ -2,4 +2,20 @@ body {
   background-color: black;
   color: white;
   font-family: "JetBrains Mono", monospace;
+  /* container is fullscreen fixed, doesnt scroll: */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.hero {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  pointer-events: none;
+  user-select: none;
 }
