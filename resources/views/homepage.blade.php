@@ -1,10 +1,11 @@
 <x-layout>
-    <div class="relative min-h-screen overflow-hidden">
+    <div class="relative min-h-screen overflow-hidden bg-gradient-to-br from-gray-900 to-black">
         <!-- Animated background -->
         <div class="absolute inset-0 z-0">
             <div class="absolute inset-0 bg-grid opacity-10"></div>
-            <div class="absolute inset-0 bg-gradient-radial from-blue-500/20 to-purple-500/20 animate-pulse"></div>
-            <div class="absolute inset-0 bg-[url('/img/noise.png')] opacity-5 mix-blend-overlay"></div>
+            <div class="absolute inset-0 overflow-hidden">
+                <div class="absolute inset-0 neural-network"></div>
+            </div>
         </div>
 
         <!-- Main content -->
@@ -26,12 +27,6 @@
     </div>
 
     <style>
-        @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-20px); }
-            100% { transform: translateY(0px); }
-        }
-
         .bg-grid {
             background-image: 
                 linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px),
@@ -39,12 +34,21 @@
             background-size: 50px 50px;
         }
 
-        .bg-gradient-radial {
-            background: radial-gradient(circle, rgba(59,130,246,0.2) 0%, rgba(168,85,247,0.2) 100%);
+        .neural-network {
+            background: 
+                radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.05) 0%, transparent 25%),
+                radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.05) 0%, transparent 35%),
+                radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 35%);
+            animation: move 20s ease-in-out infinite alternate;
         }
 
-        .animate-float {
-            animation: float 6s ease-in-out infinite;
+        @keyframes move {
+            0% {
+                transform: translate(0, 0);
+            }
+            100% {
+                transform: translate(50px, 50px);
+            }
         }
     </style>
 </x-layout>
