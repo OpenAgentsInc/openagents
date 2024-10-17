@@ -11,36 +11,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MessageController extends Controller
 {
-    public function store(Request $request)
-    {
-        $validatedData = $request->validate([
-            'thread_id' => 'required|exists:threads,id',
-            'content' => 'required|string',
-        ]);
-
-        $message = Message::create([
-            'thread_id' => $validatedData['thread_id'],
-            'user_id' => auth()->id(),
-            'content' => $validatedData['content'],
-        ]);
-
-        return response()->json($message, 201);
-    }
-
-    public function storeInThread(Request $request, Thread $thread)
-    {
-        $validatedData = $request->validate([
-            'content' => 'required|string',
-        ]);
-
-        $message = $thread->messages()->create([
-            'user_id' => $request->input('user_id', auth()->id()),
-            'content' => $validatedData['content'],
-        ]);
-
-        return response()->json($message, 201);
-    }
-
     public function sendMessage(Request $request)
     {
         $request->validate([
@@ -67,46 +37,52 @@ class MessageController extends Controller
             $thread->save();
         }
 
-        $message = new Message();
-        $message->thread_id = $thread->id;
-        $message->content = $request->message;
-        $message->is_system_message = false;
+        $userMessage = new Message();
+        $userMessage->thread_id = $thread->id;
+        $userMessage->content = $request->message;
+        $userMessage->is_system_message = false;
         
         if (auth()->check()) {
-            $message->user_id = auth()->id();
+            $userMessage->user_id = auth()->id();
         }
         
-        $message->save();
+        $userMessage->save();
 
-        return $this->streamResponse($message);
+        return $this->streamResponse($userMessage);
     }
 
-    private function streamResponse(Message $message)
+    private function streamResponse(Message $userMessage)
     {
-        return response()->stream(function() use ($message) {
-            $userMessageHtml = view('partials.message', ['message' => $message])->render();
-            echo "data: " . json_encode(['html' => $userMessageHtml]) . "\n\n";
+        return response()->stream(function() use ($userMessage) {
+            // Send user message
+            $userMessageHtml = view('partials.message', ['message' => $userMessage])->render();
+            echo "data: " . json_encode(['type' => 'user', 'html' => $userMessageHtml]) . "\n\n";
             ob_flush();
             flush();
 
-            $demoResponses = [
-                'This is a demo SSE message',
-                'Another demo SSE message',
-                'Final demo SSE message',
-            ];
+            // Create system message
+            $systemMessage = new Message();
+            $systemMessage->thread_id = $userMessage->thread_id;
+            $systemMessage->is_system_message = true;
+            $systemMessage->content = ''; // We'll stream the content word by word
+            $systemMessage->save();
 
-            foreach ($demoResponses as $index => $content) {
-                usleep(500000); // 0.5 second delay
-                $demoMessage = new Message();
-                $demoMessage->content = $content;
-                $demoMessage->is_system_message = true;
-                $demoMessage->created_at = now()->addSeconds(($index + 1) * 0.5);
-                
-                $demoMessageHtml = view('partials.message', ['message' => $demoMessage])->render();
-                echo "data: " . json_encode(['html' => $demoMessageHtml]) . "\n\n";
+            $systemMessageHtml = view('partials.message', ['message' => $systemMessage])->render();
+            echo "data: " . json_encode(['type' => 'system', 'html' => $systemMessageHtml]) . "\n\n";
+            ob_flush();
+            flush();
+
+            // Demo response to stream word by word
+            $demoResponse = "This is a demo response that will be streamed word by word to simulate an AI generating a response in real-time.";
+            $words = explode(' ', $demoResponse);
+
+            foreach ($words as $word) {
+                usleep(200000); // 0.2 second delay between words
+                echo "data: " . json_encode(['type' => 'word', 'content' => $word . ' ']) . "\n\n";
                 ob_flush();
                 flush();
             }
+
             echo "data: [DONE]\n\n";
             ob_flush();
             flush();
