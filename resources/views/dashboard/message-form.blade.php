@@ -52,7 +52,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     eventSource.close();
                 } else {
                     const data = JSON.parse(event.data);
-                    messagesContainer.insertAdjacentHTML('afterbegin', data.html);
+                    // Dispatch a custom event with the new message HTML
+                    document.dispatchEvent(new CustomEvent('newMessage', { detail: { html: data.html } }));
                 }
             };
 
