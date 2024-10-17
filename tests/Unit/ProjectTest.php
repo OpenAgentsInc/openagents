@@ -6,19 +6,17 @@ use App\Models\User;
 use App\Models\Team;
 
 test('a project belongs to a user', function () {
-    $user = User::factory()->create();
-    $project = Project::factory()->create(['user_id' => $user->id]);
+    $project = Project::factory()->forUser()->create();
 
     expect($project->user)->toBeInstanceOf(User::class);
-    expect($project->user->id)->toBe($user->id);
+    expect($project->team)->toBeNull();
 });
 
 test('a project belongs to a team', function () {
-    $team = Team::factory()->create();
-    $project = Project::factory()->create(['team_id' => $team->id]);
+    $project = Project::factory()->forTeam()->create();
 
     expect($project->team)->toBeInstanceOf(Team::class);
-    expect($project->team->id)->toBe($team->id);
+    expect($project->user)->toBeNull();
 });
 
 test('a project has many threads', function () {
@@ -30,8 +28,8 @@ test('a project has many threads', function () {
 });
 
 test('a project belongs to either a user or a team', function () {
-    $userProject = Project::factory()->create(['user_id' => User::factory()]);
-    $teamProject = Project::factory()->create(['team_id' => Team::factory()]);
+    $userProject = Project::factory()->forUser()->create();
+    $teamProject = Project::factory()->forTeam()->create();
 
     expect($userProject->user)->toBeInstanceOf(User::class);
     expect($userProject->team)->toBeNull();
