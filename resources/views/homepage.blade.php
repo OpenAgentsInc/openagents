@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/index.css') }}">
 </head>
-<body>
+<body class="dark">
     <main>
         <h1 class="hero">OpenAgents</h1>
         <div class="button-demo">
