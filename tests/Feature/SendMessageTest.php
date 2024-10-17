@@ -2,13 +2,19 @@
 
 use App\Models\User;
 use App\Models\Thread;
+use App\Models\Project;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
 
 test('authenticated user can send a message', function () {
     $user = User::factory()->create();
+    $project = Project::factory()->create(['user_id' => $user->id]);
 
     $response = $this->actingAs($user)
         ->post('/send-message', [
-            'message' => 'Test message'
+            'message' => 'Test message',
+            'project_id' => $project->id
         ]);
 
     $response->assertStatus(302);
@@ -20,17 +26,21 @@ test('authenticated user can send a message', function () {
     ]);
 
     $this->assertDatabaseHas('threads', [
-        'user_id' => $user->id
+        'user_id' => $user->id,
+        'project_id' => $project->id,
+        'title' => 'Test message...'
     ]);
 });
 
 test('authenticated user can send a message to an existing thread', function () {
     $user = User::factory()->create();
-    $thread = Thread::factory()->create(['user_id' => $user->id]);
+    $project = Project::factory()->create(['user_id' => $user->id]);
+    $thread = Thread::factory()->create(['user_id' => $user->id, 'project_id' => $project->id]);
 
     $response = $this->actingAs($user)
         ->post('/send-message', [
             'message' => 'Test message',
+            'project_id' => $project->id,
             'thread_id' => $thread->id
         ]);
 
@@ -45,8 +55,11 @@ test('authenticated user can send a message to an existing thread', function () 
 });
 
 test('unauthenticated user cannot send a message', function () {
+    $project = Project::factory()->create();
+
     $response = $this->post('/send-message', [
-        'message' => 'Test message'
+        'message' => 'Test message',
+        'project_id' => $project->id
     ]);
 
     $response->assertStatus(302);
@@ -55,12 +68,26 @@ test('unauthenticated user cannot send a message', function () {
 
 test('message cannot be empty', function () {
     $user = User::factory()->create();
+    $project = Project::factory()->create(['user_id' => $user->id]);
 
     $response = $this->actingAs($user)
         ->post('/send-message', [
-            'message' => ''
+            'message' => '',
+            'project_id' => $project->id
         ]);
 
     $response->assertStatus(302);
     $response->assertSessionHasErrors('message');
+});
+
+test('project_id is required', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)
+        ->post('/send-message', [
+            'message' => 'Test message'
+        ]);
+
+    $response->assertStatus(302);
+    $response->assertSessionHasErrors('project_id');
 });
