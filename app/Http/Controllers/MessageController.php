@@ -43,26 +43,30 @@ class MessageController extends Controller
     {
         $request->validate([
             'message' => 'required|string|max:1000',
-            'project_id' => 'required|exists:projects,id',
+            'project_id' => 'nullable|exists:projects,id',
         ]);
+
+        $thread = null;
+        if ($request->has('thread_id')) {
+            $thread = Thread::findOrFail($request->thread_id);
+        } else {
+            $thread = new Thread();
+            $thread->user_id = auth()->id();
+            $thread->title = substr($request->message, 0, 50) . '...';
+            
+            if ($request->has('project_id')) {
+                $project = Project::findOrFail($request->project_id);
+                $thread->project_id = $project->id;
+            }
+            
+            $thread->save();
+        }
 
         $message = new Message();
         $message->user_id = auth()->id();
+        $message->thread_id = $thread->id;
         $message->content = $request->message;
         $message->is_system_message = false;
-        
-        // If no thread_id is provided, create a new thread
-        if (!$request->has('thread_id')) {
-            $project = Project::findOrFail($request->project_id);
-            $thread = $project->threads()->create([
-                'user_id' => auth()->id(),
-                'title' => substr($request->message, 0, 50) . '...' // Use first 50 characters of the message as the thread title
-            ]);
-            $message->thread_id = $thread->id;
-        } else {
-            $message->thread_id = $request->thread_id;
-        }
-
         $message->save();
 
         return redirect()->back()->with('success', 'Message sent successfully!');
