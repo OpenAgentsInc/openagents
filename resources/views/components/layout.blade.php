@@ -9,7 +9,7 @@
     <script src="{{ asset('js/tailwind.min.js') }}"></script>
     <script src="{{ asset('js/tailwind-config.js') }}"></script>
 </head>
-<body class="bg-background text-foreground">
+<body class="bg-background text-foreground font-mono">
     {{ $slot }}
 </body>
 </html>
