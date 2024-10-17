@@ -43,24 +43,44 @@ document.addEventListener('DOMContentLoaded', function() {
             body: formData,
             headers: {
                 'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'text/event-stream',
             },
         }).then(response => {
-            const eventSource = new EventSource(response.url);
-            
-            eventSource.onmessage = function(event) {
-                if (event.data === '[DONE]') {
-                    eventSource.close();
-                } else {
-                    const data = JSON.parse(event.data);
-                    // Dispatch a custom event with the new message HTML
-                    document.dispatchEvent(new CustomEvent('newMessage', { detail: { html: data.html } }));
-                }
-            };
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
 
-            eventSource.onerror = function(error) {
-                console.error('EventSource failed:', error);
-                eventSource.close();
-            };
+            function readStream() {
+                reader.read().then(({ done, value }) => {
+                    if (done) {
+                        console.log('Stream complete');
+                        return;
+                    }
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    lines.forEach(line => {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') {
+                                console.log('Stream ended');
+                            } else {
+                                try {
+                                    const parsedData = JSON.parse(data);
+                                    console.log('Received message:', parsedData);
+                                    document.dispatchEvent(new CustomEvent('newMessage', { detail: parsedData }));
+                                } catch (error) {
+                                    console.error('Error parsing JSON:', error);
+                                }
+                            }
+                        }
+                    });
+
+                    readStream();
+                });
+            }
+
+            readStream();
         }).catch(error => {
             console.error('Fetch error:', error);
         });
