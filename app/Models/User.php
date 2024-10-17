@@ -24,6 +24,7 @@ class User extends Authenticatable
         'email',
         'password',
         'team_id',
+        'current_project_id',
     ];
 
     /**
@@ -67,5 +68,10 @@ class User extends Authenticatable
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function currentProject(): BelongsTo
+    {
+        return $this->belongsTo(Project::class, 'current_project_id');
     }
 }
