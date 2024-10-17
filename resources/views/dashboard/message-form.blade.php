@@ -1,5 +1,5 @@
 <div class="w-full">
-    <form class="w-full" hx-post="{{ route('send-message') }}" hx-target="#messages-container" hx-swap="afterbegin">
+    <form class="w-full" id="message-form" hx-post="{{ route('send-message') }}" hx-target="#messages-container" hx-swap="afterbegin">
         @csrf
         @if(auth()->user()->currentProject)
             <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
@@ -27,3 +27,44 @@
         </div>
     </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('message-form');
+    const messagesContainer = document.getElementById('messages-container');
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(form);
+        const url = form.getAttribute('hx-post');
+
+        fetch(url, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        }).then(response => {
+            const eventSource = new EventSource(response.url);
+            
+            eventSource.onmessage = function(event) {
+                if (event.data === '[DONE]') {
+                    eventSource.close();
+                } else {
+                    const data = JSON.parse(event.data);
+                    messagesContainer.insertAdjacentHTML('afterbegin', data.html);
+                }
+            };
+
+            eventSource.onerror = function(error) {
+                console.error('EventSource failed:', error);
+                eventSource.close();
+            };
+        }).catch(error => {
+            console.error('Fetch error:', error);
+        });
+
+        form.reset();
+    });
+});
+</script>
