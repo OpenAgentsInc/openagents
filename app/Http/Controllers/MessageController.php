@@ -6,6 +6,8 @@ use App\Models\Message;
 use App\Models\Thread;
 use App\Models\Project;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MessageController extends Controller
 {
@@ -76,6 +78,31 @@ class MessageController extends Controller
         
         $message->save();
 
-        return redirect()->back()->with('success', 'Message sent successfully!');
+        return response()->json(['message' => 'Message sent successfully!', 'html' => view('partials.message', ['message' => $message])->render()]);
+    }
+
+    public function sseDemo()
+    {
+        $response = new StreamedResponse(function() {
+            echo "data: " . json_encode(['html' => '<div class="message">This is a demo SSE message</div>']) . "\n\n";
+            ob_flush();
+            flush();
+            sleep(2);
+
+            echo "data: " . json_encode(['html' => '<div class="message">Another demo SSE message</div>']) . "\n\n";
+            ob_flush();
+            flush();
+            sleep(2);
+
+            echo "data: " . json_encode(['html' => '<div class="message">Final demo SSE message</div>']) . "\n\n";
+            ob_flush();
+            flush();
+        });
+
+        $response->headers->set('Content-Type', 'text/event-stream');
+        $response->headers->set('Cache-Control', 'no-cache');
+        $response->headers->set('Connection', 'keep-alive');
+
+        return $response;
     }
 }
