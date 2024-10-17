@@ -16,7 +16,7 @@
                         <div class="mx-auto flex h-full w-full flex-col text-base justify-center md:max-w-3xl">
                             <div class="mb-7 text-center block">
                                 <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
-                                    <h1>Welcome to OpenAgents</h1>
+                                    <h1>How can we help?</h1>
                                 </div>
                             </div>
                             <div class="w-full">
@@ -25,7 +25,7 @@
                                         <div class="flex items-end gap-1.5 pl-4 py-0.5 md:gap-2">
                                             <div class="flex min-w-0 flex-1 flex-col">
                                                 <textarea
-                                                    class="h-[46px] resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0"
+                                                    class="h-[46px] resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
                                                     placeholder="Message OpenAgents"
                                                     rows="1"
                                                 ></textarea>
