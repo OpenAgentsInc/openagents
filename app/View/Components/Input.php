@@ -30,7 +30,7 @@ class Input extends Component
                     @if($icon)
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <svg class="h-5 w-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path fill-rule="evenodd" d="{{ $this->getIconPath($icon) }}" clip-rule="evenodd" />
+                                <path fill-rule="evenodd" d="{{ self::getIconPath($icon) }}" clip-rule="evenodd" />
                             </svg>
                         </div>
                     @endif
@@ -56,7 +56,7 @@ class Input extends Component
         blade;
     }
 
-    private function getIconPath($icon)
+    private static function getIconPath($icon)
     {
         $paths = [
             'user' => 'M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z',
