@@ -5,12 +5,24 @@
 
             <form action="{{ route('login') }}" method="POST" class="space-y-4">
                 @csrf
+
+                @if ($errors->any())
+                    <div class="mb-4 p-4 rounded-md bg-destructive/15 text-destructive">
+                        <ul class="list-disc list-inside">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+
                 <x-input
                     autofocus
                     label="Email"
                     name="email"
                     type="email"
                     required
+                    :value="old('email')"
                     :icon="'<svg class=\'h-5 w-5 text-muted-foreground\' xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><path d=\'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z\'></path><polyline points=\'22,6 12,13 2,6\'></polyline></svg>'" />
                 <x-input
                     label="Password"
