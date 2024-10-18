@@ -15,11 +15,9 @@
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
     <div class="flex h-full">
         @auth <x-sidebar /> @endauth
-        <div class="flex-1 flex flex-col">
-            <header class="fixed top-0 left-0 right-0 z-50 flex items-center h-16 px-4 bg-background/80 backdrop-blur-sm">
-                <div class="ml-[270px] transition-all duration-300 ease-in-out" id="headerBrand">
-                    <x-app-brand />
-                </div>
+        <div class="flex-1 flex flex-col relative">
+            <header class="absolute top-0 left-0 right-0 z-50 flex items-center h-16 px-4 bg-background/80 backdrop-blur-sm">
+                <x-app-brand />
             </header>
             <main class="flex-1 overflow-auto pt-16">
                 {{ $slot }}
@@ -33,19 +31,19 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const sidebar = document.getElementById('sidebar');
-            const headerBrand = document.getElementById('headerBrand');
+            const mainContent = document.querySelector('.flex-1.flex.flex-col.relative');
 
-            function updateHeaderPosition() {
+            function updateMainContentPosition() {
                 const sidebarWidth = sidebar.offsetWidth;
-                headerBrand.style.marginLeft = `${sidebarWidth}px`;
+                mainContent.style.marginLeft = `${sidebarWidth}px`;
             }
 
             // Initial position
-            updateHeaderPosition();
+            updateMainContentPosition();
 
             // Update on sidebar toggle
             document.addEventListener('sidebar-toggled', function(e) {
-                setTimeout(updateHeaderPosition, 300); // Wait for sidebar transition to complete
+                setTimeout(updateMainContentPosition, 300); // Wait for sidebar transition to complete
             });
         });
     </script>
