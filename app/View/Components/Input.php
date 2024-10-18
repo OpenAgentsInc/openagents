@@ -39,18 +39,18 @@ class Input extends Component
                         value="{{ $value }}"
                         placeholder=" "
                         @if($required) required @endif
-                        {{ $attributes->merge(['class' => 'peer flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50' . ($icon ? ' pl-10' : '')]) }}
+                        {{ $attributes->merge(['class' => 'peer flex w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 pt-3 h-14' . ($icon ? ' pl-10' : '')]) }}
                     >
                     @if($label)
                         <label
                             for="{{ $uuid }}"
-                            class="absolute text-sm text-muted-foreground duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] {{ $icon ? 'left-10' : 'left-3' }} peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:top-1/2 peer-focus:scale-75 peer-focus:-translate-y-4 peer-focus:top-2 peer-focus:text-primary"
+                            class="absolute text-muted-foreground duration-300 transform -translate-y-1 scale-75 top-2 origin-left rtl:origin-right rounded px-2 peer-focus:left-[48px] peer-focus:text-zinc-600 peer-focus:dark:text-zinc-500 peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-1  {{ $icon ? 'left-[48px]' : 'left-3' }}"
                         >
                             {{ $label }}
                         </label>
                     @endif
                 </div>
             </div>
-        blade;
+        BLADE;
     }
 }
