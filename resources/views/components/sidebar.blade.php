@@ -9,6 +9,17 @@
         visibility: var(--sidebar-content-visibility, visible);
         transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
     }
+
+    .select {
+        background-color: var(--background);
+        color: var(--foreground);
+        border-color: var(--border);
+    }
+
+    .select option {
+        background-color: var(--background);
+        color: var(--foreground);
+    }
 </style>
 <div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
     style="width: var(--sidebar-width, 270px);">
@@ -18,9 +29,7 @@
                 id="sidebarToggle"
                 class="btn btn-square btn-sm btn-ghost rounded"
                 aria-label="Toggle sidebar">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                </svg>
+                <x-icons.sidebar class="h-6 w-6" />
             </button>
             <div class="flex items-center space-x-2">
                 <select class="select select-bordered select-sm w-32" id="teamSwitcher">
