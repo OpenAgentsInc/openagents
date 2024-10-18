@@ -1,6 +1,6 @@
-  PASS  Tests\Unit\MessageTest
-  ✓ a message belongs to a user                                                             0.20s
-  ✓ a message belongs to a thread                                                           0.01s
+ PASS  Tests\Unit\MessageTest
+  ✓ a message belongs to a user                                                             0.16s
+  ✓ a message belongs to a thread
   ✓ a message can be created by the system
 
    PASS  Tests\Unit\ProjectTest
@@ -21,7 +21,7 @@
   ✓ a thread belongs to a team through a project
 
    PASS  Tests\Unit\UserTest
-  ✓ a user belongs to a team
+  ✓ a user belongs to a team                                                                0.01s
   ✓ a user has many projects
   ✓ a user has many threads
   ✓ a user has many messages                                                                0.01s
@@ -30,7 +30,7 @@
    PASS  Tests\Feature\Auth\AuthenticationTest
   ✓ login screen can be rendered                                                            0.04s
   ✓ users can authenticate using the login screen                                           0.02s
-  ✓ users can not authenticate with invalid password                                        0.21s
+  ✓ users can not authenticate with invalid password                                        0.22s
   ✓ users can logout                                                                        0.01s
 
    PASS  Tests\Feature\Auth\EmailVerificationTest
@@ -67,9 +67,10 @@
   ✓ threads can be organized into teams                                                     0.01s
   ✓ system can make LLM tool calls with GitHub API                                          0.01s
 
-   FAIL  Tests\Feature\HomepageChatTest
-  ⨯ authenticated user can send a message from homepage and is redirected to new chat thre… 0.02s
-  ✓ unauthenticated user is redirected to login when trying to send a message from homepag… 0.02s
+   PASS  Tests\Feature\HomepageChatTest
+  ✓ authenticated user can send a message from homepage and is redirected to new chat thre… 0.01s
+  ✓ unauthenticated user is redirected to login when trying to send a message from homepage
+  ✓ chat page loads correctly after sending a message                                       0.01s
 
    PASS  Tests\Feature\HomepageTest
   ✓ homepage loads homepage view for unauthenticated users                                  0.01s
@@ -82,22 +83,3 @@
   ✓ unauthenticated user cannot send a message
   ✓ message cannot be empty                                                                 0.01s
   ✓ project_id must be valid if provided
-  ───────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Feature\HomepageChatTest > authenticated user can send a message from homepage…
-  Expected response status code [302] but received 201.
-Failed asserting that 201 is identical to 302.
-
-  at tests/Feature/HomepageChatTest.php:17
-     13▕         ->post('/send-message', [
-     14▕             'message' => 'Test message from homepage'
-     15▕         ]);
-     16▕
-  ➜  17▕     $response->assertStatus(302); // Assert that there's a redirect
-     18▕
-     19▕     $thread = Thread::latest()->first();
-     20▕     $response->assertRedirect("/chat/{$thread->id}");
-     21▕
-
-
-  Tests:    1 failed, 52 passed (128 assertions)
-  Duration: 1.17s
