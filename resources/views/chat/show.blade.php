@@ -13,9 +13,8 @@
         </div>
     </div>
 
-    <form hx-post="{{ route('messages.store') }}" hx-target="#chat-messages" hx-swap="beforeend">
+    <form hx-post="{{ route('messages.store', ['thread' => $thread->id]) }}" hx-target="#chat-messages" hx-swap="beforeend">
         @csrf
-        <input type="hidden" name="thread_id" value="{{ $thread->id }}">
         <div class="form-group">
             <textarea name="content" class="form-control" rows="3" required></textarea>
         </div>
