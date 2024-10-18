@@ -36,11 +36,11 @@
             <div class="w-[270px] flex-grow overflow-y-auto p-4">
                 <h3 class="font-semibold mb-2">Recent Messages</h3>
                 <ul class="space-y-2">
-                    @foreach(range(1, 10) as $index)
-                        <li class="bg-secondary/10 p-2 rounded">
-                            <p class="text-sm font-medium">Message #{{ $index }}</p>
-                            <p class="text-xs text-muted-foreground">Lorem ipsum dolor sit amet...</p>
-                        </li>
+                    @foreach(range(1, 5) as $index)
+                    <li class="bg-secondary/10 p-2 rounded">
+                        <p class="text-sm font-medium">Message #{{ $index }}</p>
+                        <p class="text-xs text-muted-foreground">Lorem ipsum dolor sit amet...</p>
+                    </li>
                     @endforeach
                 </ul>
             </div>
@@ -54,7 +54,7 @@
     document.getElementById('sidebarToggle').addEventListener('click', function() {
         const sidebar = document.getElementById('sidebar');
         const sidebarContent = document.getElementById('sidebarContent');
-        
+
         if (sidebar.style.width === '270px') {
             sidebar.style.width = '60px';
             sidebarContent.style.setProperty('--sidebar-content-opacity', '0');
