@@ -9,17 +9,6 @@
         visibility: var(--sidebar-content-visibility, visible);
         transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
     }
-
-    .select {
-        background-color: var(--background);
-        color: var(--foreground);
-        border-color: var(--border);
-    }
-
-    .select option {
-        background-color: var(--background);
-        color: var(--foreground);
-    }
 </style>
 <div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
     style="width: var(--sidebar-width, 270px);">
@@ -32,11 +21,7 @@
                 <x-icons.sidebar class="h-6 w-6" />
             </button>
             <div class="flex items-center space-x-2">
-                <select class="select select-bordered select-sm w-32" id="teamSwitcher">
-                    <option>Personal</option>
-                    <option>Team Alpha</option>
-                    <option>Team Beta</option>
-                </select>
+                <x-dropdown label="Personal" :items="['Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" />
                 <button class="btn btn-sm btn-ghost" aria-label="Create new team">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -45,11 +30,7 @@
             </div>
         </div>
         <div class="px-4 py-2">
-            <select class="select select-bordered w-full" id="projectSwitcher">
-                <option>Active Project: Project X</option>
-                <option>Project Y</option>
-                <option>Project Z</option>
-            </select>
+            <x-dropdown label="Active Project: Project X" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" />
         </div>
         <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col">
             <div class="w-[270px] flex-grow overflow-y-auto p-4">
