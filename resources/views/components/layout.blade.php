@@ -11,10 +11,8 @@
     @include('partials.scripts')
 </head>
 
-<body hx-boost class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
-    <div class="sm:hidden flex items-center justify-center h-screen bg-black">
-        <p class="text-white text-center p-4">OpenAgents is not available on mobile devices. Please use a desktop browser.</p>
-    </div>
+<body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
+    @include('partials.mobile-message')
     <div class="hidden sm:flex h-full">
         <x-sidebar />
         <main class="flex-1 overflow-auto">
