@@ -12,10 +12,9 @@ test('authenticated user can send a message without a project', function () {
             'message' => 'Test message'
         ]);
 
-    $response->assertStatus(201);
-    $response->assertJson([
-        'message' => 'Message sent successfully!',
-    ]);
+    $response->assertStatus(302);
+    $thread = Thread::latest()->first();
+    $response->assertRedirect("/chat/{$thread->id}");
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
@@ -38,10 +37,9 @@ test('authenticated user can send a message with a project', function () {
             'project_id' => $project->id
         ]);
 
-    $response->assertStatus(201);
-    $response->assertJson([
-        'message' => 'Message sent successfully!',
-    ]);
+    $response->assertStatus(302);
+    $thread = Thread::latest()->first();
+    $response->assertRedirect("/chat/{$thread->id}");
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
@@ -66,11 +64,8 @@ test('authenticated user can send a message to an existing thread', function () 
             'thread_id' => $thread->id
         ]);
 
-    $response->assertStatus(201);
-    $response->assertJson([
-        'message' => 'Message sent successfully!',
-        'thread_id' => $thread->id,
-    ]);
+    $response->assertStatus(302);
+    $response->assertRedirect("/chat/{$thread->id}");
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
