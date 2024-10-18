@@ -25,7 +25,7 @@ Route::view('/components', 'components')->name('components');
 Route::middleware(['auth'])->group(function () {
     // Message routes
     Route::post('/messages', [MessageController::class, 'store']);
-    Route::post('/threads/{thread}/messages', [MessageController::class, 'storeInThread']);
+    Route::post('/threads/{thread}/messages', [MessageController::class, 'storeInThread'])->name('messages.store');
     Route::post('/send-message', [MessageController::class, 'sendMessage'])->name('send-message');
 
     // Thread routes
