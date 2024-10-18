@@ -26,9 +26,9 @@
                 <!-- sidebar content -->
             </div>
             <div class="p-4 border-t border-border">
-                <a href="{{ route('logout') }}" class="btn btn-outline btn-block">
+                <x-button tag="a" href="{{ route('logout') }}" variant="outline" class="w-full">
                     Logout
-                </a>
+                </x-button>
             </div>
         </div>
     </div>
