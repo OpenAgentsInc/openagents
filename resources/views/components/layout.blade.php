@@ -16,10 +16,12 @@
     <div class="flex h-full">
         @auth <x-sidebar /> @endauth
         <div class="flex-1 flex flex-col">
-            <header class="flex items-center h-16 px-4 border-b border-border">
-                <x-app-brand />
+            <header class="fixed top-0 left-0 right-0 z-50 flex items-center h-16 px-4 bg-background/80 backdrop-blur-sm">
+                <div class="ml-[270px] transition-all duration-300 ease-in-out" id="headerBrand">
+                    <x-app-brand />
+                </div>
             </header>
-            <main class="flex-1 overflow-auto">
+            <main class="flex-1 overflow-auto pt-16">
                 {{ $slot }}
             </main>
         </div>
@@ -28,6 +30,25 @@
     <script src="{{ asset('js/stream.js') }}"></script>
     @endauth
     @stack('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const headerBrand = document.getElementById('headerBrand');
+
+            function updateHeaderPosition() {
+                const sidebarWidth = sidebar.offsetWidth;
+                headerBrand.style.marginLeft = `${sidebarWidth}px`;
+            }
+
+            // Initial position
+            updateHeaderPosition();
+
+            // Update on sidebar toggle
+            document.addEventListener('sidebar-toggled', function(e) {
+                setTimeout(updateHeaderPosition, 300); // Wait for sidebar transition to complete
+            });
+        });
+    </script>
 </body>
 
 </html>
