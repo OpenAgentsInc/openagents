@@ -1,5 +1,5 @@
 <div class="w-full">
-    <form class="w-full" id="message-form" data-send-message-url="{{ route('send-message') }}">
+    <form class="w-full" id="message-form" action="{{ route('send-message') }}" method="POST">
         @csrf
         @if(auth()->check() && auth()->user()->currentProject)
             <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 // Submit the form
                 e.preventDefault();
-                form.dispatchEvent(new Event('submit'));
+                form.submit();
             }
         }
     });
