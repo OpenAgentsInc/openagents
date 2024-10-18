@@ -8,16 +8,21 @@ use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Validation\ValidationException;
 
 class MessageController extends Controller
 {
     public function sendMessage(Request $request)
     {
-        $request->validate([
-            'message' => 'required|string|max:1000',
-            'project_id' => 'nullable|exists:projects,id',
-            'thread_id' => 'nullable|exists:threads,id',
-        ]);
+        try {
+            $validated = $request->validate([
+                'message' => 'required|string|max:1000',
+                'project_id' => 'nullable|exists:projects,id',
+                'thread_id' => 'nullable|exists:threads,id',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
 
         $thread = null;
         if ($request->has('thread_id')) {
@@ -50,10 +55,14 @@ class MessageController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'thread_id' => 'required|exists:threads,id',
-            'content' => 'required|string|max:1000',
-        ]);
+        try {
+            $validated = $request->validate([
+                'thread_id' => 'required|exists:threads,id',
+                'content' => 'required|string|max:1000',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
 
         $message = new Message();
         $message->thread_id = $request->thread_id;
@@ -67,10 +76,14 @@ class MessageController extends Controller
 
     public function storeInThread(Request $request, Thread $thread)
     {
-        $request->validate([
-            'content' => 'required|string|max:1000',
-            'user_id' => 'nullable|exists:users,id',
-        ]);
+        try {
+            $validated = $request->validate([
+                'content' => 'required|string|max:1000',
+                'user_id' => 'nullable|exists:users,id',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        }
 
         $message = new Message();
         $message->thread_id = $thread->id;
