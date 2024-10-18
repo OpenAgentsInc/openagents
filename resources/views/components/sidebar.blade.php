@@ -44,29 +44,12 @@
                     @endforeach
                 </ul>
             </div>
-            <div class="p-4 border-t border-border">
-                <div class="flex items-center space-x-3 cursor-pointer" id="userCard">
-                    <div class="avatar">
-                        <div class="w-10 rounded-full">
-                            <img src="https://i.pravatar.cc/100" alt="User avatar" />
-                        </div>
-                    </div>
-                    <div>
-                        <p class="font-medium">John Doe</p>
-                        <p class="text-xs text-muted-foreground">john@example.com</p>
-                    </div>
-                </div>
-            </div>
+            <x-sidebar-footer />
         </div>
     </div>
 </div>
 
 <script>
-    document.getElementById('userCard').addEventListener('click', function() {
-        // TODO: Implement user menu functionality
-        alert('User menu clicked. Add logout and manage subscription options here.');
-    });
-
     // Preserve existing sidebar toggle functionality
     document.getElementById('sidebarToggle').addEventListener('click', function() {
         const sidebar = document.getElementById('sidebar');
