@@ -13,6 +13,14 @@
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
     <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
     @stack('scripts')
+    <script>
+        // Set initial sidebar state
+        (function() {
+            var sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            document.documentElement.classList.add('sidebar-init');
+            document.documentElement.style.setProperty('--sidebar-width', sidebarCollapsed ? '70px' : '270px');
+        })();
+    </script>
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
