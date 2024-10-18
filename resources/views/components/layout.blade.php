@@ -8,11 +8,6 @@
     <title>{{ $title ?? 'OpenAgents' }}</title>
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
-    <script src="{{ asset('js/tailwind.min.js') }}"></script>
-    <script src="{{ asset('js/tailwind-config.js') }}"></script>
-    <script src="{{ asset('js/htmx.min.js') }}"></script>
-    <script src="{{ asset('js/htmx-sse.js') }}"></script>
-    <script src="{{ asset('js/sidebar.js') }}"></script>
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
@@ -22,8 +17,7 @@
             {{ $slot }}
         </main>
     </div>
-    <script src="{{ asset('js/stream.js') }}"></script>
-    @stack('scripts')
+    @include('partials.scripts')
 </body>
 
 </html>
