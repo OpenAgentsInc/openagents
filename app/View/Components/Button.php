@@ -9,6 +9,7 @@ class Button extends Component
     public function __construct(
         public ?string $variant = 'default',
         public ?string $size = 'default',
+        public ?string $tag = 'button',
         public ?bool $asChild = false
     ) {}
 
@@ -37,9 +38,9 @@ class Button extends Component
                    ($sizeClasses[$this->size] ?? '');
 
         return <<<HTML
-            <button {{ \$attributes->merge(['class' => '$classes']) }}>
+            <{$this->tag} {{ \$attributes->merge(['class' => '$classes']) }}>
                 {{ \$slot }}
-            </button>
+            </{$this->tag}>
         HTML;
     }
 }
