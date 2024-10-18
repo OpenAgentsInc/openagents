@@ -8,6 +8,11 @@ input:-webkit-autofill:active {
 }
 
 /* Global styles for active/focused text inputs */
+input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 input:focus,
 textarea:focus,
 select:focus {
