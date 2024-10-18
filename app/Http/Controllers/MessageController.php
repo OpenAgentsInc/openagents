@@ -42,11 +42,7 @@ class MessageController extends Controller
         $userMessage->user_id = auth()->id();
         $userMessage->save();
 
-        return response()->json([
-            'message' => 'Message sent successfully!',
-            'thread_id' => $thread->id,
-            'message_id' => $userMessage->id,
-        ], 201);
+        return redirect()->route('chat.show', ['thread' => $thread->id])->with('success', 'Message sent successfully!');
     }
 
     public function store(Request $request)
