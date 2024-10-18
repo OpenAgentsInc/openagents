@@ -12,12 +12,16 @@ test('user can send a message in a thread', function () {
     $user = User::factory()->create();
     $thread = Thread::factory()->create();
 
-    $response = $this->actingAs($user)->post('/messages', [
+    $response = $this->actingAs($user)->post('/send-message', [
         'thread_id' => $thread->id,
-        'content' => 'Test message',
+        'message' => 'Test message',
     ]);
 
     $response->assertStatus(201);
+    $response->assertJson([
+        'message' => 'Message sent successfully!',
+        'thread_id' => $thread->id,
+    ]);
     $this->assertDatabaseHas('messages', [
         'thread_id' => $thread->id,
         'user_id' => $user->id,
@@ -39,6 +43,7 @@ test('system can add a message to a thread', function () {
         'thread_id' => $thread->id,
         'user_id' => null,
         'content' => 'System response',
+        'is_system_message' => true,
     ]);
 });
 

@@ -23,3 +23,14 @@ select:focus {
 :focus-visible {
     outline: 1px solid white !important;
 }
+
+/* Override focus-visible styles for message textarea */
+#message-textarea:focus-visible {
+    outline: none !important;
+    border: none !important;
+}
+
+/* Ensure no border on the message textarea */
+#message-textarea {
+    border: none !important;
+}
