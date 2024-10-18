@@ -14,3 +14,8 @@ select:focus {
     color: white !important;
     border-color: white !important;
 }
+
+/* Focus-visible styles */
+:focus-visible {
+    outline: 1px solid white !important;
+}
