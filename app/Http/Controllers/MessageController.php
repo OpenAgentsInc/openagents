@@ -47,7 +47,40 @@ class MessageController extends Controller
         $userMessage->user_id = auth()->id();
         $userMessage->save();
 
+        // Check if the request is an HTMX request
+        if ($request->header('HX-Request')) {
+            // Return an HTMX response that triggers a redirect
+            return response()->json([
+                'HX-Redirect' => route('chat.show', ['thread' => $thread->id])
+            ]);
+        }
+
+        // For non-HTMX requests, return a regular redirect
         return redirect()->route('chat.show', ['thread' => $thread->id])->with('success', 'Message sent successfully!');
+    }
+
+    public function streamResponse(Thread $thread)
+    {
+        return response()->stream(function() use ($thread) {
+            $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
+            
+            foreach ($messages as $message) {
+                $messageHtml = view('partials.message', ['message' => $message])->render();
+                echo "data: " . json_encode(['html' => $messageHtml]) . "\n\n";
+                ob_flush();
+                flush();
+                usleep(100000); // Simulate delay between messages
+            }
+
+            echo "data: [DONE]\n\n";
+            ob_flush();
+            flush();
+        }, 200, [
+            'Cache-Control' => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'X-Accel-Buffering' => 'no',
+            'Connection' => 'keep-alive',
+        ]);
     }
 
     public function store(Request $request)
@@ -90,52 +123,5 @@ class MessageController extends Controller
         $message->save();
 
         return response()->json($message, 201);
-    }
-
-    private function streamResponse(Message $userMessage)
-    {
-        return response()->stream(function() use ($userMessage) {
-            // Send user message
-            $userMessageHtml = view('partials.message', ['message' => $userMessage])->render();
-            echo "data: " . json_encode(['type' => 'user', 'html' => $userMessageHtml]) . "\n\n";
-            ob_flush();
-            flush();
-
-            // Create system message
-            $systemMessage = new Message();
-            $systemMessage->thread_id = $userMessage->thread_id;
-            $systemMessage->is_system_message = true;
-            $systemMessage->content = ''; // We'll accumulate the content
-            $systemMessage->save();
-
-            $systemMessageHtml = view('partials.message', ['message' => $systemMessage])->render();
-            echo "data: " . json_encode(['type' => 'system', 'html' => $systemMessageHtml]) . "\n\n";
-            ob_flush();
-            flush();
-
-            // Demo response to stream word by word
-            $demoResponse = "This is a demo response that will be streamed word by word to simulate an AI generating a response in real-time.";
-            $words = explode(' ', $demoResponse);
-
-            foreach ($words as $word) {
-                usleep(200000); // 0.2 second delay between words
-                $systemMessage->content .= $word . ' ';
-                echo "data: " . json_encode(['type' => 'word', 'content' => $word . ' ']) . "\n\n";
-                ob_flush();
-                flush();
-            }
-
-            // Save the complete system message
-            $systemMessage->save();
-
-            echo "data: [DONE]\n\n";
-            ob_flush();
-            flush();
-        }, 200, [
-            'Cache-Control' => 'no-cache',
-            'Content-Type' => 'text/event-stream',
-            'X-Accel-Buffering' => 'no',
-            'Connection' => 'keep-alive',
-        ]);
     }
 }
