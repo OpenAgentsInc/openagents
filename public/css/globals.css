@@ -1,0 +1,25 @@
+/* Autocomplete styles */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px rgb(0 0 0) inset !important;
+    -webkit-text-fill-color: white !important;
+}
+
+/* Global styles for active/focused text inputs */
+input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    border-color: white !important;
+}
+
+/* Focus-visible styles */
+:focus-visible {
+    outline: 1px solid white !important;
+}

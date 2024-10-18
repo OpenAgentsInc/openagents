@@ -7,11 +7,18 @@ use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TeamController;
+use Illuminate\Support\Facades\Auth;
 
 Route::get('/', [DashboardController::class, 'index']);
 
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::get('/register', [AuthController::class, 'showRegistrationForm'])->name('register');
+Route::get('/logout', function () {
+    Auth::logout();
+    request()->session()->invalidate();
+    request()->session()->regenerateToken();
+    return redirect('/');
+});
 
 Route::view('/components', 'components')->name('components');
 
