@@ -8,6 +8,7 @@
     <title>{{ $title ?? 'OpenAgents' }}</title>
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
+    @include('partials.scripts')
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
@@ -17,7 +18,8 @@
             {{ $slot }}
         </main>
     </div>
-    @include('partials.scripts')
+    <script src="{{ asset('js/stream.js') }}"></script>
+    @stack('scripts')
 </body>
 
 </html>
