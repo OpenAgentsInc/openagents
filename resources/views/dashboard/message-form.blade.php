@@ -1,7 +1,7 @@
 <div class="w-full">
-    <form class="w-full" id="message-form">
+    <form class="w-full" id="message-form" data-send-message-url="{{ route('send-message') }}">
         @csrf
-        @if(auth()->user()->currentProject)
+        @if(auth()->check() && auth()->user()->currentProject)
             <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
         @endif
         <div class="flex w-full flex-col gap-1.5 rounded-[30px] p-1 transition-colors bg-zinc-900">
@@ -9,11 +9,11 @@
                 <div class="flex min-w-0 flex-1 flex-col">
                     <textarea
                         name="message"
+                        id="message-textarea"
                         class="min-h-[46px] max-h-[300px] overflow-y-auto resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
                         placeholder="Message OpenAgents"
                         rows="1"
                         autofocus
-                        oninput="this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; this.closest('.flex').style.height = 'auto'; this.closest('.flex').style.height = this.scrollHeight + 'px';"
                     ></textarea>
                 </div>
                 <div class="mb-1 me-1">
@@ -28,80 +28,35 @@
     </form>
 </div>
 
+@push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const textarea = document.getElementById('message-textarea');
     const form = document.getElementById('message-form');
-    const messageList = document.getElementById('message-list');
 
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = new FormData(form);
-        const url = "{{ route('send-message') }}";
-
-        fetch(url, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'text/event-stream',
-            },
-        }).then(response => {
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-
-            let systemMessageElement = null;
-
-            function readStream() {
-                reader.read().then(({ done, value }) => {
-                    if (done) {
-                        console.log('Stream complete');
-                        return;
-                    }
-
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
-                    
-                    lines.forEach(line => {
-                        if (line.startsWith('data: ')) {
-                            const data = line.slice(6);
-                            if (data === '[DONE]') {
-                                console.log('Stream ended');
-                            } else {
-                                try {
-                                    const parsedData = JSON.parse(data);
-                                    console.log('Received message:', parsedData);
-                                    
-                                    if (parsedData.type === 'user' || parsedData.type === 'system') {
-                                        const tempDiv = document.createElement('div');
-                                        tempDiv.innerHTML = parsedData.html;
-                                        const newMessage = tempDiv.firstElementChild;
-                                        messageList.insertBefore(newMessage, messageList.firstChild);
-
-                                        if (parsedData.type === 'system') {
-                                            systemMessageElement = newMessage.querySelector('.message-content');
-                                        }
-                                    } else if (parsedData.type === 'word') {
-                                        if (systemMessageElement) {
-                                            systemMessageElement.textContent += parsedData.content;
-                                        }
-                                    }
-                                } catch (error) {
-                                    console.error('Error parsing JSON:', error);
-                                }
-                            }
-                        }
-                    });
-
-                    readStream();
-                });
+    textarea.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.metaKey || e.ctrlKey) {
+                // Insert a newline
+                const start = this.selectionStart;
+                const end = this.selectionEnd;
+                const value = this.value;
+                this.value = value.slice(0, start) + "\n" + value.slice(end);
+                this.selectionStart = this.selectionEnd = start + 1;
+            } else {
+                // Submit the form
+                e.preventDefault();
+                form.dispatchEvent(new Event('submit'));
             }
+        }
+    });
 
-            readStream();
-        }).catch(error => {
-            console.error('Fetch error:', error);
-        });
-
-        form.reset();
+    textarea.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = this.scrollHeight + 'px';
+        this.closest('.flex').style.height = 'auto';
+        this.closest('.flex').style.height = this.scrollHeight + 'px';
     });
 });
 </script>
+@endpush

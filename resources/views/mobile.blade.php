@@ -5,19 +5,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
-    <title>{{ $title ?? 'OpenAgents' }}</title>
+    <title>{{ $title ?? 'OpenAgents Mobile' }}</title>
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
     @include('partials.scripts')
 </head>
 
-<body hx-boost class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
-    <div class="sm:hidden">
-        @include('mobile')
-    </div>
-    <div class="hidden sm:flex h-full">
-        <x-sidebar />
-        <main class="flex-1 overflow-auto">
+<body class="bg-background text-foreground font-mono min-h-screen antialiased">
+    <div class="p-4">
+        <main>
             {{ $slot }}
         </main>
     </div>
