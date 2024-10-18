@@ -16,6 +16,7 @@ class MessageController extends Controller
         $request->validate([
             'message' => 'required|string|max:1000',
             'project_id' => 'nullable|exists:projects,id',
+            'thread_id' => 'nullable|exists:threads,id',
         ]);
 
         $thread = null;
@@ -30,10 +31,7 @@ class MessageController extends Controller
                 $thread->project_id = $project->id;
             }
             
-            if (auth()->check()) {
-                $thread->user_id = auth()->id();
-            }
-            
+            $thread->user_id = auth()->id();
             $thread->save();
         }
 
@@ -41,14 +39,48 @@ class MessageController extends Controller
         $userMessage->thread_id = $thread->id;
         $userMessage->content = $request->message;
         $userMessage->is_system_message = false;
-        
-        if (auth()->check()) {
-            $userMessage->user_id = auth()->id();
-        }
-        
+        $userMessage->user_id = auth()->id();
         $userMessage->save();
 
-        return $this->streamResponse($userMessage);
+        return response()->json([
+            'message' => 'Message sent successfully!',
+            'thread_id' => $thread->id,
+            'message_id' => $userMessage->id,
+        ], 201);
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'thread_id' => 'required|exists:threads,id',
+            'content' => 'required|string|max:1000',
+        ]);
+
+        $message = new Message();
+        $message->thread_id = $request->thread_id;
+        $message->content = $request->content;
+        $message->is_system_message = false;
+        $message->user_id = auth()->id();
+        $message->save();
+
+        return response()->json($message, 201);
+    }
+
+    public function storeInThread(Request $request, Thread $thread)
+    {
+        $request->validate([
+            'content' => 'required|string|max:1000',
+            'user_id' => 'nullable|exists:users,id',
+        ]);
+
+        $message = new Message();
+        $message->thread_id = $thread->id;
+        $message->content = $request->content;
+        $message->is_system_message = $request->user_id === null;
+        $message->user_id = $request->user_id ?? auth()->id();
+        $message->save();
+
+        return response()->json($message, 201);
     }
 
     private function streamResponse(Message $userMessage)
