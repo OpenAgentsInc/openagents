@@ -3,6 +3,11 @@
     .sidebar-init #sidebarContent {
         transition: none !important;
     }
+    #sidebarContent {
+        opacity: var(--sidebar-content-opacity, 1);
+        visibility: var(--sidebar-content-visibility, visible);
+        transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+    }
 </style>
 <div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
      style="width: var(--sidebar-width, 270px);">
@@ -17,7 +22,7 @@
                 </svg>
             </button>
         </div>
-        <div id="sidebarContent" class="flex-grow overflow-hidden transition-opacity duration-200 ease-in-out">
+        <div id="sidebarContent" class="flex-grow overflow-hidden">
             <div class="w-[270px] h-full overflow-y-auto p-4">
                 <h2 class="text-lg font-semibold mb-4">Sidebar Content</h2>
                 <ul>
