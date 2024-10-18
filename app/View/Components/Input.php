@@ -24,7 +24,7 @@ class Input extends Component
 
     public function render()
     {
-        return <<<'blade'
+        return <<<'BLADE'
             <div>
                 <div class="relative">
                     @if($icon)
