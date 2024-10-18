@@ -1,3 +1,9 @@
+<style>
+    .sidebar-init #sidebar,
+    .sidebar-init #sidebarContent {
+        transition: none !important;
+    }
+</style>
 <div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
      style="width: 270px;">
     <div class="bg-background flex-grow border-r border-border flex flex-col">
