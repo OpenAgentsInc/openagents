@@ -8,7 +8,8 @@ $isCollapsed = true; // Set this based on user preference or session state
         transition: none !important;
     }
 
-    #sidebarContent, #sidebarHeader {
+    #sidebarContent,
+    #sidebarHeader {
         transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
     }
 
@@ -46,15 +47,14 @@ $isCollapsed = true; // Set this based on user preference or session state
                     </button>
                 </div>
                 <div id="sidebarHeader" class="px-3 space-y-4" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
-                    <x-dropdown label="Personal" :items="['Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" class="w-full" />
-                    <x-dropdown label="Project X" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
+                    <x-dropdown label="Scramble" :items="['Scramble', 'Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" class="w-full" />
+                    <x-dropdown label="OIDC" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
                 </div>
             </div>
             <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-border" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"></div>
             <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">
-                        <h3 class="mb-2 px-4 text-lg font-semibold tracking-tight">Recent Messages</h3>
                         <ul class="space-y-2">
                             @foreach(range(1, 5) as $index)
                             <li class="bg-secondary/10 p-2 rounded">
@@ -81,10 +81,10 @@ $isCollapsed = true; // Set this based on user preference or session state
         const sidebarTitle = document.getElementById('sidebarTitle');
         const newTeamButton = document.getElementById('newTeamButton');
         const sidebarDivider = document.getElementById('sidebarDivider');
-        
+
         function toggleSidebar() {
             const isCollapsed = sidebar.style.width === '60px';
-            
+
             sidebar.style.width = isCollapsed ? '270px' : '60px';
             [sidebarContent, sidebarHeader, sidebarTitle, newTeamButton, sidebarDivider].forEach(el => {
                 el.style.opacity = isCollapsed ? '1' : '0';
