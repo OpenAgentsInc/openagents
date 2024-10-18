@@ -15,9 +15,14 @@
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
     <div class="flex h-full">
         @auth <x-sidebar /> @endauth
-        <main class="flex-1 overflow-auto">
-            {{ $slot }}
-        </main>
+        <div class="flex-1 flex flex-col">
+            <header class="flex items-center h-16 px-4 border-b border-border">
+                <x-app-brand />
+            </header>
+            <main class="flex-1 overflow-auto">
+                {{ $slot }}
+            </main>
+        </div>
     </div>
     @auth
     <script src="{{ asset('js/stream.js') }}"></script>
