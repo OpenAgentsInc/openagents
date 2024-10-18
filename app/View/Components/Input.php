@@ -44,12 +44,7 @@ class Input extends Component
                     @if($label)
                         <label
                             for="{{ $uuid }}"
-                            @class([
-                                "absolute text-sm text-muted-foreground duration-150 transform -translate-y-3 scale-75 z-10 origin-[0] left-3 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-3 peer-focus:text-primary",
-                                "top-7" => !$inline,
-                                "top-2" => $inline,
-                                "left-12" => $icon && $inline,
-                            ])
+                            class="absolute text-sm text-muted-foreground duration-150 transform -translate-y-1/2 scale-75 top-1/2 z-10 origin-[0] {{ $icon ? 'left-12' : 'left-3' }} peer-placeholder-shown:scale-100 peer-placeholder-shown:text-muted-foreground peer-focus:scale-75 peer-focus:-translate-y-4 peer-focus:text-zinc-950"
                         >
                             {{ $label }}
                         </label>
