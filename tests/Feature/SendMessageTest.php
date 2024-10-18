@@ -96,8 +96,8 @@ test('message cannot be empty', function () {
             'message' => ''
         ]);
 
-    $response->assertStatus(302);
-    $response->assertSessionHasErrors('message');
+    $response->assertStatus(422);
+    $response->assertJsonValidationErrors('message');
 });
 
 test('project_id must be valid if provided', function () {
@@ -109,6 +109,6 @@ test('project_id must be valid if provided', function () {
             'project_id' => 999 // Non-existent project ID
         ]);
 
-    $response->assertStatus(302);
-    $response->assertSessionHasErrors('project_id');
+    $response->assertStatus(422);
+    $response->assertJsonValidationErrors('project_id');
 });
