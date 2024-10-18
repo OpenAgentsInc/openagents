@@ -1,7 +1,9 @@
-<div class="h-full overflow-hidden flex flex-col w-[270px]">
+<div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
+     style="width: 270px;">
     <div class="bg-background flex-grow border-r border-border flex flex-col">
         <div class="p-4">
             <button
+                id="sidebarToggle"
                 class="btn btn-square btn-sm btn-ghost rounded ml-0.5"
                 aria-label="Toggle sidebar">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -9,7 +11,7 @@
                 </svg>
             </button>
         </div>
-        <div class="flex-grow overflow-y-auto p-4">
+        <div id="sidebarContent" class="flex-grow overflow-y-auto p-4">
             <h2 class="text-lg font-semibold mb-4">Sidebar Content</h2>
             <ul>
                 <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">Home</a></li>
