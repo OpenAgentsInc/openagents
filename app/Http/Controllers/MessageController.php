@@ -6,39 +6,11 @@ use App\Models\Message;
 use App\Models\Thread;
 use App\Models\Project;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MessageController extends Controller
 {
-    public function store(Request $request)
-    {
-        $validatedData = $request->validate([
-            'thread_id' => 'required|exists:threads,id',
-            'content' => 'required|string',
-        ]);
-
-        $message = Message::create([
-            'thread_id' => $validatedData['thread_id'],
-            'user_id' => auth()->id(),
-            'content' => $validatedData['content'],
-        ]);
-
-        return response()->json($message, 201);
-    }
-
-    public function storeInThread(Request $request, Thread $thread)
-    {
-        $validatedData = $request->validate([
-            'content' => 'required|string',
-        ]);
-
-        $message = $thread->messages()->create([
-            'user_id' => $request->input('user_id', auth()->id()),
-            'content' => $validatedData['content'],
-        ]);
-
-        return response()->json($message, 201);
-    }
-
     public function sendMessage(Request $request)
     {
         $request->validate([
@@ -65,17 +37,64 @@ class MessageController extends Controller
             $thread->save();
         }
 
-        $message = new Message();
-        $message->thread_id = $thread->id;
-        $message->content = $request->message;
-        $message->is_system_message = false;
+        $userMessage = new Message();
+        $userMessage->thread_id = $thread->id;
+        $userMessage->content = $request->message;
+        $userMessage->is_system_message = false;
         
         if (auth()->check()) {
-            $message->user_id = auth()->id();
+            $userMessage->user_id = auth()->id();
         }
         
-        $message->save();
+        $userMessage->save();
 
-        return redirect()->back()->with('success', 'Message sent successfully!');
+        return $this->streamResponse($userMessage);
+    }
+
+    private function streamResponse(Message $userMessage)
+    {
+        return response()->stream(function() use ($userMessage) {
+            // Send user message
+            $userMessageHtml = view('partials.message', ['message' => $userMessage])->render();
+            echo "data: " . json_encode(['type' => 'user', 'html' => $userMessageHtml]) . "\n\n";
+            ob_flush();
+            flush();
+
+            // Create system message
+            $systemMessage = new Message();
+            $systemMessage->thread_id = $userMessage->thread_id;
+            $systemMessage->is_system_message = true;
+            $systemMessage->content = ''; // We'll accumulate the content
+            $systemMessage->save();
+
+            $systemMessageHtml = view('partials.message', ['message' => $systemMessage])->render();
+            echo "data: " . json_encode(['type' => 'system', 'html' => $systemMessageHtml]) . "\n\n";
+            ob_flush();
+            flush();
+
+            // Demo response to stream word by word
+            $demoResponse = "This is a demo response that will be streamed word by word to simulate an AI generating a response in real-time.";
+            $words = explode(' ', $demoResponse);
+
+            foreach ($words as $word) {
+                usleep(200000); // 0.2 second delay between words
+                $systemMessage->content .= $word . ' ';
+                echo "data: " . json_encode(['type' => 'word', 'content' => $word . ' ']) . "\n\n";
+                ob_flush();
+                flush();
+            }
+
+            // Save the complete system message
+            $systemMessage->save();
+
+            echo "data: [DONE]\n\n";
+            ob_flush();
+            flush();
+        }, 200, [
+            'Cache-Control' => 'no-cache',
+            'Content-Type' => 'text/event-stream',
+            'X-Accel-Buffering' => 'no',
+            'Connection' => 'keep-alive',
+        ]);
     }
 }
