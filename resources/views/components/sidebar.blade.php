@@ -5,7 +5,7 @@
     }
 </style>
 <div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
-     style="width: 270px;">
+     style="width: var(--sidebar-width, 270px);">
     <div class="bg-background flex-grow border-r border-border flex flex-col">
         <div class="p-4">
             <button
