@@ -1,3 +1,7 @@
+@php
+$isCollapsed = true; // Set this based on user preference or session state
+@endphp
+
 <style>
     .sidebar-init #sidebar,
     .sidebar-init #sidebarContent {
@@ -11,7 +15,7 @@
     }
 </style>
 <div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
-    style="width: var(--sidebar-width, 270px);">
+    style="width: {{ $isCollapsed ? '60px' : '270px' }};">
     <div class="bg-background h-full border-r border-border flex flex-col">
         <div class="flex flex-col space-y-4 py-4">
             <div class="px-3 flex items-center justify-between">
@@ -21,20 +25,20 @@
                     aria-label="Toggle sidebar">
                     <x-icons.sidebar class="h-6 w-6" />
                 </button>
-                <h2 id="sidebarTitle" class="text-lg font-semibold tracking-tight">OpenAgents</h2>
-                <button id="newTeamButton" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-10 w-10 flex-shrink-0" aria-label="Create new team">
+                <h2 id="sidebarTitle" class="text-lg font-semibold tracking-tight" style="{{ $isCollapsed ? 'display: none;' : '' }}">OpenAgents</h2>
+                <button id="newTeamButton" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-10 w-10 flex-shrink-0" aria-label="Create new team" style="{{ $isCollapsed ? 'display: none;' : '' }}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                     </svg>
                 </button>
             </div>
-            <div id="sidebarHeader" class="px-3 space-y-4">
+            <div id="sidebarHeader" class="px-3 space-y-4" style="{{ $isCollapsed ? 'opacity: 0; visibility: hidden;' : '' }}">
                 <x-dropdown label="Personal" :items="['Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" class="w-full" />
                 <x-dropdown label="Project X" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
             </div>
         </div>
-        <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-border"></div>
-        <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col">
+        <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-border" style="{{ $isCollapsed ? 'display: none;' : '' }}"></div>
+        <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col" style="{{ $isCollapsed ? 'opacity: 0; visibility: hidden;' : '' }}">
             <div class="flex-grow overflow-y-auto">
                 <div class="w-[270px] p-4">
                     <h3 class="mb-2 px-4 text-lg font-semibold tracking-tight">Recent Messages</h3>
@@ -65,25 +69,16 @@
         const sidebarDivider = document.getElementById('sidebarDivider');
         
         function toggleSidebar() {
-            if (sidebar.style.width === '270px' || sidebar.style.width === '') {
-                sidebar.style.width = '60px';
-                sidebarContent.style.setProperty('--sidebar-content-opacity', '0');
-                sidebarContent.style.setProperty('--sidebar-content-visibility', 'hidden');
-                sidebarHeader.style.setProperty('--sidebar-content-opacity', '0');
-                sidebarHeader.style.setProperty('--sidebar-content-visibility', 'hidden');
-                sidebarTitle.style.display = 'none';
-                newTeamButton.style.display = 'none';
-                sidebarDivider.style.display = 'none';
-            } else {
-                sidebar.style.width = '270px';
-                sidebarContent.style.setProperty('--sidebar-content-opacity', '1');
-                sidebarContent.style.setProperty('--sidebar-content-visibility', 'visible');
-                sidebarHeader.style.setProperty('--sidebar-content-opacity', '1');
-                sidebarHeader.style.setProperty('--sidebar-content-visibility', 'visible');
-                sidebarTitle.style.display = 'block';
-                newTeamButton.style.display = 'flex';
-                sidebarDivider.style.display = 'block';
-            }
+            const isCollapsed = sidebar.style.width === '60px';
+            
+            sidebar.style.width = isCollapsed ? '270px' : '60px';
+            sidebarContent.style.opacity = isCollapsed ? '1' : '0';
+            sidebarContent.style.visibility = isCollapsed ? 'visible' : 'hidden';
+            sidebarHeader.style.opacity = isCollapsed ? '1' : '0';
+            sidebarHeader.style.visibility = isCollapsed ? 'visible' : 'hidden';
+            sidebarTitle.style.display = isCollapsed ? 'block' : 'none';
+            newTeamButton.style.display = isCollapsed ? 'flex' : 'none';
+            sidebarDivider.style.display = isCollapsed ? 'block' : 'none';
         }
 
         document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
