@@ -35,10 +35,12 @@
                 />
 
                 <div class="flex justify-between items-center mt-6">
-                    <a href="{{ route('login') }}" class="text-sm text-muted-foreground hover:text-foreground">Already registered?</a>
-                    <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-0">
+                    <x-button href="{{ route('login') }}" variant="ghost">
+                        Already registered?
+                    </x-button>
+                    <x-button type="submit" variant="secondary">
                         Register
-                    </button>
+                    </x-button>
                 </div>
             </form>
         </div>
