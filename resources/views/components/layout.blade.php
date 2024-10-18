@@ -12,6 +12,7 @@
     <script src="{{ asset('js/tailwind-config.js') }}"></script>
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
     <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    @stack('scripts')
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
@@ -23,6 +24,7 @@
     <main class="h-full overflow-auto">
         {{ $slot }}
     </main>
+    <script src="{{ asset('js/stream.js') }}"></script>
 </body>
 
 </html>
