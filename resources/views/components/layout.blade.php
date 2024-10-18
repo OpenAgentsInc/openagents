@@ -23,6 +23,35 @@
         </main>
     </div>
     <script src="{{ asset('js/stream.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const sidebarContent = document.getElementById('sidebarContent');
+
+            // Get the initial state from localStorage
+            let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+
+            function updateSidebarState() {
+                if (sidebarCollapsed) {
+                    sidebar.style.width = '70px';
+                    sidebarContent.style.display = 'none';
+                } else {
+                    sidebar.style.width = '270px';
+                    sidebarContent.style.display = 'block';
+                }
+            }
+
+            // Set initial state
+            updateSidebarState();
+
+            sidebarToggle.addEventListener('click', function() {
+                sidebarCollapsed = !sidebarCollapsed;
+                localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+                updateSidebarState();
+            });
+        });
+    </script>
 </body>
 
 </html>
