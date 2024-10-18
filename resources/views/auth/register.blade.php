@@ -18,6 +18,7 @@
                             type="text"
                             required
                             placeholder="Name"
+                            icon="user"
                         />
                     </div>
                     <div>
@@ -29,6 +30,7 @@
                             autocomplete="email"
                             required
                             placeholder="Email address"
+                            icon="envelope"
                         />
                     </div>
                     <div>
@@ -40,6 +42,7 @@
                             autocomplete="new-password"
                             required
                             placeholder="Password"
+                            icon="lock-closed"
                         />
                     </div>
                     <div>
@@ -51,12 +54,14 @@
                             autocomplete="new-password"
                             required
                             placeholder="Confirm Password"
+                            icon="lock-closed"
                         />
                     </div>
                 </div>
 
                 <div>
                     <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                        @svg('user-plus', 'w-5 h-5 mr-2')
                         Register
                     </button>
                 </div>
