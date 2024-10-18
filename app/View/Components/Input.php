@@ -36,13 +36,14 @@ class Input extends Component
                         name="{{ $name }}"
                         id="{{ $uuid }}"
                         value="{{ $value }}"
+                        placeholder=" "
                         @if($required) required @endif
-                        {{ $attributes->merge(['class' => 'peer flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50' . ($icon ? ' pl-12' : '')]) }}
+                        {{ $attributes->merge(['class' => 'peer flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50' . ($icon ? ' pl-12' : '')]) }}
                     >
                     @if($label)
                         <label
                             for="{{ $uuid }}"
-                            class="absolute text-sm text-muted-foreground duration-300 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-background px-2 peer-focus:px-2 peer-focus:text-primary peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 left-1"
+                            class="absolute text-sm text-muted-foreground duration-150 transform -translate-y-3 scale-75 top-7 z-10 origin-[0] left-3 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-3 peer-focus:text-primary"
                         >
                             {{ $label }}
                         </label>
