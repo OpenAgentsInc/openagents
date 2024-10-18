@@ -39,12 +39,12 @@ class Input extends Component
                         value="{{ $value }}"
                         placeholder=" "
                         @if($required) required @endif
-                        {{ $attributes->merge(['class' => 'peer flex w-full rounded-md border border-input bg-transparent px-3 py-2 pt-3 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 h-14' . ($icon ? ' pl-10' : '')]) }}
+                        {{ $attributes->merge(['class' => 'peer flex w-full rounded-md border border-input bg-transparent px-3 py-2 pt-4 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 h-14' . ($icon ? ' pl-10' : '')]) }}
                     >
                     @if($label)
                         <label
                             for="{{ $uuid }}"
-                            class="absolute text-sm text-muted-foreground duration-300 transform -translate-y-3 scale-75 top-4 z-10 origin-[0] bg-transparent px-2 peer-focus:px-2 peer-focus:text-muted-foreground peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-4 peer-focus:scale-75 peer-focus:-translate-y-4 {{ $icon ? 'left-9' : 'left-1' }} rtl:peer-focus:translate-x-1/4 rtl:peer-focus:left-auto rtl:peer-focus:right-8"
+                            class="absolute text-sm text-muted-foreground duration-300 transform -translate-y-[12px] scale-75 top-4 z-10 origin-[0] bg-transparent px-2 peer-focus:px-2 peer-focus:text-muted-foreground peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-4 peer-focus:scale-75 peer-focus:-translate-y-[12px] {{ $icon ? 'left-9' : 'left-1' }} rtl:peer-focus:translate-x-1/4 rtl:peer-focus:left-auto rtl:peer-focus:right-8"
                         >
                             {{ $label }}
                         </label>
