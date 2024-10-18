@@ -9,7 +9,8 @@
                         </div>
                     </div>
                     @include('dashboard.message-form')
-                    
+
+                    <!--
                     <div id="messages-container" class="mt-8">
                         <h2 class="text-xl font-semibold mb-4">Your Messages</h2>
                         <ul class="space-y-4" id="message-list">
@@ -21,6 +22,7 @@
                             @endforeach
                         </ul>
                     </div>
+-->
 
                     @include('dashboard.terms-privacy')
                 </div>
@@ -30,17 +32,17 @@
 </main>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const messageList = document.getElementById('message-list');
+    document.addEventListener('DOMContentLoaded', function() {
+        const messageList = document.getElementById('message-list');
 
-    // Custom event listener for new messages
-    document.addEventListener('newMessage', function(e) {
-        const messageHtml = e.detail.html;
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = messageHtml;
-        const newMessage = tempDiv.firstElementChild;
-        messageList.insertBefore(newMessage, messageList.firstChild);
-        console.log('New message added:', messageHtml); // Add this line for debugging
+        // Custom event listener for new messages
+        document.addEventListener('newMessage', function(e) {
+            const messageHtml = e.detail.html;
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = messageHtml;
+            const newMessage = tempDiv.firstElementChild;
+            messageList.insertBefore(newMessage, messageList.firstChild);
+            console.log('New message added:', messageHtml); // Add this line for debugging
+        });
     });
-});
 </script>
