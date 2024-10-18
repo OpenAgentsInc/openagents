@@ -11,13 +11,15 @@
                 </svg>
             </button>
         </div>
-        <div id="sidebarContent" class="flex-grow overflow-y-auto p-4 transition-opacity duration-200 ease-in-out">
-            <h2 class="text-lg font-semibold mb-4">Sidebar Content</h2>
-            <ul>
-                <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">Home</a></li>
-                <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">About</a></li>
-                <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">Contact</a></li>
-            </ul>
+        <div id="sidebarContent" class="flex-grow overflow-hidden transition-opacity duration-200 ease-in-out">
+            <div class="w-[270px] h-full overflow-y-auto p-4">
+                <h2 class="text-lg font-semibold mb-4">Sidebar Content</h2>
+                <ul>
+                    <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">Home</a></li>
+                    <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">About</a></li>
+                    <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">Contact</a></li>
+                </ul>
+            </div>
         </div>
     </div>
 </div>
