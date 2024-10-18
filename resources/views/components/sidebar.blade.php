@@ -87,6 +87,9 @@ $isCollapsed = true; // Set this based on user preference or session state
             [sidebarContent, sidebarHeader, newTeamButton, sidebarDivider].forEach(el => {
                 el.style.opacity = isCollapsed ? '1' : '0';
             });
+
+            // Dispatch custom event
+            document.dispatchEvent(new CustomEvent('sidebar-toggled', { detail: !isCollapsed }));
         }
 
         document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
