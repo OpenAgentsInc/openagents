@@ -36,7 +36,7 @@
 
                 <div class="flex justify-between items-center mt-6">
                     <a href="{{ route('login') }}" class="text-sm text-muted-foreground hover:text-foreground">Already registered?</a>
-                    <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                    <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-0">
                         Register
                     </button>
                 </div>
@@ -47,6 +47,7 @@
 
 <style>
     input:focus {
+        outline: none !important;
         box-shadow: none !important;
     }
 </style>
