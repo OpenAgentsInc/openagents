@@ -44,7 +44,7 @@ class Input extends Component
                     @if($label)
                         <label
                             for="{{ $uuid }}"
-                            class="absolute text-muted-foreground duration-300 transform -translate-y-1 scale-75 top-2 origin-left rtl:origin-right rounded px-2 peer-focus:left-[48px] peer-focus:text-zinc-600 peer-focus:dark:text-zinc-500 peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-1  {{ $icon ? 'left-[48px]' : 'left-3' }}"
+                            class="absolute text-muted-foreground duration-300 transform -translate-y-1 scale-75 top-2 origin-left rtl:origin-right rounded px-2 peer-focus:text-zinc-600 peer-focus:dark:text-zinc-500 peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-1 {{ $icon ? 'left-10' : 'left-3' }}"
                         >
                             {{ $label }}
                         </label>
