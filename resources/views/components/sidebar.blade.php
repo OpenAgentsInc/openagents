@@ -12,7 +12,7 @@
 </style>
 <div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
     style="width: var(--sidebar-width, 270px);">
-    <div class="bg-background flex-grow border-r border-border flex flex-col">
+    <div class="bg-background h-full border-r border-border flex flex-col">
         <div class="p-4 flex items-center justify-between">
             <button
                 id="sidebarToggle"
@@ -33,18 +33,22 @@
             <x-dropdown label="Active Project: Project X" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" />
         </div>
         <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col">
-            <div class="w-[270px] flex-grow overflow-y-auto p-4">
-                <h3 class="font-semibold mb-2">Recent Messages</h3>
-                <ul class="space-y-2">
-                    @foreach(range(1, 5) as $index)
-                    <li class="bg-secondary/10 p-2 rounded">
-                        <p class="text-sm font-medium">Message #{{ $index }}</p>
-                        <p class="text-xs text-muted-foreground">Lorem ipsum dolor sit amet...</p>
-                    </li>
-                    @endforeach
-                </ul>
+            <div class="flex-grow overflow-y-auto">
+                <div class="w-[270px] p-4">
+                    <h3 class="font-semibold mb-2">Recent Messages</h3>
+                    <ul class="space-y-2">
+                        @foreach(range(1, 5) as $index)
+                        <li class="bg-secondary/10 p-2 rounded">
+                            <p class="text-sm font-medium">Message #{{ $index }}</p>
+                            <p class="text-xs text-muted-foreground">Lorem ipsum dolor sit amet...</p>
+                        </li>
+                        @endforeach
+                    </ul>
+                </div>
             </div>
-            <x-sidebar-footer />
+            <div class="flex-shrink-0">
+                <x-sidebar-footer />
+            </div>
         </div>
     </div>
 </div>
