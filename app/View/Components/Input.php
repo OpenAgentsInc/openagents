@@ -39,7 +39,7 @@ class Input extends Component
                         placeholder="{{ $placeholder }}"
                         value="{{ $value }}"
                         @if($required) required @endif
-                        {{ $attributes->merge(['class' => 'peer flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50' . ($icon ? ' pl-12' : '')]) }}
+                        {{ $attributes->merge(['class' => 'peer flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50' . ($icon ? ' pl-12' : '')]) }}
                     >
                     @if($label)
                         <label
