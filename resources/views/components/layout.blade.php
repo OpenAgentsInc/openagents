@@ -16,7 +16,7 @@
     <div class="flex h-full">
         @auth <x-sidebar /> @endauth
         <div class="flex-1 flex flex-col">
-            <header class="flex justify-between items-center bg-black md:bg-transparent border-b border-border md:border-none p-0 sm:p-3 z-[9999]">
+            <header class="flex justify-between items-center bg-black border-b border-border md:border-none p-0 sm:p-3 z-[9999]">
                 <div class="flex flex-row items-center gap-x-4">
                     <x-app-brand />
                     <x-upgrade-button />
