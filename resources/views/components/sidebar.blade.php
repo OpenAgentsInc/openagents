@@ -23,9 +23,19 @@
                 </svg>
             </button>
         </div>
-        <div id="sidebarContent" class="flex-grow overflow-hidden">
-            <div class="w-[270px] h-full overflow-y-auto p-4">
+        <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col">
+            <div class="w-[270px] flex-grow overflow-y-auto p-4">
                 <!-- sidebar content -->
+            </div>
+            <div class="p-4 border-t border-border">
+                <a href="{{ route('logout') }}" 
+                   onclick="event.preventDefault(); document.getElementById('logout-form').submit();"
+                   class="btn btn-outline btn-block">
+                    Logout
+                </a>
+                <form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
+                    @csrf
+                </form>
             </div>
         </div>
     </div>
