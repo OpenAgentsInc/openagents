@@ -12,5 +12,5 @@ input:focus,
 textarea:focus,
 select:focus {
     color: white !important;
-    outline-color: white !important;
+    border-color: white !important;
 }
