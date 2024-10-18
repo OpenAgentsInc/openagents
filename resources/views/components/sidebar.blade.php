@@ -11,7 +11,7 @@
                 </svg>
             </button>
         </div>
-        <div id="sidebarContent" class="flex-grow overflow-y-auto p-4">
+        <div id="sidebarContent" class="flex-grow overflow-y-auto p-4 transition-opacity duration-200 ease-in-out">
             <h2 class="text-lg font-semibold mb-4">Sidebar Content</h2>
             <ul>
                 <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">Home</a></li>
