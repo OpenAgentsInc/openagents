@@ -77,7 +77,7 @@ class MessageController extends Controller
         $message->thread_id = $thread->id;
         $message->content = $request->content;
         $message->is_system_message = $request->user_id === null;
-        $message->user_id = $request->user_id ?? auth()->id();
+        $message->user_id = $request->user_id ?? ($message->is_system_message ? null : auth()->id());
         $message->save();
 
         return response()->json($message, 201);
