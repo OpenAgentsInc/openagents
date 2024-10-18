@@ -17,11 +17,8 @@ test('user can send a message in a thread', function () {
         'message' => 'Test message',
     ]);
 
-    $response->assertStatus(201);
-    $response->assertJson([
-        'message' => 'Message sent successfully!',
-        'thread_id' => $thread->id,
-    ]);
+    $response->assertStatus(302);
+    $response->assertRedirect("/chat/{$thread->id}");
     $this->assertDatabaseHas('messages', [
         'thread_id' => $thread->id,
         'user_id' => $user->id,
