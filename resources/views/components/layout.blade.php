@@ -12,7 +12,10 @@
 </head>
 
 <body hx-boost class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
-    <div class="flex h-full">
+    <div class="sm:hidden">
+        @include('mobile')
+    </div>
+    <div class="hidden sm:flex h-full">
         <x-sidebar />
         <main class="flex-1 overflow-auto">
             {{ $slot }}
