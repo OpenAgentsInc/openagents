@@ -12,7 +12,9 @@
                     <div class="space-y-4">
                         @foreach ($messages as $message)
                             <div class="p-4 @if($message->user_id == auth()->id()) bg-blue-900 @else bg-gray-800 @endif rounded-lg">
-                                <p class="text-sm text-gray-400">{{ $message->user->name }} - {{ $message->created_at->format('M d, Y H:i') }}</p>
+                                <p class="text-sm text-gray-400">
+                                    {{ $message->user ? $message->user->name : 'Unknown User' }} - {{ $message->created_at->format('M d, Y H:i') }}
+                                </p>
                                 <p class="mt-1">{{ $message->content }}</p>
                             </div>
                         @endforeach
