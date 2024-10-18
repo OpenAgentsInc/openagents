@@ -2,99 +2,23 @@
 
 ## Step 1: Update MessageController
 
-Date: [Current Date]
+Date: 2023-06-13
 
-Updated the `MessageController` to handle HTMX requests and prepare for SSE setup.
+Updated the `MessageController` to handle HTMX requests and implement SSE setup.
 
 ### Changes made:
 
 1. Modified the `sendMessage` method in `app/Http/Controllers/MessageController.php`:
+   - Added HTMX request detection and response
+   - Kept the existing logic for thread creation and message saving
 
-```php
-public function sendMessage(Request $request)
-{
-    try {
-        $validated = $request->validate([
-            'message' => 'required|string|max:1000',
-            'project_id' => 'nullable|exists:projects,id',
-            'thread_id' => 'nullable|exists:threads,id',
-        ]);
-    } catch (ValidationException $e) {
-        return response()->json(['errors' => $e->errors()], 422);
-    }
-
-    $thread = null;
-    if ($request->has('thread_id')) {
-        $thread = Thread::findOrFail($request->thread_id);
-    } else {
-        $thread = new Thread();
-        $thread->title = substr($request->message, 0, 50) . '...';
-        
-        if ($request->has('project_id')) {
-            $project = Project::findOrFail($request->project_id);
-            $thread->project_id = $project->id;
-        }
-        
-        $thread->user_id = auth()->id();
-        $thread->save();
-    }
-
-    $userMessage = new Message();
-    $userMessage->thread_id = $thread->id;
-    $userMessage->content = $request->message;
-    $userMessage->is_system_message = false;
-    $userMessage->user_id = auth()->id();
-    $userMessage->save();
-
-    // Check if the request is an HTMX request
-    if ($request->header('HX-Request')) {
-        // Return an HTMX response that triggers a redirect
-        return response()->json([
-            'HX-Redirect' => route('chat.show', ['thread' => $thread->id])
-        ]);
-    }
-
-    // For non-HTMX requests, return a regular redirect
-    return redirect()->route('chat.show', ['thread' => $thread->id])->with('success', 'Message sent successfully!');
-}
-```
-
-2. Added a new method `streamResponse` to handle SSE connections:
-
-```php
-public function streamResponse(Thread $thread)
-{
-    return response()->stream(function() use ($thread) {
-        $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
-        
-        foreach ($messages as $message) {
-            $messageHtml = view('partials.message', ['message' => $message])->render();
-            echo "data: " . json_encode(['html' => $messageHtml]) . "\n\n";
-            ob_flush();
-            flush();
-            usleep(100000); // Simulate delay between messages
-        }
-
-        echo "data: [DONE]\n\n";
-        ob_flush();
-        flush();
-    }, 200, [
-        'Cache-Control' => 'no-cache',
-        'Content-Type' => 'text/event-stream',
-        'X-Accel-Buffering' => 'no',
-        'Connection' => 'keep-alive',
-    ]);
-}
-```
-
-### Next steps:
-1. Update the routes to include the new SSE endpoint.
-2. Modify the chat view to incorporate HTMX and SSE attributes.
-3. Test the changes to ensure proper functionality.
+2. Added a new `streamResponse` method to handle SSE connections:
+   - Implemented streaming of messages for a given thread
+   - Set up proper headers for SSE communication
 
 ## Step 2: Update Routes
 
-Date: [Current Date]
+Date: 2023-06-13
 
 Added a new route for SSE connections in `routes/web.php`:
 
@@ -106,54 +30,20 @@ use App\Http\Controllers\MessageController;
 Route::get('/chat/{thread}/stream', [MessageController::class, 'streamResponse'])->name('chat.stream');
 ```
 
-### Next steps:
-1. Modify the chat view to incorporate HTMX and SSE attributes.
-2. Test the changes to ensure proper functionality.
-
 ## Step 3: Update Chat View
 
-Date: [Current Date]
+Date: 2023-06-13
 
 Modified the chat view to incorporate HTMX and SSE attributes. Updated `resources/views/chat/show.blade.php`:
 
-```html
-@extends('layouts.app')
-
-@section('content')
-<div class="container">
-    <h1>Chat Thread: {{ $thread->title }}</h1>
-    
-    <div id="chat-messages" hx-ext="sse" sse-connect="{{ route('chat.stream', ['thread' => $thread->id]) }}">
-        <div sse-swap="message">
-            <!-- Existing messages will be loaded here -->
-            @foreach ($thread->messages as $message)
-                @include('partials.message', ['message' => $message])
-            @endforeach
-        </div>
-    </div>
-
-    <form hx-post="{{ route('messages.store') }}" hx-target="#chat-messages" hx-swap="beforeend">
-        @csrf
-        <input type="hidden" name="thread_id" value="{{ $thread->id }}">
-        <div class="form-group">
-            <textarea name="content" class="form-control" rows="3" required></textarea>
-        </div>
-        <button type="submit" class="btn btn-primary">Send</button>
-    </form>
-</div>
-@endsection
-
-@push('scripts')
-<script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
-@endpush
-```
-
-### Changes made:
-1. Added HTMX and SSE attributes to the chat messages container.
-2. Updated the form to use HTMX for submission.
-3. Included the HTMX SSE extension script.
+1. Changed the layout to use `@extends('layouts.app')`
+2. Added HTMX and SSE attributes to the chat messages container
+3. Updated the form to use HTMX for submission
+4. Included the HTMX SSE extension script
 
 ### Next steps:
-1. Test the changes to ensure proper functionality.
-2. Implement error handling and reconnection logic for SSE.
-3. Optimize the streaming response for better performance.
+1. Test the changes to ensure proper functionality
+2. Implement error handling and reconnection logic for SSE
+3. Optimize the streaming response for better performance
+4. Update the homepage to use HTMX for sending the initial message
+5. Implement the AI response generation logic in the `streamResponse` method
