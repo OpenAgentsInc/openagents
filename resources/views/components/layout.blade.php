@@ -12,8 +12,8 @@
 </head>
 
 <body hx-boost class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
-    <div class="sm:hidden">
-        @include('mobile')
+    <div class="sm:hidden flex items-center justify-center h-screen bg-black">
+        <p class="text-white text-center p-4">OpenAgents is not available on mobile devices. Please use a desktop browser.</p>
     </div>
     <div class="hidden sm:flex h-full">
         <x-sidebar />
