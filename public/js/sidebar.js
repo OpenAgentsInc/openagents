@@ -10,23 +10,23 @@ document.addEventListener('DOMContentLoaded', function() {
         if (sidebarCollapsed) {
             sidebar.style.width = '70px';
             sidebarContent.style.opacity = '0';
-            if (immediate) {
-                sidebarContent.style.visibility = 'hidden';
-            } else {
-                setTimeout(() => {
-                    sidebarContent.style.visibility = 'hidden';
-                }, 200); // Match this with the transition duration
-            }
+            sidebarContent.style.visibility = 'hidden';
         } else {
             sidebar.style.width = '270px';
+            sidebarContent.style.opacity = '1';
             sidebarContent.style.visibility = 'visible';
+        }
+
+        if (!immediate) {
+            // Re-enable transitions after the initial state is set
             setTimeout(() => {
-                sidebarContent.style.opacity = '1';
-            }, 50); // Small delay to ensure display change has taken effect
+                document.body.classList.remove('sidebar-init');
+            }, 0);
         }
     }
 
-    // Set initial state
+    // Set initial state immediately without transitions
+    document.body.classList.add('sidebar-init');
     updateSidebarState(true);
 
     sidebarToggle.addEventListener('click', function() {
