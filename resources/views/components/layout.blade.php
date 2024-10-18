@@ -16,8 +16,14 @@
     <div class="flex h-full">
         @auth <x-sidebar /> @endauth
         <div class="flex-1 flex flex-col">
-            <header class="flex items-center h-16 px-4 border-b border-border">
-                <x-app-brand />
+            <header class="flex justify-between items-center bg-black md:bg-transparent border-b border-border md:border-none p-0 sm:p-3 z-[9999]">
+                <div class="flex flex-row items-center gap-x-4">
+                    <x-app-brand />
+                    <x-upgrade-button />
+                </div>
+                <div class="">
+                    <!-- Add any additional header content here -->
+                </div>
             </header>
             <main class="flex-1 overflow-auto">
                 {{ $slot }}
