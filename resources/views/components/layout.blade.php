@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
     <script src="{{ asset('js/tailwind.min.js') }}"></script>
     <script src="{{ asset('js/tailwind-config.js') }}"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
