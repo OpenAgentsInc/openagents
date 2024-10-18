@@ -10,10 +10,9 @@
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
     <script src="{{ asset('js/tailwind.min.js') }}"></script>
     <script src="{{ asset('js/tailwind-config.js') }}"></script>
-    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
-    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script src="{{ asset('js/htmx.min.js') }}"></script>
+    <script src="{{ asset('js/htmx-sse.js') }}"></script>
     <script src="{{ asset('js/sidebar.js') }}"></script>
-    @stack('scripts')
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
@@ -24,6 +23,7 @@
         </main>
     </div>
     <script src="{{ asset('js/stream.js') }}"></script>
+    @stack('scripts')
 </body>
 
 </html>
