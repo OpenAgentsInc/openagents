@@ -1,7 +1,7 @@
 <div class="w-full">
     <form class="w-full" id="message-form" data-send-message-url="{{ route('send-message') }}">
         @csrf
-        @if(auth()->user()->currentProject)
+        @if(auth()->check() && auth()->user()->currentProject)
             <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
         @endif
         <div class="flex w-full flex-col gap-1.5 rounded-[30px] p-1 transition-colors bg-zinc-900">
