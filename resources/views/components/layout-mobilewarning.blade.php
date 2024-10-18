@@ -13,7 +13,8 @@
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
-    <div class="flex h-full">
+    @include('partials.mobile-message')
+    <div class="hidden sm:flex h-full">
         @auth <x-sidebar /> @endauth
         <main class="flex-1 overflow-auto">
             {{ $slot }}
