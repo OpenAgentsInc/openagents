@@ -18,9 +18,9 @@
                     <x-card-content>
                         <p class="text-center -mt-2">Hi! We are migrating to a new system. In the meantime, you can use our v2 system here:</p>
                         <x-button
+                            tag="a"
                             variant="secondary"
                             class="w-full mt-6 pointer-events-auto"
-                            tag="a"
                             href="https://stage2.openagents.com"
                             target="_blank"
                             rel="noopener noreferrer"
@@ -28,9 +28,9 @@
                             Access previous version
                         </x-button>
                         <x-button
+                            tag="a"
                             variant="outline"
                             class="w-full mt-4 pointer-events-auto"
-                            tag="a"
                             href="/register"
                             rel="noopener noreferrer"
                         >
