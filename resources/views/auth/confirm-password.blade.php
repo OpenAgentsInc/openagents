@@ -10,6 +10,16 @@
             <form method="POST" action="{{ route('password.confirm') }}" class="space-y-4">
                 @csrf
 
+                @if ($errors->any())
+                    <div class="mb-4 p-4 rounded-md bg-destructive/15 text-destructive">
+                        <ul class="list-disc list-inside">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+
                 <x-input
                     autofocus
                     label="Password"
