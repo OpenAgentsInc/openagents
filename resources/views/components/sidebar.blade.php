@@ -33,7 +33,7 @@
                 <x-dropdown label="Project X" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
             </div>
         </div>
-        <div class="my-4 mx-4 h-[1px] bg-border"></div>
+        <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-border"></div>
         <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col">
             <div class="flex-grow overflow-y-auto">
                 <div class="w-[270px] p-4">
@@ -56,29 +56,36 @@
 </div>
 
 <script>
-    document.getElementById('sidebarToggle').addEventListener('click', function() {
+    document.addEventListener('DOMContentLoaded', function() {
         const sidebar = document.getElementById('sidebar');
         const sidebarContent = document.getElementById('sidebarContent');
         const sidebarHeader = document.getElementById('sidebarHeader');
         const sidebarTitle = document.getElementById('sidebarTitle');
         const newTeamButton = document.getElementById('newTeamButton');
+        const sidebarDivider = document.getElementById('sidebarDivider');
         
-        if (sidebar.style.width === '270px' || sidebar.style.width === '') {
-            sidebar.style.width = '60px';
-            sidebarContent.style.setProperty('--sidebar-content-opacity', '0');
-            sidebarContent.style.setProperty('--sidebar-content-visibility', 'hidden');
-            sidebarHeader.style.setProperty('--sidebar-content-opacity', '0');
-            sidebarHeader.style.setProperty('--sidebar-content-visibility', 'hidden');
-            sidebarTitle.style.display = 'none';
-            newTeamButton.style.display = 'none';
-        } else {
-            sidebar.style.width = '270px';
-            sidebarContent.style.setProperty('--sidebar-content-opacity', '1');
-            sidebarContent.style.setProperty('--sidebar-content-visibility', 'visible');
-            sidebarHeader.style.setProperty('--sidebar-content-opacity', '1');
-            sidebarHeader.style.setProperty('--sidebar-content-visibility', 'visible');
-            sidebarTitle.style.display = 'block';
-            newTeamButton.style.display = 'flex';
+        function toggleSidebar() {
+            if (sidebar.style.width === '270px' || sidebar.style.width === '') {
+                sidebar.style.width = '60px';
+                sidebarContent.style.setProperty('--sidebar-content-opacity', '0');
+                sidebarContent.style.setProperty('--sidebar-content-visibility', 'hidden');
+                sidebarHeader.style.setProperty('--sidebar-content-opacity', '0');
+                sidebarHeader.style.setProperty('--sidebar-content-visibility', 'hidden');
+                sidebarTitle.style.display = 'none';
+                newTeamButton.style.display = 'none';
+                sidebarDivider.style.display = 'none';
+            } else {
+                sidebar.style.width = '270px';
+                sidebarContent.style.setProperty('--sidebar-content-opacity', '1');
+                sidebarContent.style.setProperty('--sidebar-content-visibility', 'visible');
+                sidebarHeader.style.setProperty('--sidebar-content-opacity', '1');
+                sidebarHeader.style.setProperty('--sidebar-content-visibility', 'visible');
+                sidebarTitle.style.display = 'block';
+                newTeamButton.style.display = 'flex';
+                sidebarDivider.style.display = 'block';
+            }
         }
+
+        document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
     });
 </script>
