@@ -8,28 +8,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateSidebarState(immediate = false) {
         const newWidth = sidebarCollapsed ? '70px' : '270px';
-        document.documentElement.style.setProperty('--sidebar-width', newWidth);
+        const newOpacity = sidebarCollapsed ? '0' : '1';
+        const newVisibility = sidebarCollapsed ? 'hidden' : 'visible';
 
-        if (sidebarCollapsed) {
-            sidebarContent.style.opacity = '0';
-            sidebarContent.style.visibility = 'hidden';
-        } else {
-            sidebarContent.style.opacity = '1';
-            sidebarContent.style.visibility = 'visible';
-        }
+        document.documentElement.style.setProperty('--sidebar-width', newWidth);
+        document.documentElement.style.setProperty('--sidebar-content-opacity', newOpacity);
+        document.documentElement.style.setProperty('--sidebar-content-visibility', newVisibility);
 
         if (immediate) {
             document.documentElement.classList.add('sidebar-init');
         } else {
-            // Re-enable transitions after the initial state is set
-            setTimeout(() => {
+            requestAnimationFrame(() => {
                 document.documentElement.classList.remove('sidebar-init');
-            }, 0);
+            });
         }
     }
 
     // Set initial state
     updateSidebarState(true);
+
+    // Remove the 'sidebar-init' class after a short delay to enable animations
+    setTimeout(() => {
+        document.documentElement.classList.remove('sidebar-init');
+    }, 50);
 
     sidebarToggle.addEventListener('click', function() {
         sidebarCollapsed = !sidebarCollapsed;
