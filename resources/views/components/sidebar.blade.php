@@ -39,7 +39,6 @@ $isCollapsed = true; // Set this based on user preference or session state
                         aria-label="Toggle sidebar">
                         <x-icons.sidebar class="h-6 w-6" />
                     </button>
-                    <h2 id="sidebarTitle" class="text-lg font-semibold tracking-tight" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">OpenAgents</h2>
                     <button id="newTeamButton" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-10 w-10 flex-shrink-0" aria-label="Create new team" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -78,7 +77,6 @@ $isCollapsed = true; // Set this based on user preference or session state
         const sidebar = document.getElementById('sidebar');
         const sidebarContent = document.getElementById('sidebarContent');
         const sidebarHeader = document.getElementById('sidebarHeader');
-        const sidebarTitle = document.getElementById('sidebarTitle');
         const newTeamButton = document.getElementById('newTeamButton');
         const sidebarDivider = document.getElementById('sidebarDivider');
 
@@ -86,7 +84,7 @@ $isCollapsed = true; // Set this based on user preference or session state
             const isCollapsed = sidebar.style.width === '60px';
 
             sidebar.style.width = isCollapsed ? '270px' : '60px';
-            [sidebarContent, sidebarHeader, sidebarTitle, newTeamButton, sidebarDivider].forEach(el => {
+            [sidebarContent, sidebarHeader, newTeamButton, sidebarDivider].forEach(el => {
                 el.style.opacity = isCollapsed ? '1' : '0';
             });
         }
