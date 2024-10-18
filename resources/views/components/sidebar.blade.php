@@ -41,7 +41,7 @@
                 <div class="w-[270px] p-4">
                     <h3 class="mb-2 px-4 text-lg font-semibold tracking-tight">Recent Messages</h3>
                     <ul class="space-y-2">
-                        @foreach(range(1, 5) as $index)
+                        @foreach(range(1, 15) as $index)
                         <li class="bg-secondary/10 p-2 rounded">
                             <p class="text-sm font-medium">Message #{{ $index }}</p>
                             <p class="text-xs text-muted-foreground">Lorem ipsum dolor sit amet...</p>
