@@ -27,9 +27,9 @@ $isCollapsed = true; // Set this based on user preference or session state
     }
 </style>
 
-<div id="sidebar" class="h-full overflow-hidden transition-all duration-300 ease-in-out"
+<div id="sidebar" class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-border"
     style="width: {{ $isCollapsed ? '60px' : '270px' }};">
-    <div class="sidebar-inner bg-background h-full border-r border-border">
+    <div class="sidebar-inner bg-background h-full">
         <div class="sidebar-content flex flex-col">
             <div class="flex flex-col space-y-4 py-4">
                 <div class="px-3 flex items-center justify-between">
@@ -89,7 +89,9 @@ $isCollapsed = true; // Set this based on user preference or session state
             });
 
             // Dispatch custom event
-            document.dispatchEvent(new CustomEvent('sidebar-toggled', { detail: !isCollapsed }));
+            document.dispatchEvent(new CustomEvent('sidebar-toggled', {
+                detail: !isCollapsed
+            }));
         }
 
         document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
