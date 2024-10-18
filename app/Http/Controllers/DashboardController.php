@@ -10,7 +10,7 @@ class DashboardController extends Controller
     public function index()
     {
         if (!auth()->check()) {
-            return view('home');
+            return view('homepage');
         }
 
         $user = auth()->user();

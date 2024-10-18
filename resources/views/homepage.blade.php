@@ -9,7 +9,7 @@
         </div>
 
         <!-- Main content -->
-        <main class="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
+        <main class="relative z-10 flex flex-col items-center justify-center min-h-screen">
             <div class="pointer-events-none absolute select-none flex items-center justify-center">
                 <x-card class="-mt-6 px-6 py-2 w-[400px] bg-opacity-80 backdrop-blur-sm">
                     <x-card-header>

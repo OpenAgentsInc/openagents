@@ -21,7 +21,9 @@
             {{ $slot }}
         </main>
     </div>
+    @auth
     <script src="{{ asset('js/stream.js') }}"></script>
+    @endauth
     @stack('scripts')
 </body>
 
