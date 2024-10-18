@@ -3,7 +3,8 @@
         <div class="h-full w-full lg:py-[18px]">
             <div class="m-auto text-base px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5 h-full">
                 <div class="mx-auto flex h-full w-full flex-col text-base justify-center md:max-w-3xl">
-                    <div class="mb-7 text-center block">
+                    <div class="mb-7 flex items-center justify-between">
+                        <x-app-brand />
                         <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
                             <h1>How can we help?</h1>
                         </div>
