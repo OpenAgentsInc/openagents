@@ -32,18 +32,30 @@
             // Get the initial state from localStorage
             let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
 
-            function updateSidebarState() {
+            function updateSidebarState(immediate = false) {
                 if (sidebarCollapsed) {
                     sidebar.style.width = '70px';
-                    sidebarContent.style.display = 'none';
+                    sidebarContent.style.opacity = '0';
+                    if (immediate) {
+                        sidebarContent.style.display = 'none';
+                    } else {
+                        setTimeout(() => {
+                            sidebarContent.style.display = 'none';
+                        }, 200); // Match this with the transition duration
+                    }
                 } else {
                     sidebar.style.width = '270px';
-                    sidebarContent.style.display = 'block';
+                    setTimeout(() => {
+                        sidebarContent.style.display = 'block';
+                        setTimeout(() => {
+                            sidebarContent.style.opacity = '1';
+                        }, 50); // Small delay to ensure display change has taken effect
+                    }, 200); // Match this with the transition duration
                 }
             }
 
             // Set initial state
-            updateSidebarState();
+            updateSidebarState(true);
 
             sidebarToggle.addEventListener('click', function() {
                 sidebarCollapsed = !sidebarCollapsed;
