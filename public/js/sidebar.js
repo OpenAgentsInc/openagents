@@ -7,26 +7,28 @@ document.addEventListener('DOMContentLoaded', function() {
     let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
 
     function updateSidebarState(immediate = false) {
+        const newWidth = sidebarCollapsed ? '70px' : '270px';
+        document.documentElement.style.setProperty('--sidebar-width', newWidth);
+
         if (sidebarCollapsed) {
-            sidebar.style.width = '70px';
             sidebarContent.style.opacity = '0';
             sidebarContent.style.visibility = 'hidden';
         } else {
-            sidebar.style.width = '270px';
             sidebarContent.style.opacity = '1';
             sidebarContent.style.visibility = 'visible';
         }
 
-        if (!immediate) {
+        if (immediate) {
+            document.documentElement.classList.add('sidebar-init');
+        } else {
             // Re-enable transitions after the initial state is set
             setTimeout(() => {
-                document.body.classList.remove('sidebar-init');
+                document.documentElement.classList.remove('sidebar-init');
             }, 0);
         }
     }
 
-    // Set initial state immediately without transitions
-    document.body.classList.add('sidebar-init');
+    // Set initial state
     updateSidebarState(true);
 
     sidebarToggle.addEventListener('click', function() {
