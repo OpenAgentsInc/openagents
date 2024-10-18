@@ -23,9 +23,7 @@
             <div class="flex items-center space-x-2">
                 <x-dropdown label="Personal" :items="['Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" />
                 <button class="btn btn-sm btn-ghost" aria-label="Create new team">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                    </svg>
+                    <x-icons.plus class="h-4 w-4" />
                 </button>
             </div>
         </div>
@@ -65,21 +63,5 @@
     document.getElementById('userCard').addEventListener('click', function() {
         // TODO: Implement user menu functionality
         alert('User menu clicked. Add logout and manage subscription options here.');
-    });
-
-    // Preserve existing sidebar toggle functionality
-    document.getElementById('sidebarToggle').addEventListener('click', function() {
-        const sidebar = document.getElementById('sidebar');
-        const sidebarContent = document.getElementById('sidebarContent');
-        
-        if (sidebar.style.width === '270px') {
-            sidebar.style.width = '60px';
-            sidebarContent.style.setProperty('--sidebar-content-opacity', '0');
-            sidebarContent.style.setProperty('--sidebar-content-visibility', 'hidden');
-        } else {
-            sidebar.style.width = '270px';
-            sidebarContent.style.setProperty('--sidebar-content-opacity', '1');
-            sidebarContent.style.setProperty('--sidebar-content-visibility', 'visible');
-        }
     });
 </script>
