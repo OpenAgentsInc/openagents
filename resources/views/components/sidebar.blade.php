@@ -9,12 +9,13 @@
                 </svg>
             </button>
         </div>
-        <div class="flex-grow overflow-y-auto">
-            @auth
-            <livewire:authed-sidebar />
-            @else
-            <x-sidebar.unauthed />
-            @endauth
+        <div class="flex-grow overflow-y-auto p-4">
+            <h2 class="text-lg font-semibold mb-4">Sidebar Content</h2>
+            <ul>
+                <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">Home</a></li>
+                <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">About</a></li>
+                <li class="mb-2"><a href="#" class="text-blue-500 hover:underline">Contact</a></li>
+            </ul>
         </div>
     </div>
 </div>
