@@ -18,6 +18,7 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->foreignId('team_id')->nullable()->constrained()->onDelete('set null');
+            $table->foreignId('current_project_id')->nullable()->constrained('projects')->onDelete('set null');
             $table->rememberToken();
             $table->timestamps();
         });
@@ -43,6 +44,11 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropForeign(['current_project_id']);
+            $table->dropColumn('current_project_id');
+        });
+
         Schema::dropIfExists('users');
         Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');
