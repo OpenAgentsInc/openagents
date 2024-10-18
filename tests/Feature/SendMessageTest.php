@@ -15,8 +15,10 @@ test('authenticated user can send a message without a project', function () {
             'message' => 'Test message'
         ]);
 
-    $response->assertStatus(302);
-    $response->assertSessionHas('success', 'Message sent successfully!');
+    $response->assertStatus(201);
+    $response->assertJson([
+        'message' => 'Message sent successfully!',
+    ]);
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
@@ -39,8 +41,10 @@ test('authenticated user can send a message with a project', function () {
             'project_id' => $project->id
         ]);
 
-    $response->assertStatus(302);
-    $response->assertSessionHas('success', 'Message sent successfully!');
+    $response->assertStatus(201);
+    $response->assertJson([
+        'message' => 'Message sent successfully!',
+    ]);
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
@@ -65,8 +69,11 @@ test('authenticated user can send a message to an existing thread', function () 
             'thread_id' => $thread->id
         ]);
 
-    $response->assertStatus(302);
-    $response->assertSessionHas('success', 'Message sent successfully!');
+    $response->assertStatus(201);
+    $response->assertJson([
+        'message' => 'Message sent successfully!',
+        'thread_id' => $thread->id,
+    ]);
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
