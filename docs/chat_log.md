@@ -46,8 +46,24 @@ Modified the chat view to incorporate HTMX and SSE attributes. Updated `resource
 3. Updated the form to use HTMX for submission
 4. Included the HTMX SSE extension script
 
+## Step 4: Fix Tests and View
+
+Date: 2023-06-13
+
+### Changes made:
+
+1. Updated `tests/Feature/HomepageChatTest.php`:
+   - Refactored to use TestCase structure
+   - Added RefreshDatabase trait for better test isolation
+
+2. Fixed route generation in `resources/views/chat/show.blade.php`:
+   - Updated the form's `hx-post` attribute to include the thread ID:
+     ```php
+     <form hx-post="{{ route('messages.store', ['thread' => $thread->id]) }}" hx-target="#chat-messages" hx-swap="beforeend">
+     ```
+
 ### Next steps:
-1. Test the changes to ensure proper functionality
+1. Run the tests to ensure they pass with the new changes
 2. Implement error handling and reconnection logic for SSE
 3. Optimize the streaming response for better performance
 4. Update the homepage to use HTMX for sending the initial message
