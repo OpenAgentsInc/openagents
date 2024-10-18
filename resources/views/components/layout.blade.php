@@ -16,14 +16,12 @@
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
-    <!--
-    <div class="fixed top-4 left-4 z-50">
-        <x-logo />
+    <div class="flex h-full">
+        <x-sidebar />
+        <main class="flex-1 overflow-auto">
+            {{ $slot }}
+        </main>
     </div>
-    -->
-    <main class="h-full overflow-auto">
-        {{ $slot }}
-    </main>
     <script src="{{ asset('js/stream.js') }}"></script>
 </body>
 
