@@ -34,9 +34,9 @@
                 </div>
 
                 <div class="flex justify-end items-center space-x-4">
-                    <x-button href="{{ route('register') }}" variant="ghost" class="text-muted-foreground">
+                    <a href="{{ route('register') }}" class="text-muted-foreground">
                         Need an account?
-                    </x-button>
+                    </a>
                     <x-button type="submit" variant="secondary" size="lg">
                         Sign in
                     </x-button>
