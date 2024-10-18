@@ -3,9 +3,6 @@
 use App\Models\User;
 use App\Models\Thread;
 use App\Models\Project;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-
-uses(RefreshDatabase::class);
 
 test('authenticated user can send a message without a project', function () {
     $user = User::factory()->create();
