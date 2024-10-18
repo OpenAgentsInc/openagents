@@ -23,8 +23,7 @@
                             class="w-full mt-6 pointer-events-auto"
                             href="https://stage2.openagents.com"
                             target="_blank"
-                            rel="noopener noreferrer"
-                        >
+                            rel="noopener noreferrer">
                             Access previous version
                         </x-button>
                         <x-button
@@ -32,8 +31,7 @@
                             variant="outline"
                             class="w-full mt-4 pointer-events-auto"
                             href="/register"
-                            rel="noopener noreferrer"
-                        >
+                            rel="noopener noreferrer">
                             Explore unfinished v3
                         </x-button>
                     </x-card-content>
