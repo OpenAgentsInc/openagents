@@ -25,17 +25,22 @@ Route::view('/components', 'components')->name('components');
 Route::middleware(['auth'])->group(function () {
     // Message routes
     Route::post('/messages', [MessageController::class, 'store']);
-    Route::post('/threads/{thread}/messages', [MessageController::class, 'storeInThread']);
+    Route::post('/threads/{thread}/messages', [MessageController::class, 'storeInThread'])->name('messages.store');
     Route::post('/send-message', [MessageController::class, 'sendMessage'])->name('send-message');
 
     // Thread routes
     Route::post('/threads/{thread}/process', [ThreadController::class, 'process']);
+    Route::get('/chat/{thread}', [ThreadController::class, 'show'])->name('chat.show');
+    Route::post('/threads/{thread}/add-message', [ThreadController::class, 'addMessage'])->name('threads.addMessage');
 
     // Project routes
     Route::get('/projects/{project}/threads', [ProjectController::class, 'threads']);
 
     // Team routes
     Route::get('/teams/{team}/threads', [TeamController::class, 'threads']);
+
+    // New SSE route
+    Route::get('/chat/{thread}/stream', [MessageController::class, 'streamResponse'])->name('chat.stream');
 });
 
 require __DIR__ . '/auth.php';
