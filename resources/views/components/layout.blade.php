@@ -12,17 +12,8 @@
     <script src="{{ asset('js/tailwind-config.js') }}"></script>
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
     <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script src="{{ asset('js/sidebar.js') }}"></script>
     @stack('scripts')
-    <script>
-        // Set initial sidebar state
-        (function() {
-            var sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            document.documentElement.classList.add('sidebar-init');
-            document.documentElement.style.setProperty('--sidebar-width', sidebarCollapsed ? '70px' : '270px');
-            document.documentElement.style.setProperty('--sidebar-content-opacity', sidebarCollapsed ? '0' : '1');
-            document.documentElement.style.setProperty('--sidebar-content-visibility', sidebarCollapsed ? 'hidden' : 'visible');
-        })();
-    </script>
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
@@ -33,7 +24,6 @@
         </main>
     </div>
     <script src="{{ asset('js/stream.js') }}"></script>
-    <script src="{{ asset('js/sidebar.js') }}"></script>
 </body>
 
 </html>
