@@ -3,9 +3,6 @@
 use App\Models\User;
 use App\Models\Thread;
 use App\Models\Project;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-
-uses(RefreshDatabase::class);
 
 test('authenticated user can send a message without a project', function () {
     $user = User::factory()->create();
@@ -15,10 +12,9 @@ test('authenticated user can send a message without a project', function () {
             'message' => 'Test message'
         ]);
 
-    $response->assertStatus(201);
-    $response->assertJson([
-        'message' => 'Message sent successfully!',
-    ]);
+    $response->assertStatus(302);
+    $thread = Thread::latest()->first();
+    $response->assertRedirect("/chat/{$thread->id}");
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
@@ -41,10 +37,9 @@ test('authenticated user can send a message with a project', function () {
             'project_id' => $project->id
         ]);
 
-    $response->assertStatus(201);
-    $response->assertJson([
-        'message' => 'Message sent successfully!',
-    ]);
+    $response->assertStatus(302);
+    $thread = Thread::latest()->first();
+    $response->assertRedirect("/chat/{$thread->id}");
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
@@ -69,11 +64,8 @@ test('authenticated user can send a message to an existing thread', function () 
             'thread_id' => $thread->id
         ]);
 
-    $response->assertStatus(201);
-    $response->assertJson([
-        'message' => 'Message sent successfully!',
-        'thread_id' => $thread->id,
-    ]);
+    $response->assertStatus(302);
+    $response->assertRedirect("/chat/{$thread->id}");
 
     $this->assertDatabaseHas('messages', [
         'user_id' => $user->id,
@@ -99,8 +91,8 @@ test('message cannot be empty', function () {
             'message' => ''
         ]);
 
-    $response->assertStatus(302);
-    $response->assertSessionHasErrors('message');
+    $response->assertStatus(422);
+    $response->assertJsonValidationErrors('message');
 });
 
 test('project_id must be valid if provided', function () {
@@ -112,6 +104,6 @@ test('project_id must be valid if provided', function () {
             'project_id' => 999 // Non-existent project ID
         ]);
 
-    $response->assertStatus(302);
-    $response->assertSessionHasErrors('project_id');
+    $response->assertStatus(422);
+    $response->assertJsonValidationErrors('project_id');
 });

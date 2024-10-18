@@ -8,6 +8,12 @@ use Illuminate\Http\Request;
 
 class ThreadController extends Controller
 {
+    public function show(Thread $thread)
+    {
+        $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
+        return view('chat.show', compact('thread', 'messages'));
+    }
+
     public function addMessage(Request $request, Thread $thread)
     {
         $validatedData = $request->validate([
