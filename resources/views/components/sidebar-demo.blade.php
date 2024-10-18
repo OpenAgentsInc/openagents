@@ -1,55 +1,67 @@
-<?php
-
-namespace App\View\Components;
-
-use Illuminate\View\Component;
-use Illuminate\Support\Str;
-
-class Dropdown extends Component
-{
-    public string $uuid;
-
-    public function __construct(
-        public string $label,
-        public array $items,
-        public ?string $id = null,
-        public bool $checkable = false,
-        public ?string $icon = null
-    ) {
-        $this->uuid = $id ?? Str::uuid();
+<style>
+    .sidebar-init #sidebar,
+    .sidebar-init #sidebarContent {
+        transition: none !important;
     }
 
-    public function render()
-    {
-        return <<<'BLADE'
-            <div x-data="{ open: false }" class="relative inline-block text-left">
-                <div>
-                    <button @click="open = !open" type="button" class="inline-flex justify-center w-full rounded-md border border-input bg-transparent px-4 py-2 text-sm font-medium text-popover-foreground shadow-sm hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring" id="{{ $uuid }}" aria-haspopup="true" aria-expanded="false">
-                        @if($icon)
-                            <span class="mr-2">{!! $icon !!}</span>
-                        @endif
-                        {{ $label }}
-                        <svg class="-mr-1 ml-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                        </svg>
-                    </button>
-                </div>
-
-                <div x-show="open" @click.away="open = false" class="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-popover ring-1 ring-black ring-opacity-5 divide-y divide-muted z-50">
-                    <div class="py-1" role="menu" aria-orientation="vertical" aria-labelledby="{{ $uuid }}">
-                        @foreach($items as $item)
-                            @if($checkable)
-                                <div class="flex items-center px-4 py-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer" role="menuitem">
-                                    <input type="checkbox" class="form-checkbox h-4 w-4 text-accent-foreground rounded border-muted mr-2" id="{{ $uuid }}-{{ $loop->index }}">
-                                    <label for="{{ $uuid }}-{{ $loop->index }}" class="flex-grow cursor-pointer">{{ $item }}</label>
-                                </div>
-                            @else
-                                <a href="#" class="block px-4 py-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground" role="menuitem">{{ $item }}</a>
-                            @endif
-                        @endforeach
+    #sidebarContent {
+        opacity: var(--sidebar-content-opacity, 1);
+        visibility: var(--sidebar-content-visibility, visible);
+        transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+    }
+</style>
+<div id="sidebar" class="h-full overflow-hidden flex flex-col transition-all duration-300 ease-in-out"
+    style="width: var(--sidebar-width, 270px);">
+    <div class="bg-background flex-grow border-r border-border flex flex-col">
+        <div class="p-4 flex items-center justify-between">
+            <button
+                id="sidebarToggle"
+                class="btn btn-square btn-sm btn-ghost rounded"
+                aria-label="Toggle sidebar">
+                <x-icons.sidebar class="h-6 w-6" />
+            </button>
+            <div class="flex items-center space-x-2">
+                <x-dropdown label="Personal" :items="['Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" />
+                <button class="btn btn-sm btn-ghost" aria-label="Create new team">
+                    <x-icons.plus class="h-4 w-4" />
+                </button>
+            </div>
+        </div>
+        <div class="px-4 py-2">
+            <x-dropdown label="Active Project: Project X" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" />
+        </div>
+        <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col">
+            <div class="w-[270px] flex-grow overflow-y-auto p-4">
+                <h3 class="font-semibold mb-2">Recent Messages</h3>
+                <ul class="space-y-2">
+                    @foreach(range(1, 10) as $index)
+                        <li class="bg-secondary/10 p-2 rounded">
+                            <p class="text-sm font-medium">Message #{{ $index }}</p>
+                            <p class="text-xs text-muted-foreground">Lorem ipsum dolor sit amet...</p>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+            <div class="p-4 border-t border-border">
+                <div class="flex items-center space-x-3 cursor-pointer" id="userCard">
+                    <div class="avatar">
+                        <div class="w-10 rounded-full">
+                            <img src="https://i.pravatar.cc/100" alt="User avatar" />
+                        </div>
+                    </div>
+                    <div>
+                        <p class="font-medium">John Doe</p>
+                        <p class="text-xs text-muted-foreground">john@example.com</p>
                     </div>
                 </div>
             </div>
-        BLADE;
-    }
-}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('userCard').addEventListener('click', function() {
+        // TODO: Implement user menu functionality
+        alert('User menu clicked. Add logout and manage subscription options here.');
+    });
+</script>
