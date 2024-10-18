@@ -37,20 +37,18 @@
                     sidebar.style.width = '70px';
                     sidebarContent.style.opacity = '0';
                     if (immediate) {
-                        sidebarContent.style.display = 'none';
+                        sidebarContent.style.visibility = 'hidden';
                     } else {
                         setTimeout(() => {
-                            sidebarContent.style.display = 'none';
+                            sidebarContent.style.visibility = 'hidden';
                         }, 200); // Match this with the transition duration
                     }
                 } else {
                     sidebar.style.width = '270px';
+                    sidebarContent.style.visibility = 'visible';
                     setTimeout(() => {
-                        sidebarContent.style.display = 'block';
-                        setTimeout(() => {
-                            sidebarContent.style.opacity = '1';
-                        }, 50); // Small delay to ensure display change has taken effect
-                    }, 200); // Match this with the transition duration
+                        sidebarContent.style.opacity = '1';
+                    }, 50); // Small delay to ensure display change has taken effect
                 }
             }
 
