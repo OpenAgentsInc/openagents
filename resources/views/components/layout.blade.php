@@ -9,15 +9,6 @@
     <link rel="stylesheet" href="{{ asset('css/globals.css') }}">
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
-    <script>
-        (function() {
-            var sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            document.documentElement.classList.add('sidebar-init');
-            document.documentElement.style.setProperty('--sidebar-width', sidebarCollapsed ? '70px' : '270px');
-            document.documentElement.style.setProperty('--sidebar-content-opacity', sidebarCollapsed ? '0' : '1');
-            document.documentElement.style.setProperty('--sidebar-content-visibility', sidebarCollapsed ? 'hidden' : 'visible');
-        })();
-    </script>
     @include('partials.scripts')
 </head>
 
