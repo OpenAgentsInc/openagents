@@ -17,7 +17,9 @@
      hx-get="/teams"
      hx-trigger="load"
      hx-swap="innerHTML">
-    <div class="htmx-indicator">Loading teams and projects...</div>
+    <div class="htmx-indicator flex justify-center items-center h-12">
+        <div class="dot-flashing"></div>
+    </div>
 </div>
 
 <script>
