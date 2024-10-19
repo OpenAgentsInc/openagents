@@ -14,7 +14,6 @@ class TeamController extends Controller
 
     public function getTeamsAndProjects()
     {
-        sleep(2.5);
         // TODO: Fetch actual teams and projects from the database
         $teams = ['OpenAgents', 'Atlantis Ports', 'RoA'];
         $projects = ['Project A', 'Project B', 'Project C'];
