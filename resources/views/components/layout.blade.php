@@ -12,7 +12,7 @@
     @include('partials.scripts')
 </head>
 
-<body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
+<body hx-boost="true" class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
     <div class="flex h-full">
         @auth <x-sidebar /> @endauth
         <div class="flex-1 flex flex-col h-full relative">
