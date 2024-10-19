@@ -19,6 +19,6 @@ class TeamController extends Controller
         $teams = ['OpenAgents', 'Atlantis Ports', 'RoA'];
         $projects = [''];
 
-        return view('components.team-switcher-content', compact('teams', 'projects'));
+        return view('components.sidebar.team-switcher-content', compact('teams', 'projects'));
     }
 }
