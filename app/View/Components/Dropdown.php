@@ -25,7 +25,7 @@ class Dropdown extends Component
         return <<<'BLADE'
             <div x-data="{ open: false }" class="relative inline-block text-left {{ $class }}">
                 <div>
-                    <button @click="open = !open" type="button" class="inline-flex justify-between w-full rounded-md border border-input bg-transparent px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring" id="{{ $uuid }}" aria-haspopup="true" aria-expanded="false">
+                    <button @click="open = !open" type="button" class="inline-flex justify-between w-full rounded-md border border-input bg-transparent px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-accent focus:outline-none focus:ring-0 focus:ring-ring" id="{{ $uuid }}" aria-haspopup="true" aria-expanded="false">
                         <span class="flex items-center">
                             @if($icon)
                                 <span class="mr-2">{!! $icon !!}</span>
