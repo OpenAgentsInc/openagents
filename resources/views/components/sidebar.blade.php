@@ -46,56 +46,41 @@ $isCollapsed = true; // Set this based on user preference or session state
                     </button>
                 </div>
                 <div id="sidebarHeader" class="px-3 space-y-4" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
-                    <!-- Team Section -->
-                    <div id="teamSection" class="space-y-2">
-                        <button class="flex items-center justify-between w-full text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent rounded-md p-2" onclick="toggleSection('teamContent')">
-                            <div class="flex items-center space-x-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
-                                </svg>
-                                <span>Team</span>
-                            </div>
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transform transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-                        <div id="teamContent" class="hidden">
-                            <x-dropdown label="Scramble" :items="['Scramble', 'Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" class="w-full" />
-                        </div>
-                    </div>
+                    <!-- Team Dropdown -->
+                    <x-dropdown label="Team" :items="['Scramble', 'Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" class="w-full" />
 
-                    <!-- Project Section -->
-                    <div id="projectSection" class="space-y-2">
-                        <button class="flex items-center justify-between w-full text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent rounded-md p-2" onclick="toggleSection('projectContent')">
-                            <div class="flex items-center space-x-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1H8a3 3 0 00-3 3v1.5a1.5 1.5 0 01-3 0V6z" clip-rule="evenodd" />
-                                    <path d="M6 12a2 2 0 012-2h8a2 2 0 012 2v2a2 2 0 01-2 2H2h2a2 2 0 002-2v-2z" />
-                                </svg>
-                                <span>Project</span>
-                            </div>
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transform transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-                        <div id="projectContent" class="hidden">
-                            <x-dropdown label="OIDC" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
-                        </div>
-                    </div>
+                    <!-- Project Dropdown -->
+                    <x-dropdown label="Project" :items="['OIDC', 'Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
                 </div>
             </div>
             <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border opacity-50" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"></div>
             <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">
-                        <ul class="space-y-2">
-                            @foreach(range(1, 5) as $index)
-                            <li class="bg-sidebar-accent bg-opacity-10 p-2 rounded">
-                                <p class="text-sm font-medium text-sidebar-foreground">Message #{{ $index }}</p>
-                                <p class="text-xs text-sidebar-foreground opacity-70">Lorem ipsum dolor sit amet...</p>
-                            </li>
-                            @endforeach
-                        </ul>
+                        <!-- Chats Section -->
+                        <div id="chatsSection" class="space-y-2 mb-4">
+                            <button class="flex items-center justify-between w-full text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent rounded-md p-2" onclick="toggleSection('chatsContent')">
+                                <div class="flex items-center space-x-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clip-rule="evenodd" />
+                                    </svg>
+                                    <span>Chats</span>
+                                </div>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transform transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            <div id="chatsContent" class="hidden">
+                                <ul class="space-y-2">
+                                    @foreach(range(1, 5) as $index)
+                                    <li class="bg-sidebar-accent bg-opacity-10 p-2 rounded">
+                                        <p class="text-sm font-medium text-sidebar-foreground">Chat #{{ $index }}</p>
+                                        <p class="text-xs text-sidebar-foreground opacity-70">Last message...</p>
+                                    </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="flex-shrink-0">
