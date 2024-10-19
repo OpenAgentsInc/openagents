@@ -1,5 +1,5 @@
  PASS  Tests\Unit\MessageTest
-  ✓ a message belongs to a user                                                             0.16s
+  ✓ a message belongs to a user                                                             0.17s
   ✓ a message belongs to a thread
   ✓ a message can be created by the system
 
@@ -21,11 +21,11 @@
   ✓ a thread belongs to a team through a project
 
    PASS  Tests\Unit\UserTest
-  ✓ a user belongs to a team                                                                0.01s
+  ✓ a user belongs to a team
   ✓ a user has many projects
   ✓ a user has many threads
   ✓ a user has many messages                                                                0.01s
-  ✓ a user can have projects through their team                                             0.01s
+  ✓ a user can have projects through their team
 
    PASS  Tests\Feature\Auth\AuthenticationTest
   ✓ login screen can be rendered                                                            0.04s
@@ -63,23 +63,26 @@
    PASS  Tests\Feature\CoreFunctionalityTest
   ✓ user can send a message in a thread                                                     0.01s
   ✓ system can add a message to a thread                                                    0.01s
-  ✓ threads can be organized into projects                                                  0.01s
+  ✓ threads can be organized into projects                                                  0.02s
   ✓ threads can be organized into teams                                                     0.01s
   ✓ system can make LLM tool calls with GitHub API                                          0.01s
 
    PASS  Tests\Feature\HomepageChatTest
-  ✓ authenticated user can send a message from homepage and is redirected to new chat thre… 0.01s
-  ✓ unauthenticated user is redirected to login when trying to send a message from homepage
-  ✓ chat page loads correctly after sending a message                                       0.01s
+  ✓ authenticated user can send message from homepage and is redirected to new chat thread  0.01s
+  ✓ unauthenticated user is redirected to login when trying to send message from homepage
+  ✓ chat page loads correctly after sending message                                         0.03s
 
    PASS  Tests\Feature\HomepageTest
-  ✓ homepage loads homepage view for unauthenticated users                                  0.01s
+  ✓ homepage loads dashboard view for unauthenticated users                                 0.01s
   ✓ homepage loads dashboard view for authenticated users                                   0.01s
 
    PASS  Tests\Feature\SendMessageTest
   ✓ authenticated user can send a message without a project                                 0.01s
   ✓ authenticated user can send a message with a project                                    0.01s
   ✓ authenticated user can send a message to an existing thread                             0.01s
-  ✓ unauthenticated user cannot send a message
+  ✓ unauthenticated user cannot send a message                                              0.01s
   ✓ message cannot be empty                                                                 0.01s
   ✓ project_id must be valid if provided
+
+  Tests:    54 passed (140 assertions)
+  Duration: 1.16s
