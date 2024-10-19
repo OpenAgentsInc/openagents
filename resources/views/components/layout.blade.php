@@ -20,8 +20,8 @@
                 <div class="flex flex-row items-center gap-x-4 px-3 py-1">
                     <x-app-brand />
                 </div>
-                <div class="">
-                    <!-- Add any additional header content here -->
+                <div class="pr-3">
+                    @include('dashboard.top-buttons')
                 </div>
             </header>
             <main class="flex-1 overflow-auto h-full">
