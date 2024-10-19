@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Team;
+use App\Models\Project;
+use Illuminate\Support\Facades\Auth;
 
 class TeamController extends Controller
 {
@@ -14,9 +16,9 @@ class TeamController extends Controller
 
     public function getTeamsAndProjects()
     {
-        // TODO: Fetch actual teams and projects from the database
-        $teams = ['OpenAgents', 'Atlantis Ports', 'RoA'];
-        $projects = ['Project A', 'Project B', 'Project C'];
+        $user = Auth::user();
+        $teams = $user->teams()->pluck('name')->toArray();
+        $projects = Project::whereIn('team_id', $user->teams()->pluck('id'))->pluck('name')->toArray();
 
         return view('components.sidebar.team-switcher-content', compact('teams', 'projects'));
     }
