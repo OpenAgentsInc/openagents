@@ -18,8 +18,8 @@
     hx-trigger="load"
     hx-swap="innerHTML">
     <!-- Initial loading state dropdowns -->
-    <x-dropdown label="Team" :items="[]" id="teamSwitcher" class="w-full" :loading="true" loading-label="Team" />
-    <x-dropdown label="Project" :items="[]" id="projectSwitcher" class="w-full" :loading="true" loading-label="Project" />
+    <x-dropdown label="{{ Auth::user()->currentTeam ? Auth::user()->currentTeam->name : 'Personal' }}" :items="[]" id="teamSwitcher" class="w-full" :loading="true" loading-label="Loading..." />
+    <x-dropdown label="Project" :items="[]" id="projectSwitcher" class="w-full" :loading="true" loading-label="Loading..." />
 </div>
 
 <script>
