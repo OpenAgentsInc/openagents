@@ -45,6 +45,6 @@ class TeamController extends Controller
         $user->current_team_id = $team->id;
         $user->save();
 
-        return redirect()->back()->with('success', 'Team switched successfully.');
+        return $this->getTeamsAndProjects();
     }
 }
