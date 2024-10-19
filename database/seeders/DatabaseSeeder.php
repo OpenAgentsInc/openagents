@@ -14,11 +14,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Create a test user
-        $user = User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // Get the existing user with id 1
+        $user = User::findOrFail(1);
 
         // Create demo teams
         $teams = [
@@ -50,10 +47,7 @@ class DatabaseSeeder extends Seeder
             }
         }
 
-        // Create additional users
-        User::factory(9)->create()->each(function ($user) use ($teams) {
-            // Attach each user to 1-3 random teams
-            $user->teams()->attach(Team::inRandomOrder()->take(rand(1, 3))->pluck('id'));
-        });
+        // Output a message to confirm the seeding was successful
+        $this->command->info('Teams and projects have been added to the user with id 1.');
     }
 }
