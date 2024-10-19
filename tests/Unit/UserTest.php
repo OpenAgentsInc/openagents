@@ -6,12 +6,13 @@ use App\Models\Project;
 use App\Models\Thread;
 use App\Models\Message;
 
-test('a user belongs to a team', function () {
-    $team = Team::factory()->create();
-    $user = User::factory()->create(['team_id' => $team->id]);
+test('a user belongs to many teams', function () {
+    $user = User::factory()->create();
+    $teams = Team::factory()->count(2)->create();
+    $user->teams()->attach($teams);
 
-    expect($user->team)->toBeInstanceOf(Team::class);
-    expect($user->team->id)->toBe($team->id);
+    expect($user->teams)->toHaveCount(2);
+    expect($user->teams->first())->toBeInstanceOf(Team::class);
 });
 
 test('a user has many projects', function () {
@@ -38,11 +39,12 @@ test('a user has many messages', function () {
     expect($user->messages->first())->toBeInstanceOf(Message::class);
 });
 
-test('a user can have projects through their team', function () {
+test('a user can have projects through their teams', function () {
+    $user = User::factory()->create();
     $team = Team::factory()->create();
-    $user = User::factory()->create(['team_id' => $team->id]);
+    $user->teams()->attach($team);
     $projects = Project::factory()->count(3)->create(['team_id' => $team->id]);
 
-    expect($user->team->projects)->toHaveCount(3);
-    expect($user->team->projects->first())->toBeInstanceOf(Project::class);
+    expect($user->teams->first()->projects)->toHaveCount(3);
+    expect($user->teams->first()->projects->first())->toBeInstanceOf(Project::class);
 });
