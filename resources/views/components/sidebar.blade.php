@@ -27,19 +27,19 @@ $isCollapsed = true; // Set this based on user preference or session state
     }
 </style>
 
-<div id="sidebar" class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-border"
+<div id="sidebar" class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-[hsl(var(--sidebar-border))]"
     style="width: {{ $isCollapsed ? '60px' : '270px' }};">
-    <div class="sidebar-inner bg-background h-full">
+    <div class="sidebar-inner bg-[hsl(var(--sidebar-background))] h-full">
         <div class="sidebar-content flex flex-col">
             <div class="flex flex-col space-y-4 py-4">
                 <div class="px-3 flex items-center justify-between">
                     <button
                         id="sidebarToggle"
-                        class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-10 w-10 flex-shrink-0"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--sidebar-ring))] disabled:pointer-events-none disabled:opacity-50 hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))] h-10 w-10 flex-shrink-0"
                         aria-label="Toggle sidebar">
                         <x-icons.sidebar class="h-6 w-6" />
                     </button>
-                    <button id="newTeamButton" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-10 w-10 flex-shrink-0" aria-label="Create new team" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
+                    <button id="newTeamButton" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--sidebar-ring))] disabled:pointer-events-none disabled:opacity-50 hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))] h-10 w-10 flex-shrink-0" aria-label="Create new team" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                         </svg>
@@ -50,15 +50,15 @@ $isCollapsed = true; // Set this based on user preference or session state
                     <x-dropdown label="OIDC" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
                 </div>
             </div>
-            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-border" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"></div>
+            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-[hsl(var(--sidebar-border))]" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"></div>
             <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">
                         <ul class="space-y-2">
                             @foreach(range(1, 5) as $index)
-                            <li class="bg-secondary/10 p-2 rounded">
-                                <p class="text-sm font-medium">Message #{{ $index }}</p>
-                                <p class="text-xs text-muted-foreground">Lorem ipsum dolor sit amet...</p>
+                            <li class="bg-[hsl(var(--sidebar-accent))] bg-opacity-10 p-2 rounded">
+                                <p class="text-sm font-medium text-[hsl(var(--sidebar-foreground))]">Message #{{ $index }}</p>
+                                <p class="text-xs text-[hsl(var(--sidebar-foreground))] opacity-70">Lorem ipsum dolor sit amet...</p>
                             </li>
                             @endforeach
                         </ul>
