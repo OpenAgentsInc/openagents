@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Team;
 use App\Models\Project;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 
 class TeamController extends Controller
 {
@@ -32,12 +33,18 @@ class TeamController extends Controller
         return view('components.sidebar.team-switcher-content', compact('teams', 'projects', 'activeTeam'));
     }
 
-    public function switchTeam(Team $team)
+    public function switchTeam(Request $request, Team $team)
     {
         $user = Auth::user();
+        
+        // Check if the user belongs to the team
+        if (!$user->teams->contains($team)) {
+            return redirect()->back()->with('error', 'You do not have access to this team.');
+        }
+
         $user->current_team_id = $team->id;
         $user->save();
 
-        return redirect()->back();
+        return redirect()->back()->with('success', 'Team switched successfully.');
     }
 }
