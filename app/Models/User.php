@@ -52,7 +52,7 @@ class User extends Authenticatable
 
     public function teams(): BelongsToMany
     {
-        return $this->belongsToMany(Team::class);
+        return $this->belongsToMany(Team::class)->select(['teams.id', 'teams.name']);
     }
 
     public function projects(): HasMany
