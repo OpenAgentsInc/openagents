@@ -31,4 +31,13 @@ class TeamController extends Controller
 
         return view('components.sidebar.team-switcher-content', compact('teams', 'projects', 'activeTeam'));
     }
+
+    public function switchTeam(Team $team)
+    {
+        $user = Auth::user();
+        $user->current_team_id = $team->id;
+        $user->save();
+
+        return redirect()->back();
+    }
 }
