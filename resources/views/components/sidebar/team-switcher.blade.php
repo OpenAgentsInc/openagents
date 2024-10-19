@@ -14,7 +14,7 @@
     </button>
 </div>
 <div id="sidebarHeader" class="px-3 space-y-4" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"
-    hx-get="/teams"
+    hx-get="{{ route('teams.get') }}"
     hx-trigger="load"
     hx-swap="innerHTML">
     <!-- Initial loading state dropdowns -->
