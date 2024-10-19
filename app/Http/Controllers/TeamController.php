@@ -16,8 +16,8 @@ class TeamController extends Controller
     public function getTeamsAndProjects()
     {
         // TODO: Fetch actual teams and projects from the database
-        $teams = ['Scramble', 'Personal', 'Team Alpha', 'Team Beta'];
-        $projects = ['OIDC', 'Project X', 'Project Y', 'Project Z'];
+        $teams = ['OpenAgents', 'Atlantis Ports', 'RoA'];
+        $projects = [''];
 
         return view('components.team-switcher-content', compact('teams', 'projects'));
     }
