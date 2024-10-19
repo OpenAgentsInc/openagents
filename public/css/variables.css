@@ -30,32 +30,32 @@
         --sidebar-ring: 217.2 91.2% 59.8%;
     }
     .dark {
-        --background: 240 10% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 240 10% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 240 10% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 240 5.9% 10%;
-        --secondary: 240 3.7% 15.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 240 3.7% 15.9%;
-        --muted-foreground: 240 5% 64.9%;
-        --accent: 240 3.7% 15.9%;
-        --accent-foreground: 0 0% 98%;
+        --background: 240 10% 3.9%; /* zinc-950 */
+        --foreground: 240 5% 64.9%; /* zinc-400 */
+        --card: 240 10% 3.9%; /* zinc-950 */
+        --card-foreground: 240 5% 64.9%; /* zinc-400 */
+        --popover: 240 10% 3.9%; /* zinc-950 */
+        --popover-foreground: 240 5% 64.9%; /* zinc-400 */
+        --primary: 240 5% 64.9%; /* zinc-400 */
+        --primary-foreground: 240 10% 3.9%; /* zinc-950 */
+        --secondary: 240 5.9% 10%; /* zinc-900 */
+        --secondary-foreground: 240 5% 64.9%; /* zinc-400 */
+        --muted: 240 5.9% 10%; /* zinc-900 */
+        --muted-foreground: 240 5.3% 26.1%; /* zinc-700 */
+        --accent: 240 5.9% 10%; /* zinc-900 */
+        --accent-foreground: 240 5% 64.9%; /* zinc-400 */
         --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 240 3.7% 15.9%;
-        --input: 240 3.7% 15.9%;
-        --ring: 240 4.9% 83.9%;
-        --sidebar-background: 240 5.9% 10%;
-        --sidebar-foreground: 240 5% 64.9%;
-        --sidebar-primary: 240 5.3% 26.1%;
-        --sidebar-primary-foreground: 0 0% 98%;
-        --sidebar-accent: 240 3.7% 15.9%;
-        --sidebar-accent-foreground: 240 5% 64.9%;
-        --sidebar-border: 240 5.3% 26.1%;
+        --destructive-foreground: 240 5% 64.9%; /* zinc-400 */
+        --border: 240 5.9% 10%; /* zinc-900 */
+        --input: 240 5.9% 10%; /* zinc-900 */
+        --ring: 240 4.9% 83.9%; /* zinc-300 */
+        --sidebar-background: 240 10% 3.9%; /* zinc-950 */
+        --sidebar-foreground: 240 5.3% 26.1%; /* zinc-700 */
+        --sidebar-primary: 240 5.9% 10%; /* zinc-900 */
+        --sidebar-primary-foreground: 240 5% 64.9%; /* zinc-400 */
+        --sidebar-accent: 240 5.9% 10%; /* zinc-900 */
+        --sidebar-accent-foreground: 240 5.3% 26.1%; /* zinc-700 */
+        --sidebar-border: 240 5.9% 10%; /* zinc-900 */
         --sidebar-ring: 217.2 91.2% 59.8%;
     }
 }
