@@ -10,6 +10,15 @@
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
     @include('partials.scripts')
+    <script>
+        (function() {
+            var sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            document.documentElement.classList.add('sidebar-init');
+            document.documentElement.style.setProperty('--sidebar-width', sidebarCollapsed ? '70px' : '270px');
+            document.documentElement.style.setProperty('--sidebar-content-opacity', sidebarCollapsed ? '0' : '1');
+            document.documentElement.style.setProperty('--sidebar-content-visibility', sidebarCollapsed ? 'hidden' : 'visible');
+        })();
+    </script>
 </head>
 
 <body hx-boost="true" class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
@@ -30,6 +39,7 @@
         </div>
     </div>
     @auth
+    <script src="{{ asset('js/sidebar.js') }}"></script>
     <script src="{{ asset('js/stream.js') }}"></script>
     @endauth
     @stack('scripts')
