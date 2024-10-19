@@ -1,16 +1,21 @@
 @php
-$isCollapsed = false; // Set this based on user preference or session state
+$isCollapsed = false; // Default value
 @endphp
 
-<div id="sidebar" class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-sidebar-border"
-    style="width: {{ $isCollapsed ? '60px' : '270px' }};">
+<div
+    x-data="{ isCollapsed: localStorage.getItem('sidebarCollapsed') === 'true' }"
+    x-init="$watch('isCollapsed', value => localStorage.setItem('sidebarCollapsed', value))"
+    id="sidebar"
+    class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-sidebar-border"
+    :style="{ width: isCollapsed ? '60px' : '270px' }"
+>
     <div class="sidebar-inner bg-sidebar-background h-full">
         <div class="sidebar-content flex flex-col">
             <div class="flex flex-col space-y-4 py-3">
                 <x-team-switcher :isCollapsed="$isCollapsed" />
             </div>
-            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border opacity-50" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"></div>
-            <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
+            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border opacity-50" :style="{ opacity: isCollapsed ? 0 : 1 }"></div>
+            <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col" :style="{ opacity: isCollapsed ? 0 : 1 }">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">
                         <!-- Chats Section -->
@@ -46,5 +51,3 @@ $isCollapsed = false; // Set this based on user preference or session state
         </div>
     </div>
 </div>
-
-<script src="{{ asset('js/sidebar.js') }}"></script>
