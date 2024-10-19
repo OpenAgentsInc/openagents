@@ -50,7 +50,7 @@ $isCollapsed = true; // Set this based on user preference or session state
                     <x-dropdown label="OIDC" :items="['Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
                 </div>
             </div>
-            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"></div>
+            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border opacity-50" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"></div>
             <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">
