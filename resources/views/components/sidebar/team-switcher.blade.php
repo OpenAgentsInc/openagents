@@ -14,12 +14,12 @@
     </button>
 </div>
 <div id="sidebarHeader" class="px-3 space-y-4" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"
-     hx-get="/teams"
-     hx-trigger="load"
-     hx-swap="innerHTML">
+    hx-get="/teams"
+    hx-trigger="load"
+    hx-swap="innerHTML">
     <!-- Initial loading state dropdowns -->
-    <x-dropdown label="Team" :items="[]" id="teamSwitcher" class="w-full" :loading="true" loading-label="Loading teams..." />
-    <x-dropdown label="Project" :items="[]" id="projectSwitcher" class="w-full" :loading="true" loading-label="Loading projects..." />
+    <x-dropdown label="Team" :items="[]" id="teamSwitcher" class="w-full" :loading="true" loading-label="" />
+    <x-dropdown label="Project" :items="[]" id="projectSwitcher" class="w-full" :loading="true" loading-label="" />
 </div>
 
 <script>

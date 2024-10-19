@@ -3,8 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Team;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class TeamController extends Controller
 {
@@ -16,9 +14,7 @@ class TeamController extends Controller
 
     public function getTeamsAndProjects()
     {
-        // Simulate a 1-second delay
-        sleep(1);
-
+        sleep(2.5);
         // TODO: Fetch actual teams and projects from the database
         $teams = ['OpenAgents', 'Atlantis Ports', 'RoA'];
         $projects = ['Project A', 'Project B', 'Project C'];
