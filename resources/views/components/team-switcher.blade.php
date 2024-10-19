@@ -13,10 +13,17 @@
         </svg>
     </button>
 </div>
-<div id="sidebarHeader" class="px-3 space-y-4" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}">
-    <!-- Team Dropdown -->
-    <x-dropdown label="Team" :items="['Scramble', 'Personal', 'Team Alpha', 'Team Beta']" id="teamSwitcher" class="w-full" />
-
-    <!-- Project Dropdown -->
-    <x-dropdown label="Project" :items="['OIDC', 'Project X', 'Project Y', 'Project Z']" id="projectSwitcher" class="w-full" />
+<div id="sidebarHeader" class="px-3 space-y-4" style="{{ $isCollapsed ? 'opacity: 0;' : '' }}"
+     hx-get="/teams"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <div class="htmx-indicator">Loading teams and projects...</div>
 </div>
+
+<script>
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        if (event.detail.target.id === 'sidebarHeader') {
+            // Reinitialize any JavaScript components or listeners if needed
+        }
+    });
+</script>
