@@ -31,7 +31,7 @@ $isCollapsed = true; // Set this based on user preference or session state
     style="width: {{ $isCollapsed ? '60px' : '270px' }};">
     <div class="sidebar-inner bg-[hsl(var(--sidebar-background))] h-full">
         <div class="sidebar-content flex flex-col">
-            <div class="flex flex-col space-y-4 py-4">
+            <div class="flex flex-col space-y-4 py-3">
                 <div class="px-3 flex items-center justify-between">
                     <button
                         id="sidebarToggle"
