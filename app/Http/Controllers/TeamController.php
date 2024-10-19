@@ -39,7 +39,7 @@ class TeamController extends Controller
         
         // Check if the user belongs to the team
         if (!$user->teams->contains($team)) {
-            return redirect()->back()->with('error', 'You do not have access to this team.');
+            return response()->json(['error' => 'You do not have access to this team.'], 403);
         }
 
         $user->current_team_id = $team->id;
