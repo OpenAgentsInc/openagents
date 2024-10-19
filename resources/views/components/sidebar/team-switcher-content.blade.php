@@ -12,3 +12,12 @@
 
 <!-- Project Dropdown -->
 <x-dropdown label="Project" :items="$projects" id="projectSwitcher" class="w-full" />
+
+<script>
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        if (event.detail.target.id === 'sidebarHeader') {
+            // Reinitialize any JavaScript components or listeners if needed
+            console.log('Team switched successfully');
+        }
+    });
+</script>
