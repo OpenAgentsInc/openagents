@@ -2,23 +2,22 @@
     x-data="{ isCollapsed: true }"
     x-init="
         isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-        $watch('isCollapsed', value => localStorage.setItem('sidebarCollapsed', value))
+        $nextTick(() => {
+            document.getElementById('sidebar').style.visibility = 'visible';
+        });
+        $watch('isCollapsed', value => localStorage.setItem('sidebarCollapsed', value));
     "
     id="sidebar"
-    class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-sidebar-border"
-    style="width: 60px; visibility: hidden;"
-    x-bind:style="{ 
-        width: isCollapsed ? '60px' : '270px',
-        visibility: 'visible'
-    }"
+    class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-sidebar-border invisible"
+    :class="{ 'w-[60px]': isCollapsed, 'w-[270px]': !isCollapsed }"
 >
     <div class="sidebar-inner bg-sidebar-background h-full">
         <div class="sidebar-content flex flex-col">
             <div class="flex flex-col space-y-4 py-3">
                 <x-team-switcher :isCollapsed="true" x-bind:is-collapsed="isCollapsed" />
             </div>
-            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border opacity-0" x-bind:class="{ 'opacity-50': !isCollapsed }"></div>
-            <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col opacity-0" x-bind:class="{ 'opacity-100': !isCollapsed }">
+            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border opacity-0 transition-opacity duration-300" :class="{ 'opacity-50': !isCollapsed }"></div>
+            <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col opacity-0 transition-opacity duration-300" :class="{ 'opacity-100': !isCollapsed }">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">
                         <!-- Chats Section -->
