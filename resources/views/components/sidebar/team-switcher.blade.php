@@ -17,9 +17,9 @@
      hx-get="/teams"
      hx-trigger="load"
      hx-swap="innerHTML">
-    <div class="htmx-indicator flex justify-center items-center h-12">
-        <div class="dot-flashing"></div>
-    </div>
+    <!-- Initial loading state dropdowns -->
+    <x-dropdown label="Team" :items="[]" id="teamSwitcher" class="w-full" :loading="true" />
+    <x-dropdown label="Project" :items="[]" id="projectSwitcher" class="w-full" :loading="true" />
 </div>
 
 <script>
