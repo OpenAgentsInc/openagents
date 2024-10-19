@@ -1,5 +1,5 @@
 @php
-$isCollapsed = true; // Set this based on user preference or session state
+$isCollapsed = false; // Set this based on user preference or session state
 @endphp
 
 <style>
