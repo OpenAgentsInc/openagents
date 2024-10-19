@@ -18,8 +18,8 @@ class LoadTeamsAndProjectsTest extends TestCase
         $user = User::factory()->create();
 
         // Create teams
-        $team1 = Team::factory()->create();
-        $team2 = Team::factory()->create();
+        $team1 = Team::factory()->create(['name' => 'Team 1']);
+        $team2 = Team::factory()->create(['name' => 'Team 2']);
 
         // Associate user with teams
         $user->teams()->attach([$team1->id, $team2->id]);
@@ -29,9 +29,9 @@ class LoadTeamsAndProjectsTest extends TestCase
         $user->save();
 
         // Create projects
-        $project1 = Project::factory()->create(['team_id' => $team1->id]);
-        $project2 = Project::factory()->create(['team_id' => $team1->id]);
-        $project3 = Project::factory()->create(['team_id' => $team2->id]);
+        $project1 = Project::factory()->create(['team_id' => $team1->id, 'name' => 'Project 1']);
+        $project2 = Project::factory()->create(['team_id' => $team1->id, 'name' => 'Project 2']);
+        $project3 = Project::factory()->create(['team_id' => $team2->id, 'name' => 'Project 3']);
 
         // Make request to getTeamsAndProjects endpoint
         $response = $this->actingAs($user)->get(route('teams.get'));
@@ -40,19 +40,19 @@ class LoadTeamsAndProjectsTest extends TestCase
         $response->assertStatus(200);
 
         // Assert that the response contains the correct teams and projects
-        $response->assertSee($team1->name);
-        $response->assertSee($team2->name);
-        $response->assertSee($project1->name);
-        $response->assertSee($project2->name);
-        $response->assertDontSee($project3->name);
+        $response->assertSee('Team 1');
+        $response->assertSee('Team 2');
+        $response->assertSee('Project 1');
+        $response->assertSee('Project 2');
+        $response->assertDontSee('Project 3');
 
         // Assert that the response doesn't contain teams not associated with the user
-        $team3 = Team::factory()->create();
-        $response->assertDontSee($team3->name);
+        $team3 = Team::factory()->create(['name' => 'Team 3']);
+        $response->assertDontSee('Team 3');
 
         // Assert that the response doesn't contain projects from teams not associated with the user
-        $project4 = Project::factory()->create(['team_id' => $team3->id]);
-        $response->assertDontSee($project4->name);
+        $project4 = Project::factory()->create(['team_id' => $team3->id, 'name' => 'Project 4']);
+        $response->assertDontSee('Project 4');
     }
 
     public function test_getTeamsAndProjects_returns_personal_projects_when_no_active_team()
@@ -61,14 +61,14 @@ class LoadTeamsAndProjectsTest extends TestCase
         $user = User::factory()->create();
 
         // Create teams
-        $team1 = Team::factory()->create();
+        $team1 = Team::factory()->create(['name' => 'Team 1']);
 
         // Associate user with teams
         $user->teams()->attach([$team1->id]);
 
         // Create projects
-        $personalProject = Project::factory()->create(['team_id' => null, 'user_id' => $user->id]);
-        $teamProject = Project::factory()->create(['team_id' => $team1->id]);
+        $personalProject = Project::factory()->create(['team_id' => null, 'user_id' => $user->id, 'name' => 'Personal Project']);
+        $teamProject = Project::factory()->create(['team_id' => $team1->id, 'name' => 'Team Project']);
 
         // Make request to getTeamsAndProjects endpoint
         $response = $this->actingAs($user)->get(route('teams.get'));
@@ -77,8 +77,8 @@ class LoadTeamsAndProjectsTest extends TestCase
         $response->assertStatus(200);
 
         // Assert that the response contains the correct teams and projects
-        $response->assertSee($team1->name);
-        $response->assertSee($personalProject->name);
-        $response->assertDontSee($teamProject->name);
+        $response->assertSee('Team 1');
+        $response->assertSee('Personal Project');
+        $response->assertDontSee('Team Project');
     }
 }
