@@ -2,7 +2,7 @@
 <x-dropdown label="Team" :items="$teams" id="teamSwitcher" class="w-full" :selected="$activeTeam ? $activeTeam->id : null">
     @foreach($teams as $id => $name)
         <x-dropdown-item :value="$id" :selected="$activeTeam && $activeTeam->id == $id">
-            <form action="{{ route('switch-team', $id) }}" method="POST">
+            <form action="{{ route('switch-team', $id) }}" method="POST" class="w-full">
                 @csrf
                 <button type="submit" class="w-full text-left">{{ $name }}</button>
             </form>
