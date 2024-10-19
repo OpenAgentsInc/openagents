@@ -18,8 +18,8 @@
      hx-trigger="load"
      hx-swap="innerHTML">
     <!-- Initial loading state dropdowns -->
-    <x-dropdown label="Team" :items="[]" id="teamSwitcher" class="w-full" :loading="true" />
-    <x-dropdown label="Project" :items="[]" id="projectSwitcher" class="w-full" :loading="true" />
+    <x-dropdown label="Team" :items="[]" id="teamSwitcher" class="w-full" :loading="true" loading-label="Loading teams..." />
+    <x-dropdown label="Project" :items="[]" id="projectSwitcher" class="w-full" :loading="true" loading-label="Loading projects..." />
 </div>
 
 <script>
