@@ -1,5 +1,5 @@
 <div
-    x-data="{ isCollapsed: true }"
+    x-data="{ isCollapsed: false }"
     x-init="
         isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
         $nextTick(() => {
@@ -9,8 +9,7 @@
     "
     id="sidebar"
     class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-sidebar-border invisible"
-    :class="{ 'w-[60px]': isCollapsed, 'w-[270px]': !isCollapsed }"
->
+    :class="{ 'w-[60px]': isCollapsed, 'w-[270px]': !isCollapsed }">
     <div class="sidebar-inner bg-sidebar-background h-full">
         <div class="sidebar-content flex flex-col">
             <div class="flex flex-col space-y-4 py-3">
