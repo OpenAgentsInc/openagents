@@ -7,11 +7,5 @@
         Sign up
     </x-button>
     @else
-    <form method="POST" action="{{ route('logout') }}">
-        @csrf
-        <x-button type="submit" variant="destructive">
-            Logout
-        </x-button>
-    </form>
     @endguest
 </div>
