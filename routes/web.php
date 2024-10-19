@@ -21,6 +21,9 @@ Route::get('/logout', function () {
 });
 
 Route::view('/components', 'components')->name('components');
+Route::view('/plans', function () {
+    return "plans";
+})->name('plans');
 
 Route::middleware(['auth'])->group(function () {
     // Message routes
