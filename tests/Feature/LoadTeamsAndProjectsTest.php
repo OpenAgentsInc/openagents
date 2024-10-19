@@ -34,7 +34,7 @@ class LoadTeamsAndProjectsTest extends TestCase
         $project3 = Project::factory()->create(['team_id' => $team2->id]);
 
         // Make request to getTeamsAndProjects endpoint
-        $response = $this->actingAs($user)->get('/teams');
+        $response = $this->actingAs($user)->get(route('teams.get'));
 
         // Assert response status
         $response->assertStatus(200);
@@ -71,7 +71,7 @@ class LoadTeamsAndProjectsTest extends TestCase
         $teamProject = Project::factory()->create(['team_id' => $team1->id]);
 
         // Make request to getTeamsAndProjects endpoint
-        $response = $this->actingAs($user)->get('/teams');
+        $response = $this->actingAs($user)->get(route('teams.get'));
 
         // Assert response status
         $response->assertStatus(200);
