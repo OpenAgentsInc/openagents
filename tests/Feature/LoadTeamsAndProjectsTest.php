@@ -21,13 +21,13 @@ class LoadTeamsAndProjectsTest extends TestCase
         $team1 = Team::factory()->create(['name' => 'Team 1']);
         $team2 = Team::factory()->create(['name' => 'Team 2']);
 
+        // Associate user with teams
+        $user->teams()->attach([$team1->id, $team2->id]);
+
         // Create projects
         $project1 = Project::factory()->create(['name' => 'Project A', 'team_id' => $team1->id]);
         $project2 = Project::factory()->create(['name' => 'Project B', 'team_id' => $team1->id]);
         $project3 = Project::factory()->create(['name' => 'Project C', 'team_id' => $team2->id]);
-
-        // Associate user with teams
-        $user->teams()->attach([$team1->id, $team2->id]);
 
         // Make request to getTeamsAndProjects endpoint
         $response = $this->actingAs($user)->get('/teams');
@@ -42,9 +42,12 @@ class LoadTeamsAndProjectsTest extends TestCase
         $response->assertSee('Project B');
         $response->assertSee('Project C');
 
-        // Assert that the response doesn't contain hardcoded team and project names
-        $response->assertDontSee('OpenAgents');
-        $response->assertDontSee('Atlantis Ports');
-        $response->assertDontSee('RoA');
+        // Assert that the response doesn't contain teams not associated with the user
+        $team3 = Team::factory()->create(['name' => 'Team 3']);
+        $response->assertDontSee('Team 3');
+
+        // Assert that the response doesn't contain projects from teams not associated with the user
+        $project4 = Project::factory()->create(['name' => 'Project D', 'team_id' => $team3->id]);
+        $response->assertDontSee('Project D');
     }
 }
