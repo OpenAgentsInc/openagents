@@ -38,7 +38,7 @@ class Dropdown extends Component
                             @if($icon)
                                 <span class="mr-2">{!! $icon !!}</span>
                             @endif
-                            {{ $loading ? $loadingLabel : $label }}
+                            <span class="flex-grow text-left">{{ $loading ? ($loadingLabel ?: $label) : $label }}</span>
                         </span>
                         @if($loading)
                             <svg class="animate-spin h-5 w-5 text-sidebar-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
