@@ -25,7 +25,7 @@ class LoadTeamsAndProjectsTest extends TestCase
         $user->teams()->attach([$team1->id, $team2->id]);
 
         // Set active team
-        $user->currentTeam = $team1;
+        $user->current_team_id = $team1->id;
         $user->save();
 
         // Create projects
