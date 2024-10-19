@@ -16,8 +16,8 @@
         </button>
         <div x-show="open" @click.away="open = false" class="absolute bottom-full left-0 w-full mb-2 bg-sidebar-background rounded-md shadow-md border border-sidebar-border">
             <div class="p-2">
-                <a href="#" class="block px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md">Manage Account</a>
-                <a href="#" class="block px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md">Logout</a>
+                <!-- <a href="#" class="block px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md">Manage Account</a> -->
+                <a href="/logout" class="block px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md">Log out</a>
             </div>
         </div>
     </div>
