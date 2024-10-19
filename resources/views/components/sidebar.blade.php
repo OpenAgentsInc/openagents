@@ -2,31 +2,6 @@
 $isCollapsed = false; // Set this based on user preference or session state
 @endphp
 
-<style>
-    .sidebar-init #sidebar,
-    .sidebar-init #sidebarContent {
-        transition: none !important;
-    }
-
-    #sidebarContent,
-    #sidebarHeader {
-        transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
-    }
-
-    .sidebar-inner {
-        width: 270px;
-        position: relative;
-    }
-
-    .sidebar-content {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-    }
-</style>
-
 <div id="sidebar" class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-sidebar-border"
     style="width: {{ $isCollapsed ? '60px' : '270px' }};">
     <div class="sidebar-inner bg-sidebar-background h-full">

@@ -89,3 +89,31 @@ select:focus {
       background-color: rgba(255, 255, 255, 0.2);
   }
 }
+
+/**
+ * ==============================================
+ * Sidebar
+ * ==============================================
+ */
+.sidebar-init #sidebar,
+.sidebar-init #sidebarContent {
+    transition: none !important;
+}
+
+#sidebarContent,
+#sidebarHeader {
+    transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+}
+
+.sidebar-inner {
+    width: 270px;
+    position: relative;
+}
+
+.sidebar-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
