@@ -17,8 +17,8 @@ class TeamController extends Controller
     public function getTeamsAndProjects()
     {
         $user = Auth::user();
-        $teams = $user->teams()->pluck('name')->toArray();
-        $projects = Project::whereIn('team_id', $user->teams()->pluck('id'))->pluck('name')->toArray();
+        $teams = $user->teams()->pluck('name', 'id')->toArray();
+        $projects = Project::whereIn('team_id', array_keys($teams))->pluck('name')->toArray();
 
         return view('components.sidebar.team-switcher-content', compact('teams', 'projects'));
     }
