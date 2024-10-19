@@ -1,12 +1,3 @@
-// Set initial sidebar state
-(function() {
-    var sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-    document.documentElement.classList.add('sidebar-init');
-    document.documentElement.style.setProperty('--sidebar-width', sidebarCollapsed ? '70px' : '270px');
-    document.documentElement.style.setProperty('--sidebar-content-opacity', sidebarCollapsed ? '0' : '1');
-    document.documentElement.style.setProperty('--sidebar-content-visibility', sidebarCollapsed ? 'hidden' : 'visible');
-})();
-
 document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('sidebar');
     const sidebarToggle = document.getElementById('sidebarToggle');
