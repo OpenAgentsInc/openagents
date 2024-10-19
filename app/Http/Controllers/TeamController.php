@@ -12,4 +12,13 @@ class TeamController extends Controller
         $threads = $team->threads()->with('project')->get();
         return response()->json($threads, 200);
     }
+
+    public function getTeamsAndProjects()
+    {
+        // TODO: Fetch actual teams and projects from the database
+        $teams = ['Scramble', 'Personal', 'Team Alpha', 'Team Beta'];
+        $projects = ['OIDC', 'Project X', 'Project Y', 'Project Z'];
+
+        return view('components.team-switcher-content', compact('teams', 'projects'));
+    }
 }
