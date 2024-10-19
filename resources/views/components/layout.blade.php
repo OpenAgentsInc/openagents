@@ -10,13 +10,18 @@
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
     @include('partials.scripts')
+    <style>
+        :root {
+            --header-height: 3rem; /* Adjust this value based on your header's height */
+        }
+    </style>
 </head>
 
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
     <div class="flex h-full">
         @auth <x-sidebar /> @endauth
         <div class="flex-1 flex flex-col">
-            <header class="flex justify-between items-center bg-background border-b border-border md:border-none p-0 sm:p-3 z-[9999]">
+            <header class="fixed top-0 left-0 right-0 flex justify-between items-center bg-transparent border-b border-border md:border-none p-0 sm:p-3 z-[9999]">
                 <div class="flex flex-row items-center gap-x-4 px-3 py-1">
                     <x-app-brand />
                 </div>
@@ -24,7 +29,7 @@
                     <!-- Add any additional header content here -->
                 </div>
             </header>
-            <main class="flex-1 overflow-auto">
+            <main class="flex-1 overflow-auto pt-[var(--header-height)]">
                 {{ $slot }}
             </main>
         </div>
