@@ -15,8 +15,8 @@
 <body class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
     <div class="flex h-full">
         @auth <x-sidebar /> @endauth
-        <div class="flex-1 flex flex-col h-full">
-            <header class="flex justify-between items-center bg-transparent border-b border-border md:border-none p-0 sm:p-3 z-[9999]">
+        <div class="flex-1 flex flex-col h-full relative">
+            <header class="absolute top-0 left-0 right-0 flex justify-between items-center bg-transparent border-b border-border md:border-none p-0 sm:p-3 z-[9999]">
                 <div class="flex flex-row items-center gap-x-4 px-3 py-1">
                     <x-app-brand />
                 </div>
@@ -24,7 +24,7 @@
                     <!-- Add any additional header content here -->
                 </div>
             </header>
-            <main class="flex-1 overflow-auto">
+            <main class="flex-1 overflow-auto h-full">
                 {{ $slot }}
             </main>
         </div>
