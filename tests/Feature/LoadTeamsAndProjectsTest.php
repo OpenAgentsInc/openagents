@@ -1,84 +1,80 @@
 <?php
 
-namespace Tests\Feature;
-
 use App\Models\User;
 use App\Models\Team;
 use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 
-class LoadTeamsAndProjectsTest extends TestCase
-{
-    use RefreshDatabase;
+uses(RefreshDatabase::class);
 
-    public function test_getTeamsAndProjects_returns_teams_and_projects_for_active_team()
-    {
-        // Create a user
-        $user = User::factory()->create();
+beforeEach(function () {
+    $this->user = User::factory()->create();
+    $this->team1 = Team::factory()->create(['name' => 'Team 1']);
+    $this->team2 = Team::factory()->create(['name' => 'Team 2']);
+    $this->user->teams()->attach([$this->team1->id, $this->team2->id]);
+    $this->user->current_team_id = $this->team1->id;
+    $this->user->save();
 
-        // Create teams
-        $team1 = Team::factory()->create(['name' => 'Team 1']);
-        $team2 = Team::factory()->create(['name' => 'Team 2']);
+    $this->project1 = Project::factory()->create(['team_id' => $this->team1->id, 'name' => 'Project 1']);
+    $this->project2 = Project::factory()->create(['team_id' => $this->team1->id, 'name' => 'Project 2']);
+    $this->project3 = Project::factory()->create(['team_id' => $this->team2->id, 'name' => 'Project 3']);
+});
 
-        // Associate user with teams
-        $user->teams()->attach([$team1->id, $team2->id]);
+test('initial page load does not contain teams and projects', function () {
+    $response = $this->actingAs($this->user)->get(route('dashboard'));
 
-        // Set active team
-        $user->current_team_id = $team1->id;
-        $user->save();
+    $response->assertStatus(200);
+    $response->assertDontSee('Team 1');
+    $response->assertDontSee('Team 2');
+    $response->assertDontSee('Project 1');
+    $response->assertDontSee('Project 2');
+    $response->assertDontSee('Project 3');
+});
 
-        // Create projects
-        $project1 = Project::factory()->create(['team_id' => $team1->id, 'name' => 'Project 1']);
-        $project2 = Project::factory()->create(['team_id' => $team1->id, 'name' => 'Project 2']);
-        $project3 = Project::factory()->create(['team_id' => $team2->id, 'name' => 'Project 3']);
+test('HTMX endpoint returns teams and projects for active team', function () {
+    $response = $this->actingAs($this->user)->get(route('teams.get'));
 
-        // Make request to getTeamsAndProjects endpoint
-        $response = $this->actingAs($user)->get(route('teams.get'));
+    $response->assertStatus(200);
+    $response->assertSee('Team 1');
+    $response->assertSee('Team 2');
+    $response->assertSee('Project 1');
+    $response->assertSee('Project 2');
+    $response->assertDontSee('Project 3');
+});
 
-        // Assert response status
-        $response->assertStatus(200);
+test('HTMX endpoint does not return teams not associated with the user', function () {
+    $team3 = Team::factory()->create(['name' => 'Team 3']);
+    $project4 = Project::factory()->create(['team_id' => $team3->id, 'name' => 'Project 4']);
 
-        // Assert that the response contains the correct teams and projects
-        $response->assertSee('Team 1');
-        $response->assertSee('Team 2');
-        $response->assertSee('Project 1');
-        $response->assertSee('Project 2');
-        $response->assertDontSee('Project 3');
+    $response = $this->actingAs($this->user)->get(route('teams.get'));
 
-        // Assert that the response doesn't contain teams not associated with the user
-        $team3 = Team::factory()->create(['name' => 'Team 3']);
-        $response->assertDontSee('Team 3');
+    $response->assertStatus(200);
+    $response->assertDontSee('Team 3');
+    $response->assertDontSee('Project 4');
+});
 
-        // Assert that the response doesn't contain projects from teams not associated with the user
-        $project4 = Project::factory()->create(['team_id' => $team3->id, 'name' => 'Project 4']);
-        $response->assertDontSee('Project 4');
-    }
+test('HTMX endpoint returns personal projects when no active team', function () {
+    $this->user->current_team_id = null;
+    $this->user->save();
 
-    public function test_getTeamsAndProjects_returns_personal_projects_when_no_active_team()
-    {
-        // Create a user
-        $user = User::factory()->create();
+    $personalProject = Project::factory()->create(['team_id' => null, 'user_id' => $this->user->id, 'name' => 'Personal Project']);
 
-        // Create teams
-        $team1 = Team::factory()->create(['name' => 'Team 1']);
+    $response = $this->actingAs($this->user)->get(route('teams.get'));
 
-        // Associate user with teams
-        $user->teams()->attach([$team1->id]);
+    $response->assertStatus(200);
+    $response->assertSee('Team 1');
+    $response->assertSee('Personal Project');
+    $response->assertDontSee('Project 1');
+    $response->assertDontSee('Project 2');
+});
 
-        // Create projects
-        $personalProject = Project::factory()->create(['team_id' => null, 'user_id' => $user->id, 'name' => 'Personal Project']);
-        $teamProject = Project::factory()->create(['team_id' => $team1->id, 'name' => 'Team Project']);
+test('switching teams updates the active team and projects', function () {
+    $response = $this->actingAs($this->user)
+        ->post(route('switch-team', $this->team2->id));
 
-        // Make request to getTeamsAndProjects endpoint
-        $response = $this->actingAs($user)->get(route('teams.get'));
-
-        // Assert response status
-        $response->assertStatus(200);
-
-        // Assert that the response contains the correct teams and projects
-        $response->assertSee('Team 1');
-        $response->assertSee('Personal Project');
-        $response->assertDontSee('Team Project');
-    }
-}
+    $response->assertStatus(200);
+    $response->assertSee('Team 2');
+    $response->assertSee('Project 3');
+    $response->assertDontSee('Project 1');
+    $response->assertDontSee('Project 2');
+});
