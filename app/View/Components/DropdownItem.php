@@ -16,7 +16,9 @@ class DropdownItem extends Component
         return function (array $data) {
             return <<<'BLADE'
                 <div class="flex items-center px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer" role="menuitem">
-                    {{ $slot }}
+                    <div class="w-full h-full">
+                        {{ $slot }}
+                    </div>
                 </div>
             BLADE;
         };
