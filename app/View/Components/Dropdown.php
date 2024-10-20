@@ -18,7 +18,8 @@ class Dropdown extends Component
         public ?string $class = '',
         public bool $loading = false,
         public ?string $loadingLabel = null,
-        public $selected = null
+        public $selected = null,
+        public ?string $type = null // Add this line
     ) {
         $this->uuid = $id ?? Str::uuid();
     }
