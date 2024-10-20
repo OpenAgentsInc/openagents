@@ -4,6 +4,7 @@ use App\Models\User;
 use App\Models\Team;
 use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 
 uses(RefreshDatabase::class);
 
@@ -35,11 +36,18 @@ test('HTMX endpoint returns teams and projects for active team', function () {
     $response = $this->actingAs($this->user)->get(route('teams.get'));
 
     $response->assertStatus(200);
+    
+    Log::info('Response content:', ['content' => $response->getContent()]);
+    
     $response->assertSee('Team 1');
     $response->assertSee('Team 2');
     $response->assertSee('Project 1', false);
     $response->assertSee('Project 2', false);
     $response->assertDontSee('Project 3', false);
+
+    // Additional assertions to check the structure
+    $response->assertSee('id="teamSwitcher"', false);
+    $response->assertSee('id="projectSwitcher"', false);
 });
 
 test('HTMX endpoint does not return teams not associated with the user', function () {
@@ -62,6 +70,9 @@ test('HTMX endpoint returns personal projects when no active team', function () 
     $response = $this->actingAs($this->user)->get(route('teams.get'));
 
     $response->assertStatus(200);
+    
+    Log::info('Response content for personal projects:', ['content' => $response->getContent()]);
+    
     $response->assertSee('Team 1');
     $response->assertSee('Personal Project', false);
     $response->assertDontSee('Project 1', false);
@@ -73,6 +84,9 @@ test('switching teams updates the active team and projects', function () {
         ->post(route('switch-team', $this->team2->id));
 
     $response->assertStatus(200);
+    
+    Log::info('Response content after switching teams:', ['content' => $response->getContent()]);
+    
     $response->assertSee('Team 2');
     $response->assertSee('Project 3', false);
     $response->assertDontSee('Project 1', false);
