@@ -2,9 +2,9 @@
 <x-dropdown label="{{ $activeTeam ? $activeTeam->name : 'Personal' }}" :items="$teams" id="teamSwitcher" class="w-full" :selected="$activeTeam ? $activeTeam->id : null">
     @foreach($teams as $id => $name)
         <x-dropdown-item :value="$id" :selected="$activeTeam && $activeTeam->id == $id">
-            <form hx-post="{{ route('switch-team', $id) }}" hx-target="#sidebarHeader" hx-swap="innerHTML">
+            <form hx-post="{{ route('switch-team', $id) }}" hx-target="#sidebarHeader" hx-swap="innerHTML" class="w-full h-full">
                 @csrf
-                <button type="submit" class="w-full text-left">{{ $name }}</button>
+                <button type="submit" class="w-full h-full text-left">{{ $name }}</button>
             </form>
         </x-dropdown-item>
     @endforeach
