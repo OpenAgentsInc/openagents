@@ -2,11 +2,11 @@
 
 use App\Models\User;
 
-test('homepage loads homepage view for unauthenticated users', function () {
+test('homepage loads dashboard view for unauthenticated users', function () {
     $response = $this->get('/');
 
     $response->assertStatus(200);
-    $response->assertViewIs('homepage');
+    $response->assertViewIs('dashboard');
 });
 
 test('homepage loads dashboard view for authenticated users', function () {

@@ -41,6 +41,9 @@ Route::middleware(['auth'])->group(function () {
 
     // Team routes
     Route::get('/teams/{team}/threads', [TeamController::class, 'threads']);
+    Route::get('/teams', [TeamController::class, 'getTeamsAndProjects'])->name('teams.get');
+    Route::post('/switch-team/{team}', [TeamController::class, 'switchTeam'])->name('switch-team');
+    Route::post('/switch-project/{project}', [TeamController::class, 'switchProject'])->name('switch-project'); // New route
 
     // New SSE route
     Route::get('/chat/{thread}/stream', [MessageController::class, 'streamResponse'])->name('chat.stream');
