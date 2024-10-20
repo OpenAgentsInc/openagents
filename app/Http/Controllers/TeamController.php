@@ -30,7 +30,10 @@ class TeamController extends Controller
             $projects = Project::where('team_id', null)->where('user_id', $user->id)->pluck('name', 'id')->toArray();
         }
 
-        return view('components.sidebar.team-switcher-content', compact('teams', 'projects', 'activeTeam'));
+        // Get the active project
+        $activeProject = $user->currentProject;
+
+        return view('components.sidebar.team-switcher-content', compact('teams', 'projects', 'activeTeam', 'activeProject'));
     }
 
     public function switchTeam(Request $request, Team $team)
@@ -43,6 +46,26 @@ class TeamController extends Controller
         }
 
         $user->current_team_id = $team->id;
+        $user->current_project_id = null; // Reset the current project when switching teams
+        $user->save();
+
+        return $this->getTeamsAndProjects();
+    }
+
+    public function switchProject(Request $request, Project $project)
+    {
+        $user = Auth::user();
+        
+        // Check if the user has access to the project
+        if ($project->team_id && !$user->teams->contains($project->team_id)) {
+            return response()->json(['error' => 'You do not have access to this project.'], 403);
+        }
+
+        if (!$project->team_id && $project->user_id !== $user->id) {
+            return response()->json(['error' => 'You do not have access to this project.'], 403);
+        }
+
+        $user->current_project_id = $project->id;
         $user->save();
 
         return $this->getTeamsAndProjects();
