@@ -37,9 +37,9 @@ test('HTMX endpoint returns teams and projects for active team', function () {
     $response->assertStatus(200);
     $response->assertSee('Team 1');
     $response->assertSee('Team 2');
-    $response->assertSee('Project 1');
-    $response->assertSee('Project 2');
-    $response->assertDontSee('Project 3');
+    $response->assertSee('Project 1', false);
+    $response->assertSee('Project 2', false);
+    $response->assertDontSee('Project 3', false);
 });
 
 test('HTMX endpoint does not return teams not associated with the user', function () {
@@ -50,7 +50,7 @@ test('HTMX endpoint does not return teams not associated with the user', functio
 
     $response->assertStatus(200);
     $response->assertDontSee('Team 3');
-    $response->assertDontSee('Project 4');
+    $response->assertDontSee('Project 4', false);
 });
 
 test('HTMX endpoint returns personal projects when no active team', function () {
@@ -63,9 +63,9 @@ test('HTMX endpoint returns personal projects when no active team', function () 
 
     $response->assertStatus(200);
     $response->assertSee('Team 1');
-    $response->assertSee('Personal Project');
-    $response->assertDontSee('Project 1');
-    $response->assertDontSee('Project 2');
+    $response->assertSee('Personal Project', false);
+    $response->assertDontSee('Project 1', false);
+    $response->assertDontSee('Project 2', false);
 });
 
 test('switching teams updates the active team and projects', function () {
@@ -74,7 +74,7 @@ test('switching teams updates the active team and projects', function () {
 
     $response->assertStatus(200);
     $response->assertSee('Team 2');
-    $response->assertSee('Project 3');
-    $response->assertDontSee('Project 1');
-    $response->assertDontSee('Project 2');
+    $response->assertSee('Project 3', false);
+    $response->assertDontSee('Project 1', false);
+    $response->assertDontSee('Project 2', false);
 });
