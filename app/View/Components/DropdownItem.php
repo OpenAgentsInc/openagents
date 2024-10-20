@@ -15,11 +15,9 @@ class DropdownItem extends Component
     {
         return function (array $data) {
             return <<<'BLADE'
-                <div class="flex items-center px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer" role="menuitem">
-                    <div class="w-full h-full">
-                        {{ $slot }}
-                    </div>
-                </div>
+                <a href="#" class="block px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer" role="menuitem">
+                    {{ $slot }}
+                </a>
             BLADE;
         };
     }
