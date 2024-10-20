@@ -9,12 +9,11 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        if (!auth()->check()) {
-            return view('homepage');
+        $messages = [];
+        if (auth()->check()) {
+            $user = auth()->user();
+            $messages = $user->messages()->orderBy('created_at', 'desc')->get();
         }
-
-        $user = auth()->user();
-        $messages = $user->messages()->orderBy('created_at', 'desc')->get();
 
         return view('dashboard', compact('messages'));
     }

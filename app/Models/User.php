@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class User extends Authenticatable
 {
@@ -23,8 +24,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'team_id',
         'current_project_id',
+        'current_team_id',
     ];
 
     /**
@@ -50,9 +51,9 @@ class User extends Authenticatable
         ];
     }
 
-    public function team(): BelongsTo
+    public function teams(): BelongsToMany
     {
-        return $this->belongsTo(Team::class);
+        return $this->belongsToMany(Team::class)->select(['teams.id', 'teams.name']);
     }
 
     public function projects(): HasMany
@@ -73,5 +74,10 @@ class User extends Authenticatable
     public function currentProject(): BelongsTo
     {
         return $this->belongsTo(Project::class, 'current_project_id');
+    }
+
+    public function currentTeam(): BelongsTo
+    {
+        return $this->belongsTo(Team::class, 'current_team_id');
     }
 }

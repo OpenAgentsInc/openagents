@@ -1,16 +1,10 @@
-// Set initial sidebar state
-(function() {
-    var sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-    document.documentElement.classList.add('sidebar-init');
-    document.documentElement.style.setProperty('--sidebar-width', sidebarCollapsed ? '70px' : '270px');
-    document.documentElement.style.setProperty('--sidebar-content-opacity', sidebarCollapsed ? '0' : '1');
-    document.documentElement.style.setProperty('--sidebar-content-visibility', sidebarCollapsed ? 'hidden' : 'visible');
-})();
-
 document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('sidebar');
     const sidebarToggle = document.getElementById('sidebarToggle');
     const sidebarContent = document.getElementById('sidebarContent');
+    const sidebarHeader = document.getElementById('sidebarHeader');
+    const newTeamButton = document.getElementById('newTeamButton');
+    const sidebarDivider = document.getElementById('sidebarDivider');
 
     // Get the initial state from localStorage
     let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
@@ -24,6 +18,14 @@ document.addEventListener('DOMContentLoaded', function() {
         document.documentElement.style.setProperty('--sidebar-content-opacity', newOpacity);
         document.documentElement.style.setProperty('--sidebar-content-visibility', newVisibility);
 
+        sidebar.style.width = newWidth;
+        [sidebarContent, sidebarHeader, newTeamButton, sidebarDivider].forEach(el => {
+            if (el) {
+                el.style.opacity = newOpacity;
+                el.style.visibility = newVisibility;
+            }
+        });
+
         if (immediate) {
             document.documentElement.classList.add('sidebar-init');
         } else {
@@ -31,6 +33,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.documentElement.classList.remove('sidebar-init');
             });
         }
+
+        // Dispatch custom event
+        document.dispatchEvent(new CustomEvent('sidebar-toggled', {
+            detail: !sidebarCollapsed
+        }));
     }
 
     // Set initial state
@@ -46,4 +53,15 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
         updateSidebarState();
     });
+
+    function toggleSection(sectionId) {
+        const content = document.getElementById(sectionId);
+        const isHidden = content.classList.contains('hidden');
+        content.classList.toggle('hidden', !isHidden);
+        const button = content.previousElementSibling;
+        const svg = button.querySelector('svg:last-child');
+        svg.style.transform = isHidden ? 'rotate(180deg)' : '';
+    }
+
+    window.toggleSection = toggleSection;
 });
