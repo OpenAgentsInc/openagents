@@ -30,6 +30,17 @@ beforeEach(function () {
     ]);
 });
 
+test('initial page load does not contain teams and projects', function () {
+    $response = $this->actingAs($this->user)->get(route('dashboard'));
+
+    $response->assertStatus(200);
+    $response->assertDontSee('Team 1');
+    $response->assertDontSee('Team 2');
+    $response->assertDontSee('Project 1');
+    $response->assertDontSee('Project 2');
+    $response->assertDontSee('Project 3');
+});
+
 test('HTMX endpoint returns teams for active team', function () {
     $response = $this->actingAs($this->user)->get(route('teams.get'));
 
@@ -52,6 +63,17 @@ test('HTMX endpoint returns teams for active team', function () {
     // Log the projects associated with the active team
     $activeTeamProjects = Project::where('team_id', $this->user->current_team_id)->get();
     Log::info('Active team projects:', $activeTeamProjects->toArray());
+});
+
+test('HTMX endpoint does not return teams not associated with the user', function () {
+    $team3 = Team::factory()->create(['name' => 'Team 3']);
+    $project4 = Project::factory()->create(['team_id' => $team3->id, 'name' => 'Project 4']);
+
+    $response = $this->actingAs($this->user)->get(route('teams.get'));
+
+    $response->assertStatus(200);
+    $response->assertDontSee('Team 3');
+    $response->assertDontSee('Project 4');
 });
 
 test('HTMX endpoint returns teams when no active team', function () {
