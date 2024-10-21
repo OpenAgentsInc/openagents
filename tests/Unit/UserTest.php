@@ -53,11 +53,52 @@ test('a user can create thread, respecting team/project', function () {
     $user = User::factory()->create();
     $team = Team::factory()->create();
     $user->teams()->attach($team);
-    $projects = Project::factory()->count(3)->create(['team_id' => $team->id]);
+    $project = Project::factory()->create(['team_id' => $team->id]);
 
-    $user->createThread([
-        'title' => 'My first thread',
+    // Test case 1: No team/project
+    $thread1 = $user->createThread([
+        'title' => 'Thread without team or project',
     ]);
+    expect($thread1)->toBeInstanceOf(Thread::class);
+    expect($thread1->team_id)->toBeNull();
+    expect($thread1->project_id)->toBeNull();
 
-    // TODO: handle every permutation of passing in no team/project, team but no project, project but no team, and both team and project
+    // Test case 2: Team but no project
+    $thread2 = $user->createThread([
+        'title' => 'Thread with team only',
+        'team_id' => $team->id,
+    ]);
+    expect($thread2)->toBeInstanceOf(Thread::class);
+    expect($thread2->team_id)->toBe($team->id);
+    expect($thread2->project_id)->toBeNull();
+
+    // Test case 3: Project but no team
+    $thread3 = $user->createThread([
+        'title' => 'Thread with project only',
+        'project_id' => $project->id,
+    ]);
+    expect($thread3)->toBeInstanceOf(Thread::class);
+    expect($thread3->team_id)->toBe($team->id); // The team should be inferred from the project
+    expect($thread3->project_id)->toBe($project->id);
+
+    // Test case 4: Both team and project
+    $thread4 = $user->createThread([
+        'title' => 'Thread with team and project',
+        'team_id' => $team->id,
+        'project_id' => $project->id,
+    ]);
+    expect($thread4)->toBeInstanceOf(Thread::class);
+    expect($thread4->team_id)->toBe($team->id);
+    expect($thread4->project_id)->toBe($project->id);
+
+    // Test case 5: Mismatched team and project
+    $anotherTeam = Team::factory()->create();
+    $user->teams()->attach($anotherTeam);
+    $anotherProject = Project::factory()->create(['team_id' => $anotherTeam->id]);
+
+    expect(fn () => $user->createThread([
+        'title' => 'Thread with mismatched team and project',
+        'team_id' => $team->id,
+        'project_id' => $anotherProject->id,
+    ]))->toThrow(\InvalidArgumentException::class, 'The provided project does not belong to the specified team.');
 });
