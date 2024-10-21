@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Thread;
-use App\Models\Message;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -11,6 +10,7 @@ class ChatController extends Controller
 {
     public function index()
     {
+        /** @var User $user */
         $user = Auth::user();
         $threads = $user->threads()->latest()->get();
         return view('components.chat.index', compact('threads'));
