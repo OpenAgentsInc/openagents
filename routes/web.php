@@ -31,11 +31,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/chat/{thread}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/{thread}/send', [ChatController::class, 'send'])->name('chat.send');
 
-    // Message routes
-    Route::post('/send-message', [MessageController::class, 'sendMessage'])->name('send-message');
-
     // Thread routes
-    Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
     Route::post('/threads/create', [ThreadController::class, 'create'])->name('threads.create');
 
     // Team routes
