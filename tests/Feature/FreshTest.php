@@ -94,7 +94,7 @@ test('empty message is not sent', function () {
     $thread = Thread::factory()->create(['user_id' => $this->user->id]);
 
     $response = actingAs($this->user)
-        ->withHeaders(['HX-Request' => 'true'])
+        ->withHeaders(['HX-Request' => 'true', 'X-Requested-With' => 'XMLHttpRequest'])
         ->post("/chat/{$thread->id}/send", [
             'content' => ''
         ]);
