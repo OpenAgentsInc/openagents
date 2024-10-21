@@ -10,14 +10,21 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
         </svg>
     </button>
-    <div id="chatsContent" x-show="chatsExpanded" x-transition:enter="transition ease-out duration-100" x-transition:enter-start="opacity-0 transform scale-95" x-transition:enter-end="opacity-100 transform scale-100" x-transition:leave="transition ease-in duration-75" x-transition:leave-start="opacity-100 transform scale-100" x-transition:leave-end="opacity-0 transform scale-95">
-        <ul class="space-y-2">
-            @foreach(range(1, 5) as $index)
-            <li class="bg-sidebar-accent bg-opacity-10 p-2 rounded">
-                <p class="text-sm font-medium text-sidebar-foreground">Chat #{{ $index }}</p>
-                <p class="text-xs text-sidebar-foreground opacity-70">Last message...</p>
-            </li>
-            @endforeach
-        </ul>
+    <div id="chatsContent" 
+         x-show="chatsExpanded" 
+         x-transition:enter="transition ease-out duration-100" 
+         x-transition:enter-start="opacity-0 transform scale-95" 
+         x-transition:enter-end="opacity-100 transform scale-100" 
+         x-transition:leave="transition ease-in duration-75" 
+         x-transition:leave-start="opacity-100 transform scale-100" 
+         x-transition:leave-end="opacity-0 transform scale-95"
+         hx-get="{{ route('threads.index') }}"
+         hx-trigger="load, teamChanged from:body"
+         hx-include="[name='team_id']"
+         hx-target="#thread-list">
+        <div id="thread-list">
+            <!-- Thread list will be loaded here -->
+            <p class="text-gray-500 dark:text-gray-400">Loading threads...</p>
+        </div>
     </div>
 </div>
