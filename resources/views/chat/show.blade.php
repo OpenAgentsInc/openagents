@@ -9,13 +9,8 @@
             </div>
         @endforeach
     </div>
-    <div class="mt-4">
-        <form id="message-form" hx-post="{{ route('threads.addMessage', $thread) }}" hx-swap="afterbegin" hx-target="#message-list">
-            <div class="flex">
-                <input type="text" name="content" class="flex-grow rounded-l-lg border-t border-b border-l text-gray-800 border-gray-200 bg-white px-4 py-2" placeholder="Type your message...">
-                <button type="submit" class="rounded-r-lg bg-blue-500 text-white px-4 py-2 font-semibold">Send</button>
-            </div>
-        </form>
+    <div class="mt-auto">
+        @include('dashboard.message-form')
     </div>
 </div>
 
