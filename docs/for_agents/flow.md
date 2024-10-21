@@ -13,3 +13,9 @@
       - resources/views/components/sidebar/sidebar-header.blade.php
     - And chats-section which shows a list of user threads organized by team/project
     - And sidebar-footer which shows user info and a dropdown with logout, settings etc.
+- On first load, the sidebar loads teams/projects/chats
+  - Starts as placeholder: resources/views/components/sidebar/team-switcher.blade.php
+  - That automatically loads this: resources/views/components/sidebar/team-switcher-content.blade.php
+- On first load, sidebar also loads
+  - resources/views/components/sidebar/chats-section.blade.php
+  - which then loads: resources/views/components/sidebar/thread-list.blade.php
