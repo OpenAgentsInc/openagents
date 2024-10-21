@@ -30,10 +30,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/fresh', [FreshController::class, 'fresh'])->name('fresh');
     Route::get('/chat/{thread}/messages', [FreshController::class, 'loadChatMessages'])->name('chat.messages');
+    Route::post('/chat/{thread}/send', [FreshController::class, 'sendMessage'])->name('chat.send');
 
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
     Route::get('/chat/{thread}', [ChatController::class, 'show'])->name('chat.show');
-    Route::post('/chat/{thread}/send', [ChatController::class, 'send'])->name('chat.send');
 
     // For homepage - no thread yet
     Route::post('/send-message', [MessageController::class, 'sendMessage'])->name('send-message');
