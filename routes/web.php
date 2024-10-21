@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\MessageController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ThreadController;
 use App\Http\Controllers\TeamController;
@@ -28,6 +29,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
     Route::get('/chat/{thread}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/{thread}/send', [ChatController::class, 'send'])->name('chat.send');
+
+    // For homepage - no thread yet
+    Route::post('/send-message', [MessageController::class, 'sendMessage'])->name('send-message');
 
     // Thread routes
     Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
