@@ -22,7 +22,6 @@
             <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col opacity-0 transition-opacity duration-300" :class="{ 'opacity-100': !isCollapsed }">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">
-                        <!-- Chats Section -->
                         <x-sidebar.chats-section />
                     </div>
                 </div>
@@ -33,14 +32,3 @@
         </div>
     </div>
 </div>
-
-<script>
-    function toggleSection(sectionId) {
-        const content = document.getElementById(sectionId);
-        const isHidden = content.classList.contains('hidden');
-        content.classList.toggle('hidden', !isHidden);
-        const button = content.previousElementSibling;
-        const svg = button.querySelector('svg:last-child');
-        svg.style.transform = isHidden ? 'rotate(180deg)' : '';
-    }
-</script>
