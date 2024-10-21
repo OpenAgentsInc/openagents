@@ -37,6 +37,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/threads/{thread}/process', [ThreadController::class, 'process']);
     Route::get('/chat/{thread}', [ThreadController::class, 'show'])->name('chat.show');
     Route::post('/threads/{thread}/add-message', [ThreadController::class, 'addMessage'])->name('threads.addMessage');
+    Route::post('/threads/create', [ThreadController::class, 'create'])->name('threads.create');
 
     // Project routes
     Route::get('/projects/{project}/threads', [ProjectController::class, 'threads']);

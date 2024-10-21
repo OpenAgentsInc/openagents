@@ -1,98 +1,40 @@
-# Chat System Design
+Sidebar shows dropdowns to select team and project.
 
-## Overview
+Team has many projects. Project has many threads (chats).
 
-This document outlines the design and implementation of the chat system for OpenAgents, focusing on the flow where a user sends a message from the home dashboard, gets redirected to a thread, and receives a streaming response.
+When a project is selected, the user's list of threads are shown.
 
-## Current Implementation
+Clicking a thread navigates to /chat/{id} and loads the chat in the main view. It's done via HTMX, swapping in HTML and updating the URL without making a full page navigation.
 
-Based on the existing code and tests, we have the following structure:
+Pest Test Assertions:
 
-1. Users can send messages from the homepage.
-2. A new thread is created for each new conversation.
-3. Messages are associated with threads.
-4. The system redirects users to the chat page after sending a message.
+1. Sidebar Structure:
+   - Assert that the sidebar contains a dropdown for team selection
+   - Assert that the sidebar contains a dropdown for project selection
 
-## Desired Flow
+2. Relationship Structure:
+   - Assert that a team can have multiple projects
+   - Assert that a project can have multiple threads
 
-1. User submits a message on the home dashboard.
-2. System creates a new thread (if not existing) and associates the message with it.
-3. User is redirected to the chat page for the specific thread.
-4. The system starts streaming the response in real-time.
+3. User Interface Flow:
+   - Assert that selecting a project displays the user's list of threads for that project
+   - Assert that the displayed threads belong to the selected project
 
-## Implementation Details
+4. Navigation:
+   - Assert that clicking a thread navigates to the correct /chat/{id} URL
+   - Assert that the chat content is loaded in the main view
+   - Assert that navigation occurs without a full page reload (HTMX functionality)
 
-### 1. Message Submission
+5. HTMX Functionality:
+   - Assert that the URL is updated when navigating to a chat thread
+   - Assert that only the main content area is updated, not the entire page
 
-- Use HTMX for handling form submissions without full page reloads.
-- Update the `sendMessage` method in `MessageController` to return an HTMX-compatible response.
+6. Data Integrity:
+   - Assert that the loaded chat content matches the selected thread
+   - Assert that chat messages are displayed in the correct order
 
-### 2. Thread Creation and Redirection
+7. Error Handling:
+   - Assert that attempting to access a non-existent chat ID returns an appropriate error
+   - Assert that the UI handles cases where a user has no threads in a project
 
-- In `MessageController::sendMessage`:
-  - Create a new thread if not provided.
-  - Associate the message with the thread.
-  - Return an HTMX response that triggers a redirect to the chat page.
-
-### 3. Streaming Response
-
-- Implement Server-Sent Events (SSE) for real-time streaming.
-- Use the HTMX SSE extension to handle the client-side streaming.
-
-#### Server-side Implementation
-
-1. Create a new route for SSE connections (e.g., `/sse/{thread_id}`).
-2. Implement an SSE controller that:
-   - Establishes the SSE connection.
-   - Streams the AI-generated response.
-   - Sends events for each chunk of the response.
-
-#### Client-side Implementation
-
-1. Include the HTMX SSE extension:
-   ```html
-   <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
-   ```
-
-2. Set up the SSE connection in the chat view:
-   ```html
-   <div hx-ext="sse" sse-connect="/sse/{thread_id}" sse-swap="message">
-     <!-- Chat messages will be updated here -->
-   </div>
-   ```
-
-3. Handle the streaming updates:
-   ```html
-   <div id="chat-messages" hx-ext="sse" sse-connect="/sse/{thread_id}">
-     <div sse-swap="message">
-       <!-- Individual message will be swapped here -->
-     </div>
-   </div>
-   ```
-
-## Considerations
-
-1. **Performance**: Ensure that the SSE implementation can handle multiple concurrent connections efficiently.
-
-2. **Error Handling**: Implement robust error handling for SSE connections, including automatic reconnection.
-
-3. **Security**: Validate user permissions for accessing specific threads and receiving SSE updates.
-
-4. **Scalability**: Consider using a message queue system for handling AI response generation to ensure the system can scale with increased load.
-
-5. **User Experience**: Provide visual feedback during the streaming process, such as a typing indicator or progressive loading of the message.
-
-6. **Testing**: Update existing tests and add new ones to cover the SSE functionality and streaming behavior.
-
-7. **Fallback**: Implement a fallback mechanism for browsers that don't support SSE or in case of connection issues.
-
-## Next Steps
-
-1. Update the `MessageController` to handle HTMX requests and SSE setup.
-2. Create a new SSE controller for managing streaming connections.
-3. Modify the chat view to incorporate HTMX and SSE attributes.
-4. Implement the AI response generation and streaming logic.
-5. Update and expand the test suite to cover new functionality.
-6. Perform thorough testing and optimize for performance.
-
-By implementing these changes, we'll create a seamless chat experience where users can send messages from the home dashboard, get redirected to the appropriate chat thread, and receive real-time streaming responses using HTMX and Server-Sent Events.
+These test assertions cover the main functionality described in the chat documentation and will help ensure the reliability and correctness of the chat feature implementation.

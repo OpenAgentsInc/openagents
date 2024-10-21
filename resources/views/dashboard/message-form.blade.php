@@ -1,5 +1,5 @@
 <div class="w-full">
-    <form class="w-full" id="message-form" action="{{ route('send-message') }}" method="POST">
+    <form class="w-full" id="message-form" hx-post="{{ isset($thread) ? route('threads.addMessage', $thread) : route('send-message') }}" hx-swap="afterbegin" hx-target="#message-list">
         @csrf
         @if(auth()->check() && auth()->user()->currentProject)
             <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
@@ -8,7 +8,7 @@
             <div class="flex items-end gap-1.5 pl-4 py-0.5 md:gap-2">
                 <div class="flex min-w-0 flex-1 flex-col">
                     <textarea
-                        name="message"
+                        name="content"
                         id="message-textarea"
                         class="min-h-[46px] max-h-[300px] overflow-y-auto resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
                         placeholder="Message OpenAgents"
@@ -28,8 +28,14 @@
     </form>
 </div>
 
-@push('scripts')
 <script>
+document.addEventListener('htmx:afterRequest', function(event) {
+    if (event.detail.successful && event.target.id === 'message-form') {
+        document.getElementById('message-textarea').value = '';
+        document.getElementById('message-textarea').style.height = 'auto';
+    }
+});
+
 document.addEventListener('DOMContentLoaded', function() {
     const textarea = document.getElementById('message-textarea');
     const form = document.getElementById('message-form');
@@ -46,7 +52,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 // Submit the form
                 e.preventDefault();
-                form.submit();
+                htmx.trigger(form, 'submit');
             }
         }
     });
@@ -59,4 +65,3 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-@endpush
