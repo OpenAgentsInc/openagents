@@ -101,4 +101,9 @@ test('a user can create thread, respecting team/project', function () {
         'team_id' => $team->id,
         'project_id' => $anotherProject->id,
     ]))->toThrow(\InvalidArgumentException::class, 'The provided project does not belong to the specified team.');
+
+    // Test case 6: No title provided
+    $thread6 = $user->createThread([]);
+    expect($thread6)->toBeInstanceOf(Thread::class);
+    expect($thread6->title)->toBe('New chat');
 });
