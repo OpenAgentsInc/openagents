@@ -3,9 +3,6 @@
 use App\Models\User;
 use App\Models\Thread;
 use App\Models\Team;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-
-uses(RefreshDatabase::class);
 
 test('clicking a chat updates main content with correct HTML', function () {
     // Create a user, team, and thread
