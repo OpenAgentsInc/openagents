@@ -18,7 +18,6 @@
                 <x-sidebar.sidebar-header x-bind:is-collapsed.sync="isCollapsed" />
                 <x-sidebar.team-switcher />
             </div>
-            <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border opacity-0 transition-opacity duration-300" :class="{ 'opacity-50': !isCollapsed }"></div>
             <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col opacity-0 transition-opacity duration-300" :class="{ 'opacity-100': !isCollapsed }">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">

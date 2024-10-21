@@ -5,7 +5,7 @@
         hx-get="{{ route('chat.messages', ['thread' => $thread->id]) }}"
         hx-target="#message-list"
         hx-swap="innerHTML"
-        hx-push-url="false">
+        hx-push-url="true">
         <div class="text-sm font-medium text-sidebar-foreground">{{ $thread->title }}</div>
         <div class="text-xs text-sidebar-muted">{{ $thread->created_at->diffForHumans() }}</div>
     </a>
