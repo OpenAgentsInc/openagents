@@ -21,7 +21,10 @@
         hx-get="{{ route('threads.index') }}"
         hx-trigger="revealed, teamChanged from:body"
         hx-target="#thread-list">
-        <div id="thread-list">
+        <div id="thread-list"
+             hx-target="#message-list"
+             hx-swap="innerHTML"
+             hx-push-url="false">
             @if(auth()->user()->currentTeam)
             <!-- Thread list will be loaded here -->
             <p class="text-zinc-500 dark:text-zinc-400">Loading threads...</p>
@@ -31,19 +34,3 @@
         </div>
     </div>
 </div>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        htmx.on('htmx:afterSwap', function(event) {
-            if (event.detail.target.id === 'thread-list') {
-                const links = event.detail.target.querySelectorAll('a');
-                links.forEach(link => {
-                    link.setAttribute('hx-get', link.getAttribute('href'));
-                    link.setAttribute('hx-target', '#message-list');
-                    link.setAttribute('hx-push-url', 'false');
-                    link.removeAttribute('href');
-                });
-            }
-        });
-    });
-</script>
