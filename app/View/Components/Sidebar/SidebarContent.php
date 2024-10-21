@@ -2,12 +2,13 @@
 
 namespace App\View\Components\Sidebar;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Contracts\View\View;
 use Illuminate\View\Component;
 use Illuminate\Support\Facades\Auth;
 
-class SidebarNew extends Component
+class SidebarContent extends Component
 {
     public $recentThreads;
 
@@ -16,7 +17,9 @@ class SidebarNew extends Component
      */
     public function __construct()
     {
-        $this->recentThreads = Auth::check() ? Auth::user()->threads()
+        /** @var User $user */
+        $user = Auth::user();
+        $this->recentThreads = Auth::check() ? $user->threads()
             ->latest()
             ->take(10)
             ->get() : collect();
@@ -27,6 +30,8 @@ class SidebarNew extends Component
      */
     public function render(): View|Closure|string
     {
-        return view('components.sidebar.sidebar-new');
+        return view('components.sidebar.sidebar-content', [
+            'recentThreads' => $this->recentThreads
+        ]);
     }
 }

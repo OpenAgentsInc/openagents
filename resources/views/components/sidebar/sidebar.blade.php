@@ -20,7 +20,7 @@
             <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col opacity-0 transition-opacity duration-300" :class="{ 'opacity-100': !isCollapsed }">
                 <div class="flex-grow overflow-y-auto">
                     <div class="w-[270px] p-4">
-                        <x-sidebar.sidebar-new />
+                        <x-sidebar.sidebar-content />
                     </div>
                 </div>
                 <div class="flex-shrink-0">
