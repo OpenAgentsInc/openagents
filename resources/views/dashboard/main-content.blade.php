@@ -36,7 +36,7 @@
             tempDiv.innerHTML = messageHtml;
             const newMessage = tempDiv.firstElementChild;
             messageList.insertBefore(newMessage, messageList.firstChild);
-            console.log('New message added:', messageHtml); // Add this line for debugging
+            console.log('New message added:', messageHtml);
         });
     });
 </script>
