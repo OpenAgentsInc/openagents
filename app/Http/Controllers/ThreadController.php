@@ -78,4 +78,28 @@ class ThreadController extends Controller
         // This is a placeholder implementation
         return response()->json(['success' => true, 'message' => 'Thread processed successfully'], 200);
     }
+
+    public function create(Request $request)
+    {
+        $user = Auth::user();
+        $team = $user->currentTeam;
+        $project = $user->currentProject;
+
+        if (!$team) {
+            return response()->json(['error' => 'No team selected'], 400);
+        }
+
+        $thread = new Thread();
+        $thread->user_id = $user->id;
+        $thread->team_id = $team->id;
+        $thread->project_id = $project ? $project->id : null;
+        $thread->title = 'New Chat';
+        $thread->save();
+
+        return response()->json([
+            'success' => true,
+            'thread' => $thread,
+            'redirect' => route('chat.show', $thread->id)
+        ]);
+    }
 }
