@@ -13,7 +13,7 @@
 <script src="{{ asset('js/htmx-sse.js') }}"></script>
 <script src="{{ asset('js/alpine.min.js') }}" defer></script>
 <script>
-    // htmx.logAll();
+    htmx.logAll();
 </script>
 @auth
 <script src="{{ asset('js/sidebar.js') }}"></script>
