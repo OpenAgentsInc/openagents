@@ -20,9 +20,7 @@
         x-transition:leave-end="opacity-0 transform scale-95"
         hx-get="{{ route('threads.index') }}"
         hx-trigger="revealed, teamChanged from:body"
-        hx-target="#thread-list"
-        hx-include="#team-id-input">
-        <input type="hidden" id="team-id-input" name="team_id" value="{{ auth()->user()->currentTeam->id ?? '' }}">
+        hx-target="#thread-list">
         <div id="thread-list">
             @if(auth()->user()->currentTeam)
             <!-- Thread list will be loaded here -->
@@ -41,8 +39,8 @@
                 const links = event.detail.target.querySelectorAll('a');
                 links.forEach(link => {
                     link.setAttribute('hx-get', link.getAttribute('href'));
-                    link.setAttribute('hx-target', '#main-content');
-                    link.setAttribute('hx-push-url', 'true');
+                    link.setAttribute('hx-target', '#message-list');
+                    link.setAttribute('hx-push-url', 'false');
                     link.removeAttribute('href');
                 });
             }
