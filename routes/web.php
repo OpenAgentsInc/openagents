@@ -4,9 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ThreadController;
-use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Auth;
 
@@ -32,6 +30,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/chat/{thread}/send', [ChatController::class, 'send'])->name('chat.send');
 
     // Thread routes
+    Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
     Route::post('/threads/create', [ThreadController::class, 'create'])->name('threads.create');
 
     // Team routes
