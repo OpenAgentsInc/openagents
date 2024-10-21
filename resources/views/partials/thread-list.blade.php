@@ -1,4 +1,6 @@
-@if($threads->isEmpty())
+@if(isset($message))
+    <p class="text-gray-500 dark:text-gray-400">{{ $message }}</p>
+@elseif($threads->isEmpty())
     <p class="text-gray-500 dark:text-gray-400">No threads found.</p>
 @else
     <ul class="space-y-2">
