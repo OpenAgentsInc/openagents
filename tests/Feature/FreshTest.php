@@ -29,7 +29,7 @@ test('clicking chat loads messages in main area', function () {
     $response->assertStatus(200);
     $response->assertViewIs('partials.chat_messages');
     $response->assertViewHas('messages');
-    $thread->messages->each(fn ($message) => $response->assertSee($message->content));
+    $thread->messages->each(fn($message) => $response->assertSee($message->content));
 });
 
 test('fresh page shows user threads', function () {
@@ -39,7 +39,7 @@ test('fresh page shows user threads', function () {
 
     $response->assertStatus(200);
     $response->assertViewIs('fresh');
-    $threads->each(fn ($thread) => $response->assertSee($thread->title));
+    $threads->each(fn($thread) => $response->assertSee($thread->title));
 });
 
 test('sending message adds to thread', function () {
@@ -52,7 +52,7 @@ test('sending message adds to thread', function () {
         ]);
 
     $response->assertStatus(200);
-    $response->assertViewIs('partials.chat_messages');
+    $response->assertViewIs('partials.message');
     $response->assertSee('Test message content');
 
     $this->assertDatabaseHas('messages', [
