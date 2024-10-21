@@ -37,7 +37,7 @@ class ChatController extends Controller
         }
     }
 
-    public function addMessage(Request $request, Thread $thread)
+    public function send(Request $request, Thread $thread)
     {
         $validatedData = $request->validate([
             'content' => 'required|string',
@@ -48,7 +48,11 @@ class ChatController extends Controller
             'content' => $validatedData['content'],
         ]);
 
-        return response()->json($message, 201);
+        if ($request->header('HX-Request')) {
+            return view('partials.message', ['message' => $message]);
+        }
+
+        return redirect()->route('chat.show', $thread);
     }
 
     public function create(Request $request)
