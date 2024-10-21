@@ -22,9 +22,9 @@
         hx-trigger="revealed, teamChanged from:body"
         hx-target="#thread-list">
         <div id="thread-list"
-             hx-target="#message-list"
+             hx-target="#main-content-inner"
              hx-swap="innerHTML"
-             hx-push-url="false">
+             hx-push-url="true">
             @if(auth()->user()->currentTeam)
             <!-- Thread list will be loaded here -->
             <p class="text-zinc-500 dark:text-zinc-400">Loading threads...</p>
