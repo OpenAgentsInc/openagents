@@ -15,6 +15,7 @@
     <div class="sidebar-inner bg-sidebar-background h-full">
         <div class="sidebar-content flex flex-col">
             <div class="flex flex-col space-y-4 py-3">
+                <x-sidebar.sidebar-header :isCollapsed="true" x-bind:is-collapsed="isCollapsed" />
                 <x-sidebar.team-switcher :isCollapsed="true" x-bind:is-collapsed="isCollapsed" />
             </div>
             <div id="sidebarDivider" class="my-4 mx-4 h-[1px] bg-sidebar-border opacity-0 transition-opacity duration-300" :class="{ 'opacity-50': !isCollapsed }"></div>
