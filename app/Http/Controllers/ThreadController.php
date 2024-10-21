@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Thread;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Collection;
 
 class ThreadController extends Controller
 {
@@ -47,7 +48,7 @@ class ThreadController extends Controller
         if ($request->header('HX-Request')) {
             $threads = Thread::where('user_id', $user->id)->latest()->get();
             $threadListHtml = view('components.sidebar.thread-list', compact('threads'))->render();
-            $chatContentHtml = view('components.chat.messages', ['messages' => []])->render();
+            $chatContentHtml = view('components.chat.messages', ['messages' => new Collection()])->render();
 
             return response()->json([
                 'threadList' => $threadListHtml,
