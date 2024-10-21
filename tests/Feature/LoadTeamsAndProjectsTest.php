@@ -39,10 +39,11 @@ test('initial page load does not contain teams and projects', function () {
     $response->assertDontSee('Project 1');
     $response->assertDontSee('Project 2');
     $response->assertDontSee('Project 3');
+    $response->assertSee('id="teams-and-projects"');
 });
 
 test('HTMX endpoint returns teams and projects for active team', function () {
-    $response = $this->actingAs($this->user)->get(route('teams.get'));
+    $response = $this->actingAs($this->user)->get(route('teams.projects'));
 
     $response->assertStatus(200);
     
@@ -67,7 +68,7 @@ test('HTMX endpoint does not return teams and projects not associated with the u
     $team3 = Team::factory()->create(['name' => 'Team 3']);
     $project4 = Project::factory()->create(['team_id' => $team3->id, 'name' => 'Project 4']);
 
-    $response = $this->actingAs($this->user)->get(route('teams.get'));
+    $response = $this->actingAs($this->user)->get(route('teams.projects'));
 
     $response->assertStatus(200);
     $response->assertDontSee('Team 3');
@@ -80,7 +81,7 @@ test('HTMX endpoint returns teams and personal projects when no active team', fu
 
     $personalProject = Project::factory()->create(['team_id' => null, 'user_id' => $this->user->id, 'name' => 'Personal Project']);
 
-    $response = $this->actingAs($this->user)->get(route('teams.get'));
+    $response = $this->actingAs($this->user)->get(route('teams.projects'));
 
     $response->assertStatus(200);
     

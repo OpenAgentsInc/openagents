@@ -80,4 +80,24 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Team::class, 'current_team_id');
     }
+
+    public function createThread(array $data = []): Thread
+    {
+        $team_id = $data['team_id'] ?? $this->current_team_id ?? null;
+        $project_id = $data['project_id'] ?? $this->current_project_id ?? null;
+
+        if ($project_id) {
+            $project = Project::findOrFail($project_id);
+            if ($team_id && $project->team_id != $team_id) {
+                throw new \InvalidArgumentException('The provided project does not belong to the specified team.');
+            }
+            $team_id = $project->team_id;
+        }
+
+        return $this->threads()->create([
+            'title' => $data['title'] ?? 'New chat',
+            'team_id' => $team_id,
+            'project_id' => $project_id,
+        ]);
+    }
 }
