@@ -112,5 +112,5 @@ test('empty message list shows correct message', function () {
 
     $response->assertStatus(200);
     $response->assertViewIs('partials.chat_messages');
-    $response->assertSee('Send your first message');
+    $response->assertSee('Send your first message', false);
 });
