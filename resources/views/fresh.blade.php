@@ -18,7 +18,7 @@
         <div class="w-3/4 flex flex-col h-screen">
             <div id="main-content" class="flex-grow overflow-y-auto p-4">
                 <div id="message-list" class="space-y-4">
-                    Select a chat to view messages
+                    <x-empty-message-list />
                 </div>
             </div>
             <div class="p-4 bg-zinc-700">
