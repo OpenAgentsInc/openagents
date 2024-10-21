@@ -6,7 +6,7 @@
             <ul>
                 @foreach($threads as $thread)
                     <li class="mb-2">
-                        <a href="#" class="hover:text-zinc-300" hx-get="{{ route('chat.messages', $thread) }}" hx-target="#main-content" hx-trigger="click">
+                        <a href="#" class="hover:text-zinc-300" hx-get="{{ route('chat.messages', $thread) }}" hx-target="#message-list" hx-trigger="click">
                             {{ $thread->title }}
                         </a>
                     </li>
@@ -15,8 +15,15 @@
         </div>
 
         <!-- Main Content -->
-        <div id="main-content" class="w-3/4 flex items-center justify-center">
-            Select a chat to view messages
+        <div class="w-3/4 flex flex-col h-screen">
+            <div id="main-content" class="flex-grow overflow-y-auto p-4">
+                <div id="message-list" class="space-y-4">
+                    Select a chat to view messages
+                </div>
+            </div>
+            <div class="p-4 bg-zinc-700">
+                @include('dashboard.message-form')
+            </div>
         </div>
     </div>
 </x-layouts.empty>
