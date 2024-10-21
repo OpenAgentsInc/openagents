@@ -1,6 +1,3 @@
-@extends('layouts.app')
-
-@section('content')
 <div id="main-content" class="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
     <div class="flex h-full flex-col items-center justify-center text-zinc-200">
         <div class="h-full w-full lg:py-[18px]">
@@ -22,7 +19,6 @@
         </div>
     </div>
 </div>
-@endsection
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
