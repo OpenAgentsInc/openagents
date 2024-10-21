@@ -2,53 +2,63 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\User;
 use App\Models\Team;
 use App\Models\Project;
 use App\Models\Thread;
 use App\Models\Message;
+use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
+    /**
+     * Seed the application's database.
+     */
     public function run(): void
     {
-        // Create a demo user
-        $user = User::factory()->create([
-            'name' => 'Demo User',
-            'email' => 'demo@example.com',
-        ]);
+        // Get the existing user with id 1
+        $user = User::findOrFail(1);
 
-        // Create a team for the user
-        $team = Team::factory()->create([
-            'name' => 'Demo Team',
-            'user_id' => $user->id,
-        ]);
+        // Create demo teams
+        $teams = [
+            'OpenAgents Development',
+            'Marketing Team',
+            'Customer Support',
+            'Product Management',
+            'Design Team'
+        ];
 
-        // Attach the user to the team
-        $user->teams()->attach($team);
+        foreach ($teams as $teamName) {
+            $team = Team::factory()->create(['name' => $teamName]);
+            $user->teams()->attach($team);
 
-        // Set the user's current team
-        $user->current_team_id = $team->id;
-        $user->save();
+            // Create projects for each team
+            $projects = [
+                'Website Redesign',
+                'Mobile App Development',
+                'Customer Feedback Analysis',
+                'New Feature Implementation',
+                'Performance Optimization'
+            ];
 
-        // Create projects for the team
-        $projects = Project::factory(3)->create([
-            'team_id' => $team->id,
-        ]);
+            foreach ($projects as $projectName) {
+                $project = Project::factory()->create([
+                    'name' => $projectName . ' - ' . $teamName,
+                    'team_id' => $team->id
+                ]);
 
-        // Create threads and messages for each project
-        foreach ($projects as $project) {
-            $threads = Thread::factory(3)->create([
-                'project_id' => $project->id,
-                'user_id' => $user->id,
-            ]);
-
-            foreach ($threads as $thread) {
-                Message::factory(5)->create([
-                    'thread_id' => $thread->id,
+                // Create threads for each project
+                $threads = Thread::factory(3)->create([
+                    'project_id' => $project->id,
                     'user_id' => $user->id,
                 ]);
+
+                foreach ($threads as $thread) {
+                    Message::factory(5)->create([
+                        'thread_id' => $thread->id,
+                        'user_id' => $user->id,
+                    ]);
+                }
             }
         }
 
@@ -64,5 +74,8 @@ class DatabaseSeeder extends Seeder
                 'user_id' => $user->id,
             ]);
         }
+
+        // Output a message to confirm the seeding was successful
+        $this->command->info('Teams, projects, threads, and messages have been added to the user with id 1.');
     }
 }
