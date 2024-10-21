@@ -1,0 +1,33 @@
+<div
+    x-data="{ isCollapsed: false, chatsExpanded: true }"
+    x-init="
+        isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        chatsExpanded = localStorage.getItem('chatsExpanded') !== 'false';
+        $nextTick(() => {
+            document.getElementById('sidebar').style.visibility = 'visible';
+        });
+        $watch('isCollapsed', value => localStorage.setItem('sidebarCollapsed', value));
+        $watch('chatsExpanded', value => localStorage.setItem('chatsExpanded', value));
+    "
+    id="sidebar"
+    class="h-full overflow-hidden transition-all duration-300 ease-in-out border-r border-sidebar-border invisible"
+    :class="{ 'w-[60px]': isCollapsed, 'w-[270px]': !isCollapsed }">
+    <div class="sidebar-inner bg-sidebar-background h-full">
+        <div class="sidebar-content flex flex-col">
+            <div class="flex flex-col space-y-4 py-3">
+                <x-sidebar.sidebar-header x-bind:is-collapsed.sync="isCollapsed" />
+                <x-sidebar.team-switcher />
+            </div>
+            <div id="sidebarContent" class="flex-grow overflow-hidden flex flex-col opacity-0 transition-opacity duration-300" :class="{ 'opacity-100': !isCollapsed }">
+                <div class="flex-grow overflow-y-auto">
+                    <div class="w-[270px] p-4">
+                        <x-sidebar.chats-section />
+                    </div>
+                </div>
+                <div class="flex-shrink-0">
+                    <x-sidebar.sidebar-footer />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
