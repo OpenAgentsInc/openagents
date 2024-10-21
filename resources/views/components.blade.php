@@ -1,4 +1,4 @@
-<x-layout>
+<x-layouts.app>
     <main class="flex flex-col items-center justify-center min-h-screen p-8 bg-black text-white overflow-hidden">
         <h1 class="text-5xl font-bold mb-12 pointer-events-none select-none">Component Library</h1>
 
@@ -97,4 +97,4 @@
             </div>
         </section>
     </main>
-</x-layout>
+</x-layouts.app>

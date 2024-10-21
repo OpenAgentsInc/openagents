@@ -1,4 +1,4 @@
-<x-layout>
+<x-layouts.app>
     <div class="relative min-h-screen overflow-hidden bg-black">
         <!-- Animated background -->
         <div class="absolute inset-0 z-0">
@@ -59,4 +59,4 @@
             }
         }
     </style>
-</x-layout>
+</x-layouts.app>

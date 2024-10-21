@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebarContent = document.getElementById('sidebarContent');
     const sidebarHeader = document.getElementById('sidebarHeader');
     const newTeamButton = document.getElementById('newTeamButton');
-    const sidebarDivider = document.getElementById('sidebarDivider');
+    // const sidebarDivider = document.getElementById('sidebarDivider');
 
     // Get the initial state from localStorage
     let sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.documentElement.style.setProperty('--sidebar-content-visibility', newVisibility);
 
         sidebar.style.width = newWidth;
-        [sidebarContent, sidebarHeader, newTeamButton, sidebarDivider].forEach(el => {
+        [sidebarContent, sidebarHeader, newTeamButton].forEach(el => { //sidebarDivider
             if (el) {
                 el.style.opacity = newOpacity;
                 el.style.visibility = newVisibility;

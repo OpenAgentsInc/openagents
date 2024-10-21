@@ -1,4 +1,4 @@
-<x-layout>
+<x-layouts.app>
     <div class="flex items-center justify-center min-h-screen">
         <div class="-mt-8 md:w-96 mx-auto">
             <div class="mb-10 text-xl font-bold text-center">Verify Email</div>
@@ -8,9 +8,9 @@
             </div>
 
             @if (session('status') == 'verification-link-sent')
-                <div class="mb-4 text-sm text-green-600 dark:text-green-400 text-center">
-                    {{ __('A new verification link has been sent to the email address you provided during registration.') }}
-                </div>
+            <div class="mb-4 text-sm text-green-600 dark:text-green-400 text-center">
+                {{ __('A new verification link has been sent to the email address you provided during registration.') }}
+            </div>
             @endif
 
             <div class="mt-4 flex flex-col items-center space-y-4">
@@ -30,7 +30,7 @@
             </div>
         </div>
     </div>
-</x-layout>
+</x-layouts.app>
 
 <style>
     input:focus {
