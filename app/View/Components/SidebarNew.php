@@ -16,10 +16,10 @@ class SidebarNew extends Component
      */
     public function __construct()
     {
-        $this->recentThreads = Auth::user()->threads()
+        $this->recentThreads = Auth::check() ? Auth::user()->threads()
             ->latest()
             ->take(10)
-            ->get();
+            ->get() : collect();
     }
 
     /**
@@ -27,6 +27,8 @@ class SidebarNew extends Component
      */
     public function render(): View|Closure|string
     {
-        return view('components.sidebar.sidebar-new');
+        return view('components.sidebar.sidebar-new', [
+            'recentThreads' => $this->recentThreads,
+        ]);
     }
 }
