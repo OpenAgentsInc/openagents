@@ -48,12 +48,13 @@ class DatabaseSeeder extends Seeder
                 ]);
 
                 // Create threads for each project
-                $threads = Thread::factory(3)->create([
-                    'project_id' => $project->id,
-                    'user_id' => $user->id,
-                ]);
+                for ($i = 1; $i <= 3; $i++) {
+                    $thread = Thread::factory()->create([
+                        'project_id' => $project->id,
+                        'user_id' => $user->id,
+                        'title' => "Thread $i - $projectName - $teamName",
+                    ]);
 
-                foreach ($threads as $thread) {
                     Message::factory(5)->create([
                         'thread_id' => $thread->id,
                         'user_id' => $user->id,
@@ -63,12 +64,13 @@ class DatabaseSeeder extends Seeder
         }
 
         // Create some personal threads for the user
-        $personalThreads = Thread::factory(2)->create([
-            'user_id' => $user->id,
-            'project_id' => null,
-        ]);
+        for ($i = 1; $i <= 2; $i++) {
+            $thread = Thread::factory()->create([
+                'user_id' => $user->id,
+                'project_id' => null,
+                'title' => "Personal Thread $i",
+            ]);
 
-        foreach ($personalThreads as $thread) {
             Message::factory(3)->create([
                 'thread_id' => $thread->id,
                 'user_id' => $user->id,
