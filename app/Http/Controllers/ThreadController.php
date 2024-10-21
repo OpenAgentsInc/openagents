@@ -96,10 +96,13 @@ class ThreadController extends Controller
         $thread->title = 'New Chat';
         $thread->save();
 
-        return response()->json([
-            'success' => true,
-            'thread' => $thread,
-            'redirect' => route('chat.show', $thread->id)
-        ]);
+        $threads = Thread::where('team_id', $team->id)
+                         ->when($project, function ($query) use ($project) {
+                             return $query->where('project_id', $project->id);
+                         })
+                         ->latest()
+                         ->get();
+
+        return view('partials.thread-list', compact('threads'));
     }
 }
