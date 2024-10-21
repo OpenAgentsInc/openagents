@@ -13,7 +13,7 @@ class ChatController extends Controller
     {
         $user = Auth::user();
         $threads = $user->threads()->latest()->get();
-        return view('chat.index', compact('threads'));
+        return view('components.chat.index', compact('threads'));
     }
 
     public function show(Thread $thread)
@@ -22,7 +22,7 @@ class ChatController extends Controller
         if (request()->header('HX-Request')) {
             return view('chat.messages', compact('messages'));
         }
-        return view('chat.index', compact('thread', 'messages'));
+        return view('components.chat.index', compact('thread', 'messages'));
     }
 
     public function send(Request $request, Thread $thread)
