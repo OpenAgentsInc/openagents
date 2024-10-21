@@ -3,7 +3,7 @@
     <a href="{{ route('chat.show', $thread->id) }}"
         class="cursor-pointer block p-2 hover:bg-sidebar-accent rounded-md transition-colors duration-200"
         hx-get="{{ route('chat.show', $thread->id) }}"
-        hx-target="#main-content-inner"
+        hx-target="#main-content"
         hx-swap="innerHTML"
         hx-push-url="true">
         <div class="text-sm font-medium text-sidebar-foreground">{{ $thread->title }}</div>
