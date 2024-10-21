@@ -18,7 +18,7 @@ test('clicking a chat updates main content with correct HTML', function () {
     // Simulate an HTMX request to view a specific chat
     $response = $this->actingAs($user)
         ->withHeaders(['HX-Request' => 'true'])
-        ->get(route('chat.show', $thread->id));
+        ->get(route('chat.show', $thread));
 
     // Assert the response status is 200 (OK)
     $response->assertStatus(200);
@@ -54,7 +54,7 @@ test('sending a message updates the chat content', function () {
     // Simulate an HTMX request to send a message
     $response = $this->actingAs($user)
         ->withHeaders(['HX-Request' => 'true'])
-        ->post(route('chat.send', $thread->id), [
+        ->post(route('chat.send', $thread), [
             'content' => 'Test message'
         ]);
 
