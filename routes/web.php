@@ -32,6 +32,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/send-message', [MessageController::class, 'sendMessage'])->name('send-message');
 
     // Thread routes
+    Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
+    Route::get('/threads/{thread}/messages', [ThreadController::class, 'messages'])->name('threads.messages');
     Route::post('/threads/{thread}/process', [ThreadController::class, 'process']);
     Route::get('/chat/{thread}', [ThreadController::class, 'show'])->name('chat.show');
     Route::post('/threads/{thread}/add-message', [ThreadController::class, 'addMessage'])->name('threads.addMessage');
@@ -43,7 +45,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/teams/{team}/threads', [TeamController::class, 'threads']);
     Route::get('/teams', [TeamController::class, 'getTeamsAndProjects'])->name('teams.get');
     Route::post('/switch-team/{team}', [TeamController::class, 'switchTeam'])->name('switch-team');
-    Route::post('/switch-project/{project}', [TeamController::class, 'switchProject'])->name('switch-project'); // New route
+    Route::post('/switch-project/{project}', [TeamController::class, 'switchProject'])->name('switch-project');
 
     // New SSE route
     Route::get('/chat/{thread}/stream', [MessageController::class, 'streamResponse'])->name('chat.stream');

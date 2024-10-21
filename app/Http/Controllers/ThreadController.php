@@ -3,11 +3,55 @@
 namespace App\Http\Controllers;
 
 use App\Models\Thread;
-use App\Models\Message;
+use App\Models\Team;
+use App\Models\Project;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class ThreadController extends Controller
 {
+    public function index(Request $request)
+    {
+        $user = Auth::user();
+
+        if (!$user->currentTeam) {
+            return view('partials.thread-list', ['threads' => collect(), 'message' => 'No team selected. Please create or join a team to see chats.']);
+        }
+
+        $request->validate([
+            'team_id' => 'required|exists:teams,id',
+            'project_id' => 'nullable|exists:projects,id',
+        ]);
+
+        $team = Team::findOrFail($request->team_id);
+
+        if (!$user->teams->contains($team)) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $query = Thread::query();
+
+        if ($request->project_id) {
+            $project = Project::findOrFail($request->project_id);
+            if ($project->team_id !== $team->id) {
+                return response()->json(['error' => 'Project does not belong to the specified team'], 400);
+            }
+            $query->where('project_id', $project->id);
+        } else {
+            $query->whereIn('project_id', $team->projects->pluck('id'));
+        }
+
+        $threads = $query->latest()->paginate(15);
+
+        return view('partials.thread-list', compact('threads'));
+    }
+
+    public function messages(Thread $thread)
+    {
+        $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
+        return view('partials.message-list', compact('messages', 'thread'));
+    }
+
     public function show(Thread $thread)
     {
         $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
