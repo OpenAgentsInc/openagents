@@ -18,9 +18,3 @@
 @production
 <script src="https://cdn.usefathom.com/script.js" data-site="COZQPXXY" defer></script>
 @endproduction
-
-<script>
-    document.body.addEventListener('htmx:configRequest', (event) => {
-        event.detail.headers['X-CSRF-TOKEN'] = '{{ csrf_token() }}';
-    });
-</script>
