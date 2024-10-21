@@ -44,7 +44,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/threads/create', [ThreadController::class, 'create'])->name('threads.create');
 
     // Team routes
-    Route::get('/teams', [TeamController::class, 'getTeamsAndProjects'])->name('teams.get');
+    Route::get('/teams-and-projects', [TeamController::class, 'getTeamsAndProjects'])->name('teams.projects');
     Route::post('/switch-team/{team}', [TeamController::class, 'switchTeam'])->name('switch-team');
     Route::post('/switch-project/{project}', [TeamController::class, 'switchProject'])->name('switch-project');
 });
