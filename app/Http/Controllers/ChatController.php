@@ -20,7 +20,7 @@ class ChatController extends Controller
     {
         $messages = $thread->messages()->orderBy('created_at', 'desc')->get();
         if (request()->header('HX-Request')) {
-            return view('components.chat.messages', compact('messages'));
+            return view(route('components.chat.index'), compact('messages'));
         }
         return view('components.chat.index', compact('thread', 'messages'));
     }

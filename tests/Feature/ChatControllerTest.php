@@ -13,7 +13,7 @@ beforeEach(function () {
 });
 
 test('unauthenticated user cannot fetch threads', function () {
-    $response = $this->get('/api/threads');
+    $response = $this->get(route('threads.index'));
     $response->assertStatus(401);
 });
 
@@ -24,10 +24,12 @@ test('authenticated user can fetch threads for a team', function () {
     ]);
 
     $response = $this->actingAs($this->user)
-        ->get("/api/threads?team_id={$this->team->id}");
+        ->withHeaders(['HX-Request' => 'true'])
+        ->get(route('threads.index'));
+    // ->get("/api/threads?team_id={$this->team->id}");
 
     $response->assertStatus(200);
-    $response->assertViewIs('partials.thread-list');
+    $response->assertViewIs('components.sidebar.thread-list');
     $response->assertViewHas('threads', function ($viewThreads) use ($threads) {
         return $viewThreads->count() === 3 &&
             $viewThreads->pluck('id')->diff($threads->pluck('id'))->isEmpty();
