@@ -95,7 +95,7 @@ class User extends Authenticatable
         }
 
         return $this->threads()->create([
-            'title' => $data['title'],
+            'title' => $data['title'] ?? 'New chat',
             'team_id' => $team_id,
             'project_id' => $project_id,
         ]);
