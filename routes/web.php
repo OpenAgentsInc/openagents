@@ -26,16 +26,15 @@ Route::view('/plans', function () {
     return "plans";
 })->name('plans');
 
-Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index'); // outside cuz the auth middleware is redirecting to login without the 401; fix?
-
 Route::middleware(['auth'])->group(function () {
+    Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
 
     Route::get('/fresh', [FreshController::class, 'fresh'])->name('fresh');
     Route::get('/chat/{thread}/messages', [FreshController::class, 'loadChatMessages'])->name('chat.messages');
     Route::post('/chat/{thread}/send', [FreshController::class, 'sendMessage'])->name('chat.send');
 
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
-    Route::get('/chat/{thread}', [ChatController::class, 'show'])->name('threads.show');
+    Route::get('/chat/{thread}', [ThreadController::class, 'show'])->name('threads.show');
 
     // For homepage - no thread yet
     Route::post('/send-message', [MessageController::class, 'sendMessage'])->name('send-message');
