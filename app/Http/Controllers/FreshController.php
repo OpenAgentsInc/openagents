@@ -51,7 +51,7 @@ class FreshController extends Controller
         $thread->messages()->save($message);
 
         if ($request->ajax()) {
-            return view('partials.chat_messages', ['messages' => [$message]]);
+            return view('partials.chat_messages', ['messages' => $thread->messages()->orderBy('created_at', 'asc')->get()]);
         }
 
         return redirect()->back();
