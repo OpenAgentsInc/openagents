@@ -13,6 +13,8 @@ class DashboardController extends Controller
         if (auth()->check()) {
             $user = auth()->user();
             $messages = $user->messages()->orderBy('created_at', 'desc')->get();
+        } else {
+            return view('homepage');
         }
 
         return view('dashboard', compact('messages'));
