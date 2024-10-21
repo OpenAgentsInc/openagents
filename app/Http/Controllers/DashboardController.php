@@ -16,7 +16,7 @@ class DashboardController extends Controller
 
         // $this->ensureThread();
 
-        return view('dashboard.dashboard');
+        return view('components.dashboard.dashboard');
     }
 
     // We make sure there is an active thread
