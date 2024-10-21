@@ -33,7 +33,7 @@ class ThreadControllerOld extends Controller
 
         if ($request->header('HX-Request')) {
             // This is an HTMX request, return only the chat content
-            return view('chat.show', compact('thread', 'messages'));
+            return view('threads.show', compact('thread', 'messages'));
         } else {
             // This is a full page load, return the full layout
             return view('dashboard.main-content', [
@@ -82,12 +82,12 @@ class ThreadControllerOld extends Controller
             ->get();
 
         $threadListHtml = view('partials.thread-list', compact('threads'))->render();
-        $chatContentHtml = view('chat.show', ['thread' => $thread, 'messages' => []])->render();
+        $chatContentHtml = view('threads.show', ['thread' => $thread, 'messages' => []])->render();
 
         return response()->json([
             'threadList' => $threadListHtml,
             'chatContent' => $chatContentHtml,
-            'url' => route('chat.show', $thread->id)
-        ])->header('HX-Push-Url', route('chat.show', $thread->id));
+            'url' => route('threads.show', $thread->id)
+        ])->header('HX-Push-Url', route('threads.show', $thread->id));
     }
 }

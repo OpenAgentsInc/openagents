@@ -38,10 +38,10 @@ test('creating a new thread updates sidebar and main content', function () {
 
     // Check that the URL is updated
     $newThread = Thread::latest()->first();
-    $this->assertEquals(route('chat.show', $newThread->id), $responseData['url']);
+    $this->assertEquals(route('threads.show', $newThread->id), $responseData['url']);
 
     // Check that the HX-Push-Url header is set
-    $response->assertHeader('HX-Push-Url', route('chat.show', $newThread->id));
+    $response->assertHeader('HX-Push-Url', route('threads.show', $newThread->id));
 });
 
 test('selecting a thread updates main content without full page reload', function () {
@@ -50,10 +50,10 @@ test('selecting a thread updates main content without full page reload', functio
 
     $response = $this->actingAs($user)
         ->withHeaders(['HX-Request' => 'true'])
-        ->get(route('chat.show', $thread->id));
+        ->get(route('threads.show', $thread->id));
 
     $response->assertStatus(200);
-    $response->assertViewIs('chat.show');
+    $response->assertViewIs('threads.show');
     $response->assertViewHas('thread', $thread);
     $response->assertViewHas('messages');
 

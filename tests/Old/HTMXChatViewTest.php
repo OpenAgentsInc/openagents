@@ -15,7 +15,7 @@ test('clicking a chat updates main content with correct HTML', function () {
     // Simulate an HTMX request to view a specific chat
     $response = $this->actingAs($user)
         ->withHeaders(['HX-Request' => 'true'])
-        ->get(route('chat.show', $thread));
+        ->get(route('threads.show', $thread));
 
     // Assert the response status is 200 (OK)
     $response->assertStatus(200);
@@ -33,7 +33,7 @@ test('clicking a chat updates main content with correct HTML', function () {
     $response->assertDontSee('</html>');
 
     // Assert that the correct view is used
-    $response->assertViewIs('chat.show');
+    $response->assertViewIs('threads.show');
 
     // Assert that the view has the necessary variables
     $response->assertViewHas('thread', $thread);

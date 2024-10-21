@@ -7,13 +7,13 @@
                         <div class="mx-auto flex h-full w-full flex-col text-base justify-between md:max-w-3xl">
                             <div id="message-list" class="flex-grow overflow-y-auto space-y-4">
                                 @if(isset($thread) && $thread->messages->isNotEmpty())
-                                    @include('chat.show', ['messages' => $thread->messages])
+                                @include('threads.show', ['messages' => $thread->messages])
                                 @else
-                                    <div class="mb-7 text-center">
-                                        <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
-                                            <h1>How can we help?</h1>
-                                        </div>
+                                <div class="mb-7 text-center">
+                                    <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
+                                        <h1>How can we help?</h1>
                                     </div>
+                                </div>
                                 @endif
                             </div>
                             <div class="mt-4">

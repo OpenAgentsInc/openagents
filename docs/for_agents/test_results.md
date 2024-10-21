@@ -238,16 +238,16 @@ View [chat.messages] not found.
   ───────────────────────────────────────────────────────────────────────────────────────────────────
    FAILED  Tests\Feature\HTMXTest > selecting a thread updates main content without full page reloa…
   Failed asserting that two strings are equal.
-  -'chat.show'
+  -'threads.show'
   +'components.chat.index'
 
 
   at tests/Feature/HTMXTest.php:56
      52▕         ->withHeaders(['HX-Request' => 'true'])
-     53▕         ->get(route('chat.show', $thread->id));
+     53▕         ->get(route('threads.show', $thread->id));
      54▕
      55▕     $response->assertStatus(200);
-  ➜  56▕     $response->assertViewIs('chat.show');
+  ➜  56▕     $response->assertViewIs('threads.show');
      57▕     $response->assertViewHas('thread', $thread);
      58▕     $response->assertViewHas('messages');
      59▕

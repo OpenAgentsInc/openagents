@@ -40,6 +40,6 @@ class ChatController extends Controller
             return view('chat.message', compact('message'));
         }
 
-        return redirect()->route('chat.show', $thread);
+        return redirect()->route('threads.show', $thread);
     }
 }

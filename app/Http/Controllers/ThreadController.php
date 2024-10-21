@@ -47,15 +47,15 @@ class ThreadController extends Controller
         if ($request->header('HX-Request')) {
             $threads = Thread::where('user_id', $user->id)->latest()->get();
             $threadListHtml = view('components.sidebar.thread-list', compact('threads'))->render();
-            $chatContentHtml = view('chat.messages', ['messages' => []])->render();
+            $chatContentHtml = view('components.chat.messages', ['messages' => []])->render();
 
             return response()->json([
                 'threadList' => $threadListHtml,
                 'chatContent' => $chatContentHtml,
-                'url' => route('chat.show', $thread)
-            ])->header('HX-Push-Url', route('chat.show', $thread));
+                'url' => route('threads.show', $thread)
+            ])->header('HX-Push-Url', route('threads.show', $thread));
         }
 
-        return redirect()->route('chat.show', $thread);
+        return redirect()->route('threads.show', $thread);
     }
 }
