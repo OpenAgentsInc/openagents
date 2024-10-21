@@ -10,6 +10,22 @@ test('Happy Path', function () {
             ->waitForText('OpenAgents')
             ->assertSee('OpenAgents')
 
+            // I see the how can we help section with form
+            ->assertSee('How can we help?')
+
+            // I can submit the form
+            ->type('content', 'What does this do')
+            ->click('button[type="submit"]')
+
+            // The URL updates to chat/{id}
+            ->waitForLocation('/chat/1')
+
+            // I see the message I sent on this page
+            ->assertSee('What does this do')
+
+            // And I see a loading indicator that my message is being responded to
+            ->assertSee('Typing...')
+
             // I see login buttons
             ->assertSee('Log in')
             ->assertSee('Sign up')
