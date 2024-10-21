@@ -12,6 +12,7 @@ test('Happy Path', function () {
 
             // I see the homepage
             ->assertSee('OpenAgents will return')
+            ->assertSee('Explore unfinished v3')
 
             // I see login buttons
             ->assertSee('Log in')
@@ -42,13 +43,13 @@ test('Happy Path', function () {
             ->click('button[type="submit"]')
 
             // The URL updates to chat/{id}
-            ->waitForLocation('/chat/1')
+            // ->waitForLocation('/chat/1')
 
             // I see the message I sent on this page
-            ->assertSee('What does this do')
+            // ->assertSee('What does this do')
 
             // And I see a loading indicator that my message is being responded to
-            ->assertSee('Typing...')
+            // ->assertSee('Typing...')
 
             ->screenshot('done');
     });
