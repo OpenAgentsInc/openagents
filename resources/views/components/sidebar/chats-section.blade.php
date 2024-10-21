@@ -33,3 +33,19 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        htmx.on('htmx:afterSwap', function(event) {
+            if (event.detail.target.id === 'thread-list') {
+                const links = event.detail.target.querySelectorAll('a');
+                links.forEach(link => {
+                    link.setAttribute('hx-get', link.getAttribute('href'));
+                    link.setAttribute('hx-target', '#main-content');
+                    link.setAttribute('hx-push-url', 'true');
+                    link.removeAttribute('href');
+                });
+            }
+        });
+    });
+</script>
