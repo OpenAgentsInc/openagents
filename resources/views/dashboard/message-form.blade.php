@@ -1,5 +1,8 @@
 <div class="w-full">
-    <form class="w-full" id="message-form" hx-post="{{ route('chat.send', $thread) }}" hx-swap="afterbegin" hx-target="#message-list">
+    <form class="w-full" id="message-form" 
+        hx-post="{{ isset($thread) ? route('chat.send', $thread) : route('send-message') }}" 
+        hx-swap="afterbegin" 
+        hx-target="#message-list">
         @csrf
         @if(auth()->check() && auth()->user()->currentProject)
         <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
