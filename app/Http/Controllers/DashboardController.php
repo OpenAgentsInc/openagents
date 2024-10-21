@@ -29,10 +29,8 @@ class DashboardController extends Controller
 
             // If there's no thread, create one
             if (!$thread) {
-                $thread = $user->threads()->create([
+                $thread = $user->createThread([
                     'title' => 'New chat',
-                    'team_id' => $user->currentTeam->id,
-                    'project_id' => $user->currentProject->id,
                 ]);
             }
 
