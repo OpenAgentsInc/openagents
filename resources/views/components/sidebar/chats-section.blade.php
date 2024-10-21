@@ -10,25 +10,25 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
         </svg>
     </button>
-    <div id="chatsContent" 
-         x-show="chatsExpanded" 
-         x-transition:enter="transition ease-out duration-100" 
-         x-transition:enter-start="opacity-0 transform scale-95" 
-         x-transition:enter-end="opacity-100 transform scale-100" 
-         x-transition:leave="transition ease-in duration-75" 
-         x-transition:leave-start="opacity-100 transform scale-100" 
-         x-transition:leave-end="opacity-0 transform scale-95"
-         hx-get="{{ route('threads.index') }}"
-         hx-trigger="revealed, teamChanged from:body"
-         hx-target="#thread-list"
-         hx-include="#team-id-input">
+    <div id="chatsContent"
+        x-show="chatsExpanded"
+        x-transition:enter="transition ease-out duration-100"
+        x-transition:enter-start="opacity-0 transform scale-95"
+        x-transition:enter-end="opacity-100 transform scale-100"
+        x-transition:leave="transition ease-in duration-75"
+        x-transition:leave-start="opacity-100 transform scale-100"
+        x-transition:leave-end="opacity-0 transform scale-95"
+        hx-get="{{ route('threads.index') }}"
+        hx-trigger="revealed, teamChanged from:body"
+        hx-target="#thread-list"
+        hx-include="#team-id-input">
         <input type="hidden" id="team-id-input" name="team_id" value="{{ auth()->user()->currentTeam->id ?? '' }}">
         <div id="thread-list">
             @if(auth()->user()->currentTeam)
-                <!-- Thread list will be loaded here -->
-                <p class="text-gray-500 dark:text-gray-400">Loading threads...</p>
+            <!-- Thread list will be loaded here -->
+            <p class="text-zinc-500 dark:text-zinc-400">Loading threads...</p>
             @else
-                <p class="text-gray-500 dark:text-gray-400">No team selected. Please create or join a team to see chats.</p>
+            <p class="text-zinc-500 dark:text-zinc-400">No team selected. Please create or join a team to see chats.</p>
             @endif
         </div>
     </div>
