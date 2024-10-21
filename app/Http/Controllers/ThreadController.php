@@ -103,6 +103,13 @@ class ThreadController extends Controller
                          ->latest()
                          ->get();
 
-        return view('partials.thread-list', compact('threads'));
+        $threadListHtml = view('partials.thread-list', compact('threads'))->render();
+        $chatContentHtml = view('chat.show', ['thread' => $thread, 'messages' => []])->render();
+
+        return response()->json([
+            'threadList' => $threadListHtml,
+            'chatContent' => $chatContentHtml,
+            'threadId' => $thread->id
+        ]);
     }
 }
