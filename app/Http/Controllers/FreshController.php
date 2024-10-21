@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Thread;
 use App\Models\Message;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class FreshController extends Controller
 {
@@ -16,19 +17,27 @@ class FreshController extends Controller
 
     public function loadChatMessages(Thread $thread)
     {
+        if ($thread->user_id !== Auth::id()) {
+            abort(403, 'Unauthorized action.');
+        }
+
         $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
         return view('partials.chat_messages', compact('messages'));
     }
 
     public function sendMessage(Request $request, Thread $thread)
     {
-        $request->validate([
+        if ($thread->user_id !== Auth::id()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $validated = $request->validate([
             'content' => 'required|string',
         ]);
 
         $message = new Message([
-            'content' => $request->content,
-            'user_id' => auth()->id(),
+            'content' => $validated['content'],
+            'user_id' => Auth::id(),
         ]);
 
         $thread->messages()->save($message);
