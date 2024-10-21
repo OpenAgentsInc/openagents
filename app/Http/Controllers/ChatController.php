@@ -78,7 +78,7 @@ class ChatController extends Controller
         return response()->json([
             'threadList' => $threadListHtml,
             'chatContent' => $chatContentHtml,
-            'url' => route('chat.show', $thread->id)
-        ])->header('HX-Push-Url', route('chat.show', $thread->id));
+            'url' => route('chat.show', $thread)
+        ])->header('HX-Push-Url', route('chat.show', $thread));
     }
 }
