@@ -5,7 +5,7 @@
                 <div class="mx-auto max-w-3xl px-4 py-8">
                     <div id="message-list" class="space-y-4">
                         @if(isset($messages))
-                        @include('chat.messages', ['messages' => $messages])
+                        <x-chat.messages :messages="$messages" />
                         @else
                         <div class="mb-7 text-center">
                             <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
@@ -17,7 +17,7 @@
                 </div>
             </div>
             <div class="p-4 w-full max-w-[650px] mx-auto">
-                @include('dashboard.message-form', ['thread' => $thread ?? null])
+                <x-dashboard.message-form :thread="$thread ?? null" />
             </div>
         </div>
     </div>
