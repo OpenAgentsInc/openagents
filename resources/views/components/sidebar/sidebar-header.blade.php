@@ -21,13 +21,13 @@
         x-transition:leave-end="opacity-0 scale-90"
         hx-post="{{ route('threads.create') }}"
         hx-swap="none"
+        hx-push-url="true"
         hx-trigger="click"
         @htmx:after-request="
             if(event.detail.successful) {
                 const response = JSON.parse(event.detail.xhr.response);
                 document.getElementById('thread-list').innerHTML = response.threadList;
                 document.getElementById('main-content-inner').innerHTML = response.chatContent;
-                htmx.pushUrl(`/chat/${response.threadId}`);
             }
         ">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
