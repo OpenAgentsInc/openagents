@@ -33,7 +33,8 @@ test('creating a new thread updates sidebar and main content', function () {
     $this->assertStringContainsString('New Chat', $responseData['threadList']);
 
     // Check that the main content area is updated with the new chat
-    $this->assertStringContainsString('New Chat', $responseData['chatContent']);
+    $this->assertStringContainsString('id="chat-content"', $responseData['chatContent']);
+    $this->assertStringContainsString('id="message-list"', $responseData['chatContent']);
 
     // Check that the URL is updated
     $newThread = Thread::latest()->first();
