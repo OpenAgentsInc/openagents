@@ -11,7 +11,13 @@ class ThreadController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        $threads = Thread::where('user_id', $user->id)->latest()->paginate(15);
+        $query = Thread::where('user_id', $user->id);
+
+        if ($request->has('project_id')) {
+            $query->where('project_id', $request->project_id);
+        }
+
+        $threads = $query->latest()->paginate(15);
         return view('partials.thread-list', compact('threads'));
     }
 
