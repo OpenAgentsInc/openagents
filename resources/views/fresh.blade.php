@@ -22,7 +22,7 @@
                 </div>
             </div>
             <div class="p-4 bg-zinc-700">
-                @include('dashboard.message-form')
+                @include('dashboard.message-form', ['thread' => $threads->first()])
             </div>
         </div>
     </div>
