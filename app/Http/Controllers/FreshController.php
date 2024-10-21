@@ -23,7 +23,7 @@ class FreshController extends Controller
         }
 
         $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
-        return view('partials.messages', compact('messages'));
+        return view('partials.chat_messages', compact('messages'));
     }
 
     public function sendMessage(Request $request, Thread $thread)
