@@ -2,21 +2,37 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\Message;
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
 {
     public function index()
     {
-        $messages = [];
-        if (auth()->check()) {
-            $user = auth()->user();
-            $messages = $user->messages()->orderBy('created_at', 'desc')->get();
-        } else {
+        // If user is unauthed, just return the homepage
+        if (!Auth::check()) {
             return view('homepage');
         }
 
-        return view('dashboard', compact('messages'));
+        // $this->ensureThread();
+
+        return view('components.dashboard.dashboard');
+    }
+
+    // We make sure there is an active thread
+    private function ensureThread()
+    {
+        if (!session()->has('thread')) {
+            /** @var User $user */
+            $user = Auth::user();
+            $thread = $user->threads()->first();
+
+            // If there's no thread, create one
+            if (!$thread) {
+                $thread = $user->createThread();
+            }
+
+            session(['thread' => $thread]);
+        }
     }
 }

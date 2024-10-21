@@ -11,6 +11,11 @@ class ThreadController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+
+        if (!$user) {
+            return response('Unauthorized', 401);
+        }
+
         $query = Thread::where('user_id', $user->id);
 
         if ($request->has('project_id')) {
@@ -20,10 +25,10 @@ class ThreadController extends Controller
         $threads = $query->latest()->get();
 
         if ($request->header('HX-Request')) {
-            return view('partials.thread-list', compact('threads'));
+            return view('components.sidebar.thread-list', compact('threads'));
         }
 
-        return view('chat.index', compact('threads'));
+        return view('components.chat.index', compact('threads'));
     }
 
     public function create(Request $request)
@@ -41,7 +46,7 @@ class ThreadController extends Controller
 
         if ($request->header('HX-Request')) {
             $threads = Thread::where('user_id', $user->id)->latest()->get();
-            $threadListHtml = view('partials.thread-list', compact('threads'))->render();
+            $threadListHtml = view('components.sidebar.thread-list', compact('threads'))->render();
             $chatContentHtml = view('chat.messages', ['messages' => []])->render();
 
             return response()->json([

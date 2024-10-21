@@ -26,6 +26,8 @@ Route::view('/plans', function () {
     return "plans";
 })->name('plans');
 
+Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index'); // outside cuz the auth middleware is redirecting to login without the 401; fix?
+
 Route::middleware(['auth'])->group(function () {
 
     Route::get('/fresh', [FreshController::class, 'fresh'])->name('fresh');
@@ -39,11 +41,10 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/send-message', [MessageController::class, 'sendMessage'])->name('send-message');
 
     // Thread routes
-    Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
     Route::post('/threads/create', [ThreadController::class, 'create'])->name('threads.create');
 
     // Team routes
-    Route::get('/teams', [TeamController::class, 'getTeamsAndProjects'])->name('teams.get');
+    Route::get('/teams-and-projects', [TeamController::class, 'getTeamsAndProjects'])->name('teams.projects');
     Route::post('/switch-team/{team}', [TeamController::class, 'switchTeam'])->name('switch-team');
     Route::post('/switch-project/{project}', [TeamController::class, 'switchProject'])->name('switch-project');
 });

@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ asset('css/globals.css') }}">
     <link rel="stylesheet" href="{{ asset('css/jbm.css') }}">
     <link rel="stylesheet" href="{{ asset('css/variables.css') }}">
-    @include('partials.scripts')
+    <x-partials.scripts />
 </head>
 
 <body hx-boost="true" class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
@@ -23,7 +23,7 @@
                     <x-app-brand />
                 </div>
                 <div class="pr-3">
-                    @include('dashboard.top-buttons')
+                    <dashboard.top-buttons />
                 </div>
             </header>
             <main class="flex-1 overflow-auto h-full">
