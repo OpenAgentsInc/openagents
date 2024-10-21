@@ -17,8 +17,8 @@
                                 @endif
                             </div>
                             <div class="mt-4">
-                                @include('dashboard.message-form', ['thread' => $thread ?? null])
-                                @include('dashboard.terms-privacy')
+                                <x-dashboard.message-form :thread="$thread ?? null" />
+                                <x-dashboard.terms-privacy />
                             </div>
                         </div>
                     </div>
