@@ -102,3 +102,15 @@ test('empty message is not sent', function () {
     $response->assertStatus(422);
     $response->assertJsonValidationErrors(['content']);
 });
+
+test('empty message list shows correct message', function () {
+    $thread = Thread::factory()->create(['user_id' => $this->user->id]);
+
+    $response = actingAs($this->user)
+        ->withHeaders(['HX-Request' => 'true'])
+        ->get("/chat/{$thread->id}/messages");
+
+    $response->assertStatus(200);
+    $response->assertViewIs('partials.chat_messages');
+    $response->assertSee('Send your first message');
+});
