@@ -2,11 +2,10 @@
     @forelse($threads as $thread)
     <a href="{{ route('chat.show', $thread->id) }}"
         class="cursor-pointer block p-2 hover:bg-sidebar-accent rounded-md transition-colors duration-200"
-        hx-get="{{ route('chat.show', $thread->id) }}"
-        hx-target="#main-content-inner"
-        hx-push-url="true"
-        hx-include="this"
-        hx-params="*">
+        hx-get="{{ route('chat.messages', $thread->id) }}"
+        hx-target="#message-list"
+        hx-swap="innerHTML"
+        hx-push-url="false">
         <div class="text-sm font-medium text-sidebar-foreground">{{ $thread->title }}</div>
         <div class="text-xs text-sidebar-muted">{{ $thread->created_at->diffForHumans() }}</div>
     </a>
