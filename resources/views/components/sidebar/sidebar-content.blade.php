@@ -3,13 +3,14 @@
     <p>Recent Threads Count: {{ $recentThreads->count() }}</p>
     <ul>
         @forelse ($recentThreads as $thread)
-        <li class="mb-2">
+        <li class="mb-2 overflow-hidden">
             <a href="{{ route('threads.show', $thread) }}" 
-               class="hover:text-zinc-300"
+               class="hover:text-zinc-300 block whitespace-nowrap overflow-hidden text-ellipsis"
                hx-get="{{ route('threads.show', $thread) }}"
                hx-target="#main-content"
-               hx-push-url="true">
-                {{ Str::limit($thread->title, 30) }}
+               hx-push-url="true"
+               title="{{ $thread->title }}">
+                {{ $thread->title }}
             </a>
         </li>
         @empty
