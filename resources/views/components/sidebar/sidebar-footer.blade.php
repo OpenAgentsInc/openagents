@@ -1,11 +1,6 @@
 <div class="p-4 border-t border-sidebar-border">
     <div x-data="{ open: false }" class="relative">
         <button @click="open = !open" class="flex items-center space-x-3 w-full cursor-pointer">
-            <div class="avatar">
-                <div class="w-10 rounded-full">
-                    <img class="rounded-full" src="{{ Auth::user()->profile_photo_url }}" alt="{{ Auth::user()->name }}'s avatar" />
-                </div>
-            </div>
             <div class="flex-grow text-left">
                 <p class="text-sm font-medium text-sidebar-foreground">{{ Auth::user()->name }}</p>
                 <p class="text-xs text-sidebar-foreground opacity-70">{{ Auth::user()->email }}</p>
@@ -16,12 +11,8 @@
         </button>
         <div x-show="open" @click.away="open = false" class="absolute bottom-full left-0 w-full mb-2 bg-sidebar-background rounded-md shadow-md border border-sidebar-border">
             <div class="p-2">
-                <a href="{{ route('logout') }}" onclick="event.preventDefault(); document.getElementById('logout-form').submit();" class="block px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md">Log out</a>
+                <a href="/logout" class="block px-4 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md">Log out</a>
             </div>
         </div>
     </div>
 </div>
-
-<form id="logout-form" action="{{ route('logout') }}" method="POST" style="display: none;">
-    @csrf
-</form>
