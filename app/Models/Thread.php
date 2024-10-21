@@ -12,11 +12,7 @@ class Thread extends Model
     /** @use HasFactory<\Database\Factories\ThreadFactory> */
     use HasFactory;
 
-    protected $fillable = [
-        'title',
-        'project_id',
-        'user_id',
-    ];
+    protected $guarded = [];
 
     public function project(): BelongsTo
     {
