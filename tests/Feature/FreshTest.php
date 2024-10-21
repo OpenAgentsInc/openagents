@@ -1,122 +1,104 @@
 <?php
 
-namespace Tests\Feature;
-
 use App\Models\User;
 use App\Models\Thread;
 use App\Models\Message;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 
-class FreshTest extends TestCase
-{
-    use RefreshDatabase;
+use function Pest\Laravel\get;
+use function Pest\Laravel\post;
+use function Pest\Laravel\actingAs;
 
-    public function test_fresh_page_loads_correctly()
-    {
-        $user = User::factory()->create();
-        $response = $this->actingAs($user)->get('/fresh');
-        $response->assertStatus(200);
-        $response->assertViewIs('fresh');
-    }
+beforeEach(function () {
+    $this->user = User::factory()->create();
+});
 
-    public function test_clicking_chat_loads_messages_in_main_area()
-    {
-        $user = User::factory()->create();
-        $thread = Thread::factory()->create(['user_id' => $user->id]);
-        Message::factory()->count(3)->create(['thread_id' => $thread->id]);
+test('fresh page loads correctly', function () {
+    $response = actingAs($this->user)->get('/fresh');
+    $response->assertStatus(200);
+    $response->assertViewIs('fresh');
+});
 
-        $response = $this->actingAs($user)
-            ->withHeaders(['HX-Request' => 'true'])
-            ->get("/chat/{$thread->id}/messages");
+test('clicking chat loads messages in main area', function () {
+    $thread = Thread::factory()->create(['user_id' => $this->user->id]);
+    Message::factory()->count(3)->create(['thread_id' => $thread->id]);
 
-        $response->assertStatus(200);
-        $response->assertViewIs('partials.chat_messages');
-        $response->assertViewHas('messages');
-        $response->assertSee($thread->messages[0]->content);
-        $response->assertSee($thread->messages[1]->content);
-        $response->assertSee($thread->messages[2]->content);
-    }
+    $response = actingAs($this->user)
+        ->withHeaders(['HX-Request' => 'true'])
+        ->get("/chat/{$thread->id}/messages");
 
-    public function test_fresh_page_shows_user_threads()
-    {
-        $user = User::factory()->create();
-        $threads = Thread::factory()->count(3)->create(['user_id' => $user->id]);
+    $response->assertStatus(200);
+    $response->assertViewIs('partials.chat_messages');
+    $response->assertViewHas('messages');
+    $thread->messages->each(fn ($message) => $response->assertSee($message->content));
+});
 
-        $response = $this->actingAs($user)->get('/fresh');
+test('fresh page shows user threads', function () {
+    $threads = Thread::factory()->count(3)->create(['user_id' => $this->user->id]);
 
-        $response->assertStatus(200);
-        $response->assertViewIs('fresh');
-        foreach ($threads as $thread) {
-            $response->assertSee($thread->title);
-        }
-    }
+    $response = actingAs($this->user)->get('/fresh');
 
-    public function test_sending_message_adds_to_thread()
-    {
-        $user = User::factory()->create();
-        $thread = Thread::factory()->create(['user_id' => $user->id]);
+    $response->assertStatus(200);
+    $response->assertViewIs('fresh');
+    $threads->each(fn ($thread) => $response->assertSee($thread->title));
+});
 
-        $response = $this->actingAs($user)
-            ->withHeaders(['HX-Request' => 'true'])
-            ->post("/chat/{$thread->id}/send", [
-                'content' => 'Test message content'
-            ]);
+test('sending message adds to thread', function () {
+    $thread = Thread::factory()->create(['user_id' => $this->user->id]);
 
-        $response->assertStatus(200);
-        $response->assertViewIs('partials.chat_messages');
-        $response->assertSee('Test message content');
-
-        $this->assertDatabaseHas('messages', [
-            'thread_id' => $thread->id,
-            'user_id' => $user->id,
-            'content' => 'Test message content'
-        ]);
-    }
-
-    public function test_unauthorized_user_cannot_access_fresh_page()
-    {
-        $response = $this->get('/fresh');
-        $response->assertStatus(302);
-        $response->assertRedirect('/login');
-    }
-
-    public function test_unauthorized_user_cannot_send_message()
-    {
-        $thread = Thread::factory()->create();
-
-        $response = $this->post("/chat/{$thread->id}/send", [
+    $response = actingAs($this->user)
+        ->withHeaders(['HX-Request' => 'true'])
+        ->post("/chat/{$thread->id}/send", [
             'content' => 'Test message content'
         ]);
 
-        $response->assertStatus(302);
-        $response->assertRedirect('/login');
-    }
+    $response->assertStatus(200);
+    $response->assertViewIs('partials.chat_messages');
+    $response->assertSee('Test message content');
 
-    public function test_user_cannot_access_other_users_threads()
-    {
-        $user1 = User::factory()->create();
-        $user2 = User::factory()->create();
-        $thread = Thread::factory()->create(['user_id' => $user2->id]);
+    $this->assertDatabaseHas('messages', [
+        'thread_id' => $thread->id,
+        'user_id' => $this->user->id,
+        'content' => 'Test message content'
+    ]);
+});
 
-        $response = $this->actingAs($user1)
-            ->withHeaders(['HX-Request' => 'true'])
-            ->get("/chat/{$thread->id}/messages");
+test('unauthorized user cannot access fresh page', function () {
+    $response = get('/fresh');
+    $response->assertStatus(302);
+    $response->assertRedirect('/login');
+});
 
-        $response->assertStatus(403);
-    }
+test('unauthorized user cannot send message', function () {
+    $thread = Thread::factory()->create();
 
-    public function test_empty_message_is_not_sent()
-    {
-        $user = User::factory()->create();
-        $thread = Thread::factory()->create(['user_id' => $user->id]);
+    $response = post("/chat/{$thread->id}/send", [
+        'content' => 'Test message content'
+    ]);
 
-        $response = $this->actingAs($user)
-            ->withHeaders(['HX-Request' => 'true'])
-            ->post("/chat/{$thread->id}/send", [
-                'content' => ''
-            ]);
+    $response->assertStatus(302);
+    $response->assertRedirect('/login');
+});
 
-        $response->assertStatus(422);
-    }
-}
+test('user cannot access other users threads', function () {
+    $otherUser = User::factory()->create();
+    $thread = Thread::factory()->create(['user_id' => $otherUser->id]);
+
+    $response = actingAs($this->user)
+        ->withHeaders(['HX-Request' => 'true'])
+        ->get("/chat/{$thread->id}/messages");
+
+    $response->assertStatus(403);
+});
+
+test('empty message is not sent', function () {
+    $thread = Thread::factory()->create(['user_id' => $this->user->id]);
+
+    $response = actingAs($this->user)
+        ->withHeaders(['HX-Request' => 'true'])
+        ->post("/chat/{$thread->id}/send", [
+            'content' => ''
+        ]);
+
+    $response->assertStatus(422);
+    $response->assertJsonValidationErrors(['content']);
+});
