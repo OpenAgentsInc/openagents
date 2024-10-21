@@ -1,4 +1,4 @@
-<x-layout>
+<x-layouts.app>
     <div class="relative h-full overflow-hidden bg-background">
         @include('dashboard.background')
         <div id="main-content" class="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
@@ -8,13 +8,13 @@
                         <div id="main-content-inner" class="mx-auto flex h-full w-full flex-col text-base justify-center md:max-w-3xl">
                             <div id="message-list" class="overflow-y-auto flex-grow mb-4">
                                 @if(isset($messages))
-                                    @include('chat.messages', ['messages' => $messages])
+                                @include('chat.messages', ['messages' => $messages])
                                 @else
-                                    <div class="mb-7 text-center">
-                                        <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
-                                            <h1>How can we help?</h1>
-                                        </div>
+                                <div class="mb-7 text-center">
+                                    <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
+                                        <h1>How can we help?</h1>
                                     </div>
+                                </div>
                                 @endif
                             </div>
                             @include('chat.input')
@@ -50,4 +50,4 @@
         });
     </script>
     @endpush
-</x-layout>
+</x-layouts.app>

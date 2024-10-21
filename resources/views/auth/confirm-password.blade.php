@@ -1,4 +1,4 @@
-<x-layout>
+<x-layouts.app>
     <div class="flex items-center justify-center min-h-screen">
         <div class="-mt-8 md:w-96 mx-auto">
             <div class="mb-10 text-xl font-bold text-center">Confirm Password</div>
@@ -11,13 +11,13 @@
                 @csrf
 
                 @if ($errors->any())
-                    <div class="mb-4 p-4 rounded-md bg-destructive/15 text-destructive">
-                        <ul class="list-disc list-inside">
-                            @foreach ($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
+                <div class="mb-4 p-4 rounded-md bg-destructive/15 text-destructive">
+                    <ul class="list-disc list-inside">
+                        @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
                 @endif
 
                 <x-input
@@ -37,7 +37,7 @@
             </form>
         </div>
     </div>
-</x-layout>
+</x-layouts.app>
 
 <style>
     input:focus {

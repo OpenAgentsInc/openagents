@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FreshController;
 use App\Http\Controllers\MessageController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ThreadController;
@@ -26,6 +27,9 @@ Route::view('/plans', function () {
 })->name('plans');
 
 Route::middleware(['auth'])->group(function () {
+
+    Route::get('/fresh', [FreshController::class, 'fresh'])->name('fresh');
+
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
     Route::get('/chat/{thread}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/{thread}/send', [ChatController::class, 'send'])->name('chat.send');
