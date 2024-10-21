@@ -48,7 +48,7 @@ class ThreadController extends Controller
         if ($request->header('HX-Request')) {
             $threads = Thread::where('user_id', $user->id)->latest()->get();
             
-            $response = view('components.chat.messages', ['messages' => new Collection()])
+            $response = view('components.chat.messages', ['messages' => new Collection(), 'thread' => $thread])
                 ->render();
             
             $response .= '<div id="thread-list" hx-swap-oob="true">' . 
