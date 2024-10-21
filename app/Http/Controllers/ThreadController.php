@@ -51,14 +51,31 @@ class ThreadController extends Controller
             $response = view('components.chat.messages', ['messages' => new Collection(), 'thread' => $thread])
                 ->render();
             
-            $response .= '<div id="thread-list" hx-swap-oob="true">' . 
-                view('components.sidebar.thread-list', compact('threads'))->render() . 
-                '</div>';
+            $response .= '
+                <div id="thread-list" hx-swap-oob="true">
+                    ' . view('components.sidebar.thread-list', compact('threads'))->render() . '
+                </div>
+                <div id="main-content" hx-swap-oob="true">
+                    ' . view('components.chat.index', compact('thread', 'threads'))->render() . '
+                </div>
+            ';
 
             return response($response)
                 ->header('HX-Push-Url', route('threads.show', $thread));
         }
 
         return redirect()->route('threads.show', $thread);
+    }
+
+    public function show(Thread $thread)
+    {
+        $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
+        $threads = Auth::user()->threads()->latest()->get();
+
+        if (request()->header('HX-Request')) {
+            return view('components.chat.messages', compact('thread', 'messages'));
+        }
+
+        return view('components.chat.index', compact('thread', 'messages', 'threads'));
     }
 }
