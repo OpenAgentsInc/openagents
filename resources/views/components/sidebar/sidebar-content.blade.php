@@ -4,7 +4,11 @@
     <ul>
         @forelse ($recentThreads as $thread)
         <li class="mb-2">
-            <a href="{{ route('threads.show', $thread) }}" class="hover:text-zinc-300">
+            <a href="{{ route('threads.show', $thread) }}" 
+               class="hover:text-zinc-300"
+               hx-get="{{ route('threads.show', $thread) }}"
+               hx-target="#main-content"
+               hx-push-url="true">
                 {{ Str::limit($thread->title, 30) }}
             </a>
         </li>
