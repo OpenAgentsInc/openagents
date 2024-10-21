@@ -1,18 +1,17 @@
 <x-layouts.app>
     <div class="relative h-screen overflow-hidden bg-background">
-        @include('dashboard.background')
         <div id="main-content" class="relative z-10 flex flex-col h-screen">
             <div class="flex-grow overflow-y-auto">
                 <div class="mx-auto max-w-3xl px-4 py-8">
                     <div id="message-list" class="space-y-4">
                         @if(isset($messages))
-                            @include('chat.messages', ['messages' => $messages])
+                        @include('chat.messages', ['messages' => $messages])
                         @else
-                            <div class="mb-7 text-center">
-                                <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
-                                    <h1>How can we help?</h1>
-                                </div>
+                        <div class="mb-7 text-center">
+                            <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
+                                <h1>How can we help?</h1>
                             </div>
+                        </div>
                         @endif
                     </div>
                 </div>
@@ -22,8 +21,6 @@
             </div>
         </div>
     </div>
-
-    @include('dashboard.styles')
 
     @push('scripts')
     <script>
