@@ -22,10 +22,14 @@
          hx-trigger="revealed, teamChanged from:body"
          hx-target="#thread-list"
          hx-include="#team-id-input">
-        <input type="hidden" id="team-id-input" name="team_id" value="{{ auth()->user()->currentTeam->id }}">
+        <input type="hidden" id="team-id-input" name="team_id" value="{{ auth()->user()->currentTeam->id ?? '' }}">
         <div id="thread-list">
-            <!-- Thread list will be loaded here -->
-            <p class="text-gray-500 dark:text-gray-400">Loading threads...</p>
+            @if(auth()->user()->currentTeam)
+                <!-- Thread list will be loaded here -->
+                <p class="text-gray-500 dark:text-gray-400">Loading threads...</p>
+            @else
+                <p class="text-gray-500 dark:text-gray-400">No team selected. Please create or join a team to see chats.</p>
+            @endif
         </div>
     </div>
 </div>
