@@ -40,6 +40,8 @@ Route::middleware(['auth'])->group(function () {
 
     // Team routes
     Route::get('/teams', [TeamController::class, 'getTeamsAndProjects'])->name('teams.get');
+    Route::post('/switch-team/{team}', [TeamController::class, 'switchTeam'])->name('switch-team');
+    Route::post('/switch-project/{project}', [TeamController::class, 'switchProject'])->name('switch-project');
 });
 
 require __DIR__ . '/auth.php';
