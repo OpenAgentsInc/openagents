@@ -5,13 +5,22 @@ namespace App\View\Components;
 use Closure;
 use Illuminate\Contracts\View\View;
 use Illuminate\View\Component;
+use Illuminate\Support\Facades\Auth;
 
 class SidebarNew extends Component
 {
+    public $recentThreads;
+
     /**
      * Create a new component instance.
      */
-    public function __construct() {}
+    public function __construct()
+    {
+        $this->recentThreads = Auth::user()->threads()
+            ->latest()
+            ->take(10)
+            ->get();
+    }
 
     /**
      * Get the view / contents that represent the component.
