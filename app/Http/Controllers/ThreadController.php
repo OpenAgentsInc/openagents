@@ -24,12 +24,17 @@ class ThreadController extends Controller
     public function show(Request $request, Thread $thread)
     {
         $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
-        $content = view('chat.show', compact('thread', 'messages'))->render();
         
-        return view('components.layout', [
-            'slot' => $content,
-            'title' => 'Chat - ' . $thread->title
-        ]);
+        if ($request->header('HX-Request')) {
+            // This is an HTMX request, return only the chat content
+            return view('chat.show', compact('thread', 'messages'));
+        } else {
+            // This is a full page load, return the full layout
+            return view('dashboard.main-content', [
+                'thread' => $thread,
+                'messages' => $messages,
+            ]);
+        }
     }
 
     public function addMessage(Request $request, Thread $thread)
