@@ -14,7 +14,7 @@ class DashboardController extends Controller
             return view('homepage');
         }
 
-        $this->ensureThread();
+        // $this->ensureThread();
 
         return view('dashboard.dashboard');
     }

@@ -4,9 +4,6 @@ use App\Models\User;
 use App\Models\Team;
 use App\Models\Project;
 use App\Models\Thread;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-
-uses(RefreshDatabase::class);
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -33,7 +30,7 @@ test('authenticated user can fetch threads for a team', function () {
     $response->assertViewIs('partials.thread-list');
     $response->assertViewHas('threads', function ($viewThreads) use ($threads) {
         return $viewThreads->count() === 3 &&
-               $viewThreads->pluck('id')->diff($threads->pluck('id'))->isEmpty();
+            $viewThreads->pluck('id')->diff($threads->pluck('id'))->isEmpty();
     });
 });
 
@@ -42,7 +39,7 @@ test('authenticated user can fetch threads for a specific project', function () 
         'project_id' => $this->project->id,
         'user_id' => $this->user->id,
     ]);
-    
+
     $otherProject = Project::factory()->create(['team_id' => $this->team->id]);
     Thread::factory()->create([
         'project_id' => $otherProject->id,
@@ -56,7 +53,7 @@ test('authenticated user can fetch threads for a specific project', function () 
     $response->assertViewIs('partials.thread-list');
     $response->assertViewHas('threads', function ($viewThreads) use ($projectThreads) {
         return $viewThreads->count() === 2 &&
-               $viewThreads->pluck('id')->diff($projectThreads->pluck('id'))->isEmpty();
+            $viewThreads->pluck('id')->diff($projectThreads->pluck('id'))->isEmpty();
     });
 });
 
@@ -91,7 +88,7 @@ test('thread list can be sorted by latest message', function () {
         'user_id' => $this->user->id,
         'updated_at' => now()->subDays(2),
     ]);
-    
+
     $newThread = Thread::factory()->create([
         'project_id' => $this->project->id,
         'user_id' => $this->user->id,
@@ -105,6 +102,6 @@ test('thread list can be sorted by latest message', function () {
     $response->assertViewIs('partials.thread-list');
     $response->assertViewHas('threads', function ($viewThreads) use ($newThread, $oldThread) {
         return $viewThreads->first()->id === $newThread->id &&
-               $viewThreads->last()->id === $oldThread->id;
+            $viewThreads->last()->id === $oldThread->id;
     });
 });

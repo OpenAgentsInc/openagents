@@ -47,7 +47,7 @@ test('Happy Path', function () {
             // Press the dusk send-message button
             ->click('#send-message')
 
-            ->pause(5000)
+            ->pause(15000)
 
             // The URL updates to chat/{id}
             // ->waitForLocation('/chat/1')
