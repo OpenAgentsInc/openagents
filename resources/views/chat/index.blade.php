@@ -1,26 +1,24 @@
 <x-layouts.app>
-    <div class="relative h-full overflow-hidden bg-background">
+    <div class="relative h-screen overflow-hidden bg-background">
         @include('dashboard.background')
-        <div id="main-content" class="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
-            <div class="flex h-full flex-col items-center justify-center text-zinc-200">
-                <div class="h-full w-full lg:py-[18px]">
-                    <div class="m-auto text-base px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5 h-full">
-                        <div id="main-content-inner" class="mx-auto flex h-full w-full flex-col text-base justify-center md:max-w-3xl">
-                            <div id="message-list" class="overflow-y-auto flex-grow mb-4">
-                                @if(isset($messages))
-                                @include('chat.messages', ['messages' => $messages])
-                                @else
-                                <div class="mb-7 text-center">
-                                    <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
-                                        <h1>How can we help?</h1>
-                                    </div>
+        <div id="main-content" class="relative z-10 flex flex-col h-screen">
+            <div class="flex-grow overflow-y-auto">
+                <div class="mx-auto max-w-3xl px-4 py-8">
+                    <div id="message-list" class="space-y-4">
+                        @if(isset($messages))
+                            @include('chat.messages', ['messages' => $messages])
+                        @else
+                            <div class="mb-7 text-center">
+                                <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
+                                    <h1>How can we help?</h1>
                                 </div>
-                                @endif
                             </div>
-                            @include('chat.input')
-                        </div>
+                        @endif
                     </div>
                 </div>
+            </div>
+            <div class="p-4 w-full max-w-3xl mx-auto">
+                @include('chat.input')
             </div>
         </div>
     </div>
