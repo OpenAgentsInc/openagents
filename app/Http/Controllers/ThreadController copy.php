@@ -30,7 +30,7 @@ class ThreadController extends Controller
     public function show(Request $request, Thread $thread)
     {
         $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
-
+        
         if ($request->header('HX-Request')) {
             // This is an HTMX request, return only the chat content
             return view('chat.show', compact('thread', 'messages'));
@@ -78,8 +78,8 @@ class ThreadController extends Controller
         $thread->save();
 
         $threads = Thread::where('user_id', $user->id)
-            ->latest()
-            ->get();
+                         ->latest()
+                         ->get();
 
         $threadListHtml = view('partials.thread-list', compact('threads'))->render();
         $chatContentHtml = view('chat.show', ['thread' => $thread, 'messages' => []])->render();

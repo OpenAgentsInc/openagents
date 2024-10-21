@@ -1,8 +1,8 @@
 <div class="w-full">
-    <form class="w-full" id="message-form" hx-post="{{ isset($thread) ? route('threads.addMessage', $thread) : route('send-message') }}" hx-swap="afterbegin" hx-target="#message-list">
+    <form class="w-full" id="message-form" hx-post="{{ isset($thread) ? route('chat.send', $thread) : route('send-message') }}" hx-swap="afterbegin" hx-target="#message-list">
         @csrf
         @if(auth()->check() && auth()->user()->currentProject)
-            <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
+        <input type="hidden" name="project_id" value="{{ auth()->user()->currentProject->id }}">
         @endif
         <div class="flex w-full flex-col gap-1.5 rounded-[30px] p-1 transition-colors bg-zinc-900">
             <div class="flex items-end gap-1.5 pl-4 py-0.5 md:gap-2">
@@ -13,8 +13,7 @@
                         class="min-h-[46px] max-h-[300px] overflow-y-auto resize-none flex w-full rounded-md bg-transparent px-1 py-[0.65rem] pr-10 text-[16px] placeholder:text-[#777A81] focus-visible:outline-none focus-visible:ring-0 border-none"
                         placeholder="Message OpenAgents"
                         rows="1"
-                        autofocus
-                    ></textarea>
+                        autofocus></textarea>
                 </div>
                 <div class="mb-1 me-1">
                     <button type="submit" aria-label="Send prompt" data-testid="send-button" class="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-700 text-zinc-200 transition-colors hover:bg-zinc-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800" id="send-message" dusk="send-message">
@@ -29,39 +28,39 @@
 </div>
 
 <script>
-document.addEventListener('htmx:afterRequest', function(event) {
-    if (event.detail.successful && event.target.id === 'message-form') {
-        document.getElementById('message-textarea').value = '';
-        document.getElementById('message-textarea').style.height = 'auto';
-    }
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    const textarea = document.getElementById('message-textarea');
-    const form = document.getElementById('message-form');
-
-    textarea.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            if (e.metaKey || e.ctrlKey) {
-                // Insert a newline
-                const start = this.selectionStart;
-                const end = this.selectionEnd;
-                const value = this.value;
-                this.value = value.slice(0, start) + "\n" + value.slice(end);
-                this.selectionStart = this.selectionEnd = start + 1;
-            } else {
-                // Submit the form
-                e.preventDefault();
-                htmx.trigger(form, 'submit');
-            }
+    document.addEventListener('htmx:afterRequest', function(event) {
+        if (event.detail.successful && event.target.id === 'message-form') {
+            document.getElementById('message-textarea').value = '';
+            document.getElementById('message-textarea').style.height = 'auto';
         }
     });
 
-    textarea.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = this.scrollHeight + 'px';
-        this.closest('.flex').style.height = 'auto';
-        this.closest('.flex').style.height = this.scrollHeight + 'px';
+    document.addEventListener('DOMContentLoaded', function() {
+        const textarea = document.getElementById('message-textarea');
+        const form = document.getElementById('message-form');
+
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.metaKey || e.ctrlKey) {
+                    // Insert a newline
+                    const start = this.selectionStart;
+                    const end = this.selectionEnd;
+                    const value = this.value;
+                    this.value = value.slice(0, start) + "\n" + value.slice(end);
+                    this.selectionStart = this.selectionEnd = start + 1;
+                } else {
+                    // Submit the form
+                    e.preventDefault();
+                    htmx.trigger(form, 'submit');
+                }
+            }
+        });
+
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+            this.closest('.flex').style.height = 'auto';
+            this.closest('.flex').style.height = this.scrollHeight + 'px';
+        });
     });
-});
 </script>
