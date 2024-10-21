@@ -1,5 +1,6 @@
 <div id="main-content-inner">
     <div id="chat-content" class="flex flex-col h-full">
+        <h2 class="text-xl font-bold mb-4">{{ $thread->title }}</h2>
         <div class="flex-grow overflow-y-auto" id="message-list">
             @foreach($messages as $message)
                 <div class="mb-4 @if($message->user_id === auth()->id()) text-right @endif">
