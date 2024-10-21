@@ -19,9 +19,10 @@
          x-transition:leave-start="opacity-100 transform scale-100" 
          x-transition:leave-end="opacity-0 transform scale-95"
          hx-get="{{ route('threads.index') }}"
-         hx-trigger="load, teamChanged from:body"
-         hx-include="[name='team_id']"
-         hx-target="#thread-list">
+         hx-trigger="revealed, teamChanged from:body"
+         hx-target="#thread-list"
+         hx-include="#team-id-input">
+        <input type="hidden" id="team-id-input" name="team_id" value="{{ auth()->user()->currentTeam->id }}">
         <div id="thread-list">
             <!-- Thread list will be loaded here -->
             <p class="text-gray-500 dark:text-gray-400">Loading threads...</p>
