@@ -6,6 +6,7 @@ use App\Models\Thread;
 use App\Models\Message;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 
 class FreshController extends Controller
 {
@@ -31,17 +32,28 @@ class FreshController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'content' => 'required|string',
         ]);
 
+        if ($validator->fails()) {
+            if ($request->ajax()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+            return redirect()->back()->withErrors($validator)->withInput();
+        }
+
         $message = new Message([
-            'content' => $validated['content'],
+            'content' => $validator->validated()['content'],
             'user_id' => Auth::id(),
         ]);
 
         $thread->messages()->save($message);
 
-        return view('partials.chat_messages', ['messages' => [$message]]);
+        if ($request->ajax()) {
+            return view('partials.chat_messages', ['messages' => [$message]]);
+        }
+
+        return redirect()->back();
     }
 }
