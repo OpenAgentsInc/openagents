@@ -33,6 +33,7 @@ Route::middleware(['auth'])->group(function () {
 
     // Thread routes
     Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
+    Route::get('/threads/{thread}/messages', [ThreadController::class, 'messages'])->name('threads.messages');
     Route::post('/threads/{thread}/process', [ThreadController::class, 'process']);
     Route::get('/chat/{thread}', [ThreadController::class, 'show'])->name('chat.show');
     Route::post('/threads/{thread}/add-message', [ThreadController::class, 'addMessage'])->name('threads.addMessage');
