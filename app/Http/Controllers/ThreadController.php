@@ -32,7 +32,10 @@ class ThreadController extends Controller
             return view('chat.show', compact('thread', 'messages'));
         } else {
             // This is a full page load, return the full layout
-            return view('layouts.app', ['content' => view('chat.show', compact('thread', 'messages'))]);
+            return view('components.layout', [
+                'slot' => view('chat.show', compact('thread', 'messages')),
+                'title' => 'Chat - ' . $thread->title
+            ]);
         }
     }
 
