@@ -2,7 +2,7 @@
     @forelse($threads as $thread)
     <a href="{{ route('chat.show', $thread->id) }}"
         class="cursor-pointer block p-2 hover:bg-sidebar-accent rounded-md transition-colors duration-200"
-        hx-get="{{ route('chat.messages', $thread->id) }}"
+        hx-get="{{ route('chat.messages', ['thread' => $thread->id]) }}"
         hx-target="#message-list"
         hx-swap="innerHTML"
         hx-push-url="false">
