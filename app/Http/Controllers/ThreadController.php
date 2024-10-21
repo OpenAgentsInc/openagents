@@ -20,7 +20,7 @@ class ThreadController extends Controller
         $threads = $query->latest()->get();
 
         if ($request->header('HX-Request')) {
-            return view('partials.thread-list', compact('threads'));
+            return view('components.sidebar.thread-list', compact('threads'));
         }
 
         return view('chat.index', compact('threads'));
@@ -41,7 +41,7 @@ class ThreadController extends Controller
 
         if ($request->header('HX-Request')) {
             $threads = Thread::where('user_id', $user->id)->latest()->get();
-            $threadListHtml = view('partials.thread-list', compact('threads'))->render();
+            $threadListHtml = view('components.sidebar.thread-list', compact('threads'))->render();
             $chatContentHtml = view('chat.messages', ['messages' => []])->render();
 
             return response()->json([
