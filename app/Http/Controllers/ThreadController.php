@@ -17,51 +17,13 @@ class ThreadController extends Controller
             $query->where('project_id', $request->project_id);
         }
 
-        $threads = $query->latest()->paginate(15);
-        return view('partials.thread-list', compact('threads'));
-    }
-
-    public function messages(Thread $thread)
-    {
-        $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
-        return view('partials.message-list', compact('messages', 'thread'));
-    }
-
-    public function show(Request $request, Thread $thread)
-    {
-        $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
+        $threads = $query->latest()->get();
 
         if ($request->header('HX-Request')) {
-            // This is an HTMX request, return only the chat content
-            return view('chat.show', compact('thread', 'messages'));
-        } else {
-            // This is a full page load, return the full layout
-            return view('dashboard.main-content', [
-                'thread' => $thread,
-                'messages' => $messages,
-            ]);
+            return view('partials.thread-list', compact('threads'));
         }
-    }
 
-    public function addMessage(Request $request, Thread $thread)
-    {
-        $validatedData = $request->validate([
-            'content' => 'required|string',
-        ]);
-
-        $message = $thread->messages()->create([
-            'user_id' => auth()->id(),
-            'content' => $validatedData['content'],
-        ]);
-
-        return response()->json($message, 201);
-    }
-
-    public function process(Request $request, Thread $thread)
-    {
-        // Implement the logic for processing the thread with LLM tool calls
-        // This is a placeholder implementation
-        return response()->json(['success' => true, 'message' => 'Thread processed successfully'], 200);
+        return view('chat.index', compact('threads'));
     }
 
     public function create(Request $request)
@@ -77,17 +39,18 @@ class ThreadController extends Controller
         $thread->title = 'New Chat';
         $thread->save();
 
-        $threads = Thread::where('user_id', $user->id)
-            ->latest()
-            ->get();
+        if ($request->header('HX-Request')) {
+            $threads = Thread::where('user_id', $user->id)->latest()->get();
+            $threadListHtml = view('partials.thread-list', compact('threads'))->render();
+            $chatContentHtml = view('chat.messages', ['messages' => []])->render();
 
-        $threadListHtml = view('partials.thread-list', compact('threads'))->render();
-        $chatContentHtml = view('chat.show', ['thread' => $thread, 'messages' => []])->render();
+            return response()->json([
+                'threadList' => $threadListHtml,
+                'chatContent' => $chatContentHtml,
+                'url' => route('chat.show', $thread)
+            ])->header('HX-Push-Url', route('chat.show', $thread));
+        }
 
-        return response()->json([
-            'threadList' => $threadListHtml,
-            'chatContent' => $chatContentHtml,
-            'url' => route('chat.show', $thread->id)
-        ])->header('HX-Push-Url', route('chat.show', $thread->id));
+        return redirect()->route('chat.show', $thread);
     }
 }
