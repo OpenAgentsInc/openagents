@@ -35,6 +35,13 @@
     <script src="{{ asset('js/stream.js') }}"></script>
     @endauth
     @stack('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.addEventListener('htmx:configRequest', (event) => {
+                event.detail.headers['X-CSRF-TOKEN'] = '{{ csrf_token() }}';
+            });
+        });
+    </script>
 </body>
 
 </html>
