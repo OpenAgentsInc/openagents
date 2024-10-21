@@ -9,8 +9,8 @@
                 <a href="#" 
                    class="block p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
                    hx-get="{{ route('threads.messages', $thread) }}"
-                   hx-target="#main-content"
-                   hx-push-url="true">
+                   hx-target="#main-content-inner"
+                   hx-swap="innerHTML">
                     <div class="flex items-center justify-between">
                         <span class="text-sm font-medium text-gray-900 dark:text-white">{{ $thread->title }}</span>
                         <span class="text-xs text-gray-500 dark:text-gray-400">{{ $thread->updated_at->diffForHumans() }}</span>
