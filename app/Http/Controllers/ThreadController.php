@@ -12,12 +12,17 @@ class ThreadController extends Controller
 {
     public function index(Request $request)
     {
+        $user = Auth::user();
+
+        if (!$user->currentTeam) {
+            return view('partials.thread-list', ['threads' => collect(), 'message' => 'No team selected. Please create or join a team to see chats.']);
+        }
+
         $request->validate([
             'team_id' => 'required|exists:teams,id',
             'project_id' => 'nullable|exists:projects,id',
         ]);
 
-        $user = Auth::user();
         $team = Team::findOrFail($request->team_id);
 
         if (!$user->teams->contains($team)) {
