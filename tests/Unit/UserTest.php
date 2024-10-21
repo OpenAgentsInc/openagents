@@ -48,3 +48,16 @@ test('a user can have projects through their teams', function () {
     expect($user->teams->first()->projects)->toHaveCount(3);
     expect($user->teams->first()->projects->first())->toBeInstanceOf(Project::class);
 });
+
+test('a user can create thread, respecting team/project', function () {
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $user->teams()->attach($team);
+    $projects = Project::factory()->count(3)->create(['team_id' => $team->id]);
+
+    $user->createThread([
+        'title' => 'My first thread',
+    ]);
+
+    // TODO: handle every permutation of passing in no team/project, team but no project, project but no team, and both team and project
+});
