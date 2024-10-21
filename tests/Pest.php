@@ -1,5 +1,9 @@
 <?php
 
+pest()->extend(Tests\DuskTestCase::class)
+//  ->use(Illuminate\Foundation\Testing\DatabaseMigrations::class)
+    ->in('Browser');
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
