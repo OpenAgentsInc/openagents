@@ -1,74 +1,82 @@
-# Sidebar Component
+## Sidebar
 
-## Introduction
-
-The sidebar is a crucial component of our application's user interface, designed to provide easy access to navigation, project management, and user settings. It's built with flexibility and user experience in mind, allowing for both expanded and collapsed states to accommodate different screen sizes and user preferences.
-
-## Structure and Functionality
-
-Our sidebar is structured from top to bottom as follows:
-
-1. **Action Buttons**
+1. **sidebar-header**
    - Open/Close sidebar toggle
    - Create new chat button
 
-2. **Team Selection**
+2. **team-switcher**
    - Dropdown to select the current team
    - Teams are the highest level of organization in our app
-
-3. **Project Selection**
    - Dropdown to select the current project
    - Each team can have one or more projects
 
-4. **Thread List**
+3. **chats-section**
    - Displays the list of threads/conversations for the selected project
    - Fills the remaining container space
    - Scrollable if content exceeds the available space
 
-5. **User Info (Fixed to Bottom)**
+4. **sidebar-footer**
    - Displays current user information
    - Clicks to expand into a menu with:
      - User settings
      - Subscription management
      - Logout option
 
-## Key Considerations
+## HTMX Usage
 
-1. **Responsive Design**
-   - The sidebar should adapt to different screen sizes
-   - On smaller screens, it should be collapsible to maximize content area
+We are using HTMX to dynamically load and update content in the sidebar without full page reloads. This improves the user experience by making the application feel more responsive and reducing server load.
 
-2. **Smooth Transitions**
-   - Animations for expanding/collapsing should be smooth and non-disruptive
-   - Content should fade in/out without abrupt layout changes
+1. **Team and Project Loading**
+   - The initial page load does not contain teams and projects
+   - HTMX endpoint returns teams and projects for the active team
+   - Switching teams updates the active team and projects
+   - Switching projects updates the active project
 
-3. **Performance**
-   - Minimize DOM manipulations for smooth operation
-   - Use efficient state management to handle sidebar states
+2. **Thread List Loading**
+   - Currently, demo threads are hardcoded
+   - Plan to implement HTMX-based loading for thread lists
 
-4. **Accessibility**
-   - Ensure all interactive elements are keyboard accessible
-   - Provide appropriate ARIA labels for screen readers
+## Plan for Fetching Threads
 
-5. **Customization**
-   - Allow for easy theming and style adjustments
-   - Component structure should be flexible for future additions
+To implement HTMX-based loading for threads and integrate it with the team fetching process:
 
-6. **State Persistence**
-   - Remember user's preference for sidebar state (expanded/collapsed) across sessions
+1. Create a new HTMX endpoint for fetching threads
+   - Route: `/api/threads`
+   - Controller: `ThreadController@index`
+   - Method: GET
+   - Parameters: `team_id`, `project_id` (optional)
 
-7. **Content Overflow**
-   - Handle long team/project names gracefully
-   - Ensure thread list is scrollable when it exceeds the container height
+2. Update the `chats-section.blade.php` component:
+   - Add HTMX attributes for loading threads
+   - Example:
+     ```html
+     <div hx-get="/api/threads"
+          hx-trigger="load, teamChanged from:body"
+          hx-include="[name='team_id']"
+          hx-target="#thread-list">
+       <!-- Thread list content -->
+     </div>
+     ```
 
-8. **Integration**
-   - Sidebar should integrate seamlessly with the main content area
-   - State changes in the sidebar (e.g., selecting a new project) should update the main content accordingly
+3. Implement the `ThreadController@index` method:
+   - Fetch threads based on the provided `team_id` and `project_id` (if available)
+   - Return a partial view with the list of threads
 
-9. **Error Handling**
-   - Gracefully handle cases where data might be unavailable (e.g., failed to load teams/projects)
+4. Create a new partial view for rendering the thread list:
+   - File: `resources/views/partials/thread-list.blade.php`
+   - This view will contain the HTML structure for the thread list
 
-10. **Loading States**
-    - Provide appropriate loading indicators when fetching data for teams, projects, or threads
+5. Update the team switching logic:
+   - When a team is switched, trigger an event to reload the thread list
+   - Example:
+     ```javascript
+     document.body.dispatchEvent(new Event('teamChanged'));
+     ```
 
-By addressing these considerations, we aim to create a sidebar that is not only functional but also provides an excellent user experience, seamlessly integrating with the rest of our application.
+6. Implement lazy loading for threads:
+   - Load a limited number of threads initially
+   - Add a "Load More" button or implement infinite scrolling using HTMX
+
+By implementing this plan, we can dynamically load and update the thread list based on the selected team and project, improving performance and user experience.
+
+Note: While we use "threads" in the backend and code, we may still refer to them as "chats" in the user interface for a more user-friendly experience.
