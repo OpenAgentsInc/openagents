@@ -4,15 +4,19 @@
         <div class="w-1/4 bg-zinc-800 text-white p-4">
             <h2 class="pt-12 text-xl font-bold mb-4">Chats</h2>
             <ul>
-                <li class="mb-2"><a href="/chat/1" class="hover:text-zinc-300">Chat 1</a></li>
-                <li class="mb-2"><a href="/chat/2" class="hover:text-zinc-300">Chat 2</a></li>
-                <li class="mb-2"><a href="/chat/3" class="hover:text-zinc-300">Chat 3</a></li>
+                @foreach($threads as $thread)
+                    <li class="mb-2">
+                        <a href="#" class="hover:text-zinc-300" hx-get="{{ route('chat.messages', $thread) }}" hx-target="#main-content" hx-trigger="click">
+                            {{ $thread->title }}
+                        </a>
+                    </li>
+                @endforeach
             </ul>
         </div>
 
         <!-- Main Content -->
-        <div class="w-3/4 flex items-center justify-center">
-            fresh!
+        <div id="main-content" class="w-3/4 flex items-center justify-center">
+            Select a chat to view messages
         </div>
     </div>
 </x-layouts.empty>
