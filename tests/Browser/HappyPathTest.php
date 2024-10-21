@@ -40,7 +40,14 @@ test('Happy Path', function () {
 
             // I can submit the form
             ->type('content', 'What does this do')
-            ->click('button[type="submit"]')
+
+            // Hit enter
+            // ->keys('content', '{enter}')
+
+            // Press the dusk send-message button
+            ->click('#send-message')
+
+            ->pause(5000)
 
             // The URL updates to chat/{id}
             // ->waitForLocation('/chat/1')
