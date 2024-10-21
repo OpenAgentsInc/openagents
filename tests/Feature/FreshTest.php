@@ -14,7 +14,8 @@ class FreshTest extends TestCase
 
     public function test_fresh_page_loads_correctly()
     {
-        $response = $this->get('/fresh');
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)->get('/fresh');
         $response->assertStatus(200);
         $response->assertViewIs('fresh');
     }
@@ -34,7 +35,7 @@ class FreshTest extends TestCase
         // Simulate an HTMX request to load messages for a specific chat
         $response = $this->actingAs($user)
             ->withHeaders(['HX-Request' => 'true'])
-            ->get("/chat/{$thread1->id}");
+            ->get("/chat/{$thread1->id}/messages");
 
         $response->assertStatus(200);
         $response->assertViewIs('partials.chat_messages');
