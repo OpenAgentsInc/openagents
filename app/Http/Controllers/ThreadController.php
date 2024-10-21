@@ -13,36 +13,7 @@ class ThreadController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-
-        if (!$user->currentTeam) {
-            return view('partials.thread-list', ['threads' => collect(), 'message' => 'No team selected. Please create or join a team to see chats.']);
-        }
-
-        $request->validate([
-            'team_id' => 'required|exists:teams,id',
-            'project_id' => 'nullable|exists:projects,id',
-        ]);
-
-        $team = Team::findOrFail($request->team_id);
-
-        if (!$user->teams->contains($team)) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
-        $query = Thread::query();
-
-        if ($request->project_id) {
-            $project = Project::findOrFail($request->project_id);
-            if ($project->team_id !== $team->id) {
-                return response()->json(['error' => 'Project does not belong to the specified team'], 400);
-            }
-            $query->where('project_id', $project->id);
-        } else {
-            $query->whereIn('project_id', $team->projects->pluck('id'));
-        }
-
-        $threads = $query->latest()->paginate(15);
-
+        $threads = Thread::where('user_id', $user->id)->latest()->paginate(15);
         return view('partials.thread-list', compact('threads'));
     }
 
@@ -85,21 +56,14 @@ class ThreadController extends Controller
         $team = $user->currentTeam;
         $project = $user->currentProject;
 
-        if (!$team) {
-            return response()->json(['error' => 'No team selected'], 400);
-        }
-
         $thread = new Thread();
         $thread->user_id = $user->id;
-        $thread->team_id = $team->id;
+        $thread->team_id = $team ? $team->id : null;
         $thread->project_id = $project ? $project->id : null;
         $thread->title = 'New Chat';
         $thread->save();
 
-        $threads = Thread::where('team_id', $team->id)
-                         ->when($project, function ($query) use ($project) {
-                             return $query->where('project_id', $project->id);
-                         })
+        $threads = Thread::where('user_id', $user->id)
                          ->latest()
                          ->get();
 
