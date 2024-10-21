@@ -85,18 +85,17 @@ class ThreadController extends Controller
         $team = $user->currentTeam;
         $project = $user->currentProject;
 
-        if (!$team) {
-            return response()->json(['error' => 'No team selected'], 400);
-        }
-
         $thread = new Thread();
         $thread->user_id = $user->id;
-        $thread->team_id = $team->id;
+        $thread->team_id = $team ? $team->id : null;
         $thread->project_id = $project ? $project->id : null;
         $thread->title = 'New Chat';
         $thread->save();
 
-        $threads = Thread::where('team_id', $team->id)
+        $threads = Thread::where('user_id', $user->id)
+                         ->when($team, function ($query) use ($team) {
+                             return $query->where('team_id', $team->id);
+                         })
                          ->when($project, function ($query) use ($project) {
                              return $query->where('project_id', $project->id);
                          })
