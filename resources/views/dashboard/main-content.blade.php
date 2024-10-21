@@ -2,7 +2,7 @@
     <div class="flex h-full flex-col items-center justify-center text-zinc-200">
         <div class="h-full w-full lg:py-[18px]">
             <div class="m-auto text-base px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5 h-full">
-                <div id="main-content-inner" class="mx-auto flex h-full w-full flex-col text-base justify-center md:max-w-3xl">
+                <div id="main-content-inner" class="mx-auto flex h-full w-full flex-col text-base justify-between md:max-w-3xl">
                     <div id="message-list" class="flex-grow overflow-y-auto space-y-4">
                         @if(isset($thread) && $thread->messages->isNotEmpty())
                             @include('chat.show', ['messages' => $thread->messages])
@@ -14,8 +14,10 @@
                             </div>
                         @endif
                     </div>
-                    @include('dashboard.message-form')
-                    @include('dashboard.terms-privacy')
+                    <div class="mt-4">
+                        @include('dashboard.message-form', ['thread' => $thread ?? null])
+                        @include('dashboard.terms-privacy')
+                    </div>
                 </div>
             </div>
         </div>
