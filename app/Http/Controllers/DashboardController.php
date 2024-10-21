@@ -29,9 +29,7 @@ class DashboardController extends Controller
 
             // If there's no thread, create one
             if (!$thread) {
-                $thread = $user->createThread([
-                    'title' => 'New chat',
-                ]);
+                $thread = $user->createThread();
             }
 
             session(['thread' => $thread]);

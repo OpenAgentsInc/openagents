@@ -81,7 +81,7 @@ class User extends Authenticatable
         return $this->belongsTo(Team::class, 'current_team_id');
     }
 
-    public function createThread(array $data): Thread
+    public function createThread(array $data = []): Thread
     {
         $team_id = $data['team_id'] ?? $this->current_team_id ?? null;
         $project_id = $data['project_id'] ?? $this->current_project_id ?? null;
