@@ -17,8 +17,8 @@
                     </div>
                 </div>
             </div>
-            <div class="p-4 w-full max-w-3xl mx-auto">
-                @include('chat.input')
+            <div class="p-4 w-full max-w-[650px] mx-auto">
+                @include('dashboard.message-form', ['thread' => $thread ?? null])
             </div>
         </div>
     </div>
