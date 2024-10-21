@@ -42,3 +42,31 @@ test('clicking a chat updates main content with correct HTML', function () {
     $response->assertViewHas('thread', $thread);
     $response->assertViewHas('messages');
 });
+
+test('sending a message updates the chat content', function () {
+    // Create a user, team, and thread
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+    $user->teams()->attach($team);
+    $user->update(['current_team_id' => $team->id]);
+    $thread = Thread::factory()->create(['user_id' => $user->id, 'team_id' => $team->id]);
+
+    // Simulate an HTMX request to send a message
+    $response = $this->actingAs($user)
+        ->withHeaders(['HX-Request' => 'true'])
+        ->post(route('chat.send', $thread->id), [
+            'content' => 'Test message'
+        ]);
+
+    // Assert the response status is 200 (OK)
+    $response->assertStatus(200);
+
+    // Assert that the response contains the new message
+    $response->assertSee('Test message');
+
+    // Assert that the correct view is used
+    $response->assertViewIs('partials.message');
+
+    // Assert that the view has the necessary variables
+    $response->assertViewHas('message');
+});
