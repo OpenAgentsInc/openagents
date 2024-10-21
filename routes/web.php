@@ -29,6 +29,7 @@ Route::view('/plans', function () {
 Route::middleware(['auth'])->group(function () {
 
     Route::get('/fresh', [FreshController::class, 'fresh'])->name('fresh');
+    Route::get('/chat/{thread}/messages', [FreshController::class, 'loadChatMessages'])->name('chat.messages');
 
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
     Route::get('/chat/{thread}', [ChatController::class, 'show'])->name('chat.show');
