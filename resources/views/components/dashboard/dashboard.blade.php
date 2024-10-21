@@ -25,5 +25,6 @@
                 </div>
             </div>
         </div>
+        <div id="teams-and-projects" hx-get="{{ route('teams.projects') }}" hx-trigger="load"></div>
     </div>
 </x-layouts.app>
