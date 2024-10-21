@@ -15,29 +15,29 @@ beforeEach(function () {
     $this->user->teams()->attach($this->team);
 });
 
-test('unauthenticated user cannot fetch chats', function () {
-    $response = $this->get('/api/chats');
+test('unauthenticated user cannot fetch threads', function () {
+    $response = $this->get('/api/threads');
     $response->assertStatus(401);
 });
 
-test('authenticated user can fetch chats for a team', function () {
+test('authenticated user can fetch threads for a team', function () {
     $threads = Thread::factory()->count(3)->create([
         'project_id' => $this->project->id,
         'user_id' => $this->user->id,
     ]);
 
     $response = $this->actingAs($this->user)
-        ->get("/api/chats?team_id={$this->team->id}");
+        ->get("/api/threads?team_id={$this->team->id}");
 
     $response->assertStatus(200);
-    $response->assertViewIs('partials.chat-list');
+    $response->assertViewIs('partials.thread-list');
     $response->assertViewHas('threads', function ($viewThreads) use ($threads) {
         return $viewThreads->count() === 3 &&
                $viewThreads->pluck('id')->diff($threads->pluck('id'))->isEmpty();
     });
 });
 
-test('authenticated user can fetch chats for a specific project', function () {
+test('authenticated user can fetch threads for a specific project', function () {
     $projectThreads = Thread::factory()->count(2)->create([
         'project_id' => $this->project->id,
         'user_id' => $this->user->id,
@@ -50,42 +50,42 @@ test('authenticated user can fetch chats for a specific project', function () {
     ]);
 
     $response = $this->actingAs($this->user)
-        ->get("/api/chats?team_id={$this->team->id}&project_id={$this->project->id}");
+        ->get("/api/threads?team_id={$this->team->id}&project_id={$this->project->id}");
 
     $response->assertStatus(200);
-    $response->assertViewIs('partials.chat-list');
+    $response->assertViewIs('partials.thread-list');
     $response->assertViewHas('threads', function ($viewThreads) use ($projectThreads) {
         return $viewThreads->count() === 2 &&
                $viewThreads->pluck('id')->diff($projectThreads->pluck('id'))->isEmpty();
     });
 });
 
-test('authenticated user cannot fetch chats for a team they do not belong to', function () {
+test('authenticated user cannot fetch threads for a team they do not belong to', function () {
     $otherTeam = Team::factory()->create();
 
     $response = $this->actingAs($this->user)
-        ->get("/api/chats?team_id={$otherTeam->id}");
+        ->get("/api/threads?team_id={$otherTeam->id}");
 
     $response->assertStatus(403);
 });
 
-test('chat list is paginated', function () {
+test('thread list is paginated', function () {
     Thread::factory()->count(25)->create([
         'project_id' => $this->project->id,
         'user_id' => $this->user->id,
     ]);
 
     $response = $this->actingAs($this->user)
-        ->get("/api/chats?team_id={$this->team->id}");
+        ->get("/api/threads?team_id={$this->team->id}");
 
     $response->assertStatus(200);
-    $response->assertViewIs('partials.chat-list');
+    $response->assertViewIs('partials.thread-list');
     $response->assertViewHas('threads', function ($viewThreads) {
         return $viewThreads->count() === 15; // Assuming default pagination is 15 items per page
     });
 });
 
-test('chat list can be sorted by latest message', function () {
+test('thread list can be sorted by latest message', function () {
     $oldThread = Thread::factory()->create([
         'project_id' => $this->project->id,
         'user_id' => $this->user->id,
@@ -99,10 +99,10 @@ test('chat list can be sorted by latest message', function () {
     ]);
 
     $response = $this->actingAs($this->user)
-        ->get("/api/chats?team_id={$this->team->id}&sort=latest");
+        ->get("/api/threads?team_id={$this->team->id}&sort=latest");
 
     $response->assertStatus(200);
-    $response->assertViewIs('partials.chat-list');
+    $response->assertViewIs('partials.thread-list');
     $response->assertViewHas('threads', function ($viewThreads) use ($newThread, $oldThread) {
         return $viewThreads->first()->id === $newThread->id &&
                $viewThreads->last()->id === $oldThread->id;
