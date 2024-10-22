@@ -45,23 +45,17 @@ class ChatController extends Controller
         $thread->title = 'New Chat';
         $thread->save();
 
-        if ($request->header('HX-Request')) {
-            $threads = Thread::where('user_id', $user->id)->latest()->get();
-            
-            $response = view('components.chat.messages', ['messages' => new Collection(), 'thread' => $thread])
-                ->render();
-            
-            $response .= '
-                <div id="thread-list" hx-swap-oob="true">
-                    ' . view('components.sidebar.thread-list', compact('threads'))->render() . '
-                </div>
-                <div id="main-content" hx-swap-oob="true">
-                    ' . view('components.chat.index', compact('thread', 'threads'))->render() . '
-                </div>
-            ';
+        $threads = Thread::where('user_id', $user->id)->latest()->get();
 
-            return response($response)
-                ->header('HX-Push-Url', route('chat.show', $thread));
+        if ($request->header('HX-Request')) {
+            $response = [
+                'main_content' => view('components.chat.messages', ['messages' => new Collection(), 'thread' => $thread])->render(),
+                'thread_list' => view('components.sidebar.thread-list', compact('threads'))->render(),
+            ];
+
+            return response()->json($response)
+                ->header('HX-Push-Url', route('chat.show', $thread))
+                ->header('HX-Trigger', 'newChatCreated');
         }
 
         return redirect()->route('chat.show', $thread);
