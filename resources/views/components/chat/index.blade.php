@@ -1,8 +1,8 @@
 <x-layouts.app>
     <div class="relative h-screen overflow-hidden bg-background">
         <div class="relative z-10 flex flex-col h-screen">
-            <div id="main-content" class="flex-grow overflow-y-auto">
-                <div class="mx-auto max-w-3xl px-4 py-8">
+            <div id="main-content" class="flex-grow overflow-y-auto flex items-center justify-center">
+                <div class="w-full max-w-3xl px-4">
                     @include('components.chat.messages')
                 </div>
             </div>
