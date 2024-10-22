@@ -1,4 +1,4 @@
-<div id="message-list" class="space-y-4">
+<div id="message-list" class="space-y-4 h-full">
     @if(isset($messages) && $messages->isNotEmpty())
     @foreach($messages as $message)
     <div class="mb-4 {{ $message->user_id === auth()->id() ? 'text-right' : 'text-left' }}">
@@ -10,10 +10,8 @@
     </div>
     @endforeach
     @else
-    <div class="mb-7 h-screen w-screen fixed flex flex-col justify-center items-center text-center">
-        <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
-            <h1>How can we help?</h1>
-        </div>
+    <div class="h-full flex flex-col justify-center items-center text-center">
+        <h1 class="text-2xl font-semibold leading-9">How can we help?</h1>
     </div>
     @endif
 </div>
