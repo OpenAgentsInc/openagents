@@ -66,8 +66,8 @@ class ChatController extends Controller
         $threads = Auth::user()->threads()->latest()->get();
 
         if (request()->header('HX-Request')) {
-            return view('components.chat.messages', compact('thread', 'messages'))
-                ->header('HX-Trigger-After-Settle', 'chatLoaded');
+            $view = view('components.chat.messages', compact('thread', 'messages'))->render();
+            return response($view)->header('HX-Trigger-After-Settle', 'chatLoaded');
         }
 
         return view('components.chat.index', compact('thread', 'messages', 'threads'));
