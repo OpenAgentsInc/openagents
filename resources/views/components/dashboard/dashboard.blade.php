@@ -31,28 +31,50 @@
 
 <script>
     console.log('Dashboard script loaded');
+
+    function focusTextarea() {
+        console.log('Attempting to focus textarea');
+        const textarea = document.getElementById('message-textarea');
+        if (textarea) {
+            console.log('Textarea found, focusing');
+            textarea.focus();
+        } else {
+            console.log('Textarea not found');
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         console.log('DOM fully loaded');
+
+        // Set up MutationObserver to watch for changes in the DOM
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'childList') {
+                    const addedNodes = mutation.addedNodes;
+                    for (let i = 0; i < addedNodes.length; i++) {
+                        if (addedNodes[i].id === 'message-textarea') {
+                            console.log('Textarea added to DOM');
+                            focusTextarea();
+                            observer.disconnect(); // Stop observing once we've found the textarea
+                            break;
+                        }
+                    }
+                }
+            });
+        });
+
+        // Start observing the document with the configured parameters
+        observer.observe(document.body, { childList: true, subtree: true });
+
         document.body.addEventListener('chatLoaded', function() {
             console.log('chatLoaded event received');
-            const textarea = document.getElementById('message-textarea');
-            if (textarea) {
-                console.log('Textarea found, focusing');
-                textarea.focus();
-            } else {
-                console.log('Textarea not found');
-            }
+            focusTextarea();
         });
     });
 
     // Immediate execution
     (function() {
         console.log('Immediate function executed');
-        const textarea = document.getElementById('message-textarea');
-        if (textarea) {
-            console.log('Textarea found immediately');
-        } else {
-            console.log('Textarea not found immediately');
-        }
+        focusTextarea();
     })();
 </script>
