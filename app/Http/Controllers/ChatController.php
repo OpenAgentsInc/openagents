@@ -45,12 +45,10 @@ class ChatController extends Controller
         $thread->title = 'New Chat';
         $thread->save();
 
-        $threads = Thread::where('user_id', $user->id)->latest()->get();
-
         if ($request->header('HX-Request')) {
             $response = [
                 'main_content' => view('components.chat.messages', ['messages' => new Collection(), 'thread' => $thread])->render(),
-                'thread_list' => view('components.sidebar.thread-list', compact('threads'))->render(),
+                'new_thread' => view('components.sidebar.thread-item', ['thread' => $thread])->render(),
             ];
 
             return response()->json($response)
