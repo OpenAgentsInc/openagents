@@ -28,3 +28,14 @@
         <div id="teams-and-projects" hx-get="{{ route('teams.projects') }}" hx-trigger="load"></div>
     </div>
 </x-layouts.app>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.body.addEventListener('chatLoaded', function() {
+            const textarea = document.getElementById('message-textarea');
+            if (textarea) {
+                textarea.focus();
+            }
+        });
+    });
+</script>
