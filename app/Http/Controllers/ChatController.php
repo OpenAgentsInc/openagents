@@ -37,7 +37,7 @@ class ChatController extends Controller
         ]);
 
         if (request()->header('HX-Request')) {
-            return view('chat.message', compact('message'));
+            return view('components.chat.message', compact('message'));
         }
 
         return redirect()->route('threads.show', $thread);
