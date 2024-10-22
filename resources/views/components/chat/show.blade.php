@@ -4,7 +4,13 @@
         <x-chat.messages :messages="$messages" />
     </div>
     <div class="mt-4">
-        @include('dashboard.message-form', ['thread' => $thread])
+        <form id="message-form" hx-post="{{ route('chat.send', $thread) }}" hx-target="#message-list" hx-swap="beforeend">
+            @csrf
+            <div class="flex items-center">
+                <input type="text" name="content" class="flex-grow mr-2 p-2 border rounded" placeholder="Type your message...">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Send</button>
+            </div>
+        </form>
         @include('dashboard.terms-privacy')
     </div>
 </div>
