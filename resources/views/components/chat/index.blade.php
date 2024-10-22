@@ -1,19 +1,9 @@
 <x-layouts.app>
     <div class="relative h-screen overflow-hidden bg-background">
-        <div id="main-content" class="relative z-10 flex flex-col h-screen">
-            <div class="flex-grow overflow-y-auto">
-                <div class="mx-auto max-w-3xl px-4 py-8">
-                    <div id="message-list" class="space-y-4">
-                        @if(isset($messages))
-                        <x-chat.messages :messages="$messages" />
-                        @else
-                        <div class="mb-7 text-center">
-                            <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
-                                <h1>How can we help?</h1>
-                            </div>
-                        </div>
-                        @endif
-                    </div>
+        <div class="relative z-10 flex flex-col h-screen">
+            <div id="main-content" class="flex-grow overflow-y-auto flex items-center justify-center">
+                <div class="w-full max-w-3xl px-4">
+                    @include('components.chat.messages')
                 </div>
             </div>
             <div class="p-4 w-full max-w-[650px] mx-auto">
