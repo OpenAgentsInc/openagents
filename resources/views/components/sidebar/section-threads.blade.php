@@ -15,7 +15,7 @@
                 hx-on::after-request="
                     const response = JSON.parse(event.detail.xhr.response);
                     document.getElementById('main-content').innerHTML = response.main_content;
-                    document.getElementById('thread-list').innerHTML = response.thread_list;
+                    document.getElementById('thread-list').insertAdjacentHTML('afterbegin', response.new_thread);
                 ">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus">
                     <path d="M5 12h14"></path>
