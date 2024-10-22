@@ -1,3 +1,5 @@
+@props(['recentThreads'])
+
 <div data-sidebar="group" class="relative flex w-full min-w-0 flex-col p-2">
     <div data-sidebar="group-label" class="duration-200 flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&amp;>svg]:size-4 [&amp;>svg]:shrink-0 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">Recent Threads</div>
     <ul data-sidebar="menu" class="flex w-full min-w-0 flex-col gap-1">
