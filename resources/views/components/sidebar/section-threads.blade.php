@@ -28,7 +28,7 @@
                 hx-get="{{ route('chat.show', $thread) }}"
                 hx-target="#main-content"
                 hx-push-url="true"
-                hx-on::after-request="console.log('Chat loaded event dispatched'); document.body.dispatchEvent(new CustomEvent('chatLoaded'))"
+                hx-on::after-request="console.log('Chat loaded event dispatched'); document.body.dispatchEvent(new CustomEvent('chatLoaded')); console.log('Event dispatched, listeners:', document.body._events ? Object.keys(document.body._events).length : 'No listeners');"
                 title="{{ $thread->title }}">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -51,3 +51,10 @@
         @endif
     </ul>
 </div>
+
+<script>
+    console.log('Section-threads script loaded');
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Section-threads DOM loaded');
+    });
+</script>
