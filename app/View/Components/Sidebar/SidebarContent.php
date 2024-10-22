@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 class SidebarContent extends Component
 {
     public $recentThreads;
+    public $projects;
 
     /**
      * Create a new component instance.
@@ -23,6 +24,25 @@ class SidebarContent extends Component
             ->latest()
             ->take(10)
             ->get() : collect();
+
+        // Demo project data
+        $this->projects = [
+            [
+                'title' => 'Design Engineering',
+                'icon' => 'frame',
+            ],
+            [
+                'title' => 'Sales & Marketing',
+                'icon' => 'pie-chart',
+            ],
+            [
+                'title' => 'Travel',
+                'icon' => 'map',
+            ],
+        ];
+
+        // TODO: Replace with actual user projects from database
+        // $this->projects = Auth::check() ? $user->projects()->get() : collect();
     }
 
     /**
@@ -31,7 +51,8 @@ class SidebarContent extends Component
     public function render(): View|Closure|string
     {
         return view('components.sidebar.sidebar-content', [
-            'recentThreads' => $this->recentThreads
+            'recentThreads' => $this->recentThreads,
+            'projects' => $this->projects,
         ]);
     }
 }
