@@ -30,12 +30,29 @@
 </x-layouts.app>
 
 <script>
+    console.log('Dashboard script loaded');
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM fully loaded');
         document.body.addEventListener('chatLoaded', function() {
+            console.log('chatLoaded event received');
             const textarea = document.getElementById('message-textarea');
             if (textarea) {
+                console.log('Textarea found, focusing');
                 textarea.focus();
+            } else {
+                console.log('Textarea not found');
             }
         });
     });
+
+    // Immediate execution
+    (function() {
+        console.log('Immediate function executed');
+        const textarea = document.getElementById('message-textarea');
+        if (textarea) {
+            console.log('Textarea found immediately');
+        } else {
+            console.log('Textarea not found immediately');
+        }
+    })();
 </script>
