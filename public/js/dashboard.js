@@ -5,7 +5,9 @@ function focusTextarea() {
     const textarea = document.getElementById('message-textarea');
     if (textarea) {
         console.log('Textarea found, focusing');
-        textarea.focus();
+        setTimeout(() => {
+            textarea.focus();
+        }, 100);
     } else {
         console.log('Textarea not found');
     }
@@ -24,13 +26,6 @@ document.addEventListener('DOMContentLoaded', function() {
     setupChatLoadedListener();
     focusTextarea();
 });
-
-// Immediate execution
-(function() {
-    console.log('Immediate function executed');
-    setupChatLoadedListener();
-    focusTextarea();
-})();
 
 // MutationObserver setup
 const observer = new MutationObserver(function(mutations) {
