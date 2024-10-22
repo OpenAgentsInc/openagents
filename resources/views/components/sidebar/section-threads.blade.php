@@ -18,7 +18,7 @@
                 <span>New chat</span>
             </a>
         </li>
-        @forelse ($recentThreads as $thread)
+        @foreach ($recentThreads as $thread)
         <li data-sidebar="menu-item" class="group/menu-item relative">
             <a href="{{ route('threads.show', $thread) }}"
                data-sidebar="menu-button"
@@ -34,12 +34,6 @@
                 <span>{{ $thread->title }}</span>
             </a>
         </li>
-        @empty
-        <li>
-            <span class="flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground text-sm">
-                No chats
-            </span>
-        </li>
-        @endforelse
+        @endforeach
     </ul>
 </div>
