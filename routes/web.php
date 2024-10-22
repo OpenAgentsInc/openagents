@@ -5,6 +5,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FreshController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\ProjectController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Auth;
@@ -41,6 +42,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/teams-and-projects', [TeamController::class, 'getTeamsAndProjects'])->name('teams.projects');
     Route::post('/switch-team/{team}', [TeamController::class, 'switchTeam'])->name('switch-team');
     Route::post('/switch-project/{project}', [TeamController::class, 'switchProject'])->name('switch-project');
+
+    // Project routes
+    Route::post('/project/create', [ProjectController::class, 'create'])->name('project.create');
 });
 
 require __DIR__ . '/auth.php';
