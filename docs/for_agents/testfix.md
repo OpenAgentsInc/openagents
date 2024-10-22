@@ -134,7 +134,7 @@ Create the missing view file:
 ```
 
 ### Issue: Selecting a thread updates main content without full page reload
-**Diagnosis**: The test is expecting 'threads.show' view, but 'components.chat.index' is being used.
+**Diagnosis**: The test is expecting 'chat.show' view, but 'components.chat.index' is being used.
 
 **Proposed Solution**:
 Update the test to expect the correct view:

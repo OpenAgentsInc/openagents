@@ -51,12 +51,12 @@ class MessageController extends Controller
         if ($request->header('HX-Request')) {
             // Return an HTMX response that triggers a redirect
             return response()->json([
-                'HX-Redirect' => route('threads.show', ['thread' => $thread->id])
+                'HX-Redirect' => route('chat.show', ['thread' => $thread->id])
             ]);
         }
 
         // For non-HTMX requests, return a regular redirect
-        return redirect()->route('threads.show', ['thread' => $thread->id])->with('success', 'Message sent successfully!');
+        return redirect()->route('chat.show', ['thread' => $thread->id])->with('success', 'Message sent successfully!');
     }
 
     public function streamResponse(Thread $thread)

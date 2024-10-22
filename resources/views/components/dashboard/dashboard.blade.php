@@ -7,7 +7,7 @@
                         <div class="mx-auto flex h-full w-full flex-col text-base justify-between md:max-w-3xl">
                             <div id="message-list" class="flex-grow overflow-y-auto space-y-4">
                                 @if(isset($thread) && $thread->messages->isNotEmpty())
-                                @include('threads.show', ['messages' => $thread->messages])
+                                @include('chat.show', ['messages' => $thread->messages])
                                 @else
                                 <div class="mb-7 text-center">
                                     <div class="select-none pointer-events-none inline-flex justify-center text-2xl font-semibold leading-9">
@@ -28,9 +28,3 @@
         <div id="teams-and-projects" hx-get="{{ route('teams.projects') }}" hx-trigger="load"></div>
     </div>
 </x-layouts.app>
-
-<script>
-console.log('Dashboard script tag executed');
-</script>
-
-<script src="{{ asset('js/dashboard.js') }}"></script>
