@@ -53,7 +53,8 @@ class ChatController extends Controller
 
             return response()->json($response)
                 ->header('HX-Push-Url', route('chat.show', $thread))
-                ->header('HX-Trigger', 'newChatCreated');
+                ->header('HX-Trigger', 'newChatCreated')
+                ->header('HX-Trigger-After-Settle', 'chatLoaded');
         }
 
         return redirect()->route('chat.show', $thread);
@@ -65,7 +66,8 @@ class ChatController extends Controller
         $threads = Auth::user()->threads()->latest()->get();
 
         if (request()->header('HX-Request')) {
-            return view('components.chat.messages', compact('thread', 'messages'));
+            return view('components.chat.messages', compact('thread', 'messages'))
+                ->header('HX-Trigger-After-Settle', 'chatLoaded');
         }
 
         return view('components.chat.index', compact('thread', 'messages', 'threads'));
