@@ -17,6 +17,7 @@
 </script>
 @auth
 <script src="{{ asset('js/sidebar.js') }}"></script>
+<script src="{{ asset('js/dashboard.js') }}"></script>
 @endauth
 @production
 <script src="https://cdn.usefathom.com/script.js" data-site="COZQPXXY" defer></script>

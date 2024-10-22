@@ -108,7 +108,7 @@ Update the view file to include the expected HTML structure:
 public function store(Request $request)
 {
     $message = Message::create($request->validated());
-    
+
     if ($request->header('HX-Request')) {
         return response()->view('components.chat.message', ['message' => $message]);
     }

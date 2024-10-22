@@ -14,7 +14,7 @@
 
 <body hx-boost="true" class="bg-background text-foreground font-mono h-screen overflow-hidden antialiased">
     <div x-data="{ sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true' }" class="flex h-full">
-        @auth <x-sidebar.simple-sidebar /> @endauth
+        @auth <x-sidebar.sidebar /> @endauth
         <div
             class="flex-1 flex flex-col h-full relative transition-all duration-300 ease-in-out invisible"
             x-init="$nextTick(() => $el.classList.remove('invisible'))">

@@ -30,12 +30,12 @@ class MessageController extends Controller
         } else {
             $thread = new Thread();
             $thread->title = substr($request->message, 0, 50) . '...';
-            
+
             if ($request->has('project_id')) {
                 $project = Project::findOrFail($request->project_id);
                 $thread->project_id = $project->id;
             }
-            
+
             $thread->user_id = auth()->id();
             $thread->save();
         }
@@ -61,9 +61,9 @@ class MessageController extends Controller
 
     public function streamResponse(Thread $thread)
     {
-        return response()->stream(function() use ($thread) {
+        return response()->stream(function () use ($thread) {
             $messages = $thread->messages()->orderBy('created_at', 'asc')->get();
-            
+
             foreach ($messages as $message) {
                 $messageHtml = view('partials.message', ['message' => $message])->render();
                 echo "data: " . json_encode(['html' => $messageHtml]) . "\n\n";
