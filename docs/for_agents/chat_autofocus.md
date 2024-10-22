@@ -1,12 +1,13 @@
 # Chat Autofocus Feature
 
-This document explains how the chat autofocus feature works in the OpenAgents application. The feature automatically focuses the message input field when a user loads a new chat by clicking on a chat link in the sidebar.
+This document explains how the chat autofocus feature works in the OpenAgents application. The feature automatically focuses the message input field when a user loads a new chat by clicking on a chat link in the sidebar or on initial page load.
 
 ## Components Involved
 
 1. `resources/views/components/sidebar/section-threads.blade.php`
 2. `resources/views/components/dashboard/dashboard.blade.php`
 3. `resources/views/components/dashboard/message-form.blade.php`
+4. `public/js/dashboard.js`
 
 ## How It Works
 
@@ -20,7 +21,7 @@ In the `section-threads.blade.php` file, we've added a custom event dispatch to 
    hx-get="{{ route('chat.show', $thread) }}"
    hx-target="#main-content"
    hx-push-url="true"
-   hx-on::after-request="document.body.dispatchEvent(new CustomEvent('chatLoaded'))"
+   hx-on::after-request="console.log('Chat loaded event dispatched'); document.body.dispatchEvent(new CustomEvent('chatLoaded')); console.log('Event dispatched, listeners:', document.body._events ? Object.keys(document.body._events).length : 'No listeners');"
    ...>
    <!-- Link content -->
 </a>
@@ -28,29 +29,65 @@ In the `section-threads.blade.php` file, we've added a custom event dispatch to 
 
 The `hx-on::after-request` attribute is an HTMX extension that allows us to execute JavaScript after the HTMX request is completed. In this case, we're dispatching a custom event named 'chatLoaded' on the document.body.
 
-### 2. Listening for the Event
+### 2. Listening for the Event and Focusing the Textarea
 
-In the `dashboard.blade.php` file, we've added a script that listens for the 'chatLoaded' event:
+We've moved the event listening and focusing logic to a separate JavaScript file, `public/js/dashboard.js`. This file handles both the initial load and subsequent chat loads:
 
-```html
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        document.body.addEventListener('chatLoaded', function() {
-            const textarea = document.getElementById('message-textarea');
-            if (textarea) {
-                textarea.focus();
+```javascript
+function focusTextarea() {
+    console.log('Attempting to focus textarea');
+    const textarea = document.getElementById('message-textarea');
+    if (textarea) {
+        console.log('Textarea found, focusing');
+        setTimeout(() => {
+            textarea.focus();
+        }, 100);
+    } else {
+        console.log('Textarea not found');
+    }
+}
+
+function setupChatLoadedListener() {
+    console.log('Setting up chatLoaded listener');
+    document.body.addEventListener('chatLoaded', function() {
+        console.log('chatLoaded event received');
+        focusTextarea();
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded');
+    setupChatLoadedListener();
+    focusTextarea();
+
+    // MutationObserver setup
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+                const addedNodes = mutation.addedNodes;
+                for (let i = 0; i < addedNodes.length; i++) {
+                    if (addedNodes[i].id === 'message-textarea') {
+                        console.log('Textarea added to DOM');
+                        focusTextarea();
+                        observer.disconnect(); // Stop observing once we've found the textarea
+                        break;
+                    }
+                }
             }
         });
     });
-</script>
+
+    // Start observing the document with the configured parameters
+    observer.observe(document.body, { childList: true, subtree: true });
+});
 ```
 
 This script does the following:
 
-1. Waits for the DOM to be fully loaded.
-2. Adds an event listener to the document.body for the 'chatLoaded' event.
-3. When the event is triggered, it finds the textarea element with the id 'message-textarea'.
-4. If the textarea is found, it calls the `focus()` method on it.
+1. Defines a `focusTextarea` function that attempts to focus the textarea.
+2. Sets up a listener for the 'chatLoaded' event.
+3. Attempts to focus the textarea on initial page load.
+4. Uses a MutationObserver to detect when the textarea is added to the DOM, which helps with the initial load case.
 
 ### 3. The Message Form
 
@@ -69,23 +106,27 @@ This id is crucial as it's used in the script to find and focus the textarea.
 
 ## Flow of Execution
 
-1. User clicks on a chat link in the sidebar.
-2. HTMX loads the new chat content into the main content area.
-3. After the content is loaded, the 'chatLoaded' event is dispatched.
-4. The event listener in dashboard.blade.php catches this event.
-5. The script finds the message textarea and focuses it.
+1. On initial page load:
+   - The DOMContentLoaded event fires, triggering the setup of event listeners and the initial focus attempt.
+   - If the textarea isn't immediately available, the MutationObserver will detect when it's added to the DOM and focus it.
+
+2. When a user clicks on a chat link in the sidebar:
+   - HTMX loads the new chat content into the main content area.
+   - After the content is loaded, the 'chatLoaded' event is dispatched.
+   - The event listener in dashboard.js catches this event and focuses the textarea.
 
 ## Benefits
 
 - Improves user experience by automatically placing the cursor in the message input field.
-- Allows users to start typing immediately after selecting a chat.
+- Allows users to start typing immediately after selecting a chat or on initial page load.
 - Works seamlessly with the HTMX-powered dynamic content loading.
+- Handles both initial page load and subsequent chat loads.
 
 ## Considerations
 
 - Make sure the id 'message-textarea' is unique and consistently used across the application.
-- This feature assumes that focusing the textarea is always desired when loading a chat. If there are cases where this might not be appropriate, additional logic may need to be added.
-- The script in dashboard.blade.php is loaded on every page. If performance becomes an issue, consider moving it to a separate JavaScript file that's only loaded when necessary.
+- The MutationObserver is used to handle cases where the textarea might not be immediately available in the DOM.
+- A small delay (100ms) is added before focusing to ensure the textarea is fully rendered.
 
 ## Potential Enhancements
 
@@ -93,4 +134,4 @@ This id is crucial as it's used in the script to find and focus the textarea.
 - Implement smooth scrolling to ensure the textarea is visible when focused.
 - Add keyboard shortcuts for navigating between chats while maintaining focus on the textarea.
 
-By implementing this feature, we've enhanced the user experience in the OpenAgents application, making chat interactions more fluid and intuitive.
+By implementing this feature, we've enhanced the user experience in the OpenAgents application, making chat interactions more fluid and intuitive, both on initial load and when switching between chats.
