@@ -1,3 +1,0 @@
-<div class="mt-5 leading-relaxed text-center relative w-full px-2 py-2 text-foreground/30 text-xs empty:hidden md:px-[30px]">
-    <div class="min-h-4"><span class="text-xs select-none leading-none">By messaging OpenAgents, you agree to our <a href="https://openagents.com/terms" target="_blank" class="text-token-text-primary underline decoration-token-text-primary" rel="noreferrer">Terms</a> and <a href="https://openagents.com/privacy" target="_blank" class="text-token-text-primary underline decoration-token-text-primary" rel="noreferrer">Privacy Policy</a>.</span></div>
-</div>
