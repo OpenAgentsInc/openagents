@@ -8,7 +8,7 @@ export default function ComponentLibrary() {
   return (
     <>
       <Head title="Component Library" />
-      <div className='font-mono bg-black text-white min-h-screen w-screen p-8'>
+      <div className='dark fixed font-mono bg-black text-white h-screen w-screen p-8'>
         <h1 className="text-3xl font-bold mb-8">Component Library</h1>
         <h2 className="text-2xl font-semibold mb-4">Buttons</h2>
         <div className="grid grid-cols-4 gap-4">
