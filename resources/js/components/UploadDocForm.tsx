@@ -8,40 +8,39 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useForm, usePage } from "@inertiajs/react"
 import { RocketIcon } from "@radix-ui/react-icons"
-import axios from 'axios'
 
 interface UploadDocFormProps {
-  projectId: number;
+  projectId?: number;
 }
 
 export function UploadDocForm({ projectId }: UploadDocFormProps) {
-  const [uploadStatus, setUploadStatus] = React.useState<string | null>(null);
-  const [uploadError, setUploadError] = React.useState<string | null>(null);
-
   const onDrop = React.useCallback((acceptedFiles) => {
-    const formData = new FormData();
-    formData.append('file', acceptedFiles[0]);
-    formData.append('project_id', projectId.toString());
-
-    setUploadStatus('Uploading...');
-    setUploadError(null);
-
-    axios.post('/api/files', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-    .then(response => {
-      setUploadStatus('File uploaded successfully');
-      console.log(response.data);
-    })
-    .catch(error => {
-      setUploadError(error.response?.data?.error || 'An error occurred while uploading the file');
-      console.error('Upload error:', error.response?.data);
-    });
-  }, [projectId])
+    setData('file', acceptedFiles[0])
+  }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop })
+
+  const props = usePage().props
+  const { data, setData, post, progress } = useForm({
+    file: null,
+    project_id: projectId,
+  })
+
+  React.useEffect(() => {
+    if (!data.file) return
+    // Make API request
+    post('/api/files', {
+      onSuccess: (res) => {
+        console.log(res)
+        setData('file', null)
+      },
+      onError: (err) => {
+        console.log(err)
+      }
+    })
+  }, [data.file])
+
+  const filename = props.flash?.filename ?? null
 
   return (
     <Card className="w-[400px]">
@@ -51,18 +50,18 @@ export function UploadDocForm({ projectId }: UploadDocFormProps) {
       </CardHeader>
 
       <CardContent>
-        {uploadStatus && (
+        {!!progress && (
           <Alert className="mb-4">
             <RocketIcon className="h-4 w-4" />
-            <AlertTitle>Status</AlertTitle>
-            <AlertDescription>{uploadStatus}</AlertDescription>
+            <AlertTitle>Uploading</AlertTitle>
+            <AlertDescription>{progress}%</AlertDescription>
           </Alert>
         )}
-        {uploadError && (
-          <Alert className="mb-4" variant="destructive">
+        {props.flash?.message && (
+          <Alert className="mb-4">
             <RocketIcon className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{uploadError}</AlertDescription>
+            <AlertTitle>{props.flash.message === 'File uploaded and ingested.' ? 'Success!' : 'Message'}</AlertTitle>
+            <AlertDescription>{props.flash.message}</AlertDescription>
           </Alert>
         )}
         <div {...getRootProps()} className="grid w-full items-center gap-4">
