@@ -24,12 +24,14 @@ import {
 
 export function NavChats({
   chats,
+  highlightedChat = "Port Operations", // New prop with default value
 }: {
   chats: {
     name: string
     url: string
     icon: LucideIcon
   }[]
+  highlightedChat?: string // New optional prop
 }) {
   const { isMobile } = useSidebar()
 
@@ -37,7 +39,10 @@ export function NavChats({
     <SidebarMenu>
       {chats.map((item) => (
         <SidebarMenuItem key={item.name}>
-          <SidebarMenuButton asChild>
+          <SidebarMenuButton
+            asChild
+            className={item.name === highlightedChat ? "bg-accent" : ""} // Add background when highlighted
+          >
             <a href={item.url}>
               <item.icon />
               <span>{item.name}</span>
@@ -72,12 +77,14 @@ export function NavChats({
           </DropdownMenu>
         </SidebarMenuItem>
       ))}
+      {/* Commented out "More" part
       <SidebarMenuItem>
         <SidebarMenuButton className="text-sidebar-foreground/70">
           <MoreHorizontal className="text-sidebar-foreground/70" />
           <span>More</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
+      */}
     </SidebarMenu>
   )
 }
