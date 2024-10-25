@@ -12,12 +12,14 @@ import {
 
 export function NavProjects({
   projects,
+  highlightedProject = "Competitor Research", // New prop with default value
 }: {
   projects: {
     name: string
     url: string
     icon: LucideIcon
   }[]
+  highlightedProject?: string // New optional prop
 }) {
   const { isMobile } = useSidebar()
 
@@ -25,7 +27,10 @@ export function NavProjects({
     <SidebarMenu>
       {projects.map((item) => (
         <SidebarMenuItem key={item.name}>
-          <SidebarMenuButton asChild>
+          <SidebarMenuButton
+            asChild
+            className={item.name === highlightedProject ? "bg-accent" : ""} // Add background when highlighted
+          >
             <a href={item.url}>
               <item.icon />
               <span>{item.name}</span>
