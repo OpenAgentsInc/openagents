@@ -1,24 +1,22 @@
 import {
-  AudioWaveform, BookOpen, Bot, Command, Frame, GalleryVerticalEnd, Map,
-  PieChart, Settings2, SquareTerminal, ChevronDown
+  AudioWaveform, BookOpen, Bot, ChevronDown, Command, Frame,
+  GalleryVerticalEnd, Map, PieChart, Settings2, SquareTerminal
 } from "lucide-react"
 import * as React from "react"
 import IconOpenAgents from "@/components/IconOpenAgents"
 import { ModeToggle } from "@/components/ModeToggle"
+import { atlantisPortsChats, NavChats } from "@/components/nav-chats"
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
-import { NavChats, atlantisPortsChats } from "@/components/nav-chats"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import {
-  Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail,
-  SidebarGroup, SidebarGroupLabel
-} from "@/components/ui/sidebar"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
+  Collapsible, CollapsibleContent, CollapsibleTrigger
 } from "@/components/ui/collapsible"
+import {
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel,
+  SidebarHeader, SidebarRail
+} from "@/components/ui/sidebar"
 
 // This is sample data.
 const data = {
@@ -39,7 +37,7 @@ const data = {
       plan: "Startup",
     },
     {
-      name: "Evil Corp.",
+      name: "RoA",
       logo: Command,
       plan: "Free",
     },
