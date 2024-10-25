@@ -29,7 +29,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
-                      <BreadcrumbPage>Spaceport Engineering</BreadcrumbPage>
+                      <BreadcrumbPage>Competitor Research</BreadcrumbPage>
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
