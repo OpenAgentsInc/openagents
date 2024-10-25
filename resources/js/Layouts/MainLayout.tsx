@@ -14,7 +14,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <div className="font-mono antialiased bg-background text-foreground">
         <SidebarProvider>
-          <AppSidebar highlightedChat="Portunus Project" />
+          <AppSidebar />
           <SidebarInset>
             <header className="flex h-14 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-14">
               <div className="flex items-center gap-2 px-4">
