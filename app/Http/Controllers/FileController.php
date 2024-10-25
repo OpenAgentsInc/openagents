@@ -38,10 +38,9 @@ class FileController extends Controller
             $path = $request->file('file')->store('uploads');
             Log::info('File stored', ['path' => $path]);
 
-            // Extract content based on file type
-            $content = $this->extractContent($path, $request->file('file')->getMimeType());
-            Log::info('Content extracted', ['content_length' => strlen($content)]);
-
+            $mimeType = $request->file('file')->getMimeType();
+            $content = $this->extractContent($path, $mimeType);
+            
             // Create a new File record
             $file = File::create([
                 'name' => $request->file('file')->getClientOriginalName(),
@@ -87,8 +86,8 @@ class FileController extends Controller
             case 'image/jpeg':
             case 'image/png':
             case 'image/gif':
-                // For images, we'll store the file path as content
-                return $path;
+                // For images, we'll return null as we don't want to store the image data in the database
+                return null;
             default:
                 throw new \Exception('Unsupported file type: ' . $mimeType);
         }
