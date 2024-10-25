@@ -33,4 +33,9 @@ class Project extends Model
     {
         return $this->hasMany(Thread::class);
     }
+
+    public function files(): HasMany
+    {
+        return $this->hasMany(File::class);
+    }
 }
