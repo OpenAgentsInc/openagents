@@ -46,9 +46,12 @@ class FileController extends Controller
             ]);
             Log::info('File record created', ['file_id' => $file->id]);
 
-            return Redirect::route('home')
-                ->with('message', 'File uploaded and ingested.')
-                ->with('filename', $file->name);
+            // Temporarily return a JSON response instead of redirecting
+            return response()->json([
+                'message' => 'File uploaded and ingested.',
+                'filename' => $file->name,
+                'file_id' => $file->id,
+            ]);
         } catch (\Exception $e) {
             Log::error('Error uploading file', [
                 'error' => $e->getMessage(),
@@ -60,7 +63,10 @@ class FileController extends Controller
                     'mime' => $request->file('file')->getMimeType(),
                 ] : null,
             ]);
-            return Redirect::route('home')->with('error', 'Error uploading file: ' . $e->getMessage());
+            // Temporarily return a JSON error response
+            return response()->json([
+                'error' => 'Error uploading file: ' . $e->getMessage()
+            ], 500);
         }
     }
 
