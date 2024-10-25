@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\File;
 use App\Models\Project;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Spatie\PdfToText\Pdf;
@@ -35,28 +34,24 @@ class FileController extends Controller
                 Log::info('Using existing project', ['project_id' => $projectId]);
             }
 
-            // Retrieve the uploaded file
-            $uploadedFile = $request->file('file');
-            Log::info('File retrieved', ['filename' => $uploadedFile->getClientOriginalName()]);
-
-            // Store the file in the private disk
-            $path = Storage::disk('private')->putFile('uploads', $uploadedFile);
+            // Store the file
+            $path = $request->file('file')->store('uploads');
             Log::info('File stored', ['path' => $path]);
 
             // Extract content based on file type
-            $content = $this->extractContent($path, $uploadedFile->getMimeType());
+            $content = $this->extractContent($path, $request->file('file')->getMimeType());
             Log::info('Content extracted', ['content_length' => strlen($content)]);
 
             // Create a new File record
             $file = File::create([
-                'name' => $uploadedFile->getClientOriginalName(),
+                'name' => $request->file('file')->getClientOriginalName(),
                 'path' => $path,
                 'content' => $content,
                 'project_id' => $projectId,
             ]);
             Log::info('File record created', ['file_id' => $file->id, 'project_id' => $projectId]);
 
-            return Redirect::route('home')
+            return redirect()->route('home')
                 ->with('message', 'File uploaded and ingested.')
                 ->with('filename', $file->name);
         } catch (\Exception $e) {
@@ -64,16 +59,14 @@ class FileController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return Redirect::route('home')->with('error', 'Error uploading file: ' . $e->getMessage());
+            return redirect()->route('home')->with('error', 'Error uploading file: ' . $e->getMessage());
         }
     }
 
     private function extractContent($path, $mimeType)
     {
-        $fullPath = Storage::disk('private')->path($path);
-
-        if (!Storage::disk('private')->exists($path)) {
-            throw new \Exception("File not found: {$fullPath}");
+        if (!Storage::exists($path)) {
+            throw new \Exception("File not found: {$path}");
         }
 
         switch ($mimeType) {
@@ -82,15 +75,15 @@ class FileController extends Controller
                 if (!$pdfToTextPath || !file_exists($pdfToTextPath)) {
                     throw new \Exception("PDF to Text converter not found. Please check the configuration.");
                 }
-                $text = Pdf::getText($fullPath, $pdfToTextPath);
+                $text = Pdf::getText(Storage::path($path), $pdfToTextPath);
                 if (empty($text)) {
-                    throw new \Exception("Failed to extract text from PDF: {$fullPath}");
+                    throw new \Exception("Failed to extract text from PDF: {$path}");
                 }
                 return $text;
             case 'text/plain':
             case 'text/markdown':
             case 'application/json':
-                return Storage::disk('private')->get($path);
+                return Storage::get($path);
             case 'image/jpeg':
             case 'image/png':
             case 'image/gif':
