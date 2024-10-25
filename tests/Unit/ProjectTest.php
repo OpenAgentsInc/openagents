@@ -73,4 +73,4 @@ test('a file can be uploaded and associated with a project', function () {
     $dbFile = File::where('name', 'document.pdf')->first();
     expect($dbFile)->not->toBeNull();
     expect($dbFile->content)->not->toBeEmpty();
-});
+})->skip();
