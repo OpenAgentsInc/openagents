@@ -6,6 +6,7 @@ use App\Models\File;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Spatie\PdfToText\Pdf;
 
 class FileController extends Controller
@@ -13,6 +14,8 @@ class FileController extends Controller
     public function store(Request $request)
     {
         try {
+            Log::info('File upload started', ['request' => $request->all()]);
+
             // If we're not testing
             if (!app()->runningUnitTests()) {
                 // Validate incoming request
@@ -24,12 +27,15 @@ class FileController extends Controller
 
             // Retrieve the uploaded file
             $uploadedFile = $request->file('file');
+            Log::info('File retrieved', ['filename' => $uploadedFile->getClientOriginalName()]);
 
             // Store the file
             $path = Storage::putFile('uploads', $uploadedFile);
+            Log::info('File stored', ['path' => $path]);
 
             // Extract content based on file type
             $content = $this->extractContent($path, $uploadedFile->getMimeType());
+            Log::info('Content extracted', ['content_length' => strlen($content)]);
 
             // Create a new File record
             $file = File::create([
@@ -38,11 +44,13 @@ class FileController extends Controller
                 'content' => $content,
                 'project_id' => $request->input('project_id'),
             ]);
+            Log::info('File record created', ['file_id' => $file->id]);
 
             return Redirect::route('home')
                 ->with('message', 'File uploaded and ingested.')
                 ->with('filename', $file->name);
         } catch (\Exception $e) {
+            Log::error('Error uploading file', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return Redirect::route('home')->with('error', 'Error uploading file: ' . $e->getMessage());
         }
     }
