@@ -126,7 +126,7 @@ const data = {
   ],
   projects: [
     {
-      name: "Design Engineering",
+      name: "Spaceport Engineering",
       url: "#",
       icon: Frame,
     },
