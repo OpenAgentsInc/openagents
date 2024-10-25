@@ -1,6 +1,6 @@
-import React from 'react';
-import { Button } from "@/Components/ui/button"
-import { Plus } from 'lucide-react';
+import { Plus } from "lucide-react"
+import React from "react"
+import { Button } from "@/components/ui/button"
 
 const variants = ["default", "destructive", "outline", "secondary", "ghost", "link"] as const
 const sizes = ["default", "sm", "lg", "icon"] as const

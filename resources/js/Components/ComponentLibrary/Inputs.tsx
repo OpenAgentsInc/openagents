@@ -1,5 +1,5 @@
-import React from 'react';
-import { Input } from "@/Components/ui/input"
+import React from "react"
+import { Input } from "@/components/ui/input"
 
 const inputTypes = ["text", "password", "email", "number", "search", "tel", "url"] as const;
 

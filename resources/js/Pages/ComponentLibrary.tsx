@@ -1,4 +1,4 @@
-import { Buttons, Inputs } from "@/Components/ComponentLibrary"
+import { Buttons, Inputs } from "@/components/ComponentLibrary"
 import { Head } from "@inertiajs/react"
 
 export default function ComponentLibrary() {
