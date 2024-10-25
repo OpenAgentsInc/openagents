@@ -35,12 +35,12 @@ class FileController extends Controller
                 true
             );
 
-            return Redirect::route('start')
+            return Redirect::route('home')
                 ->with('message', 'File uploaded.')
                 ->with('filename', $file->getClientOriginalName());
         } catch (\Exception $e) {
             // dd($e);
-            return Redirect::route('start')->with('error', 'Error uploading file.');
+            return Redirect::route('home')->with('error', 'Error uploading file.');
         }
     }
 }
