@@ -4,6 +4,7 @@ use App\Models\Project;
 use App\Models\Thread;
 use App\Models\User;
 use App\Models\Team;
+use App\Models\File;
 
 test('a project belongs to a user', function () {
     $project = Project::factory()->forUser()->create();
@@ -36,4 +37,12 @@ test('a project belongs to either a user or a team', function () {
 
     expect($teamProject->team)->toBeInstanceOf(Team::class);
     expect($teamProject->user)->toBeNull();
+});
+
+test('a project has many files', function () {
+    $project = Project::factory()->create();
+    $files = File::factory()->count(3)->create(['project_id' => $project->id]);
+
+    expect($project->files)->toHaveCount(3);
+    expect($project->files->first())->toBeInstanceOf(File::class);
 });
