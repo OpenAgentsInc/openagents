@@ -10,5 +10,7 @@ test('can ingest pdf', function () {
         config('services.pdftotext.path')
     );
 
-    dd($fileText);
+    // assert fileText is a string
+    expect($fileText)->toBeString();
+    // dd($fileText);
 });

@@ -17,7 +17,8 @@ class FileFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'name' => $this->faker->words(3, true),
+            'path' => $this->faker->word,
         ];
     }
 }
