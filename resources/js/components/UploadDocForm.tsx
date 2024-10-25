@@ -10,7 +10,7 @@ import { useForm, usePage } from "@inertiajs/react"
 import { RocketIcon } from "@radix-ui/react-icons"
 
 interface UploadDocFormProps {
-  projectId?: number;
+  projectId: number;
 }
 
 export function UploadDocForm({ projectId }: UploadDocFormProps) {
@@ -50,11 +50,11 @@ export function UploadDocForm({ projectId }: UploadDocFormProps) {
       </CardHeader>
 
       <CardContent>
-        {!!progress && (
+        {!!props.progress && (
           <Alert className="mb-4">
             <RocketIcon className="h-4 w-4" />
             <AlertTitle>Uploading</AlertTitle>
-            <AlertDescription>{progress}%</AlertDescription>
+            <AlertDescription>{props.progress}</AlertDescription>
           </Alert>
         )}
         {props.flash?.message && (
@@ -88,8 +88,20 @@ export function UploadDocForm({ projectId }: UploadDocFormProps) {
             <span>{isDragActive ? <p>Feed me</p> : <p>Drop a PDF or image here</p>}</span>
             <Input className="sr-only" id="file" type="file" {...getInputProps()} />
           </label>
+          <div className="flex flex-col space-y-1.5 hidden">
+            <Label htmlFor="progress">Upload Progress</Label>
+            <div className="h-3 bg-gray-700 rounded" id="progress">
+              <div
+                className="h-full bg-green-500 rounded"
+                style={{
+                  width: '0%'
+                }}
+              />
+            </div>
+          </div>
         </div>
       </CardContent>
+
     </Card>
   )
 }
