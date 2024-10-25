@@ -1,6 +1,6 @@
 import {
   AudioWaveform, BookOpen, Bot, Command, Frame, GalleryVerticalEnd, Map,
-  PieChart, Settings2, SquareTerminal
+  PieChart, Settings2, SquareTerminal, ChevronDown
 } from "lucide-react"
 import * as React from "react"
 import IconOpenAgents from "@/components/IconOpenAgents"
@@ -11,8 +11,14 @@ import { NavChats, atlantisPortsChats } from "@/components/nav-chats"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import {
-  Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail
+  Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail,
+  SidebarGroup, SidebarGroupLabel
 } from "@/components/ui/sidebar"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 
 // This is sample data.
 const data = {
@@ -157,9 +163,47 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <NavChats chats={atlantisPortsChats} />
-        <NavProjects projects={data.projects} />
-        <NavMain items={data.navMain} />
+        <Collapsible defaultOpen className="group/collapsible">
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger>
+                Chats
+                <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <NavChats chats={atlantisPortsChats} />
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
+
+        <Collapsible defaultOpen className="group/collapsible">
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger>
+                Projects
+                <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <NavProjects projects={data.projects} />
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
+
+        <Collapsible defaultOpen className="group/collapsible">
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger>
+                Platform
+                <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <NavMain items={data.navMain} />
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={data.user} />
