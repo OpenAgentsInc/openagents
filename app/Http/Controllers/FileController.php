@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\File;
+use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
@@ -16,13 +17,20 @@ class FileController extends Controller
         try {
             Log::info('File upload started', ['request' => $request->all()]);
 
-            // If we're not testing
-            if (!app()->runningUnitTests()) {
-                // Validate incoming request
-                $request->validate([
-                    'file' => 'required|mimetypes:application/json,application/pdf,text/markdown,text/plain', // |max:1000240
-                    'project_id' => 'required|exists:projects,id',
+            // Validate incoming request
+            $request->validate([
+                'file' => 'required|mimetypes:application/json,application/pdf,text/markdown,text/plain',
+            ]);
+
+            // Create a dummy project if no project_id is provided
+            if (!$request->has('project_id')) {
+                $project = Project::create([
+                    'name' => 'Dummy Project ' . now()->format('Y-m-d H:i:s'),
+                    'description' => 'This is a dummy project created for file upload.',
                 ]);
+                $projectId = $project->id;
+            } else {
+                $projectId = $request->input('project_id');
             }
 
             // Retrieve the uploaded file
@@ -42,31 +50,19 @@ class FileController extends Controller
                 'name' => $uploadedFile->getClientOriginalName(),
                 'path' => $path,
                 'content' => $content,
-                'project_id' => $request->input('project_id'),
+                'project_id' => $projectId,
             ]);
             Log::info('File record created', ['file_id' => $file->id]);
 
-            // Temporarily return a JSON response instead of redirecting
-            return response()->json([
-                'message' => 'File uploaded and ingested.',
-                'filename' => $file->name,
-                'file_id' => $file->id,
-            ]);
+            return Redirect::route('home')
+                ->with('message', 'File uploaded and ingested.')
+                ->with('filename', $file->name);
         } catch (\Exception $e) {
             Log::error('Error uploading file', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'request' => $request->all(),
-                'file' => $request->file('file') ? [
-                    'name' => $request->file('file')->getClientOriginalName(),
-                    'size' => $request->file('file')->getSize(),
-                    'mime' => $request->file('file')->getMimeType(),
-                ] : null,
             ]);
-            // Temporarily return a JSON error response
-            return response()->json([
-                'error' => 'Error uploading file: ' . $e->getMessage()
-            ], 500);
+            return Redirect::route('home')->with('error', 'Error uploading file: ' . $e->getMessage());
         }
     }
 
