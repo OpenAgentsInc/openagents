@@ -14,7 +14,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <div className="font-mono antialiased bg-background text-foreground">
         <SidebarProvider>
-          <AppSidebar />
+          <AppSidebar highlightedChat="Portunus Project" />
           <SidebarInset>
             <header className="flex h-14 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-14">
               <div className="flex items-center gap-2 px-4">
@@ -29,7 +29,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
-                      <BreadcrumbPage>Competitor Research</BreadcrumbPage>
+                      <BreadcrumbLink href="#">
+                        Competitor Research
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator className="hidden md:block" />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage>Portunus Project</BreadcrumbPage>
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
