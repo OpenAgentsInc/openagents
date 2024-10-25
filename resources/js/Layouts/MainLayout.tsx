@@ -11,8 +11,8 @@ import { ThemeProvider } from "@/components/ThemeProvider"
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-      <div className="dark:bg-gray-900 dark:text-white font-mono antialiased bg-background text-foreground">
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      <div className="font-mono antialiased bg-background text-foreground">
         <SidebarProvider>
           <AppSidebar />
           <SidebarInset>
