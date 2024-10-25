@@ -3,6 +3,8 @@ import {
   PieChart, Settings2, SquareTerminal
 } from "lucide-react"
 import * as React from "react"
+import IconOpenAgents from "@/components/IconOpenAgents"
+import { ModeToggle } from "@/components/ModeToggle"
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
@@ -10,8 +12,6 @@ import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail
 } from "@/components/ui/sidebar"
-import IconOpenAgents from "@/components/IconOpenAgents"
-import { ModeToggle } from "@/components/ModeToggle"
 
 // This is sample data.
 const data = {
@@ -147,9 +147,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className="flex flex-col gap-2 px-4 py-2">
-          <div className="flex items-center justify-between">
-            <IconOpenAgents className="h-8 w-8" />
+        <div className="flex flex-col gap-2 py-2">
+          <div className="px-2 mb-4 flex items-center justify-between">
+            <IconOpenAgents className="h-5 w-5" />
             <ModeToggle />
           </div>
           <TeamSwitcher teams={data.teams} />
