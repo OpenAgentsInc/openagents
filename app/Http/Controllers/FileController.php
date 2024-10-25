@@ -22,8 +22,9 @@ class FileController extends Controller
                 'file' => 'required|mimetypes:application/json,application/pdf,text/markdown,text/plain',
             ]);
 
-            // Create a dummy project if no project_id is provided
-            if (!$request->has('project_id')) {
+            // Handle project_id (null or provided)
+            $projectId = $request->input('project_id');
+            if (is_null($projectId)) {
                 $project = Project::create([
                     'name' => 'Dummy Project ' . now()->format('Y-m-d H:i:s'),
                     'description' => 'This is a dummy project created for file upload.',
@@ -31,7 +32,6 @@ class FileController extends Controller
                 $projectId = $project->id;
                 Log::info('Dummy project created', ['project_id' => $projectId, 'project_name' => $project->name]);
             } else {
-                $projectId = $request->input('project_id');
                 Log::info('Using existing project', ['project_id' => $projectId]);
             }
 
@@ -72,9 +72,21 @@ class FileController extends Controller
     {
         $fullPath = storage_path('app/' . $path);
 
+        if (!file_exists($fullPath)) {
+            throw new \Exception("File not found: {$fullPath}");
+        }
+
         switch ($mimeType) {
             case 'application/pdf':
-                return Pdf::getText($fullPath, config('services.pdftotext.path'));
+                $pdfToTextPath = config('services.pdftotext.path');
+                if (!$pdfToTextPath || !file_exists($pdfToTextPath)) {
+                    throw new \Exception("PDF to Text converter not found. Please check the configuration.");
+                }
+                $text = Pdf::getText($fullPath, $pdfToTextPath);
+                if (empty($text)) {
+                    throw new \Exception("Failed to extract text from PDF: {$fullPath}");
+                }
+                return $text;
             case 'text/plain':
             case 'text/markdown':
             case 'application/json':
