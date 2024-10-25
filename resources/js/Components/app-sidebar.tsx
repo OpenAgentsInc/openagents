@@ -10,6 +10,7 @@ import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail
 } from "@/components/ui/sidebar"
+import IconOpenAgents from "@/components/IconOpenAgents"
 
 // This is sample data.
 const data = {
@@ -145,7 +146,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
+        <div className="flex items-center gap-2 px-4 py-2">
+          <IconOpenAgents className="h-8 w-8" />
+          <TeamSwitcher teams={data.teams} />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
