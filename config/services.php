@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'pdftotext' => [
+        'path' => env('PDF_TO_TEXT_PATH', '/opt/homebrew/bin/pdftotext')
+    ],
+
 ];
