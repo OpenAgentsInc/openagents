@@ -39,8 +39,8 @@ class FileController extends Controller
             $uploadedFile = $request->file('file');
             Log::info('File retrieved', ['filename' => $uploadedFile->getClientOriginalName()]);
 
-            // Store the file
-            $path = Storage::putFile('uploads', $uploadedFile);
+            // Store the file in the private disk
+            $path = Storage::disk('private')->putFile('uploads', $uploadedFile);
             Log::info('File stored', ['path' => $path]);
 
             // Extract content based on file type
@@ -70,9 +70,9 @@ class FileController extends Controller
 
     private function extractContent($path, $mimeType)
     {
-        $fullPath = storage_path('app/' . $path);
+        $fullPath = Storage::disk('private')->path($path);
 
-        if (!file_exists($fullPath)) {
+        if (!Storage::disk('private')->exists($path)) {
             throw new \Exception("File not found: {$fullPath}");
         }
 
@@ -90,7 +90,7 @@ class FileController extends Controller
             case 'text/plain':
             case 'text/markdown':
             case 'application/json':
-                return file_get_contents($fullPath);
+                return Storage::disk('private')->get($path);
             default:
                 throw new \Exception('Unsupported file type: ' . $mimeType);
         }
