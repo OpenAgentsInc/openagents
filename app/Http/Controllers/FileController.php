@@ -19,7 +19,7 @@ class FileController extends Controller
 
             // Validate incoming request
             $request->validate([
-                'file' => 'required|mimetypes:application/json,application/pdf,text/markdown,text/plain',
+                'file' => 'required|mimetypes:application/json,application/pdf,text/markdown,text/plain,image/jpeg,image/png,image/gif',
             ]);
 
             // Handle project_id (null or provided)
@@ -91,6 +91,11 @@ class FileController extends Controller
             case 'text/markdown':
             case 'application/json':
                 return Storage::disk('private')->get($path);
+            case 'image/jpeg':
+            case 'image/png':
+            case 'image/gif':
+                // For images, we'll store the file path as content
+                return $path;
             default:
                 throw new \Exception('Unsupported file type: ' . $mimeType);
         }
