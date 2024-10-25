@@ -167,19 +167,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <Collapsible defaultOpen className="group/collapsible">
-          <SidebarGroup>
-            <SidebarGroupLabel asChild>
-              <CollapsibleTrigger>
-                Chats
-                <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
-              </CollapsibleTrigger>
-            </SidebarGroupLabel>
-            <CollapsibleContent>
-              <NavChats chats={atlantisPortsChats} />
-            </CollapsibleContent>
-          </SidebarGroup>
-        </Collapsible>
 
         <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
@@ -194,6 +181,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </CollapsibleContent>
           </SidebarGroup>
         </Collapsible>
+
+        <Collapsible defaultOpen className="group/collapsible">
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger>
+                Chats
+                <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <NavChats chats={atlantisPortsChats} />
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
+
+
 
 
         {/* <Collapsible defaultOpen className="group/collapsible">
