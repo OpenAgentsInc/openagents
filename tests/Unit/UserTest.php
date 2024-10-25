@@ -6,12 +6,31 @@ use App\Models\Project;
 use App\Models\Thread;
 use App\Models\Message;
 
-test('a user belongs to a team', function () {
-    $team = Team::factory()->create();
-    $user = User::factory()->create(['team_id' => $team->id]);
+test('a user can belong to multiple teams', function () {
+    $user = User::factory()->create();
+    $teams = Team::factory()->count(3)->create();
 
-    expect($user->team)->toBeInstanceOf(Team::class);
-    expect($user->team->id)->toBe($team->id);
+    $user->teams()->attach($teams->pluck('id'));
+
+    expect($user->teams)->toHaveCount(3);
+    expect($user->teams->first())->toBeInstanceOf(Team::class);
+});
+
+test('a user can have a current team', function () {
+    $user = User::factory()->create();
+    $team = Team::factory()->create();
+
+    $user->current_team_id = $team->id;
+    $user->save();
+
+    expect($user->currentTeam)->toBeInstanceOf(Team::class);
+    expect($user->currentTeam->id)->toBe($team->id);
+});
+
+test('a user can have a null current team for personal context', function () {
+    $user = User::factory()->create(['current_team_id' => null]);
+
+    expect($user->currentTeam)->toBeNull();
 });
 
 test('a user has many projects', function () {
@@ -38,11 +57,11 @@ test('a user has many messages', function () {
     expect($user->messages->first())->toBeInstanceOf(Message::class);
 });
 
-test('a user can have projects through their team', function () {
+test('a user can have projects through their current team', function () {
     $team = Team::factory()->create();
-    $user = User::factory()->create(['team_id' => $team->id]);
+    $user = User::factory()->create(['current_team_id' => $team->id]);
     $projects = Project::factory()->count(3)->create(['team_id' => $team->id]);
 
-    expect($user->team->projects)->toHaveCount(3);
-    expect($user->team->projects->first())->toBeInstanceOf(Project::class);
+    expect($user->currentTeam->projects)->toHaveCount(3);
+    expect($user->currentTeam->projects->first())->toBeInstanceOf(Project::class);
 });
