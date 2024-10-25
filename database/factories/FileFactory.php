@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Project;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -17,8 +18,10 @@ class FileFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => $this->faker->words(3, true),
-            'path' => $this->faker->word,
+            'name' => $this->faker->word . '.' . $this->faker->fileExtension(),
+            'path' => 'uploads/' . $this->faker->md5 . '.' . $this->faker->fileExtension(),
+            'content' => $this->faker->paragraphs(3, true),
+            'project_id' => Project::factory(),
         ];
     }
 }
