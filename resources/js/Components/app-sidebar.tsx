@@ -191,27 +191,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
-              <NavChats chats={atlantisPortsChats} />
+              <NavChats chats={atlantisPortsChats} highlightedChat="Portunus Project" />
             </CollapsibleContent>
           </SidebarGroup>
         </Collapsible>
 
-
-
-
-        {/* <Collapsible defaultOpen className="group/collapsible">
-          <SidebarGroup>
-            <SidebarGroupLabel asChild>
-              <CollapsibleTrigger>
-                Platform
-                <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
-              </CollapsibleTrigger>
-            </SidebarGroupLabel>
-            <CollapsibleContent>
-              <NavMain items={data.navMain} />
-            </CollapsibleContent>
-          </SidebarGroup>
-        </Collapsible> */}
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={data.user} />

@@ -43,7 +43,7 @@ export function UploadDocForm() {
     <Card className="w-[400px]">
       <CardHeader>
         <CardTitle>Upload a PDF</CardTitle>
-        <CardDescription>Create your first agent from a document</CardDescription>
+        <CardDescription>Teach agents about your project</CardDescription>
       </CardHeader>
 
       <CardContent>

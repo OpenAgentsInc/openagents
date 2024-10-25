@@ -24,14 +24,14 @@ import {
 
 export function NavChats({
   chats,
-  highlightedChat = "Port Operations", // New prop with default value
+  highlightedChat = "Portunus Project", // Changed default value to "Portunus Project"
 }: {
   chats: {
     name: string
     url: string
     icon: LucideIcon
   }[]
-  highlightedChat?: string // New optional prop
+  highlightedChat?: string
 }) {
   const { isMobile } = useSidebar()
 
@@ -41,7 +41,7 @@ export function NavChats({
         <SidebarMenuItem key={item.name}>
           <SidebarMenuButton
             asChild
-            className={item.name === highlightedChat ? "bg-accent" : ""} // Add background when highlighted
+            className={item.name === highlightedChat ? "bg-accent" : ""}
           >
             <a href={item.url}>
               <item.icon />
@@ -77,20 +77,17 @@ export function NavChats({
           </DropdownMenu>
         </SidebarMenuItem>
       ))}
-      {/* Commented out "More" part
-      <SidebarMenuItem>
-        <SidebarMenuButton className="text-sidebar-foreground/70">
-          <MoreHorizontal className="text-sidebar-foreground/70" />
-          <span>More</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      */}
     </SidebarMenu>
   )
 }
 
-// Sample data for Atlantis Ports chats
+// Updated sample data for Atlantis Ports chats
 export const atlantisPortsChats = [
+  {
+    name: "Portunus Project", // Added Portunus Project
+    url: "#portunus-project",
+    icon: MessageSquare,
+  },
   {
     name: "Port Operations",
     url: "#port-operations",
