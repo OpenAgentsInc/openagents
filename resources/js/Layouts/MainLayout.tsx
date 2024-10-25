@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar"
+import { ThemeProvider } from "@/components/ThemeProvider"
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage,
   BreadcrumbSeparator
@@ -7,7 +8,6 @@ import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset, SidebarProvider, SidebarTrigger
 } from "@/components/ui/sidebar"
-import { ThemeProvider } from "@/components/ThemeProvider"
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,12 +24,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                   <BreadcrumbList>
                     <BreadcrumbItem className="hidden md:block">
                       <BreadcrumbLink href="#">
-                        Building Your Application
+                        Atlantis Ports
                       </BreadcrumbLink>
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
-                      <BreadcrumbPage>Data Fetching</BreadcrumbPage>
+                      <BreadcrumbPage>Spaceport Engineering</BreadcrumbPage>
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>

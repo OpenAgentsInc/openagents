@@ -22,12 +22,12 @@ const data = {
   },
   teams: [
     {
-      name: "Acme Inc",
+      name: "Atlantis Ports",
       logo: GalleryVerticalEnd,
-      plan: "Enterprise",
+      plan: "Pro",
     },
     {
-      name: "Acme Corp.",
+      name: "OpenAgents",
       logo: AudioWaveform,
       plan: "Startup",
     },
