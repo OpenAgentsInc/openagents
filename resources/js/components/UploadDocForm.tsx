@@ -8,39 +8,40 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useForm, usePage } from "@inertiajs/react"
 import { RocketIcon } from "@radix-ui/react-icons"
+import axios from 'axios'
 
 interface UploadDocFormProps {
   projectId: number;
 }
 
 export function UploadDocForm({ projectId }: UploadDocFormProps) {
+  const [uploadStatus, setUploadStatus] = React.useState<string | null>(null);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
+
   const onDrop = React.useCallback((acceptedFiles) => {
-    setData('file', acceptedFiles[0])
-  }, [])
+    const formData = new FormData();
+    formData.append('file', acceptedFiles[0]);
+    formData.append('project_id', projectId.toString());
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop })
+    setUploadStatus('Uploading...');
+    setUploadError(null);
 
-  const props = usePage().props
-  const { data, setData, post, progress } = useForm({
-    file: null,
-    project_id: projectId,
-  })
-
-  React.useEffect(() => {
-    if (!data.file) return
-    // Make API request
-    post('/api/files', {
-      onSuccess: (res) => {
-        console.log(res)
-        setData('file', null)
-      },
-      onError: (err) => {
-        console.log(err)
+    axios.post('/api/files', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
       }
     })
-  }, [data.file])
+    .then(response => {
+      setUploadStatus('File uploaded successfully');
+      console.log(response.data);
+    })
+    .catch(error => {
+      setUploadError(error.response?.data?.error || 'An error occurred while uploading the file');
+      console.error('Upload error:', error.response?.data);
+    });
+  }, [projectId])
 
-  const filename = props.flash?.filename ?? null
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop })
 
   return (
     <Card className="w-[400px]">
@@ -50,18 +51,18 @@ export function UploadDocForm({ projectId }: UploadDocFormProps) {
       </CardHeader>
 
       <CardContent>
-        {!!props.progress && (
+        {uploadStatus && (
           <Alert className="mb-4">
             <RocketIcon className="h-4 w-4" />
-            <AlertTitle>Uploading</AlertTitle>
-            <AlertDescription>{props.progress}</AlertDescription>
+            <AlertTitle>Status</AlertTitle>
+            <AlertDescription>{uploadStatus}</AlertDescription>
           </Alert>
         )}
-        {props.flash?.message && (
-          <Alert className="mb-4">
+        {uploadError && (
+          <Alert className="mb-4" variant="destructive">
             <RocketIcon className="h-4 w-4" />
-            <AlertTitle>{props.flash.message === 'File uploaded and ingested.' ? 'Success!' : 'Message'}</AlertTitle>
-            <AlertDescription>{props.flash.message}</AlertDescription>
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{uploadError}</AlertDescription>
           </Alert>
         )}
         <div {...getRootProps()} className="grid w-full items-center gap-4">
@@ -88,20 +89,8 @@ export function UploadDocForm({ projectId }: UploadDocFormProps) {
             <span>{isDragActive ? <p>Feed me</p> : <p>Drop a PDF or image here</p>}</span>
             <Input className="sr-only" id="file" type="file" {...getInputProps()} />
           </label>
-          <div className="flex flex-col space-y-1.5 hidden">
-            <Label htmlFor="progress">Upload Progress</Label>
-            <div className="h-3 bg-gray-700 rounded" id="progress">
-              <div
-                className="h-full bg-green-500 rounded"
-                style={{
-                  width: '0%'
-                }}
-              />
-            </div>
-          </div>
         </div>
       </CardContent>
-
     </Card>
   )
 }
