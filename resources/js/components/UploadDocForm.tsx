@@ -9,7 +9,11 @@ import { Label } from "@/components/ui/label"
 import { useForm, usePage } from "@inertiajs/react"
 import { RocketIcon } from "@radix-ui/react-icons"
 
-export function UploadDocForm() {
+interface UploadDocFormProps {
+  projectId: number;
+}
+
+export function UploadDocForm({ projectId }: UploadDocFormProps) {
   const onDrop = React.useCallback((acceptedFiles) => {
     setData('file', acceptedFiles[0])
   }, [])
@@ -17,9 +21,9 @@ export function UploadDocForm() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop })
 
   const props = usePage().props
-  // console.log(props)
   const { data, setData, post, progress } = useForm({
-    file: null
+    file: null,
+    project_id: projectId,
   })
 
   React.useEffect(() => {
@@ -36,8 +40,7 @@ export function UploadDocForm() {
     })
   }, [data.file])
 
-  const filename = 'asodfujass'
-  // const filename = props.flash?.filename ?? null
+  const filename = props.flash?.filename ?? null
 
   return (
     <Card className="w-[400px]">
@@ -54,13 +57,13 @@ export function UploadDocForm() {
             <AlertDescription>{props.progress}</AlertDescription>
           </Alert>
         )}
-        {/* {props.flash?.message && (
+        {props.flash?.message && (
           <Alert className="mb-4">
             <RocketIcon className="h-4 w-4" />
-            <AlertTitle>{props.flash.message === 'File uploaded.' ? 'Success!' : 'Message'}</AlertTitle>
+            <AlertTitle>{props.flash.message === 'File uploaded and ingested.' ? 'Success!' : 'Message'}</AlertTitle>
             <AlertDescription>{props.flash.message}</AlertDescription>
           </Alert>
-        )} */}
+        )}
         <div {...getRootProps()} className="grid w-full items-center gap-4">
           <label
             className="border-2 border-dashed border-border rounded-lg p-6 text-center h-64 flex flex-col justify-center items-center cursor-pointer"
