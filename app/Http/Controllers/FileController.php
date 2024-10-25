@@ -50,7 +50,16 @@ class FileController extends Controller
                 ->with('message', 'File uploaded and ingested.')
                 ->with('filename', $file->name);
         } catch (\Exception $e) {
-            Log::error('Error uploading file', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('Error uploading file', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all(),
+                'file' => $request->file('file') ? [
+                    'name' => $request->file('file')->getClientOriginalName(),
+                    'size' => $request->file('file')->getSize(),
+                    'mime' => $request->file('file')->getMimeType(),
+                ] : null,
+            ]);
             return Redirect::route('home')->with('error', 'Error uploading file: ' . $e->getMessage());
         }
     }
@@ -67,7 +76,7 @@ class FileController extends Controller
             case 'application/json':
                 return file_get_contents($fullPath);
             default:
-                throw new \Exception('Unsupported file type');
+                throw new \Exception('Unsupported file type: ' . $mimeType);
         }
     }
 }
