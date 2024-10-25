@@ -1,6 +1,7 @@
 import {
-  AudioWaveform, BookOpen, Bot, ChevronDown, Command, Frame,
-  GalleryVerticalEnd, Map, PieChart, Settings2, SquareTerminal
+  AudioWaveform, BookOpen, BookTextIcon, Bot, ChevronDown, Command, Frame,
+  GalleryVerticalEnd, HammerIcon, Map, PieChart, Settings2, SquareTerminal,
+  WrenchIcon
 } from "lucide-react"
 import * as React from "react"
 import IconOpenAgents from "@/components/IconOpenAgents"
@@ -131,19 +132,24 @@ const data = {
   ],
   projects: [
     {
-      name: "Spaceport Engineering",
-      url: "#",
-      icon: Frame,
+      name: "Competitor Research",
+      url: "/",
+      icon: BookTextIcon,
     },
     {
-      name: "Sales & Marketing",
-      url: "#",
-      icon: PieChart,
+      name: "Container Port Design",
+      url: "/",
+      icon: WrenchIcon,
     },
     {
-      name: "Travel",
-      url: "#",
-      icon: Map,
+      name: "Spaceport Design",
+      url: "/",
+      icon: WrenchIcon,
+    },
+    {
+      name: "Mining Rig Design",
+      url: "/",
+      icon: WrenchIcon,
     },
   ],
 }
@@ -189,7 +195,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         </Collapsible>
 
-        <Collapsible defaultOpen className="group/collapsible">
+
+        {/* <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
             <SidebarGroupLabel asChild>
               <CollapsibleTrigger>
@@ -201,7 +208,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <NavMain items={data.navMain} />
             </CollapsibleContent>
           </SidebarGroup>
-        </Collapsible>
+        </Collapsible> */}
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={data.user} />
