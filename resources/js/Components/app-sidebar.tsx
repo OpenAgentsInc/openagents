@@ -147,12 +147,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className="flex items-center justify-between gap-2 px-4 py-2">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 px-4 py-2">
+          <div className="flex items-center justify-between">
             <IconOpenAgents className="h-8 w-8" />
-            <TeamSwitcher teams={data.teams} />
+            <ModeToggle />
           </div>
-          <ModeToggle />
+          <TeamSwitcher teams={data.teams} />
         </div>
       </SidebarHeader>
       <SidebarContent>
