@@ -42,7 +42,7 @@ export function UploadDocForm() {
   return (
     <Card className="w-[400px]">
       <CardHeader>
-        <CardTitle>Upload a PDF</CardTitle>
+        <CardTitle>Upload a file</CardTitle>
         <CardDescription>Teach agents about your project</CardDescription>
       </CardHeader>
 
@@ -82,7 +82,7 @@ export function UploadDocForm() {
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" x2="12" y1="3" y2="15" />
             </svg>
-            <span>{isDragActive ? <p>Feed me</p> : <p>Drop a PDF here</p>}</span>
+            <span>{isDragActive ? <p>Feed me</p> : <p>Drop a PDF or image here</p>}</span>
             <Input className="sr-only" id="file" type="file" {...getInputProps()} />
           </label>
           <div className="flex flex-col space-y-1.5 hidden">
