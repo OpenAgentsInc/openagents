@@ -29,8 +29,10 @@ class FileController extends Controller
                     'description' => 'This is a dummy project created for file upload.',
                 ]);
                 $projectId = $project->id;
+                Log::info('Dummy project created', ['project_id' => $projectId, 'project_name' => $project->name]);
             } else {
                 $projectId = $request->input('project_id');
+                Log::info('Using existing project', ['project_id' => $projectId]);
             }
 
             // Retrieve the uploaded file
@@ -52,7 +54,7 @@ class FileController extends Controller
                 'content' => $content,
                 'project_id' => $projectId,
             ]);
-            Log::info('File record created', ['file_id' => $file->id]);
+            Log::info('File record created', ['file_id' => $file->id, 'project_id' => $projectId]);
 
             return Redirect::route('home')
                 ->with('message', 'File uploaded and ingested.')
