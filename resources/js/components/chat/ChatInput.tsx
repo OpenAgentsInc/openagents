@@ -60,7 +60,7 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
           </Button>
 
         </div>
-        <p className="text-xs text-zinc-500 mt-2 text-center">All messages viewable by your team.</p>
+        <p className="text-xs text-zinc-500 mt-2 text-center">Messages visible only to you</p>
       </div>
     </div>
   );

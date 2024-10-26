@@ -15,6 +15,7 @@ Route::get('/', function () {
 // CHAT
 Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
 Route::get('/chat/{id}', [ChatController::class, 'chat'])->name('chat.id');
+Route::post('/chat', [UseChatController::class, 'chat']);
 
 // FILES
 Route::post('/api/files', [FileController::class, 'store'])

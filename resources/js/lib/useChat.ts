@@ -82,8 +82,8 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
       id: Date.now().toString(),
       role: 'user',
       content: processedInput,
-      user: { name: auth.user.name },
-      user_id: auth.user.id,
+      user: { name: auth.user?.name ?? "Anon" },
+      user_id: auth.user?.id ?? 0,
     };
 
     vercelHandleSubmit(undefined, {
