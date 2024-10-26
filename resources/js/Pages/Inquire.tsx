@@ -9,9 +9,14 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DashboardLayout } from "@/Layouts/DashboardLayout"
 import { Head, useForm } from "@inertiajs/react"
+import { CheckCircle2 } from "lucide-react"
 
-export default function Inquire() {
-  const { data, setData, post, processing, errors, reset } = useForm({
+interface Props {
+  success?: string
+}
+
+export default function Inquire({ success }: Props) {
+  const { data, setData, post, processing, errors } = useForm({
     email: '',
     comment: '',
   });
@@ -19,14 +24,45 @@ export default function Inquire() {
   const submit: FormEventHandler = (e) => {
     e.preventDefault();
 
-    post(route('inquire.submit'), {
-      onFinish: () => reset('comment'),
-    });
+    post(route('inquire.submit'));
   };
 
   const InputError = ({ message }: { message: string | undefined }) => (
     message ? <Alert variant="destructive"><AlertDescription>{message}</AlertDescription></Alert> : null
   );
+
+  if (success) {
+    return (
+      <DashboardLayout>
+        <Head title="Thank You" />
+
+        <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
+          <Card className="w-[400px]">
+            <CardHeader>
+              <div className="flex justify-center mb-4">
+                <CheckCircle2 className="h-12 w-12 text-green-500" />
+              </div>
+              <CardTitle className="text-center">Thank You</CardTitle>
+              <CardDescription className="text-center">Your inquiry has been received</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-center text-zinc-600 dark:text-zinc-400">
+                {success}
+              </p>
+              <div className="mt-6 flex justify-center">
+                <Button
+                  variant="secondary"
+                  onClick={() => window.location.href = route('home')}
+                >
+                  Return Home
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout>
