@@ -1,32 +1,59 @@
-import { Textarea } from "@/components/ui/textarea"
+import { Loader2 } from "lucide-react"
+import { ChatInput } from "@/components/chat/ChatInput"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import MainLayout from "@/Layouts/MainLayout"
-import { Head } from "@inertiajs/react"
+import { useChat } from "@/lib/useChat"
+import { PageProps } from "@/types"
+import { Head, useRemember } from "@inertiajs/react"
 
-export default function Chat() {
+export default function Chat({ auth, messages: initialMessages, chats, currentChatId }: PageProps<{ messages: Message[], chats: Chat[], currentChatId: number | null }>) {
+  const [scrollPosition, setScrollPosition] = useRemember(0, 'chats-scroll-position');
+
+  const {
+    messages,
+    input,
+    handleInputChange,
+    isLoading,
+    textareaRef,
+    handleKeyDown,
+    handleScroll,
+    handleSubmit,
+  } = useChat({ initialMessages, auth, currentChatId, setScrollPosition });
   return (
     <MainLayout>
       <Head title="Chat" />
-      <div className="h-full w-full text-foreground flex flex-col">
-        <div className="flex-1 overflow-hidden flex flex-col">
-          <main className="flex-1 overflow-y-auto">
-            <div className="max-w-4xl mx-auto p-4 pt-16">
-
-            </div>
-          </main>
-        </div>
-
-        <div className="flex-shrink-0 w-full">
-          <div className="max-w-4xl mx-auto px-4 mb-2">
-            <Textarea placeholder="Message OpenAgents..." autoFocus rows="auto" />
+      <div className="flex flex-col h-full relative">
+        {isLoading && (
+          <div className="absolute top-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
+            <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
           </div>
-          <div className="pb-2 text-center text-xs text-zinc-500">
+        )}
+        {currentChatId ? (
+          <>
+            <ScrollArea className="flex-1">
+              <div className="h-full mx-auto max-w-4xl px-1 md:px-4">
+                {/* <ChatList
+                  messages={messages as Message[]}
+                  currentUserId={auth.user.id}
+                /> */}
+              </div>
+            </ScrollArea>
 
-            Messages are visible only to you
-
+            <ChatInput
+              initialContent={input}
+              onContentSubmit={handleInputChange}
+              handleKeyDown={handleKeyDown}
+              textareaRef={textareaRef}
+              isStreaming={isLoading}
+              handleSubmit={handleSubmit}
+            />
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-lg text-gray-500">Select a chat from the sidebar or start a new one.</p>
           </div>
-        </div>
+        )}
       </div>
-
     </MainLayout>
   )
 }
