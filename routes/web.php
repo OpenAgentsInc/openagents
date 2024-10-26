@@ -5,12 +5,16 @@ use App\Http\Controllers\FileController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UseChatController;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 // HOME
 Route::get('/', function () {
-    return redirect()->route('chat');
+    if (Auth::check()) {
+        return redirect()->route('chat');
+    }
+    return Inertia::render('Welcome');
 })->name('home');
 
 // CHAT
