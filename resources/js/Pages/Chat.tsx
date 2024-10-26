@@ -31,7 +31,7 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
       <Head title="Chat" />
       <div className="flex flex-col h-full relative">
         {isLoading && (
-          <div className="absolute top-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
+          <div className="absolute bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
             <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
           </div>
         )}

@@ -3,7 +3,6 @@
 namespace App\Traits;
 
 use Symfony\Component\HttpFoundation\StreamedResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 trait UsesStreaming

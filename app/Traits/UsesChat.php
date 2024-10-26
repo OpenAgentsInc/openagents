@@ -98,7 +98,7 @@ trait UsesChat
             'messages.*.toolInvocations.*.toolName' => 'required_with:messages.*.toolInvocations|string',
             'messages.*.toolInvocations.*.args' => 'required_with:messages.*.toolInvocations|array',
             'messages.*.toolInvocations.*.result' => 'required_with:messages.*.toolInvocations',
-            'thread_id' => 'required|integer|exists:chats,id',
+            // 'thread_id' => 'required|integer|exists:threads,id',
             'selected_tools' => 'sometimes|array',
             'selected_tools.*' => 'string|in:view_file,view_folder,rewrite_file,create_file',
         ]);
@@ -118,14 +118,16 @@ trait UsesChat
         $validatedData = $this->validatedData;
         $user = $this->request->user();
         $messages = $validatedData['messages'];
-        $thread_id = (int) $validatedData['thread_id'];
+        $thread_id = 1; // TODO
+        // $thread_id = (int) $validatedData['thread_id'];
         $lastMessage = end($messages);
 
         $messageData = [
             'content' => $lastMessage['content'] ?? "(empty)",
             'thread_id' => $thread_id,
-            'team_id' => $user->currentTeam ? $user->currentTeam->id : null,
-            'user_id' => $user->id,
+            'team_id' => null,
+            // 'team_id' => $user->currentTeam ? $user->currentTeam->id : null,
+            'user_id' => 1, // $user->id,
             'role' => 'user',
         ];
 
@@ -145,7 +147,7 @@ trait UsesChat
     {
         $assistantMessage = [
             'content' => $this->response['content'] ?? "(empty)",
-            'thread_id' => $this->validatedData['thread_id'],
+            'thread_id' => 1, // $this->validatedData['thread_id'],
             'team_id' => $this->userMessage->team_id,
             'input_tokens' => $this->response['input_tokens'] ?? 0,
             'output_tokens' => $this->response['output_tokens'] ?? 0,
