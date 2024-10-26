@@ -27,7 +27,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 </div>
               </header>
             </div>
-            <main className="flex flex-1 flex-col gap-4 p-4 pt-0">
+            <main className="flex flex-1 flex-col gap-4 px-4 py-0">
               {children}
             </main>
           </SidebarInset>

@@ -37,7 +37,7 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
         <div className="relative">
           <Textarea
             ref={textareaRef}
-            placeholder={isStreaming ? "Waiting for response..." : "Send message"}
+            placeholder={isStreaming ? "Waiting for response..." : "Message OpenAgents"}
             rows={4}
             value={localContent}
             onChange={handleContentChange}

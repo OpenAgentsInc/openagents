@@ -41,6 +41,7 @@
         "lucide-react": "^0.453.0",
         "react-dropzone": "^14.2.10",
         "tailwind-merge": "^2.5.4",
-        "tailwindcss-animate": "^1.0.7"
+        "tailwindcss-animate": "^1.0.7",
+        "zustand": "^5.0.0"
     }
 }

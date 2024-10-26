@@ -1,12 +1,19 @@
 import { Loader2 } from "lucide-react"
 import { ChatInput } from "@/components/chat/ChatInput"
+import { Message } from "@/components/chat/types"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import MainLayout from "@/Layouts/MainLayout"
 import { useChat } from "@/lib/useChat"
 import { PageProps } from "@/types"
 import { Head, useRemember } from "@inertiajs/react"
 
-export default function Chat({ auth, messages: initialMessages, chats, currentChatId }: PageProps<{ messages: Message[], chats: Chat[], currentChatId: number | null }>) {
+interface Chat {
+  id: number;
+  title: string;
+  last_message_at: string;
+}
+
+export default function Chat({ auth, messages: initialMessages = [], chats, currentChatId = 1 }: PageProps<{ messages: Message[], chats: Chat[], currentChatId: number | null }>) {
   const [scrollPosition, setScrollPosition] = useRemember(0, 'chats-scroll-position');
 
   const {
