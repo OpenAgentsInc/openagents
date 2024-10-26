@@ -11,6 +11,7 @@ class Inquiry extends Model
     use HasFactory;
 
     protected $fillable = [
+        'inquiry_type',
         'email',
         'comment',
     ];
