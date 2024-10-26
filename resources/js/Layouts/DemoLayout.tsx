@@ -9,7 +9,7 @@ import {
   SidebarInset, SidebarProvider, SidebarTrigger
 } from "@/components/ui/sidebar"
 
-export default function MainLayout({ children }: { children: React.ReactNode }) {
+export default function DemoLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <div className="font-mono antialiased bg-background text-foreground">
