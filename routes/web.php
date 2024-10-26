@@ -1,15 +1,22 @@
 <?php
 
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// HOME
 Route::get('/', function () {
-    return Inertia::render('Home');
+    return redirect()->route('chat');
 })->name('home');
 
+// CHAT
+Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
+Route::get('/chat/{id}', [ChatController::class, 'chat'])->name('chat.id');
+
+// FILES
 Route::post('/api/files', [FileController::class, 'store'])
     // ->middleware('auth')
     ->name('files.store');
