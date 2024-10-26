@@ -25,6 +25,7 @@ Route::post('/chat', [UseChatController::class, 'chat']);
 
 // INQUIRE
 Route::get('/inquire', [InquireController::class, 'page'])->name('inquire');
+Route::post('/inquire', [InquireController::class, 'submit'])->name('inquire.submit');
 
 // FILES
 Route::post('/api/files', [FileController::class, 'store'])
