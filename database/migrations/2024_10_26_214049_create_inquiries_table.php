@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('inquiries', function (Blueprint $table) {
             $table->id();
+            $table->string('inquiry_type');
             $table->string('email');
             $table->text('comment');
             $table->timestamps();
