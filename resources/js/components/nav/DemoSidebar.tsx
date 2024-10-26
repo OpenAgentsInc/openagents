@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/collapsible"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel,
-  SidebarHeader, SidebarRail
+  SidebarHeader, SidebarRail, SidebarTrigger
 } from "@/components/ui/sidebar"
 
 // This is sample data.
@@ -154,13 +154,16 @@ const data = {
   ],
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function DemoSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <div className="flex flex-col gap-2 py-2">
           <div className="px-2 mb-4 flex items-center justify-between">
-            <IconOpenAgents className="h-5 w-5" />
+            <div className="w-7">
+              <SidebarTrigger className="-ml-1" />
+            </div>
+            {/* <IconOpenAgents className="h-5 w-5" /> */}
             <ModeToggle />
           </div>
           <TeamSwitcher teams={data.teams} />
