@@ -1,3 +1,4 @@
+import { CheckCircle2 } from "lucide-react"
 import { FormEventHandler } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -9,7 +10,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DashboardLayout } from "@/Layouts/DashboardLayout"
 import { Head, useForm } from "@inertiajs/react"
-import { CheckCircle2 } from "lucide-react"
 
 interface Props {
   success?: string
@@ -43,7 +43,6 @@ export default function Inquire({ success }: Props) {
                 <CheckCircle2 className="h-12 w-12 text-green-500" />
               </div>
               <CardTitle className="text-center">Thank You</CardTitle>
-              <CardDescription className="text-center">Your inquiry has been received</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-center text-zinc-600 dark:text-zinc-400">
