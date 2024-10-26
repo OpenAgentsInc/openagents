@@ -1,4 +1,3 @@
-import { CheckCircle2 } from "lucide-react"
 import { FormEventHandler } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -7,9 +6,11 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
 import { DashboardLayout } from "@/Layouts/DashboardLayout"
 import { Head, useForm } from "@inertiajs/react"
+import { CheckCircle2 } from "lucide-react"
 
 interface Props {
   success?: string
@@ -17,6 +18,7 @@ interface Props {
 
 export default function Inquire({ success }: Props) {
   const { data, setData, post, processing, errors } = useForm({
+    inquiry_type: 'custom_agents',
     email: '',
     comment: '',
   });
@@ -43,6 +45,7 @@ export default function Inquire({ success }: Props) {
                 <CheckCircle2 className="h-12 w-12 text-green-500" />
               </div>
               <CardTitle className="text-center">Thank You</CardTitle>
+              <CardDescription className="text-center">Your inquiry has been received</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-center text-zinc-600 dark:text-zinc-400">
@@ -76,6 +79,30 @@ export default function Inquire({ success }: Props) {
           <CardContent>
             <form onSubmit={submit}>
               <div className="mb-4">
+                <Label>Type of Inquiry</Label>
+                <RadioGroup
+                  defaultValue="custom_agents"
+                  value={data.inquiry_type}
+                  onValueChange={(value) => setData('inquiry_type', value)}
+                  className="mt-2 space-y-2"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="custom_agents" id="custom_agents" />
+                    <Label htmlFor="custom_agents" className="cursor-pointer">Custom agents for business</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="bulk_credits" id="bulk_credits" />
+                    <Label htmlFor="bulk_credits" className="cursor-pointer">Purchasing developer credits in bulk</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="other" id="other" />
+                    <Label htmlFor="other" className="cursor-pointer">Other question</Label>
+                  </div>
+                </RadioGroup>
+                <InputError message={errors.inquiry_type} />
+              </div>
+
+              <div className="mb-4">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
@@ -84,7 +111,6 @@ export default function Inquire({ success }: Props) {
                   value={data.email}
                   className="mt-1 block w-full"
                   autoComplete="email"
-                  autoFocus
                   onChange={(e) => setData('email', e.target.value)}
                   required
                 />
