@@ -10,7 +10,9 @@ class InquireController extends Controller
 {
     public function page()
     {
-        return Inertia::render('Inquire');
+        return Inertia::render('Inquire', [
+            'success' => session('success'),
+        ]);
     }
 
     public function submit(Request $request)
@@ -22,6 +24,6 @@ class InquireController extends Controller
 
         Inquiry::create($validated);
 
-        return redirect()->back()->with('success', 'Thank you for your inquiry. We will get back to you soon.');
+        return redirect()->route('inquire')->with('success', 'Thank you for your inquiry. We will get back to you soon.');
     }
 }
