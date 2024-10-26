@@ -32,7 +32,7 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
     api: "/chat",
     initialMessages: formatInitialMessages(initialMessages),
     keepLastMessageOnError: true,
-    body: { chat_id: currentChatId, selected_tools: selectedTools },
+    body: { thread_id: currentChatId, selected_tools: selectedTools },
     maxSteps: 10,
     onError: (err) => {
       console.error("Chat error:", err);
@@ -90,7 +90,7 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
       options: {
         body: {
           messages: [...filteredMessages, newMessage],
-          chat_id: currentChatId,
+          thread_id: currentChatId,
           selected_tools: selectedTools
         }
       }
