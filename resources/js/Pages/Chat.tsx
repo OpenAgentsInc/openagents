@@ -1,3 +1,4 @@
+import { Textarea } from "@/components/ui/textarea"
 import MainLayout from "@/Layouts/MainLayout"
 import { Head } from "@inertiajs/react"
 
@@ -16,7 +17,7 @@ export default function Chat() {
 
         <div className="flex-shrink-0 w-full">
           <div className="max-w-4xl mx-auto px-4 mb-2">
-
+            <Textarea placeholder="Message OpenAgents..." autoFocus rows="auto" />
           </div>
           <div className="pb-2 text-center text-xs text-zinc-500">
 
