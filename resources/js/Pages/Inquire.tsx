@@ -1,18 +1,84 @@
-import { UploadDocForm } from "@/components/UploadDocForm"
+import { FormEventHandler } from "react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { DashboardLayout } from "@/Layouts/DashboardLayout"
-import { Head } from "@inertiajs/react"
+import { Head, useForm } from "@inertiajs/react"
 
-function Inquire() {
+export default function Inquire() {
+  const { data, setData, post, processing, errors, reset } = useForm({
+    email: '',
+    comment: '',
+  });
+
+  const submit: FormEventHandler = (e) => {
+    e.preventDefault();
+
+    post(route('inquire.submit'), {
+      onFinish: () => reset('comment'),
+    });
+  };
+
+  const InputError = ({ message }: { message: string | undefined }) => (
+    message ? <Alert variant="destructive"><AlertDescription>{message}</AlertDescription></Alert> : null
+  );
+
   return (
-    <>
-      <Head title="Home" />
-      <div className="h-full w-full flex items-center justify-center">
-        <UploadDocForm />
+    <DashboardLayout>
+      <Head title="Inquire" />
+
+      <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
+        <Card className="w-[400px]">
+          <CardHeader>
+            <CardTitle>Inquire</CardTitle>
+            <CardDescription>Send us your inquiry</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={submit}>
+              <div className="mb-4">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  name="email"
+                  value={data.email}
+                  className="mt-1 block w-full"
+                  autoComplete="email"
+                  autoFocus
+                  onChange={(e) => setData('email', e.target.value)}
+                  required
+                />
+                <InputError message={errors.email} />
+              </div>
+
+              <div className="mb-4">
+                <Label htmlFor="comment">Comment</Label>
+                <Textarea
+                  id="comment"
+                  name="comment"
+                  value={data.comment}
+                  className="mt-1 block w-full"
+                  rows={4}
+                  onChange={(e) => setData('comment', e.target.value)}
+                  required
+                />
+                <InputError message={errors.comment} />
+              </div>
+
+              <div className="flex items-center justify-end">
+                <Button type="submit" variant="secondary" disabled={processing}>
+                  Submit Inquiry
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       </div>
-    </>
-  )
+    </DashboardLayout>
+  );
 }
-
-Inquire.layout = (page) => <DashboardLayout children={page} />;
-
-export default Inquire;
