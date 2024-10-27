@@ -12,6 +12,8 @@ Below we argue for five pillars of openness:
 - Open protocols
 - Open monetary networks
 
+We then detail our plan to build the open agent economy &mdash; and invite you to join us.
+
 ## Why it matters: Agents before robots
 
 Humanoid robots will outnumber humans within the next 30 years.
