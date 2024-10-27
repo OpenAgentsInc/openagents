@@ -16,6 +16,7 @@
     @viteReactRefresh
     @vite(['resources/js/app.tsx', "resources/js/Pages/{$page['component']}.tsx"])
     @inertiaHead
+    <script src="https://cdn.usefathom.com/script.js" data-spa="auto" data-site="COZQPXXY" defer></script>
 </head>
 
 <body class="font-mono antialiased bg-background text-foreground">
