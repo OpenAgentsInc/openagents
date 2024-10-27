@@ -12,18 +12,25 @@ interface Props {
 }
 
 export default function Show({ content, title }: Props) {
-  // Process content to ensure links are absolute
-  const processedContent = content.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    (match, text, url) => {
-      // If URL is already absolute, keep it as is
-      if (url.startsWith('http')) {
+  // Process content to handle both Markdown links and HTML links
+  const processedContent = content
+    // First, handle Markdown links
+    .replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      (match, text, url) => {
+        if (url.startsWith('http')) {
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`
+        }
+        return `<a href="${url}">${text}</a>`
+      }
+    )
+    // Then, handle any remaining HTML links that don't have target="_blank"
+    .replace(
+      /<a\s+(?![^>]*target="_blank")[^>]*href="(http[^"]+)"[^>]*>(.*?)<\/a>/g,
+      (match, url, text) => {
         return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`
       }
-      // For relative URLs, keep them as is
-      return `<a href="${url}">${text}</a>`
-    }
-  )
+    );
 
   return (
     <>
