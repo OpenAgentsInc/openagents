@@ -46,19 +46,11 @@ export default function Show({ content, title }: Props) {
           <Heading as="h1" className="mt-2 text-center">
             The Case for Open Agents
           </Heading>
-          <div className="mt-16 grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[15rem_1fr] xl:grid-cols-[15rem_1fr_15rem]">
-            <div className="hidden lg:block">
-              {/* Left sidebar */}
-            </div>
-            <div className="text-foreground">
-              <div
-                className="prose prose-zinc prose-invert max-w-2xl xl:mx-auto"
-                dangerouslySetInnerHTML={{ __html: processedContent }}
-              />
-            </div>
-            <div className="hidden xl:block">
-              {/* Right sidebar */}
-            </div>
+          <div className="mt-16 pb-24 flex justify-center">
+            <div
+              className="prose prose-zinc prose-invert max-w-2xl"
+              dangerouslySetInnerHTML={{ __html: processedContent }}
+            />
           </div>
         </Container>
       </main>
