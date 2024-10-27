@@ -12,7 +12,7 @@ export function FeatureSection() {
         <Screenshot
           width={1216}
           height={768}
-          src="/screenshots/app.png"
+          src="/img/demo2.png"
           className="mt-16 h-[36rem] sm:h-auto sm:w-[76rem]"
         />
       </Container>
