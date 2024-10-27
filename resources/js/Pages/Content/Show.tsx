@@ -34,7 +34,7 @@ export default function Show({ content, title }: Props) {
             Our Thesis
           </Subheading>
           <Heading as="h1" className="mt-2 text-center">
-            The Case for Open AI Agents
+            The Case for Open Agents
           </Heading>
           <div className="mt-16 grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[15rem_1fr] xl:grid-cols-[15rem_1fr_15rem]">
             <div className="hidden lg:block">
