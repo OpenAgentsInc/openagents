@@ -27,7 +27,8 @@ Route::post('/chat', [UseChatController::class, 'chat']);
 
 // CONTENT
 Route::get('/thesis', [ContentController::class, 'thesis'])->name('content.thesis');
-Route::get('/legal', [ContentController::class, 'legal'])->name('content.legal');
+Route::get('/terms', [ContentController::class, 'terms'])->name('content.terms');
+Route::get('/privacy', [ContentController::class, 'privacy'])->name('content.privacy');
 
 // INQUIRE
 Route::get('/inquire', [InquireController::class, 'page'])->name('inquire');
