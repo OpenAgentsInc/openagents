@@ -19,6 +19,7 @@ export default {
         mono: ['\"JetBrains Mono\"', ...defaultTheme.fontFamily.mono]
       },
       borderRadius: {
+        '4xl': '2rem',
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)'
@@ -80,6 +81,16 @@ export default {
           css: {
             maxWidth: 'none',
             color: 'hsl(var(--foreground))',
+            p: {
+              marginTop: '2.2em',
+              marginBottom: '2.2em',
+              lineHeight: 1.9
+            },
+            li: {
+              marginTop: '1.3em',
+              marginBottom: '1.3em',
+              lineHeight: 1.9
+            },
             a: {
               color: 'hsl(var(--primary))',
               '&:hover': {

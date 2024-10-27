@@ -1,4 +1,9 @@
-import React from "react"
+import dayjs from "dayjs"
+import { useEffect, useState } from "react"
+import { Container } from "@/components/lander/container"
+import { GradientBackground } from "@/components/lander/gradient"
+import { Navbar } from "@/components/lander/navbar"
+import { Heading, Subheading } from "@/components/lander/text"
 import { Head } from "@inertiajs/react"
 
 interface Props {
@@ -7,18 +12,48 @@ interface Props {
 }
 
 export default function Show({ content, title }: Props) {
+  // Process content to handle both Markdown links and HTML links
+  const processedContent = content
+    // First, handle Markdown links
+    .replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      (match, text, url) => {
+        if (url.startsWith('http')) {
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`
+        }
+        return `<a href="${url}">${text}</a>`
+      }
+    )
+    // Then, handle any remaining HTML links that don't have target="_blank"
+    .replace(
+      /<a\s+(?![^>]*target="_blank")[^>]*href="(http[^"]+)"[^>]*>(.*?)<\/a>/g,
+      (match, url, text) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`
+      }
+    );
+
   return (
     <>
       <Head title={title} />
-      <div className="min-h-screen py-12 bg-background">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-card shadow-sm rounded-lg">
-            <article className="p-8 dark:prose-invert prose prose-sm sm:prose lg:prose-lg xl:prose-xl mx-auto">
-              <div dangerouslySetInnerHTML={{ __html: content }} />
-            </article>
+      <main className="overflow-hidden">
+        <GradientBackground />
+        <Container>
+          <Navbar />
+          <Subheading className="mt-16 text-center">
+            {/* {dayjs(Date.now()).format('dddd, MMMM D, YYYY')} */}
+            Our Thesis
+          </Subheading>
+          <Heading as="h1" className="mt-2 text-center">
+            The Case for Open Agents
+          </Heading>
+          <div className="mt-16 pb-24 flex justify-center">
+            <div
+              className="prose prose-zinc prose-invert max-w-2xl"
+              dangerouslySetInnerHTML={{ __html: processedContent }}
+            />
           </div>
-        </div>
-      </div>
+        </Container>
+      </main>
     </>
-  );
+  )
 }
