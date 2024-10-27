@@ -8,17 +8,17 @@ export function DarkBentoSection() {
   return (
     <div className="mx-2 mt-2 rounded-4xl bg-background py-32">
       <Container>
-        <Subheading>Platform Features</Subheading>
+        <Subheading>Business Automation</Subheading>
         <Heading as="h3" className="mt-2 max-w-3xl">
-          Build and deploy AI agents with complete freedom.
+          Transform your business with intelligent AI agents
         </Heading>
 
         <div className="mt-10 grid grid-cols-1 gap-4 sm:mt-16 lg:grid-cols-6 lg:grid-rows-2">
           <BentoCard
             dark
-            eyebrow="Development"
-            title="Open Source Foundation"
-            description="Build AI agents using our fully open source stack - from models to protocols. Complete transparency and control over your agent's behavior."
+            eyebrow="Process Automation"
+            title="Automate repetitive tasks"
+            description="Deploy AI agents to handle routine operations, from data entry to document processing. Built on open source technology you can trust."
             graphic={
               <div className="h-80 bg-[url(/screenshots/networking.png)] bg-[size:851px_344px] bg-no-repeat" />
             }
@@ -27,26 +27,25 @@ export function DarkBentoSection() {
           />
           <BentoCard
             dark
-            eyebrow="Marketplace"
-            title="Buy & Sell Agents"
-            description="Access a thriving marketplace of AI agents or monetize your own creations in an open economy."
+            eyebrow="Customization"
+            title="Build custom agents"
+            description="Create specialized AI agents tailored to your business needs using our intuitive agent builder and plugin system."
             graphic={<LogoTimeline />}
-            // `!overflow-visible` is needed to work around a Chrome bug that disables the mask on the graphic.
             className="z-10 !overflow-visible lg:col-span-2 lg:rounded-tr-4xl"
           />
           <BentoCard
             dark
             eyebrow="Integration"
-            title="Universal Compatibility"
-            description="Deploy your agents anywhere with our open protocols and extensive integration options."
+            title="Seamless connectivity"
+            description="Connect your agents to existing tools and workflows with our open protocol system and extensive plugin marketplace."
             graphic={<LinkedAvatars />}
             className="lg:col-span-2 lg:rounded-bl-4xl"
           />
           <BentoCard
             dark
-            eyebrow="Community"
-            title="Join the Movement"
-            description="Be part of the open agent economy. Collaborate with developers worldwide to shape the future of AI agents."
+            eyebrow="Control"
+            title="Full transparency"
+            description="Monitor and manage your AI agents with complete visibility. Understand exactly how they work and maintain control over your automation."
             graphic={
               <div className="h-80 bg-[url(/screenshots/engagement.png)] bg-[size:851px_344px] bg-no-repeat" />
             }
