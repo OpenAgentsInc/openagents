@@ -64,7 +64,7 @@ function Sitemap() {
         <SitemapHeading>Company</SitemapHeading>
         <SitemapLinks>
           <SitemapLink href="/thesis">Our Thesis</SitemapLink>
-          {/* <SitemapLink href="/company">Company</SitemapLink> */}
+          <SitemapLink href="https://github.com/OpenAgentsInc" target="_blank">Open Source</SitemapLink>
         </SitemapLinks>
       </div>
       <div>
@@ -77,7 +77,7 @@ function Sitemap() {
       <div>
         <SitemapHeading>Legal</SitemapHeading>
         <SitemapLinks>
-          <SitemapLink href="/terms">Terms of service</SitemapLink>
+          <SitemapLink href="/terms">Terms of Service</SitemapLink>
           <SitemapLink href="/privacy">Privacy policy</SitemapLink>
         </SitemapLinks>
       </div>
