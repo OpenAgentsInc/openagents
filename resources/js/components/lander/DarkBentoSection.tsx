@@ -37,7 +37,7 @@ export function DarkBentoSection() {
             dark
             eyebrow="Integration"
             title="Seamless connectivity"
-            description="Connect your agents to existing tools and workflows with our open protocol system and extensive plugin marketplace."
+            description="Connect your agents to existing tools and workflows with our open protocol system and extensible plugin architecture."
             graphic={<LinkedAvatars />}
             className="lg:col-span-2 lg:rounded-bl-4xl"
           />
