@@ -2,7 +2,7 @@ import CanvasLayout from "@/components/canvas/CanvasLayout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardLayout } from "@/Layouts/DashboardLayout"
-import { Head } from "@inertiajs/react"
+import { Head, Link } from "@inertiajs/react"
 
 function Welcome() {
   return (
@@ -30,6 +30,15 @@ function Welcome() {
               >
                 Access previous version
               </a>
+            </Button>
+            <Button
+              className="w-full mt-4 pointer-events-auto"
+              variant="secondary"
+              asChild
+            >
+              <Link href={route('inquire')}>
+                Inquire
+              </Link>
             </Button>
           </CardContent>
         </Card>
