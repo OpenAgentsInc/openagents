@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { DashboardLayout } from "@/Layouts/DashboardLayout"
+import { BlankLayout } from "@/Layouts/BlankLayout"
 import { Head, Link, useForm } from "@inertiajs/react"
 
 export default function Login({ status, canResetPassword }: { status?: string, canResetPassword: boolean }) {
@@ -29,7 +29,7 @@ export default function Login({ status, canResetPassword }: { status?: string, c
   );
 
   return (
-    <DashboardLayout>
+    <BlankLayout>
       <Head title="Log in" />
 
       <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
@@ -89,6 +89,6 @@ export default function Login({ status, canResetPassword }: { status?: string, c
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </BlankLayout>
   );
 }
