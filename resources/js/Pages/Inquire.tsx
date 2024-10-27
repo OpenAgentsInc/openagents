@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
+import { BlankLayout } from "@/Layouts/BlankLayout"
 import { DashboardLayout } from "@/Layouts/DashboardLayout"
 import { Head, useForm } from "@inertiajs/react"
 
@@ -35,7 +36,7 @@ export default function Inquire({ success }: Props) {
 
   if (success) {
     return (
-      <DashboardLayout>
+      <BlankLayout>
         <Head title="Thank You" />
 
         <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
@@ -62,12 +63,12 @@ export default function Inquire({ success }: Props) {
             </CardContent>
           </Card>
         </div>
-      </DashboardLayout>
+      </BlankLayout>
     )
   }
 
   return (
-    <DashboardLayout>
+    <BlankLayout>
       <Head title="Inquire" />
 
       <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
@@ -148,6 +149,6 @@ export default function Inquire({ success }: Props) {
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </BlankLayout>
   );
 }
