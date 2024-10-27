@@ -4,7 +4,7 @@ AI agents will soon number in the billions. Their influence will touch every hum
 
 An agent economy NOT built on a foundation of openness may pose existential risk to humanity.
 
-To mitigate that risk, we build upon five pillars of openness:
+To mitigate that risk, we must build upon five pillars of openness:
 
 - Open source code
 - Open data
@@ -12,7 +12,7 @@ To mitigate that risk, we build upon five pillars of openness:
 - Open protocols
 - Open monetary networks
 
-We then detail our plan to build the open agent economy &mdash; and invite you to join us.
+<!-- We then detail our plan to build the open agent economy &mdash; and invite you to join us. -->
 
 ## Why it matters: Agents before robots
 
