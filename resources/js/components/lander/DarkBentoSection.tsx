@@ -20,7 +20,7 @@ export function DarkBentoSection() {
             title="Automate repetitive tasks"
             description="Deploy AI agents to handle routine operations, from data entry to document processing. Built on open source technology you can trust."
             graphic={
-              <div className="h-80 bg-[url(/img/demo2.png)] bg-cover bg-center" />
+              <div className="h-80 bg-[url(/img/demo2.png)] bg-cover bg-left-top" />
             }
             fade={['top']}
             className="max-lg:rounded-t-4xl lg:col-span-4 lg:rounded-tl-4xl"
@@ -31,7 +31,7 @@ export function DarkBentoSection() {
             title="Build custom agents"
             description="Create specialized AI agents tailored to your business needs using our intuitive agent builder and plugin system."
             graphic={
-              <div className="h-80 bg-[url(/img/buildagent.jpg)] bg-cover bg-center" />
+              <div className="h-80 bg-[url(/img/buildagent.jpg)] bg-cover bg-left-top" />
             }
             className="z-10 !overflow-visible lg:col-span-2 lg:rounded-tr-4xl"
           />
@@ -41,7 +41,7 @@ export function DarkBentoSection() {
             title="Add new capabilities"
             description="Connect your agents to existing tools and workflows with our open protocol system and extensible plugin architecture."
             graphic={
-              <div className="h-80 bg-[url(/img/plugin2.jpg)] bg-cover bg-center" />
+              <div className="h-80 bg-[url(/img/plugin2.jpg)] bg-cover bg-left-top" />
             }
             className="lg:col-span-2 lg:rounded-bl-4xl"
           />
@@ -51,7 +51,7 @@ export function DarkBentoSection() {
             title="Full transparency"
             description="Monitor and manage your AI agents with complete visibility. Understand exactly how they work and maintain control over your automation."
             graphic={
-              <div className="h-80 bg-[url(/img/agentdashboard.jpg)] bg-cover bg-center" />
+              <div className="h-80 bg-[url(/img/agentdashboard.jpg)] bg-cover bg-left-top" />
             }
             fade={['top']}
             className="max-lg:rounded-b-4xl lg:col-span-4 lg:rounded-br-4xl"
