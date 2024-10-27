@@ -1,4 +1,20 @@
-## The Case for Open AI Agents
+**The AI agent economy is here.**
+
+AI agents will soon number in the billions. Their influence will touch every human on earth.
+
+An agent economy NOT built on a foundation of openness may pose existential risk to humanity.
+
+To mitigate that risk, we must build upon five pillars of openness:
+
+- Open source code
+- Open data
+- Open models
+- Open protocols
+- Open monetary networks
+
+<!-- We then detail our plan to build the open agent economy &mdash; and invite you to join us. -->
+
+## Why it matters: Agents before robots
 
 Humanoid robots will outnumber humans within the next 30 years.
 
@@ -12,14 +28,4 @@ Billions of intelligent systems interacting invisibly in every country, in every
 
 Who will control them?
 
-## Two paths
-
-Two paths lie ahead:
-1. Closed-source megacorporations controlling proprietary AI labs, increasingly infiltrated and controlled by governments, becoming de-facto nationalized entities
-2. Open-source systems built on transparent protocols and decentralized infrastructure
-
-The choice between these paths will fundamentally shape the future of artificial intelligence and human society.
-
-## OpenAgents
-
-OpenAgents is building the open infrastructure for AI agents. Our platform enables anyone to build, sell, and use AI agents without relying on centralized gatekeepers. By creating open standards and protocols, we're ensuring AI agents remain free from corporate or government control.
+_(to be continued...)_

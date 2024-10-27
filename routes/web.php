@@ -16,8 +16,9 @@ Route::get('/', function () {
     if (Auth::check()) {
         return redirect()->route('chat');
     }
-    return Inertia::render('Welcome');
+    return Inertia::render('New');
 })->name('home');
+
 
 // CHAT
 Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
@@ -26,6 +27,8 @@ Route::post('/chat', [UseChatController::class, 'chat']);
 
 // CONTENT
 Route::get('/thesis', [ContentController::class, 'thesis'])->name('content.thesis');
+Route::get('/terms', [ContentController::class, 'terms'])->name('content.terms');
+Route::get('/privacy', [ContentController::class, 'privacy'])->name('content.privacy');
 
 // INQUIRE
 Route::get('/inquire', [InquireController::class, 'page'])->name('inquire');
@@ -57,3 +60,8 @@ Route::middleware('auth')->group(function () {
 
 require __DIR__ . '/components.php';
 require __DIR__ . '/auth.php';
+
+// Catchall redirect to /
+Route::get('/{any}', function () {
+    return redirect('/');
+})->where('any', '.*');

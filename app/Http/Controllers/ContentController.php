@@ -24,4 +24,38 @@ class ContentController extends Controller
             'title' => 'Thesis'
         ]);
     }
+
+    public function terms(MarkdownRenderer $markdown)
+    {
+        $path = resource_path('markdown/terms.md');
+        
+        if (!File::exists($path)) {
+            abort(404);
+        }
+
+        $content = File::get($path);
+        $html = $markdown->toHtml($content);
+
+        return Inertia::render('Legal', [
+            'content' => $html,
+            'title' => 'Terms of Service'
+        ]);
+    }
+
+    public function privacy(MarkdownRenderer $markdown)
+    {
+        $path = resource_path('markdown/privacy.md');
+        
+        if (!File::exists($path)) {
+            abort(404);
+        }
+
+        $content = File::get($path);
+        $html = $markdown->toHtml($content);
+
+        return Inertia::render('Legal', [
+            'content' => $html,
+            'title' => 'Privacy Policy'
+        ]);
+    }
 }
