@@ -4,10 +4,7 @@ import { Container } from "@/components/lander/container"
 import { GradientBackground } from "@/components/lander/gradient"
 import { Navbar } from "@/components/lander/navbar"
 import { Heading, Subheading } from "@/components/lander/text"
-import { parseHtmlToBlocks } from "@/lib/html-to-blocks"
-import { portableTextComponents } from "@/lib/portable-text-components"
 import { Head } from "@inertiajs/react"
-import { PortableText } from "@portabletext/react"
 
 interface Props {
   content: string;
@@ -15,12 +12,18 @@ interface Props {
 }
 
 export default function Show({ content, title }: Props) {
-  const [blocks, setBlocks] = useState<any[]>([])
-
-  useEffect(() => {
-    const parsedBlocks = parseHtmlToBlocks(content)
-    setBlocks(parsedBlocks)
-  }, [content])
+  // Process content to ensure links are absolute
+  const processedContent = content.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    (match, text, url) => {
+      // If URL is already absolute, keep it as is
+      if (url.startsWith('http')) {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`
+      }
+      // For relative URLs, keep them as is
+      return `<a href="${url}">${text}</a>`
+    }
+  )
 
   return (
     <>
@@ -41,17 +44,10 @@ export default function Show({ content, title }: Props) {
               {/* Left sidebar */}
             </div>
             <div className="text-foreground">
-              <div className="max-w-2xl xl:mx-auto">
-                {blocks.length > 0 ? (
-                  <PortableText
-                    value={blocks}
-                    components={portableTextComponents}
-                    onMissingComponent={false}
-                  />
-                ) : (
-                  <div dangerouslySetInnerHTML={{ __html: content }} />
-                )}
-              </div>
+              <div 
+                className="prose prose-zinc max-w-2xl xl:mx-auto"
+                dangerouslySetInnerHTML={{ __html: processedContent }} 
+              />
             </div>
             <div className="hidden xl:block">
               {/* Right sidebar */}
