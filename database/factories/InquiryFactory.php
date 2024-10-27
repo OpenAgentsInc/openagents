@@ -17,7 +17,7 @@ class InquiryFactory extends Factory
     public function definition(): array
     {
         return [
-            'inquiry_type' => fake()->randomElement(['custom_agents', 'bulk_credits', 'other']),
+            'inquiry_type' => fake()->randomElement(['general_question', 'request_demo', 'custom_agents', 'bulk_credits', 'other']),
             'email' => fake()->safeEmail(),
             'comment' => fake()->paragraph(),
         ];
