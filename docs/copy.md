@@ -1,6 +1,6 @@
 # Marketing Copy
 
-## Platform Features Section
+## Platform Features Section (Developer Focus)
 
 ### Main Headers
 - Subheading: "Platform Features"
@@ -27,3 +27,31 @@
 - Eyebrow: "Community"
 - Title: "Join the Movement"
 - Description: "Be part of the open agent economy. Collaborate with developers worldwide to shape the future of AI agents."
+
+## Business Automation Section (Small Business Focus)
+
+### Main Headers
+- Subheading: "Business Automation"
+- Heading: "Transform your business with intelligent AI agents"
+
+### Feature Cards
+
+#### Process Automation Card
+- Eyebrow: "Process Automation"
+- Title: "Automate repetitive tasks"
+- Description: "Deploy AI agents to handle routine operations, from data entry to document processing. Built on open source technology you can trust."
+
+#### Customization Card
+- Eyebrow: "Customization"
+- Title: "Build custom agents"
+- Description: "Create specialized AI agents tailored to your business needs using our intuitive agent builder and plugin system."
+
+#### Integration Card
+- Eyebrow: "Integration"
+- Title: "Seamless connectivity"
+- Description: "Connect your agents to existing tools and workflows with our open protocol system and extensive plugin marketplace."
+
+#### Control Card
+- Eyebrow: "Control"
+- Title: "Full transparency"
+- Description: "Monitor and manage your AI agents with complete visibility. Understand exactly how they work and maintain control over your automation."
