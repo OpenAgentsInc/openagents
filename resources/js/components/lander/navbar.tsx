@@ -6,15 +6,19 @@ import { Bars2Icon } from "@heroicons/react/24/solid"
 import { Link } from "./link"
 import { Logo } from "./logo"
 import { PlusGrid, PlusGridItem, PlusGridRow } from "./plus-grid"
+import { usePage } from "@inertiajs/react"
 
-const links = [
+const getLinks = (currentPath: string) => [
   // { href: '/pricing', label: 'Pricing' },
   // { href: '/company', label: 'Company' },
   // { href: '/blog', label: 'Blog' },
-  { href: '/login', label: 'Client Login' },
+  ...(currentPath !== '/login' ? [{ href: '/login', label: 'Client Login' }] : []),
 ]
 
 function DesktopNav() {
+  const { url } = usePage()
+  const links = getLinks(url)
+  
   return (
     <nav className="relative hidden lg:flex">
       {links.map(({ href, label }) => (
@@ -43,6 +47,9 @@ function MobileNavButton() {
 }
 
 function MobileNav() {
+  const { url } = usePage()
+  const links = getLinks(url)
+  
   return (
     <DisclosurePanel className="lg:hidden">
       <div className="flex flex-col gap-6 py-4">

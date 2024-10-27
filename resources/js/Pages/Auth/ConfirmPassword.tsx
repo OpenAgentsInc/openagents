@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { DashboardLayout } from "@/Layouts/DashboardLayout"
+import { UnauthedLayout } from "@/Layouts/UnauthedLayout"
 import { Head, useForm } from "@inertiajs/react"
 
 export default function ConfirmPassword() {
@@ -27,7 +27,7 @@ export default function ConfirmPassword() {
   );
 
   return (
-    <DashboardLayout>
+    <UnauthedLayout>
       <Head title="Confirm Password" />
 
       <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
@@ -62,6 +62,6 @@ export default function ConfirmPassword() {
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </UnauthedLayout>
   );
 }

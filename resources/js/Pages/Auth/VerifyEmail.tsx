@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle
 } from "@/components/ui/card"
-import { DashboardLayout } from "@/Layouts/DashboardLayout"
+import { UnauthedLayout } from "@/Layouts/UnauthedLayout"
 import { Head, Link, useForm } from "@inertiajs/react"
 
 export default function VerifyEmail({ status }: { status?: string }) {
@@ -16,7 +16,7 @@ export default function VerifyEmail({ status }: { status?: string }) {
   };
 
   return (
-    <DashboardLayout>
+    <UnauthedLayout>
       <Head title="Email Verification" />
 
       <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
@@ -59,6 +59,6 @@ export default function VerifyEmail({ status }: { status?: string }) {
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </UnauthedLayout>
   );
 }
