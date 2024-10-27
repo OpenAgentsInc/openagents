@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { clsx } from "clsx"
 
 export function PlusGrid({
   className = '',
@@ -28,10 +28,10 @@ export function PlusGridRow({
         aria-hidden="true"
         className="absolute inset-y-0 left-1/2 -z-10 w-screen -translate-x-1/2"
       >
-        <div className="absolute inset-x-0 top-0 border-t border-border/75"></div>
-        <div className="absolute inset-x-0 top-2 border-t border-border/75"></div>
-        <div className="absolute inset-x-0 bottom-0 hidden border-b border-border/75 group-last/row:block"></div>
-        <div className="absolute inset-x-0 bottom-2 hidden border-b border-border/75 group-last/row:block"></div>
+        <div className="absolute inset-x-0 top-0 border-t border-border/50"></div>
+        <div className="absolute inset-x-0 top-2 border-t border-border/50"></div>
+        <div className="absolute inset-x-0 bottom-0 hidden border-b border-border/50 group-last/row:block"></div>
+        <div className="absolute inset-x-0 bottom-2 hidden border-b border-border/50 group-last/row:block"></div>
       </div>
       {children}
     </div>
@@ -83,7 +83,7 @@ export function PlusGridIcon({
       aria-hidden="true"
       className={clsx(
         className,
-        'absolute size-[15px] fill-border/75',
+        'absolute size-[15px] fill-border/50',
         yClass,
         xClass,
       )}
