@@ -17,7 +17,7 @@ export default function Home() {
         {/* <Container className="mt-10">
           <LogoCloud />
         </Container> */}
-        <div className="bg-gradient-to-b from-background from-50% to-muted py-32">
+        <div className="bg-gradient-to-b from-card from-50% to-muted py-32">
           <FeatureSection />
           {/* <BentoSection /> */}
         </div>
