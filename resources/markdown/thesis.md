@@ -4,7 +4,7 @@ AI agents will soon number in the billions. Their influence will touch every hum
 
 An agent economy NOT built on a foundation of openness may pose existential risk to humanity.
 
-To mitigate that risk, we argue below for five pillars of openness:
+To mitigate that risk, we build upon five pillars of openness:
 
 - Open source code
 - Open data
@@ -30,11 +30,9 @@ Who will control them?
 
 ## Two paths
 
-Two paths lie ahead:
-1. Closed-source megacorporations controlling proprietary AI labs, increasingly infiltrated and controlled by governments, becoming de-facto nationalized entities
-2. Open-source systems built on transparent protocols and decentralized infrastructure
-
-The choice between these paths will fundamentally shape the future of artificial intelligence and human society.
+One of these two forces will prevail:
+1. Closed-source megacorporations controlling proprietary AI labs, increasingly infiltrated and controlled by governments, becoming de-facto nationalized entities leveraging AI for hegemonic power
+2. Open-source systems built on transparent protocols and decentralized infrastructure leveraging AI for broad empowerment
 
 ## OpenAgents
 
