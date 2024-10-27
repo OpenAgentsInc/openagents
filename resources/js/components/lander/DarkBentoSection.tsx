@@ -20,7 +20,7 @@ export function DarkBentoSection() {
             title="Automate repetitive tasks"
             description="Deploy AI agents to handle routine operations, from data entry to document processing. Built on open source technology you can trust."
             graphic={
-              <div className="h-80 bg-[url(/screenshots/networking.png)] bg-[size:851px_344px] bg-no-repeat" />
+              <div className="h-80 bg-[url(/img/demo2.png)] bg-cover bg-center" />
             }
             fade={['top']}
             className="max-lg:rounded-t-4xl lg:col-span-4 lg:rounded-tl-4xl"
@@ -49,7 +49,7 @@ export function DarkBentoSection() {
             title="Full transparency"
             description="Monitor and manage your AI agents with complete visibility. Understand exactly how they work and maintain control over your automation."
             graphic={
-              <div className="h-80 bg-[url(/img/demo2.png)] bg-cover bg-center" />
+              <div className="h-80 bg-[url(/img/agentdashboard.jpg)] bg-cover bg-center" />
             }
             fade={['top']}
             className="max-lg:rounded-b-4xl lg:col-span-4 lg:rounded-br-4xl"
