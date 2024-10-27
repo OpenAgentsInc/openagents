@@ -1,5 +1,3 @@
-## The Case for Open AI Agents
-
 Humanoid robots will outnumber humans within the next 30 years.
 
 That's the [prediction](https://youtu.be/pSFvOUswFwA?si=8HmlY2yE6czT8mVV&t=3139) of Elon Musk, who [plans](https://www.youtube.com/watch?v=QGjhqFvDpHY) to manufacture 1 billion robots per year.
