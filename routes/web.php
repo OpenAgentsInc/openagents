@@ -16,12 +16,9 @@ Route::get('/', function () {
     if (Auth::check()) {
         return redirect()->route('chat');
     }
-    return Inertia::render('Welcome');
+    return Inertia::render('New');
 })->name('home');
 
-Route::get('/new', function () {
-    return Inertia::render('New');
-});
 
 // CHAT
 Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
