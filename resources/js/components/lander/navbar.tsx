@@ -12,7 +12,7 @@ const getLinks = (currentPath: string) => [
   // { href: '/pricing', label: 'Pricing' },
   // { href: '/company', label: 'Company' },
   // { href: '/blog', label: 'Blog' },
-  ...(currentPath !== '/login' ? [{ href: '/login', label: 'Client Login' }] : []),
+  ...((currentPath !== '/login' && currentPath !== '/thesis') ? [{ href: '/login', label: 'Client Login' }] : []),
 ]
 
 function DesktopNav() {
@@ -36,6 +36,12 @@ function DesktopNav() {
 }
 
 function MobileNavButton() {
+  const { url } = usePage()
+  // Hide mobile nav button on login and thesis pages
+  if (url === '/login' || url === '/thesis') {
+    return null
+  }
+  
   return (
     <DisclosureButton
       className="flex size-12 items-center justify-center self-center rounded-lg hover:bg-accent/10 lg:hidden"
@@ -49,6 +55,11 @@ function MobileNavButton() {
 function MobileNav() {
   const { url } = usePage()
   const links = getLinks(url)
+  
+  // Hide mobile nav on login and thesis pages
+  if (url === '/login' || url === '/thesis') {
+    return null
+  }
   
   return (
     <DisclosurePanel className="lg:hidden">
@@ -79,6 +90,9 @@ function MobileNav() {
 }
 
 export function Navbar({ banner }: { banner?: React.ReactNode }) {
+  const { url } = usePage()
+  const isSimplifiedNav = url === '/login' || url === '/thesis'
+
   return (
     <Disclosure as="header" className="pt-4 sm:pt-6">
       <PlusGrid>
@@ -89,14 +103,18 @@ export function Navbar({ banner }: { banner?: React.ReactNode }) {
                 <Logo className="h-9" />
               </Link>
             </PlusGridItem>
-            {banner && (
+            {banner && !isSimplifiedNav && (
               <div className="relative hidden items-center py-3 lg:flex">
                 {banner}
               </div>
             )}
           </div>
-          <DesktopNav />
-          <MobileNavButton />
+          {!isSimplifiedNav && (
+            <>
+              <DesktopNav />
+              <MobileNavButton />
+            </>
+          )}
         </PlusGridRow>
       </PlusGrid>
       <MobileNav />
