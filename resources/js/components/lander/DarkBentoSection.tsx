@@ -38,7 +38,7 @@ export function DarkBentoSection() {
           <BentoCard
             dark
             eyebrow="Integration"
-            title="Intelligent Synergy"
+            title="Add new capabilities"
             description="Connect your agents to existing tools and workflows with our open protocol system and extensible plugin architecture."
             graphic={<LinkedAvatars />}
             className="lg:col-span-2 lg:rounded-bl-4xl"
