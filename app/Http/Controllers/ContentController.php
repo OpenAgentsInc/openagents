@@ -25,7 +25,7 @@ class ContentController extends Controller
         ]);
     }
 
-    public function legal(MarkdownRenderer $markdown)
+    public function terms(MarkdownRenderer $markdown)
     {
         $path = resource_path('markdown/terms.md');
         
@@ -36,7 +36,23 @@ class ContentController extends Controller
         $content = File::get($path);
         $html = $markdown->toHtml($content);
 
-        return Inertia::render('Legal', [
+        return Inertia::render('Terms', [
+            'content' => $html
+        ]);
+    }
+
+    public function privacy(MarkdownRenderer $markdown)
+    {
+        $path = resource_path('markdown/privacy.md');
+        
+        if (!File::exists($path)) {
+            abort(404);
+        }
+
+        $content = File::get($path);
+        $html = $markdown->toHtml($content);
+
+        return Inertia::render('Privacy', [
             'content' => $html
         ]);
     }
