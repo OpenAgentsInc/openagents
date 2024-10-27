@@ -1,18 +1,18 @@
 import { PropsWithChildren } from "react"
-import { Header } from "@/components/nav/Header"
-
-// import { useKeystrokes } from "@/lib/useKeystrokes"
+import { Container } from "@/components/lander/container"
+import { Navbar } from "@/components/lander/navbar"
+import { GradientBackground } from "@/components/lander/gradient"
 
 export function DashboardLayout({ children }: PropsWithChildren) {
-  // useKeystrokes()
   return (
-    <div className="fixed min-h-screen w-full">
-      <div className="flex flex-col h-screen">
-        <Header />
-        <main className="flex-1 overflow-hidden">
+    <main className="overflow-hidden">
+      <GradientBackground />
+      <Container>
+        <Navbar />
+        <div className="mt-16">
           {children}
-        </main>
-      </div>
-    </div>
+        </div>
+      </Container>
+    </main>
   )
 }
