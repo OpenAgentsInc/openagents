@@ -1,13 +1,13 @@
 import dayjs from "dayjs"
+import { useEffect, useMemo, useState } from "react"
 import { Container } from "@/components/lander/container"
 import { GradientBackground } from "@/components/lander/gradient"
 import { Link } from "@/components/lander/link"
 import { Navbar } from "@/components/lander/navbar"
 import { Heading, Subheading } from "@/components/lander/text"
+import { parseHtmlToBlocks } from "@/lib/html-to-blocks"
 import { Head } from "@inertiajs/react"
 import { PortableText } from "@portabletext/react"
-import { useEffect, useState, useMemo } from "react"
-import { parseHtmlToBlocks } from "@/lib/html-to-blocks"
 
 interface Props {
   content: string;
@@ -114,16 +114,17 @@ export default function Show({ content, title }: Props) {
         <Container>
           <Navbar />
           <Subheading className="mt-16">
-            {dayjs(Date.now()).format('dddd, MMMM D, YYYY')}
+            {/* {dayjs(Date.now()).format('dddd, MMMM D, YYYY')} */}
+            Our Thesis
           </Subheading>
           <Heading as="h1" className="mt-2">
-            {title}
+            The Case for Open AI Agents
           </Heading>
           <div className="mt-16 grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[15rem_1fr] xl:grid-cols-[15rem_1fr_15rem]">
             <div className="hidden lg:block">
               {/* Left sidebar */}
             </div>
-            <div className="text-gray-700">
+            <div className="text-foreground">
               <div className="max-w-2xl xl:mx-auto">
                 {blocks.length > 0 ? (
                   <PortableText
