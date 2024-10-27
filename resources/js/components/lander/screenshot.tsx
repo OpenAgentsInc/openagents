@@ -19,11 +19,11 @@ export function Screenshot({
         'relative aspect-[var(--width)/var(--height)] [--radius:theme(borderRadius.xl)]',
       )}
     >
-      <div className="absolute -inset-[var(--padding)] rounded-[calc(var(--radius)+var(--padding))] shadow-sm ring-1 ring-black/5 [--padding:theme(spacing.2)]" />
+      <div className="absolute -inset-[var(--padding)] rounded-[calc(var(--radius)+var(--padding))] shadow-sm ring-1 ring-border border border-border [--padding:theme(spacing.2)]" />
       <img
         alt=""
         src={src}
-        className="h-full rounded-[var(--radius)] shadow-2xl ring-1 ring-black/10"
+        className="h-full rounded-[var(--radius)] shadow-2xl ring-1 ring-border border border-border"
       />
     </div>
   )
