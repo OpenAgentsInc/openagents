@@ -61,3 +61,8 @@ Route::middleware('auth')->group(function () {
 
 require __DIR__ . '/components.php';
 require __DIR__ . '/auth.php';
+
+// Catchall redirect to /
+Route::get('/{any}', function () {
+    return redirect('/');
+})->where('any', '.*');
