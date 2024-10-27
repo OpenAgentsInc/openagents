@@ -1,3 +1,4 @@
+import { CheckCircle2 } from "lucide-react"
 import { FormEventHandler } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -10,7 +11,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
 import { DashboardLayout } from "@/Layouts/DashboardLayout"
 import { Head, useForm } from "@inertiajs/react"
-import { CheckCircle2 } from "lucide-react"
 
 interface Props {
   success?: string
@@ -18,7 +18,7 @@ interface Props {
 
 export default function Inquire({ success }: Props) {
   const { data, setData, post, processing, errors } = useForm({
-    inquiry_type: 'custom_agents',
+    inquiry_type: 'general_question',
     email: '',
     comment: '',
   });
@@ -74,35 +74,39 @@ export default function Inquire({ success }: Props) {
         <Card className="w-[400px]">
           <CardHeader>
             <CardTitle>Inquire</CardTitle>
-            <CardDescription>Send us your inquiry</CardDescription>
+            <CardDescription>How can we help?</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit}>
               <div className="mb-4">
-                <Label>Type of Inquiry</Label>
+                {/* <Label>Type of Inquiry</Label> */}
                 <RadioGroup
-                  defaultValue="custom_agents"
+                  defaultValue="general_question"
                   value={data.inquiry_type}
                   onValueChange={(value) => setData('inquiry_type', value)}
                   className="mt-2 space-y-2"
                 >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="general_question" id="general_question" />
+                    <Label htmlFor="custom_agents" className="cursor-pointer">General question</Label>
+                  </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="custom_agents" id="custom_agents" />
                     <Label htmlFor="custom_agents" className="cursor-pointer">Custom agents for business</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="bulk_credits" id="bulk_credits" />
-                    <Label htmlFor="bulk_credits" className="cursor-pointer">Purchasing developer credits in bulk</Label>
+                    <Label htmlFor="bulk_credits" className="cursor-pointer">Bulk purchase agent credit</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="other" id="other" />
-                    <Label htmlFor="other" className="cursor-pointer">Other question</Label>
+                    <Label htmlFor="other" className="cursor-pointer">Other</Label>
                   </div>
                 </RadioGroup>
                 <InputError message={errors.inquiry_type} />
               </div>
 
-              <div className="mb-4">
+              <div className="my-8">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
