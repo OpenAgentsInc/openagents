@@ -1,8 +1,6 @@
-'use client'
-
-import { clsx } from 'clsx'
-import { motion } from 'framer-motion'
-import { Mark } from './logo'
+import { clsx } from "clsx"
+import { motion } from "framer-motion"
+import { Mark } from "./logo"
 
 function Circle({
   size,

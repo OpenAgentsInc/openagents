@@ -1,8 +1,6 @@
-'use client'
-
-import { clsx } from 'clsx'
-import { motion } from 'framer-motion'
-import { createContext, useContext } from 'react'
+import { clsx } from "clsx"
+import { motion } from "framer-motion"
+import { createContext, useContext } from "react"
 
 const KeyboardContext = createContext<{ highlighted: string[] }>({
   highlighted: [],
@@ -30,27 +28,27 @@ function Key({
       variants={
         highlighted.includes(name)
           ? {
-              idle: {
-                scale: 1,
-                boxShadow: `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.15) 0px 0px 3px 3px,rgba(47, 127, 221, 0.1) 0px 0px 0px 0px`,
+            idle: {
+              scale: 1,
+              boxShadow: `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.15) 0px 0px 3px 3px,rgba(47, 127, 221, 0.1) 0px 0px 0px 0px`,
+            },
+            active: {
+              scale: [1, 1.02, 1.02, 1],
+              boxShadow: [
+                `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.15) 0px 0px 3px 3px, rgba(47, 127, 221, 0.05) 0px 0px 0px 0px`,
+                `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.1) 0px 0px 1px 6px, rgba(47, 127, 221, 0.05) 0px 0px 1px 15px`,
+                `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.0) 0px 0px 1px 6px, rgba(47, 127, 221, 0.01) 0px 0px 1px 15px`,
+                `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.0) 0px 0px 3px 3px, rgba(47, 127, 221, 0.00) 0px 0px 0px 0px`,
+              ],
+              transition: {
+                repeat: Infinity,
+                ease: 'easeInOut',
+                duration: 1.75 - highlighted.indexOf(name) * 0.35,
+                delay: highlighted.indexOf(name) * 0.35,
+                repeatDelay: 1 + highlighted.indexOf(name) * 0.35,
               },
-              active: {
-                scale: [1, 1.02, 1.02, 1],
-                boxShadow: [
-                  `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.15) 0px 0px 3px 3px, rgba(47, 127, 221, 0.05) 0px 0px 0px 0px`,
-                  `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.1) 0px 0px 1px 6px, rgba(47, 127, 221, 0.05) 0px 0px 1px 15px`,
-                  `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.0) 0px 0px 1px 6px, rgba(47, 127, 221, 0.01) 0px 0px 1px 15px`,
-                  `rgb(255, 255, 255) 0px 0px 0px 0px, rgba(47, 127, 221, 0.8) 0px 0px 0px 1px, rgba(47, 127, 221, 0.0) 0px 0px 3px 3px, rgba(47, 127, 221, 0.00) 0px 0px 0px 0px`,
-                ],
-                transition: {
-                  repeat: Infinity,
-                  ease: 'easeInOut',
-                  duration: 1.75 - highlighted.indexOf(name) * 0.35,
-                  delay: highlighted.indexOf(name) * 0.35,
-                  repeatDelay: 1 + highlighted.indexOf(name) * 0.35,
-                },
-              },
-            }
+            },
+          }
           : undefined
       }
       style={{ width: `${width / 16}rem` }}

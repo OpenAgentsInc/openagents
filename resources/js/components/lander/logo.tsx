@@ -1,8 +1,6 @@
-'use client'
-
-import { clsx } from 'clsx'
-import { motion } from 'framer-motion'
-import IconOpenAgents from '../IconOpenAgents'
+import { clsx } from "clsx"
+import { motion } from "framer-motion"
+import IconOpenAgents from "../IconOpenAgents"
 
 export function Logo({ className }: { className?: string }) {
   return (
@@ -12,9 +10,9 @@ export function Logo({ className }: { className?: string }) {
         whileTap={{ scale: 0.95 }}
         transition={{ type: "spring", stiffness: 400, damping: 17 }}
       >
-        <IconOpenAgents className="w-8 h-8" />
+        <IconOpenAgents className="w-6 h-6" />
       </motion.div>
-      <motion.span 
+      <motion.span
         className="text-2xl font-semibold"
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}

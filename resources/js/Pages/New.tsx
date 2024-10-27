@@ -15,6 +15,7 @@ import { Navbar } from "@/components/lander/navbar"
 import { Screenshot } from "@/components/lander/screenshot"
 import { Testimonials } from "@/components/lander/testimonials"
 import { Heading, Subheading } from "@/components/lander/text"
+import { Head } from "@inertiajs/react"
 
 function Hero() {
   return (
@@ -37,7 +38,7 @@ function Hero() {
             Automate your business.
           </h1>
           <p className="mt-8 max-w-lg text-xl/7 font-medium text-muted-foreground sm:text-2xl/8">
-            OpenAgents helps you move faster with intelligent AI agents.
+            OpenAgents helps you work faster with intelligent AI agents.
           </p>
           <div className="mt-12 flex flex-col gap-x-6 gap-y-4 sm:flex-row">
             <Button href="#">Get started</Button>
@@ -132,8 +133,8 @@ function DarkBentoSection() {
   return (
     <div className="mx-2 mt-2 rounded-4xl bg-background py-32">
       <Container>
-        <Subheading dark>Outreach</Subheading>
-        <Heading as="h3" dark className="mt-2 max-w-3xl">
+        <Subheading>Outreach</Subheading>
+        <Heading as="h3" className="mt-2 max-w-3xl">
           Customer outreach has never been easier.
         </Heading>
 
@@ -186,6 +187,7 @@ function DarkBentoSection() {
 export default function Home() {
   return (
     <div className="overflow-hidden dark">
+      <Head title="Home" />
       <Hero />
       <main>
         <Container className="mt-10">

@@ -1,13 +1,7 @@
-'use client'
-
 import {
-  motion,
-  useInView,
-  useMotionValue,
-  useSpring,
-  useTransform,
-} from 'framer-motion'
-import { useEffect, useRef } from 'react'
+  motion, useInView, useMotionValue, useSpring, useTransform
+} from "framer-motion"
+import { useEffect, useRef } from "react"
 
 export function AnimatedNumber({
   start,

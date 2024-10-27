@@ -1,8 +1,6 @@
-'use client'
-
-import { clsx } from 'clsx'
-import { motion } from 'framer-motion'
-import { Subheading } from './text'
+import { clsx } from "clsx"
+import { motion } from "framer-motion"
+import { Subheading } from "./text"
 
 export function BentoCard({
   dark = false,
