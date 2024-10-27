@@ -44,12 +44,12 @@ export default function Inquire({ success }: Props) {
               <div className="flex justify-center mb-4">
                 <CheckCircle2 className="h-12 w-12 text-green-500" />
               </div>
-              <CardTitle className="text-center">Thank You</CardTitle>
-              <CardDescription className="text-center">Your inquiry has been received</CardDescription>
+              <CardTitle className="text-center">Thank you!</CardTitle>
+              <CardDescription className="text-center">Inquiry received</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-center text-zinc-600 dark:text-zinc-400">
-                {success}
+                We'll follow up soon. Or feel free to <a href="https://calendly.com/christopher-david-openagents/30min" target="_blank" className="hover:underline text-white">book a call with our founder now</a>.
               </p>
               <div className="mt-6 flex justify-center">
                 <Button
