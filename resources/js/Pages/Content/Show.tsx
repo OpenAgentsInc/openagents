@@ -29,11 +29,11 @@ export default function Show({ content, title }: Props) {
         <GradientBackground />
         <Container>
           <Navbar />
-          <Subheading className="mt-16">
+          <Subheading className="mt-16 text-center">
             {/* {dayjs(Date.now()).format('dddd, MMMM D, YYYY')} */}
             Our Thesis
           </Subheading>
-          <Heading as="h1" className="mt-2">
+          <Heading as="h1" className="mt-2 text-center">
             The Case for Open AI Agents
           </Heading>
           <div className="mt-16 grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[15rem_1fr] xl:grid-cols-[15rem_1fr_15rem]">
