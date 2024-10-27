@@ -81,6 +81,10 @@ export default {
           css: {
             maxWidth: 'none',
             color: 'hsl(var(--foreground))',
+            p: {
+              marginTop: '1.5em',
+              marginBottom: '1.5em',
+            },
             a: {
               color: 'hsl(var(--primary))',
               '&:hover': {
