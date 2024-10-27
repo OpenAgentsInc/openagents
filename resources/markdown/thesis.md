@@ -28,12 +28,4 @@ Billions of intelligent systems interacting invisibly in every country, in every
 
 Who will control them?
 
-## Two paths
-
-One of these two forces will prevail:
-1. Closed-source megacorporations controlling proprietary AI labs, increasingly infiltrated and controlled by governments, becoming de-facto nationalized entities leveraging AI for hegemonic power
-2. Open-source systems built on transparent protocols and decentralized infrastructure leveraging AI for broad empowerment
-
-## OpenAgents
-
-OpenAgents is building the open infrastructure for AI agents. Our platform enables anyone to build, sell, and use AI agents without relying on centralized gatekeepers. By creating open standards and protocols, we're ensuring AI agents remain free from corporate or government control.
+_(to be continued...)_
