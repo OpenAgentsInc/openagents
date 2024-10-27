@@ -1,6 +1,6 @@
 **The AI agent economy is here.**
 
-AI agents will soon number in the billions, their influence affecting all humans on earth.
+AI agents will soon number in the billions. Their influence will touch every human on earth.
 
 An agent economy NOT built on a foundation of openness may pose existential risk to humanity.
 
