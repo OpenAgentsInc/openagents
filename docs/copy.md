@@ -49,7 +49,7 @@
 #### Integration Card
 - Eyebrow: "Integration"
 - Title: "Seamless connectivity"
-- Description: "Connect your agents to existing tools and workflows with our open protocol system and extensive plugin marketplace."
+- Description: "Connect your agents to existing tools and workflows with our open protocol system and extensible plugin architecture."
 
 #### Control Card
 - Eyebrow: "Control"
