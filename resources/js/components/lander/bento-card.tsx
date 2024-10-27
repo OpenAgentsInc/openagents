@@ -48,7 +48,7 @@ export function BentoCard({
         <p className="mt-1 text-2xl/8 font-medium tracking-tight text-foreground">
           {title}
         </p>
-        <p className="mt-2 max-w-[600px] text-sm/6 text-muted-foreground">
+        <p className="mt-2 max-w-[600px] text-sm/6 text-secondary-foreground">
           {description}
         </p>
       </div>
