@@ -30,13 +30,15 @@ export function DarkBentoSection() {
             eyebrow="Customization"
             title="Build custom agents"
             description="Create specialized AI agents tailored to your business needs using our intuitive agent builder and plugin system."
-            graphic={<LogoTimeline />}
+            graphic={
+              <div className="h-80 bg-[url(/img/plugin2.jpg)] bg-cover bg-center" />
+            }
             className="z-10 !overflow-visible lg:col-span-2 lg:rounded-tr-4xl"
           />
           <BentoCard
             dark
             eyebrow="Integration"
-            title="Seamless connectivity"
+            title="Intelligent Synergy"
             description="Connect your agents to existing tools and workflows with our open protocol system and extensible plugin architecture."
             graphic={<LinkedAvatars />}
             className="lg:col-span-2 lg:rounded-bl-4xl"
