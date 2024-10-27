@@ -43,8 +43,8 @@ export const portableTextComponents = {
         <span aria-hidden>`</span>
       </>
     ),
-    link: ({ value, children }) => {
-      // Get the href from the first markDef that matches this link
+    link: ({ text, value, markKey }) => {
+      // Find the matching markDef in the parent block
       const href = value?.href || ''
       const target = href.startsWith('http') ? '_blank' : undefined
       return (
@@ -54,7 +54,7 @@ export const portableTextComponents = {
           target={target}
           rel={target === '_blank' ? 'noreferrer noopener' : undefined}
         >
-          {children}
+          {text}
         </Link>
       )
     },
