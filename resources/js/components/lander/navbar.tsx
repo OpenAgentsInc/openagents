@@ -79,6 +79,13 @@ function MobileNav() {
 }
 
 export function Navbar({ banner }: { banner?: React.ReactNode }) {
+  const { url } = usePage()
+  
+  // Hide navbar on /login and /thesis routes
+  if (url === '/login' || url === '/thesis') {
+    return null
+  }
+
   return (
     <Disclosure as="header" className="pt-4 sm:pt-6">
       <PlusGrid>
