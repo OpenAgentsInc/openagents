@@ -4,7 +4,7 @@ AI agents will soon number in the billions. Their influence will touch every hum
 
 An agent economy NOT built on a foundation of openness may pose existential risk to humanity.
 
-Below we argue for five pillars of openness:
+To mitigate that risk, we argue below for five pillars of openness:
 
 - Open source code
 - Open data
