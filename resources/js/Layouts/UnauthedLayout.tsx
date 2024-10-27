@@ -1,10 +1,10 @@
 import { PropsWithChildren } from "react"
 import { Container } from "@/components/lander/container"
-import { Navbar } from "@/components/lander/navbar"
-import { GradientBackground } from "@/components/lander/gradient"
 import { Footer } from "@/components/lander/footer"
+import { GradientBackground } from "@/components/lander/gradient"
+import { Navbar } from "@/components/lander/navbar"
 
-export function DashboardLayout({ children }: PropsWithChildren) {
+export function UnauthedLayout({ children }: PropsWithChildren) {
   return (
     <main className="overflow-hidden">
       <GradientBackground />

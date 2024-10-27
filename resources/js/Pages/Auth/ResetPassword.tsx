@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { DashboardLayout } from "@/Layouts/DashboardLayout"
+import { UnauthedLayout } from "@/Layouts/UnauthedLayout"
 import { Head, useForm } from "@inertiajs/react"
 
 export default function ResetPassword({
@@ -36,7 +36,7 @@ export default function ResetPassword({
   );
 
   return (
-    <DashboardLayout>
+    <UnauthedLayout>
       <Head title="Reset Password" />
 
       <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
@@ -101,6 +101,6 @@ export default function ResetPassword({
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </UnauthedLayout>
   );
 }
