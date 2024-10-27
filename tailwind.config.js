@@ -1,5 +1,6 @@
 import defaultTheme from 'tailwindcss/defaultTheme';
 import forms from '@tailwindcss/forms';
+import typography from '@tailwindcss/typography';
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -15,7 +16,7 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Figtree', ...defaultTheme.fontFamily.sans],
-        mono: ['"JetBrains Mono"', ...defaultTheme.fontFamily.mono]
+        mono: ['\"JetBrains Mono\"', ...defaultTheme.fontFamily.mono]
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -73,7 +74,21 @@ export default {
           border: 'hsl(var(--sidebar-border))',
           ring: 'hsl(var(--sidebar-ring))'
         }
-      }
+      },
+      typography: {
+        DEFAULT: {
+          css: {
+            maxWidth: 'none',
+            color: 'hsl(var(--foreground))',
+            a: {
+              color: 'hsl(var(--primary))',
+              '&:hover': {
+                color: 'hsl(var(--primary))',
+              },
+            },
+          },
+        },
+      },
     },
     keyframes: {
       "fade-out": {
@@ -86,5 +101,5 @@ export default {
     }
   },
 
-  plugins: [forms, require("tailwindcss-animate")],
+  plugins: [forms, typography, require("tailwindcss-animate")],
 };
