@@ -44,10 +44,12 @@ export const portableTextComponents = {
       </>
     ),
     link: ({ value, children }) => {
-      const target = (value?.href || '').startsWith('http') ? '_blank' : undefined
+      // Get the href from the first markDef that matches this link
+      const href = value?.href || ''
+      const target = href.startsWith('http') ? '_blank' : undefined
       return (
         <Link
-          href={value?.href}
+          href={href}
           className="font-medium text-foreground underline decoration-zinc-400 underline-offset-4 data-[hover]:decoration-zinc-600"
           target={target}
           rel={target === '_blank' ? 'noreferrer noopener' : undefined}
