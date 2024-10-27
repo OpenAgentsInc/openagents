@@ -88,7 +88,11 @@ export default function Inquire({ success }: Props) {
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="general_question" id="general_question" />
-                    <Label htmlFor="custom_agents" className="cursor-pointer">General question</Label>
+                    <Label htmlFor="general_question" className="cursor-pointer">General question</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="request_demo" id="request_demo" />
+                    <Label htmlFor="request_demo" className="cursor-pointer">Request a demo</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="custom_agents" id="custom_agents" />
