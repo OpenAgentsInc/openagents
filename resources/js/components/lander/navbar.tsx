@@ -73,7 +73,7 @@ function MobileNav() {
 
 export function Navbar({ banner }: { banner?: React.ReactNode }) {
   return (
-    <Disclosure as="header" className="pt-12 sm:pt-16">
+    <Disclosure as="header" className="pt-4 sm:pt-6">
       <PlusGrid>
         <PlusGridRow className="relative flex justify-between">
           <div className="relative flex gap-6">
