@@ -1,4 +1,4 @@
-import { clsx } from 'clsx'
+import { clsx } from "clsx"
 
 type HeadingProps = {
   as?: 'div' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
@@ -19,7 +19,7 @@ export function Heading({
       data-dark={dark ? 'true' : undefined}
       className={clsx(
         className,
-        'text-pretty text-4xl font-medium tracking-tighter text-foreground data-[dark]:text-primary-foreground sm:text-6xl',
+        'text-pretty text-4xl font-medium tracking-tighter text-foreground data-[dark]:text-primary-foreground sm:text-5xl',
       )}
     />
   )
