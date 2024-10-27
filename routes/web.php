@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ContentController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\InquireController;
 use App\Http\Controllers\ProfileController;
@@ -22,6 +23,9 @@ Route::get('/', function () {
 Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
 Route::get('/chat/{id}', [ChatController::class, 'chat'])->name('chat.id');
 Route::post('/chat', [UseChatController::class, 'chat']);
+
+// CONTENT
+Route::get('/thesis', [ContentController::class, 'thesis'])->name('content.thesis');
 
 // INQUIRE
 Route::get('/inquire', [InquireController::class, 'page'])->name('inquire');
