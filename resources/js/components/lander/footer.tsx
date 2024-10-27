@@ -1,10 +1,12 @@
-import { PlusGrid, PlusGridItem, PlusGridRow } from '@/components/plus-grid'
-import { Button } from './button'
-import { Container } from './container'
-import { Gradient } from './gradient'
-import { Link } from './link'
-import { Logo } from './logo'
-import { Subheading } from './text'
+import {
+  PlusGrid, PlusGridItem, PlusGridRow
+} from "@/components/lander/plus-grid"
+import { Button } from "./button"
+import { Container } from "./container"
+import { Gradient } from "./gradient"
+import { Link } from "./link"
+import { Logo } from "./logo"
+import { Subheading } from "./text"
 
 function CallToAction() {
   return (
