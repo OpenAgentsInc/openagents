@@ -147,7 +147,7 @@ function Copyright() {
 export function Footer() {
   return (
     <footer>
-      <Gradient className="relative">
+      <div className="relative bg-background">
         <div className="absolute inset-2 rounded-4xl bg-card/80" />
         <Container>
           <CallToAction />
@@ -178,7 +178,7 @@ export function Footer() {
             </PlusGridRow>
           </PlusGrid>
         </Container>
-      </Gradient>
+      </div>
     </footer>
   )
 }
