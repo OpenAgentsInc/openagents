@@ -16,13 +16,13 @@ export function Hero() {
             Automate your business.
           </h1>
           <p className="mt-8 max-w-lg text-xl/7 font-medium text-muted-foreground sm:text-2xl/8">
-            OpenAgents helps you work faster with intelligent AI agents.
+            OpenAgents helps you work faster with AI agents that deeply understand your business.
           </p>
           <div className="mt-12 flex flex-col gap-x-6 gap-y-4 sm:flex-row">
-            <Button href="#">Get started</Button>
-            <Button variant="secondary" href="/pricing">
+            <Button href="/inquire">Request a demo</Button>
+            {/* <Button variant="secondary" href="/pricing">
               See pricing
-            </Button>
+            </Button> */}
           </div>
         </div>
       </Container>

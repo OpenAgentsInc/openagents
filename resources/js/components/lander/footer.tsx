@@ -1,6 +1,7 @@
 import {
   PlusGrid, PlusGridItem, PlusGridRow
 } from "@/components/lander/plus-grid"
+import { GitHubLogoIcon } from "@radix-ui/react-icons"
 import { Button } from "./button"
 import { Container } from "./container"
 import { Gradient } from "./gradient"
@@ -120,15 +121,7 @@ function SocialLinks() {
   return (
     <>
       <Link
-        href="https://facebook.com"
-        target="_blank"
-        aria-label="Visit us on Facebook"
-        className="text-foreground hover:text-muted-foreground"
-      >
-        <SocialIconFacebook className="size-4" />
-      </Link>
-      <Link
-        href="https://x.com"
+        href="https://x.com/OpenAgentsInc"
         target="_blank"
         aria-label="Visit us on X"
         className="text-foreground hover:text-muted-foreground"
@@ -136,12 +129,12 @@ function SocialLinks() {
         <SocialIconX className="size-4" />
       </Link>
       <Link
-        href="https://linkedin.com"
+        href="https://github.com/OpenAgentsInc"
         target="_blank"
-        aria-label="Visit us on LinkedIn"
+        aria-label="Visit us on GitHub"
         className="text-foreground hover:text-muted-foreground"
       >
-        <SocialIconLinkedIn className="size-4" />
+        <GitHubLogoIcon className="size-4" />
       </Link>
     </>
   )
@@ -150,7 +143,7 @@ function SocialLinks() {
 function Copyright() {
   return (
     <div className="text-sm/6 text-foreground">
-      &copy; {new Date().getFullYear()} OpenAgents Inc.
+      &copy; {new Date().getFullYear()} OpenAgents, Inc.
     </div>
   )
 }
@@ -163,7 +156,7 @@ export function Footer() {
         <Container>
           <CallToAction />
           <PlusGrid className="pb-16">
-            <PlusGridRow>
+            {/* <PlusGridRow>
               <div className="grid grid-cols-2 gap-y-10 pb-6 lg:grid-cols-6 lg:gap-8">
                 <div className="col-span-2 flex">
                   <PlusGridItem className="pt-6 lg:pb-6">
@@ -174,7 +167,7 @@ export function Footer() {
                   <Sitemap />
                 </div>
               </div>
-            </PlusGridRow>
+            </PlusGridRow> */}
             <PlusGridRow className="flex justify-between">
               <div>
                 <PlusGridItem className="py-3">
