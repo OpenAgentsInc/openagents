@@ -24,4 +24,21 @@ class ContentController extends Controller
             'title' => 'Thesis'
         ]);
     }
+
+    public function legal(MarkdownRenderer $markdown)
+    {
+        $path = resource_path('markdown/terms.md');
+        
+        if (!File::exists($path)) {
+            abort(404);
+        }
+
+        $content = File::get($path);
+        $html = $markdown->toHtml($content);
+
+        return Inertia::render('Content/Show', [
+            'content' => $html,
+            'title' => 'Terms of Service'
+        ]);
+    }
 }
