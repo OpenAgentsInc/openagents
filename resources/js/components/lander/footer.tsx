@@ -78,7 +78,7 @@ function Sitemap() {
         <SitemapHeading>Legal</SitemapHeading>
         <SitemapLinks>
           <SitemapLink href="/terms">Terms of Service</SitemapLink>
-          <SitemapLink href="/privacy">Privacy policy</SitemapLink>
+          <SitemapLink href="/privacy">Privacy Policy</SitemapLink>
         </SitemapLinks>
       </div>
     </>
