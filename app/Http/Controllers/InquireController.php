@@ -18,7 +18,7 @@ class InquireController extends Controller
     public function submit(Request $request)
     {
         $validated = $request->validate([
-            'inquiry_type' => ['required', 'string', 'in:custom_agents,bulk_credits,other'],
+            'inquiry_type' => ['required', 'string', 'in:general_question,request_demo,custom_agents,bulk_credits,other'],
             'email' => ['required', 'email'],
             'comment' => ['required', 'string', 'min:10'],
         ]);
