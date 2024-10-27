@@ -21,7 +21,7 @@ export default function Home() {
           <FeatureSection />
           <BentoSection />
         </div> */}
-        <DarkBentoSection />
+        {/* <DarkBentoSection /> */}
       </main>
       {/* <Testimonials /> */}
       <Footer />

@@ -23,7 +23,7 @@ function CallToAction() {
       </p>
       <div className="mt-6">
         <Button className="w-full sm:w-auto" href="/inquire">
-          Inquire
+          Request a demo
         </Button>
       </div>
     </div>
@@ -55,28 +55,27 @@ function Sitemap() {
       <div>
         <SitemapHeading>Product</SitemapHeading>
         <SitemapLinks>
-          <SitemapLink href="/pricing">Pricing</SitemapLink>
-          <SitemapLink href="#">Analysis</SitemapLink>
-          <SitemapLink href="#">API</SitemapLink>
+          <SitemapLink href="https://stage2.openagents.com">AutoDev v2</SitemapLink>
+          <SitemapLink href="/inquire">Custom Agents</SitemapLink>
+          {/* <SitemapLink href="#">API</SitemapLink> */}
         </SitemapLinks>
       </div>
       <div>
         <SitemapHeading>Company</SitemapHeading>
         <SitemapLinks>
-          <SitemapLink href="#">Careers</SitemapLink>
-          <SitemapLink href="/blog">Blog</SitemapLink>
-          <SitemapLink href="/company">Company</SitemapLink>
+          <SitemapLink href="/thesis">Our Thesis</SitemapLink>
+          {/* <SitemapLink href="/company">Company</SitemapLink> */}
         </SitemapLinks>
       </div>
       <div>
         <SitemapHeading>Support</SitemapHeading>
         <SitemapLinks>
-          <SitemapLink href="#">Help center</SitemapLink>
-          <SitemapLink href="#">Community</SitemapLink>
+          <SitemapLink href="https://x.com/OpenAgentsInc">DM us on X</SitemapLink>
+          <SitemapLink href="https://stacker.news/~openagents">Community</SitemapLink>
         </SitemapLinks>
       </div>
       <div>
-        <SitemapHeading>Company</SitemapHeading>
+        <SitemapHeading>Legal</SitemapHeading>
         <SitemapLinks>
           <SitemapLink href="#">Terms of service</SitemapLink>
           <SitemapLink href="#">Privacy policy</SitemapLink>
@@ -153,7 +152,7 @@ export function Footer() {
         <Container>
           <CallToAction />
           <PlusGrid className="pb-16">
-            {/* <PlusGridRow>
+            <PlusGridRow>
               <div className="grid grid-cols-2 gap-y-10 pb-6 lg:grid-cols-6 lg:gap-8">
                 <div className="col-span-2 flex">
                   <PlusGridItem className="pt-6 lg:pb-6">
@@ -164,7 +163,7 @@ export function Footer() {
                   <Sitemap />
                 </div>
               </div>
-            </PlusGridRow> */}
+            </PlusGridRow>
             <PlusGridRow className="flex justify-between">
               <div>
                 <PlusGridItem className="py-3">

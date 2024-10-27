@@ -18,7 +18,7 @@ interface Props {
 
 export default function Inquire({ success }: Props) {
   const { data, setData, post, processing, errors } = useForm({
-    inquiry_type: 'general_question',
+    inquiry_type: 'request_demo',
     email: '',
     comment: '',
   });
@@ -87,20 +87,20 @@ export default function Inquire({ success }: Props) {
                   className="mt-2 space-y-2"
                 >
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="general_question" id="general_question" />
-                    <Label htmlFor="general_question" className="cursor-pointer">General question</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
                     <RadioGroupItem value="request_demo" id="request_demo" />
                     <Label htmlFor="request_demo" className="cursor-pointer">Request a demo</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="custom_agents" id="custom_agents" />
-                    <Label htmlFor="custom_agents" className="cursor-pointer">Custom agents for business</Label>
+                    <Label htmlFor="custom_agents" className="cursor-pointer">Interested in custom AI agents</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="bulk_credits" id="bulk_credits" />
-                    <Label htmlFor="bulk_credits" className="cursor-pointer">Bulk purchase agent credit</Label>
+                    <Label htmlFor="bulk_credits" className="cursor-pointer">Bulk purchase AutoDev agent credit</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="general_question" id="general_question" />
+                    <Label htmlFor="general_question" className="cursor-pointer">General question</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="other" id="other" />
