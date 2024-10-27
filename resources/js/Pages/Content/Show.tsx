@@ -5,6 +5,7 @@ import { GradientBackground } from "@/components/lander/gradient"
 import { Navbar } from "@/components/lander/navbar"
 import { Heading, Subheading } from "@/components/lander/text"
 import { Head } from "@inertiajs/react"
+import { Footer } from "@/components/lander/footer"
 
 interface Props {
   content: string;
@@ -33,7 +34,7 @@ export default function Show({ content, title }: Props) {
     );
 
   return (
-    <>
+    <div className="overflow-hidden dark">
       <Head title={title} />
       <main className="overflow-hidden">
         <GradientBackground />
@@ -54,6 +55,7 @@ export default function Show({ content, title }: Props) {
           </div>
         </Container>
       </main>
-    </>
+      <Footer />
+    </div>
   )
 }
