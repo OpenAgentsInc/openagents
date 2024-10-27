@@ -13,7 +13,7 @@ export function Logo({ className }: { className?: string }) {
         <IconOpenAgents className="w-6 h-6" />
       </motion.div>
       <motion.span
-        className="text-2xl font-semibold"
+        className="text-2xl font-bold"
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5 }}

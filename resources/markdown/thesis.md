@@ -1,4 +1,10 @@
-We argue that the AI agent economy should be built on a foundation of **_openness_**:
+**The AI agent economy is here.**
+
+AI agents will soon number in the billions, their influence affecting all humans on earth.
+
+An agent economy NOT built on a foundation of openness may pose existential risk to humanity.
+
+Below we argue for five pillars of openness:
 
 - Open source code
 - Open data
@@ -6,7 +12,7 @@ We argue that the AI agent economy should be built on a foundation of **_opennes
 - Open protocols
 - Open monetary networks
 
-## Agents before robots
+## Why it matters: Agents before robots
 
 Humanoid robots will outnumber humans within the next 30 years.
 
