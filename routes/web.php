@@ -19,6 +19,10 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
 
+Route::get('/new', function () {
+    return Inertia::render('New');
+});
+
 // CHAT
 Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
 Route::get('/chat/{id}', [ChatController::class, 'chat'])->name('chat.id');

@@ -26,6 +26,7 @@
     "vite": "^5.0"
   },
   "dependencies": {
+    "@heroicons/react": "^2.1.5",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-collapsible": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
@@ -44,6 +45,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
+    "framer-motion": "^11.11.10",
     "lucide-react": "^0.453.0",
     "react-dropzone": "^14.2.10",
     "react-markdown": "^9.0.1",
