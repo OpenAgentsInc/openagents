@@ -51,9 +51,9 @@ export default function Show({ content, title }: Props) {
               {/* Left sidebar */}
             </div>
             <div className="text-foreground">
-              <div 
-                className="prose prose-zinc max-w-2xl xl:mx-auto"
-                dangerouslySetInnerHTML={{ __html: processedContent }} 
+              <div
+                className="prose prose-zinc prose-invert max-w-2xl xl:mx-auto"
+                dangerouslySetInnerHTML={{ __html: processedContent }}
               />
             </div>
             <div className="hidden xl:block">
