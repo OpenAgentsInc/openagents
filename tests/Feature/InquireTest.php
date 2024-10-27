@@ -14,7 +14,7 @@ test('inquire page is displayed', function () {
 
 test('inquiry can be submitted', function () {
     $response = $this->post('/inquire', [
-        'inquiry_type' => 'custom_agents',
+        'inquiry_type' => 'general_question',
         'email' => 'test@example.com',
         'comment' => 'This is a test inquiry with more than 10 characters',
     ]);
@@ -24,7 +24,7 @@ test('inquiry can be submitted', function () {
         ->assertRedirect();
 
     $this->assertDatabaseHas('inquiries', [
-        'inquiry_type' => 'custom_agents',
+        'inquiry_type' => 'general_question',
         'email' => 'test@example.com',
         'comment' => 'This is a test inquiry with more than 10 characters',
     ]);
@@ -32,7 +32,7 @@ test('inquiry can be submitted', function () {
 
 test('inquiry requires valid email', function () {
     $response = $this->post('/inquire', [
-        'inquiry_type' => 'custom_agents',
+        'inquiry_type' => 'general_question',
         'email' => 'not-an-email',
         'comment' => 'This is a test inquiry',
     ]);
@@ -48,7 +48,7 @@ test('inquiry requires valid email', function () {
 
 test('inquiry requires comment with minimum length', function () {
     $response = $this->post('/inquire', [
-        'inquiry_type' => 'custom_agents',
+        'inquiry_type' => 'general_question',
         'email' => 'test@example.com',
         'comment' => 'too short',
     ]);
@@ -65,7 +65,7 @@ test('inquiry requires comment with minimum length', function () {
 
 test('inquiry requires both email and comment', function () {
     $response = $this->post('/inquire', [
-        'inquiry_type' => 'custom_agents',
+        'inquiry_type' => 'general_question',
         'email' => '',
         'comment' => '',
     ]);
@@ -79,7 +79,7 @@ test('inquiry requires both email and comment', function () {
 
 test('successful inquiry submission shows success message', function () {
     $response = $this->post('/inquire', [
-        'inquiry_type' => 'custom_agents',
+        'inquiry_type' => 'general_question',
         'email' => 'test@example.com',
         'comment' => 'This is a valid test inquiry message',
     ]);
