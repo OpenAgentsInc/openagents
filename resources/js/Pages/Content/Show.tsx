@@ -6,6 +6,9 @@ import { Navbar } from "@/components/lander/navbar"
 import { Heading, Subheading } from "@/components/lander/text"
 import { Head } from "@inertiajs/react"
 import { PortableText } from "@portabletext/react"
+import { htmlToBlocks } from "@sanity/block-tools"
+import { micromark } from "micromark"
+import { useEffect, useState } from "react"
 
 interface Props {
   content: string;
@@ -13,6 +16,75 @@ interface Props {
 }
 
 export default function Show({ content, title }: Props) {
+  const [blocks, setBlocks] = useState<any[]>([])
+
+  useEffect(() => {
+    // Convert HTML to blocks
+    const convertToBlocks = () => {
+      try {
+        // First convert HTML to markdown-like format
+        const html = content
+        
+        // Define the schema for portable text
+        const portableTextSchema = {
+          name: 'portableText',
+          type: 'array',
+          of: [
+            {
+              type: 'block',
+              styles: [
+                { title: 'Normal', value: 'normal' },
+                { title: 'H2', value: 'h2' },
+                { title: 'H3', value: 'h3' },
+                { title: 'Quote', value: 'blockquote' }
+              ],
+              lists: [
+                { title: 'Bullet', value: 'bullet' },
+                { title: 'Number', value: 'number' }
+              ],
+              marks: {
+                decorators: [
+                  { title: 'Strong', value: 'strong' },
+                  { title: 'Code', value: 'code' }
+                ],
+                annotations: [
+                  {
+                    name: 'link',
+                    type: 'object',
+                    fields: [{ name: 'href', type: 'string' }]
+                  }
+                ]
+              }
+            },
+            {
+              type: 'image',
+              fields: [
+                { name: 'alt', type: 'string' },
+                { name: 'src', type: 'string' }
+              ]
+            }
+          ]
+        }
+
+        // Convert HTML to blocks
+        const convertedBlocks = htmlToBlocks(html, portableTextSchema)
+        setBlocks(convertedBlocks || [])
+      } catch (error) {
+        console.error('Error converting HTML to blocks:', error)
+        // Fallback to simple text block if conversion fails
+        setBlocks([
+          {
+            _type: 'block',
+            style: 'normal',
+            children: [{ _type: 'span', text: content }]
+          }
+        ])
+      }
+    }
+
+    convertToBlocks()
+  }, [content])
+
   return (
     <>
       <Head title={title} />
@@ -24,13 +96,13 @@ export default function Show({ content, title }: Props) {
             {dayjs(Date.now()).format('dddd, MMMM D, YYYY')}
           </Subheading>
           <Heading as="h1" className="mt-2">
-            The Case for Open AI Agents
+            {title}
           </Heading>
           <div className="mt-16 grid grid-cols-1 gap-8 pb-24 lg:grid-cols-[15rem_1fr] xl:grid-cols-[15rem_1fr_15rem]">
             <div className="text-gray-700">
               <div className="max-w-2xl xl:mx-auto">
                 <PortableText
-                  value={content}
+                  value={blocks}
                   components={{
                     block: {
                       normal: ({ children }) => (
@@ -58,8 +130,7 @@ export default function Show({ content, title }: Props) {
                       image: ({ value }) => (
                         <img
                           alt={value.alt || ''}
-                          src="value"
-                          // src={image(value).width(2000).url()}
+                          src={value.src || ''}
                           className="w-full rounded-2xl"
                         />
                       ),
@@ -137,15 +208,6 @@ export default function Show({ content, title }: Props) {
           </div>
         </Container>
       </main>
-      {/* <div className="min-h-screen py-12 bg-background">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-card shadow-sm rounded-lg">
-            <article className="p-8 dark:prose-invert prose prose-sm sm:prose lg:prose-lg xl:prose-xl mx-auto">
-              <div dangerouslySetInnerHTML={{ __html: content }} />
-            </article>
-          </div>
-        </div>
-      </div> */}
     </>
   );
 }
