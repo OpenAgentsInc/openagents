@@ -22,7 +22,7 @@ function CallToAction() {
         Sign up for a demo and we'll design you a custom AI agent.
       </p>
       <div className="mt-6">
-        <Button className="w-full sm:w-auto" href="#">
+        <Button className="w-full sm:w-auto" href="/inquire">
           Inquire
         </Button>
       </div>
