@@ -6,8 +6,8 @@ export function FeatureSection() {
   return (
     <div className="overflow-hidden">
       <Container className="pb-24">
-        <Heading as="h2" className="max-w-3xl">
-          A snapshot of your entire sales pipeline.
+        <Heading as="h4" className="max-w-3xl">
+          Command your agents, see the results and follow up immediately.
         </Heading>
         <Screenshot
           width={1216}
