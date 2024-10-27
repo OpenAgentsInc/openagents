@@ -1,13 +1,15 @@
 import { Container } from "@/components/lander/container"
+import { Footer } from "@/components/lander/footer"
 import { GradientBackground } from "@/components/lander/gradient"
 import { Navbar } from "@/components/lander/navbar"
 import { Head } from "@inertiajs/react"
 
 interface Props {
   content: string;
+  title: string;
 }
 
-export default function Legal({ content }: Props) {
+export default function Legal({ content, title }: Props) {
   // Process content to handle both Markdown links and HTML links
   const processedContent = content
     // First, handle Markdown links
@@ -30,7 +32,7 @@ export default function Legal({ content }: Props) {
 
   return (
     <>
-      <Head title="Terms of Service" />
+      <Head title={title} />
       <main className="overflow-hidden">
         <GradientBackground />
         <Container>
@@ -49,6 +51,7 @@ export default function Legal({ content }: Props) {
               {/* Right sidebar */}
             </div>
           </div>
+          <Footer />
         </Container>
       </main>
     </>
