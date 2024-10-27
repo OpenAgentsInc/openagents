@@ -36,8 +36,9 @@ class ContentController extends Controller
         $content = File::get($path);
         $html = $markdown->toHtml($content);
 
-        return Inertia::render('Terms', [
-            'content' => $html
+        return Inertia::render('Legal', [
+            'content' => $html,
+            'title' => 'Terms of Service'
         ]);
     }
 
@@ -52,8 +53,9 @@ class ContentController extends Controller
         $content = File::get($path);
         $html = $markdown->toHtml($content);
 
-        return Inertia::render('Privacy', [
-            'content' => $html
+        return Inertia::render('Legal', [
+            'content' => $html,
+            'title' => 'Privacy Policy'
         ]);
     }
 }
