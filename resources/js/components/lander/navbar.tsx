@@ -12,7 +12,7 @@ const getLinks = (currentPath: string) => [
   // { href: '/pricing', label: 'Pricing' },
   // { href: '/company', label: 'Company' },
   // { href: '/blog', label: 'Blog' },
-  ...(currentPath !== '/login' ? [{ href: '/login', label: 'Client Login' }] : []),
+  ...((currentPath !== '/login' && currentPath !== '/thesis') ? [{ href: '/login', label: 'Client Login' }] : []),
 ]
 
 function DesktopNav() {
@@ -81,8 +81,8 @@ function MobileNav() {
 export function Navbar({ banner }: { banner?: React.ReactNode }) {
   const { url } = usePage()
   
-  // Hide navbar on /login and /thesis routes
-  if (url === '/login' || url === '/thesis') {
+  // Hide entire navbar on /login
+  if (url === '/login') {
     return null
   }
 
