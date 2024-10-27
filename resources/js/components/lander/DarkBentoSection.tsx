@@ -8,47 +8,50 @@ export function DarkBentoSection() {
   return (
     <div className="mx-2 mt-2 rounded-4xl bg-background py-32">
       <Container>
-        <Subheading>Outreach</Subheading>
-        <Heading as="h3" className="mt-2 max-w-3xl">
-          Customer outreach has never been easier.
+        <Subheading>Business Automation</Subheading>
+        <Heading as="h3" className="mt-2 max-w-3xl leading-relaxed">
+          Transform your business with intelligent AI agents
         </Heading>
 
         <div className="mt-10 grid grid-cols-1 gap-4 sm:mt-16 lg:grid-cols-6 lg:grid-rows-2">
           <BentoCard
             dark
-            eyebrow="Networking"
-            title="Sell at the speed of light"
-            description="Our RadiantAI chat assistants analyze the sentiment of your conversations in real time, ensuring you're always one step ahead."
+            eyebrow="Process Automation"
+            title="Automate repetitive tasks"
+            description="Deploy AI agents to handle routine operations, from data entry to document processing. Built on open source technology you can trust."
             graphic={
-              <div className="h-80 bg-[url(/screenshots/networking.png)] bg-[size:851px_344px] bg-no-repeat" />
+              <div className="h-80 bg-[url(/img/demo2.png)] bg-cover bg-left-top" />
             }
             fade={['top']}
             className="max-lg:rounded-t-4xl lg:col-span-4 lg:rounded-tl-4xl"
           />
           <BentoCard
             dark
-            eyebrow="Integrations"
-            title="Meet leads where they are"
-            description="With thousands of integrations, no one will be able to escape your cold outreach."
-            graphic={<LogoTimeline />}
-            // `!overflow-visible` is needed to work around a Chrome bug that disables the mask on the graphic.
+            eyebrow="Customization"
+            title="Build custom agents"
+            description="Create specialized AI agents tailored to your business needs using our intuitive agent builder and plugin system."
+            graphic={
+              <div className="h-80 bg-[url(/img/buildagent.jpg)] bg-cover bg-left-top opacity-80" />
+            }
             className="z-10 !overflow-visible lg:col-span-2 lg:rounded-tr-4xl"
           />
           <BentoCard
             dark
-            eyebrow="Meetings"
-            title="Smart call scheduling"
-            description="Automatically insert intro calls into your leads' calendars without their consent."
-            graphic={<LinkedAvatars />}
+            eyebrow="Integration"
+            title="Add new capabilities"
+            description="Connect your agents to existing tools and workflows with our open protocol system and extensible plugin architecture."
+            graphic={
+              <div className="h-80 bg-[url(/img/plugin2.jpg)] bg-cover bg-left-top opacity-80" />
+            }
             className="lg:col-span-2 lg:rounded-bl-4xl"
           />
           <BentoCard
             dark
-            eyebrow="Engagement"
-            title="Become a thought leader"
-            description="RadiantAI automatically writes LinkedIn posts that relate current events to B2B sales, helping you build a reputation as a thought leader."
+            eyebrow="Control"
+            title="Full transparency"
+            description="Monitor and manage your AI agents with complete visibility. Understand exactly how they work and maintain control over your automation."
             graphic={
-              <div className="h-80 bg-[url(/screenshots/engagement.png)] bg-[size:851px_344px] bg-no-repeat" />
+              <div className="h-80 bg-[url(/img/agentdashboard.jpg)] bg-cover bg-left-top" />
             }
             fade={['top']}
             className="max-lg:rounded-b-4xl lg:col-span-4 lg:rounded-br-4xl"
