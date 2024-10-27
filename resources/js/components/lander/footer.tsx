@@ -55,8 +55,8 @@ function Sitemap() {
       <div>
         <SitemapHeading>Product</SitemapHeading>
         <SitemapLinks>
-          <SitemapLink href="https://stage2.openagents.com">AutoDev v2</SitemapLink>
           <SitemapLink href="/inquire">Custom Agents</SitemapLink>
+          <SitemapLink href="https://stage2.openagents.com" target="_blank">AutoDev v2</SitemapLink>
           {/* <SitemapLink href="#">API</SitemapLink> */}
         </SitemapLinks>
       </div>
@@ -77,8 +77,8 @@ function Sitemap() {
       <div>
         <SitemapHeading>Legal</SitemapHeading>
         <SitemapLinks>
-          <SitemapLink href="#">Terms of service</SitemapLink>
-          <SitemapLink href="#">Privacy policy</SitemapLink>
+          <SitemapLink href="/terms">Terms of service</SitemapLink>
+          <SitemapLink href="/privacy">Privacy policy</SitemapLink>
         </SitemapLinks>
       </div>
     </>
