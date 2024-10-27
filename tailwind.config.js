@@ -84,7 +84,12 @@ export default {
             p: {
               marginTop: '2.2em',
               marginBottom: '2.2em',
-              lineHeight: 2
+              lineHeight: 1.9
+            },
+            li: {
+              marginTop: '1.3em',
+              marginBottom: '1.3em',
+              lineHeight: 1.9
             },
             a: {
               color: 'hsl(var(--primary))',
