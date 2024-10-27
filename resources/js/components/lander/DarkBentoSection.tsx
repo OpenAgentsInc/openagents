@@ -47,7 +47,7 @@ export function DarkBentoSection() {
             title="Full transparency"
             description="Monitor and manage your AI agents with complete visibility. Understand exactly how they work and maintain control over your automation."
             graphic={
-              <div className="h-80 bg-[url(/screenshots/engagement.png)] bg-[size:851px_344px] bg-no-repeat" />
+              <div className="h-80 bg-[url(/img/demo2.png)] bg-[size:851px_344px] bg-no-repeat" />
             }
             fade={['top']}
             className="max-lg:rounded-b-4xl lg:col-span-4 lg:rounded-br-4xl"
