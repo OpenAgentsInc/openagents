@@ -40,6 +40,9 @@ export function parseHtmlToBlocks(html: string) {
           
         case 'p':
           const children: any[] = []
+          let markDefKey = 0
+          const markDefs: any[] = []
+          
           element.childNodes.forEach((child) => {
             if (child.nodeType === Node.TEXT_NODE) {
               if (child.textContent?.trim()) {
@@ -50,15 +53,17 @@ export function parseHtmlToBlocks(html: string) {
               const childTag = childElement.tagName.toLowerCase()
               
               if (childTag === 'a') {
+                const key = `link-${markDefKey++}`
+                const href = childElement.getAttribute('href')
+                markDefs.push({
+                  _key: key,
+                  _type: 'link',
+                  href: href
+                })
                 children.push({
                   _type: 'span',
-                  marks: ['link'],
-                  text: childElement.textContent || '',
-                  markDefs: [{
-                    _key: Math.random().toString(36).substr(2, 9),
-                    _type: 'link',
-                    href: childElement.getAttribute('href') || ''
-                  }]
+                  marks: [key, 'link'],
+                  text: childElement.textContent || ''
                 })
               } else if (childTag === 'strong' || childTag === 'b') {
                 children.push({
@@ -81,7 +86,8 @@ export function parseHtmlToBlocks(html: string) {
           blocks.push({
             _type: 'block',
             style: 'normal',
-            children: children
+            children: children,
+            markDefs: markDefs
           })
           break
           
