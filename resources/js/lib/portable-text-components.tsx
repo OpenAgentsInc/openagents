@@ -1,1 +1,84 @@
-import { Link } from \"@/components/lander/link\"\n\nexport const portableTextComponents = {\n  block: {\n    normal: ({ children }) => (\n      <p className=\"my-10 text-base/8 first:mt-0 last:mb-0\">\n        {children}\n      </p>\n    ),\n    h1: ({ children }) => (\n      <h1 className=\"mb-10 mt-12 text-3xl/8 font-medium tracking-tight text-foreground first:mt-0 last:mb-0\">\n        {children}\n      </h1>\n    ),\n    h2: ({ children }) => (\n      <h2 className=\"mb-10 mt-12 text-2xl/8 font-medium tracking-tight text-foreground first:mt-0 last:mb-0\">\n        {children}\n      </h2>\n    ),\n    h3: ({ children }) => (\n      <h3 className=\"mb-10 mt-12 text-xl/8 font-medium tracking-tight text-foreground first:mt-0 last:mb-0\">\n        {children}\n      </h3>\n    ),\n    blockquote: ({ children }) => (\n      <blockquote className=\"my-10 border-l-2 border-l-zinc-300 pl-6 text-base/8 text-foreground first:mt-0 last:mb-0\">\n        {children}\n      </blockquote>\n    ),\n  },\n  marks: {\n    strong: ({ children }) => (\n      <strong className=\"font-semibold text-foreground\">\n        {children}\n      </strong>\n    ),\n    code: ({ children }) => (\n      <>\n        <span aria-hidden>`</span>\n        <code className=\"text-[15px]/8 font-semibold text-foreground\">\n          {children}\n        </code>\n        <span aria-hidden>`</span>\n      </>\n    ),\n    link: ({ value, children }) => {\n      const target = (value?.href || '').startsWith('http') ? '_blank' : undefined\n      return (\n        <Link\n          href={value?.href}\n          className=\"font-medium text-foreground underline decoration-zinc-400 underline-offset-4 data-[hover]:decoration-zinc-600\"\n          target={target}\n          rel={target === '_blank' ? 'noreferrer noopener' : undefined}\n        >\n          {children}\n        </Link>\n      )\n    },\n  },\n  list: {\n    bullet: ({ children }) => (\n      <ul className=\"list-disc pl-4 text-base/8 marker:text-zinc-400\">\n        {children}\n      </ul>\n    ),\n    number: ({ children }) => (\n      <ol className=\"list-decimal pl-4 text-base/8 marker:text-zinc-400\">\n        {children}\n      </ol>\n    ),\n  },\n  listItem: {\n    bullet: ({ children }) => (\n      <li className=\"my-2 pl-2 has-[br]:mb-8\">\n        {children}\n      </li>\n    ),\n    number: ({ children }) => (\n      <li className=\"my-2 pl-2 has-[br]:mb-8\">\n        {children}\n      </li>\n    ),\n  },\n}
+import { Link } from "@/components/lander/link"
+
+export const portableTextComponents = {
+  block: {
+    normal: ({ children }) => (
+      <p className="my-10 text-base/8 first:mt-0 last:mb-0">
+        {children}
+      </p>
+    ),
+    h1: ({ children }) => (
+      <h1 className="mb-10 mt-12 text-3xl/8 font-medium tracking-tight text-foreground first:mt-0 last:mb-0">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }) => (
+      <h2 className="mb-10 mt-12 text-2xl/8 font-medium tracking-tight text-foreground first:mt-0 last:mb-0">
+        {children}
+      </h2>
+    ),
+    h3: ({ children }) => (
+      <h3 className="mb-10 mt-12 text-xl/8 font-medium tracking-tight text-foreground first:mt-0 last:mb-0">
+        {children}
+      </h3>
+    ),
+    blockquote: ({ children }) => (
+      <blockquote className="my-10 border-l-2 border-l-zinc-300 pl-6 text-base/8 text-foreground first:mt-0 last:mb-0">
+        {children}
+      </blockquote>
+    ),
+  },
+  marks: {
+    strong: ({ children }) => (
+      <strong className="font-semibold text-foreground">
+        {children}
+      </strong>
+    ),
+    code: ({ children }) => (
+      <>
+        <span aria-hidden>`</span>
+        <code className="text-[15px]/8 font-semibold text-foreground">
+          {children}
+        </code>
+        <span aria-hidden>`</span>
+      </>
+    ),
+    link: ({ value, children }) => {
+      const target = (value?.href || '').startsWith('http') ? '_blank' : undefined
+      return (
+        <Link
+          href={value?.href}
+          className="font-medium text-foreground underline decoration-zinc-400 underline-offset-4 data-[hover]:decoration-zinc-600"
+          target={target}
+          rel={target === '_blank' ? 'noreferrer noopener' : undefined}
+        >
+          {children}
+        </Link>
+      )
+    },
+  },
+  list: {
+    bullet: ({ children }) => (
+      <ul className="list-disc pl-4 text-base/8 marker:text-zinc-400">
+        {children}
+      </ul>
+    ),
+    number: ({ children }) => (
+      <ol className="list-decimal pl-4 text-base/8 marker:text-zinc-400">
+        {children}
+      </ol>
+    ),
+  },
+  listItem: {
+    bullet: ({ children }) => (
+      <li className="my-2 pl-2 has-[br]:mb-8">
+        {children}
+      </li>
+    ),
+    number: ({ children }) => (
+      <li className="my-2 pl-2 has-[br]:mb-8">
+        {children}
+      </li>
+    ),
+  },
+}
