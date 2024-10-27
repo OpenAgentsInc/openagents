@@ -9,7 +9,7 @@ export function DarkBentoSection() {
     <div className="mx-2 mt-2 rounded-4xl bg-background py-32">
       <Container>
         <Subheading>Business Automation</Subheading>
-        <Heading as="h3" className="mt-2 max-w-3xl">
+        <Heading as="h3" className="mt-2 max-w-3xl leading-relaxed">
           Transform your business with intelligent AI agents
         </Heading>
 
@@ -31,7 +31,7 @@ export function DarkBentoSection() {
             title="Build custom agents"
             description="Create specialized AI agents tailored to your business needs using our intuitive agent builder and plugin system."
             graphic={
-              <div className="h-80 bg-[url(/img/buildagent.jpg)] bg-cover bg-left-top" />
+              <div className="h-80 bg-[url(/img/buildagent.jpg)] bg-cover bg-left-top opacity-80" />
             }
             className="z-10 !overflow-visible lg:col-span-2 lg:rounded-tr-4xl"
           />
@@ -41,7 +41,7 @@ export function DarkBentoSection() {
             title="Add new capabilities"
             description="Connect your agents to existing tools and workflows with our open protocol system and extensible plugin architecture."
             graphic={
-              <div className="h-80 bg-[url(/img/plugin2.jpg)] bg-cover bg-left-top" />
+              <div className="h-80 bg-[url(/img/plugin2.jpg)] bg-cover bg-left-top opacity-80" />
             }
             className="lg:col-span-2 lg:rounded-bl-4xl"
           />
