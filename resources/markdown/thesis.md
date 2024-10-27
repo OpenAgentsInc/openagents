@@ -1,11 +1,11 @@
-## The case for open AI agents
+## The Case for Open AI Agents
 
-Billions of humanoid robots this decade
+We expect billions of humanoid robots to emerge this decade. However, before physical robots become widespread, we will see billions of AI software agents deployed across the digital landscape. This rapid proliferation is inevitable because software can be distributed and replicated far more quickly than hardware.
 
-Before then, there will be billions of AI agents. Because software proliferates faster than hardware!
+The critical question we face is: Who will control these agents?
 
-Who will control those agents?
+Two paths lie ahead:
+1. Closed-source megacorporations, increasingly infiltrated and controlled by governments, becoming de-facto nationalized entities
+2. Open-source systems built on transparent protocols and decentralized infrastructure
 
-Closed-source megacorps infiltrated by governments, de-facto nationalized
-
-Or open source, open protocols, open ___
+The choice between these paths will fundamentally shape the future of artificial intelligence and human society.
