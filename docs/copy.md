@@ -48,7 +48,7 @@
 
 #### Integration Card
 - Eyebrow: "Integration"
-- Title: "Seamless connectivity"
+- Title: "Intelligent Synergy"
 - Description: "Connect your agents to existing tools and workflows with our open protocol system and extensible plugin architecture."
 
 #### Control Card
