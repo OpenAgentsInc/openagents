@@ -57,7 +57,7 @@ export function parseHtmlToBlocks(html: string) {
                   markDefs: [{
                     _key: Math.random().toString(36).substr(2, 9),
                     _type: 'link',
-                    href: (childElement as HTMLAnchorElement).href
+                    href: childElement.getAttribute('href') || ''
                   }]
                 })
               } else if (childTag === 'strong' || childTag === 'b') {
