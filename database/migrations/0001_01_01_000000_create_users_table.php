@@ -16,8 +16,8 @@ return new class extends Migration
             $table->string('name');
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->foreignId('current_team_id')->nullable()->constrained('teams')->onDelete('set null');
-            $table->foreignId('current_project_id')->nullable()->constrained('projects')->onDelete('set null');
+            $table->unsignedBigInteger('current_team_id')->nullable();
+            $table->unsignedBigInteger('current_project_id')->nullable();
             $table->string('password');
             $table->rememberToken();
             $table->timestamps();
@@ -25,7 +25,7 @@ return new class extends Migration
 
         Schema::create('team_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('team_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('team_id');
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->timestamps();
             $table->unique(['team_id', 'user_id']);
