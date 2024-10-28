@@ -91,14 +91,19 @@ trait UsesChat
         $validator = Validator::make($request->all(), [
             'messages' => 'required|array',
             'messages.*.role' => 'required|string|in:user,assistant,system',
-            'messages.*.content' => 'required_without:messages.*.toolInvocations|nullable|string|max:25000',
-            'messages.*.toolInvocations' => 'required_without:messages.*.content|nullable|array',
+            'messages.*.content' => 'required_without:messages.*.toolInvocations',
+            'messages.*.content.*' => 'sometimes|array',
+            'messages.*.content.*.type' => 'sometimes|string|in:text,tool-call',
+            'messages.*.content.*.text' => 'required_if:messages.*.content.*.type,text|string',
+            'messages.*.content.*.toolCallId' => 'required_if:messages.*.content.*.type,tool-call|string',
+            'messages.*.content.*.toolName' => 'required_if:messages.*.content.*.type,tool-call|string',
+            'messages.*.content.*.args' => 'required_if:messages.*.content.*.type,tool-call|array',
+            'messages.*.toolInvocations' => 'sometimes|array',
             'messages.*.toolInvocations.*.state' => 'required_with:messages.*.toolInvocations|string',
             'messages.*.toolInvocations.*.toolCallId' => 'required_with:messages.*.toolInvocations|string',
             'messages.*.toolInvocations.*.toolName' => 'required_with:messages.*.toolInvocations|string',
             'messages.*.toolInvocations.*.args' => 'required_with:messages.*.toolInvocations|array',
             'messages.*.toolInvocations.*.result' => 'required_with:messages.*.toolInvocations',
-            // 'thread_id' => 'required|integer|exists:threads,id',
             'selected_tools' => 'sometimes|array',
             'selected_tools.*' => 'string|in:view_file,view_folder,rewrite_file,create_file',
         ]);
@@ -119,14 +124,17 @@ trait UsesChat
         $user = $this->request->user();
         $messages = $validatedData['messages'];
         $thread_id = 1; // TODO
-        // $thread_id = (int) $validatedData['thread_id'];
         $lastMessage = end($messages);
 
+        // Convert array content to string for storage
+        $content = is_array($lastMessage['content']) 
+            ? json_encode($lastMessage['content']) 
+            : ($lastMessage['content'] ?? "(empty)");
+
         $messageData = [
-            'content' => $lastMessage['content'] ?? "(empty)",
+            'content' => $content,
             'thread_id' => $thread_id,
             'team_id' => null,
-            // 'team_id' => $user->currentTeam ? $user->currentTeam->id : null,
             'user_id' => 1, // $user->id,
             'role' => 'user',
         ];
@@ -145,9 +153,13 @@ trait UsesChat
 
     private function storeAIResponse()
     {
+        $content = is_array($this->response['content']) 
+            ? json_encode($this->response['content']) 
+            : ($this->response['content'] ?? "(empty)");
+
         $assistantMessage = [
-            'content' => $this->response['content'] ?? "(empty)",
-            'thread_id' => 1, // $this->validatedData['thread_id'],
+            'content' => $content,
+            'thread_id' => 1,
             'team_id' => $this->userMessage->team_id,
             'input_tokens' => $this->response['input_tokens'] ?? 0,
             'output_tokens' => $this->response['output_tokens'] ?? 0,
