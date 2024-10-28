@@ -38,6 +38,7 @@ class BedrockMessageConverter
 
         // Second pass: process messages in order
         $messages = [];
+        $lastRole = null;
         foreach ($prompt as $message) {
             if ($message['role'] === 'system') {
                 continue;
@@ -71,9 +72,24 @@ class BedrockMessageConverter
                 }
             }
 
+            // Add the original message first if it's an assistant message
+            if ($message['role'] === 'assistant') {
+                if ($lastRole === 'assistant') {
+                    // Insert a user message to maintain alternation
+                    $messages[] = [
+                        'role' => 'user',
+                        'content' => [['text' => 'Continue.']]
+                    ];
+                }
+                $messages[] = [
+                    'role' => 'assistant',
+                    'content' => $content
+                ];
+                $lastRole = 'assistant';
+            }
+
             // Handle tool invocations
             if (isset($message['toolInvocations'])) {
-                // Add a new user message with the tool results
                 $toolResults = [];
                 foreach ($message['toolInvocations'] as $toolInvocation) {
                     if ($toolInvocation['state'] === 'result') {
@@ -87,18 +103,36 @@ class BedrockMessageConverter
                 }
                 
                 if (!empty($toolResults)) {
+                    if ($lastRole === 'user') {
+                        // Insert an assistant message to maintain alternation
+                        $messages[] = [
+                            'role' => 'assistant',
+                            'content' => [['text' => 'Here are the tool results:']]
+                        ];
+                    }
                     $messages[] = [
                         'role' => 'user',
                         'content' => $toolResults
                     ];
+                    $lastRole = 'user';
                 }
             }
 
-            // Add the original message
-            $messages[] = [
-                'role' => $message['role'],
-                'content' => $content
-            ];
+            // Add the original message if it's a user message
+            if ($message['role'] === 'user') {
+                if ($lastRole === 'user') {
+                    // Insert an assistant message to maintain alternation
+                    $messages[] = [
+                        'role' => 'assistant',
+                        'content' => [['text' => 'I understand.']]
+                    ];
+                }
+                $messages[] = [
+                    'role' => 'user',
+                    'content' => $content
+                ];
+                $lastRole = 'user';
+            }
         }
 
         // If the final message is not from user, append a user message saying "Continue."
