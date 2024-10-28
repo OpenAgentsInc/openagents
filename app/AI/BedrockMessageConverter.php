@@ -1,7 +1,5 @@
 <?php
 
-// https://claude.ai/chat/0f2474f9-031b-4ea0-aba3-250742757687
-
 namespace App\AI;
 
 use Illuminate\Support\Facades\Log;
@@ -13,6 +11,19 @@ class BedrockMessageConverter
         Log::info('[BedrockMessageConverter] Converting prompt to Bedrock chat messages', [
             'prompt' => json_encode($prompt, JSON_PRETTY_PRINT)
         ]);
+
+        // Check if first non-system message is from user
+        $firstNonSystemMessage = null;
+        foreach ($prompt as $message) {
+            if ($message['role'] !== 'system') {
+                $firstNonSystemMessage = $message;
+                break;
+            }
+        }
+
+        if (!$firstNonSystemMessage || $firstNonSystemMessage['role'] !== 'user') {
+            throw new \Exception('A conversation must start with a user message (after any system messages).');
+        }
 
         $blocks = $this->groupIntoBlocks($prompt);
 
