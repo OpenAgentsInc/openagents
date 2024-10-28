@@ -14,7 +14,7 @@ trait BedrockMessageFormatting
      * @param array $prompt The input prompt array
      * @return array The formatted Bedrock messages prompt
      */
-    private function convertToBedrockChatMessages(array $messages): array
+    protected function convertToBedrockChatMessages(array $messages): array
     {
         Log::info('[New] Converting prompt to Bedrock chat messages', [
             'messages' => json_encode($messages, JSON_PRETTY_PRINT)
@@ -72,7 +72,7 @@ trait BedrockMessageFormatting
      * @param array $prompt The input prompt array
      * @return array The formatted Bedrock messages prompt
      */
-    private function convertToBedrockChatMessagesOld(array $messages): array
+    protected function convertToBedrockChatMessagesOld(array $messages): array
     {
         Log::info('Converting prompt to Bedrock chat messages', [
             'messages' => json_encode($messages, JSON_PRETTY_PRINT)
@@ -165,7 +165,7 @@ trait BedrockMessageFormatting
      * @param array $result The tool result array
      * @return string The determined status ('success' or 'error')
      */
-    private function determineToolResultStatus(array $result): string
+    protected function determineToolResultStatus(array $result): string
     {
         // Check for explicit success key
         if (isset($result['success'])) {
@@ -192,7 +192,7 @@ trait BedrockMessageFormatting
      * @param array $decodedBody The decoded response body from Bedrock API
      * @return array Formatted response
      */
-    private function formatResponse(array $decodedBody): array
+    protected function formatResponse(array $decodedBody): array
     {
         $response = $this->initializeResponse($decodedBody);
 
@@ -219,7 +219,7 @@ trait BedrockMessageFormatting
      * @param array $decodedBody The decoded response body from Bedrock API
      * @return array Initialized response array
      */
-    private function initializeResponse(array $decodedBody): array
+    protected function initializeResponse(array $decodedBody): array
     {
         return [
             'content' => '',
@@ -235,7 +235,7 @@ trait BedrockMessageFormatting
      * @param array $contentItem The content item to process
      * @param array &$response The response array to update
      */
-    private function processContentItem(array $contentItem, array &$response): void
+    protected function processContentItem(array $contentItem, array &$response): void
     {
         if (isset($contentItem['text'])) {
             $response['content'] .= $contentItem['text'];
@@ -250,7 +250,7 @@ trait BedrockMessageFormatting
      * @param array $toolResult The tool result to process
      * @param array &$response The response array to update
      */
-    private function processToolResult(array $toolResult, array &$response): void
+    protected function processToolResult(array $toolResult, array &$response): void
     {
         if (isset($toolResult['toolUseId'])) {
             foreach ($response['toolInvocations'] as &$invocation) {
@@ -280,7 +280,7 @@ trait BedrockMessageFormatting
      * @param array $toolUse The tool use data from Bedrock API
      * @return array Formatted tool invocation
      */
-    private function formatToolInvocation(array $toolUse): array
+    protected function formatToolInvocation(array $toolUse): array
     {
         return [
             'toolName' => $toolUse['name'],
