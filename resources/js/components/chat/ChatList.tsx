@@ -9,6 +9,10 @@ export function ChatList({ messages, streamingChatMessage }: ChatListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    console.log("CHATLIST HAS MESSAGES:", messages)
+  }, [messages])
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingChatMessage]);
 
