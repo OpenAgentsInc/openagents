@@ -76,6 +76,19 @@ trait UsesStreaming
         ]);
     }
 
+    protected function streamFinishEvent($reason, $usage = null)
+    {
+        Log::info('Streaming finish event', ['reason' => $reason, 'usage' => $usage]);
+        $data = [
+            'finishReason' => $reason,
+            'usage' => $usage ?? [
+                'promptTokens' => $this->response['input_tokens'] ?? 0,
+                'completionTokens' => $this->response['output_tokens'] ?? 0
+            ]
+        ];
+        $this->streamWithType('d', $data);
+    }
+
     private function streamWithType($type, $content)
     {
         $encodedContent = json_encode($content);
