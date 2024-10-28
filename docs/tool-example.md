@@ -1,5 +1,5 @@
 Request:
-```
+```json
 {
   "messages": [
     {
@@ -32,7 +32,7 @@ a:{"toolCallId":"tooluse_ayhWUyeCTyK_oR_D0vdX0Q","result":{"success":true,"conte
 ```
 
 Request #2:
-```
+```json
 {
   "messages": [
     {
