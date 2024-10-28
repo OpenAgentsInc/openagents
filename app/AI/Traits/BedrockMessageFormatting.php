@@ -66,7 +66,6 @@ trait BedrockMessageFormatting
         ];
     }
 
-
     /**
      * Convert the input prompt to Bedrock chat messages format.
      *
@@ -203,6 +202,13 @@ trait BedrockMessageFormatting
             }
         }
 
+        // Handle tool results if present
+        if (isset($decodedBody['output']['message']['toolResults'])) {
+            foreach ($decodedBody['output']['message']['toolResults'] as $toolResult) {
+                $this->processToolResult($toolResult, $response);
+            }
+        }
+
         Log::info('Processed response', ['response' => $response]);
         return $response;
     }
@@ -235,6 +241,36 @@ trait BedrockMessageFormatting
             $response['content'] .= $contentItem['text'];
         } elseif (isset($contentItem['toolUse'])) {
             $response['toolInvocations'][] = $this->formatToolInvocation($contentItem['toolUse']);
+        }
+    }
+
+    /**
+     * Process a tool result from the Bedrock API response.
+     *
+     * @param array $toolResult The tool result to process
+     * @param array &$response The response array to update
+     */
+    private function processToolResult(array $toolResult, array &$response): void
+    {
+        if (isset($toolResult['toolUseId'])) {
+            foreach ($response['toolInvocations'] as &$invocation) {
+                if ($invocation['toolCallId'] === $toolResult['toolUseId']) {
+                    $invocation['result'] = [
+                        'type' => 'tool_call',
+                        'value' => [
+                            'toolCallId' => $toolResult['toolUseId'],
+                            'toolName' => $invocation['toolName'],
+                            'args' => $invocation['args'],
+                            'result' => [
+                                'success' => $toolResult['status'] === 'success',
+                                'content' => $toolResult['content'][0]['text'] ?? null,
+                                'error' => $toolResult['status'] === 'error' ? ($toolResult['content'][0]['text'] ?? 'Unknown error') : null
+                            ]
+                        ]
+                    ];
+                    break;
+                }
+            }
         }
     }
 
