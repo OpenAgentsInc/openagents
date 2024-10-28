@@ -7,6 +7,7 @@ Files with relevant functionality:
 - app/Traits/UsesStreaming.php
 - resources/js/lib/useChat.ts
 - app/AI/BedrockAIGateway.php
+- tests/Feature/UseChatToolsTest.php
 
 Client uses Vercel AI SDK - React
 
