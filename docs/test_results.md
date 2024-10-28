@@ -1,93 +1,151 @@
- PASS  Tests\Unit\MessageTest
-  ✓ a message belongs to a user                                                                                                      0.09s
-  ✓ a message belongs to a thread                                                                                                    0.01s
-  ✓ a message can be created by the system                                                                                           0.01s
 
-   WARN  Tests\Unit\ProjectTest
-  ✓ a project belongs to a user                                                                                                      0.01s
-  ✓ a project belongs to a team
-  ✓ a project has many threads                                                                                                       0.01s
-  ✓ a project belongs to either a user or a team
-  ✓ a project has many files                                                                                                         0.01s
-  - a file can be uploaded and associated with a project                                                                             0.01s
+   FAIL  Tests\Unit\BedrockMessageConverterTest
+  ✓ converts simple user message                                                                                       0.12s
+  ⨯ converts user and assistant messages                                                                               0.01s
+  ⨯ converts system message
+  ✓ throws exception for assistant first message
+  ⨯ converts tool results
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Unit\BedrockMessageConverterTest > converts user and assistant messages
+  Failed asserting that two arrays are identical.
+       'system' => null,
+       'messages' => Array &1 [
+           0 => Array &2 [
+  -            'role' => 'user',
+  +            'role' => 'assistant',
+               'content' => Array &3 [
+                   0 => Array &4 [
+  -                    'text' => 'Hello',
+  +                    'text' => 'Hi there',
+                   ],
+               ],
+           ],
 
-   PASS  Tests\Unit\TeamTest
-  ✓ a team can have many users                                                                                                       0.01s
-  ✓ a user can be a member of multiple teams                                                                                         0.01s
-  ✓ a team has many projects
-  ✓ a team has many threads through projects                                                                                         0.01s
-  ✓ a user can have a current team
-  ✓ a team can have many users with it as their current team
 
-   PASS  Tests\Unit\ThreadTest
-  ✓ a thread belongs to a user                                                                                                       0.01s
-  ✓ a thread belongs to a project
-  ✓ a thread has many messages                                                                                                       0.01s
-  ✓ a thread belongs to a team through a project                                                                                     0.01s
+  at tests/Unit/BedrockMessageConverterTest.php:46
+     42▕     ];
+     43▕
+     44▕     $result = $this->converter->convertToBedrockChatMessages($messages);
+     45▕
+  ➜  46▕     expect($result)->toBe([
+     47▕         'system' => null,
+     48▕         'messages' => [
+     49▕             [
+     50▕                 'role' => 'user',
 
-   PASS  Tests\Unit\UserTest
-  ✓ a user can belong to multiple teams                                                                                              0.01s
-  ✓ a user can have a current team
-  ✓ a user can have a null current team for personal context
-  ✓ a user has many projects
-  ✓ a user has many threads
-  ✓ a user has many messages                                                                                                         0.01s
-  ✓ a user can have projects through their current team
+  1   tests/Unit/BedrockMessageConverterTest.php:46
 
-   PASS  Tests\Feature\Auth\AuthenticationTest
-  ✓ login screen can be rendered                                                                                                     0.03s
-  ✓ users can authenticate using the login screen                                                                                    0.02s
-  ✓ users can not authenticate with invalid password                                                                                 0.21s
-  ✓ users can logout                                                                                                                 0.01s
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Unit\BedrockMessageConverterTest > converts system message
+  Failed asserting that two arrays are identical.
+   Array &0 [
+  -    'system' => 'You are a helpful assistant',
+  +    'system' => null,
+       'messages' => Array &1 [
+           0 => Array &2 [
+               'role' => 'user',
+               'content' => Array &3 [
+                   0 => Array &4 [
+  +                    'text' => 'Hello',
+  +                ],
+  +            ],
+  +        ],
+  +        1 => Array &5 [
+  +            'role' => 'user',
+  +            'content' => Array &6 [
+  +                0 => Array &7 [
+                       'text' => 'Hello',
+                   ],
+               ],
 
-   PASS  Tests\Feature\Auth\EmailVerificationTest
-  ✓ email verification screen can be rendered                                                                                        0.01s
-  ✓ email can be verified                                                                                                            0.01s
-  ✓ email is not verified with invalid hash                                                                                          0.01s
 
-   PASS  Tests\Feature\Auth\PasswordConfirmationTest
-  ✓ confirm password screen can be rendered                                                                                          0.01s
-  ✓ password can be confirmed                                                                                                        0.01s
-  ✓ password is not confirmed with invalid password                                                                                  0.21s
+  at tests/Unit/BedrockMessageConverterTest.php:85
+     81▕     ];
+     82▕
+     83▕     $result = $this->converter->convertToBedrockChatMessages($messages);
+     84▕
+  ➜  85▕     expect($result)->toBe([
+     86▕         'system' => 'You are a helpful assistant',
+     87▕         'messages' => [
+     88▕             [
+     89▕                 'role' => 'user',
 
-   WARN  Tests\Feature\Auth\PasswordResetTest
-  - reset password link screen can be rendered                                                                                       0.01s
-  - reset password link can be requested
-  - reset password screen can be rendered
-  - password can be reset with valid token
+  1   tests/Unit/BedrockMessageConverterTest.php:85
 
-   PASS  Tests\Feature\Auth\PasswordUpdateTest
-  ✓ password can be updated                                                                                                          0.02s
-  ✓ correct password must be provided to update password                                                                             0.01s
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Unit\BedrockMessageConverterTest > converts tool results
+  Failed asserting that two arrays are identical.
+       'system' => null,
+       'messages' => Array &1 [
+           0 => Array &2 [
+  -            'role' => 'user',
+  +            'role' => 'assistant',
+               'content' => Array &3 [
+                   0 => Array &4 [
+  -                    'text' => 'Show me the README',
+  +                    'text' => 'I'll help you with that.',
+                   ],
+  +                1 => Array &5 [
+  +                    'toolResult' => Array &6 [
+  +                        'toolUseId' => 'tool123',
+  +                        'content' => Array &7 [
+  +                            0 => Array &8 [
+  +                                'text' => '{"content":"README content here"}',
+  +                            ],
+  +                        ],
+  +                    ],
+  +                ],
+               ],
+           ],
+  -        1 => Array &5 [
+  +        1 => Array &9 [
+               'role' => 'assistant',
+  -            'content' => Array &6 [
+  -                0 => Array &7 [
+  +            'content' => Array &10 [
+  +                0 => Array &11 [
+                       'text' => 'I'll help you with that.',
+                   ],
+  -                1 => Array &8 [
+  -                    'toolResult' => Array &9 [
+  +                1 => Array &12 [
+  +                    'toolResult' => Array &13 [
+                           'toolUseId' => 'tool123',
+  -                        'content' => Array &10 [
+  -                            0 => Array &11 [
+  +                        'content' => Array &14 [
+  +                            0 => Array &15 [
+                                   'text' => '{"content":"README content here"}',
+                               ],
+                           ],
+  @@ @@
+                   ],
+               ],
+           ],
+  -        2 => Array &12 [
+  +        2 => Array &16 [
+               'role' => 'user',
+  -            'content' => Array &13 [
+  -                0 => Array &14 [
+  +            'content' => Array &17 [
+  +                0 => Array &18 [
+                       'text' => 'Continue.',
+                   ],
+               ],
 
-   WARN  Tests\Feature\Auth\RegistrationTest
-  - registration screen can be rendered                                                                                              0.01s
-  - new users can register
 
-   PASS  Tests\Feature\ChatRedirectTest
-  ✓ visiting /chat redirects to appropriate thread                                                                                   0.01s
+  at tests/Unit/BedrockMessageConverterTest.php:138
+    134▕     ];
+    135▕
+    136▕     $result = $this->converter->convertToBedrockChatMessages($messages);
+    137▕
+  ➜ 138▕     expect($result)->toBe([
+    139▕         'system' => null,
+    140▕         'messages' => [
+    141▕             [
+    142▕                 'role' => 'user',
 
-   PASS  Tests\Feature\ComponentLibraryTest
-  ✓ it returns a successful response                                                                                                 0.01s
+  1   tests/Unit/BedrockMessageConverterTest.php:138
 
-   PASS  Tests\Feature\IngestTest
-  ✓ can ingest pdf                                                                                                                   0.05s
 
-   PASS  Tests\Feature\InquireTest
-  ✓ inquire page is displayed                                                                                                        0.01s
-  ✓ inquiry can be submitted                                                                                                         0.01s
-  ✓ inquiry requires valid email                                                                                                     0.01s
-  ✓ inquiry requires comment with minimum length                                                                                     0.01s
-  ✓ inquiry requires both email and comment                                                                                          0.01s
-  ✓ successful inquiry submission shows success message                                                                              0.01s
-  ✓ inquiry requires valid inquiry type
-
-   PASS  Tests\Feature\ProfileTest
-  ✓ profile page is displayed                                                                                                        0.01s
-  ✓ profile information can be updated                                                                                               0.01s
-  ✓ email verification status is unchanged when the email address is unchanged                                                       0.01s
-  ✓ user can delete their account                                                                                                    0.01s
-  ✓ correct password must be provided to delete account                                                                              0.01s
-
-  Tests:    7 skipped, 52 passed (139 assertions)
-  Duration: 1.01s
+  Tests:    3 failed, 2 passed (6 assertions)
