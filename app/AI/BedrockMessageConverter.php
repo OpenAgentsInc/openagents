@@ -71,11 +71,13 @@ class BedrockMessageConverter
                 }
             }
 
-            // Handle tool invocations for assistant messages
-            if ($message['role'] === 'assistant' && isset($message['toolInvocations'])) {
+            // Handle tool invocations
+            if (isset($message['toolInvocations'])) {
+                // Add a new user message with the tool results
+                $toolResults = [];
                 foreach ($message['toolInvocations'] as $toolInvocation) {
                     if ($toolInvocation['state'] === 'result') {
-                        $content[] = [
+                        $toolResults[] = [
                             'toolResult' => [
                                 'toolUseId' => $toolInvocation['toolCallId'],
                                 'content' => [['text' => json_encode($toolInvocation['result'])]]
@@ -83,8 +85,16 @@ class BedrockMessageConverter
                         ];
                     }
                 }
+                
+                if (!empty($toolResults)) {
+                    $messages[] = [
+                        'role' => 'user',
+                        'content' => $toolResults
+                    ];
+                }
             }
 
+            // Add the original message
             $messages[] = [
                 'role' => $message['role'],
                 'content' => $content
