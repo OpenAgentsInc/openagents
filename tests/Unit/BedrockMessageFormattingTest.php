@@ -196,7 +196,7 @@ test('formats response with tool error', function () {
                         'args' => ['path' => 'nonexistent.md'],
                         'result' => [
                             'success' => false,
-                            'content' => null,
+                            'content' => 'File not found',
                             'error' => 'File not found'
                         ]
                     ]
