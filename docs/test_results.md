@@ -1,13 +1,13 @@
-  PASS  Tests\Unit\MessageTest
-  ✓ a message belongs to a user                                                                                                      0.13s
+ PASS  Tests\Unit\MessageTest
+  ✓ a message belongs to a user                                                                                                      0.09s
   ✓ a message belongs to a thread                                                                                                    0.01s
-  ✓ a message can be created by the system
+  ✓ a message can be created by the system                                                                                           0.01s
 
    WARN  Tests\Unit\ProjectTest
   ✓ a project belongs to a user                                                                                                      0.01s
-  ✓ a project belongs to a team                                                                                                      0.01s
+  ✓ a project belongs to a team
   ✓ a project has many threads                                                                                                       0.01s
-  ✓ a project belongs to either a user or a team                                                                                     0.01s
+  ✓ a project belongs to either a user or a team
   ✓ a project has many files                                                                                                         0.01s
   - a file can be uploaded and associated with a project                                                                             0.01s
 
@@ -21,21 +21,21 @@
 
    PASS  Tests\Unit\ThreadTest
   ✓ a thread belongs to a user                                                                                                       0.01s
-  ✓ a thread belongs to a project                                                                                                    0.01s
+  ✓ a thread belongs to a project
   ✓ a thread has many messages                                                                                                       0.01s
-  ✓ a thread belongs to a team through a project
+  ✓ a thread belongs to a team through a project                                                                                     0.01s
 
    PASS  Tests\Unit\UserTest
   ✓ a user can belong to multiple teams                                                                                              0.01s
   ✓ a user can have a current team
   ✓ a user can have a null current team for personal context
   ✓ a user has many projects
-  ✓ a user has many threads                                                                                                          0.01s
+  ✓ a user has many threads
   ✓ a user has many messages                                                                                                         0.01s
   ✓ a user can have projects through their current team
 
    PASS  Tests\Feature\Auth\AuthenticationTest
-  ✓ login screen can be rendered                                                                                                     0.06s
+  ✓ login screen can be rendered                                                                                                     0.03s
   ✓ users can authenticate using the login screen                                                                                    0.02s
   ✓ users can not authenticate with invalid password                                                                                 0.21s
   ✓ users can logout                                                                                                                 0.01s
@@ -54,32 +54,32 @@
   - reset password link screen can be rendered                                                                                       0.01s
   - reset password link can be requested
   - reset password screen can be rendered
-  - password can be reset with valid token                                                                                           0.01s
+  - password can be reset with valid token
 
    PASS  Tests\Feature\Auth\PasswordUpdateTest
   ✓ password can be updated                                                                                                          0.02s
   ✓ correct password must be provided to update password                                                                             0.01s
 
    WARN  Tests\Feature\Auth\RegistrationTest
-  - registration screen can be rendered
+  - registration screen can be rendered                                                                                              0.01s
   - new users can register
 
-   FAIL  Tests\Feature\ChatRedirectTest
-  ⨯ visiting /chat redirects to appropriate thread                                                                                   0.01s
+   PASS  Tests\Feature\ChatRedirectTest
+  ✓ visiting /chat redirects to appropriate thread                                                                                   0.01s
 
    PASS  Tests\Feature\ComponentLibraryTest
   ✓ it returns a successful response                                                                                                 0.01s
 
    PASS  Tests\Feature\IngestTest
-  ✓ can ingest pdf                                                                                                                   0.34s
+  ✓ can ingest pdf                                                                                                                   0.05s
 
    PASS  Tests\Feature\InquireTest
   ✓ inquire page is displayed                                                                                                        0.01s
   ✓ inquiry can be submitted                                                                                                         0.01s
   ✓ inquiry requires valid email                                                                                                     0.01s
-  ✓ inquiry requires comment with minimum length
-  ✓ inquiry requires both email and comment
-  ✓ successful inquiry submission shows success message
+  ✓ inquiry requires comment with minimum length                                                                                     0.01s
+  ✓ inquiry requires both email and comment                                                                                          0.01s
+  ✓ successful inquiry submission shows success message                                                                              0.01s
   ✓ inquiry requires valid inquiry type
 
    PASS  Tests\Feature\ProfileTest
@@ -88,21 +88,6 @@
   ✓ email verification status is unchanged when the email address is unchanged                                                       0.01s
   ✓ user can delete their account                                                                                                    0.01s
   ✓ correct password must be provided to delete account                                                                              0.01s
-  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Feature\ChatRedirectTest > visiting /chat redirects to appropriate thread
-  Expected response status code [201, 301, 302, 303, 307, 308] but received 200.
-Failed asserting that false is true.
 
-  at tests/Feature/ChatRedirectTest.php:13
-      9▕     $this->assertDatabaseCount('threads', 0);
-     10▕
-     11▕     $user = User::factory()->create();
-     12▕     $response = $this->actingAs($user)->get('/chat');
-  ➜  13▕     $response->assertRedirect('/chat/1');
-     14▕
-     15▕     // Assert there is now one thread in the database
-     16▕     $this->assertDatabaseCount('threads', 1);
-     17▕ });
-
-
-  Tests:    1 failed, 7 skipped, 51 passed (137 assertions)
+  Tests:    7 skipped, 52 passed (139 assertions)
+  Duration: 1.01s
