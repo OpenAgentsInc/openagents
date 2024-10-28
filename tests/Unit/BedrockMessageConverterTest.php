@@ -119,7 +119,20 @@ test('converts tool results', function () {
         ],
         [
             'role' => 'assistant',
-            'content' => 'I\'ll help you with that.',
+            'content' => [
+                [
+                    'type' => 'text',
+                    'text' => 'I\'ll help you with that.'
+                ],
+                [
+                    'type' => 'tool-call',
+                    'toolCallId' => 'tool123',
+                    'toolName' => 'view_file',
+                    'args' => [
+                        'path' => 'README.md'
+                    ]
+                ]
+            ],
             'toolInvocations' => [
                 [
                     'state' => 'result',
@@ -147,19 +160,13 @@ test('converts tool results', function () {
             [
                 'role' => 'assistant',
                 'content' => [
-                    ['text' => 'I\'ll help you with that.']
-                ]
-            ],
-            [
-                'role' => 'user',
-                'content' => [
+                    ['text' => 'I\'ll help you with that.'],
                     [
-                        'toolResult' => [
+                        'toolUse' => [
                             'toolUseId' => 'tool123',
-                            'content' => [
-                                ['text' => json_encode([
-                                    'content' => 'README content here'
-                                ])]
+                            'name' => 'view_file',
+                            'input' => [
+                                'path' => 'README.md'
                             ]
                         ]
                     ]
@@ -168,7 +175,14 @@ test('converts tool results', function () {
             [
                 'role' => 'user',
                 'content' => [
-                    ['text' => 'Continue.']
+                    [
+                        'toolResult' => [
+                            'toolUseId' => 'tool123',
+                            'content' => [['text' => json_encode([
+                                'content' => 'README content here'
+                            ])]]
+                        ]
+                    ]
                 ]
             ]
         ]
