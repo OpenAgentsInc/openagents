@@ -32,7 +32,7 @@ class BedrockMessageConverter
                 if ($system !== null) {
                     throw new \Exception('Multiple system messages are not supported.');
                 }
-                $system = $message['content'];
+                $system = $this->formatContent($message['content']);
             }
         }
 
@@ -46,36 +46,6 @@ class BedrockMessageConverter
                 continue;
             }
 
-            $content = [];
-            
-            // Handle text content
-            if (is_string($message['content'])) {
-                $content[] = ['text' => $message['content']];
-            } elseif (is_array($message['content'])) {
-                foreach ($message['content'] as $part) {
-                    if (is_string($part)) {
-                        $content[] = ['text' => $part];
-                    } elseif (is_array($part) && isset($part['type'])) {
-                        switch ($part['type']) {
-                            case 'text':
-                                $content[] = ['text' => $part['text']];
-                                break;
-                            case 'tool-call':
-                                $toolUse = [
-                                    'toolUse' => [
-                                        'toolUseId' => $part['toolCallId'],
-                                        'name' => $part['toolName'],
-                                        'input' => $part['args']
-                                    ]
-                                ];
-                                $content[] = $toolUse;
-                                $pendingToolUse = $part['toolCallId'];
-                                break;
-                        }
-                    }
-                }
-            }
-
             // Add the message
             if ($message['role'] === 'user' && $lastRole === 'user') {
                 // Insert an assistant message to maintain alternation
@@ -87,7 +57,7 @@ class BedrockMessageConverter
 
             $messages[] = [
                 'role' => $message['role'],
-                'content' => $content
+                'content' => $this->formatContent($message['content'])
             ];
             $lastRole = $message['role'];
 
@@ -121,9 +91,69 @@ class BedrockMessageConverter
             ];
         }
 
+        // Validate all messages have non-empty content
+        foreach ($messages as $message) {
+            if (empty($message['content'])) {
+                Log::error('Empty content in message', ['message' => $message]);
+                throw new \Exception('Message content cannot be empty');
+            }
+        }
+
+        Log::info('Converted messages', ['messages' => $messages]);
+
         return [
             'system' => $system,
             'messages' => $messages
         ];
+    }
+
+    private function formatContent($content): array
+    {
+        // If content is empty, return a default text block
+        if (empty($content)) {
+            return [['text' => ' ']];
+        }
+
+        // If content is a string, wrap it in a text block
+        if (is_string($content)) {
+            return [['text' => $content]];
+        }
+
+        // If content is already an array of content blocks
+        if (is_array($content) && !empty($content) && isset($content[0]) && 
+            (isset($content[0]['text']) || isset($content[0]['toolResult']) || isset($content[0]['toolUse']))) {
+            return array_map(function($block) {
+                if (isset($block['text']) && empty($block['text'])) {
+                    $block['text'] = ' ';
+                }
+                return $block;
+            }, $content);
+        }
+
+        // If content is an array but not in content block format
+        if (is_array($content)) {
+            $formatted = [];
+            foreach ($content as $item) {
+                if (is_string($item)) {
+                    $formatted[] = ['text' => $item];
+                } elseif (isset($item['type']) && $item['type'] === 'tool-call') {
+                    $formatted[] = [
+                        'toolUse' => [
+                            'toolUseId' => $item['toolCallId'],
+                            'name' => $item['toolName'],
+                            'input' => $item['args']
+                        ]
+                    ];
+                } elseif (isset($item['toolResult'])) {
+                    $formatted[] = $item;
+                } else {
+                    $formatted[] = ['text' => json_encode($item)];
+                }
+            }
+            return $formatted;
+        }
+
+        // Fallback: convert to JSON string and wrap in text block
+        return [['text' => json_encode($content)]];
     }
 }
