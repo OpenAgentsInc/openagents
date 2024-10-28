@@ -5,6 +5,7 @@ Files with relevant functionality:
 - app/Http/Controllers/UseChatController.php
 - app/Traits/UsesChat.php
 - app/Traits/UsesStreaming.php
+- resources/js/lib/useChat.ts
 
 Client uses Vercel AI SDK - React
 
