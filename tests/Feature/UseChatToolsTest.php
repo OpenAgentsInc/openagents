@@ -1,9 +1,6 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-
-uses(RefreshDatabase::class);
 
 test('chat tools response has correct format', function () {
     $user = User::factory()->create();
