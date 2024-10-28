@@ -38,6 +38,9 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
       console.error("Chat error:", err);
       setError(err);
     },
+    onResponse: (res) => {
+      console.log("useChat response:", res);
+    }
   });
 
   const filteredMessages = useMemo(() => {
