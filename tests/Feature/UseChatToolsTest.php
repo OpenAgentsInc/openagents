@@ -3,7 +3,10 @@
 use App\Models\User;
 
 test('chat tools response has correct format', function () {
+    $this->withoutExceptionHandling();
+
     $user = User::factory()->create();
+    $user->threads()->create(['title' => 'New Chat']);
 
     $payload = [
         'messages' => [
@@ -55,7 +58,7 @@ test('chat tools response has correct format', function () {
     ];
 
     $response = $this->actingAs($user)
-        ->postJson('/api/chat', $payload);
+        ->postJson('/chat', $payload);
 
     // Assert response headers
     expect($response->status())->toBe(200)
