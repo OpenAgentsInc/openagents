@@ -147,7 +147,12 @@ test('converts tool results', function () {
             [
                 'role' => 'assistant',
                 'content' => [
-                    ['text' => 'I\'ll help you with that.'],
+                    ['text' => 'I\'ll help you with that.']
+                ]
+            ],
+            [
+                'role' => 'user',
+                'content' => [
                     [
                         'toolResult' => [
                             'toolUseId' => 'tool123',
