@@ -54,7 +54,7 @@ test('chat tools response has correct format', function () {
         ]
     ];
 
-    $response = actingAs($user)
+    $response = $this->actingAs($user)
         ->postJson('/api/chat', $payload);
 
     // Assert response headers
