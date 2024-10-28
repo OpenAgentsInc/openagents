@@ -5,6 +5,17 @@ use App\AI\Traits\BedrockMessageFormatting;
 class TestClass
 {
     use BedrockMessageFormatting;
+
+    // Add public methods to expose protected methods for testing
+    public function publicFormatResponse(array $decodedBody): array
+    {
+        return $this->formatResponse($decodedBody);
+    }
+
+    public function publicDetermineToolResultStatus(array $result): string
+    {
+        return $this->determineToolResultStatus($result);
+    }
 }
 
 beforeEach(function () {
@@ -27,7 +38,7 @@ test('formats response with text only', function () {
         ]
     ];
 
-    $result = $this->formatter->formatResponse($decodedBody);
+    $result = $this->formatter->publicFormatResponse($decodedBody);
 
     expect($result)->toBe([
         'content' => 'Hello world',
@@ -59,7 +70,7 @@ test('formats response with tool use', function () {
         ]
     ];
 
-    $result = $this->formatter->formatResponse($decodedBody);
+    $result = $this->formatter->publicFormatResponse($decodedBody);
 
     expect($result)->toBe([
         'content' => 'Let me check that file for you.',
@@ -106,7 +117,7 @@ test('formats response with tool result', function () {
         ]
     ];
 
-    $result = $this->formatter->formatResponse($decodedBody);
+    $result = $this->formatter->publicFormatResponse($decodedBody);
 
     expect($result)->toBe([
         'content' => 'Here\'s what I found:',
@@ -166,7 +177,7 @@ test('formats response with tool error', function () {
         ]
     ];
 
-    $result = $this->formatter->formatResponse($decodedBody);
+    $result = $this->formatter->publicFormatResponse($decodedBody);
 
     expect($result)->toBe([
         'content' => 'Let me try to access that file:',
@@ -197,19 +208,19 @@ test('formats response with tool error', function () {
 
 test('determines tool result status correctly', function () {
     // Test explicit success
-    expect($this->formatter->determineToolResultStatus(['success' => true]))->toBe('success');
-    expect($this->formatter->determineToolResultStatus(['success' => false]))->toBe('error');
+    expect($this->formatter->publicDetermineToolResultStatus(['success' => true]))->toBe('success');
+    expect($this->formatter->publicDetermineToolResultStatus(['success' => false]))->toBe('error');
 
     // Test error indicators
-    expect($this->formatter->determineToolResultStatus(['error' => 'Something went wrong']))->toBe('error');
-    expect($this->formatter->determineToolResultStatus(['errorMessage' => 'Something went wrong']))->toBe('error');
+    expect($this->formatter->publicDetermineToolResultStatus(['error' => 'Something went wrong']))->toBe('error');
+    expect($this->formatter->publicDetermineToolResultStatus(['errorMessage' => 'Something went wrong']))->toBe('error');
 
     // Test content presence
-    expect($this->formatter->determineToolResultStatus(['content' => 'Some content']))->toBe('success');
-    expect($this->formatter->determineToolResultStatus(['content' => '']))->toBe('error');
+    expect($this->formatter->publicDetermineToolResultStatus(['content' => 'Some content']))->toBe('success');
+    expect($this->formatter->publicDetermineToolResultStatus(['content' => '']))->toBe('error');
 
     // Test default case
-    expect($this->formatter->determineToolResultStatus([]))->toBe('error');
+    expect($this->formatter->publicDetermineToolResultStatus([]))->toBe('error');
 });
 
 test('formats response with multiple tool calls', function () {
@@ -257,7 +268,7 @@ test('formats response with multiple tool calls', function () {
         ]
     ];
 
-    $result = $this->formatter->formatResponse($decodedBody);
+    $result = $this->formatter->publicFormatResponse($decodedBody);
 
     expect($result)->toBe([
         'content' => 'Let me check multiple files:',
