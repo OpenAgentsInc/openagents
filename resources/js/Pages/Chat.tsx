@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react"
 import { ChatInput } from "@/components/chat/ChatInput"
+import { ChatList } from "@/components/chat/ChatList"
 import { Message } from "@/components/chat/types"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import MainLayout from "@/Layouts/MainLayout"
@@ -39,10 +40,11 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
           <>
             <ScrollArea className="flex-1">
               <div className="h-full mx-auto max-w-4xl px-1 md:px-4">
-                {/* <ChatList
+                <ChatList
                   messages={messages as Message[]}
                   currentUserId={auth.user.id}
-                /> */}
+                  isLoading={isLoading}
+                />
               </div>
             </ScrollArea>
 

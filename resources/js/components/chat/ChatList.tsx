@@ -13,6 +13,7 @@ export function ChatList({ messages, streamingChatMessage }: ChatListProps) {
   }, [messages, streamingChatMessage]);
 
   if (!messages.length && !streamingChatMessage) {
+    console.log("returning null because messages.length is 0 and streamingChatMessage is null")
     return null;
   }
 
