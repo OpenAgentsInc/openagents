@@ -32,30 +32,46 @@ trait UsesChat
     private function formatMessageContent($content)
     {
         if (empty($content)) {
-            return [['text' => '']];
+            return [['text' => ' ']]; // Never return empty content
         }
 
         if (is_string($content)) {
             return [['text' => $content]];
         }
 
-        if (is_array($content) && !isset($content[0])) {
-            // Single content block without array wrapper
-            if (isset($content['text'])) {
-                return [$content];
-            }
-            // Convert to text if not in correct format
-            return [['text' => json_encode($content)]];
-        }
-
-        if (is_array($content) && isset($content[0]) && !isset($content[0]['text']) && !isset($content[0]['toolResult'])) {
-            // Array of strings or other non-content-block items
-            return array_map(function($item) {
-                return ['text' => is_string($item) ? $item : json_encode($item)];
+        // If it's already in the correct format with text or toolResult
+        if (is_array($content) && isset($content[0]) && (isset($content[0]['text']) || isset($content[0]['toolResult']))) {
+            return array_map(function($block) {
+                if (empty($block['text']) && !isset($block['toolResult'])) {
+                    $block['text'] = ' '; // Ensure text is never empty
+                }
+                return $block;
             }, $content);
         }
 
-        return $content;
+        // If it's a single content block
+        if (is_array($content) && !isset($content[0])) {
+            if (isset($content['text'])) {
+                return [$content];
+            }
+            if (isset($content['toolResult'])) {
+                return [$content];
+            }
+            return [['text' => json_encode($content)]];
+        }
+
+        // If it's an array of strings or other values
+        if (is_array($content)) {
+            return array_map(function($item) {
+                if (is_string($item)) {
+                    return ['text' => $item];
+                }
+                return ['text' => json_encode($item)];
+            }, $content);
+        }
+
+        // Fallback
+        return [['text' => json_encode($content)]];
     }
 
     private function handleToolInvocations()
@@ -108,18 +124,22 @@ trait UsesChat
             $messages[] = [
                 'role' => 'assistant',
                 'content' => array_merge(
-                    [['text' => $this->response['content'] ?? '']],
+                    [['text' => $this->response['content'] ?: ' ']],
                     $toolResults
                 )
             ];
 
             // Format all messages to ensure proper content structure
             $formattedMessages = array_map(function($message) {
-                return [
+                $formatted = [
                     'role' => $message['role'],
                     'content' => $this->formatMessageContent($message['content'])
                 ];
+                Log::debug('Formatted message', ['original' => $message, 'formatted' => $formatted]);
+                return $formatted;
             }, $messages);
+
+            Log::info('Making inference call with messages', ['messages' => $formattedMessages]);
 
             // Make a new inference call with updated messages
             $this->response = $this->gateway->inference([
@@ -164,7 +184,7 @@ trait UsesChat
             }
         }
 
-        Log::info('Formatted messages for inference', ['messages' => $formattedMessages]);
+        Log::info('Making initial inference call with messages', ['messages' => $formattedMessages]);
 
         $this->response = $this->gateway->inference([
             'model' => $this->model,
@@ -223,11 +243,18 @@ trait UsesChat
         if ($validator->fails()) {
             Log::warning('Validation failed', ['errors' => $validator->errors()]);
             throw new ValidationException($validator);
-        } else {
-            Log::info('Validated chat request', ['request' => $request->all()]);
         }
 
-        return $validator->validated();
+        $validated = $validator->validated();
+        Log::info('Validated chat request', ['request' => $validated]);
+        
+        // Ensure each message has properly formatted content
+        $validated['messages'] = array_map(function($message) {
+            $message['content'] = $this->formatMessageContent($message['content']);
+            return $message;
+        }, $validated['messages']);
+
+        return $validated;
     }
 
     private function saveUserMessage()
