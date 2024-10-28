@@ -45,6 +45,10 @@ trait UsesChat
             return;
         }
 
+        $messages = $this->validatedData['messages'];
+        $lastMessage = end($messages);
+        $toolResults = [];
+
         foreach ($toolInvocations as $toolInvocation) {
             $this->streamToolCall([$toolInvocation]);
             $this->streamFinishEvent('tool-calls');
@@ -54,7 +58,50 @@ trait UsesChat
                 'toolCallId' => $toolResult['toolCallId'] ?? $toolInvocation['toolCallId'] ?? null,
                 'result' => $toolResult['result'] ?? $toolResult,
             ];
+            
             $this->streamToolResult($formattedToolResult);
+
+            // Add tool result to messages
+            $toolResults[] = [
+                'toolResult' => [
+                    'toolUseId' => $formattedToolResult['toolCallId'],
+                    'status' => $toolResult['result']['success'] ? 'success' : 'error',
+                    'content' => [
+                        [
+                            'text' => $toolResult['result']['content'] ?? json_encode($toolResult['result'])
+                        ]
+                    ]
+                ]
+            ];
+        }
+
+        // Add tool results to the last assistant message
+        if (!empty($toolResults)) {
+            $messages[] = [
+                'role' => 'assistant',
+                'content' => array_merge(
+                    [['text' => $this->response['content'] ?? '']],
+                    $toolResults
+                )
+            ];
+
+            // Make a new inference call with updated messages
+            $this->response = $this->gateway->inference([
+                'model' => $this->model,
+                'messages' => $messages,
+                'tools' => $this->tools,
+                'max_tokens' => 4096,
+            ]);
+
+            // Stream the new response
+            if (!empty($this->response['content'])) {
+                $content = $this->response['content'];
+                $words = explode(' ', $content);
+                foreach ($words as $word) {
+                    $this->stream($word . ' ');
+                    usleep(50000);
+                }
+            }
         }
 
         $this->streamFinishEvent('stop');
@@ -71,10 +118,13 @@ trait UsesChat
             if ($lastRole === $message['role']) {
                 // If same role appears twice, combine their content
                 $lastMessage = end($formattedMessages);
-                $lastContent = is_array($lastMessage['content']) ? $lastMessage['content'] : [$lastMessage['content']];
-                $newContent = is_array($message['content']) ? $message['content'] : [$message['content']];
+                $lastContent = is_array($lastMessage['content']) ? $lastMessage['content'] : [['text' => $lastMessage['content']]];
+                $newContent = is_array($message['content']) ? $message['content'] : [['text' => $message['content']]];
                 $formattedMessages[key($formattedMessages)]['content'] = array_merge($lastContent, $newContent);
             } else {
+                if (!is_array($message['content'])) {
+                    $message['content'] = [['text' => $message['content']]];
+                }
                 $formattedMessages[] = $message;
                 $lastRole = $message['role'];
             }
@@ -96,20 +146,16 @@ trait UsesChat
             // Handle tool invocations first
             if (!empty($this->response['toolInvocations'])) {
                 $this->handleToolInvocations();
-            }
-
-            // Then stream the content
-            if (!empty($this->response['content'])) {
-                $content = $this->response['content'];
-                $words = explode(' ', $content);
-                foreach ($words as $word) {
-                    $this->stream($word . ' ');
-                    usleep(50000); // Sleep for 50ms between words
+            } else {
+                // Stream the content if no tools were used
+                if (!empty($this->response['content'])) {
+                    $content = $this->response['content'];
+                    $words = explode(' ', $content);
+                    foreach ($words as $word) {
+                        $this->stream($word . ' ');
+                        usleep(50000);
+                    }
                 }
-            }
-
-            // Final finish event if no tool invocations were present
-            if (empty($this->response['toolInvocations'])) {
                 $this->streamFinishEvent('stop');
             }
         };
