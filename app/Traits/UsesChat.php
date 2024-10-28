@@ -45,18 +45,15 @@ trait UsesChat
             return;
         }
 
-        $this->streamToolCall($toolInvocations);
-        $this->streamFinishEvent('tool-calls');
-
         foreach ($toolInvocations as $toolInvocation) {
+            $this->streamToolCall([$toolInvocation]);
+            $this->streamFinishEvent('tool-calls');
+            
             $toolResult = $this->toolService->handleToolCall($toolInvocation, $this->assistantMessage->id);
-
-            // Ensure the toolResult has the correct structure
             $formattedToolResult = [
                 'toolCallId' => $toolResult['toolCallId'] ?? $toolInvocation['toolCallId'] ?? null,
                 'result' => $toolResult['result'] ?? $toolResult,
             ];
-
             $this->streamToolResult($formattedToolResult);
         }
 
@@ -65,9 +62,27 @@ trait UsesChat
 
     private function createChatCallback()
     {
+        // Format messages to ensure proper alternation
+        $messages = $this->validatedData['messages'];
+        $formattedMessages = [];
+        $lastRole = null;
+        
+        foreach ($messages as $message) {
+            if ($lastRole === $message['role']) {
+                // If same role appears twice, combine their content
+                $lastMessage = end($formattedMessages);
+                $lastContent = is_array($lastMessage['content']) ? $lastMessage['content'] : [$lastMessage['content']];
+                $newContent = is_array($message['content']) ? $message['content'] : [$message['content']];
+                $formattedMessages[key($formattedMessages)]['content'] = array_merge($lastContent, $newContent);
+            } else {
+                $formattedMessages[] = $message;
+                $lastRole = $message['role'];
+            }
+        }
+
         $this->response = $this->gateway->inference([
             'model' => $this->model,
-            'messages' => $this->validatedData['messages'],
+            'messages' => $formattedMessages,
             'tools' => $this->tools,
             'max_tokens' => 4096,
         ]);
@@ -75,50 +90,28 @@ trait UsesChat
         $this->storeAIResponse();
 
         return function () {
-            // Initial response structure
-            $this->stream(' '); // Initial text delta
-            
+            // Initial empty text delta
+            $this->stream(' ');
+
+            // Handle tool invocations first
             if (!empty($this->response['toolInvocations'])) {
-                $firstToolCall = reset($this->response['toolInvocations']);
-                $this->streamToolCall([$firstToolCall]);
-                $this->streamFinishEvent('tool-calls', [
-                    'promptTokens' => $this->response['input_tokens'] ?? 0,
-                    'completionTokens' => $this->response['output_tokens'] ?? 0
-                ]);
-                
-                $toolResult = $this->toolService->handleToolCall($firstToolCall, $this->assistantMessage->id);
-                $formattedToolResult = [
-                    'toolCallId' => $toolResult['toolCallId'] ?? $firstToolCall['toolCallId'] ?? null,
-                    'result' => $toolResult['result'] ?? $toolResult,
-                ];
-                $this->streamToolResult($formattedToolResult);
+                $this->handleToolInvocations();
             }
 
-            // Stream the content word by word
-            $content = $this->response['content'];
-            $words = explode(' ', $content);
-            foreach ($words as $word) {
-                $this->stream($word . ' ');
-                usleep(50000); // Sleep for 50ms between words
-            }
-
-            // Handle remaining tool invocations if any
-            if (!empty($this->response['toolInvocations']) && count($this->response['toolInvocations']) > 1) {
-                $remainingTools = array_slice($this->response['toolInvocations'], 1);
-                foreach ($remainingTools as $toolCall) {
-                    $this->streamToolCall([$toolCall]);
-                    $this->streamFinishEvent('tool-calls');
-                    
-                    $toolResult = $this->toolService->handleToolCall($toolCall, $this->assistantMessage->id);
-                    $formattedToolResult = [
-                        'toolCallId' => $toolResult['toolCallId'] ?? $toolCall['toolCallId'] ?? null,
-                        'result' => $toolResult['result'] ?? $toolResult,
-                    ];
-                    $this->streamToolResult($formattedToolResult);
+            // Then stream the content
+            if (!empty($this->response['content'])) {
+                $content = $this->response['content'];
+                $words = explode(' ', $content);
+                foreach ($words as $word) {
+                    $this->stream($word . ' ');
+                    usleep(50000); // Sleep for 50ms between words
                 }
             }
 
-            $this->streamFinishEvent('stop');
+            // Final finish event if no tool invocations were present
+            if (empty($this->response['toolInvocations'])) {
+                $this->streamFinishEvent('stop');
+            }
         };
     }
 
