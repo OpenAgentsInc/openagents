@@ -29,6 +29,35 @@ trait UsesChat
         return $this->createStreamedResponse();
     }
 
+    private function formatMessageContent($content)
+    {
+        if (empty($content)) {
+            return [['text' => '']];
+        }
+
+        if (is_string($content)) {
+            return [['text' => $content]];
+        }
+
+        if (is_array($content) && !isset($content[0])) {
+            // Single content block without array wrapper
+            if (isset($content['text'])) {
+                return [$content];
+            }
+            // Convert to text if not in correct format
+            return [['text' => json_encode($content)]];
+        }
+
+        if (is_array($content) && isset($content[0]) && !isset($content[0]['text']) && !isset($content[0]['toolResult'])) {
+            // Array of strings or other non-content-block items
+            return array_map(function($item) {
+                return ['text' => is_string($item) ? $item : json_encode($item)];
+            }, $content);
+        }
+
+        return $content;
+    }
+
     private function handleToolInvocations()
     {
         if (!isset($this->response['toolInvocations'])) {
@@ -46,7 +75,6 @@ trait UsesChat
         }
 
         $messages = $this->validatedData['messages'];
-        $lastMessage = end($messages);
         $toolResults = [];
 
         foreach ($toolInvocations as $toolInvocation) {
@@ -65,17 +93,17 @@ trait UsesChat
             $toolResults[] = [
                 'toolResult' => [
                     'toolUseId' => $formattedToolResult['toolCallId'],
-                    'status' => $toolResult['result']['success'] ? 'success' : 'error',
+                    'status' => isset($toolResult['result']['success']) && $toolResult['result']['success'] ? 'success' : 'error',
                     'content' => [
                         [
-                            'text' => $toolResult['result']['content'] ?? json_encode($toolResult['result'])
+                            'text' => isset($toolResult['result']['content']) ? $toolResult['result']['content'] : json_encode($toolResult['result'])
                         ]
                     ]
                 ]
             ];
         }
 
-        // Add tool results to the last assistant message
+        // Add tool results to messages
         if (!empty($toolResults)) {
             $messages[] = [
                 'role' => 'assistant',
@@ -85,10 +113,18 @@ trait UsesChat
                 )
             ];
 
+            // Format all messages to ensure proper content structure
+            $formattedMessages = array_map(function($message) {
+                return [
+                    'role' => $message['role'],
+                    'content' => $this->formatMessageContent($message['content'])
+                ];
+            }, $messages);
+
             // Make a new inference call with updated messages
             $this->response = $this->gateway->inference([
                 'model' => $this->model,
-                'messages' => $messages,
+                'messages' => $formattedMessages,
                 'tools' => $this->tools,
                 'max_tokens' => 4096,
             ]);
@@ -109,7 +145,7 @@ trait UsesChat
 
     private function createChatCallback()
     {
-        // Format messages to ensure proper alternation
+        // Format messages to ensure proper alternation and content structure
         $messages = $this->validatedData['messages'];
         $formattedMessages = [];
         $lastRole = null;
@@ -118,17 +154,17 @@ trait UsesChat
             if ($lastRole === $message['role']) {
                 // If same role appears twice, combine their content
                 $lastMessage = end($formattedMessages);
-                $lastContent = is_array($lastMessage['content']) ? $lastMessage['content'] : [['text' => $lastMessage['content']]];
-                $newContent = is_array($message['content']) ? $message['content'] : [['text' => $message['content']]];
+                $lastContent = $this->formatMessageContent($lastMessage['content']);
+                $newContent = $this->formatMessageContent($message['content']);
                 $formattedMessages[key($formattedMessages)]['content'] = array_merge($lastContent, $newContent);
             } else {
-                if (!is_array($message['content'])) {
-                    $message['content'] = [['text' => $message['content']]];
-                }
+                $message['content'] = $this->formatMessageContent($message['content']);
                 $formattedMessages[] = $message;
                 $lastRole = $message['role'];
             }
         }
+
+        Log::info('Formatted messages for inference', ['messages' => $formattedMessages]);
 
         $this->response = $this->gateway->inference([
             'model' => $this->model,
