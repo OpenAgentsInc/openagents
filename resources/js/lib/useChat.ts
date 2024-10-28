@@ -30,7 +30,7 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
     setInput,
   } = useVercelChat({
     api: "/chat",
-    initialMessages: formatInitialMessages(initialMessages),
+    initialMessages: [], // formatInitialMessages(initialMessages),
     keepLastMessageOnError: true,
     body: { thread_id: currentChatId, selected_tools: selectedTools },
     maxSteps: 10,
@@ -38,31 +38,11 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
       console.error("Chat error:", err);
       setError(err);
     },
-    onResponse: (res) => {
-      console.log("useChat response:", res);
-    },
-    onFinish: (message) => {
-      console.log("Stream finished, final message:", message);
-      // Ensure messages are preserved
-      console.log("skipping message preserve...")
-      // setMessages(prev => {
-      //     console.log("Previous messages in onFinish:", prev);
-      //     return prev;
-      // });
-    },
   });
 
   const filteredMessages = useMemo(() => {
     return messages.filter(msg => msg.content !== null && msg.content !== "(empty)");
   }, [messages]);
-
-  // useEffect(() => {
-  //   console.log(filteredMessages)
-  // }, [filteredMessages]);
-
-  useEffect(() => {
-    setMessages(formatInitialMessages(initialMessages, auth));
-  }, [initialMessages, setMessages, auth]);
 
   useEffect(() => {
     if (error) {
@@ -118,32 +98,6 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
       vercelHandleInputChange(contentOrEvent);
     }
   }, [vercelHandleInputChange, setInput]);
-
-  // In useChat.ts, modify the useEffect for initialMessages:
-  useEffect(() => {
-    console.log("Setting messages from initialMessages:", initialMessages);
-    // console.log("Auth state:", auth);
-    setMessages(formatInitialMessages(initialMessages, auth));
-  }, [initialMessages, setMessages, auth]);
-
-  // Add a new useEffect to track message changes
-  useEffect(() => {
-    console.log("Messages changed:", messages);
-    // console.log("Stack trace:", new Error().stack);
-  }, [messages]);
-
-  // And filtered messages
-  useEffect(() => {
-    console.log("Filtered messages changed:", filteredMessages);
-  }, [filteredMessages]);
-
-  // In useChat.ts, add this logging:
-  useEffect(() => {
-    console.log("Current messages state:", messages);
-    console.log("Current input state:", input);
-    console.log("Current isLoading state:", isLoading);
-    console.log('---')
-  }, [messages, input, isLoading]);
 
   return {
     messages: filteredMessages,

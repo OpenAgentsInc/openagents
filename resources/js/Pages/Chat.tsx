@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react"
+import { useEffect } from "react"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { ChatList } from "@/components/chat/ChatList"
 import { Message } from "@/components/chat/types"
@@ -27,6 +28,8 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
     handleScroll,
     handleSubmit,
   } = useChat({ initialMessages, auth, currentChatId, setScrollPosition });
+
+
   return (
     <MainLayout>
       <Head title="Chat" />
