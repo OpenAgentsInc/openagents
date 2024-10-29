@@ -8,6 +8,7 @@ Files with relevant functionality:
 - resources/js/lib/useChat.ts
 - app/AI/BedrockAIGateway.php
 - tests/Feature/UseChatToolsTest.php
+- docs/converse.md
 
 Client uses Vercel AI SDK - React
 
