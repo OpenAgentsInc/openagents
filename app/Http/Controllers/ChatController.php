@@ -23,10 +23,14 @@ class ChatController
         }
 
         // Load thread with messages and their tool invocations
-        $thread = Thread::with(['messages.toolInvocations'])->findOrFail($id);
+        $thread = Thread::with('messages.toolInvocations')->findOrFail($id);
 
         return Inertia::render('Chat', [
-            'messages' => $thread->messages,
+            'messages' => $thread->messages->map(function ($message) {
+                return array_merge($message->toArray(), [
+                    'toolInvocations' => $message->toolInvocations
+                ]);
+            }),
             'currentChatId' => $thread->id
         ]);
     }
