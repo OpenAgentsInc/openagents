@@ -3,7 +3,6 @@ import { useEffect } from "react"
 import { ChatInput } from "@/components/chat/ChatInput"
 import { ChatList } from "@/components/chat/ChatList"
 import { Message } from "@/components/chat/types"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import MainLayout from "@/Layouts/MainLayout"
 import { useChat } from "@/lib/useChat"
 import { PageProps } from "@/types"
@@ -32,16 +31,16 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
   return (
     <MainLayout>
       <Head title="Chat" />
-      <div className="flex flex-col h-[calc(100vh-3.5rem)] relative">
+      <div className="absolute inset-0 pt-14">
         {isLoading && (
-          <div className="absolute bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
+          <div className="fixed bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
             <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
           </div>
         )}
         {currentChatId ? (
           <>
-            <div className="flex-1 overflow-y-auto">
-              <div className="mx-auto max-w-4xl px-1 md:px-4 pb-4">
+            <div className="absolute inset-0 bottom-[140px] overflow-y-auto">
+              <div className="mx-auto max-w-4xl px-1 md:px-4">
                 <ChatList
                   messages={messages as Message[]}
                   currentUserId={auth.user.id}
@@ -50,7 +49,7 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
               </div>
             </div>
 
-            <div className="absolute bottom-0 left-0 right-0">
+            <div className="fixed bottom-0 left-0 right-0">
               <ChatInput
                 initialContent={input}
                 onContentSubmit={handleInputChange}
