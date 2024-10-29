@@ -17,7 +17,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <SidebarInset>
             <div className="relative h-screen">
               <div className="absolute top-0 left-0 right-0 bg-background">
-                <header className="h-14 shrink-0 items-center gap-2">
+                <header className="h-14 shrink-0 items-center gap-2 bg-sidebar border-b">
                   <div className="font-bold flex items-center gap-2 px-4 h-full">
                     <Link href="/" className="flex flex-row gap-x-2 items-center">
                       <IconOpenAgents className="h-4 w-4" />
