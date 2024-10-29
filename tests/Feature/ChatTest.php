@@ -50,6 +50,7 @@ test('chat page shows thread messages', function () {
                 ->where('content', 'Hi there!')
                 ->etc()
             )
+            ->etc()
         )
     );
 });
