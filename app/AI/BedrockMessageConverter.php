@@ -62,11 +62,21 @@ class BedrockMessageConverter
                 ];
             }
 
+            $formattedContent = $this->formatContent($message['content']);
             $messages[] = [
                 'role' => $message['role'],
-                'content' => $this->formatContent($message['content'])
+                'content' => $formattedContent
             ];
             $lastRole = $message['role'];
+
+            // Track tool use for later matching with results
+            if ($message['role'] === 'assistant') {
+                foreach ($formattedContent as $block) {
+                    if (isset($block['toolUse'])) {
+                        $pendingToolUse = $block['toolUse']['toolUseId'];
+                    }
+                }
+            }
 
             // Handle tool invocations immediately after the assistant message
             if (isset($message['toolInvocations'])) {
