@@ -5,7 +5,6 @@ import {
 } from "lucide-react"
 import * as React from "react"
 import IconOpenAgents from "@/components/IconOpenAgents"
-import { ModeToggle } from "@/components/ModeToggle"
 import { atlantisPortsChats, NavChats } from "@/components/nav-chats"
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
@@ -37,13 +36,10 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
             <div className="">
               <SidebarTrigger className="-ml-[7px] h-8 w-8" />
             </div>
-
-            {/* <ModeToggle /> */}
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
-
         {/* <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
             <SidebarGroupLabel asChild>
@@ -57,7 +53,6 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
             </CollapsibleContent>
           </SidebarGroup>
         </Collapsible> */}
-
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={data.user} />
