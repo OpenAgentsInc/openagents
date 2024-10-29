@@ -33,6 +33,7 @@ const extractTextFromContent = (content: string): string => {
 };
 
 export const formatInitialMessages = (initialMessages: any[]): Message[] => {
+  console.log("about to format initial messages", initialMessages);
   return initialMessages.map(message => {
     const formattedMessage: Message = {
       id: message.id.toString(),
