@@ -1,15 +1,7 @@
-import {
-  AudioWaveform, BookOpen, BookTextIcon, Bot, ChevronDown, Command, Frame,
-  GalleryVerticalEnd, HammerIcon, Map, PieChart, PlusCircleIcon, PlusIcon,
-  Settings2, SquareTerminal, WrenchIcon
-} from "lucide-react"
+import { ChevronDown, PlusIcon } from "lucide-react"
 import * as React from "react"
-import IconOpenAgents from "@/components/IconOpenAgents"
-import { atlantisPortsChats, NavChats } from "@/components/nav-chats"
-import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
+import { NavChats } from "@/components/nav-chats"
 import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger
 } from "@/components/ui/collapsible"
