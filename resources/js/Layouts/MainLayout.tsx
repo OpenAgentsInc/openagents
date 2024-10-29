@@ -11,7 +11,7 @@ import { Link } from "@inertiajs/react"
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <div className="font-mono antialiased bg-background text-foreground">
+      <div className="fixed w-full font-mono antialiased bg-background text-foreground">
         <SidebarProvider>
           <MainSidebar />
           <SidebarInset>
