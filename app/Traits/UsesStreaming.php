@@ -62,18 +62,26 @@ trait UsesStreaming
     protected function streamToolResult(array $toolResult)
     {
         Log::info('Streaming tool result', ['toolResult' => $toolResult]);
+        
+        // Handle the new nested structure
+        if (isset($toolResult['toolResult'])) {
+            $toolResult = $toolResult['toolResult'];
+        }
+
         if (
-            !isset($toolResult['toolCallId']) || !is_string($toolResult['toolCallId']) ||
-            !isset($toolResult['result'])
+            !isset($toolResult['toolCallId']) || !is_string($toolResult['toolCallId'])
         ) {
-            Log::warning('Invalid tool result format', ['toolResult' => $toolResult]);
+            Log::warning('Invalid tool result format - missing toolCallId', ['toolResult' => $toolResult]);
             return;
         }
 
-        $this->streamWithType('a', [
+        // Prepare the result data
+        $resultData = [
             'toolCallId' => $toolResult['toolCallId'],
-            'result' => $toolResult['result'],
-        ]);
+            'result' => $toolResult['result'] ?? null
+        ];
+
+        $this->streamWithType('a', $resultData);
     }
 
     protected function streamFinishEvent($reason, $usage = null)
