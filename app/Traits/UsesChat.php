@@ -41,7 +41,7 @@ trait UsesChat
 
         // If it's already in the correct format with text or toolResult
         if (is_array($content) && isset($content[0]) && (isset($content[0]['text']) || isset($content[0]['toolResult']))) {
-            return array_map(function($block) {
+            return array_map(function ($block) {
                 if (empty($block['text']) && !isset($block['toolResult'])) {
                     $block['text'] = ' '; // Ensure text is never empty
                 }
@@ -62,7 +62,7 @@ trait UsesChat
 
         // If it's an array of strings or other values
         if (is_array($content)) {
-            return array_map(function($item) {
+            return array_map(function ($item) {
                 if (is_string($item)) {
                     return ['text' => $item];
                 }
@@ -96,23 +96,28 @@ trait UsesChat
         foreach ($toolInvocations as $toolInvocation) {
             $this->streamToolCall([$toolInvocation]);
             $this->streamFinishEvent('tool-calls');
-            
+
             $toolResult = $this->toolService->handleToolCall($toolInvocation, $this->assistantMessage->id);
             $formattedToolResult = [
                 'toolCallId' => $toolResult['toolCallId'] ?? $toolInvocation['toolCallId'] ?? null,
                 'result' => $toolResult['result'] ?? $toolResult,
             ];
-            
+
             $this->streamToolResult($formattedToolResult);
 
             // Add tool result to messages
+            $result = $toolResult['result'] ?? $toolResult;
+            if (isset($result['value']) && isset($result['value']['result'])) {
+                $result = $result['value']['result'];
+            }
+
             $toolResults[] = [
                 'toolResult' => [
                     'toolUseId' => $formattedToolResult['toolCallId'],
-                    'status' => isset($toolResult['result']['success']) && $toolResult['result']['success'] ? 'success' : 'error',
+                    'status' => isset($result['success']) && $result['success'] ? 'success' : 'error',
                     'content' => [
                         [
-                            'text' => isset($toolResult['result']['content']) ? $toolResult['result']['content'] : json_encode($toolResult['result'])
+                            'text' => isset($result['content']) ? $result['content'] : json_encode($result)
                         ]
                     ]
                 ]
@@ -130,7 +135,7 @@ trait UsesChat
             ];
 
             // Format all messages to ensure proper content structure
-            $formattedMessages = array_map(function($message) {
+            $formattedMessages = array_map(function ($message) {
                 $formatted = [
                     'role' => $message['role'],
                     'content' => $this->formatMessageContent($message['content'])
@@ -169,7 +174,7 @@ trait UsesChat
         $messages = $this->validatedData['messages'];
         $formattedMessages = [];
         $lastRole = null;
-        
+
         foreach ($messages as $message) {
             if ($lastRole === $message['role']) {
                 // If same role appears twice, combine their content
@@ -247,9 +252,9 @@ trait UsesChat
 
         $validated = $validator->validated();
         Log::info('Validated chat request', ['request' => $validated]);
-        
+
         // Ensure each message has properly formatted content
-        $validated['messages'] = array_map(function($message) {
+        $validated['messages'] = array_map(function ($message) {
             $message['content'] = $this->formatMessageContent($message['content']);
             return $message;
         }, $validated['messages']);
@@ -266,8 +271,8 @@ trait UsesChat
         $lastMessage = end($messages);
 
         // Convert array content to string for storage
-        $content = is_array($lastMessage['content']) 
-            ? json_encode($lastMessage['content']) 
+        $content = is_array($lastMessage['content'])
+            ? json_encode($lastMessage['content'])
             : ($lastMessage['content'] ?? "(empty)");
 
         $messageData = [
@@ -292,8 +297,8 @@ trait UsesChat
 
     private function storeAIResponse()
     {
-        $content = is_array($this->response['content']) 
-            ? json_encode($this->response['content']) 
+        $content = is_array($this->response['content'])
+            ? json_encode($this->response['content'])
             : ($this->response['content'] ?? "(empty)");
 
         $assistantMessage = [
