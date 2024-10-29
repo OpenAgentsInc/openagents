@@ -83,17 +83,17 @@ test('bedrock message converter removes empty assistant messages', function () {
 
     $result = $this->converter->convertToBedrockChatMessages($messages);
 
-    // The empty assistant message should be removed, but "Continue" message should trigger
-    // an "I understand" assistant message to maintain alternation
-    expect($result['messages'])->toHaveCount(4)
+    // The empty assistant message should be removed, and we should have:
+    // 1. User "Test message"
+    // 2. Assistant "I understand"
+    // 3. User "Continue"
+    expect($result['messages'])->toHaveCount(3)
         ->and($result['messages'][0]['role'])->toBe('user')
         ->and($result['messages'][0]['content'][0]['text'])->toBe('Test message')
         ->and($result['messages'][1]['role'])->toBe('assistant')
         ->and($result['messages'][1]['content'][0]['text'])->toBe('I understand.')
         ->and($result['messages'][2]['role'])->toBe('user')
-        ->and($result['messages'][2]['content'][0]['text'])->toBe('Continue')
-        ->and($result['messages'][3]['role'])->toBe('assistant')
-        ->and($result['messages'][3]['content'][0]['text'])->toBe('I understand.');
+        ->and($result['messages'][2]['content'][0]['text'])->toBe('Continue');
 });
 
 // Helper function to recursively check for empty text fields
