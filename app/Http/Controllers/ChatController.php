@@ -10,7 +10,7 @@ use Inertia\Response;
 
 class ChatController
 {
-    public function chat(): RedirectResponse|Response
+    public function chat($id = null): RedirectResponse|Response
     {
         if (request()->path() === 'chat') {
             // Create a new thread for the user
@@ -22,6 +22,11 @@ class ChatController
             return redirect("/chat/{$thread->id}");
         }
 
-        return Inertia::render('Chat');
+        // Load thread with messages for the chat view
+        $thread = Thread::with('messages')->findOrFail($id);
+
+        return Inertia::render('Chat', [
+            'thread' => $thread
+        ]);
     }
 }
