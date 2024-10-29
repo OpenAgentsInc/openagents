@@ -195,10 +195,24 @@ trait BedrockMessageFormatting
     protected function formatResponse(array $decodedBody): array
     {
         $response = $this->initializeResponse($decodedBody);
+        $foundToolUse = false;
 
         if (isset($decodedBody['output']['message']['content'])) {
             foreach ($decodedBody['output']['message']['content'] as $contentItem) {
+                // If we've found a tool use, only process tool-related items
+                if ($foundToolUse) {
+                    if (isset($contentItem['toolUse'])) {
+                        $this->processContentItem($contentItem, $response);
+                    }
+                    continue;
+                }
+
                 $this->processContentItem($contentItem, $response);
+                
+                // If this was a tool use, set the flag
+                if (isset($contentItem['toolUse'])) {
+                    $foundToolUse = true;
+                }
             }
         }
 
