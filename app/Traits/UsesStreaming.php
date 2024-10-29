@@ -63,25 +63,45 @@ trait UsesStreaming
     {
         Log::info('Streaming tool result', ['toolResult' => $toolResult]);
         
-        // Handle the new nested structure
+        // Handle the nested structure
         if (isset($toolResult['toolResult'])) {
-            $toolResult = $toolResult['toolResult'];
+            $data = $toolResult['toolResult'];
+            
+            // Extract the tool call ID
+            $toolCallId = $data['toolCallId'] ?? null;
+            
+            // Extract the actual result, which might be nested in result.value.result
+            $result = null;
+            if (isset($data['result']['value']['result'])) {
+                $result = $data['result']['value']['result'];
+            } elseif (isset($data['result']['value'])) {
+                $result = $data['result']['value'];
+            } elseif (isset($data['result'])) {
+                $result = $data['result'];
+            }
+
+            if (!$toolCallId) {
+                Log::warning('Invalid tool result format - missing toolCallId', ['toolResult' => $toolResult]);
+                return;
+            }
+
+            $this->streamWithType('a', [
+                'toolCallId' => $toolCallId,
+                'result' => $result
+            ]);
+            return;
         }
 
-        if (
-            !isset($toolResult['toolCallId']) || !is_string($toolResult['toolCallId'])
-        ) {
+        // Fallback for the original format
+        if (!isset($toolResult['toolCallId']) || !is_string($toolResult['toolCallId'])) {
             Log::warning('Invalid tool result format - missing toolCallId', ['toolResult' => $toolResult]);
             return;
         }
 
-        // Prepare the result data
-        $resultData = [
+        $this->streamWithType('a', [
             'toolCallId' => $toolResult['toolCallId'],
             'result' => $toolResult['result'] ?? null
-        ];
-
-        $this->streamWithType('a', $resultData);
+        ]);
     }
 
     protected function streamFinishEvent($reason, $usage = null)
