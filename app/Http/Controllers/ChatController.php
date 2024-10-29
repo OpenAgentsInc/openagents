@@ -22,8 +22,8 @@ class ChatController
             return redirect("/chat/{$thread->id}");
         }
 
-        // Load thread with messages
-        $thread = Thread::with('messages')->findOrFail($id);
+        // Load thread with messages and their tool invocations
+        $thread = Thread::with(['messages.toolInvocations'])->findOrFail($id);
 
         return Inertia::render('Chat', [
             'messages' => $thread->messages,
