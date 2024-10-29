@@ -31,9 +31,9 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
   return (
     <MainLayout>
       <Head title="Chat" />
-      <div className="absolute inset-0 pt-14">
+      <div className="h-[calc(100vh-3.5rem)] relative">
         {isLoading && (
-          <div className="fixed bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
+          <div className="absolute bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
             <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
           </div>
         )}
@@ -49,7 +49,7 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
               </div>
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0">
+            <div className="absolute bottom-0 left-0 right-0">
               <ChatInput
                 initialContent={input}
                 onContentSubmit={handleInputChange}
