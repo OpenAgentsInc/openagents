@@ -100,7 +100,7 @@ class BedrockMessageConverter
                 }
                 
                 // Skip adding the original message content if it was just a tool invocation
-                // Check if content is empty string or empty array
+                // or if the content is empty/whitespace
                 $isEmpty = is_string($message['content']) ? 
                     empty(trim($message['content'])) : 
                     empty($message['content']);
@@ -111,10 +111,37 @@ class BedrockMessageConverter
                 }
             }
 
+            // Skip empty assistant messages that don't have tool invocations
+            if ($message['role'] === 'assistant' && 
+                is_string($message['content']) && 
+                empty(trim($message['content'])) && 
+                empty($message['toolInvocations'])) {
+                continue;
+            }
+
             $formattedContent = $this->formatContent($message['content']);
+            
+            // Skip if formatted content is empty
+            if (empty($formattedContent)) {
+                continue;
+            }
+
+            // Ensure no empty text blocks
+            $formattedContent = array_filter($formattedContent, function($block) {
+                if (isset($block['text'])) {
+                    return !empty(trim($block['text']));
+                }
+                return true;
+            });
+
+            // Skip if all content blocks were empty
+            if (empty($formattedContent)) {
+                continue;
+            }
+
             $messages[] = [
                 'role' => $message['role'],
-                'content' => $formattedContent
+                'content' => array_values($formattedContent) // Re-index array after filtering
             ];
             $lastRole = $message['role'];
         }
@@ -145,14 +172,15 @@ class BedrockMessageConverter
 
     private function formatContent($content): array
     {
-        // If content is empty, return a default text block
+        // If content is empty, return empty array (will be filtered out)
         if (empty($content)) {
-            return [['text' => ' ']];
+            return [];
         }
 
-        // If content is a string, wrap it in a text block
+        // If content is a string, wrap it in a text block if not empty
         if (is_string($content)) {
-            return [['text' => $content]];
+            $trimmed = trim($content);
+            return empty($trimmed) ? [] : [['text' => $trimmed]];
         }
 
         // If content is already an array of content blocks
@@ -169,7 +197,10 @@ class BedrockMessageConverter
                         ]
                     ];
                 } elseif (isset($block['text'])) {
-                    $formatted[] = ['text' => $block['text']];
+                    $trimmed = trim($block['text']);
+                    if (!empty($trimmed)) {
+                        $formatted[] = ['text' => $trimmed];
+                    }
                 } else {
                     $formatted[] = $block;
                 }
@@ -182,7 +213,10 @@ class BedrockMessageConverter
             $formatted = [];
             foreach ($content as $item) {
                 if (is_string($item)) {
-                    $formatted[] = ['text' => $item];
+                    $trimmed = trim($item);
+                    if (!empty($trimmed)) {
+                        $formatted[] = ['text' => $trimmed];
+                    }
                 } elseif (isset($item['type']) && $item['type'] === 'tool-call') {
                     $formatted[] = [
                         'toolUse' => [
