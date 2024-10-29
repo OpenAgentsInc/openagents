@@ -46,7 +46,6 @@ class BedrockMessageConverter
         // Second pass: process messages in order
         $messages = [];
         $lastRole = null;
-        $pendingToolUse = null;
 
         foreach ($prompt as $message) {
             if ($message['role'] === 'system') {
@@ -62,43 +61,57 @@ class BedrockMessageConverter
                 ];
             }
 
-            $formattedContent = $this->formatContent($message['content']);
-            $messages[] = [
-                'role' => $message['role'],
-                'content' => $formattedContent
-            ];
-            $lastRole = $message['role'];
-
-            // Track tool use for later matching with results
-            if ($message['role'] === 'assistant') {
-                foreach ($formattedContent as $block) {
-                    if (isset($block['toolUse'])) {
-                        $pendingToolUse = $block['toolUse']['toolUseId'];
-                    }
-                }
-            }
-
-            // Handle tool invocations immediately after the assistant message
-            if (isset($message['toolInvocations'])) {
+            // Handle tool invocations before adding the message content
+            if ($message['role'] === 'assistant' && isset($message['toolInvocations'])) {
                 foreach ($message['toolInvocations'] as $toolInvocation) {
-                    if ($toolInvocation['state'] === 'result' && $pendingToolUse === $toolInvocation['toolCallId']) {
+                    // Add the tool use message
+                    $messages[] = [
+                        'role' => 'assistant',
+                        'content' => [
+                            [
+                                'toolUse' => [
+                                    'toolUseId' => $toolInvocation['toolCallId'],
+                                    'name' => $toolInvocation['toolName'],
+                                    'input' => $toolInvocation['args']
+                                ]
+                            ]
+                        ]
+                    ];
+
+                    // Add the tool result message if it's a result
+                    if ($toolInvocation['state'] === 'result') {
                         $messages[] = [
                             'role' => 'user',
                             'content' => [
                                 [
                                     'toolResult' => [
                                         'toolUseId' => $toolInvocation['toolCallId'],
-                                        'content' => [['text' => json_encode($toolInvocation['result'])]]
+                                        'status' => $toolInvocation['result']['value']['result']['success'] ? 'success' : 'error',
+                                        'content' => [
+                                            [
+                                                'text' => json_encode($toolInvocation['result'])
+                                            ]
+                                        ]
                                     ]
                                 ]
                             ]
                         ];
-                        $lastRole = 'user';
-                        $pendingToolUse = null;
-                        continue 2; // Skip adding "Continue." message when we have a tool result
                     }
                 }
+                
+                // Skip adding the original message content if it was just a tool invocation
+                if (empty(trim($message['content']))) {
+                    $lastRole = 'user'; // Set to user since we added a tool result
+                    continue;
+                }
             }
+
+            $formattedContent = $this->formatContent($message['content']);
+            $messages[] = [
+                'role' => $message['role'],
+                'content' => $formattedContent
+            ];
+            $lastRole = $message['role'];
         }
 
         // If the final message is not from user, append a user message saying "Continue."
