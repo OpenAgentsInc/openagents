@@ -76,7 +76,6 @@ Fields:
 - `user_id` - Foreign key to users table, represents message sender (nullable)
 - `thread_id` - Foreign key to threads table
 - `content` - Message content text
-- `is_system_message` - Boolean flag for system-generated messages
 - `created_at` - Timestamp of creation
 - `updated_at` - Timestamp of last update
 

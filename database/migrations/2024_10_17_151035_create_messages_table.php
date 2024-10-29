@@ -21,7 +21,6 @@ return new class extends Migration
             $table->string('model')->nullable();
             $table->integer('input_tokens')->default(0);
             $table->integer('output_tokens')->default(0);
-            $table->boolean('is_system_message')->default(false);
             $table->timestamps();
         });
     }

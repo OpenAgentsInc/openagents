@@ -35,7 +35,7 @@ class MessageFactory extends Factory
         return $this->state(function (array $attributes) {
             return [
                 'user_id' => null,
-                'is_system_message' => true,
+                'role' => 'assistant'
             ];
         });
     }

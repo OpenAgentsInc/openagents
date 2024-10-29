@@ -314,7 +314,6 @@ trait UsesChat
             'output_tokens' => $this->response['output_tokens'] ?? 0,
             'model' => $this->model,
             'role' => 'assistant',
-            'is_system_message' => true,
         ];
 
         Log::info('AI response received. Saving message', ['response' => $this->response, 'assistantMessage' => $assistantMessage]);

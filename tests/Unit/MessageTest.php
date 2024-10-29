@@ -25,10 +25,9 @@ test('a message can be created by the system', function () {
     $message = Message::factory()->create([
         'thread_id' => $thread->id,
         'user_id' => null,
-        'is_system_message' => true,
     ]);
 
     expect($message->user)->toBeNull();
-    expect($message->is_system_message)->toBeTrue();
     expect($message->thread)->toBeInstanceOf(Thread::class);
+    expect($message->role)->toBe('assistant');
 });
