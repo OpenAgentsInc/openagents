@@ -124,51 +124,51 @@ trait UsesChat
             ];
         }
 
-        // Add tool results to messages
-        if (!empty($toolResults)) {
-            // Convert tool results to text blocks
-            $textBlocks = [['text' => $this->response['content'] ?: ' ']];
-            foreach ($toolResults as $toolResult) {
-                $textBlocks[] = [
-                    'text' => "Tool result: " . json_encode($toolResult['toolResult'])
-                ];
-            }
+        // // Add tool results to messages
+        // if (!empty($toolResults)) {
+        //     // Convert tool results to text blocks
+        //     $textBlocks = [['text' => $this->response['content'] ?: ' ']];
+        //     foreach ($toolResults as $toolResult) {
+        //         $textBlocks[] = [
+        //             'text' => "Tool result: " . json_encode($toolResult['toolResult'])
+        //         ];
+        //     }
 
-            $messages[] = [
-                'role' => 'assistant',
-                'content' => $textBlocks
-            ];
+        //     $messages[] = [
+        //         'role' => 'assistant',
+        //         'content' => $textBlocks
+        //     ];
 
-            // Format all messages to ensure proper content structure
-            $formattedMessages = array_map(function ($message) {
-                $formatted = [
-                    'role' => $message['role'],
-                    'content' => $this->formatMessageContent($message['content'])
-                ];
-                Log::debug('Formatted message', ['original' => $message, 'formatted' => $formatted]);
-                return $formatted;
-            }, $messages);
+        //     // Format all messages to ensure proper content structure
+        //     // $formattedMessages = array_map(function ($message) {
+        //     //     $formatted = [
+        //     //         'role' => $message['role'],
+        //     //         'content' => $this->formatMessageContent($message['content'])
+        //     //     ];
+        //     //     Log::debug('Formatted message', ['original' => $message, 'formatted' => $formatted]);
+        //     //     return $formatted;
+        //     // }, $messages);
 
-            Log::info('Making inference call with messages', ['messages' => $formattedMessages]);
+        //     // Log::info('Making inference call with messages', ['messages' => $formattedMessages]);
 
-            // Make a new inference call with updated messages
-            $this->response = $this->gateway->inference([
-                'model' => $this->model,
-                'messages' => $formattedMessages,
-                'tools' => $this->tools,
-                'max_tokens' => 4096,
-            ]);
+        //     // // Make a new inference call with updated messages
+        //     // $this->response = $this->gateway->inference([
+        //     //     'model' => $this->model,
+        //     //     'messages' => $formattedMessages,
+        //     //     'tools' => $this->tools,
+        //     //     'max_tokens' => 4096,
+        //     // ]);
 
-            // Stream the new response
-            if (!empty($this->response['content'])) {
-                $content = $this->response['content'];
-                $words = explode(' ', $content);
-                foreach ($words as $word) {
-                    $this->stream($word . ' ');
-                    usleep(50000);
-                }
-            }
-        }
+        //     // // Stream the new response
+        //     // if (!empty($this->response['content'])) {
+        //     //     $content = $this->response['content'];
+        //     //     $words = explode(' ', $content);
+        //     //     foreach ($words as $word) {
+        //     //         $this->stream($word . ' ');
+        //     //         usleep(50000);
+        //     //     }
+        //     // }
+        // }
 
         $this->streamFinishEvent('stop');
     }
