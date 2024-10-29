@@ -54,7 +54,15 @@ test('bedrock message converter handles empty content correctly', function () {
     $result = $this->converter->convertToBedrockChatMessages($messages);
 
     // Verify that no empty text fields are present in the result
-    $this->assertNoEmptyTextFields($result['messages']);
+    assertNoEmptyTextFields($result['messages']);
+
+    // Verify the structure of the messages
+    expect($result['messages'])->toHaveCount(3)
+        ->and($result['messages'][0]['role'])->toBe('user')
+        ->and($result['messages'][1]['role'])->toBe('assistant')
+        ->and($result['messages'][1]['content'][0])->toHaveKey('toolUse')
+        ->and($result['messages'][2]['role'])->toBe('user')
+        ->and($result['messages'][2]['content'][0])->toHaveKey('toolResult');
 });
 
 test('bedrock message converter removes empty assistant messages', function () {
@@ -75,14 +83,21 @@ test('bedrock message converter removes empty assistant messages', function () {
 
     $result = $this->converter->convertToBedrockChatMessages($messages);
 
-    // The empty assistant message should be removed
-    expect($result['messages'])->toHaveCount(2);
-    expect($result['messages'][0]['role'])->toBe('user');
-    expect($result['messages'][1]['role'])->toBe('user');
+    // The empty assistant message should be removed, but "Continue" message should trigger
+    // an "I understand" assistant message to maintain alternation
+    expect($result['messages'])->toHaveCount(4)
+        ->and($result['messages'][0]['role'])->toBe('user')
+        ->and($result['messages'][0]['content'][0]['text'])->toBe('Test message')
+        ->and($result['messages'][1]['role'])->toBe('assistant')
+        ->and($result['messages'][1]['content'][0]['text'])->toBe('I understand.')
+        ->and($result['messages'][2]['role'])->toBe('user')
+        ->and($result['messages'][2]['content'][0]['text'])->toBe('Continue')
+        ->and($result['messages'][3]['role'])->toBe('assistant')
+        ->and($result['messages'][3]['content'][0]['text'])->toBe('I understand.');
 });
 
 // Helper function to recursively check for empty text fields
-function assertNoEmptyTextFields($messages) {
+function assertNoEmptyTextFields(array $messages) {
     foreach ($messages as $message) {
         if (!isset($message['content'])) {
             continue;
