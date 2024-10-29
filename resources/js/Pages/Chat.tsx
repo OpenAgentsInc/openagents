@@ -31,15 +31,15 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
   return (
     <MainLayout>
       <Head title="Chat" />
-      <div className="relative h-full w-full flex-1 overflow-hidden">
+      <div className="relative h-full w-full">
         {isLoading && (
           <div className="absolute bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
             <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
           </div>
         )}
         {currentChatId ? (
-          <div className="flex flex-col h-full">
-            <div className="flex-1 overflow-y-auto">
+          <>
+            <div className="h-[calc(100%-140px)] overflow-y-auto">
               <div className="mx-auto max-w-4xl px-1 md:px-4">
                 <ChatList
                   messages={messages as Message[]}
@@ -49,17 +49,19 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
               </div>
             </div>
 
-            <div className="sticky bottom-0 w-full lg:-ml-[25px] px-3 bg-background">
-              <ChatInput
-                initialContent={input}
-                onContentSubmit={handleInputChange}
-                handleKeyDown={handleKeyDown}
-                textareaRef={textareaRef}
-                isStreaming={isLoading}
-                handleSubmit={handleSubmit}
-              />
+            <div className="absolute bottom-0 left-0 right-0 bg-background">
+              <div className="w-full lg:-ml-[25px] px-3">
+                <ChatInput
+                  initialContent={input}
+                  onContentSubmit={handleInputChange}
+                  handleKeyDown={handleKeyDown}
+                  textareaRef={textareaRef}
+                  isStreaming={isLoading}
+                  handleSubmit={handleSubmit}
+                />
+              </div>
             </div>
-          </div>
+          </>
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-lg text-gray-500">Select a chat from the sidebar or start a new one.</p>
