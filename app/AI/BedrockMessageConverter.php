@@ -72,7 +72,7 @@ class BedrockMessageConverter
                                 'toolUse' => [
                                     'toolUseId' => $toolInvocation['toolCallId'],
                                     'name' => $toolInvocation['toolName'],
-                                    'input' => $toolInvocation['args']
+                                    'input' => isset($toolInvocation['args']) ? $toolInvocation['args'] : []
                                 ]
                             ]
                         ]
@@ -86,7 +86,9 @@ class BedrockMessageConverter
                                 [
                                     'toolResult' => [
                                         'toolUseId' => $toolInvocation['toolCallId'],
-                                        'status' => $toolInvocation['result']['value']['result']['success'] ? 'success' : 'error',
+                                        'status' => isset($toolInvocation['result']['value']['result']['success']) ? 
+                                            ($toolInvocation['result']['value']['result']['success'] ? 'success' : 'error') : 
+                                            'success',
                                         'content' => [
                                             [
                                                 'text' => json_encode($toolInvocation['result'])
@@ -193,7 +195,7 @@ class BedrockMessageConverter
                         'toolUse' => [
                             'toolUseId' => $block['toolCallId'],
                             'name' => $block['toolName'],
-                            'input' => $block['args']
+                            'input' => isset($block['args']) ? $block['args'] : []
                         ]
                     ];
                 } elseif (isset($block['text'])) {
@@ -222,7 +224,7 @@ class BedrockMessageConverter
                         'toolUse' => [
                             'toolUseId' => $item['toolCallId'],
                             'name' => $item['toolName'],
-                            'input' => $item['args']
+                            'input' => isset($item['args']) ? $item['args'] : []
                         ]
                     ];
                 } elseif (isset($item['toolResult'])) {
