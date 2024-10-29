@@ -63,37 +63,30 @@ trait UsesStreaming
     {
         Log::info('Streaming tool result', ['toolResult' => $toolResult]);
         
-        // Handle the nested structure
+        // Handle the nested structure from toolResult
         if (isset($toolResult['toolResult'])) {
             $data = $toolResult['toolResult'];
             
-            // Extract the tool call ID
-            $toolCallId = $data['toolCallId'] ?? null;
-            
-            // Extract the actual result, which might be nested in result.value.result
-            $result = null;
-            if (isset($data['result']['value']['result'])) {
-                $result = $data['result']['value']['result'];
-            } elseif (isset($data['result']['value'])) {
-                $result = $data['result']['value'];
-            } elseif (isset($data['result'])) {
-                $result = $data['result'];
-            }
-
-            if (!$toolCallId) {
+            if (!isset($data['toolCallId'])) {
                 Log::warning('Invalid tool result format - missing toolCallId', ['toolResult' => $toolResult]);
                 return;
             }
 
+            // Get the result from the nested structure
+            $actualResult = null;
+            if (isset($data['result']['value']['result'])) {
+                $actualResult = $data['result']['value']['result'];
+            }
+
             $this->streamWithType('a', [
-                'toolCallId' => $toolCallId,
-                'result' => $result
+                'toolCallId' => $data['toolCallId'],
+                'result' => $actualResult
             ]);
             return;
         }
 
-        // Fallback for the original format
-        if (!isset($toolResult['toolCallId']) || !is_string($toolResult['toolCallId'])) {
+        // Fallback for simpler format
+        if (!isset($toolResult['toolCallId'])) {
             Log::warning('Invalid tool result format - missing toolCallId', ['toolResult' => $toolResult]);
             return;
         }
