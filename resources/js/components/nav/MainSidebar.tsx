@@ -1,7 +1,7 @@
 import {
   AudioWaveform, BookOpen, BookTextIcon, Bot, ChevronDown, Command, Frame,
-  GalleryVerticalEnd, HammerIcon, Map, PieChart, Settings2, SquareTerminal,
-  WrenchIcon
+  GalleryVerticalEnd, HammerIcon, Map, PieChart, PlusCircleIcon, PlusIcon,
+  Settings2, SquareTerminal, WrenchIcon
 } from "lucide-react"
 import * as React from "react"
 import IconOpenAgents from "@/components/IconOpenAgents"
@@ -14,9 +14,11 @@ import {
   Collapsible, CollapsibleContent, CollapsibleTrigger
 } from "@/components/ui/collapsible"
 import {
-  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel,
-  SidebarHeader, SidebarRail, SidebarTrigger
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
+  SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton,
+  SidebarMenuItem, SidebarRail, SidebarTrigger
 } from "@/components/ui/sidebar"
+import { Link } from "@inertiajs/react"
 
 // This is sample data.
 const data = {
@@ -40,7 +42,23 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
         </div>
       </SidebarHeader>
       <SidebarContent>
-        {/* <Collapsible defaultOpen className="group/collapsible">
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem >
+                <SidebarMenuButton asChild>
+                  <Link href="/chat">
+                    <PlusIcon />
+                    <span>New chat</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+
+        <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
             <SidebarGroupLabel asChild>
               <CollapsibleTrigger>
@@ -49,10 +67,10 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
-              <NavChats chats={atlantisPortsChats} highlightedChat="Portunus Project" />
+              <NavChats chats={[]} highlightedChat="Portunus Project" />
             </CollapsibleContent>
           </SidebarGroup>
-        </Collapsible> */}
+        </Collapsible>
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={data.user} />

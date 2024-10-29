@@ -1,25 +1,13 @@
 import {
-  MessageSquare,
-  MoreHorizontal,
-  Trash2,
-  Archive,
-  Star,
-  type LucideIcon,
+  Archive, LucideIcon, MessageSquare, MoreHorizontal, Star, Trash2, type
 } from "lucide-react"
-
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import {
-  SidebarMenu,
-  SidebarMenuAction,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
+  SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem,
+  useSidebar
 } from "@/components/ui/sidebar"
 
 export function NavChats({
@@ -80,27 +68,3 @@ export function NavChats({
     </SidebarMenu>
   )
 }
-
-// Updated sample data for Atlantis Ports chats
-export const atlantisPortsChats = [
-  {
-    name: "Portunus Project", // Added Portunus Project
-    url: "#portunus-project",
-    icon: MessageSquare,
-  },
-  {
-    name: "Port Operations",
-    url: "#port-operations",
-    icon: MessageSquare,
-  },
-  {
-    name: "Cargo Tracking",
-    url: "#cargo-tracking",
-    icon: MessageSquare,
-  },
-  {
-    name: "Maintenance Requests",
-    url: "#maintenance-requests",
-    icon: MessageSquare,
-  },
-]
