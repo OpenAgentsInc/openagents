@@ -38,7 +38,7 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               <SidebarTrigger className="-ml-[7px] h-8 w-8" />
             </div>
 
-            <ModeToggle />
+            {/* <ModeToggle /> */}
           </div>
         </div>
       </SidebarHeader>
@@ -59,9 +59,9 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
         </Collapsible> */}
 
       </SidebarContent>
-      {/* <SidebarFooter>
+      <SidebarFooter>
         <NavUser user={data.user} />
-      </SidebarFooter> */}
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )
