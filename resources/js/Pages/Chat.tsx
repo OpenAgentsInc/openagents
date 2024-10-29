@@ -31,44 +31,40 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
   return (
     <MainLayout>
       <Head title="Chat" />
-      <div className="relative h-full w-full flex-1 overflow-auto transition-width z-[1]">
-        <div className="flex flex-col h-full">
-          {isLoading && (
-            <div className="absolute bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
-              <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-            </div>
-          )}
-          {currentChatId ? (
-            <>
-              <div className="flex-1 overflow-hidden">
-                <div className="h-[calc(100vh-8.5rem)] overflow-y-auto">
-                  <div className="mx-auto max-w-4xl px-1 md:px-4">
-                    <ChatList
-                      messages={messages as Message[]}
-                      currentUserId={auth.user.id}
-                      isLoading={isLoading}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="w-full lg:-ml-[25px] px-3">
-                <ChatInput
-                  initialContent={input}
-                  onContentSubmit={handleInputChange}
-                  handleKeyDown={handleKeyDown}
-                  textareaRef={textareaRef}
-                  isStreaming={isLoading}
-                  handleSubmit={handleSubmit}
+      <div className="relative h-full w-full flex-1 overflow-hidden">
+        {isLoading && (
+          <div className="absolute bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
+            <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+          </div>
+        )}
+        {currentChatId ? (
+          <div className="flex flex-col h-full">
+            <div className="flex-1 overflow-y-auto">
+              <div className="mx-auto max-w-4xl px-1 md:px-4">
+                <ChatList
+                  messages={messages as Message[]}
+                  currentUserId={auth.user.id}
+                  isLoading={isLoading}
                 />
               </div>
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-lg text-gray-500">Select a chat from the sidebar or start a new one.</p>
             </div>
-          )}
-        </div>
+
+            <div className="sticky bottom-0 w-full lg:-ml-[25px] px-3 bg-background">
+              <ChatInput
+                initialContent={input}
+                onContentSubmit={handleInputChange}
+                handleKeyDown={handleKeyDown}
+                textareaRef={textareaRef}
+                isStreaming={isLoading}
+                handleSubmit={handleSubmit}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-lg text-gray-500">Select a chat from the sidebar or start a new one.</p>
+          </div>
+        )}
       </div>
     </MainLayout>
   )
