@@ -38,7 +38,7 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               <SidebarTrigger className="-ml-[7px] h-8 w-8" />
             </div>
 
-            {/* <ModeToggle /> */}
+            <ModeToggle />
           </div>
         </div>
       </SidebarHeader>

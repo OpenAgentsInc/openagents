@@ -32,7 +32,7 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
   };
 
   return (
-    <div className="sticky bottom-0 w-full bg-black bg-opacity-90 pb-2">
+    <div className="sticky bottom-0 w-full bg-background bg-opacity-90 pb-2">
       <div className="max-w-3xl mx-auto px-4">
         <div className="relative">
           <Textarea
