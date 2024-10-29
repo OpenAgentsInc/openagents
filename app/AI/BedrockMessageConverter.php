@@ -100,7 +100,12 @@ class BedrockMessageConverter
                 }
                 
                 // Skip adding the original message content if it was just a tool invocation
-                if (empty(trim($message['content']))) {
+                // Check if content is empty string or empty array
+                $isEmpty = is_string($message['content']) ? 
+                    empty(trim($message['content'])) : 
+                    empty($message['content']);
+                
+                if ($isEmpty) {
                     $lastRole = 'user'; // Set to user since we added a tool result
                     continue;
                 }
