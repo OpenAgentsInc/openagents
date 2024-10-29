@@ -22,7 +22,6 @@ class MessageFactory extends Factory
             'user_id' => User::factory(),
             'thread_id' => Thread::factory(),
             'content' => $this->faker->paragraph,
-            'is_system_message' => false,
         ];
     }
 

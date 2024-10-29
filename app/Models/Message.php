@@ -11,16 +11,7 @@ class Message extends Model
     /** @use HasFactory<\Database\Factories\MessageFactory> */
     use HasFactory;
 
-    protected $fillable = [
-        'user_id',
-        'thread_id',
-        'content',
-        'is_system_message',
-    ];
-
-    protected $casts = [
-        'is_system_message' => 'boolean',
-    ];
+    protected $guarded = [];
 
     public function user(): BelongsTo
     {
