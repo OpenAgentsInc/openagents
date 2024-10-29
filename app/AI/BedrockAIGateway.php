@@ -42,7 +42,7 @@ class BedrockAIGateway
 
         try {
             $result = $this->bedrockClient->converse($requestBody);
-            Log::info('Bedrock API response', ['result' => $result]);
+            // Log::info('Bedrock API response', ['result' => $result]);
             // return $result;
             $decodedBody = $this->processApiResponse($result);
             return $this->formatResponse($decodedBody);
