@@ -22,4 +22,9 @@ class Message extends Model
     {
         return $this->belongsTo(Thread::class);
     }
+
+    public function toolInvocations()
+    {
+        return $this->hasMany(ToolInvocation::class);
+    }
 }
