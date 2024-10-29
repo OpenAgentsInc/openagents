@@ -16,15 +16,17 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <MainSidebar />
           <SidebarInset>
             <div className="relative h-screen">
-              <header className="h-14 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-14 bg-background">
-                <div className="font-bold flex items-center gap-2 px-4 h-full">
-                  <Link href="/" className="flex flex-row gap-x-2 items-center">
-                    <IconOpenAgents className="h-4 w-4" />
-                    <span className="text-lg">OpenAgents</span>
-                  </Link>
-                </div>
-              </header>
-              <main className="h-[calc(100vh-3.5rem)]">
+              <div className="absolute top-0 left-0 right-0 bg-background">
+                <header className="h-14 shrink-0 items-center gap-2">
+                  <div className="font-bold flex items-center gap-2 px-4 h-full">
+                    <Link href="/" className="flex flex-row gap-x-2 items-center">
+                      <IconOpenAgents className="h-4 w-4" />
+                      <span className="text-lg">OpenAgents</span>
+                    </Link>
+                  </div>
+                </header>
+              </div>
+              <main className="h-[calc(100vh-3.5rem)] mt-14">
                 {children}
               </main>
             </div>
