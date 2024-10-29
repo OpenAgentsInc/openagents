@@ -32,35 +32,33 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
   };
 
   return (
-    <div className="bg-background">
-      <div className="max-w-3xl mx-auto px-4 py-2">
-        <div className="relative">
-          <Textarea
-            ref={textareaRef}
-            placeholder={isStreaming ? "Waiting for response..." : "Message OpenAgents"}
-            rows={3}
-            value={localContent}
-            onChange={handleContentChange}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !isStreaming) {
-                handleLocalSubmit(e);
-              } else {
-                handleKeyDown(e);
-              }
-            }}
-            className={`resize-none rounded-md pr-10 ${isStreaming ? 'opacity-50' : ''}`}
-          />
+    <div className="max-w-3xl mx-auto">
+      <div className="relative">
+        <Textarea
+          ref={textareaRef}
+          placeholder={isStreaming ? "Waiting for response..." : "Message OpenAgents"}
+          rows={3}
+          value={localContent}
+          onChange={handleContentChange}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !isStreaming) {
+              handleLocalSubmit(e);
+            } else {
+              handleKeyDown(e);
+            }
+          }}
+          className={`resize-none rounded-md pr-10 ${isStreaming ? 'opacity-50' : ''}`}
+        />
 
-          <Button
-            onClick={handleLocalSubmit}
-            variant="ghost"
-            className="absolute top-1 right-1 p-2 focus:outline-none"
-          >
-            <ArrowUp size={20} />
-          </Button>
-        </div>
-        <p className="text-xs text-zinc-500 mt-2 text-center">Messages visible only to you</p>
+        <Button
+          onClick={handleLocalSubmit}
+          variant="ghost"
+          className="absolute top-1 right-1 p-2 focus:outline-none"
+        >
+          <ArrowUp size={20} />
+        </Button>
       </div>
+      <p className="text-xs text-zinc-500 mt-2 text-center">Messages visible only to you</p>
     </div>
   );
 }
