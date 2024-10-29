@@ -6,7 +6,6 @@ class TestClass
 {
     use BedrockMessageFormatting;
 
-    // Add public methods to expose protected methods for testing
     public function publicFormatResponse(array $decodedBody): array
     {
         return $this->formatResponse($decodedBody);
@@ -17,7 +16,7 @@ beforeEach(function () {
     $this->formatter = new TestClass();
 });
 
-test('stops processing text after tool use', function () {
+it('stops processing text after tool use', function () {
     $decodedBody = [
         'output' => [
             'message' => [
@@ -30,8 +29,8 @@ test('stops processing text after tool use', function () {
                             'input' => ['path' => 'README.md']
                         ]
                     ],
-                    ['text' => 'I apologize for the error. '], // This should be ignored
-                    ['text' => 'Let me try something else. '] // This should be ignored
+                    ['text' => 'I apologize for the error. '],
+                    ['text' => 'Let me try something else. ']
                 ]
             ]
         ],
@@ -43,15 +42,14 @@ test('stops processing text after tool use', function () {
 
     $result = $this->formatter->publicFormatResponse($decodedBody);
 
-    // Should only include text before the tool use
-    expect($result['content'])->toBe('Let me help you with that. ');
-
-    // Should include the tool invocation
-    expect($result['toolInvocations'])->toHaveCount(1);
-    expect($result['toolInvocations'][0]['toolName'])->toBe('view_file');
+    expect($result['content'])->toBe('Let me help you with that. ')
+        ->and($result['toolInvocations'])
+        ->toHaveCount(1)
+        ->and($result['toolInvocations'][0]['toolName'])
+        ->toBe('view_file');
 });
 
-test('handles multiple tool uses while ignoring intermediate text', function () {
+it('handles multiple tool uses while ignoring intermediate text', function () {
     $decodedBody = [
         'output' => [
             'message' => [
@@ -64,7 +62,7 @@ test('handles multiple tool uses while ignoring intermediate text', function () 
                             'input' => ['path' => 'README.md']
                         ]
                     ],
-                    ['text' => 'I apologize for the error. '], // This should be ignored
+                    ['text' => 'I apologize for the error. '],
                     [
                         'toolUse' => [
                             'toolUseId' => 'tool124',
@@ -73,25 +71,23 @@ test('handles multiple tool uses while ignoring intermediate text', function () 
                         ]
                     ]
                 ]
-            ],
-            'usage' => [
-                'inputTokens' => 100,
-                'outputTokens' => 50
             ]
-        ];
+        ],
+        'usage' => [
+            'inputTokens' => 100,
+            'outputTokens' => 50
+        ]
+    ];
 
     $result = $this->formatter->publicFormatResponse($decodedBody);
 
-    // Should only include text before the first tool use
-    expect($result['content'])->toBe('Let me help you with that. ');
-
-    // Should include both tool invocations
-    expect($result['toolInvocations'])->toHaveCount(2);
-    expect($result['toolInvocations'][0]['toolName'])->toBe('view_file');
-    expect($result['toolInvocations'][1]['toolName'])->toBe('view_file');
+    expect($result['content'])->toBe('Let me help you with that. ')
+        ->and($result['toolInvocations'])->toHaveCount(2)
+        ->and($result['toolInvocations'][0]['toolName'])->toBe('view_file')
+        ->and($result['toolInvocations'][1]['toolName'])->toBe('view_file');
 });
 
-test('processes tool results correctly', function () {
+it('processes tool results correctly', function () {
     $decodedBody = [
         'output' => [
             'message' => [
@@ -104,7 +100,7 @@ test('processes tool results correctly', function () {
                             'input' => ['path' => 'README.md']
                         ]
                     ],
-                    ['text' => 'Here is what I found: '] // This should be ignored
+                    ['text' => 'Here is what I found: ']
                 ],
                 'toolResults' => [
                     [
@@ -120,20 +116,18 @@ test('processes tool results correctly', function () {
                 'inputTokens' => 100,
                 'outputTokens' => 50
             ]
-        ];
+        ]
+    ];
 
     $result = $this->formatter->publicFormatResponse($decodedBody);
 
-    // Should only include text before the tool use
-    expect($result['content'])->toBe('Let me check that file. ');
-
-    // Should include the tool invocation and its result
-    expect($result['toolInvocations'])->toHaveCount(1);
-    expect($result['toolInvocations'][0])->toHaveKeys(['toolName', 'toolCallId', 'args', 'result']);
-    expect($result['toolInvocations'][0]['result']['value']['result']['success'])->toBeTrue();
+    expect($result['content'])->toBe('Let me check that file. ')
+        ->and($result['toolInvocations'])->toHaveCount(1)
+        ->and($result['toolInvocations'][0])->toHaveKeys(['toolName', 'toolCallId', 'args', 'result'])
+        ->and($result['toolInvocations'][0]['result']['value']['result']['success'])->toBeTrue();
 });
 
-test('handles tool errors correctly', function () {
+it('handles tool errors correctly', function () {
     $decodedBody = [
         'output' => [
             'message' => [
@@ -146,7 +140,7 @@ test('handles tool errors correctly', function () {
                             'input' => ['path' => 'README.md']
                         ]
                     ],
-                    ['text' => 'I apologize for the error. '] // This should be ignored
+                    ['text' => 'I apologize for the error. ']
                 ],
                 'toolResults' => [
                     [
@@ -162,16 +156,14 @@ test('handles tool errors correctly', function () {
                 'inputTokens' => 100,
                 'outputTokens' => 50
             ]
-        ];
+        ]
+    ];
 
     $result = $this->formatter->publicFormatResponse($decodedBody);
 
-    // Should only include text before the tool use
-    expect($result['content'])->toBe('Let me check that file. ');
-
-    // Should include the tool invocation and its error result
-    expect($result['toolInvocations'])->toHaveCount(1);
-    expect($result['toolInvocations'][0])->toHaveKeys(['toolName', 'toolCallId', 'args', 'result']);
-    expect($result['toolInvocations'][0]['result']['value']['result']['success'])->toBeFalse();
-    expect($result['toolInvocations'][0]['result']['value']['result']['error'])->toBe('File not found');
+    expect($result['content'])->toBe('Let me check that file. ')
+        ->and($result['toolInvocations'])->toHaveCount(1)
+        ->and($result['toolInvocations'][0])->toHaveKeys(['toolName', 'toolCallId', 'args', 'result'])
+        ->and($result['toolInvocations'][0]['result']['value']['result']['success'])->toBeFalse()
+        ->and($result['toolInvocations'][0]['result']['value']['result']['error'])->toBe('File not found');
 });
