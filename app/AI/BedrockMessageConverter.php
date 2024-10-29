@@ -95,6 +95,7 @@ class BedrockMessageConverter
                         ];
                         $lastRole = 'user';
                         $pendingToolUse = null;
+                        continue 2; // Skip adding "Continue." message when we have a tool result
                     }
                 }
             }
@@ -138,13 +139,24 @@ class BedrockMessageConverter
 
         // If content is already an array of content blocks
         if (is_array($content) && !empty($content) && isset($content[0]) && 
-            (isset($content[0]['text']) || isset($content[0]['toolResult']) || isset($content[0]['toolUse']))) {
-            return array_map(function($block) {
-                if (isset($block['text']) && empty($block['text'])) {
-                    $block['text'] = ' ';
+            (isset($content[0]['text']) || isset($content[0]['toolResult']) || isset($content[0]['toolUse']) || isset($content[0]['type']))) {
+            $formatted = [];
+            foreach ($content as $block) {
+                if (isset($block['type']) && $block['type'] === 'tool-call') {
+                    $formatted[] = [
+                        'toolUse' => [
+                            'toolUseId' => $block['toolCallId'],
+                            'name' => $block['toolName'],
+                            'input' => $block['args']
+                        ]
+                    ];
+                } elseif (isset($block['text'])) {
+                    $formatted[] = ['text' => $block['text']];
+                } else {
+                    $formatted[] = $block;
                 }
-                return $block;
-            }, $content);
+            }
+            return $formatted;
         }
 
         // If content is an array but not in content block format
