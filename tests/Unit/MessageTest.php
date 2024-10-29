@@ -22,9 +22,8 @@ test('a message belongs to a thread', function () {
 
 test('a message can be created by the system', function () {
     $thread = Thread::factory()->create();
-    $message = Message::factory()->create([
+    $message = Message::factory()->system()->create([
         'thread_id' => $thread->id,
-        'user_id' => null,
     ]);
 
     expect($message->user)->toBeNull();
