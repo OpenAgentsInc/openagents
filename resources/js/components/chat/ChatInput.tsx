@@ -32,13 +32,13 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
   };
 
   return (
-    <div className="sticky bottom-0 w-full bg-background bg-opacity-90 pb-2">
-      <div className="max-w-3xl mx-auto px-4">
+    <div className="w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75 border-t">
+      <div className="max-w-3xl mx-auto px-4 py-2">
         <div className="relative">
           <Textarea
             ref={textareaRef}
             placeholder={isStreaming ? "Waiting for response..." : "Message OpenAgents"}
-            rows={4}
+            rows={3}
             value={localContent}
             onChange={handleContentChange}
             onKeyDown={(e) => {
@@ -48,7 +48,7 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
                 handleKeyDown(e);
               }
             }}
-            className={`resize-none rounded-md ${isStreaming ? 'opacity-50' : ''}`}
+            className={`resize-none rounded-md pr-10 ${isStreaming ? 'opacity-50' : ''}`}
           />
 
           <Button
@@ -58,7 +58,6 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
           >
             <ArrowUp size={20} />
           </Button>
-
         </div>
         <p className="text-xs text-zinc-500 mt-2 text-center">Messages visible only to you</p>
       </div>
