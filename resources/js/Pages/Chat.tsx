@@ -32,15 +32,15 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
   return (
     <MainLayout>
       <Head title="Chat" />
-      <div className="flex flex-col h-[calc(100vh-3.5rem)]">
+      <div className="flex flex-col h-[calc(100vh-3.5rem)] relative">
         {isLoading && (
           <div className="absolute bottom-4 left-4 z-10 flex items-center space-x-2 bg-background/80 backdrop-blur-sm rounded-md px-2 py-1">
             <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
           </div>
         )}
         {currentChatId ? (
-          <div className="flex flex-col h-full">
-            <ScrollArea className="flex-1 overflow-y-auto">
+          <>
+            <div className="flex-1 overflow-y-auto">
               <div className="mx-auto max-w-4xl px-1 md:px-4 pb-4">
                 <ChatList
                   messages={messages as Message[]}
@@ -48,9 +48,9 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
                   isLoading={isLoading}
                 />
               </div>
-            </ScrollArea>
+            </div>
 
-            <div className="flex-shrink-0">
+            <div className="absolute bottom-0 left-0 right-0">
               <ChatInput
                 initialContent={input}
                 onContentSubmit={handleInputChange}
@@ -60,7 +60,7 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
                 handleSubmit={handleSubmit}
               />
             </div>
-          </div>
+          </>
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-lg text-gray-500">Select a chat from the sidebar or start a new one.</p>
