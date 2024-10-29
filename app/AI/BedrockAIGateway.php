@@ -90,10 +90,10 @@ class BedrockAIGateway
 
     private function processApiResponse($result): array
     {
-        Log::info('Bedrock API response', ['result' => $result]);
+        // Log::info('Bedrock API response', ['result' => $result]);
         $jsonString = $this->extractJsonFromResult($result);
         $decodedBody = json_decode($jsonString, true);
-        Log::info('Bedrock API decoded response', ['decodedBody' => $decodedBody]);
+        // Log::info('Bedrock API decoded response', ['decodedBody' => $decodedBody]);
         return $decodedBody;
     }
 
