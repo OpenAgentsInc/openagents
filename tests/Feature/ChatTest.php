@@ -27,30 +27,23 @@ test('chat page shows thread messages', function () {
         'created_at' => now()
     ]);
 
-    // Store thread ID for assertions
-    $threadId = $thread->id;
-
     $response = $this
         ->actingAs($user)
-        ->get("/chat/{$threadId}");
+        ->get("/chat/{$thread->id}");
 
     $response->assertInertia(fn (Assert $page) => $page
         ->component('Chat')
-        ->has('thread', fn (Assert $thread) => $thread
-            ->where('id', $threadId)
-            ->where('title', 'Test Chat')
-            ->has('messages', 2)
-            ->has('messages.0', fn (Assert $message) => $message
-                ->where('role', 'user')
-                ->where('content', 'Hello')
-                ->etc()
-            )
-            ->has('messages.1', fn (Assert $message) => $message
-                ->where('role', 'assistant')
-                ->where('content', 'Hi there!')
-                ->etc()
-            )
+        ->has('messages', 2)
+        ->has('messages.0', fn (Assert $message) => $message
+            ->where('role', 'user')
+            ->where('content', 'Hello')
             ->etc()
         )
+        ->has('messages.1', fn (Assert $message) => $message
+            ->where('role', 'assistant')
+            ->where('content', 'Hi there!')
+            ->etc()
+        )
+        ->where('currentChatId', $thread->id)
     );
 });
