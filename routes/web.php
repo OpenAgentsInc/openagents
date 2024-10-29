@@ -20,10 +20,12 @@ Route::get('/', function () {
 })->name('home');
 
 
-// CHAT
-Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
-Route::get('/chat/{id}', [ChatController::class, 'chat'])->name('chat.id');
-Route::post('/chat', [UseChatController::class, 'chat']);
+Route::middleware('auth')->group(function () {
+    // CHAT
+    Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
+    Route::get('/chat/{id}', [ChatController::class, 'chat'])->name('chat.id');
+    Route::post('/chat', [UseChatController::class, 'chat']);
+});
 
 // CONTENT
 Route::get('/thesis', [ContentController::class, 'thesis'])->name('content.thesis');
@@ -49,7 +51,9 @@ Route::get('/welcome', function () {
 });
 
 Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
+    // return redirect to home lol
+    return redirect('/');
+    // return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {

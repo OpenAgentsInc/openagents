@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { BlankLayout } from "@/Layouts/BlankLayout"
 import { UnauthedLayout } from "@/Layouts/UnauthedLayout"
 import { Head, Link, useForm } from "@inertiajs/react"
 
@@ -30,7 +31,7 @@ export default function Register() {
   );
 
   return (
-    <UnauthedLayout>
+    <BlankLayout>
       <Head title="Register" />
 
       <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
@@ -117,6 +118,6 @@ export default function Register() {
           </CardContent>
         </Card>
       </div>
-    </UnauthedLayout>
+    </BlankLayout>
   );
 }

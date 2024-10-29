@@ -14,7 +14,7 @@ trait BedrockMessageFormatting
      * @param array $prompt The input prompt array
      * @return array The formatted Bedrock messages prompt
      */
-    private function convertToBedrockChatMessages(array $messages): array
+    protected function convertToBedrockChatMessages(array $messages): array
     {
         Log::info('[New] Converting prompt to Bedrock chat messages', [
             'messages' => json_encode($messages, JSON_PRETTY_PRINT)
@@ -66,14 +66,13 @@ trait BedrockMessageFormatting
         ];
     }
 
-
     /**
      * Convert the input prompt to Bedrock chat messages format.
      *
      * @param array $prompt The input prompt array
      * @return array The formatted Bedrock messages prompt
      */
-    private function convertToBedrockChatMessagesOld(array $messages): array
+    protected function convertToBedrockChatMessagesOld(array $messages): array
     {
         Log::info('Converting prompt to Bedrock chat messages', [
             'messages' => json_encode($messages, JSON_PRETTY_PRINT)
@@ -166,7 +165,7 @@ trait BedrockMessageFormatting
      * @param array $result The tool result array
      * @return string The determined status ('success' or 'error')
      */
-    private function determineToolResultStatus(array $result): string
+    protected function determineToolResultStatus(array $result): string
     {
         // Check for explicit success key
         if (isset($result['success'])) {
@@ -193,13 +192,34 @@ trait BedrockMessageFormatting
      * @param array $decodedBody The decoded response body from Bedrock API
      * @return array Formatted response
      */
-    private function formatResponse(array $decodedBody): array
+    protected function formatResponse(array $decodedBody): array
     {
         $response = $this->initializeResponse($decodedBody);
+        $foundToolUse = false;
 
         if (isset($decodedBody['output']['message']['content'])) {
             foreach ($decodedBody['output']['message']['content'] as $contentItem) {
+                // If we've found a tool use, only process tool-related items
+                if ($foundToolUse) {
+                    if (isset($contentItem['toolUse'])) {
+                        $this->processContentItem($contentItem, $response);
+                    }
+                    continue;
+                }
+
                 $this->processContentItem($contentItem, $response);
+                
+                // If this was a tool use, set the flag
+                if (isset($contentItem['toolUse'])) {
+                    $foundToolUse = true;
+                }
+            }
+        }
+
+        // Handle tool results if present
+        if (isset($decodedBody['output']['message']['toolResults'])) {
+            foreach ($decodedBody['output']['message']['toolResults'] as $toolResult) {
+                $this->processToolResult($toolResult, $response);
             }
         }
 
@@ -213,7 +233,7 @@ trait BedrockMessageFormatting
      * @param array $decodedBody The decoded response body from Bedrock API
      * @return array Initialized response array
      */
-    private function initializeResponse(array $decodedBody): array
+    protected function initializeResponse(array $decodedBody): array
     {
         return [
             'content' => '',
@@ -229,7 +249,7 @@ trait BedrockMessageFormatting
      * @param array $contentItem The content item to process
      * @param array &$response The response array to update
      */
-    private function processContentItem(array $contentItem, array &$response): void
+    protected function processContentItem(array $contentItem, array &$response): void
     {
         if (isset($contentItem['text'])) {
             $response['content'] .= $contentItem['text'];
@@ -239,12 +259,42 @@ trait BedrockMessageFormatting
     }
 
     /**
+     * Process a tool result from the Bedrock API response.
+     *
+     * @param array $toolResult The tool result to process
+     * @param array &$response The response array to update
+     */
+    protected function processToolResult(array $toolResult, array &$response): void
+    {
+        if (isset($toolResult['toolUseId'])) {
+            foreach ($response['toolInvocations'] as &$invocation) {
+                if ($invocation['toolCallId'] === $toolResult['toolUseId']) {
+                    $invocation['result'] = [
+                        'type' => 'tool_call',
+                        'value' => [
+                            'toolCallId' => $toolResult['toolUseId'],
+                            'toolName' => $invocation['toolName'],
+                            'args' => $invocation['args'],
+                            'result' => [
+                                'success' => $toolResult['status'] === 'success',
+                                'content' => $toolResult['content'][0]['text'] ?? null,
+                                'error' => $toolResult['status'] === 'error' ? ($toolResult['content'][0]['text'] ?? 'Unknown error') : null
+                            ]
+                        ]
+                    ];
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
      * Format a tool invocation for the response.
      *
      * @param array $toolUse The tool use data from Bedrock API
      * @return array Formatted tool invocation
      */
-    private function formatToolInvocation(array $toolUse): array
+    protected function formatToolInvocation(array $toolUse): array
     {
         return [
             'toolName' => $toolUse['name'],
