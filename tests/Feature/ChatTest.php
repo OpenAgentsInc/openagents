@@ -2,6 +2,7 @@
 
 use App\Models\Thread;
 use App\Models\User;
+use App\Models\Message;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('chat page shows thread messages', function () {
@@ -11,23 +12,20 @@ test('chat page shows thread messages', function () {
         'title' => 'Test Chat'
     ]);
 
-    // Create some messages for the thread
-    $messages = [
-        [
-            'role' => 'user',
-            'content' => 'Hello',
-            'created_at' => now()->toISOString()
-        ],
-        [
-            'role' => 'assistant',
-            'content' => 'Hi there!',
-            'created_at' => now()->toISOString()
-        ]
-    ];
+    // Create messages through the relationship
+    Message::create([
+        'thread_id' => $thread->id,
+        'role' => 'user',
+        'content' => 'Hello',
+        'created_at' => now()
+    ]);
 
-    // Update thread with messages
-    $thread->messages = $messages;
-    $thread->save();
+    Message::create([
+        'thread_id' => $thread->id,
+        'role' => 'assistant',
+        'content' => 'Hi there!',
+        'created_at' => now()
+    ]);
 
     $response = $this
         ->actingAs($user)
