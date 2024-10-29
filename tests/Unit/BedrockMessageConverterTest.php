@@ -83,7 +83,7 @@ test('converts system message', function () {
     $result = $this->converter->convertToBedrockChatMessages($messages);
 
     expect($result)->toBe([
-        'system' => 'You are a helpful assistant',
+        'system' => [['text' => 'You are a helpful assistant']],
         'messages' => [
             [
                 'role' => 'user',
@@ -109,6 +109,26 @@ test('throws exception for assistant first message', function () {
 
     expect(fn() => $this->converter->convertToBedrockChatMessages($messages))
         ->toThrow(Exception::class, 'A conversation must start with a user message (after any system messages).');
+});
+
+test('throws exception for consecutive assistant messages', function () {
+    $messages = [
+        [
+            'role' => 'user',
+            'content' => 'Hello'
+        ],
+        [
+            'role' => 'assistant',
+            'content' => 'Hi there'
+        ],
+        [
+            'role' => 'assistant',
+            'content' => 'How can I help you?'
+        ]
+    ];
+
+    expect(fn() => $this->converter->convertToBedrockChatMessages($messages))
+        ->toThrow(Exception::class, 'Consecutive assistant messages are not allowed.');
 });
 
 test('converts tool results', function () {
