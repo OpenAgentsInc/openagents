@@ -25,15 +25,22 @@ class BedrockMessageConverter
             throw new \Exception('A conversation must start with a user message (after any system messages).');
         }
 
-        // First pass: collect system messages
+        // First pass: collect system messages and validate message sequence
         $system = null;
+        $lastRole = null;
         foreach ($prompt as $message) {
             if ($message['role'] === 'system') {
                 if ($system !== null) {
                     throw new \Exception('Multiple system messages are not supported.');
                 }
                 $system = $this->formatContent($message['content']);
+                continue;
             }
+
+            if ($message['role'] === 'assistant' && $lastRole === 'assistant') {
+                throw new \Exception('Consecutive assistant messages are not allowed.');
+            }
+            $lastRole = $message['role'];
         }
 
         // Second pass: process messages in order
