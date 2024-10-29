@@ -30,7 +30,7 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
     setInput,
   } = useVercelChat({
     api: "/chat",
-    initialMessages: formatInitialMessages(initialMessages),
+    initialMessages: [], // formatInitialMessages(initialMessages),
     keepLastMessageOnError: true,
     body: { thread_id: currentChatId, selected_tools: selectedTools },
     maxSteps: 10,
@@ -43,14 +43,6 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
   const filteredMessages = useMemo(() => {
     return messages.filter(msg => msg.content !== null && msg.content !== "(empty)");
   }, [messages]);
-
-  // useEffect(() => {
-  //   console.log(filteredMessages)
-  // }, [filteredMessages]);
-
-  useEffect(() => {
-    setMessages(formatInitialMessages(initialMessages, auth));
-  }, [initialMessages, setMessages, auth]);
 
   useEffect(() => {
     if (error) {

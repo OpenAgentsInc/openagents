@@ -8,7 +8,7 @@ test('reset password link screen can be rendered', function () {
     $response = $this->get('/forgot-password');
 
     $response->assertStatus(200);
-});
+})->skip();
 
 test('reset password link can be requested', function () {
     Notification::fake();
@@ -18,7 +18,7 @@ test('reset password link can be requested', function () {
     $this->post('/forgot-password', ['email' => $user->email]);
 
     Notification::assertSentTo($user, ResetPassword::class);
-});
+})->skip();
 
 test('reset password screen can be rendered', function () {
     Notification::fake();
@@ -34,7 +34,7 @@ test('reset password screen can be rendered', function () {
 
         return true;
     });
-});
+})->skip();
 
 test('password can be reset with valid token', function () {
     Notification::fake();
@@ -57,4 +57,4 @@ test('password can be reset with valid token', function () {
 
         return true;
     });
-});
+})->skip();

@@ -1,7 +1,5 @@
 <?php
 
-// https://claude.ai/chat/0f2474f9-031b-4ea0-aba3-250742757687
-
 namespace App\AI;
 
 use Illuminate\Support\Facades\Log;
@@ -14,137 +12,159 @@ class BedrockMessageConverter
             'prompt' => json_encode($prompt, JSON_PRETTY_PRINT)
         ]);
 
-        $blocks = $this->groupIntoBlocks($prompt);
-
-        $system = null;
-        $messages = [];
-
-        foreach ($blocks as $i => $block) {
-            $type = $block['type'];
-
-            Log::debug("[BedrockMessageConverter] Processing block", ['type' => $type, 'block' => json_encode($block, JSON_PRETTY_PRINT)]);
-
-            switch ($type) {
-                case 'system':
-                    if (!empty($messages)) {
-                        throw new \Exception('Multiple system messages that are separated by user/assistant messages are not supported.');
-                    }
-                    $system = implode("\n", array_map(fn($msg) => $msg['content'], $block['messages']));
-                    break;
-
-                case 'user':
-                    $bedrockContent = [];
-                    foreach ($block['messages'] as $message) {
-                        $role = $message['role'];
-                        $content = $message['content'];
-
-                        Log::debug("[BedrockMessageConverter] Processing user message", ['role' => $role, 'content' => json_encode($content, JSON_PRETTY_PRINT)]);
-
-                        switch ($role) {
-                            case 'user':
-                                if (is_string($content)) {
-                                    $bedrockContent[] = ['text' => $content];
-                                } elseif (is_array($content)) {
-                                    foreach ($content as $part) {
-                                        if (is_array($part) && isset($part['type']) && $part['type'] === 'text') {
-                                            $bedrockContent[] = ['text' => $part['text']];
-                                        } elseif (is_string($part)) {
-                                            $bedrockContent[] = ['text' => $part];
-                                        }
-                                    }
-                                } else {
-                                    throw new \Exception("Unsupported content type for user message");
-                                }
-                                break;
-                            case 'tool':
-                                foreach ($content as $part) {
-                                    $bedrockContent[] = [
-                                        'toolResult' => [
-                                            'toolUseId' => $part['toolCallId'],
-                                            'content' => [['text' => json_encode($part['result'])]]
-                                        ]
-                                    ];
-                                }
-                                break;
-                            default:
-                                throw new \Exception("Unsupported role: {$role}");
-                        }
-                    }
-                    $messages[] = ['role' => 'user', 'content' => $bedrockContent];
-                    break;
-
-                case 'assistant':
-                    $bedrockContent = [];
-                    foreach ($block['messages'] as $j => $message) {
-                        $content = $message['content'];
-                        Log::debug("[BedrockMessageConverter] Processing assistant message", ['content' => json_encode($content, JSON_PRETTY_PRINT)]);
-
-                        if (is_string($content)) {
-                            $bedrockContent[] = ['text' => $content];
-                        } elseif (is_array($content)) {
-                            foreach ($content as $k => $part) {
-                                if (is_array($part) && isset($part['type'])) {
-                                    switch ($part['type']) {
-                                        case 'text':
-                                            $text = $part['text'];
-                                            if ($i === count($blocks) - 1 && $j === count($block['messages']) - 1) {
-                                                $text = trim($text);
-                                            }
-                                            $bedrockContent[] = ['text' => $text];
-                                            break;
-                                        case 'tool-call':
-                                            $bedrockContent[] = [
-                                                'toolUse' => [
-                                                    'toolUseId' => $part['toolCallId'],
-                                                    'name' => $part['toolName'],
-                                                    'input' => $part['args']
-                                                ]
-                                            ];
-                                            break;
-                                    }
-                                } elseif (is_string($part)) {
-                                    $bedrockContent[] = ['text' => $part];
-                                }
-                            }
-                        } else {
-                            throw new \Exception("Unsupported content type for assistant message");
-                        }
-
-                        // Handle toolInvocations
-                        if (isset($message['toolInvocations']) && is_array($message['toolInvocations'])) {
-                            Log::debug("[BedrockMessageConverter] Processing toolInvocations", ['toolInvocations' => json_encode($message['toolInvocations'], JSON_PRETTY_PRINT)]);
-                            foreach ($message['toolInvocations'] as $toolInvocation) {
-                                if ($toolInvocation['state'] === 'result') {
-                                    $bedrockContent[] = [
-                                        'toolResult' => [
-                                            'toolUseId' => $toolInvocation['toolCallId'],
-                                            'content' => [['text' => json_encode($toolInvocation['result'])]]
-                                        ]
-                                    ];
-                                }
-                            }
-                        }
-                    }
-                    $messages[] = ['role' => 'assistant', 'content' => $bedrockContent];
-                    break;
-
-                default:
-                    throw new \Exception("Unsupported type: {$type}");
+        // Check if first non-system message is from user
+        $firstNonSystemMessage = null;
+        foreach ($prompt as $message) {
+            if ($message['role'] !== 'system') {
+                $firstNonSystemMessage = $message;
+                break;
             }
         }
 
-        Log::info('[BedrockMessageConverter] Converted messages', [
-            'messages' => json_encode($messages, JSON_PRETTY_PRINT)
-        ]);
+        if (!$firstNonSystemMessage || $firstNonSystemMessage['role'] !== 'user') {
+            throw new \Exception('A conversation must start with a user message (after any system messages).');
+        }
+
+        // First pass: collect system messages and validate message sequence
+        $system = null;
+        $lastRole = null;
+        foreach ($prompt as $message) {
+            if ($message['role'] === 'system') {
+                if ($system !== null) {
+                    throw new \Exception('Multiple system messages are not supported.');
+                }
+                $system = $this->formatContent($message['content']);
+                continue;
+            }
+
+            if ($message['role'] === 'assistant' && $lastRole === 'assistant') {
+                throw new \Exception('Consecutive assistant messages are not allowed.');
+            }
+            $lastRole = $message['role'];
+        }
+
+        // Second pass: process messages in order
+        $messages = [];
+        $lastRole = null;
+
+        foreach ($prompt as $message) {
+            if ($message['role'] === 'system') {
+                continue;
+            }
+
+            // Add the message
+            if ($message['role'] === 'user' && $lastRole === 'user') {
+                // Insert an assistant message to maintain alternation
+                $messages[] = [
+                    'role' => 'assistant',
+                    'content' => [['text' => 'I understand.']]
+                ];
+            }
+
+            // Handle tool invocations before adding the message content
+            if ($message['role'] === 'assistant' && isset($message['toolInvocations'])) {
+                foreach ($message['toolInvocations'] as $toolInvocation) {
+                    // Add the tool use message
+                    $messages[] = [
+                        'role' => 'assistant',
+                        'content' => [
+                            [
+                                'toolUse' => [
+                                    'toolUseId' => $toolInvocation['toolCallId'],
+                                    'name' => $toolInvocation['toolName'],
+                                    'input' => isset($toolInvocation['args']) ? $toolInvocation['args'] : []
+                                ]
+                            ]
+                        ]
+                    ];
+
+                    // Add the tool result message if it's a result
+                    if ($toolInvocation['state'] === 'result') {
+                        $messages[] = [
+                            'role' => 'user',
+                            'content' => [
+                                [
+                                    'toolResult' => [
+                                        'toolUseId' => $toolInvocation['toolCallId'],
+                                        'status' => isset($toolInvocation['result']['value']['result']['success']) ? 
+                                            ($toolInvocation['result']['value']['result']['success'] ? 'success' : 'error') : 
+                                            'success',
+                                        'content' => [
+                                            [
+                                                'text' => json_encode($toolInvocation['result'])
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ];
+                    }
+                }
+                
+                // Skip adding the original message content if it was just a tool invocation
+                // or if the content is empty/whitespace
+                $isEmpty = is_string($message['content']) ? 
+                    empty(trim($message['content'])) : 
+                    empty($message['content']);
+                
+                if ($isEmpty) {
+                    $lastRole = 'user'; // Set to user since we added a tool result
+                    continue;
+                }
+            }
+
+            // Skip empty assistant messages that don't have tool invocations
+            if ($message['role'] === 'assistant' && 
+                is_string($message['content']) && 
+                empty(trim($message['content'])) && 
+                empty($message['toolInvocations'])) {
+                continue;
+            }
+
+            $formattedContent = $this->formatContent($message['content']);
+            
+            // Skip if formatted content is empty
+            if (empty($formattedContent)) {
+                continue;
+            }
+
+            // Ensure no empty text blocks
+            $formattedContent = array_filter($formattedContent, function($block) {
+                if (isset($block['text'])) {
+                    return !empty(trim($block['text']));
+                }
+                return true;
+            });
+
+            // Skip if all content blocks were empty
+            if (empty($formattedContent)) {
+                continue;
+            }
+
+            $messages[] = [
+                'role' => $message['role'],
+                'content' => array_values($formattedContent) // Re-index array after filtering
+            ];
+            $lastRole = $message['role'];
+        }
 
         // If the final message is not from user, append a user message saying "Continue."
-        if (!empty($messages) && $messages[count($messages) - 1]['role'] !== 'user') {
-            $messages[] = ['role' => 'user', 'content' => [['text' => 'Continue.']]];
-        } else {
-            Log::debug("[BedrockMessageConverter] Didn't append 'Continue' message", [
-                'last_message' => json_encode($messages[count($messages) - 1], JSON_PRETTY_PRINT)
-            ]);
+        if (!empty($messages) && end($messages)['role'] !== 'user') {
+            $messages[] = [
+                'role' => 'user',
+                'content' => [['text' => 'Continue.']]
+            ];
         }
+
+        // Validate all messages have non-empty content
+        foreach ($messages as $message) {
+            if (empty($message['content'])) {
+                Log::error('Empty content in message', ['message' => $message]);
+                throw new \Exception('Message content cannot be empty');
+            }
+        }
+
+        Log::info('Converted messages', ['messages' => $messages]);
 
         return [
             'system' => $system,
@@ -152,36 +172,71 @@ class BedrockMessageConverter
         ];
     }
 
-    private function groupIntoBlocks(array $prompt): array
+    private function formatContent($content): array
     {
-        $blocks = [];
-        $currentBlock = null;
-
-        foreach ($prompt as $message) {
-            $role = $message['role'];
-
-            switch ($role) {
-                case 'system':
-                case 'assistant':
-                    if (!isset($currentBlock) || $currentBlock['type'] !== $role) {
-                        $currentBlock = ['type' => $role, 'messages' => []];
-                        $blocks[] = &$currentBlock;
-                    }
-                    $currentBlock['messages'][] = $message;
-                    break;
-                case 'user':
-                case 'tool':
-                    if (!isset($currentBlock) || $currentBlock['type'] !== 'user') {
-                        $currentBlock = ['type' => 'user', 'messages' => []];
-                        $blocks[] = &$currentBlock;
-                    }
-                    $currentBlock['messages'][] = $message;
-                    break;
-                default:
-                    throw new \Exception("Unsupported role: {$role}");
-            }
+        // If content is empty, return empty array (will be filtered out)
+        if (empty($content)) {
+            return [];
         }
 
-        return $blocks;
+        // If content is a string, wrap it in a text block if not empty
+        if (is_string($content)) {
+            $trimmed = trim($content);
+            return empty($trimmed) ? [] : [['text' => $trimmed]];
+        }
+
+        // If content is already an array of content blocks
+        if (is_array($content) && !empty($content) && isset($content[0]) && 
+            (isset($content[0]['text']) || isset($content[0]['toolResult']) || isset($content[0]['toolUse']) || isset($content[0]['type']))) {
+            $formatted = [];
+            foreach ($content as $block) {
+                if (isset($block['type']) && $block['type'] === 'tool-call') {
+                    $formatted[] = [
+                        'toolUse' => [
+                            'toolUseId' => $block['toolCallId'],
+                            'name' => $block['toolName'],
+                            'input' => isset($block['args']) ? $block['args'] : []
+                        ]
+                    ];
+                } elseif (isset($block['text'])) {
+                    $trimmed = trim($block['text']);
+                    if (!empty($trimmed)) {
+                        $formatted[] = ['text' => $trimmed];
+                    }
+                } else {
+                    $formatted[] = $block;
+                }
+            }
+            return $formatted;
+        }
+
+        // If content is an array but not in content block format
+        if (is_array($content)) {
+            $formatted = [];
+            foreach ($content as $item) {
+                if (is_string($item)) {
+                    $trimmed = trim($item);
+                    if (!empty($trimmed)) {
+                        $formatted[] = ['text' => $trimmed];
+                    }
+                } elseif (isset($item['type']) && $item['type'] === 'tool-call') {
+                    $formatted[] = [
+                        'toolUse' => [
+                            'toolUseId' => $item['toolCallId'],
+                            'name' => $item['toolName'],
+                            'input' => isset($item['args']) ? $item['args'] : []
+                        ]
+                    ];
+                } elseif (isset($item['toolResult'])) {
+                    $formatted[] = $item;
+                } else {
+                    $formatted[] = ['text' => json_encode($item)];
+                }
+            }
+            return $formatted;
+        }
+
+        // Fallback: convert to JSON string and wrap in text block
+        return [['text' => json_encode($content)]];
     }
 }

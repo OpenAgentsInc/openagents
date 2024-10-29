@@ -62,18 +62,52 @@ trait UsesStreaming
     protected function streamToolResult(array $toolResult)
     {
         Log::info('Streaming tool result', ['toolResult' => $toolResult]);
-        if (
-            !isset($toolResult['toolCallId']) || !is_string($toolResult['toolCallId']) ||
-            !isset($toolResult['result'])
-        ) {
-            Log::warning('Invalid tool result format', ['toolResult' => $toolResult]);
+        
+        // Handle the nested structure from toolResult
+        if (isset($toolResult['toolResult'])) {
+            $data = $toolResult['toolResult'];
+            
+            if (!isset($data['toolCallId'])) {
+                Log::warning('Invalid tool result format - missing toolCallId', ['toolResult' => $toolResult]);
+                return;
+            }
+
+            // Get the result from the nested structure
+            $actualResult = null;
+            if (isset($data['result']['value']['result'])) {
+                $actualResult = $data['result']['value']['result'];
+            }
+
+            $this->streamWithType('a', [
+                'toolCallId' => $data['toolCallId'],
+                'result' => $actualResult
+            ]);
+            return;
+        }
+
+        // Fallback for simpler format
+        if (!isset($toolResult['toolCallId'])) {
+            Log::warning('Invalid tool result format - missing toolCallId', ['toolResult' => $toolResult]);
             return;
         }
 
         $this->streamWithType('a', [
             'toolCallId' => $toolResult['toolCallId'],
-            'result' => $toolResult['result'],
+            'result' => $toolResult['result'] ?? null
         ]);
+    }
+
+    protected function streamFinishEvent($reason, $usage = null)
+    {
+        Log::info('Streaming finish event', ['reason' => $reason, 'usage' => $usage]);
+        $data = [
+            'finishReason' => $reason,
+            'usage' => $usage ?? [
+                'promptTokens' => $this->response['input_tokens'] ?? 0,
+                'completionTokens' => $this->response['output_tokens'] ?? 0
+            ]
+        ];
+        $this->streamWithType('d', $data);
     }
 
     private function streamWithType($type, $content)
