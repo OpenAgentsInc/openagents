@@ -1,44 +1,4 @@
-[2024-10-29 03:46:48] testing.INFO: [BedrockMessageConverter] Converting prompt to Bedrock chat messages {"prompt":"[
-    {
-        \"role\": \"user\",
-        \"content\": \"Open the README on the openagentsinc\\/openagents main branch and summarize in 1 sentence.\"
-    },
-    {
-        \"role\": \"assistant\",
-        \"content\": \" \",
-        \"toolInvocations\": [
-            {
-                \"state\": \"result\",
-                \"toolCallId\": \"tooluse_4-7M_FtMSIOPt-b_TuezDg\",
-                \"toolName\": \"view_file\",
-                \"args\": {
-                    \"owner\": \"openagentsinc\",
-                    \"repo\": \"openagents\",
-                    \"path\": \"README.md\",
-                    \"branch\": \"main\"
-                },
-                \"result\": {
-                    \"type\": \"tool_call\",
-                    \"value\": {
-                        \"toolCallId\": \"tooluse_4-7M_FtMSIOPt-b_TuezDg\",
-                        \"toolName\": \"view_file\",
-                        \"args\": {
-                            \"owner\": \"openagentsinc\",
-                            \"repo\": \"openagents\",
-                            \"path\": \"README.md\",
-                            \"branch\": \"main\"
-                        },
-                        \"result\": {
-                            \"success\": true,
-                            \"content\": \"# OpenAgents v3\\n\\nOpenAgents is a platform for building, selling and using AI agents.\",
-                            \"sha\": \"b5efe0a6ba5fda0bdeaf5d7f79f21d78e88aca10\",
-                            \"summary\": \"Viewed file README.md in openagentsinc\\/openagents on branch main\",
-                            \"details\": \"File contents have been retrieved from GitHub\"
-                        }
-                    }
-                }
-            }
-        ]
-    }
-]"}
-[2024-10-29 03:46:48] testing.INFO: Converted messages {"messages":[{"role":"user","content":[{"text":"Open the README on the openagentsinc/openagents main branch and summarize in 1 sentence."}]},{"role":"assistant","content":[{"text":" "}]},{"role":"user","content":[{"text":"Continue."}]}]}
+[2024-10-29 03:57:12] local.INFO: Bedrock API request {"requestBody":{"modelId":"anthropic.claude-3-5-sonnet-20240620-v1:0","contentType":"application/json","accept":"application/json","anthropic_version":"bedrock-2023-05-31","messages":[{"role":"user","content":[{"text":"Open the README on the openagentsinc/openagents main branch and summarize in 1 sentence."}]},{"role":"assistant","content":[{"toolUse":{"toolUseId":"tooluse_-uDBomsYQeasjRv7zBAo0A","name":"view_file","input":{"owner":"openagentsinc","repo":"openagents","path":"README.md","branch":"main"}}}]},{"role":"user","content":[{"toolResult":{"toolUseId":"tooluse_-uDBomsYQeasjRv7zBAo0A","status":"success","content":[{"text":"Over 9 levels deep, aborting normalization"}]}}]},{"role":"assistant","content":[{"text":" "}]},{"role":"user","content":[{"text":"Continue."}]}],"max_tokens":4096,"temperature":0.7,"top_p":1,"toolConfig":{"tools":[{"toolSpec":{"name":"view_file","description":"View file contents at path","inputSchema":{"json":{"type":"object","properties":{"path":"Over 9 levels deep, aborting normalization", [...]
+[2024-10-29 03:57:12] local.ERROR: Error executing "Converse" on "https://bedrock-runtime.us-east-1.amazonaws.com/model/anthropic.claude-3-5-sonnet-20240620-v1%3A0/converse"; AWS HTTP error: Client error: `POST https://bedrock-runtime.us-east-1.amazonaws.com/model/anthropic.claude-3-5-sonnet-20240620-v1%3A0/converse` resulted in a `400 Bad Request` response:
+{"message":"The text field in the ContentBlock object at messages.3.content.0 is blank. Add text to the text field, and  (truncated...)
+ ValidationException (cli
