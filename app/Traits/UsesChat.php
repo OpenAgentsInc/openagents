@@ -126,12 +126,17 @@ trait UsesChat
 
         // Add tool results to messages
         if (!empty($toolResults)) {
+            // Convert tool results to text blocks
+            $textBlocks = [['text' => $this->response['content'] ?: ' ']];
+            foreach ($toolResults as $toolResult) {
+                $textBlocks[] = [
+                    'text' => "Tool result: " . json_encode($toolResult['toolResult'])
+                ];
+            }
+
             $messages[] = [
                 'role' => 'assistant',
-                'content' => array_merge(
-                    [['text' => $this->response['content'] ?: ' ']],
-                    $toolResults
-                )
+                'content' => $textBlocks
             ];
 
             // Format all messages to ensure proper content structure
