@@ -16,6 +16,8 @@ class Message extends Model
 
     protected $with = ['toolInvocations'];
 
+    protected $appends = ['toolInvocations'];
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -29,5 +31,10 @@ class Message extends Model
     public function toolInvocations(): HasMany
     {
         return $this->hasMany(ToolInvocation::class);
+    }
+
+    public function getToolInvocationsAttribute()
+    {
+        return $this->toolInvocations()->get();
     }
 }
