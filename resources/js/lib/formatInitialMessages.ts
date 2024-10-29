@@ -20,11 +20,18 @@ export interface Message {
   internalUpdateId?: string;
 }
 
-const extractTextFromContent = (content: string): string => {
+const extractTextFromContent = (content: string): string | null => {
   try {
     const parsed = JSON.parse(content);
-    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].text) {
-      return parsed[0].text;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // If it's just an empty text message, return null
+      if (parsed.length === 1 && parsed[0].text === " ") {
+        return null;
+      }
+      // Otherwise return the text if it exists
+      if (parsed[0].text) {
+        return parsed[0].text;
+      }
     }
     return content;
   } catch (e) {
