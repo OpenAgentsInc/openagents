@@ -22,11 +22,12 @@ class ChatController
             return redirect("/chat/{$thread->id}");
         }
 
-        // Load thread with messages for the chat view
+        // Load thread with messages
         $thread = Thread::with('messages')->findOrFail($id);
 
         return Inertia::render('Chat', [
-            'thread' => $thread
+            'messages' => $thread->messages,
+            'currentChatId' => $thread->id
         ]);
     }
 }
