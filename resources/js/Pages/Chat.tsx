@@ -18,8 +18,6 @@ interface Chat {
 export default function Chat({ auth, messages: initialMessages = [], chats, currentChatId = 1 }: PageProps<{ messages: Message[], chats: Chat[], currentChatId: number | null }>) {
   const [scrollPosition, setScrollPosition] = useRemember(0, 'chats-scroll-position');
 
-  console.log(initialMessages)
-
   const {
     messages,
     input,
