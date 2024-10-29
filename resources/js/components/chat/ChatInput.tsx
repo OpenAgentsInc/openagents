@@ -32,7 +32,7 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
   };
 
   return (
-    <div className="w-full bg-background/95">
+    <div className="bg-background">
       <div className="max-w-3xl mx-auto px-4 py-2">
         <div className="relative">
           <Textarea
