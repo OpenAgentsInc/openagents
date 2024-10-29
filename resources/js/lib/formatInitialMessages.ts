@@ -20,12 +20,24 @@ export interface Message {
   internalUpdateId?: string;
 }
 
+const extractTextFromContent = (content: string): string => {
+  try {
+    const parsed = JSON.parse(content);
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].text) {
+      return parsed[0].text;
+    }
+    return content;
+  } catch (e) {
+    return content;
+  }
+};
+
 export const formatInitialMessages = (initialMessages: any[]): Message[] => {
   return initialMessages.map(message => {
     const formattedMessage: Message = {
       id: message.id.toString(),
       role: message.user_id ? 'user' : 'assistant',
-      content: message.content,
+      content: extractTextFromContent(message.content),
       createdAt: message.created_at,
     };
 
