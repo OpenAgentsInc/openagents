@@ -39,7 +39,7 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
         )}
         {currentChatId ? (
           <>
-            <div className="flex-1 overflow-y-auto">
+            <div className="h-[calc(100%-80px)] overflow-y-auto">
               <div className="mx-auto max-w-4xl px-1 md:px-4">
                 <ChatList
                   messages={messages as Message[]}
@@ -49,7 +49,7 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
               </div>
             </div>
 
-            <div className="absolute bottom-0 left-0 right-0 bg-background">
+            <div className="absolute bottom-0 left-0 right-0 bg-background h-[80px]">
               <div className="w-full lg:-ml-[25px] px-3">
                 <ChatInput
                   initialContent={input}
