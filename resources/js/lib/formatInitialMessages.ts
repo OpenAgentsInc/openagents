@@ -20,22 +20,22 @@ export interface Message {
   internalUpdateId?: string;
 }
 
-const extractTextFromContent = (content: string): string | null => {
+const extractTextFromContent = (content: string): string => {
   try {
     const parsed = JSON.parse(content);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // If it's just an empty text message, return null
+      // If it's just an empty text message, return empty string
       if (parsed.length === 1 && parsed[0].text === " ") {
-        return null;
+        return "";
       }
       // Otherwise return the text if it exists
       if (parsed[0].text) {
         return parsed[0].text;
       }
     }
-    return content;
+    return content || ""; // Ensure we always return a string
   } catch (e) {
-    return content;
+    return content || ""; // Ensure we always return a string
   }
 };
 
@@ -44,7 +44,7 @@ export const formatInitialMessages = (initialMessages: any[]): Message[] => {
     const formattedMessage: Message = {
       id: message.id.toString(),
       role: message.user_id ? 'user' : 'assistant',
-      content: extractTextFromContent(message.content),
+      content: extractTextFromContent(message.content || ""), // Provide default empty string
       createdAt: message.created_at,
     };
 
