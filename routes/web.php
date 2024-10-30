@@ -22,9 +22,11 @@ Route::get('/', function () {
 
 Route::middleware('auth')->group(function () {
     // CHAT
-    Route::get('/chat', [ChatController::class, 'chat'])->name('chat');
-    Route::get('/chat/{id}', [ChatController::class, 'chat'])->name('chat.id');
+    Route::get('/chat', [ChatController::class, 'index'])->name('chat');
+    Route::get('/chat/create', [ChatController::class, 'create'])->name('chat.create');
+    Route::get('/chat/{id}', [ChatController::class, 'show'])->name('chat.id');
     Route::post('/chat', [UseChatController::class, 'chat']);
+    Route::delete('/chat/{id}', [ChatController::class, 'destroy'])->name('chat.destroy');
 });
 
 // CONTENT

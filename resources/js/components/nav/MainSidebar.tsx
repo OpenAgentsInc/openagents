@@ -41,7 +41,7 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <Link href="/chat">
+                  <Link href="/chat/create">
                     <PlusIcon />
                     <span>New chat</span>
                   </Link>
@@ -60,9 +60,9 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
-              <NavChats 
-                chats={threads} 
-                highlightedChat={currentChatId} 
+              <NavChats
+                chats={threads}
+                highlightedChat={currentChatId}
               />
             </CollapsibleContent>
           </SidebarGroup>
