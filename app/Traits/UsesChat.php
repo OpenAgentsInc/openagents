@@ -170,7 +170,7 @@ trait UsesChat
         //     // }
         // }
 
-        $this->streamFinishEvent('stop');
+        // $this->streamFinishEvent('stop');
     }
 
     private function createChatCallback()
@@ -219,9 +219,9 @@ trait UsesChat
             // And if tool invocations, do those too
             if (!empty($this->response['toolInvocations'])) {
                 $this->handleToolInvocations();
+            } else {
+                $this->streamFinishEvent('stop');
             }
-
-            $this->streamFinishEvent('stop');
         };
     }
 

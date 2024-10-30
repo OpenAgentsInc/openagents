@@ -86,8 +86,8 @@ class BedrockMessageConverter
                                 [
                                     'toolResult' => [
                                         'toolUseId' => $toolInvocation['toolCallId'],
-                                        'status' => isset($toolInvocation['result']['value']['result']['success']) ? 
-                                            ($toolInvocation['result']['value']['result']['success'] ? 'success' : 'error') : 
+                                        'status' => isset($toolInvocation['result']['value']['result']['success']) ?
+                                            ($toolInvocation['result']['value']['result']['success'] ? 'success' : 'error') :
                                             'success',
                                         'content' => [
                                             [
@@ -100,13 +100,13 @@ class BedrockMessageConverter
                         ];
                     }
                 }
-                
+
                 // Skip adding the original message content if it was just a tool invocation
                 // or if the content is empty/whitespace
-                $isEmpty = is_string($message['content']) ? 
-                    empty(trim($message['content'])) : 
+                $isEmpty = is_string($message['content']) ?
+                    empty(trim($message['content'])) :
                     empty($message['content']);
-                
+
                 if ($isEmpty) {
                     $lastRole = 'user'; // Set to user since we added a tool result
                     continue;
@@ -114,22 +114,24 @@ class BedrockMessageConverter
             }
 
             // Skip empty assistant messages that don't have tool invocations
-            if ($message['role'] === 'assistant' && 
-                is_string($message['content']) && 
-                empty(trim($message['content'])) && 
-                empty($message['toolInvocations'])) {
+            if (
+                $message['role'] === 'assistant' &&
+                is_string($message['content']) &&
+                empty(trim($message['content'])) &&
+                empty($message['toolInvocations'])
+            ) {
                 continue;
             }
 
             $formattedContent = $this->formatContent($message['content']);
-            
+
             // Skip if formatted content is empty
             if (empty($formattedContent)) {
                 continue;
             }
 
             // Ensure no empty text blocks
-            $formattedContent = array_filter($formattedContent, function($block) {
+            $formattedContent = array_filter($formattedContent, function ($block) {
                 if (isset($block['text'])) {
                     return !empty(trim($block['text']));
                 }
@@ -152,7 +154,7 @@ class BedrockMessageConverter
         if (!empty($messages) && end($messages)['role'] !== 'user') {
             $messages[] = [
                 'role' => 'user',
-                'content' => [['text' => 'Continue.']]
+                'content' => [['text' => "Continue. (Do not acknowledge this message or say 'thank you'.)"]]
             ];
         }
 
@@ -186,8 +188,10 @@ class BedrockMessageConverter
         }
 
         // If content is already an array of content blocks
-        if (is_array($content) && !empty($content) && isset($content[0]) && 
-            (isset($content[0]['text']) || isset($content[0]['toolResult']) || isset($content[0]['toolUse']) || isset($content[0]['type']))) {
+        if (
+            is_array($content) && !empty($content) && isset($content[0]) &&
+            (isset($content[0]['text']) || isset($content[0]['toolResult']) || isset($content[0]['toolUse']) || isset($content[0]['type']))
+        ) {
             $formatted = [];
             foreach ($content as $block) {
                 if (isset($block['type']) && $block['type'] === 'tool-call') {
