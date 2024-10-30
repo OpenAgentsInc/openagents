@@ -4,7 +4,7 @@ namespace App\Config;
 
 class ModelPricing
 {
-    public static $defaultChatModel = 'anthropic.claude-3-5-sonnet-20240620-v1:0';
+    public static $defaultChatModel = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
 
     public static $models = [
         [
@@ -20,6 +20,13 @@ class ModelPricing
             'provider' => 'groq',
             'providerCentsPerMillionInputTokens' => 89,
             'providerCentsPerMillionOutputTokens' => 89
+        ],
+        [
+            'name' => 'Claude 3.5 Sonnet (v2)',
+            'id' => 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+            'provider' => 'bedrock',
+            'providerCentsPerMillionInputTokens' => 300,
+            'providerCentsPerMillionOutputTokens' => 1500
         ],
         [
             'name' => 'Claude 3.5 Sonnet',

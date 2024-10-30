@@ -1,6 +1,7 @@
 import defaultTheme from 'tailwindcss/defaultTheme';
 import forms from '@tailwindcss/forms';
 import typography from '@tailwindcss/typography';
+import animate from 'tailwindcss-animate'
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -11,9 +12,17 @@ export default {
     './resources/views/**/*.blade.php',
     './resources/js/**/*.tsx',
   ],
-
   theme: {
     extend: {
+      animation: {
+        "fade-out": "fade-out ease-out 1s forwards"
+      },
+      keyframes: {
+        "fade-out": {
+          "0%": { opacity: "1" },
+          "100%": { opacity: "0" }
+        }
+      },
       fontFamily: {
         sans: ['Figtree', ...defaultTheme.fontFamily.sans],
         mono: ['\"JetBrains Mono\"', ...defaultTheme.fontFamily.mono]
@@ -101,16 +110,8 @@ export default {
         },
       },
     },
-    keyframes: {
-      "fade-out": {
-        "0%": { opacity: "1" },
-        "100%": { opacity: "0" }
-      }
-    },
-    animation: {
-      "fade-out": "fade-out ease-out 1s forwards"
-    }
-  },
 
-  plugins: [forms, typography, require("tailwindcss-animate")],
+
+  },
+  plugins: [forms, typography, animate],
 };

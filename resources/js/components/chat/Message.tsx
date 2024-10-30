@@ -23,7 +23,7 @@ export function Message({ message }: ChatMessageProps) {
   const displayInitials = isUser ? getInitials(userName) : "";
 
   return (
-    <div className={cn('group relative mb-4 flex items-start')}>
+    <div className={cn('group relative mb-4 flex items-start w-full')}>
       <div className="mr-3">
         <Avatar className="rounded-sm">
           <AvatarFallback className={cn(
