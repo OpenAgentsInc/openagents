@@ -82,14 +82,14 @@ export default {
             maxWidth: 'none',
             color: 'hsl(var(--foreground))',
             p: {
-              marginTop: '2.2em',
-              marginBottom: '2.2em',
-              lineHeight: 1.7
+              marginTop: '1.5em',
+              marginBottom: '1.5em',
+              lineHeight: 1.6
             },
             li: {
               marginTop: '1.3em',
               marginBottom: '1.3em',
-              lineHeight: 1.7
+              lineHeight: 1.2
             },
             a: {
               color: 'hsl(var(--primary))',

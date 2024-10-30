@@ -4,9 +4,8 @@ import {
   WrenchIcon
 } from "lucide-react"
 import * as React from "react"
-import IconOpenAgents from "@/components/IconOpenAgents"
 import { ModeToggle } from "@/components/ModeToggle"
-import { atlantisPortsChats, NavChats } from "@/components/nav-chats"
+import { NavChats } from "@/components/nav-chats"
 import { NavMain } from "@/components/nav-main"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
@@ -14,6 +13,7 @@ import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger
 } from "@/components/ui/collapsible"
+import { IconOpenAgents } from "@/components/ui/icons"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel,
   SidebarHeader, SidebarRail, SidebarTrigger

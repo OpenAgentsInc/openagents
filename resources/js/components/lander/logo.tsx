@@ -1,10 +1,10 @@
 import { clsx } from "clsx"
 import { motion } from "framer-motion"
-import IconOpenAgents from "../IconOpenAgents"
+import { IconOpenAgents } from "@/components/ui/icons"
 
 export function Logo({ className }: { className?: string }) {
   return (
-    <motion.div 
+    <motion.div
       className={clsx(className, 'flex items-center gap-2')}
       whileHover={{ scale: 1.03 }}
       whileTap={{ scale: 0.98 }}
