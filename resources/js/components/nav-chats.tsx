@@ -9,6 +9,7 @@ import {
   SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem,
   useSidebar
 } from "@/components/ui/sidebar"
+import { Link } from "@inertiajs/react"
 
 interface Thread {
   id: number
@@ -37,10 +38,10 @@ export function NavChats({
             asChild
             className={thread.id === highlightedChat ? "bg-accent" : ""}
           >
-            <a href={`/chat/${thread.id}`}>
+            <Link href={`/chat/${thread.id}`}>
               <MessageSquare />
               <span>{thread.title || `Chat ${thread.id}`}</span>
-            </a>
+            </Link>
           </SidebarMenuButton>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
