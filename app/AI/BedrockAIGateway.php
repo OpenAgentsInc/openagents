@@ -55,7 +55,8 @@ class BedrockAIGateway
     public function converseStream(array $params)
     {
         $requestBody = $this->prepareRequestBody($params);
-        dd($requestBody);
+        $result = $this->bedrockClient->converseStream($requestBody);
+        return $result;
     }
 
     private function prepareRequestBody(array $params): array
