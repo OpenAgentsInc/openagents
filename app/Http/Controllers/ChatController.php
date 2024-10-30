@@ -12,15 +12,15 @@ class ChatController
 {
     public function index(): RedirectResponse
     {
-        $firstThread = Thread::where('user_id', Auth::id())
-            ->orderBy('created_at', 'asc')
+        $latestThread = Thread::where('user_id', Auth::id())
+            ->orderBy('created_at', 'desc')
             ->first();
 
-        if (!$firstThread) {
+        if (!$latestThread) {
             return redirect()->route('chat.create');
         }
 
-        return redirect()->route('chat.id', $firstThread->id);
+        return redirect()->route('chat.id', $latestThread->id);
     }
 
     public function create(): RedirectResponse
