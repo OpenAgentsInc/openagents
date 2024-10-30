@@ -10,7 +10,7 @@ import {
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton,
   SidebarMenuItem, SidebarRail, SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
 
 // This is sample data.
 const data = {
@@ -22,6 +22,9 @@ const data = {
 }
 
 export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pageProps = usePage().props
+  // console.log("MainSidebar props:", props)
+  console.log(pageProps)
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -59,7 +62,7 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
-              <NavChats chats={[]} highlightedChat="Portunus Project" />
+              <NavChats chats={pageProps.threads} highlightedChat="Portunus Project" />
             </CollapsibleContent>
           </SidebarGroup>
         </Collapsible>
