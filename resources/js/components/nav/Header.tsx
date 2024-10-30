@@ -1,5 +1,5 @@
 import { UserMenu } from "@/components/dashboard/UserMenu"
-import IconOpenAgents from "@/components/IconOpenAgents"
+import { IconOpenAgents } from "@/components/ui/icons"
 import { Link, usePage } from "@inertiajs/react"
 import TeamSwitcher from "./TeamSwitcher"
 
