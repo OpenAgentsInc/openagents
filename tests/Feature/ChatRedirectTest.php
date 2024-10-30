@@ -3,13 +3,19 @@
 use App\Models\Thread;
 use App\Models\User;
 
-test('visiting /chat redirects to users first thread', function () {
+test('visiting /chat redirects to users most recent thread', function () {
     $user = User::factory()->create();
-    $thread1 = Thread::factory()->create(['user_id' => $user->id]);
-    $thread2 = Thread::factory()->create(['user_id' => $user->id]);
+    $thread1 = Thread::factory()->create([
+        'user_id' => $user->id,
+        'created_at' => now()->subDays(1)
+    ]);
+    $thread2 = Thread::factory()->create([
+        'user_id' => $user->id,
+        'created_at' => now()
+    ]);
 
     $response = $this->actingAs($user)->get('/chat');
-    $response->assertRedirect("/chat/{$thread1->id}");
+    $response->assertRedirect("/chat/{$thread2->id}");
 });
 
 test('visiting /chat redirects to /chat/create when user has no threads', function () {
