@@ -44,7 +44,7 @@ export function ChatList({ messages, streamingChatMessage }: ChatListProps) {
             ))}
           </div>
         )}
-        <ChatMessageActions message={message} />
+
         {index < messages.length - 1 && <Separator className="my-4 bg-zinc-800" />}
       </div>
     );
