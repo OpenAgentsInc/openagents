@@ -206,24 +206,22 @@ trait UsesChat
         $this->storeAIResponse();
 
         return function () {
-            // Initial empty text delta
-            $this->stream(' ');
+            // Stream the content if it's there
+            if (!empty($this->response['content'])) {
+                $content = $this->response['content'];
+                $words = explode(' ', $content);
+                foreach ($words as $word) {
+                    $this->stream($word . ' ');
+                    usleep(50000);
+                }
+            }
 
-            // Handle tool invocations first
+            // And if tool invocations, do those too
             if (!empty($this->response['toolInvocations'])) {
                 $this->handleToolInvocations();
-            } else {
-                // Stream the content if no tools were used
-                if (!empty($this->response['content'])) {
-                    $content = $this->response['content'];
-                    $words = explode(' ', $content);
-                    foreach ($words as $word) {
-                        $this->stream($word . ' ');
-                        usleep(50000);
-                    }
-                }
-                $this->streamFinishEvent('stop');
             }
+
+            $this->streamFinishEvent('stop');
         };
     }
 
