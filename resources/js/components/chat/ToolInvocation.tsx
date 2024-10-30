@@ -137,7 +137,7 @@ export function ToolInvocation({ toolInvocation }: { toolInvocation: ToolInvocat
                   <DialogTitle>File Content</DialogTitle>
                 </DialogHeader>
                 <pre className="text-xs whitespace-pre-wrap break-all">
-                  {fileContent}
+                  {JSON.stringify(fileContent)}
                 </pre>
               </DialogContent>
             </Dialog>
