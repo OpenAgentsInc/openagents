@@ -58,7 +58,7 @@ export function ChatInput({ initialContent, onContentSubmit, handleKeyDown, text
           <ArrowUp size={20} />
         </Button>
       </div>
-      <p className="text-xs text-zinc-500 mt-2 text-center">Messages visible only to you</p>
+      <p className="text-xs text-zinc-500 my-[6px] text-center">Messages visible only to you</p>
     </div>
   );
 }

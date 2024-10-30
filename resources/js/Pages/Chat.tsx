@@ -49,7 +49,7 @@ export default function Chat({ auth, messages: initialMessages = [], chats, curr
               </div>
             </div>
 
-            <div className="absolute bottom-0 left-0 right-0 bg-background h-[80px]">
+            <div className="absolute bottom-0 left-0 right-0 bg-background">
               <div className="w-full lg:-ml-[25px] px-3">
                 <ChatInput
                   initialContent={input}
