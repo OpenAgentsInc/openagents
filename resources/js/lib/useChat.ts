@@ -30,7 +30,7 @@ export function useChat({ initialMessages, auth, currentChatId, setScrollPositio
     setInput,
   } = useVercelChat({
     api: "/chat",
-    initialMessages: [], // formatInitialMessages(initialMessages),
+    initialMessages: formatInitialMessages(initialMessages),
     keepLastMessageOnError: true,
     body: { thread_id: currentChatId, selected_tools: selectedTools },
     maxSteps: 10,

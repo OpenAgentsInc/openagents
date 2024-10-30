@@ -3,6 +3,7 @@
 use App\Models\Message;
 use App\Models\User;
 use App\Models\Thread;
+use App\Models\ToolInvocation;
 
 test('a message belongs to a user', function () {
     $user = User::factory()->create();
@@ -22,13 +23,23 @@ test('a message belongs to a thread', function () {
 
 test('a message can be created by the system', function () {
     $thread = Thread::factory()->create();
-    $message = Message::factory()->create([
+    $message = Message::factory()->system()->create([
         'thread_id' => $thread->id,
-        'user_id' => null,
-        'is_system_message' => true,
     ]);
 
     expect($message->user)->toBeNull();
-    expect($message->is_system_message)->toBeTrue();
     expect($message->thread)->toBeInstanceOf(Thread::class);
+    expect($message->role)->toBe('assistant');
+});
+
+test('a message can have many tool invocations', function () {
+    $message = Message::factory()->create();
+    
+    // Create multiple tool invocations for the message
+    $toolInvocations = ToolInvocation::factory()->count(3)->create([
+        'message_id' => $message->id
+    ]);
+
+    expect($message->toolInvocations)->toHaveCount(3);
+    expect($message->toolInvocations->first())->toBeInstanceOf(ToolInvocation::class);
 });
