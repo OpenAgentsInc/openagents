@@ -22,9 +22,8 @@ const data = {
 }
 
 export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const pageProps = usePage().props
-  // console.log("MainSidebar props:", props)
-  console.log(pageProps)
+  const { threads, currentChatId } = usePage().props
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -40,7 +39,7 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem >
+              <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <Link href="/chat">
                     <PlusIcon />
@@ -52,7 +51,6 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
           </SidebarGroupContent>
         </SidebarGroup>
 
-
         <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
             <SidebarGroupLabel asChild>
@@ -62,7 +60,10 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
-              <NavChats chats={pageProps.threads} highlightedChat="Portunus Project" />
+              <NavChats 
+                chats={threads} 
+                highlightedChat={currentChatId} 
+              />
             </CollapsibleContent>
           </SidebarGroup>
         </Collapsible>
