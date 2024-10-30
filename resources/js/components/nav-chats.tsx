@@ -1,5 +1,5 @@
 import {
-  Archive, LucideIcon, MessageSquare, MoreHorizontal, Star, Trash2, type
+  Archive, MessageSquare, MoreHorizontal, Star, Trash2
 } from "lucide-react"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
@@ -10,30 +10,36 @@ import {
   useSidebar
 } from "@/components/ui/sidebar"
 
+interface Thread {
+  id: number
+  title: string
+  project_id: number | null
+  user_id: number
+  team_id: number | null
+  created_at: string
+  updated_at: string
+}
+
 export function NavChats({
   chats,
-  highlightedChat = "Portunus Project", // Changed default value to "Portunus Project"
+  highlightedChat,
 }: {
-  chats: {
-    name: string
-    url: string
-    icon: LucideIcon
-  }[]
-  highlightedChat?: string
+  chats: Thread[]
+  highlightedChat?: number
 }) {
   const { isMobile } = useSidebar()
 
   return (
     <SidebarMenu>
-      {chats.map((item) => (
-        <SidebarMenuItem key={item.name}>
+      {chats.map((thread) => (
+        <SidebarMenuItem key={thread.id}>
           <SidebarMenuButton
             asChild
-            className={item.name === highlightedChat ? "bg-accent" : ""}
+            className={thread.id === highlightedChat ? "bg-accent" : ""}
           >
-            <a href={item.url}>
-              <item.icon />
-              <span>{item.name}</span>
+            <a href={`/chat/${thread.id}`}>
+              <MessageSquare />
+              <span>{thread.title || `Chat ${thread.id}`}</span>
             </a>
           </SidebarMenuButton>
           <DropdownMenu>
