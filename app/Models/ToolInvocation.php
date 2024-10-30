@@ -22,7 +22,7 @@ class ToolInvocation extends Model
         'output' => 'array',
     ];
 
-    public function chatMessage()
+    public function message()
     {
         return $this->belongsTo(Message::class);
     }

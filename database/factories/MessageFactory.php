@@ -22,7 +22,7 @@ class MessageFactory extends Factory
             'user_id' => User::factory(),
             'thread_id' => Thread::factory(),
             'content' => $this->faker->paragraph,
-            'is_system_message' => false,
+            'role' => 'user'
         ];
     }
 
@@ -36,7 +36,7 @@ class MessageFactory extends Factory
         return $this->state(function (array $attributes) {
             return [
                 'user_id' => null,
-                'is_system_message' => true,
+                'role' => 'assistant'
             ];
         });
     }

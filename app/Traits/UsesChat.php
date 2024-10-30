@@ -248,6 +248,7 @@ trait UsesChat
             'messages.*.toolInvocations.*.result' => 'required_with:messages.*.toolInvocations',
             'selected_tools' => 'sometimes|array',
             'selected_tools.*' => 'string|in:view_file,view_folder,rewrite_file,create_file',
+            'thread_id' => 'required|exists:threads,id'
         ]);
 
         if ($validator->fails()) {
@@ -267,12 +268,21 @@ trait UsesChat
         return $validated;
     }
 
+
+
+    private function getTools()
+    {
+        $selectedTools = $this->validatedData['selected_tools'] ?? [];
+        $tools = empty($selectedTools) ? [] : $this->toolService->getToolDefinitions($selectedTools);
+        return $tools;
+    }
+
     private function saveUserMessage()
     {
         $validatedData = $this->validatedData;
         $user = $this->request->user();
         $messages = $validatedData['messages'];
-        $thread_id = 1; // TODO
+        $thread_id = $validatedData['thread_id']; // Get from request instead of hardcoding
         $lastMessage = end($messages);
 
         // Convert array content to string for storage
@@ -284,20 +294,13 @@ trait UsesChat
             'content' => $content,
             'thread_id' => $thread_id,
             'team_id' => null,
-            'user_id' => 1, // $user->id,
+            'user_id' => $user->id, // Use actual user ID instead of hardcoded 1
             'role' => 'user',
         ];
 
         Log::info('Saving user chat message', ['messageData' => $messageData]);
 
         return Message::create($messageData);
-    }
-
-    private function getTools()
-    {
-        $selectedTools = $this->validatedData['selected_tools'] ?? [];
-        $tools = empty($selectedTools) ? [] : $this->toolService->getToolDefinitions($selectedTools);
-        return $tools;
     }
 
     private function storeAIResponse()
@@ -308,7 +311,7 @@ trait UsesChat
 
         $assistantMessage = [
             'content' => $content,
-            'thread_id' => 1,
+            'thread_id' => $this->validatedData['thread_id'], // Get from request instead of hardcoding
             'team_id' => $this->userMessage->team_id,
             'input_tokens' => $this->response['input_tokens'] ?? 0,
             'output_tokens' => $this->response['output_tokens'] ?? 0,

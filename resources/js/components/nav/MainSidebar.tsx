@@ -1,23 +1,16 @@
-import {
-  AudioWaveform, BookOpen, BookTextIcon, Bot, ChevronDown, Command, Frame,
-  GalleryVerticalEnd, HammerIcon, Map, PieChart, Settings2, SquareTerminal,
-  WrenchIcon
-} from "lucide-react"
+import { ChevronDown, PlusIcon } from "lucide-react"
 import * as React from "react"
-import IconOpenAgents from "@/components/IconOpenAgents"
-import { ModeToggle } from "@/components/ModeToggle"
-import { atlantisPortsChats, NavChats } from "@/components/nav-chats"
-import { NavMain } from "@/components/nav-main"
-import { NavProjects } from "@/components/nav-projects"
+import { NavChats } from "@/components/nav-chats"
 import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger
 } from "@/components/ui/collapsible"
 import {
-  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel,
-  SidebarHeader, SidebarRail, SidebarTrigger
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
+  SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton,
+  SidebarMenuItem, SidebarRail, SidebarTrigger
 } from "@/components/ui/sidebar"
+import { Link } from "@inertiajs/react"
 
 // This is sample data.
 const data = {
@@ -37,14 +30,27 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
             <div className="">
               <SidebarTrigger className="-ml-[7px] h-8 w-8" />
             </div>
-
-            {/* <ModeToggle /> */}
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem >
+                <SidebarMenuButton asChild>
+                  <Link href="/chat">
+                    <PlusIcon />
+                    <span>New chat</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
-        {/* <Collapsible defaultOpen className="group/collapsible">
+
+        <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
             <SidebarGroupLabel asChild>
               <CollapsibleTrigger>
@@ -53,15 +59,14 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
-              <NavChats chats={atlantisPortsChats} highlightedChat="Portunus Project" />
+              <NavChats chats={[]} highlightedChat="Portunus Project" />
             </CollapsibleContent>
           </SidebarGroup>
-        </Collapsible> */}
-
+        </Collapsible>
       </SidebarContent>
-      {/* <SidebarFooter>
+      <SidebarFooter>
         <NavUser user={data.user} />
-      </SidebarFooter> */}
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

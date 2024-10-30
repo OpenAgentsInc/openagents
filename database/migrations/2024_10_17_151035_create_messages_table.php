@@ -15,8 +15,12 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained()->onDelete('set null');
             $table->foreignId('thread_id')->constrained()->onDelete('cascade');
+            $table->foreignId('team_id')->nullable()->constrained()->onDelete('cascade');
             $table->text('content');
-            $table->boolean('is_system_message')->default(false);
+            $table->string('role')->default('user');
+            $table->string('model')->nullable();
+            $table->integer('input_tokens')->default(0);
+            $table->integer('output_tokens')->default(0);
             $table->timestamps();
         });
     }

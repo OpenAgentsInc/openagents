@@ -17,7 +17,10 @@ class ToolInvocationFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'tool_name' => $this->faker->randomElement(['view_file', 'create_file', 'rewrite_file', 'delete_file', 'view_hierarchy', 'scrape_webpage']),
+            'input' => ['path' => 'example/path.txt'],
+            'output' => null,
+            'status' => 'pending',
         ];
     }
 }

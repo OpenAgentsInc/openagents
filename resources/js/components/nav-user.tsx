@@ -1,5 +1,5 @@
 import {
-  BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Sparkles
+  BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Moon, Sparkles, Sun
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -9,6 +9,7 @@ import {
 import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar
 } from "@/components/ui/sidebar"
+import { useTheme } from "@/components/ThemeProvider"
 
 export function NavUser({
   user,
@@ -20,6 +21,7 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
+  const { theme, setTheme } = useTheme()
 
   return (
     <SidebarMenu>
@@ -79,6 +81,10 @@ export function NavUser({
               <DropdownMenuItem>
                 <Bell />
                 Notifications
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>
+                {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                {theme === 'light' ? 'Dark mode' : 'Light mode'}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

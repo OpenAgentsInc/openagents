@@ -75,8 +75,12 @@ Fields:
 - `id` - Primary key
 - `user_id` - Foreign key to users table, represents message sender (nullable)
 - `thread_id` - Foreign key to threads table
+- `team_id` - Foreign key to teams table (nullable)
 - `content` - Message content text
-- `is_system_message` - Boolean flag for system-generated messages
+- `role` - Message role (user/assistant/system)
+- `model` - AI model used for response (nullable)
+- `input_tokens` - Number of input tokens used
+- `output_tokens` - Number of output tokens used
 - `created_at` - Timestamp of creation
 - `updated_at` - Timestamp of last update
 
