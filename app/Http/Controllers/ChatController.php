@@ -10,18 +10,31 @@ use Inertia\Response;
 
 class ChatController
 {
-    public function chat($id = null): RedirectResponse|Response
+    public function index(): RedirectResponse
     {
-        if (request()->path() === 'chat') {
-            // Create a new thread for the user
-            $thread = Thread::create([
-                'user_id' => Auth::id(),
-                'title' => 'New Chat',
-            ]);
+        $firstThread = Thread::where('user_id', Auth::id())
+            ->orderBy('created_at', 'asc')
+            ->first();
 
-            return redirect("/chat/{$thread->id}");
+        if (!$firstThread) {
+            return redirect()->route('chat.create');
         }
 
+        return redirect()->route('chat.id', $firstThread->id);
+    }
+
+    public function create(): RedirectResponse
+    {
+        $thread = Thread::create([
+            'user_id' => Auth::id(),
+            'title' => 'New Chat',
+        ]);
+
+        return redirect()->route('chat.id', $thread->id);
+    }
+
+    public function show($id): Response
+    {
         // Load thread with messages and their tool invocations
         $thread = Thread::with('messages.toolInvocations')->findOrFail($id);
 
