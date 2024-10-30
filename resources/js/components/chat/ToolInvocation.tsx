@@ -3,7 +3,8 @@ import { useState } from "react"
 import { Button } from "../ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  DialogTrigger
 } from "../ui/dialog"
 
 interface JSONValue {
@@ -143,7 +144,7 @@ export function ToolInvocation({ toolInvocation }: { toolInvocation: ToolInvocat
                   </DialogDescription>
                 </DialogHeader>
                 <pre className="text-xs whitespace-pre-wrap break-all">
-                  {JSON.stringify(fileContent)}
+                  {JSON.stringify(fileContent, null, 2)}
                 </pre>
               </DialogContent>
             </Dialog>
