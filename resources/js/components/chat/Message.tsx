@@ -28,7 +28,7 @@ export function Message({ message }: ChatMessageProps) {
         <Avatar className="rounded-sm">
           <AvatarFallback className={cn(
             'flex size-7 shrink-0 select-none items-center justify-center rounded-sm border shadow',
-            'bg-primary text-primary-foreground border-border'
+            'bg-background text-foreground border-border'
           )}>
             {isUser ? displayInitials : <IconOpenAgents className="w-4 h-4" />}
           </AvatarFallback>
