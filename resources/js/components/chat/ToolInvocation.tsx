@@ -3,7 +3,8 @@ import { useState } from "react"
 import { Button } from "../ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card"
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  DialogTrigger
 } from "../ui/dialog"
 
 interface JSONValue {
@@ -118,6 +119,9 @@ export function ToolInvocation({ toolInvocation }: { toolInvocation: ToolInvocat
             <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Input Parameters</DialogTitle>
+                <DialogDescription>
+                  View the input parameters for this tool invocation
+                </DialogDescription>
               </DialogHeader>
               <pre className="text-xs whitespace-pre-wrap break-all">
                 {JSON.stringify(inputObject, null, 2)}
@@ -135,9 +139,12 @@ export function ToolInvocation({ toolInvocation }: { toolInvocation: ToolInvocat
               <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>File Content</DialogTitle>
+                  <DialogDescription>
+                    View the content of the file returned by this tool
+                  </DialogDescription>
                 </DialogHeader>
                 <pre className="text-xs whitespace-pre-wrap break-all">
-                  {fileContent}
+                  {JSON.stringify(fileContent, null, 2)}
                 </pre>
               </DialogContent>
             </Dialog>

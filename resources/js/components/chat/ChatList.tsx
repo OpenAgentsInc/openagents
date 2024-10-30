@@ -22,6 +22,7 @@ export function ChatList({ messages, streamingChatMessage }: ChatListProps) {
     const isAssistantMessage = message.role === 'assistant';
     const hasToolInvocations = isAssistantMessage && message.toolInvocations && message.toolInvocations.length > 0;
     const hasContent = message.content && message.content.trim() !== '';
+    if (!hasContent && !hasToolInvocations) return null;
 
     return (
       <div key={`${message.id}-${index}`} className="flex-shrink-0">
