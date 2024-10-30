@@ -1,8 +1,7 @@
 import { UserMenu } from "@/components/dashboard/UserMenu"
-import { usePage } from "@inertiajs/react"
-import TeamSwitcher from "./TeamSwitcher"
 import IconOpenAgents from "@/components/IconOpenAgents"
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
+import TeamSwitcher from "./TeamSwitcher"
 
 export function Header() {
   const props = usePage().props as any
@@ -16,7 +15,7 @@ export function Header() {
         {!!props.auth.user && (
           <div className="flex items-center space-x-4">
             <TeamSwitcher />
-            <UserMenu />
+            {/* <UserMenu /> */}
           </div>
         )}
       </div>
