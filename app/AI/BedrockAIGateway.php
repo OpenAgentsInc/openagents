@@ -52,6 +52,13 @@ class BedrockAIGateway
         }
     }
 
+    public function converseStream(array $params)
+    {
+        $requestBody = $this->prepareRequestBody($params);
+        $result = $this->bedrockClient->converseStream($requestBody);
+        return $result;
+    }
+
     private function prepareRequestBody(array $params): array
     {
         $modelId = $params['model'] ?? 'anthropic.claude-3-sonnet-20240229-v1:0';
