@@ -40,4 +40,18 @@ class ChatController
             'threads' => $threads
         ]);
     }
+
+    public function destroy($id): RedirectResponse
+    {
+        $thread = Thread::findOrFail($id);
+
+        if ($thread->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        // Delete all messages and their tool invocations (this should be handled by the model's relationships)
+        $thread->delete();
+
+        return redirect('/chat');
+    }
 }
