@@ -1,17 +1,38 @@
 <?php
 
+use App\Models\Thread;
 use App\Models\User;
 
-// /chat needs to redirect to /chat/1 (assuming user owns it)
-test('visiting /chat redirects to appropriate thread', function () {
-
-    // Assert there are no threads in the database
-    $this->assertDatabaseCount('threads', 0);
-
+test('visiting /chat redirects to users most recent thread', function () {
     $user = User::factory()->create();
-    $response = $this->actingAs($user)->get('/chat');
-    $response->assertRedirect('/chat/1');
+    $thread1 = Thread::factory()->create([
+        'user_id' => $user->id,
+        'created_at' => now()->subDays(1)
+    ]);
+    $thread2 = Thread::factory()->create([
+        'user_id' => $user->id,
+        'created_at' => now()
+    ]);
 
-    // Assert there is now one thread in the database
+    $response = $this->actingAs($user)->get('/chat');
+    $response->assertRedirect("/chat/{$thread2->id}");
+});
+
+test('visiting /chat redirects to /chat/create when user has no threads', function () {
+    $user = User::factory()->create();
+    
+    $response = $this->actingAs($user)->get('/chat');
+    $response->assertRedirect('/chat/create');
+});
+
+test('visiting /chat/create creates a new thread', function () {
+    $user = User::factory()->create();
+    
+    $this->assertDatabaseCount('threads', 0);
+    
+    $response = $this->actingAs($user)->get('/chat/create');
+    
     $this->assertDatabaseCount('threads', 1);
+    $thread = Thread::first();
+    $response->assertRedirect("/chat/{$thread->id}");
 });

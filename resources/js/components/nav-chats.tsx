@@ -9,7 +9,7 @@ import {
   SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem,
   useSidebar
 } from "@/components/ui/sidebar"
-import { Link } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 
 interface Thread {
   id: number
@@ -29,6 +29,12 @@ export function NavChats({
   highlightedChat?: number
 }) {
   const { isMobile } = useSidebar()
+
+  const handleDelete = (threadId: number) => {
+    if (confirm("Are you sure you want to delete this chat?")) {
+      router.delete(`/chat/${threadId}`)
+    }
+  }
 
   return (
     <SidebarMenu>
@@ -55,7 +61,7 @@ export function NavChats({
               side={isMobile ? "bottom" : "right"}
               align={isMobile ? "end" : "start"}
             >
-              <DropdownMenuItem>
+              {/* <DropdownMenuItem>
                 <Star className="text-muted-foreground" />
                 <span>Star Chat</span>
               </DropdownMenuItem>
@@ -63,8 +69,8 @@ export function NavChats({
                 <Archive className="text-muted-foreground" />
                 <span>Archive Chat</span>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuSeparator /> */}
+              <DropdownMenuItem onClick={() => handleDelete(thread.id)}>
                 <Trash2 className="text-muted-foreground" />
                 <span>Delete Chat</span>
               </DropdownMenuItem>
