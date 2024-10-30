@@ -2,7 +2,6 @@
 
 use App\AI\BedrockAIGateway;
 use App\Services\ToolService;
-use Illuminate\Support\Facades\Log;
 
 test('converse stream works', function () {
     $service = new ToolService();
@@ -29,24 +28,20 @@ test('converse stream works', function () {
             expect($event['messageStart'])->toHaveKey('role');
             expect($event['messageStart']['role'])->toBe('assistant');
             $receivedMessageStart = true;
-        } 
-        else if (isset($event['contentBlockDelta'])) {
+        } else if (isset($event['contentBlockDelta'])) {
             expect($event['contentBlockDelta'])->toHaveKey('delta');
             expect($event['contentBlockDelta']['delta'])->toHaveKey('text');
             expect($event['contentBlockDelta'])->toHaveKey('contentBlockIndex');
             $fullText .= $event['contentBlockDelta']['delta']['text'];
             $receivedContentDelta = true;
-        } 
-        else if (isset($event['contentBlockStop'])) {
+        } else if (isset($event['contentBlockStop'])) {
             expect($event['contentBlockStop'])->toHaveKey('contentBlockIndex');
             $receivedContentStop = true;
-        } 
-        else if (isset($event['messageStop'])) {
+        } else if (isset($event['messageStop'])) {
             expect($event['messageStop'])->toHaveKey('stopReason');
             expect($event['messageStop']['stopReason'])->toBe('end_turn');
             $receivedMessageStop = true;
-        } 
-        else if (isset($event['metadata'])) {
+        } else if (isset($event['metadata'])) {
             expect($event['metadata'])->toHaveKey('usage');
             expect($event['metadata']['usage'])->toHaveKeys(['inputTokens', 'outputTokens', 'totalTokens']);
             expect($event['metadata'])->toHaveKey('metrics');
