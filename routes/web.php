@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ContentController;
+use App\Http\Controllers\CRMController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\InquireController;
 use App\Http\Controllers\ProfileController;
@@ -27,6 +28,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/chat/{id}', [ChatController::class, 'show'])->name('chat.id');
     Route::post('/chat', [UseChatController::class, 'chat']);
     Route::delete('/chat/{id}', [ChatController::class, 'destroy'])->name('chat.destroy');
+
+    // CRM
+    Route::get('/crm', [CRMController::class, 'index'])->name('crm');
 });
 
 // CONTENT
