@@ -1,4 +1,7 @@
-import { ChevronDown, PlusIcon } from "lucide-react"
+import {
+  Briefcase, BriefcaseBusiness, Building2, ChevronDown, Contact,
+  MessageSquare, PlusIcon, Users
+} from "lucide-react"
 import * as React from "react"
 import { NavChats } from "@/components/nav-chats"
 import { NavUser } from "@/components/nav-user"
@@ -68,7 +71,13 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
           </SidebarGroup>
         </Collapsible>
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="border-t">
+        <SidebarMenuButton asChild>
+          <Link href={`/crm`}>
+            <BriefcaseBusiness />
+            <span>CRM</span>
+          </Link>
+        </SidebarMenuButton>
         <NavUser user={data.user} />
       </SidebarFooter>
       <SidebarRail />

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Thread;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -34,6 +35,9 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'threads' => $request->user() ? Thread::where('user_id', $request->user()->id)
+                ->orderBy('created_at', 'desc')
+                ->get() : [],
         ];
     }
 }
