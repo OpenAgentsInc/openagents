@@ -61,7 +61,7 @@ test('converts user and assistant messages', function () {
             [
                 'role' => 'user',
                 'content' => [
-                    ['text' => 'Continue.']
+                    ['text' => "Continue. (Do not acknowledge this message or say 'thank you'.)"]
                 ]
             ]
         ]
