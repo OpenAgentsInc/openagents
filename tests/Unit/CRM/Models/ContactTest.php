@@ -1,24 +1,32 @@
 <?php
 
-use App\Models\Team;
 use App\Models\User;
-use App\Models\Activity;
+use App\Models\Team;
+use App\Models\CRM\Activity;
 use App\Models\CRM\Contact;
-use App\Models\Thread;
-use App\Models\Note;
-use App\Models\Tag;
+use App\Models\CRM\Company;
+use App\Models\CRM\Thread;
+use App\Models\CRM\Note;
+use App\Models\CRM\Tag;
 
 beforeEach(function () {
-    $this->team = Team::factory()->create();
+    $this->company = Company::factory()->create();
     $this->user = User::factory()->create();
     $this->contact = Contact::factory()->create([
-        'team_id' => $this->team->id,
+        'company_id' => $this->company->id,
         'created_by' => $this->user->id,
     ]);
 });
 
-test('contact belongs to a team', function () {
-    expect($this->contact->team)->toBeInstanceOf(Team::class);
+test('contact belongs to a company', function () {
+    expect($this->contact->company)->toBeInstanceOf(Company::class);
+});
+
+test('contact can belong to teams', function () {
+    $team = Team::factory()->create();
+    $this->contact->teams()->attach($team->id);
+
+    expect($this->contact->teams->first())->toBeInstanceOf(Team::class);
 });
 
 test('contact has many activities', function () {
@@ -46,7 +54,7 @@ test('contact has many notes', function () {
 
 test('contact has many tags', function () {
     $tag = Tag::factory()->create([
-        'team_id' => $this->team->id,
+        'company_id' => $this->company->id,
     ]);
     $this->contact->tags()->attach($tag->id);
 
