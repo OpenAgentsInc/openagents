@@ -67,6 +67,10 @@ export default function TeamSwitcher({ className }: TeamSwitcherProps) {
     })
   }
 
+  const handleCreateTeam = () => {
+    router.get('/teams/create')
+  }
+
   return (
     <Dialog open={showNewTeamDialog} onOpenChange={setShowNewTeamDialog}>
       <Popover open={open} onOpenChange={setOpen}>
@@ -112,6 +116,15 @@ export default function TeamSwitcher({ className }: TeamSwitcherProps) {
                   )}
                 </CommandGroup>
               ))}
+            </CommandList>
+            <CommandSeparator />
+            <CommandList>
+              <CommandGroup>
+                <CommandItem onSelect={handleCreateTeam} className="text-sm">
+                  <PlusCircledIcon className="mr-2 h-4 w-4" />
+                  Create Team
+                </CommandItem>
+              </CommandGroup>
             </CommandList>
           </Command>
         </PopoverContent>
