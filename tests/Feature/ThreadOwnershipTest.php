@@ -3,8 +3,9 @@
 use App\Models\Team;
 use App\Models\Thread;
 use App\Models\User;
+use App\Models\Project;
 
-test('threads are created with personal ownership when no team is selected', function () {
+test('threads are created without project when no team is selected', function () {
     $user = User::factory()->create();
     
     $this->actingAs($user)
@@ -13,10 +14,10 @@ test('threads are created with personal ownership when no team is selected', fun
     $thread = Thread::latest()->first();
     
     expect($thread->user_id)->toBe($user->id)
-        ->and($thread->team_id)->toBeNull();
+        ->and($thread->project_id)->toBeNull();
 });
 
-test('threads are created with team ownership when team is selected', function () {
+test('threads are created with default project when team is selected', function () {
     $user = User::factory()->create();
     $team = Team::factory()->create();
     $user->teams()->attach($team);
@@ -27,16 +28,20 @@ test('threads are created with team ownership when team is selected', function (
         ->post(route('chat.create'));
 
     $thread = Thread::latest()->first();
+    $project = Project::where('team_id', $team->id)
+        ->where('is_default', true)
+        ->first();
     
-    expect($thread->team_id)->toBe($team->id)
-        ->and($thread->user_id)->toBe($user->id);
+    expect($thread->user_id)->toBe($user->id)
+        ->and($thread->project_id)->toBe($project->id)
+        ->and($project->team_id)->toBe($team->id);
 });
 
 test('user can view their personal threads', function () {
     $user = User::factory()->create();
     $personalThread = Thread::factory()->create([
         'user_id' => $user->id,
-        'team_id' => null
+        'project_id' => null
     ]);
     
     $this->actingAs($user)
@@ -48,12 +53,10 @@ test('user can view their team threads', function () {
     $user = User::factory()->create();
     $team = Team::factory()->create();
     $user->teams()->attach($team);
-    $user->current_team_id = $team->id;
-    $user->save();
-    
+    $project = Project::factory()->create(['team_id' => $team->id]);
     $teamThread = Thread::factory()->create([
         'user_id' => $user->id,
-        'team_id' => $team->id
+        'project_id' => $project->id
     ]);
     
     $this->actingAs($user)
@@ -64,8 +67,9 @@ test('user can view their team threads', function () {
 test('user cannot view threads from teams they dont belong to', function () {
     $user = User::factory()->create();
     $otherTeam = Team::factory()->create();
+    $project = Project::factory()->create(['team_id' => $otherTeam->id]);
     $teamThread = Thread::factory()->create([
-        'team_id' => $otherTeam->id
+        'project_id' => $project->id
     ]);
     
     $this->actingAs($user)
@@ -78,7 +82,7 @@ test('user cannot view other users personal threads', function () {
     $otherUser = User::factory()->create();
     $otherUserThread = Thread::factory()->create([
         'user_id' => $otherUser->id,
-        'team_id' => null
+        'project_id' => null
     ]);
     
     $this->actingAs($user)
@@ -90,19 +94,19 @@ test('threads list shows only personal threads in personal context', function ()
     $user = User::factory()->create();
     $personalThread = Thread::factory()->create([
         'user_id' => $user->id,
-        'team_id' => null
+        'project_id' => null
     ]);
+    
     $team = Team::factory()->create();
+    $project = Project::factory()->create(['team_id' => $team->id]);
     $teamThread = Thread::factory()->create([
         'user_id' => $user->id,
-        'team_id' => $team->id
+        'project_id' => $project->id
     ]);
     
-    $response = $this->actingAs($user)->get(route('chat'));
-    
-    expect($response->baseResponse->original['threads'])
-        ->toHaveCount(1)
-        ->first()->id->toBe($personalThread->id);
+    $this->actingAs($user)
+        ->get(route('chat'))
+        ->assertRedirect(route('chat.id', $personalThread->id));
 });
 
 test('threads list shows only team threads in team context', function () {
@@ -114,16 +118,16 @@ test('threads list shows only team threads in team context', function () {
     
     $personalThread = Thread::factory()->create([
         'user_id' => $user->id,
-        'team_id' => null
+        'project_id' => null
     ]);
+    
+    $project = Project::factory()->create(['team_id' => $team->id]);
     $teamThread = Thread::factory()->create([
         'user_id' => $user->id,
-        'team_id' => $team->id
+        'project_id' => $project->id
     ]);
     
-    $response = $this->actingAs($user)->get(route('chat'));
-    
-    expect($response->baseResponse->original['threads'])
-        ->toHaveCount(1)
-        ->first()->id->toBe($teamThread->id);
+    $this->actingAs($user)
+        ->get(route('chat'))
+        ->assertRedirect(route('chat.id', $teamThread->id));
 });
