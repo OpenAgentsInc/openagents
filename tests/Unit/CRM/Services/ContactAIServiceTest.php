@@ -1,140 +1,106 @@
 <?php
 
-namespace Tests\Unit\CRM\Services;
-
-use Tests\TestCase;
 use App\Models\Contact;
 use App\Models\Team;
 use App\Models\Activity;
 use App\Models\Thread;
 use App\Services\CRM\ContactAIService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
-class ContactAIServiceTest extends TestCase
-{
-    use RefreshDatabase;
+beforeEach(function () {
+    $this->team = Team::factory()->create();
+    $this->contact = Contact::factory()->create([
+        'team_id' => $this->team->id,
+    ]);
+    $this->aiService = new ContactAIService();
+});
 
-    private ContactAIService $aiService;
-    private Contact $contact;
-    private Team $team;
+test('ai service analyzes contact interactions', function () {
+    Activity::factory()->count(5)->create([
+        'contact_id' => $this->contact->id,
+    ]);
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        
-        $this->team = Team::factory()->create();
-        $this->contact = Contact::factory()->create([
-            'team_id' => $this->team->id,
-        ]);
-        $this->aiService = new ContactAIService();
-    }
+    $thread = Thread::factory()->create();
+    $this->contact->threads()->attach($thread->id);
 
-    /** @test */
-    public function it_analyzes_contact_interactions()
-    {
-        // Create some activities
-        Activity::factory()->count(5)->create([
-            'contact_id' => $this->contact->id,
-        ]);
+    $analysis = $this->aiService->analyzeInteractions($this->contact);
 
-        // Create some chat threads
-        $thread = Thread::factory()->create();
-        $this->contact->threads()->attach($thread->id);
+    expect($analysis)
+        ->toHaveKey('engagement_level')
+        ->toHaveKey('interaction_frequency')
+        ->toHaveKey('sentiment_score');
+});
 
-        $analysis = $this->aiService->analyzeInteractions($this->contact);
+test('ai service generates contact summaries', function () {
+    Activity::factory()->create([
+        'contact_id' => $this->contact->id,
+        'type' => 'meeting',
+        'description' => 'Discussed new project requirements',
+    ]);
 
-        $this->assertArrayHasKey('engagement_level', $analysis);
-        $this->assertArrayHasKey('interaction_frequency', $analysis);
-        $this->assertArrayHasKey('sentiment_score', $analysis);
-    }
+    $summary = $this->aiService->generateSummary($this->contact);
 
-    /** @test */
-    public function it_generates_contact_summaries()
-    {
-        Activity::factory()->create([
-            'contact_id' => $this->contact->id,
-            'type' => 'meeting',
-            'description' => 'Discussed new project requirements',
-        ]);
+    expect($summary)
+        ->not->toBeEmpty()
+        ->toHaveKey('key_points')
+        ->toHaveKey('next_steps');
+});
 
-        $summary = $this->aiService->generateSummary($this->contact);
+test('ai service calculates relationship scores', function () {
+    $scores = $this->aiService->calculateRelationshipScores($this->contact);
 
-        $this->assertNotEmpty($summary);
-        $this->assertArrayHasKey('key_points', $summary);
-        $this->assertArrayHasKey('next_steps', $summary);
-    }
+    expect($scores)
+        ->toHaveKey('overall')
+        ->toHaveKey('communication')
+        ->toHaveKey('engagement')
+        ->toHaveKey('sentiment');
+});
 
-    /** @test */
-    public function it_calculates_relationship_scores()
-    {
-        $scores = $this->aiService->calculateRelationshipScores($this->contact);
+test('ai service identifies action items', function () {
+    Activity::factory()->create([
+        'contact_id' => $this->contact->id,
+        'type' => 'email',
+        'description' => 'Need to follow up on proposal',
+    ]);
 
-        $this->assertArrayHasKey('overall', $scores);
-        $this->assertArrayHasKey('communication', $scores);
-        $this->assertArrayHasKey('engagement', $scores);
-        $this->assertArrayHasKey('sentiment', $scores);
-    }
+    $actionItems = $this->aiService->identifyActionItems($this->contact);
 
-    /** @test */
-    public function it_identifies_action_items()
-    {
-        Activity::factory()->create([
-            'contact_id' => $this->contact->id,
-            'type' => 'email',
-            'description' => 'Need to follow up on proposal',
-        ]);
+    expect($actionItems)
+        ->not->toBeEmpty()
+        ->first()->toHaveKeys(['priority', 'description', 'due_date']);
+});
 
-        $actionItems = $this->aiService->identifyActionItems($this->contact);
+test('ai service suggests follow ups', function () {
+    Activity::factory()->create([
+        'contact_id' => $this->contact->id,
+        'type' => 'meeting',
+        'description' => 'Initial consultation',
+    ]);
 
-        $this->assertNotEmpty($actionItems);
-        $this->assertArrayHasKey('priority', $actionItems[0]);
-        $this->assertArrayHasKey('description', $actionItems[0]);
-        $this->assertArrayHasKey('due_date', $actionItems[0]);
-    }
+    $suggestions = $this->aiService->suggestFollowUps($this->contact);
 
-    /** @test */
-    public function it_suggests_follow_ups()
-    {
-        $lastActivity = Activity::factory()->create([
-            'contact_id' => $this->contact->id,
-            'type' => 'meeting',
-            'description' => 'Initial consultation',
-        ]);
+    expect($suggestions)
+        ->not->toBeEmpty()
+        ->first()->toHaveKeys(['timing', 'type', 'message']);
+});
 
-        $suggestions = $this->aiService->suggestFollowUps($this->contact);
+test('ai service handles missing data gracefully', function () {
+    $newContact = Contact::factory()->create([
+        'team_id' => $this->team->id,
+    ]);
 
-        $this->assertNotEmpty($suggestions);
-        $this->assertArrayHasKey('timing', $suggestions[0]);
-        $this->assertArrayHasKey('type', $suggestions[0]);
-        $this->assertArrayHasKey('message', $suggestions[0]);
-    }
+    $analysis = $this->aiService->analyzeInteractions($newContact);
 
-    /** @test */
-    public function it_handles_missing_data_gracefully()
-    {
-        // Contact with no activities
-        $newContact = Contact::factory()->create([
-            'team_id' => $this->team->id,
-        ]);
+    expect($analysis)
+        ->toHaveKey('engagement_level')
+        ->engagement_level->toBe('new');
+});
 
-        $analysis = $this->aiService->analyzeInteractions($newContact);
-
-        $this->assertArrayHasKey('engagement_level', $analysis);
-        $this->assertEquals('new', $analysis['engagement_level']);
-    }
-
-    /** @test */
-    public function it_respects_rate_limits()
-    {
-        // Simulate multiple rapid requests
-        for ($i = 0; $i < 5; $i++) {
-            $this->aiService->analyzeInteractions($this->contact);
-        }
-
-        // This should throw a rate limit exception
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('AI service rate limit exceeded');
-        
+test('ai service respects rate limits', function () {
+    // Simulate multiple rapid requests
+    for ($i = 0; $i < 5; $i++) {
         $this->aiService->analyzeInteractions($this->contact);
     }
-}
+
+    // This should throw a rate limit exception
+    $this->aiService->analyzeInteractions($this->contact);
+})->throws(Exception::class, 'AI service rate limit exceeded');
