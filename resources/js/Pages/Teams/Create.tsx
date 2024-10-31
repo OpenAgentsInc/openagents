@@ -7,6 +7,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { BlankLayout } from "@/Layouts/BlankLayout"
+import MainLayout from "@/Layouts/MainLayout"
 import { Head, useForm } from "@inertiajs/react"
 
 export default function CreateTeam() {
@@ -24,7 +25,7 @@ export default function CreateTeam() {
   );
 
   return (
-    <BlankLayout>
+    <MainLayout>
       <Head title="Create Team" />
 
       <div className="w-full h-full justify-center items-center flex max-w-md mx-auto">
@@ -58,6 +59,6 @@ export default function CreateTeam() {
           </CardContent>
         </Card>
       </div>
-    </BlankLayout>
+    </MainLayout>
   );
 }
