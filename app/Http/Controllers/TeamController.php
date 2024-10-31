@@ -11,20 +11,22 @@ class TeamController extends Controller
 {
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $request->validate([
             'name' => [
                 'required',
                 'string',
                 'max:255',
-                Rule::unique('teams')->where(function ($query) {
-                    return $query->whereHas('users', function ($q) {
-                        $q->where('user_id', Auth::id());
-                    });
-                }),
+                Rule::unique('teams', 'name')->where(fn ($query) => 
+                    $query->whereHas('users', fn ($q) => 
+                        $q->where('user_id', Auth::id())
+                    )
+                ),
             ],
         ]);
 
-        $team = Team::create($validated);
+        $team = Team::create([
+            'name' => $request->name,
+        ]);
 
         $user = Auth::user();
         $user->teams()->attach($team);
@@ -38,25 +40,20 @@ class TeamController extends Controller
 
     public function switchTeam(Request $request)
     {
-        $validated = $request->validate([
+        $request->validate([
             'team_id' => [
                 'nullable',
-                Rule::exists('teams', 'id')->where(function ($query) {
-                    return $query->whereHas('users', function ($q) {
-                        $q->where('user_id', Auth::id());
-                    });
-                }),
+                Rule::exists('teams', 'id')->where(fn ($query) => 
+                    $query->whereHas('users', fn ($q) => 
+                        $q->where('user_id', Auth::id())
+                    )
+                ),
             ],
         ]);
 
         $user = Auth::user();
-        
-        // If team_id is null or the team exists and user belongs to it
-        if (is_null($validated['team_id']) || 
-            $user->teams()->where('teams.id', $validated['team_id'])->exists()) {
-            $user->current_team_id = $validated['team_id'];
-            $user->save();
-        }
+        $user->current_team_id = $request->team_id;
+        $user->save();
 
         return redirect()->back();
     }
