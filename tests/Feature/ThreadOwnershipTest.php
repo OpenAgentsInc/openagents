@@ -12,6 +12,8 @@ test('threads are created without project when no team is selected', function ()
     $response = $this->actingAs($user)
         ->post(route('chat.create'));
 
+    $response->assertRedirect();
+
     $thread = Thread::where('user_id', $user->id)->latest()->first();
     
     expect($thread)->not->toBeNull()
@@ -28,6 +30,8 @@ test('threads are created with default project when team is selected', function 
     
     $response = $this->actingAs($user)
         ->post(route('chat.create'));
+
+    $response->assertRedirect();
 
     $thread = Thread::where('user_id', $user->id)->latest()->first();
     $project = Project::where('team_id', $team->id)
