@@ -1,43 +1,42 @@
-
-   FAIL  Tests\Feature\CreateTeamTest
-  ✓ authenticated user can create a new team                                                           0.25s
-  ✓ team name is required                                                                              0.01s
-  ⨯ team name must be unique for the creating user                                                     0.01s
-  ✓ guest cannot create a team                                                                         0.01s
-  ⨯ user can switch between teams                                                                      0.01s
-  ✓ user can switch to personal context                                                                0.01s
+ FAIL  Tests\Feature\ThreadOwnershipTest
+  ⨯ threads are created without project when no team is selected                                       0.34s
+  ⨯ threads are created with default project when team is selected                                     0.07s
+  ✓ user can view their personal threads                                                               0.03s
+  ✓ user can view their team threads                                                                   0.01s
+  ✓ user cannot view threads from teams they dont belong to                                            0.01s
+  ✓ user cannot view other users personal threads                                                      0.01s
+  ✓ threads list shows only personal threads in personal context                                       0.01s
+  ✓ threads list shows only team threads in team context                                               0.01s
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Feature\CreateTeamTest > team name must be unique for the creating user
-  Session is missing expected key [errors].
-Failed asserting that false is true.
+   FAILED  Tests\Feature\ThreadOwnershipTest > threads are created without project when no…  ErrorException
+  Attempt to read property "user_id" on null
 
-  at tests/Feature/CreateTeamTest.php:49
-     45▕         ->post('/teams', [
-     46▕             'name' => 'Existing Team'
-     47▕         ]);
-     48▕
-  ➜  49▕     $response->assertSessionHasErrors(['name']);
-     50▕ });
-     51▕
-     52▕ test('guest cannot create a team', function () {
-     53▕     $response = $this->post('/teams', [
+  at tests/Feature/ThreadOwnershipTest.php:16
+     12▕         ->post(route('chat.create'));
+     13▕
+     14▕     $thread = Thread::latest()->first();
+     15▕
+  ➜  16▕     expect($thread->user_id)->toBe($user->id)
+     17▕         ->and($thread->project_id)->toBeNull();
+     18▕ });
+     19▕
+     20▕ test('threads are created with default project when team is selected', function () {
 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Feature\CreateTeamTest > user can switch between teams
-  Failed asserting that 1 matches expected 2.
+   FAILED  Tests\Feature\ThreadOwnershipTest > threads are created with default project wh…  ErrorException
+  Attempt to read property "user_id" on null
 
-  at tests/Feature/CreateTeamTest.php:79
-     75▕             'team_id' => $team2->id
-     76▕         ]);
-     77▕
-     78▕     $response->assertRedirect();
-  ➜  79▕     $this->assertEquals($team2->id, $user->fresh()->current_team_id);
-     80▕ });
-     81▕
-     82▕ test('user can switch to personal context', function () {
-     83▕     $user = User::factory()->create();
-
-  1   tests/Feature/CreateTeamTest.php:79
+  at tests/Feature/ThreadOwnershipTest.php:35
+     31▕     $project = Project::where('team_id', $team->id)
+     32▕         ->where('is_default', true)
+     33▕         ->first();
+     34▕
+  ➜  35▕     expect($thread->user_id)->toBe($user->id)
+     36▕         ->and($thread->project_id)->toBe($project->id)
+     37▕         ->and($project->team_id)->toBe($team->id);
+     38▕ });
+     39▕
 
 
-  Tests:    2 failed, 4 passed (14 assertions)
+  Tests:    2 failed, 6 passed (8 assertions)
+  Duration: 0.59s
