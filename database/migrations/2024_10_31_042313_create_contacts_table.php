@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->string('phone')->nullable();
             $table->string('title')->nullable();
-            $table->text('notes')->nullable();
+            $table->text('note')->nullable(); // Changed from notes to note
             $table->timestamps();
         });
 
