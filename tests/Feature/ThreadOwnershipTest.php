@@ -4,16 +4,18 @@ use App\Models\Team;
 use App\Models\Thread;
 use App\Models\User;
 use App\Models\Project;
+use Illuminate\Support\Facades\DB;
 
 test('threads are created without project when no team is selected', function () {
     $user = User::factory()->create();
     
-    $this->actingAs($user)
+    $response = $this->actingAs($user)
         ->post(route('chat.create'));
 
-    $thread = Thread::latest()->first();
+    $thread = Thread::where('user_id', $user->id)->latest()->first();
     
-    expect($thread->user_id)->toBe($user->id)
+    expect($thread)->not->toBeNull()
+        ->and($thread->user_id)->toBe($user->id)
         ->and($thread->project_id)->toBeNull();
 });
 
@@ -24,15 +26,16 @@ test('threads are created with default project when team is selected', function 
     $user->current_team_id = $team->id;
     $user->save();
     
-    $this->actingAs($user)
+    $response = $this->actingAs($user)
         ->post(route('chat.create'));
 
-    $thread = Thread::latest()->first();
+    $thread = Thread::where('user_id', $user->id)->latest()->first();
     $project = Project::where('team_id', $team->id)
         ->where('is_default', true)
         ->first();
     
-    expect($thread->user_id)->toBe($user->id)
+    expect($thread)->not->toBeNull()
+        ->and($thread->user_id)->toBe($user->id)
         ->and($thread->project_id)->toBe($project->id)
         ->and($project->team_id)->toBe($team->id);
 });
