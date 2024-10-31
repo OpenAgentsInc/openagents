@@ -1,5 +1,6 @@
+
    FAIL  Tests\Feature\CreateTeamTest
-  ✓ authenticated user can create a new team                                                           0.21s
+  ✓ authenticated user can create a new team                                                           0.25s
   ✓ team name is required                                                                              0.01s
   ⨯ team name must be unique for the creating user                                                     0.01s
   ✓ guest cannot create a team                                                                         0.01s
