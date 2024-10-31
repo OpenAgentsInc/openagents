@@ -1,162 +1,128 @@
 <?php
 
-namespace Tests\Unit\CRM\Services;
-
-use Tests\TestCase;
 use App\Models\Contact;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\CRM\ContactSearchService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
-class ContactSearchServiceTest extends TestCase
-{
-    use RefreshDatabase;
+beforeEach(function () {
+    $this->team = Team::factory()->create();
+    $this->user = User::factory()->create();
+    $this->searchService = new ContactSearchService();
 
-    private ContactSearchService $searchService;
-    private Team $team;
-    private User $user;
+    // Create some test contacts
+    Contact::factory()->count(20)->create([
+        'team_id' => $this->team->id,
+    ]);
+});
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        
-        $this->team = Team::factory()->create();
-        $this->user = User::factory()->create();
-        $this->searchService = new ContactSearchService();
+test('search service indexes contact data', function () {
+    $contact = Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'name' => 'John Smith',
+        'email' => 'john@example.com',
+    ]);
 
-        // Create some test contacts
-        Contact::factory()->count(20)->create([
-            'team_id' => $this->team->id,
-        ]);
-    }
+    $indexed = $this->searchService->indexContact($contact);
 
-    /** @test */
-    public function it_indexes_contact_data()
-    {
-        $contact = Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'name' => 'John Smith',
-            'email' => 'john@example.com',
-        ]);
+    expect($indexed)->toBeTrue();
+});
 
-        $indexed = $this->searchService->indexContact($contact);
+test('search service performs fuzzy matching', function () {
+    Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'name' => 'Jonathan Smith',
+        'email' => 'jonathan.smith@example.com',
+    ]);
 
-        $this->assertTrue($indexed);
-    }
+    $results = $this->searchService->search('Jon Smith', $this->team->id);
 
-    /** @test */
-    public function it_performs_fuzzy_matching()
-    {
-        Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'name' => 'Jonathan Smith',
-            'email' => 'jonathan.smith@example.com',
-        ]);
+    expect($results)
+        ->not->toBeEmpty()
+        ->first()->name->toBe('Jonathan Smith');
+});
 
-        $results = $this->searchService->search('Jon Smith', $this->team->id);
+test('search service ranks results', function () {
+    Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'name' => 'John Smith',
+        'email' => 'john.smith@example.com',
+    ]);
 
-        $this->assertNotEmpty($results);
-        $this->assertEquals('Jonathan Smith', $results->first()->name);
-    }
+    Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'name' => 'John Doe',
+        'email' => 'john.doe@example.com',
+    ]);
 
-    /** @test */
-    public function it_ranks_search_results()
-    {
-        // Create contacts with varying degrees of match
-        Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'name' => 'John Smith',
-            'email' => 'john.smith@example.com',
-        ]);
+    $results = $this->searchService->search('John Smith', $this->team->id);
 
-        Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'name' => 'John Doe',
-            'email' => 'john.doe@example.com',
-        ]);
+    expect($results->first()->name)->toBe('John Smith');
+});
 
-        $results = $this->searchService->search('John Smith', $this->team->id);
+test('search service filters by permissions', function () {
+    $otherTeam = Team::factory()->create();
 
-        $this->assertEquals('John Smith', $results->first()->name);
-    }
+    Contact::factory()->create([
+        'team_id' => $otherTeam->id,
+        'name' => 'John Smith',
+    ]);
 
-    /** @test */
-    public function it_filters_by_permissions()
-    {
-        $otherTeam = Team::factory()->create();
+    $results = $this->searchService->search('John Smith', $this->team->id);
 
-        Contact::factory()->create([
-            'team_id' => $otherTeam->id,
-            'name' => 'John Smith',
-        ]);
+    expect($results)->toBeEmpty();
+});
 
-        $results = $this->searchService->search('John Smith', $this->team->id);
+test('search service optimizes query performance', function () {
+    Contact::factory()->count(100)->create([
+        'team_id' => $this->team->id,
+    ]);
 
-        $this->assertEmpty($results);
-    }
+    $startTime = microtime(true);
+    $results = $this->searchService->search('John', $this->team->id);
+    $endTime = microtime(true);
+    
+    $executionTime = ($endTime - $startTime);
+    expect($executionTime)->toBeLessThan(0.1);
+});
 
-    /** @test */
-    public function it_optimizes_query_performance()
-    {
-        // Create a large number of contacts
-        Contact::factory()->count(100)->create([
-            'team_id' => $this->team->id,
-        ]);
+test('search service handles complex criteria', function () {
+    Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'name' => 'John Smith',
+        'email' => 'john@techcorp.com',
+        'company' => 'Tech Corp',
+        'phone' => '1234567890',
+    ]);
 
-        $startTime = microtime(true);
-        
-        $results = $this->searchService->search('John', $this->team->id);
-        
-        $endTime = microtime(true);
-        $executionTime = ($endTime - $startTime);
+    $criteria = [
+        'name' => 'John',
+        'company' => 'Tech',
+        'email_domain' => 'techcorp.com',
+    ];
 
-        // Assert that the search completes within a reasonable time (e.g., 100ms)
-        $this->assertLessThan(0.1, $executionTime);
-    }
+    $results = $this->searchService->searchWithCriteria($criteria, $this->team->id);
 
-    /** @test */
-    public function it_handles_complex_search_criteria()
-    {
-        Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'name' => 'John Smith',
-            'email' => 'john@techcorp.com',
-            'company' => 'Tech Corp',
-            'phone' => '1234567890',
-        ]);
+    expect($results)
+        ->not->toBeEmpty()
+        ->first()->name->toBe('John Smith');
+});
 
-        $criteria = [
-            'name' => 'John',
-            'company' => 'Tech',
-            'email_domain' => 'techcorp.com',
-        ];
+test('search service provides suggestions', function () {
+    Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'name' => 'Jonathan Smith',
+    ]);
 
-        $results = $this->searchService->searchWithCriteria($criteria, $this->team->id);
+    $suggestions = $this->searchService->getSuggestions('Jon', $this->team->id);
 
-        $this->assertNotEmpty($results);
-        $this->assertEquals('John Smith', $results->first()->name);
-    }
+    expect($suggestions)
+        ->not->toBeEmpty()
+        ->toContain('Jonathan Smith');
+});
 
-    /** @test */
-    public function it_provides_search_suggestions()
-    {
-        Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'name' => 'Jonathan Smith',
-        ]);
+test('search service handles empty search gracefully', function () {
+    $results = $this->searchService->search('', $this->team->id);
 
-        $suggestions = $this->searchService->getSuggestions('Jon', $this->team->id);
-
-        $this->assertNotEmpty($suggestions);
-        $this->assertContains('Jonathan Smith', $suggestions);
-    }
-
-    /** @test */
-    public function it_handles_empty_search_gracefully()
-    {
-        $results = $this->searchService->search('', $this->team->id);
-
-        $this->assertEmpty($results);
-    }
-}
+    expect($results)->toBeEmpty();
+});
