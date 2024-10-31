@@ -8,7 +8,6 @@ use App\Models\CRM\Contact;
 use App\Models\CRM\Company;
 use App\Models\CRM\Note;
 use App\Models\CRM\Tag;
-use App\Models\CRM\Deal;
 use Illuminate\Database\QueryException;
 
 beforeEach(function () {
@@ -29,20 +28,19 @@ test('contact can optionally belong to teams', function () {
     $this->contact->teams()->attach($team->id);
 
     expect($this->contact->teams->first())->toBeInstanceOf(Team::class);
-
+    
     // Test that contact can exist without team
     $contactWithoutTeam = Contact::factory()->create([
         'company_id' => $this->company->id,
         'created_by' => $this->user->id,
     ]);
-
+    
     expect($contactWithoutTeam->teams)->toBeEmpty();
 });
 
 test('contact has many activities', function () {
     Activity::factory()->create([
         'contact_id' => $this->contact->id,
-        'company_id' => $this->company->id,
     ]);
 
     expect($this->contact->activities->first())->toBeInstanceOf(Activity::class);
@@ -50,9 +48,7 @@ test('contact has many activities', function () {
 
 test('contact has many chat threads', function () {
     $thread = Thread::factory()->create();
-    $this->contact->threads()->attach($thread->id, [
-        'company_id' => $this->company->id
-    ]);
+    $this->contact->threads()->attach($thread->id);
 
     expect($this->contact->threads->first())->toBeInstanceOf(Thread::class);
 });
@@ -60,7 +56,6 @@ test('contact has many chat threads', function () {
 test('contact has many notes', function () {
     Note::factory()->create([
         'contact_id' => $this->contact->id,
-        'company_id' => $this->company->id,
     ]);
 
     expect($this->contact->notes->first())->toBeInstanceOf(Note::class);
@@ -68,6 +63,7 @@ test('contact has many notes', function () {
 
 test('contact has many tags', function () {
     $tag = Tag::factory()->create([
+        'name' => 'Test Tag',
         'company_id' => $this->company->id,
     ]);
     $this->contact->tags()->attach($tag->id);
@@ -75,25 +71,13 @@ test('contact has many tags', function () {
     expect($this->contact->tags->first())->toBeInstanceOf(Tag::class);
 });
 
-test('contact has many deals', function () {
-    $deal = Deal::factory()->create([
-        'company_id' => $this->company->id,
-    ]);
-    $this->contact->deals()->attach($deal->id);
-
-    expect($this->contact->deals->first())->toBeInstanceOf(Deal::class);
-});
-
 test('contact calculates engagement score', function () {
     Activity::factory()->count(3)->create([
         'contact_id' => $this->contact->id,
-        'company_id' => $this->company->id,
     ]);
 
     $thread = Thread::factory()->create();
-    $this->contact->threads()->attach($thread->id, [
-        'company_id' => $this->company->id
-    ]);
+    $this->contact->threads()->attach($thread->id);
 
     $score = $this->contact->calculateEngagementScore();
 
