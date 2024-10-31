@@ -1,7 +1,5 @@
-  openagents git:(teams) pf CreateTeamT
-
    FAIL  Tests\Feature\CreateTeamTest
-  ✓ authenticated user can create a new team                                                           0.11s
+  ✓ authenticated user can create a new team                                                           0.21s
   ✓ team name is required                                                                              0.01s
   ⨯ team name must be unique for the creating user                                                     0.01s
   ✓ guest cannot create a team                                                                         0.01s
@@ -42,4 +40,3 @@ Failed asserting that false is true.
 
 
   Tests:    2 failed, 4 passed (14 assertions)
-  Duration: 0.20s
