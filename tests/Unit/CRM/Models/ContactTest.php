@@ -8,6 +8,7 @@ use App\Models\CRM\Contact;
 use App\Models\CRM\Company;
 use App\Models\CRM\Note;
 use App\Models\CRM\Tag;
+use Illuminate\Database\QueryException;
 
 beforeEach(function () {
     $this->company = Company::factory()->create();
