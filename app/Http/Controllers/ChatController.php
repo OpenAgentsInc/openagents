@@ -43,7 +43,9 @@ class ChatController
     {
         $user = Auth::user();
         
-        return DB::transaction(function () use ($user) {
+        try {
+            DB::beginTransaction();
+            
             $data = [
                 'user_id' => $user->id,
                 'title' => 'New Chat',
@@ -65,9 +67,14 @@ class ChatController
             }
 
             $thread = Thread::create($data);
-
+            
+            DB::commit();
+            
             return redirect()->route('chat.id', $thread->id);
-        });
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     public function show($id): Response
