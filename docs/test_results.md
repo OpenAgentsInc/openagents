@@ -1,5 +1,18 @@
- FAIL  Tests\Feature\ThreadOwnershipTest
-  ⨯ threads are created without project when no team is selected                                       0.34s
+  ➜  openagents git:(teams) ✗ pf ThreadT
+
+   PASS  Tests\Unit\ThreadTest
+  ✓ a thread belongs to a user                                                                         0.20s
+  ✓ a thread belongs to a project                                                                      0.01s
+  ✓ a thread has many messages                                                                         0.01s
+  ✓ a thread belongs to a team through a project                                                       0.01s
+
+   PASS  Tests\Feature\DeleteThreadTest
+  ✓ user can delete their own thread                                                                   0.03s
+  ✓ user cannot delete another users thread                                                            0.01s
+  ✓ deleting thread removes all associated messages
+
+  FAIL  Tests\Feature\ThreadOwnershipTest
+  ⨯ threads are created without project when no team is selected                                       0.30s
   ⨯ threads are created with default project when team is selected                                     0.07s
   ✓ user can view their personal threads                                                               0.03s
   ✓ user can view their team threads                                                                   0.01s
@@ -39,4 +52,4 @@
 
 
   Tests:    2 failed, 6 passed (8 assertions)
-  Duration: 0.59s
+  Duration: 0.54s
