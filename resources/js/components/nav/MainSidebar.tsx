@@ -1,6 +1,6 @@
 import {
   Briefcase, BriefcaseBusiness, Building2, ChevronDown, Contact,
-  MessageSquare, PlusIcon, Users, FolderPlus
+  MessageSquare, PlusIcon, Users, FolderPlus, Folder
 } from "lucide-react"
 import * as React from "react"
 import { NavChats } from "@/components/nav-chats"
@@ -25,7 +25,7 @@ const data = {
 }
 
 export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { threads, currentChatId } = usePage().props
+  const { threads, projects, currentChatId } = usePage().props
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -61,6 +61,36 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <Collapsible defaultOpen className="group/collapsible">
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger>
+                Projects
+                <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <div className="space-y-1">
+                {projects.map((project) => (
+                  <SidebarMenuItem key={project.id}>
+                    <SidebarMenuButton asChild>
+                      <Link href={`/projects/${project.id}`}>
+                        <Folder className="h-4 w-4" />
+                        <span>{project.name}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+                {projects.length === 0 && (
+                  <div className="px-2 py-1 text-sm text-muted-foreground">
+                    No projects yet
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
 
         <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
