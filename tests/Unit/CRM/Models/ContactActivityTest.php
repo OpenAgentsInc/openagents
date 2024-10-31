@@ -1,96 +1,65 @@
 <?php
 
-namespace Tests\Unit\CRM\Models;
-
-use Tests\TestCase;
 use App\Models\Contact;
 use App\Models\Activity;
 use App\Models\User;
 use App\Models\Team;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
-class ContactActivityTest extends TestCase
-{
-    use RefreshDatabase;
+beforeEach(function () {
+    $this->team = Team::factory()->create();
+    $this->user = User::factory()->create();
+    $this->contact = Contact::factory()->create([
+        'team_id' => $this->team->id,
+    ]);
+    $this->activity = Activity::factory()->create([
+        'contact_id' => $this->contact->id,
+        'user_id' => $this->user->id,
+        'type' => 'email',
+        'description' => 'Test activity',
+    ]);
+});
 
-    private Activity $activity;
-    private Contact $contact;
-    private User $user;
+test('activity belongs to a contact', function () {
+    expect($this->activity->contact)->toBeInstanceOf(Contact::class);
+});
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        
-        $team = Team::factory()->create();
-        $this->user = User::factory()->create();
-        $this->contact = Contact::factory()->create([
-            'team_id' => $team->id,
-        ]);
-        $this->activity = Activity::factory()->create([
-            'contact_id' => $this->contact->id,
-            'user_id' => $this->user->id,
-            'type' => 'email',
-            'description' => 'Test activity',
-        ]);
-    }
+test('activity belongs to a user', function () {
+    expect($this->activity->user)->toBeInstanceOf(User::class);
+});
 
-    /** @test */
-    public function it_belongs_to_a_contact()
-    {
-        $this->assertInstanceOf(Contact::class, $this->activity->contact);
-    }
+test('activity has type', function () {
+    expect($this->activity->type)->toBe('email');
+});
 
-    /** @test */
-    public function it_belongs_to_a_user()
-    {
-        $this->assertInstanceOf(User::class, $this->activity->user);
-    }
+test('activity has timestamp', function () {
+    expect($this->activity->created_at)->not->toBeNull();
+});
 
-    /** @test */
-    public function it_has_activity_type()
-    {
-        $this->assertEquals('email', $this->activity->type);
-    }
+test('activity can have optional notes', function () {
+    $activity = Activity::factory()->create([
+        'contact_id' => $this->contact->id,
+        'user_id' => $this->user->id,
+        'notes' => 'Test notes',
+    ]);
 
-    /** @test */
-    public function it_has_timestamp()
-    {
-        $this->assertNotNull($this->activity->created_at);
-    }
+    expect($activity->notes)->toBe('Test notes');
+});
 
-    /** @test */
-    public function it_has_optional_notes()
-    {
-        $activity = Activity::factory()->create([
-            'contact_id' => $this->contact->id,
-            'user_id' => $this->user->id,
-            'notes' => 'Test notes',
-        ]);
+test('activity can link to related content', function () {
+    $activity = Activity::factory()->create([
+        'contact_id' => $this->contact->id,
+        'user_id' => $this->user->id,
+        'related_type' => 'thread',
+        'related_id' => 1,
+    ]);
 
-        $this->assertEquals('Test notes', $activity->notes);
-    }
+    expect($activity)
+        ->related_type->toBe('thread')
+        ->related_id->toBe(1);
+});
 
-    /** @test */
-    public function it_links_to_related_content()
-    {
-        $activity = Activity::factory()->create([
-            'contact_id' => $this->contact->id,
-            'user_id' => $this->user->id,
-            'related_type' => 'thread',
-            'related_id' => 1,
-        ]);
-
-        $this->assertEquals('thread', $activity->related_type);
-        $this->assertEquals(1, $activity->related_id);
-    }
-
-    /** @test */
-    public function it_validates_activity_data()
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
-        
-        Activity::factory()->create([
-            'type' => null,
-        ]);
-    }
-}
+test('activity requires type field', function () {
+    Activity::factory()->create([
+        'type' => null,
+    ]);
+})->throws(QueryException::class);
