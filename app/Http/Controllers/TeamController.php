@@ -23,12 +23,17 @@ class TeamController extends Controller
                     'required',
                     'string',
                     'max:255',
-                    Rule::unique('teams')->whereExists(function ($query) {
-                        $query->select(1)
-                            ->from('team_user')
-                            ->whereColumn('team_user.team_id', 'teams.id')
-                            ->where('team_user.user_id', Auth::id());
-                    }),
+                    function ($attribute, $value, $fail) {
+                        $exists = Team::where('name', $value)
+                            ->whereHas('users', function ($query) {
+                                $query->where('users.id', Auth::id());
+                            })
+                            ->exists();
+                        
+                        if ($exists) {
+                            $fail('You already have a team with this name.');
+                        }
+                    }
                 ],
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -69,14 +74,19 @@ class TeamController extends Controller
             $request->validate([
                 'team_id' => [
                     'nullable',
-                    Rule::exists('teams', 'id')->where(function ($query) {
-                        $query->whereExists(function ($q) {
-                            $q->select(1)
-                                ->from('team_user')
-                                ->whereColumn('team_user.team_id', 'teams.id')
-                                ->where('team_user.user_id', Auth::id());
-                        });
-                    }),
+                    function ($attribute, $value, $fail) {
+                        if ($value === null) return;
+                        
+                        $exists = Team::where('id', $value)
+                            ->whereHas('users', function ($query) {
+                                $query->where('users.id', Auth::id());
+                            })
+                            ->exists();
+                        
+                        if (!$exists) {
+                            $fail('You do not have access to this team.');
+                        }
+                    }
                 ],
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
