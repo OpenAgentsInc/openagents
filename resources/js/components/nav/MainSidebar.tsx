@@ -1,6 +1,6 @@
 import {
   Briefcase, BriefcaseBusiness, Building2, ChevronDown, Contact,
-  MessageSquare, PlusIcon, Users
+  MessageSquare, PlusIcon, Users, FolderPlus
 } from "lucide-react"
 import * as React from "react"
 import { NavChats } from "@/components/nav-chats"
@@ -27,11 +27,6 @@ const data = {
 export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { threads, currentChatId } = usePage().props
 
-  const handleNewChat = (e: React.MouseEvent) => {
-    e.preventDefault();
-    router.post('/chat/create');
-  }
-
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -49,10 +44,18 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <a href="#" onClick={handleNewChat}>
+                  <Link href="/chat/create">
                     <PlusIcon />
                     <span>New chat</span>
-                  </a>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link href="/projects/create">
+                    <FolderPlus />
+                    <span>New project</span>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
