@@ -1,5 +1,6 @@
-  FAIL  Tests\Unit\ProjectTest
-  ✓ a project belongs to a user                                                                        0.23s
+
+   WARN  Tests\Unit\ProjectTest
+  ✓ a project belongs to a user                                                                        0.20s
   ✓ a project belongs to a team                                                                        0.01s
   ✓ a project has many threads                                                                         0.01s
   ✓ a project belongs to either a user or a team                                                       0.01s
@@ -7,46 +8,29 @@
   - a file can be uploaded and associated with a project                                               0.01s
   ✓ a project can have custom instructions                                                             0.01s
   ✓ a project can have custom settings
-  ⨯ team members can access team project                                                               0.01s
-  ✓ non-team members cannot access team project
+  ✓ team members can access team project                                                               0.01s
+  ✓ non-team members cannot access team project                                                        0.01s
   ✓ project requires a name                                                                            0.01s
   ✓ project name must be unique within team/user scope                                                 0.01s
-  ⨯ threads inherit project context and instructions
+  ✓ threads inherit project context and instructions                                                   0.01s
   ✓ project can be archived
-  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\ProjectTest > team members can access team project
-  Failed asserting that false is true.
 
-  at tests/Unit/ProjectTest.php:107
-    103▕     $user = User::factory()->create();
-    104▕     $team->users()->attach($user);
-    105▕     $project = Project::factory()->forTeam($team)->create();
-    106▕
-  ➜ 107▕     expect($user->can('view', $project))->toBeTrue();
-    108▕ });
-    109▕
-    110▕ test('non-team members cannot access team project', function () {
-    111▕     $team = Team::factory()->create();
+   PASS  Tests\Unit\TeamTest
+  ✓ a team has many projects                                                                           0.01s
+  ✓ a team has many threads through projects                                                           0.01s
 
-  1   tests/Unit/ProjectTest.php:107
+   PASS  Tests\Unit\ThreadTest
+  ✓ a thread belongs to a project                                                                      0.01s
+  ✓ a thread belongs to a team through a project                                                       0.01s
+  ✓ thread inherits project context
+  ✓ thread inherits project instructions
+  ✓ thread returns empty context when no project
+  ✓ thread returns empty instructions when no project
 
-  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\ProjectTest > threads inherit project context and instructio…  BadMethodCallException
-  Call to undefined method App\Models\Thread::getContext()
+   PASS  Tests\Unit\UserTest
+  ✓ a user has many projects                                                                           0.01s
+  ✓ a user can have projects through their current team                                                0.01s
 
-  at vendor/laravel/framework/src/Illuminate/Support/Traits/ForwardsCalls.php:67
-     63▕      * @throws \BadMethodCallException
-     64▕      */
-     65▕     protected static function throwBadMethodCallException($method)
-     66▕     {
-  ➜  67▕         throw new BadMethodCallException(sprintf(
-     68▕             'Call to undefined method %s::%s()', static::class, $method
-     69▕         ));
-     70▕     }
-     71▕ }
-
-      +3 vendor frames
-  4   tests/Unit/ProjectTest.php:143
-
-
-  Tests:    2 failed, 1 skipped, 11 passed (20 assertions)
+   PASS  Tests\Feature\ThreadOwnershipTest
+  ✓ threads are created without project when no team is selected                                       0.04s
+  ✓ threads are created with default project when team is selected
