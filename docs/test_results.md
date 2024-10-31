@@ -1,194 +1,104 @@
+ FAIL  Tests\Unit\CRM\Models\ContactTest
+  ✓ contact belongs to a company                                                         0.09s
+  ✓ contact can belong to teams                                                          0.01s
+  ⨯ contact has many activities                                                          0.01s
+  ⨯ contact has many chat threads                                                        0.01s
+  ⨯ contact has many notes                                                               0.01s
+  ⨯ contact has many tags                                                                0.01s
+  ⨯ contact calculates engagement score                                                  0.01s
+  ✓ contact requires email field                                                         0.01s
+  ✓ contact formats phone numbers                                                        0.01s
+  ✓ contact generates unique contact ids                                                 0.01s
+  ────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many activities     QueryException
+  SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: activities.user_id (Connection: sqlite, SQL: insert into "activities" ("contact_id", "updated_at", "created_at") values (1, 2024-10-31 04:33:40, 2024-10-31 04:33:40))
 
-   FAIL  Tests\Unit\CRM\Models\ContactTest
-  ⨯ contact belongs to a company
-  ⨯ contact can belong to teams
-  ⨯ contact has many activities
-  ⨯ contact has many chat threads
-  ⨯ contact has many notes
-  ⨯ contact has many tags
-  ⨯ contact calculates engagement score
-  ⨯ contact requires email field
-  ⨯ contact formats phone numbers
-  ⨯ contact generates unique contact ids
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact belongs to a company            QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
-
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
+  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:571
     567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
     568▕
     569▕             $this->recordsHaveBeenModified();
+    570▕
+  ➜ 571▕             return $statement->execute();
+    572▕         });
+    573▕     }
+    574▕
+    575▕     /**
 
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
+      +16 vendor frames
+  17  tests/Unit/CRM/Models/ContactTest.php:34
 
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact can belong to teams             QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
+  ────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many chat threads            Error
+  Class "App\Models\CRM\Thread" not found
 
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
+  at vendor/laravel/framework/src/Illuminate/Database/Eloquent/Concerns/HasRelationships.php:855
+    851▕      * @return mixed
+    852▕      */
+    853▕     protected function newRelatedInstance($class)
+    854▕     {
+  ➜ 855▕         return tap(new $class, function ($instance) {
+    856▕             if (! $instance->getConnectionName()) {
+    857▕                 $instance->setConnection($this->connection);
+    858▕             }
+    859▕         });
+
+      +2 vendor frames
+  3   app/Models/CRM/Contact.php:68
+  4   tests/Unit/CRM/Models/ContactTest.php:43
+
+  ────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many notes          QueryException
+  SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: notes.user_id (Connection: sqlite, SQL: insert into "notes" ("contact_id", "updated_at", "created_at") values (1, 2024-10-31 04:33:40, 2024-10-31 04:33:40))
+
+  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:571
     567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
     568▕
     569▕             $this->recordsHaveBeenModified();
+    570▕
+  ➜ 571▕             return $statement->execute();
+    572▕         });
+    573▕     }
+    574▕
+    575▕     /**
 
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
+      +16 vendor frames
+  17  tests/Unit/CRM/Models/ContactTest.php:49
 
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many activities             QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
+  ────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many tags           QueryException
+  SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: tags.name (Connection: sqlite, SQL: insert into "tags" ("company_id", "updated_at", "created_at") values (1, 2024-10-31 04:33:40, 2024-10-31 04:33:40))
 
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
+  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:571
     567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
     568▕
     569▕             $this->recordsHaveBeenModified();
+    570▕
+  ➜ 571▕             return $statement->execute();
+    572▕         });
+    573▕     }
+    574▕
+    575▕     /**
 
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
+      +16 vendor frames
+  17  tests/Unit/CRM/Models/ContactTest.php:57
 
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many chat threads           QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
+  ────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Unit\CRM\Models\ContactTest > contact calculates engagement…  QueryException
+  SQLSTATE[23000]: Integrity constraint violation: 19 NOT NULL constraint failed: activities.user_id (Connection: sqlite, SQL: insert into "activities" ("contact_id", "updated_at", "created_at") values (1, 2024-10-31 04:33:40, 2024-10-31 04:33:40))
 
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
+  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:571
     567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
     568▕
     569▕             $this->recordsHaveBeenModified();
+    570▕
+  ➜ 571▕             return $statement->execute();
+    572▕         });
+    573▕     }
+    574▕
+    575▕     /**
 
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
-
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many notes                  QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
-
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
-    567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
-    568▕
-    569▕             $this->recordsHaveBeenModified();
-
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
-
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many tags                   QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
-
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
-    567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
-    568▕
-    569▕             $this->recordsHaveBeenModified();
-
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
-
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact calculates engagement score     QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
-
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
-    567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
-    568▕
-    569▕             $this->recordsHaveBeenModified();
-
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
-
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact requires email field            QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
-
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
-    567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
-    568▕
-    569▕             $this->recordsHaveBeenModified();
-
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
-
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact formats phone numbers           QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
-
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
-    567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
-    568▕
-    569▕             $this->recordsHaveBeenModified();
-
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
-
-  ────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact generates unique contact ids    QueryException
-  SQLSTATE[HY000]: General error: 1 table "activities" already exists (Connection: sqlite, SQL: create table "activities" ("id" integer primary key autoincrement not null, "created_at" datetime, "updated_at" datetime))
-
-  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:565
-    561▕             if ($this->pretending()) {
-    562▕                 return true;
-    563▕             }
-    564▕
-  ➜ 565▕             $statement = $this->getPdo()->prepare($query);
-    566▕
-    567▕             $this->bindValues($statement, $this->prepareBindings($bindings));
-    568▕
-    569▕             $this->recordsHaveBeenModified();
-
-      +8 vendor frames
-  9   database/migrations/2024_10_31_042822_create_activities_table.php:14
+      +16 vendor frames
+  17  tests/Unit/CRM/Models/ContactTest.php:66
 
 
-  Tests:    10 failed (0 assertions)
+  Tests:    5 failed, 5 passed (5 assertions)
