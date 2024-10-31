@@ -1,19 +1,6 @@
-  ➜  openagents git:(teams) ✗ pf ThreadT
-
-   PASS  Tests\Unit\ThreadTest
-  ✓ a thread belongs to a user                                                                         0.20s
-  ✓ a thread belongs to a project                                                                      0.01s
-  ✓ a thread has many messages                                                                         0.01s
-  ✓ a thread belongs to a team through a project                                                       0.01s
-
-   PASS  Tests\Feature\DeleteThreadTest
-  ✓ user can delete their own thread                                                                   0.03s
-  ✓ user cannot delete another users thread                                                            0.01s
-  ✓ deleting thread removes all associated messages
-
-  FAIL  Tests\Feature\ThreadOwnershipTest
+   FAIL  Tests\Feature\ThreadOwnershipTest
   ⨯ threads are created without project when no team is selected                                       0.30s
-  ⨯ threads are created with default project when team is selected                                     0.07s
+  ⨯ threads are created with default project when team is selected                                     0.06s
   ✓ user can view their personal threads                                                               0.03s
   ✓ user can view their team threads                                                                   0.01s
   ✓ user cannot view threads from teams they dont belong to                                            0.01s
@@ -21,35 +8,37 @@
   ✓ threads list shows only personal threads in personal context                                       0.01s
   ✓ threads list shows only team threads in team context                                               0.01s
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Feature\ThreadOwnershipTest > threads are created without project when no…  ErrorException
-  Attempt to read property "user_id" on null
+   FAILED  Tests\Feature\ThreadOwnershipTest > threads are created without project when no team is selecte…
+  Expected response status code [201, 301, 302, 303, 307, 308] but received 405.
+Failed asserting that false is true.
 
-  at tests/Feature/ThreadOwnershipTest.php:16
-     12▕         ->post(route('chat.create'));
-     13▕
-     14▕     $thread = Thread::latest()->first();
-     15▕
-  ➜  16▕     expect($thread->user_id)->toBe($user->id)
-     17▕         ->and($thread->project_id)->toBeNull();
-     18▕ });
-     19▕
-     20▕ test('threads are created with default project when team is selected', function () {
+  at tests/Feature/ThreadOwnershipTest.php:15
+     11▕
+     12▕     $response = $this->actingAs($user)
+     13▕         ->post(route('chat.create'));
+     14▕
+  ➜  15▕     $response->assertRedirect();
+     16▕
+     17▕     $thread = Thread::where('user_id', $user->id)->latest()->first();
+     18▕
+     19▕     expect($thread)->not->toBeNull()
 
   ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Feature\ThreadOwnershipTest > threads are created with default project wh…  ErrorException
-  Attempt to read property "user_id" on null
+   FAILED  Tests\Feature\ThreadOwnershipTest > threads are created with default project when team is selec…
+  Expected response status code [201, 301, 302, 303, 307, 308] but received 405.
+Failed asserting that false is true.
 
-  at tests/Feature/ThreadOwnershipTest.php:35
-     31▕     $project = Project::where('team_id', $team->id)
-     32▕         ->where('is_default', true)
-     33▕         ->first();
-     34▕
-  ➜  35▕     expect($thread->user_id)->toBe($user->id)
-     36▕         ->and($thread->project_id)->toBe($project->id)
-     37▕         ->and($project->team_id)->toBe($team->id);
-     38▕ });
-     39▕
+  at tests/Feature/ThreadOwnershipTest.php:34
+     30▕
+     31▕     $response = $this->actingAs($user)
+     32▕         ->post(route('chat.create'));
+     33▕
+  ➜  34▕     $response->assertRedirect();
+     35▕
+     36▕     $thread = Thread::where('user_id', $user->id)->latest()->first();
+     37▕     $project = Project::where('team_id', $team->id)
+     38▕         ->where('is_default', true)
 
 
-  Tests:    2 failed, 6 passed (8 assertions)
-  Duration: 0.54s
+  Tests:    2 failed, 6 passed (10 assertions)
+  Duration: 0.52s
