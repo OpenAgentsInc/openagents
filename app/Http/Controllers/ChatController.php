@@ -60,7 +60,8 @@ class ChatController
                     ],
                     [
                         'name' => 'Default Project',
-                        'description' => 'Default project for team chats'
+                        'description' => 'Default project for team chats',
+                        'user_id' => $user->id, // Set the creating user as the project owner
                     ]
                 );
                 $data['project_id'] = $project->id;
