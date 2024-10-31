@@ -25,7 +25,7 @@ class Contact extends Model
         'email',
         'phone',
         'title',
-        'note', // Changed from 'notes' to 'note' to avoid conflict with relationship
+        'note',
     ];
 
     protected static function boot()
