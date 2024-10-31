@@ -16,19 +16,10 @@ return new class extends Migration
             $table->string('name');
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->unsignedBigInteger('current_team_id')->nullable();
             $table->unsignedBigInteger('current_project_id')->nullable();
             $table->string('password');
             $table->rememberToken();
             $table->timestamps();
-        });
-
-        Schema::create('team_user', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('team_id');
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->timestamps();
-            $table->unique(['team_id', 'user_id']);
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
@@ -52,7 +43,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('team_user');
         Schema::dropIfExists('users');
         Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');

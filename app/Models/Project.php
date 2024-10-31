@@ -17,6 +17,11 @@ class Project extends Model
         'description',
         'user_id',
         'team_id',
+        'is_default',
+    ];
+
+    protected $casts = [
+        'is_default' => 'boolean',
     ];
 
     public function user(): BelongsTo

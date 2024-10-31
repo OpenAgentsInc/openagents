@@ -30,14 +30,32 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+        
+        $threads = [];
+        if ($user) {
+            $query = Thread::query();
+            
+            if ($user->current_team_id) {
+                // If in team context, get team threads
+                $query->where('team_id', $user->current_team_id);
+            } else {
+                // If in personal context, get personal threads
+                $query->where('user_id', $user->id)
+                     ->whereNull('team_id');
+            }
+            
+            $threads = $query->orderBy('created_at', 'desc')->get();
+        }
+
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
+                'teams' => $user ? $user->teams : [],
+                'current_team' => $user ? $user->currentTeam : null,
             ],
-            'threads' => $request->user() ? Thread::where('user_id', $request->user()->id)
-                ->orderBy('created_at', 'desc')
-                ->get() : [],
+            'threads' => $threads,
         ];
     }
 }

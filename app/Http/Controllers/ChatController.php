@@ -2,19 +2,35 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Project;
 use App\Models\Thread;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\DB;
 
 class ChatController
 {
     public function index(): RedirectResponse
     {
-        $latestThread = Thread::where('user_id', Auth::id())
-            ->orderBy('created_at', 'desc')
-            ->first();
+        $user = Auth::user();
+        $query = Thread::query();
+        
+        if ($user->current_team_id) {
+            // In team context, get threads from team's projects
+            $query->whereHas('project', function ($q) use ($user) {
+                $q->where('team_id', $user->current_team_id);
+            });
+        } else {
+            // In personal context, get threads without projects or owned by user
+            $query->where(function ($q) use ($user) {
+                $q->whereNull('project_id')
+                  ->where('user_id', $user->id);
+            });
+        }
+        
+        $latestThread = $query->orderBy('created_at', 'desc')->first();
 
         if (!$latestThread) {
             return redirect()->route('chat.create');
@@ -25,18 +41,60 @@ class ChatController
 
     public function create(): RedirectResponse
     {
-        $thread = Thread::create([
-            'user_id' => Auth::id(),
-            'title' => 'New Chat',
-        ]);
+        $user = Auth::user();
+        
+        try {
+            DB::beginTransaction();
+            
+            $data = [
+                'user_id' => $user->id,
+                'title' => 'New Chat',
+            ];
 
-        return redirect()->route('chat.id', $thread->id);
+            // If in team context, create thread under default project
+            if ($user->current_team_id) {
+                $project = Project::firstOrCreate(
+                    [
+                        'team_id' => $user->current_team_id,
+                        'is_default' => true
+                    ],
+                    [
+                        'name' => 'Default Project',
+                        'description' => 'Default project for team chats',
+                        'user_id' => $user->id, // Set the creating user as the project owner
+                    ]
+                );
+                $data['project_id'] = $project->id;
+            }
+
+            $thread = Thread::create($data);
+            
+            DB::commit();
+            
+            return redirect()->route('chat.id', $thread->id);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     public function show($id): Response
     {
-        // Load thread with messages and their tool invocations
-        $thread = Thread::with('messages.toolInvocations')->findOrFail($id);
+        $thread = Thread::with(['messages.toolInvocations', 'project.team'])->findOrFail($id);
+        $user = Auth::user();
+
+        // Check if user has access to this thread
+        if ($thread->project && $thread->project->team_id) {
+            // Team thread - verify user belongs to the team
+            if (!$user->teams->contains('id', $thread->project->team_id)) {
+                abort(403, 'You do not have access to this team thread.');
+            }
+        } else {
+            // Personal thread - verify ownership
+            if ($thread->user_id !== $user->id) {
+                abort(403, 'You do not have access to this thread.');
+            }
+        }
 
         return Inertia::render('Chat', [
             'messages' => $thread->messages->map(function ($message) {
@@ -50,13 +108,22 @@ class ChatController
 
     public function destroy($id): RedirectResponse
     {
-        $thread = Thread::findOrFail($id);
+        $thread = Thread::with('project.team')->findOrFail($id);
+        $user = Auth::user();
 
-        if ($thread->user_id !== Auth::id()) {
-            abort(403);
+        // Check if user has permission to delete this thread
+        if ($thread->project && $thread->project->team_id) {
+            // Team thread - verify user belongs to the team
+            if (!$user->teams->contains('id', $thread->project->team_id)) {
+                abort(403, 'You do not have permission to delete this team thread.');
+            }
+        } else {
+            // Personal thread - verify ownership
+            if ($thread->user_id !== $user->id) {
+                abort(403, 'You do not have permission to delete this thread.');
+            }
         }
 
-        // Delete all messages and their tool invocations (this should be handled by the model's relationships)
         $thread->delete();
 
         return redirect('/chat');

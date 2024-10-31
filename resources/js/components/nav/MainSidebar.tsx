@@ -13,7 +13,7 @@ import {
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton,
   SidebarMenuItem, SidebarRail, SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Link, usePage } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 
 // This is sample data.
 const data = {
@@ -26,6 +26,11 @@ const data = {
 
 export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { threads, currentChatId } = usePage().props
+
+  const handleNewChat = (e: React.MouseEvent) => {
+    e.preventDefault();
+    router.post('/chat/create');
+  }
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -44,10 +49,10 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <Link href="/chat/create">
+                  <a href="#" onClick={handleNewChat}>
                     <PlusIcon />
                     <span>New chat</span>
-                  </Link>
+                  </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

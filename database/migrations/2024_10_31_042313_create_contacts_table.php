@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('contact_id')->unique();
             $table->foreignId('company_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('team_id')->nullable()->constrained()->cascadeOnDelete();
             $table->foreignId('created_by')->constrained('users');
             $table->string('first_name');
             $table->string('last_name');
