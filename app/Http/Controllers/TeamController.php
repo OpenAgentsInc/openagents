@@ -11,7 +11,7 @@ class TeamController extends Controller
 {
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => [
                 'required',
                 'string',
@@ -24,9 +24,7 @@ class TeamController extends Controller
             ],
         ]);
 
-        $team = Team::create([
-            'name' => $request->name,
-        ]);
+        $team = Team::create($validated);
 
         $user = Auth::user();
         $user->teams()->attach($team);
@@ -40,11 +38,11 @@ class TeamController extends Controller
 
     public function switchTeam(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'team_id' => [
                 'nullable',
                 Rule::exists('teams', 'id')->where(function ($query) {
-                    $query->whereHas('users', function ($q) {
+                    return $query->whereHas('users', function ($q) {
                         $q->where('user_id', Auth::id());
                     });
                 }),
@@ -52,8 +50,13 @@ class TeamController extends Controller
         ]);
 
         $user = Auth::user();
-        $user->current_team_id = $request->team_id;
-        $user->save();
+        
+        // If team_id is null or the team exists and user belongs to it
+        if (is_null($validated['team_id']) || 
+            $user->teams()->where('teams.id', $validated['team_id'])->exists()) {
+            $user->current_team_id = $validated['team_id'];
+            $user->save();
+        }
 
         return redirect()->back();
     }
