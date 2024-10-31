@@ -2,6 +2,7 @@
 
 namespace Database\Factories\CRM;
 
+use App\Models\CRM\Company;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -17,7 +18,10 @@ class TagFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'company_id' => Company::factory(),
+            'name' => $this->faker->word(),
+            'color' => $this->faker->hexColor(),
+            'description' => $this->faker->sentence(),
         ];
     }
 }
