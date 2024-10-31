@@ -26,7 +26,7 @@ Route::get('/', function () {
 Route::middleware('auth')->group(function () {
     // CHAT
     Route::get('/chat', [ChatController::class, 'index'])->name('chat');
-    Route::post('/chat/create', [ChatController::class, 'create'])->name('chat.create');
+    Route::any('/chat/create', [ChatController::class, 'create'])->name('chat.create');
     Route::get('/chat/{id}', [ChatController::class, 'show'])->name('chat.id');
     Route::post('/chat', [UseChatController::class, 'chat']);
     Route::delete('/chat/{id}', [ChatController::class, 'destroy'])->name('chat.destroy');
