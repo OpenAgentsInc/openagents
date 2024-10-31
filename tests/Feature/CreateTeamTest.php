@@ -60,19 +60,39 @@ test('guest cannot create a team', function () {
     ]);
 });
 
-test('newly created team becomes users current team', function () {
+test('user can switch between teams', function () {
     $user = User::factory()->create();
-    $oldTeam = Team::factory()->create();
-    $user->teams()->attach($oldTeam);
-    $user->current_team_id = $oldTeam->id;
+    $team1 = Team::factory()->create(['name' => 'Team 1']);
+    $team2 = Team::factory()->create(['name' => 'Team 2']);
+    
+    $user->teams()->attach([$team1->id, $team2->id]);
+    $user->current_team_id = $team1->id;
     $user->save();
     
     $response = $this
         ->actingAs($user)
-        ->post('/teams', [
-            'name' => 'New Team'
+        ->post('/switch-team', [
+            'team_id' => $team2->id
         ]);
 
-    $newTeam = Team::where('name', 'New Team')->first();
-    $this->assertEquals($newTeam->id, $user->fresh()->current_team_id);
+    $response->assertRedirect();
+    $this->assertEquals($team2->id, $user->fresh()->current_team_id);
+});
+
+test('user can switch to personal context', function () {
+    $user = User::factory()->create();
+    $team = Team::factory()->create(['name' => 'Team 1']);
+    
+    $user->teams()->attach($team);
+    $user->current_team_id = $team->id;
+    $user->save();
+    
+    $response = $this
+        ->actingAs($user)
+        ->post('/switch-team', [
+            'team_id' => null
+        ]);
+
+    $response->assertRedirect();
+    $this->assertNull($user->fresh()->current_team_id);
 });
