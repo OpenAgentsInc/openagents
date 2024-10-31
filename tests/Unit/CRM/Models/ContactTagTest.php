@@ -1,7 +1,7 @@
 <?php
 
-use App\Models\Contact;
-use App\Models\Tag;
+use App\Models\CRM\Contact;
+use App\Models\CRM\Tag;
 use App\Models\Team;
 use Illuminate\Database\QueryException;
 
