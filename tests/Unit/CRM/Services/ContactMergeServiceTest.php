@@ -1,106 +1,80 @@
 <?php
 
-namespace Tests\Unit\CRM\Services;
-
-use Tests\TestCase;
 use App\Models\Contact;
 use App\Models\Activity;
 use App\Models\Email;
 use App\Models\Note;
 use App\Models\Team;
 use App\Services\CRM\ContactMergeService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
-class ContactMergeServiceTest extends TestCase
-{
-    use RefreshDatabase;
+beforeEach(function () {
+    $this->team = Team::factory()->create();
+    $this->contact1 = Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'email' => 'john@example.com',
+        'phone' => '1234567890',
+    ]);
+    $this->contact2 = Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'email' => 'john.smith@example.com',
+        'phone' => '0987654321',
+    ]);
+    
+    $this->mergeService = new ContactMergeService();
+});
 
-    private ContactMergeService $mergeService;
-    private Contact $contact1;
-    private Contact $contact2;
-    private Team $team;
+test('merge service combines contact basic info', function () {
+    $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        
-        $this->team = Team::factory()->create();
-        $this->contact1 = Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'email' => 'john@example.com',
-            'phone' => '1234567890',
-        ]);
-        $this->contact2 = Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'email' => 'john.smith@example.com',
-            'phone' => '0987654321',
-        ]);
-        
-        $this->mergeService = new ContactMergeService();
-    }
+    expect($mergedContact)
+        ->email->toBe('john@example.com')
+        ->phone->toBe('1234567890')
+        ->alternative_emails->toBe(['john.smith@example.com']);
+});
 
-    /** @test */
-    public function it_merges_contact_basic_info()
-    {
-        $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
+test('merge service combines activities', function () {
+    Activity::factory()->create(['contact_id' => $this->contact1->id]);
+    Activity::factory()->create(['contact_id' => $this->contact2->id]);
 
-        $this->assertEquals('john@example.com', $mergedContact->email);
-        $this->assertEquals('1234567890', $mergedContact->phone);
-        $this->assertEquals(['john.smith@example.com'], $mergedContact->alternative_emails);
-    }
+    $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
 
-    /** @test */
-    public function it_merges_contact_activities()
-    {
-        Activity::factory()->create(['contact_id' => $this->contact1->id]);
-        Activity::factory()->create(['contact_id' => $this->contact2->id]);
+    expect($mergedContact->activities)->toHaveCount(2);
+});
 
-        $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
+test('merge service combines emails', function () {
+    Email::factory()->create(['contact_id' => $this->contact1->id]);
+    Email::factory()->create(['contact_id' => $this->contact2->id]);
 
-        $this->assertCount(2, $mergedContact->activities);
-    }
+    $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
 
-    /** @test */
-    public function it_merges_contact_emails()
-    {
-        Email::factory()->create(['contact_id' => $this->contact1->id]);
-        Email::factory()->create(['contact_id' => $this->contact2->id]);
+    expect($mergedContact->emails)->toHaveCount(2);
+});
 
-        $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
+test('merge service combines notes', function () {
+    Note::factory()->create(['contact_id' => $this->contact1->id]);
+    Note::factory()->create(['contact_id' => $this->contact2->id]);
 
-        $this->assertCount(2, $mergedContact->emails);
-    }
+    $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
 
-    /** @test */
-    public function it_merges_contact_notes()
-    {
-        Note::factory()->create(['contact_id' => $this->contact1->id]);
-        Note::factory()->create(['contact_id' => $this->contact2->id]);
+    expect($mergedContact->notes)->toHaveCount(2);
+});
 
-        $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
+test('merge service handles conflict resolution', function () {
+    $mergedContact = $this->mergeService->merge(
+        $this->contact1,
+        $this->contact2,
+        ['email' => 'contact2'] // Prefer contact2's email
+    );
 
-        $this->assertCount(2, $mergedContact->notes);
-    }
+    expect($mergedContact)
+        ->email->toBe('john.smith@example.com')
+        ->alternative_emails->toBe(['john@example.com']);
+});
 
-    /** @test */
-    public function it_handles_conflict_resolution()
-    {
-        $mergedContact = $this->mergeService->merge(
-            $this->contact1,
-            $this->contact2,
-            ['email' => 'contact2'] // Prefer contact2's email
-        );
+test('merge service maintains audit trail', function () {
+    $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
 
-        $this->assertEquals('john.smith@example.com', $mergedContact->email);
-        $this->assertEquals(['john@example.com'], $mergedContact->alternative_emails);
-    }
-
-    /** @test */
-    public function it_maintains_audit_trail()
-    {
-        $mergedContact = $this->mergeService->merge($this->contact1, $this->contact2);
-
-        $this->assertNotNull($mergedContact->merge_history);
-        $this->assertArrayHasKey($this->contact2->id, $mergedContact->merge_history);
-    }
-}
+    expect($mergedContact->merge_history)
+        ->not->toBeNull()
+        ->toHaveKey($this->contact2->id);
+});
