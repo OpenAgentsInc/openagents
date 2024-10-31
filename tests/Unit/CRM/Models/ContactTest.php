@@ -2,10 +2,10 @@
 
 use App\Models\User;
 use App\Models\Team;
+use App\Models\Thread;
 use App\Models\CRM\Activity;
 use App\Models\CRM\Contact;
 use App\Models\CRM\Company;
-use App\Models\CRM\Thread;
 use App\Models\CRM\Note;
 use App\Models\CRM\Tag;
 
