@@ -63,6 +63,19 @@ class ProjectController extends Controller
             'team_id' => $user->current_team_id
         ]);
 
-        return redirect()->route('chat');
+        return redirect()->route('projects.show', $project->id);
+    }
+
+    public function show($id)
+    {
+        $project = Project::with(['team', 'files'])->findOrFail($id);
+        
+        if (!$project->canBeAccessedBy(Auth::user())) {
+            abort(403);
+        }
+
+        return Inertia::render('Projects/Show', [
+            'project' => $project
+        ]);
     }
 }
