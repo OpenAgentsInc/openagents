@@ -23,11 +23,12 @@ class TeamController extends Controller
                     'required',
                     'string',
                     'max:255',
-                    Rule::unique('teams', 'name')->where(fn ($query) => 
-                        $query->whereHas('users', fn ($q) => 
-                            $q->where('user_id', Auth::id())
-                        )
-                    ),
+                    Rule::unique('teams')->whereExists(function ($query) {
+                        $query->select(1)
+                            ->from('team_user')
+                            ->whereColumn('team_user.team_id', 'teams.id')
+                            ->where('team_user.user_id', Auth::id());
+                    }),
                 ],
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -68,11 +69,14 @@ class TeamController extends Controller
             $request->validate([
                 'team_id' => [
                     'nullable',
-                    Rule::exists('teams', 'id')->where(fn ($query) => 
-                        $query->whereHas('users', fn ($q) => 
-                            $q->where('user_id', Auth::id())
-                        )
-                    ),
+                    Rule::exists('teams', 'id')->where(function ($query) {
+                        $query->whereExists(function ($q) {
+                            $q->select(1)
+                                ->from('team_user')
+                                ->whereColumn('team_user.team_id', 'teams.id')
+                                ->where('team_user.user_id', Auth::id());
+                        });
+                    }),
                 ],
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
