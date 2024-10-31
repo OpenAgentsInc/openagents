@@ -34,6 +34,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/crm', [CRMController::class, 'index'])->name('crm');
 
     // TEAMS
+    Route::get('/teams/create', [TeamController::class, 'create'])->name('teams.create');
     Route::post('/teams', [TeamController::class, 'store'])->name('teams.store');
     Route::post('/switch-team', [TeamController::class, 'switchTeam'])->name('teams.switch');
 });
