@@ -1,8 +1,5 @@
 <?php
 
-namespace Tests\Unit\CRM\Models;
-
-use Tests\TestCase;
 use App\Models\Contact;
 use App\Models\Team;
 use App\Models\User;
@@ -10,117 +7,82 @@ use App\Models\Activity;
 use App\Models\Thread;
 use App\Models\Note;
 use App\Models\Tag;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
-class ContactTest extends TestCase
-{
-    use RefreshDatabase;
+beforeEach(function () {
+    $this->team = Team::factory()->create();
+    $this->user = User::factory()->create();
+    $this->contact = Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'created_by' => $this->user->id,
+    ]);
+});
 
-    private Contact $contact;
-    private Team $team;
-    private User $user;
+test('contact belongs to a team', function () {
+    expect($this->contact->team)->toBeInstanceOf(Team::class);
+});
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        
-        $this->team = Team::factory()->create();
-        $this->user = User::factory()->create();
-        $this->contact = Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'created_by' => $this->user->id,
-        ]);
-    }
+test('contact has many activities', function () {
+    Activity::factory()->create([
+        'contact_id' => $this->contact->id,
+    ]);
 
-    /** @test */
-    public function it_belongs_to_a_team()
-    {
-        $this->assertInstanceOf(Team::class, $this->contact->team);
-    }
+    expect($this->contact->activities->first())->toBeInstanceOf(Activity::class);
+});
 
-    /** @test */
-    public function it_has_many_activities()
-    {
-        Activity::factory()->create([
-            'contact_id' => $this->contact->id,
-        ]);
+test('contact has many chat threads', function () {
+    $thread = Thread::factory()->create();
+    $this->contact->threads()->attach($thread->id);
 
-        $this->assertInstanceOf(Activity::class, $this->contact->activities->first());
-    }
+    expect($this->contact->threads->first())->toBeInstanceOf(Thread::class);
+});
 
-    /** @test */
-    public function it_has_many_chat_threads()
-    {
-        $thread = Thread::factory()->create();
-        $this->contact->threads()->attach($thread->id);
+test('contact has many notes', function () {
+    Note::factory()->create([
+        'contact_id' => $this->contact->id,
+    ]);
 
-        $this->assertInstanceOf(Thread::class, $this->contact->threads->first());
-    }
+    expect($this->contact->notes->first())->toBeInstanceOf(Note::class);
+});
 
-    /** @test */
-    public function it_has_many_notes()
-    {
-        Note::factory()->create([
-            'contact_id' => $this->contact->id,
-        ]);
+test('contact has many tags', function () {
+    $tag = Tag::factory()->create([
+        'team_id' => $this->team->id,
+    ]);
+    $this->contact->tags()->attach($tag->id);
 
-        $this->assertInstanceOf(Note::class, $this->contact->notes->first());
-    }
+    expect($this->contact->tags->first())->toBeInstanceOf(Tag::class);
+});
 
-    /** @test */
-    public function it_has_many_tags()
-    {
-        $tag = Tag::factory()->create([
-            'team_id' => $this->team->id,
-        ]);
-        $this->contact->tags()->attach($tag->id);
+test('contact calculates engagement score', function () {
+    Activity::factory()->count(3)->create([
+        'contact_id' => $this->contact->id,
+    ]);
 
-        $this->assertInstanceOf(Tag::class, $this->contact->tags->first());
-    }
+    $thread = Thread::factory()->create();
+    $this->contact->threads()->attach($thread->id);
 
-    /** @test */
-    public function it_calculates_engagement_score()
-    {
-        // Create some activities
-        Activity::factory()->count(3)->create([
-            'contact_id' => $this->contact->id,
-        ]);
+    $score = $this->contact->calculateEngagementScore();
+    
+    expect($score)
+        ->toBeFloat()
+        ->toBeGreaterThanOrEqual(0);
+});
 
-        // Create some threads
-        $thread = Thread::factory()->create();
-        $this->contact->threads()->attach($thread->id);
+test('contact requires email field', function () {
+    Contact::factory()->create(['email' => null]);
+})->throws(QueryException::class);
 
-        $score = $this->contact->calculateEngagementScore();
-        $this->assertIsFloat($score);
-        $this->assertGreaterThanOrEqual(0, $score);
-    }
+test('contact formats phone numbers', function () {
+    $contact = Contact::factory()->create([
+        'phone' => '1234567890',
+    ]);
 
-    /** @test */
-    public function it_validates_required_fields()
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
-        
-        Contact::factory()->create([
-            'email' => null,
-        ]);
-    }
+    expect($contact->formatted_phone)->toBe('(123) 456-7890');
+});
 
-    /** @test */
-    public function it_formats_phone_numbers()
-    {
-        $contact = Contact::factory()->create([
-            'phone' => '1234567890',
-        ]);
+test('contact generates unique contact ids', function () {
+    $contact1 = Contact::factory()->create();
+    $contact2 = Contact::factory()->create();
 
-        $this->assertEquals('(123) 456-7890', $contact->formatted_phone);
-    }
-
-    /** @test */
-    public function it_generates_unique_contact_ids()
-    {
-        $contact1 = Contact::factory()->create();
-        $contact2 = Contact::factory()->create();
-
-        $this->assertNotEquals($contact1->contact_id, $contact2->contact_id);
-    }
-}
+    expect($contact1->contact_id)->not->toBe($contact2->contact_id);
+});
