@@ -1,70 +1,44 @@
+   FAIL  Tests\Feature\ThreadOwnershipTest
+  ⨯ threads are created without project when no team is selected                                       0.30s
+  ⨯ threads are created with default project when team is selected                                     0.06s
+  ✓ user can view their personal threads                                                               0.03s
+  ✓ user can view their team threads                                                                   0.01s
+  ✓ user cannot view threads from teams they dont belong to                                            0.01s
+  ✓ user cannot view other users personal threads                                                      0.01s
+  ✓ threads list shows only personal threads in personal context                                       0.01s
+  ✓ threads list shows only team threads in team context                                               0.01s
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Feature\ThreadOwnershipTest > threads are created without project when no team is selecte…
+  Expected response status code [201, 301, 302, 303, 307, 308] but received 405.
+Failed asserting that false is true.
 
-   FAIL  Tests\Unit\CRM\Models\ContactTest
-  ✓ contact belongs to a company                                                         0.24s
-  ✓ contact can optionally belong to teams                                               0.01s
-  ✓ contact has many activities                                                          0.01s
-  ⨯ contact has many chat threads                                                        0.01s
-  ⨯ contact has many notes                                                               0.01s
-  ✓ contact has many tags                                                                0.01s
-  ⨯ contact calculates engagement score                                                  0.01s
-  ✓ contact requires email field                                                         0.01s
-  ✓ contact formats phone numbers                                                        0.01s
-  ✓ contact generates unique contact ids                                                 0.01s
-  ✓ contact belongs to company and not directly to team                                  0.01s
-  ────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many chat threads            Error
-  Class "App\Models\CRM\Thread" not found
+  at tests/Feature/ThreadOwnershipTest.php:15
+     11▕
+     12▕     $response = $this->actingAs($user)
+     13▕         ->post(route('chat.create'));
+     14▕
+  ➜  15▕     $response->assertRedirect();
+     16▕
+     17▕     $thread = Thread::where('user_id', $user->id)->latest()->first();
+     18▕
+     19▕     expect($thread)->not->toBeNull()
 
-  at vendor/laravel/framework/src/Illuminate/Database/Eloquent/Concerns/HasRelationships.php:855
-    851▕      * @return mixed
-    852▕      */
-    853▕     protected function newRelatedInstance($class)
-    854▕     {
-  ➜ 855▕         return tap(new $class, function ($instance) {
-    856▕             if (! $instance->getConnectionName()) {
-    857▕                 $instance->setConnection($this->connection);
-    858▕             }
-    859▕         });
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+   FAILED  Tests\Feature\ThreadOwnershipTest > threads are created with default project when team is selec…
+  Expected response status code [201, 301, 302, 303, 307, 308] but received 405.
+Failed asserting that false is true.
 
-      +2 vendor frames
-  3   app/Models/CRM/Contact.php:68
-  4   tests/Unit/CRM/Models/ContactTest.php:51
-
-  ────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact has many notes                   Error
-  Call to a member function first() on string
-
-  at tests/Unit/CRM/Models/ContactTest.php:61
-     57▕     Note::factory()->create([
-     58▕         'contact_id' => $this->contact->id,
-     59▕     ]);
-     60▕
-  ➜  61▕     expect($this->contact->notes->first())->toBeInstanceOf(Note::class);
-     62▕ });
-     63▕
-     64▕ test('contact has many tags', function () {
-     65▕     $tag = Tag::factory()->create([
-
-  1   tests/Unit/CRM/Models/ContactTest.php:61
-
-  ────────────────────────────────────────────────────────────────────────────────────────────
-   FAILED  Tests\Unit\CRM\Models\ContactTest > contact calculates engagement score      Error
-  Class "App\Models\CRM\Thread" not found
-
-  at vendor/laravel/framework/src/Illuminate/Database/Eloquent/Concerns/HasRelationships.php:855
-    851▕      * @return mixed
-    852▕      */
-    853▕     protected function newRelatedInstance($class)
-    854▕     {
-  ➜ 855▕         return tap(new $class, function ($instance) {
-    856▕             if (! $instance->getConnectionName()) {
-    857▕                 $instance->setConnection($this->connection);
-    858▕             }
-    859▕         });
-
-      +2 vendor frames
-  3   app/Models/CRM/Contact.php:68
-  4   tests/Unit/CRM/Models/ContactTest.php:80
+  at tests/Feature/ThreadOwnershipTest.php:34
+     30▕
+     31▕     $response = $this->actingAs($user)
+     32▕         ->post(route('chat.create'));
+     33▕
+  ➜  34▕     $response->assertRedirect();
+     35▕
+     36▕     $thread = Thread::where('user_id', $user->id)->latest()->first();
+     37▕     $project = Project::where('team_id', $team->id)
+     38▕         ->where('is_default', true)
 
 
-  Tests:    3 failed, 8 passed (10 assertions)
+  Tests:    2 failed, 6 passed (10 assertions)
+  Duration: 0.52s

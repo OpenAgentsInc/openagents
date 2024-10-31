@@ -6,6 +6,7 @@ use App\Http\Controllers\CRMController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\InquireController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TeamController;
 use App\Http\Controllers\UseChatController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Auth;
@@ -24,13 +25,18 @@ Route::get('/', function () {
 Route::middleware('auth')->group(function () {
     // CHAT
     Route::get('/chat', [ChatController::class, 'index'])->name('chat');
-    Route::get('/chat/create', [ChatController::class, 'create'])->name('chat.create');
+    Route::post('/chat/create', [ChatController::class, 'create'])->name('chat.create');
     Route::get('/chat/{id}', [ChatController::class, 'show'])->name('chat.id');
     Route::post('/chat', [UseChatController::class, 'chat']);
     Route::delete('/chat/{id}', [ChatController::class, 'destroy'])->name('chat.destroy');
 
     // CRM
     Route::get('/crm', [CRMController::class, 'index'])->name('crm');
+
+    // TEAMS
+    Route::get('/teams/create', [TeamController::class, 'create'])->name('teams.create');
+    Route::post('/teams', [TeamController::class, 'store'])->name('teams.store');
+    Route::post('/switch-team', [TeamController::class, 'switchTeam'])->name('teams.switch');
 });
 
 // CONTENT
