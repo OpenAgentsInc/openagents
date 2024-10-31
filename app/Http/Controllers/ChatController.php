@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\DB;
 
 class ChatController
 {
@@ -41,23 +42,32 @@ class ChatController
     public function create(): RedirectResponse
     {
         $user = Auth::user();
-        $data = [
-            'user_id' => $user->id,
-            'title' => 'New Chat',
-        ];
+        
+        return DB::transaction(function () use ($user) {
+            $data = [
+                'user_id' => $user->id,
+                'title' => 'New Chat',
+            ];
 
-        // If in team context, create thread under default project
-        if ($user->current_team_id) {
-            $project = Project::firstOrCreate(
-                ['team_id' => $user->current_team_id, 'is_default' => true],
-                ['name' => 'Default Project']
-            );
-            $data['project_id'] = $project->id;
-        }
+            // If in team context, create thread under default project
+            if ($user->current_team_id) {
+                $project = Project::firstOrCreate(
+                    [
+                        'team_id' => $user->current_team_id,
+                        'is_default' => true
+                    ],
+                    [
+                        'name' => 'Default Project',
+                        'description' => 'Default project for team chats'
+                    ]
+                );
+                $data['project_id'] = $project->id;
+            }
 
-        $thread = Thread::create($data);
+            $thread = Thread::create($data);
 
-        return redirect()->route('chat.id', $thread->id);
+            return redirect()->route('chat.id', $thread->id);
+        });
     }
 
     public function show($id): Response
