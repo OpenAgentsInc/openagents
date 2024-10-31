@@ -9,11 +9,12 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Auth\Access\HandlesAuthorization;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, HandlesAuthorization;
 
     /**
      * The attributes that are mass assignable.
@@ -79,5 +80,17 @@ class User extends Authenticatable
     public function currentProject(): BelongsTo
     {
         return $this->belongsTo(Project::class, 'current_project_id');
+    }
+
+    /**
+     * Check if the user can perform an action on a model.
+     */
+    public function can($ability, $model): bool
+    {
+        if ($model instanceof Project) {
+            return $model->canBeAccessedBy($this);
+        }
+
+        return parent::can($ability, $model);
     }
 }
