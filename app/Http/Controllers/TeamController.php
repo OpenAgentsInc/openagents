@@ -7,9 +7,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Inertia\Inertia;
 
 class TeamController extends Controller
 {
+    public function create()
+    {
+        return Inertia::render('Teams/Create');
+    }
+
     public function store(Request $request)
     {
         Log::info('Attempting to create team', [
@@ -60,7 +66,7 @@ class TeamController extends Controller
             'user_id' => $user->id
         ]);
 
-        return redirect()->back();
+        return redirect()->route('chat');
     }
 
     public function switchTeam(Request $request)
