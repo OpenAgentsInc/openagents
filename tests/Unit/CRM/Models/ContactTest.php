@@ -1,9 +1,9 @@
 <?php
 
-use App\Models\Contact;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Activity;
+use App\Models\CRM\Contact;
 use App\Models\Thread;
 use App\Models\Note;
 use App\Models\Tag;
@@ -62,7 +62,7 @@ test('contact calculates engagement score', function () {
     $this->contact->threads()->attach($thread->id);
 
     $score = $this->contact->calculateEngagementScore();
-    
+
     expect($score)
         ->toBeFloat()
         ->toBeGreaterThanOrEqual(0);
