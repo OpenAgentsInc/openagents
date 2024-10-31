@@ -28,13 +28,13 @@ test('contact can optionally belong to teams', function () {
     $this->contact->teams()->attach($team->id);
 
     expect($this->contact->teams->first())->toBeInstanceOf(Team::class);
-    
+
     // Test that contact can exist without team
     $contactWithoutTeam = Contact::factory()->create([
         'company_id' => $this->company->id,
         'created_by' => $this->user->id,
     ]);
-    
+
     expect($contactWithoutTeam->teams)->toBeEmpty();
 });
 
