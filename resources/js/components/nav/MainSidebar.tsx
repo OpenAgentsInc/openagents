@@ -1,9 +1,9 @@
 import {
-  Briefcase, BriefcaseBusiness, Building2, ChevronDown, Contact,
-  MessageSquare, PlusIcon, Users, FolderPlus, Folder
+  BriefcaseBusiness, ChevronDown, PlusIcon, FolderPlus
 } from "lucide-react"
 import * as React from "react"
 import { NavChats } from "@/components/nav-chats"
+import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger
@@ -13,7 +13,7 @@ import {
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton,
   SidebarMenuItem, SidebarRail, SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Link, router, usePage } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
 
 // This is sample data.
 const data = {
@@ -71,23 +71,7 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
-              <div className="space-y-1">
-                {projects.map((project) => (
-                  <SidebarMenuItem key={project.id}>
-                    <SidebarMenuButton asChild>
-                      <Link href={`/projects/${project.id}`}>
-                        <Folder className="h-4 w-4" />
-                        <span>{project.name}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-                {projects.length === 0 && (
-                  <div className="px-2 py-1 text-sm text-muted-foreground">
-                    No projects yet
-                  </div>
-                )}
-              </div>
+              <NavProjects projects={projects} />
             </CollapsibleContent>
           </SidebarGroup>
         </Collapsible>
