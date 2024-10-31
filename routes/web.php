@@ -6,6 +6,7 @@ use App\Http\Controllers\CRMController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\InquireController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TeamController;
 use App\Http\Controllers\UseChatController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Auth;
@@ -31,6 +32,10 @@ Route::middleware('auth')->group(function () {
 
     // CRM
     Route::get('/crm', [CRMController::class, 'index'])->name('crm');
+
+    // TEAMS
+    Route::post('/teams', [TeamController::class, 'store'])->name('teams.store');
+    Route::post('/switch-team', [TeamController::class, 'switchTeam'])->name('teams.switch');
 });
 
 // CONTENT
