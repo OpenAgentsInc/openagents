@@ -1,115 +1,91 @@
 <?php
 
-namespace Tests\Unit\CRM\Services;
-
-use Tests\TestCase;
 use App\Models\Team;
+use App\Models\Contact;
 use App\Services\CRM\ContactImportService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
-class ContactImportServiceTest extends TestCase
-{
-    use RefreshDatabase;
+beforeEach(function () {
+    $this->team = Team::factory()->create();
+    $this->importService = new ContactImportService();
+});
 
-    private ContactImportService $importService;
-    private Team $team;
+test('import service validates file format', function () {
+    Storage::fake('imports');
+    $file = UploadedFile::fake()->create('invalid.txt', 100);
+    
+    $this->importService->import($file, $this->team->id);
+})->throws(InvalidArgumentException::class);
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        
-        $this->team = Team::factory()->create();
-        $this->importService = new ContactImportService();
-    }
+test('import service maps fields correctly', function () {
+    Storage::fake('imports');
 
-    /** @test */
-    public function it_validates_import_format()
-    {
-        Storage::fake('imports');
+    $csvContent = "Name,Email,Phone\nJohn Doe,john@example.com,1234567890";
+    $file = UploadedFile::fake()->createWithContent('contacts.csv', $csvContent);
 
-        $file = UploadedFile::fake()->create('invalid.txt', 100);
-        
-        $this->expectException(\InvalidArgumentException::class);
-        
-        $this->importService->import($file, $this->team->id);
-    }
+    $mapping = [
+        'name' => 'Name',
+        'email' => 'Email',
+        'phone' => 'Phone',
+    ];
 
-    /** @test */
-    public function it_maps_import_fields()
-    {
-        Storage::fake('imports');
+    $result = $this->importService->import($file, $this->team->id, $mapping);
 
-        $csvContent = "Name,Email,Phone\nJohn Doe,john@example.com,1234567890";
-        $file = UploadedFile::fake()->createWithContent('contacts.csv', $csvContent);
+    expect($result->successful)->toBeTrue();
+    
+    expect(Contact::first())
+        ->name->toBe('John Doe')
+        ->email->toBe('john@example.com')
+        ->phone->toBe('1234567890');
+});
 
-        $mapping = [
-            'name' => 'Name',
-            'email' => 'Email',
-            'phone' => 'Phone',
-        ];
+test('import service detects duplicates', function () {
+    Storage::fake('imports');
 
-        $result = $this->importService->import($file, $this->team->id, $mapping);
+    // Create existing contact
+    Contact::factory()->create([
+        'team_id' => $this->team->id,
+        'email' => 'john@example.com',
+    ]);
 
-        $this->assertTrue($result->successful);
-        $this->assertDatabaseHas('contacts', [
-            'name' => 'John Doe',
-            'email' => 'john@example.com',
-            'phone' => '1234567890',
-        ]);
-    }
+    $csvContent = "Name,Email,Phone\nJohn Doe,john@example.com,1234567890";
+    $file = UploadedFile::fake()->createWithContent('contacts.csv', $csvContent);
 
-    /** @test */
-    public function it_handles_duplicate_detection()
-    {
-        Storage::fake('imports');
+    $result = $this->importService->import($file, $this->team->id);
 
-        // Create existing contact
-        $existingContact = Contact::factory()->create([
-            'team_id' => $this->team->id,
-            'email' => 'john@example.com',
-        ]);
+    expect($result)
+        ->successful->toBeTrue()
+        ->duplicates->toHaveCount(1);
+});
 
-        $csvContent = "Name,Email,Phone\nJohn Doe,john@example.com,1234567890";
-        $file = UploadedFile::fake()->createWithContent('contacts.csv', $csvContent);
+test('import service processes batch imports', function () {
+    Storage::fake('imports');
 
-        $result = $this->importService->import($file, $this->team->id);
+    $csvContent = "Name,Email,Phone\n" . 
+        implode("\n", array_map(function($i) {
+            return "User $i,user$i@example.com,$i";
+        }, range(1, 100)));
 
-        $this->assertTrue($result->successful);
-        $this->assertCount(1, $result->duplicates);
-    }
+    $file = UploadedFile::fake()->createWithContent('contacts.csv', $csvContent);
 
-    /** @test */
-    public function it_processes_batch_imports()
-    {
-        Storage::fake('imports');
+    $result = $this->importService->import($file, $this->team->id);
 
-        $csvContent = "Name,Email,Phone\n" . 
-            implode("\n", array_map(function($i) {
-                return "User $i,user$i@example.com,$i";
-            }, range(1, 100)));
+    expect($result)
+        ->successful->toBeTrue()
+        ->imported->toBe(100);
+});
 
-        $file = UploadedFile::fake()->createWithContent('contacts.csv', $csvContent);
+test('import service reports errors', function () {
+    Storage::fake('imports');
 
-        $result = $this->importService->import($file, $this->team->id);
+    $csvContent = "Name,Email,Phone\nJohn Doe,invalid-email,1234567890";
+    $file = UploadedFile::fake()->createWithContent('contacts.csv', $csvContent);
 
-        $this->assertTrue($result->successful);
-        $this->assertEquals(100, $result->imported);
-    }
+    $result = $this->importService->import($file, $this->team->id);
 
-    /** @test */
-    public function it_reports_import_errors()
-    {
-        Storage::fake('imports');
-
-        $csvContent = "Name,Email,Phone\nJohn Doe,invalid-email,1234567890";
-        $file = UploadedFile::fake()->createWithContent('contacts.csv', $csvContent);
-
-        $result = $this->importService->import($file, $this->team->id);
-
-        $this->assertTrue($result->hasErrors());
-        $this->assertCount(1, $result->errors);
-        $this->assertEquals('Invalid email format', $result->errors[0]['message']);
-    }
-}
+    expect($result)
+        ->hasErrors()->toBeTrue()
+        ->errors->toHaveCount(1)
+        ->errors->first()->message->toBe('Invalid email format');
+});
