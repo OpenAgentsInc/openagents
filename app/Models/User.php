@@ -80,4 +80,16 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Project::class, 'current_project_id');
     }
+
+    /**
+     * Check if the user can perform an action on a model.
+     */
+    public function can($abilities, $arguments = []): bool
+    {
+        if (is_object($arguments) && $arguments instanceof Project) {
+            return $arguments->canBeAccessedBy($this);
+        }
+
+        return parent::can($abilities, $arguments);
+    }
 }

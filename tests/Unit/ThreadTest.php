@@ -38,3 +38,37 @@ test('a thread belongs to a team through a project', function () {
     expect($thread->project->team)->toBeInstanceOf(Team::class);
     expect($thread->project->team->id)->toBe($team->id);
 });
+
+test('thread inherits project context', function () {
+    $project = Project::factory()
+        ->withContext('Technical documentation context')
+        ->create();
+    
+    $thread = Thread::factory()
+        ->create(['project_id' => $project->id]);
+    
+    expect($thread->getContext())->toBe('Technical documentation context');
+});
+
+test('thread inherits project instructions', function () {
+    $project = Project::factory()
+        ->withInstructions('Be formal')
+        ->create();
+    
+    $thread = Thread::factory()
+        ->create(['project_id' => $project->id]);
+    
+    expect($thread->getInstructions())->toBe('Be formal');
+});
+
+test('thread returns empty context when no project', function () {
+    $thread = Thread::factory()->create(['project_id' => null]);
+    
+    expect($thread->getContext())->toBe('');
+});
+
+test('thread returns empty instructions when no project', function () {
+    $thread = Thread::factory()->create(['project_id' => null]);
+    
+    expect($thread->getInstructions())->toBe('');
+});

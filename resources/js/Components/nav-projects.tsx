@@ -1,5 +1,5 @@
 import {
-  Folder, Forward, LucideIcon, MoreHorizontal, Trash2, type
+  Folder, Forward, MoreHorizontal, Trash2
 } from "lucide-react"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
@@ -9,32 +9,41 @@ import {
   SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem,
   useSidebar
 } from "@/components/ui/sidebar"
+import { Link } from "@inertiajs/react"
 
-export function NavProjects({
-  projects,
-  highlightedProject = "Competitor Research", // New prop with default value
-}: {
-  projects: {
-    name: string
-    url: string
-    icon: LucideIcon
-  }[]
-  highlightedProject?: string // New optional prop
-}) {
+interface Project {
+  id: number
+  name: string
+}
+
+interface NavProjectsProps {
+  projects: Project[]
+  highlightedProject?: number
+}
+
+export function NavProjects({ projects, highlightedProject }: NavProjectsProps) {
   const { isMobile } = useSidebar()
+
+  if (projects.length === 0) {
+    return (
+      <div className="px-2 py-1 text-sm text-muted-foreground">
+        No projects yet
+      </div>
+    )
+  }
 
   return (
     <SidebarMenu>
-      {projects.map((item) => (
-        <SidebarMenuItem key={item.name}>
+      {projects.map((project) => (
+        <SidebarMenuItem key={project.id}>
           <SidebarMenuButton
             asChild
-            className={item.name === highlightedProject ? "bg-accent" : ""} // Add background when highlighted
+            className={project.id === highlightedProject ? "bg-accent" : ""}
           >
-            <a href={item.url}>
-              <item.icon />
-              <span>{item.name}</span>
-            </a>
+            <Link href={`/projects/${project.id}`}>
+              <Folder className="h-4 w-4" />
+              <span>{project.name}</span>
+            </Link>
           </SidebarMenuButton>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -48,9 +57,11 @@ export function NavProjects({
               side={isMobile ? "bottom" : "right"}
               align={isMobile ? "end" : "start"}
             >
-              <DropdownMenuItem>
-                <Folder className="text-muted-foreground" />
-                <span>View Project</span>
+              <DropdownMenuItem asChild>
+                <Link href={`/projects/${project.id}`}>
+                  <Folder className="text-muted-foreground" />
+                  <span>View Project</span>
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Forward className="text-muted-foreground" />
@@ -65,12 +76,6 @@ export function NavProjects({
           </DropdownMenu>
         </SidebarMenuItem>
       ))}
-      {/* <SidebarMenuItem>
-        <SidebarMenuButton className="text-sidebar-foreground/70">
-          <MoreHorizontal className="text-sidebar-foreground/70" />
-          <span>More</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem> */}
     </SidebarMenu>
   )
 }

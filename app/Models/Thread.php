@@ -39,4 +39,28 @@ class Thread extends Model
     {
         return $this->belongsToMany(Contact::class);
     }
+
+    /**
+     * Get the thread's context, including project context.
+     */
+    public function getContext(): string
+    {
+        if (!$this->project) {
+            return '';
+        }
+
+        return $this->project->getContext();
+    }
+
+    /**
+     * Get the thread's instructions, including project instructions.
+     */
+    public function getInstructions(): string
+    {
+        if (!$this->project) {
+            return '';
+        }
+
+        return $this->project->getInstructions();
+    }
 }
