@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Project;
 use App\Models\Thread;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -33,19 +34,36 @@ class HandleInertiaRequests extends Middleware
         $user = $request->user();
         
         $threads = [];
+        $projects = [];
+
         if ($user) {
-            $query = Thread::query();
+            // Get threads
+            $threadQuery = Thread::query();
             
             if ($user->current_team_id) {
                 // If in team context, get team threads
-                $query->where('team_id', $user->current_team_id);
+                $threadQuery->where('team_id', $user->current_team_id);
             } else {
                 // If in personal context, get personal threads
-                $query->where('user_id', $user->id)
+                $threadQuery->where('user_id', $user->id)
                      ->whereNull('team_id');
             }
             
-            $threads = $query->orderBy('created_at', 'desc')->get();
+            $threads = $threadQuery->orderBy('created_at', 'desc')->get();
+
+            // Get projects
+            $projectQuery = Project::query();
+            
+            if ($user->current_team_id) {
+                // If in team context, get team projects
+                $projectQuery->where('team_id', $user->current_team_id);
+            } else {
+                // If in personal context, get personal projects
+                $projectQuery->where('user_id', $user->id)
+                     ->whereNull('team_id');
+            }
+            
+            $projects = $projectQuery->orderBy('created_at', 'desc')->get();
         }
 
         return [
@@ -56,6 +74,7 @@ class HandleInertiaRequests extends Middleware
                 'current_team' => $user ? $user->currentTeam : null,
             ],
             'threads' => $threads,
+            'projects' => $projects,
         ];
     }
 }

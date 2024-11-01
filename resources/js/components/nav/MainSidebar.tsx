@@ -1,9 +1,9 @@
 import {
-  Briefcase, BriefcaseBusiness, Building2, ChevronDown, Contact,
-  MessageSquare, PlusIcon, Users
+  BriefcaseBusiness, ChevronDown, PlusIcon, FolderPlus
 } from "lucide-react"
 import * as React from "react"
 import { NavChats } from "@/components/nav-chats"
+import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger
@@ -13,7 +13,7 @@ import {
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton,
   SidebarMenuItem, SidebarRail, SidebarTrigger
 } from "@/components/ui/sidebar"
-import { Link, router, usePage } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
 
 // This is sample data.
 const data = {
@@ -25,12 +25,7 @@ const data = {
 }
 
 export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { threads, currentChatId } = usePage().props
-
-  const handleNewChat = (e: React.MouseEvent) => {
-    e.preventDefault();
-    router.post('/chat/create');
-  }
+  const { threads, projects, currentChatId } = usePage().props
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -49,15 +44,37 @@ export function MainSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) 
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <a href="#" onClick={handleNewChat}>
+                  <Link href="/chat/create">
                     <PlusIcon />
                     <span>New chat</span>
-                  </a>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link href="/projects/create">
+                    <FolderPlus />
+                    <span>New project</span>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <Collapsible defaultOpen className="group/collapsible">
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger>
+                Projects
+                <ChevronDown className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <NavProjects projects={projects} />
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
 
         <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
