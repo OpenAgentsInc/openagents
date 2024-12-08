@@ -139,24 +139,38 @@ Traditional payment methods introduce friction: credit cards, subscriptions, and
 
 ## A Unified Workflow Example
 
-### Scenario: Specialized Summarization
+### A Voice-Driven Workflow Example Using NIP-89, NIP-90, and MCP
 
-A user, Alice, wants a specialized summarization of a complex topic recently discussed in a niche Nostr event kind (kind:31337). The workflow involves:
+**Scenario:** Alice uses her Onyx app and issues a voice command:
+“Onyx, could you summarize and analyze the sentiment of my last recorded team meeting?”
 
-1. **Discovery via NIP-89:**
-   Alice’s Onyx client encounters a kind:31337 event. Unsure how to handle it, Onyx queries for kind:31989 recommendations and discovers a recommended kind:31990 handler.
+1. **Voice Input Acquisition:**
+   Alice speaks her request, and Onyx captures the raw audio. The recorded team meeting’s audio is stored on her device, but Onyx itself does not transcribe it directly.
 
-2. **MCP Capability Negotiation:**
-   Onyx connects to the MCP server recommended by NIP-89. This server declares it can handle text summarization but suggests leveraging a marketplace (NIP-90) for best results.
+2. **Finding a Transcription Service (NIP-89 + MCP):**
+   Onyx uses NIP-89 to discover a trusted MCP server that specializes in audio transcription. Drawing on Alice’s follow graph and known reputable services, Onyx identifies a transcription MCP server that can handle long-form audio.
 
-3. **DVM Job Request (NIP-90):**
-   Alice instructs Onyx to summarize the content. The MCP server triggers a DVM job request (kind:5050) onto the Nostr network.
+3. **Transcription via MCP:**
+   Onyx negotiates capabilities with the transcription server using MCP. The server confirms it can convert the meeting audio into a structured text transcript with speaker labels and timestamps.
+   Onyx sends the audio to the server; moments later, it receives a fully transcribed text. The transcription server includes a small Lightning invoice. Onyx automatically pays it, following Alice’s pre-set budget rules.
 
-4. **Provider Competition & Payment:**
-   Providers respond with summaries (kind:6050). Onyx picks the best and pays via Lightning.
+4. **Summarization and Sentiment Analysis (NIP-89 + MCP):**
+   With the transcript ready, Onyx again consults NIP-89 to find two more MCP servers:
+   - One MCP server that provides concise, actionable summaries of long texts.
+   - Another MCP server that performs fine-grained sentiment analysis, identifying emotional tone across different segments.
 
-5. **Final Result:**
-   The chosen summary is returned to Alice.
+   Both servers declare their capabilities via MCP. The summarization server can highlight key points and decisions, while the sentiment server can break down positivity, negativity, and neutrality in the conversation.
+
+5. **Executing Summarization & Sentiment Analysis via MCP:**
+   Onyx sends the transcript to the summarization MCP server and receives a well-structured summary. It then sends relevant parts of the transcript to the sentiment analysis MCP server, which returns a detailed sentiment profile.
+   Each server includes a Lightning invoice. Onyx pays them automatically, ensuring frictionless, per-use compensation.
+
+6. **Optional Enhanced Results (NIP-90):**
+   If Alice wants a broader perspective—perhaps categorizing feedback types or verifying sentiment accuracy—Onyx can issue a NIP-90 job request to a broader marketplace of providers. Multiple services might compete, offering alternative analyses. Alice picks the one she finds most useful, and Onyx pays that provider’s invoice.
+
+7. **User Satisfaction:**
+   Within minutes, Alice has a complete transcript, a concise summary of the meeting’s main points, and a nuanced sentiment analysis. She has paid only for what she needed: transcription, summarization, and sentiment evaluation.
+   NIP-89 guided Onyx to the right providers, MCP structured the interactions and data exchange, NIP-90 offered optional competitive enhancements, and Bitcoin Lightning payments made the financial transactions seamless. The entire process is open, user-driven, and free from lock-in or unnecessary overhead.
 
 ---
 
