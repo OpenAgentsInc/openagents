@@ -1,49 +1,51 @@
 ## Protocols at the Heart of OpenAgents
 
-The OpenAgents ecosystem is grounded in the idea that AI services and agents should not be locked behind closed walls. Instead, these agents should operate using open protocols, enabling a decentralized and user-driven ecosystem for AI discovery, service orchestration, and secure value exchange. At the center are several key protocols:
+The OpenAgents ecosystem is founded on the principle that AI services and agents should operate on open protocols rather than being siloed behind closed platforms. By embracing open standards, the ecosystem fosters a decentralized, user-driven environment for discovering AI capabilities, orchestrating services, and securely exchanging value. Four key protocols serve as the cornerstone of this vision:
 
 1. **MCP (Model Context Protocol):**
-   A standardized way to integrate and control Large Language Model (LLM) capabilities, tools, and data resources within AI-driven applications.
+   A standardized way to integrate and control Large Language Model (LLM) capabilities, tools, and data resources. MCP focuses on direct, trust-based client-server relationships, detailed feature negotiation, and user consent for every action.
 
 2. **NIP-89 (Discovery):**
-   A mechanism from the Nostr ecosystem for discovering recommended handlers or frontends for specific event kinds, effectively enabling a decentralized “directory” of services.
+   A decentralized method, based on Nostr, for discovering recommended AI services and handlers for specific event kinds. Instead of one centralized directory, users leverage their social graph and follow relationships to find reputable providers—like transcription services, summarizers, or sentiment analyzers—through community-driven recommendations.
 
 3. **NIP-90 (Data Vending Machines / DVM):**
-   A protocol for open, asynchronous job requests—like posting AI tasks “to the network”—and receiving bids and results from multiple competing service providers.
+   A protocol that turns the ecosystem into a competitive open marketplace. Users post AI tasks to the network as job requests, and multiple service providers respond with results. This competition ensures better quality, variety, and pricing, allowing the user to pick the best outcome from a range of public offers.
 
 4. **Bitcoin Micropayments (Lightning Network):**
-   A means to instantly compensate services for their valuable contributions without complex intermediaries, ensuring a fluid economic model for AI services.
+   A means to handle instant, low-friction payments. Instead of subscription models or centralized billing, users pay per task using Bitcoin’s Lightning Network. This aligns payments directly with the value delivered, ensuring providers are rewarded proportionally and instantly.
+
+---
 
 ### Key Benefits
 
-These protocols, when combined, form the backbone of the OpenAgents vision. They ensure that:
+When these protocols work together, they create an AI ecosystem that:
 
-- **Users remain in control:**
-  They choose which protocols and services to engage with, set budgets, and maintain data privacy.
+- **Keeps Users in Control:**
+  Users choose which protocols and services to engage with. They set budgets, control data sharing, and ensure that every action by the AI is consented to.
 
-- **Providers compete on a fair playing field:**
-  Anyone can offer services through standardized and open interfaces.
+- **Ensures a Fair Playing Field for Providers:**
+  Anyone can offer services. Providers must continuously improve to earn users’ trust and payment, leading to a healthier, more innovative market.
 
-- **Discovery and integration are frictionless:**
-  With NIP-89 and MCP, users can easily find, evaluate, and integrate new AI capabilities.
+- **Simplifies Discovery and Integration:**
+  Through NIP-89 and MCP, users easily find and integrate AI tools without centralized gatekeepers. The process is transparent and flexible.
 
-- **Payments align with value:**
-  Lightning micropayments ensure that services are rewarded proportionally and instantly for their contributions.
+- **Aligns Payments with Value:**
+  Lightning micropayments let users pay only for the specific services they need, exactly when they need them. No large upfront costs or lock-ins—just pay-as-you-go simplicity.
 
 ---
 
 ## Why Open Protocols?
 
-The dominant AI landscape currently tends toward centralized, proprietary ecosystems. This leads to a handful of large companies controlling the direction, features, and pricing of AI services. In contrast, open protocols:
+The current AI landscape is often dominated by a few large entities controlling pricing, features, and data handling. Open protocols offer a viable alternative:
 
-- **Prevent lock-in:**
-  Users can switch providers, combine multiple services, and avoid proprietary formats or walled gardens.
+- **Prevent Lock-In:**
+  Users can seamlessly switch between providers, combine multiple services, and avoid proprietary constraints.
 
-- **Foster competition and innovation:**
-  Providers must continuously improve quality and cost-effectiveness, knowing that users can easily discover alternatives.
+- **Foster Competition and Innovation:**
+  With open access, new providers can enter the market, forcing all to offer better quality and cost-effectiveness.
 
-- **Empower users with choice and privacy:**
-  Users remain at the center of decision-making, enabling custom-tailored workflows and respectful data handling.
+- **Empower User Choice and Privacy:**
+  Users, not platforms, decide which data to share, which services to trust, and how much to spend. This leads to a respectful, user-centric environment.
 
 ---
 
@@ -51,33 +53,31 @@ The dominant AI landscape currently tends toward centralized, proprietary ecosys
 
 ### Overview
 
-The Model Context Protocol standardizes how AI applications interact with Large Language Models, tools, and data resources. It defines a session-based, JSON-RPC2.0-driven communication model between a “host” (e.g., the Onyx app) and “servers” that provide capabilities (like specialized prompts, resource fetchers, or tool APIs).
+MCP is a session-based, JSON-RPC2.0-driven protocol that defines how a “host” application (like Onyx) interacts with “servers” providing AI capabilities (e.g., transcription, summarization, sentiment analysis). It’s about stable, direct relationships with known providers:
 
-MCP focuses on **capability negotiation** and **granular user consent**:
+- **Capability Negotiation:**
+  MCP servers declare their capabilities (tools, prompts, resources, model completions). The host (Onyx) states which features it wants to use, ensuring transparency and alignment.
 
-- **Capabilities:**
-  Servers declare the resources, tools, prompts, and completion services they can provide. Hosts (like Onyx) declare what features they are willing to use.
-
-- **User consent:**
-  Every invocation of a tool or resource fetch is subject to user rules and budgets. The user can limit data sharing, confirm actions, and ensure privacy.
+- **User Consent and Security:**
+  Every requested action—fetching a resource, invoking a tool, generating a completion—requires user-defined rules and confirmation. Users decide what the AI can see or do, protecting privacy and preventing unintended operations.
 
 ### Key Features
 
 1. **Structured Context Integration:**
-   MCP ensures that LLM inputs (prompts) can be enriched with external tools and data in a standardized way. For example, Onyx might discover a “transcription” resource server and integrate its transcripts directly into an LLM prompt.
+   LLM prompts can be enriched with external data and tools in a standardized manner. For example, if Onyx wants to summarize a transcript, it can request the transcript from a known MCP server and feed it directly into an LLM prompt.
 
-2. **Safe Execution of Tools:**
-   Tools (like code execution, calling an external API, or querying a database) are requested by the LLM through MCP. Before execution, the host (Onyx) ensures user consent. This prevents the LLM from taking arbitrary actions without user oversight.
+2. **Safe Tool Execution:**
+   Tools requested by the LLM do not run automatically. The host (Onyx) mediates, ensuring actions align with user consent. This prevents AI from triggering unwanted APIs or operations.
 
 3. **Resource Management:**
-   MCP standardizes resource listing, reading, and searching. For instance, Onyx can ask an MCP server for available documents or previously obtained data sets, then feed that into an LLM prompt.
+   MCP provides a uniform way to list, read, or search for data. If Onyx needs documents or previously generated content, it can easily request them from an MCP server, subject to user approval.
 
-4. **Sampling and Prompts:**
-   MCP also standardizes how prompting and model completions occur. Servers declare what prompts they support, and Onyx can request samples from an LLM under user-defined constraints.
+4. **Sampling and Prompt Customization:**
+   MCP defines how prompts and LLM completions occur. Servers can provide ready-made prompt templates, and Onyx can request model completions under user-defined parameters.
 
 ### Trust and Isolation
 
-MCP enforces that servers cannot see the entire conversation history or other servers’ data. Each server sees only what the user approves. This ensures privacy and prevents one server from leaking data to another without the user’s knowledge.
+MCP ensures strict boundaries. A server only sees what the user explicitly shares. One MCP server cannot snoop on another’s data. This isolation maintains privacy and trust, preventing data leakage across different services.
 
 ---
 
@@ -85,23 +85,14 @@ MCP enforces that servers cannot see the entire conversation history or other se
 
 ### How It Works
 
-NIP-89 introduces a pattern for discovering services (or “handlers”) for specialized event kinds within the Nostr ecosystem. In Nostr, all data is expressed as events of certain “kinds” (think of it as a schema or category).
+NIP-89 leverages the Nostr network to help users find the right MCP servers or frontends for specific tasks. Instead of a single registry, users rely on recommendations from their network (people they follow or trust):
 
-- **Event Discovery:**
-  When Onyx (or any Nostr client) encounters a new event kind it doesn’t understand (like a specialized data type), it can query the network for NIP-89 recommendation events.
-
-- **Recommendation Events:**
-  A kind:31989 event may point to one or more kind:31990 events that describe applications (services) capable of handling that event kind.
-
-This “open directory” approach means users can discover MCP servers or DVM providers relevant to their tasks without relying on a centralized directory.
+- By querying NIP-89 “recommendation events,” Onyx can find which MCP servers are best for certain tasks, like transcription or summarization.
+- This decentralized directory means no single authority decides which services you should use. Trust is built organically, through community endorsements.
 
 ### Integration with MCP
 
-NIP-89 can point Onyx toward MCP-compatible servers. Suppose a user wants a new summarization tool. Onyx can:
-
-1. See a specialized event kind in a conversation.
-2. Use NIP-89 to discover which MCP server or web handler is recommended for that kind.
-3. Connect to the MCP server found via NIP-89 and negotiate capabilities, fetching data or running tools as needed.
+NIP-89 points Onyx towards reliable MCP servers. Once Onyx knows a certain server is recommended for summarization, it can connect directly via MCP, negotiate capabilities, and pay for the service. NIP-89 thus streamlines the discovery process, ensuring Onyx finds quality providers quickly.
 
 ---
 
@@ -109,139 +100,93 @@ NIP-89 can point Onyx toward MCP-compatible servers. Suppose a user wants a new 
 
 ### Core Concepts
 
-NIP-90 defines a model for posting “job requests” to a decentralized network (via Nostr), letting multiple service providers compete to fulfill that request. This is the “Data Vending Machine” concept.
+NIP-90 transforms the ecosystem into an open marketplace for AI tasks. Instead of going to a known server, you can:
 
-1. **Job Requests (5000-5999 kinds):**
-   A user (or Onyx on behalf of a user) posts a job request, specifying what computation they want (like “transcribe this audio file” or “summarize this text”).
+1. **Post a Job Request (5000-5999 kinds):**
+   Describe the task—transcription, summarization, specialized analysis—and broadcast it to the network.
 
-2. **Results and Feedback (6000-6999 kinds):**
-   Service providers respond with job results and status updates. They can also request payment. Multiple providers can respond, and the user can choose the best result.
+2. **Receive Multiple Offers (6000-6999 kinds):**
+   Service providers respond with their results. Multiple providers can compete, each offering potentially different quality, cost, and turnaround times.
 
-3. **Marketplace Dynamics:**
-   Instead of a single closed API endpoint, NIP-90 makes the ecosystem a marketplace. Providers bid for attention by offering better quality, lower cost, or faster turnaround times. Users benefit from this competitive environment.
+3. **Choose the Best Result:**
+   The user reviews responses and picks the most suitable one, paying only for the chosen result.
+
+This marketplace dynamic encourages innovation and better pricing, as providers must continuously improve to stand out.
 
 ---
 
-## Bitcoin Micropayments: The Economic Engine
+## Bitcoin Micropayments (Lightning Network)
 
-Traditional payment methods introduce friction: credit cards, subscriptions, and overhead. Instead, we rely on Bitcoin’s Lightning Network for real-time micropayments:
+By integrating Bitcoin’s Lightning Network, both MCP and NIP-90 scenarios benefit from instant, cost-effective micropayments:
 
 - **Instant Settlements:**
-  Pay as soon as a result arrives—no monthly bills or waiting.
+  Pay as soon as the service is delivered. No monthly subscription overhead.
 
-- **Granular Control:**
-  Users define budgets and max spend per request. Onyx enforces these rules automatically.
+- **Granular Budgets:**
+  Users can set spending caps. For each request, Onyx pays only what’s needed, maintaining full financial control.
 
-- **Permissionless and Open:**
-  Anyone can run a service and get paid instantly. Users can pay small amounts (millisats) cost-effectively.
-
----
-
-## A Unified Workflow Example
-
-### A Voice-Driven Workflow Example Using NIP-89, NIP-90, and MCP
-
-**Scenario:** Alice uses her Onyx app and issues a voice command:
-“Onyx, could you summarize and analyze the sentiment of my last recorded team meeting?”
-
-1. **Voice Input Acquisition:**
-   Alice speaks her request, and Onyx captures the raw audio. The recorded team meeting’s audio is stored on her device, but Onyx itself does not transcribe it directly.
-
-2. **Finding a Transcription Service (NIP-89 + MCP):**
-   Onyx uses NIP-89 to discover a trusted MCP server that specializes in audio transcription. Drawing on Alice’s follow graph and known reputable services, Onyx identifies a transcription MCP server that can handle long-form audio.
-
-3. **Transcription via MCP:**
-   Onyx negotiates capabilities with the transcription server using MCP. The server confirms it can convert the meeting audio into a structured text transcript with speaker labels and timestamps.
-   Onyx sends the audio to the server; moments later, it receives a fully transcribed text. The transcription server includes a small Lightning invoice. Onyx automatically pays it, following Alice’s pre-set budget rules.
-
-4. **Summarization and Sentiment Analysis (NIP-89 + MCP):**
-   With the transcript ready, Onyx again consults NIP-89 to find two more MCP servers:
-   - One MCP server that provides concise, actionable summaries of long texts.
-   - Another MCP server that performs fine-grained sentiment analysis, identifying emotional tone across different segments.
-
-   Both servers declare their capabilities via MCP. The summarization server can highlight key points and decisions, while the sentiment server can break down positivity, negativity, and neutrality in the conversation.
-
-5. **Executing Summarization & Sentiment Analysis via MCP:**
-   Onyx sends the transcript to the summarization MCP server and receives a well-structured summary. It then sends relevant parts of the transcript to the sentiment analysis MCP server, which returns a detailed sentiment profile.
-   Each server includes a Lightning invoice. Onyx pays them automatically, ensuring frictionless, per-use compensation.
-
-6. **Optional Enhanced Results (NIP-90):**
-   If Alice wants a broader perspective—perhaps categorizing feedback types or verifying sentiment accuracy—Onyx can issue a NIP-90 job request to a broader marketplace of providers. Multiple services might compete, offering alternative analyses. Alice picks the one she finds most useful, and Onyx pays that provider’s invoice.
-
-7. **User Satisfaction:**
-   Within minutes, Alice has a complete transcript, a concise summary of the meeting’s main points, and a nuanced sentiment analysis. She has paid only for what she needed: transcription, summarization, and sentiment evaluation.
-   NIP-89 guided Onyx to the right providers, MCP structured the interactions and data exchange, NIP-90 offered optional competitive enhancements, and Bitcoin Lightning payments made the financial transactions seamless. The entire process is open, user-driven, and free from lock-in or unnecessary overhead.
+- **Permissionless and Global:**
+  Anyone can provide a service and get paid instantly. This open economic layer encourages global participation and a more diverse AI marketplace.
 
 ---
 
-### Clarifying the Roles of MCP and NIP-90
+## A Voice-Driven Workflow Example
 
-The Model Context Protocol (MCP) excels when you have known, trusted servers that provide well-defined capabilities—like transcription, summarization, or sentiment analysis—and you want a stable, ongoing connection to these services. MCP is ideal for structured, direct interactions where you negotiate features, exchange data, and receive outputs from a specific provider you already trust or discover through NIP-89.
+**Scenario:** Alice wants to process her team meeting recording—transcribe it, summarize the key points, and analyze the sentiment—using her Onyx app and these open protocols.
 
-NIP-90, on the other hand, shines when you want to open a request to a broader marketplace and let multiple providers compete to fulfill it. This protocol is perfect if:
-- You aren’t sure which provider is best.
-- You want the flexibility to choose from a variety of responses.
-- You’re experimenting with new capabilities that you don’t have a trusted server for yet.
+1. **Voice Command:**
+   Alice says: “Onyx, please summarize and analyze the sentiment of my last recorded team meeting.”
 
-In other words, MCP is about maintaining steady, known relationships with AI service providers, while NIP-90 is about creating an open “call for proposals” that anyone can answer, and then letting you pick the best result.
+2. **Transcription via MCP (Discovered via NIP-89):**
+   Onyx uses NIP-89 to find a recommended transcription MCP server. Since Alice trusts this recommendation, Onyx connects to the MCP server and negotiates transcription capabilities.
+   The server transcribes the audio and returns a text transcript, along with a Lightning invoice. Onyx automatically pays the invoice from Alice’s budget.
 
-### A Revised Voice-Driven Workflow Demonstrating When to Use MCP vs. NIP-90
+3. **Summarization and Sentiment Analysis via MCP (Using NIP-89):**
+   With a transcript ready, Onyx again queries NIP-89 for summarization and sentiment analysis servers. It finds two MCP servers:
+   - Summarization server: Produces a concise, actionable summary of the meeting.
+   - Sentiment analysis server: Provides a tone map, highlighting where the conversation was positive, neutral, or negative.
 
-**Scenario:** Alice wants her recorded team meeting transcribed, summarized, and analyzed for sentiment. She trusts a few known MCP servers, but she also wants to explore new angles of analysis from a broader marketplace.
+   Onyx negotiates capabilities with each server via MCP, sends them the transcript (or excerpts), and receives results. Each server includes a Lightning invoice, which Onyx pays instantly.
 
-1. **Transcription via MCP (Known Need, Trusted Provider):**
-   Alice uses NIP-89 to find a reputable transcription MCP server she’s used before. She requests transcription directly from this server through MCP because she knows its quality. The server returns a transcript promptly, and Onyx pays the invoice. MCP here ensures a smooth, reliable process with a known partner.
+4. **Optional Enhanced Perspectives via NIP-90:**
+   Suppose Alice wants more experimental insights—like categorizing feedback by department or verifying sentiment accuracy with alternative approaches. Onyx can post a NIP-90 job request to a broader marketplace. Multiple providers respond publicly with their proposals. Alice reviews these options, picks the best one, and Onyx pays that provider’s invoice. NIP-90 ensures competition and fresh ideas without requiring pre-established trust.
 
-2. **Summarization via MCP (Consistent Results from a Known Expert):**
-   The summarized insights about her meeting are important, and Alice trusts a specific MCP server recommended by NIP-89 for summarization tasks. She gets a clean, structured summary from a known, reliable source. The exchange is direct, stable, and predictable—perfect for MCP.
+5. **User Satisfaction:**
+   Alice now has a transcript, a neat summary of action items, and a detailed sentiment profile—all found via NIP-89, executed through MCP, optionally enhanced by NIP-90, and paid via Lightning. She has spent only on what she needed, avoided vendor lock-in, and enjoyed a seamless user experience.
 
-3. **Sentiment Analysis via MCP (Trusted Provider for a Core Service):**
-   Alice also has a go-to sentiment analysis server discovered through NIP-89. She knows it consistently provides accurate tonal breakdowns. Using MCP, she sends the summary (or transcript excerpts) to this server. It responds with a nuanced sentiment profile. Onyx pays the invoice. Again, MCP is the natural choice for a known service with predictable output and quality.
+---
 
-4. **Exploration of New Angles via NIP-90 (Marketplace for Additional Perspectives):**
-   After reviewing the results, Alice decides she wants a more experimental approach—maybe a provider that can categorize the feedback by department or topic, something neither of her known MCP servers offers. Instead of guessing who can provide it, she broadcasts a job request using NIP-90.
+## When to Use MCP vs. NIP-90
 
-   With NIP-90, multiple providers from the open marketplace see the job request and submit their proposals. Some might offer advanced clustering of comments, others might visualize sentiment trends. Alice can review several returned results and pick the best one. NIP-90 is ideal here because Alice is exploring new capabilities without a known provider. It’s a one-off, open “call for proposals” rather than a stable, known relationship.
+- **MCP:**
+  Perfect for stable, ongoing relationships with known servers. If you already trust a provider, MCP ensures a smooth, session-based interaction, direct feature negotiation, and immediate payment upon receiving results.
 
-### Summary
+- **NIP-90:**
+  Ideal for exploring new capabilities or getting competitive bids when you don’t have a trusted go-to provider. It’s a public marketplace approach—post a request, review multiple responses, pick the winner, and pay them.
 
-- **Use MCP:**
-  When you know the service you want, trust its quality, and want a stable, direct interaction. MCP helps you integrate that service’s capabilities seamlessly into your workflow, with clear negotiation of features and direct payment for value received.
+Combining both, you rely on MCP for core, trusted services while occasionally tapping into NIP-90’s open marketplace for fresh perspectives or specialized tasks.
 
-- **Use NIP-90:**
-  When you’re looking to experiment, discover new providers, or gather multiple competing solutions to a problem. NIP-90 creates a marketplace scenario, letting multiple providers offer their results so you can pick the one that best meets your needs.
+---
 
-Combining both approaches, Onyx empowers users to rely on known, trusted MCP services for their core tasks while occasionally tapping into NIP-90’s open marketplace for innovation and fresh perspectives.
+## Clarifying Payment Flows in MCP and NIP-90
 
-### Clarifying Payment Flows for MCP vs. NIP-90
+**MCP Payments:**
+MCP doesn’t define how you must pay, just that you can. Typically, the server returns a Lightning invoice alongside the requested output. Onyx then pays it automatically, respecting the user’s budgets. This is a direct, trust-based transaction between host and server.
 
-It’s true that both MCP and NIP-90 scenarios involve compensating service providers, and payment via Bitcoin’s Lightning Network can integrate seamlessly into either approach. The difference isn’t that NIP-90 is required for payment—it’s that NIP-90 provides a structured marketplace framework where requests and payment suggestions are embedded in public, discoverable events. MCP, on the other hand, focuses on direct, session-based capability negotiation and tool usage without mandating how payment is handled.
+**NIP-90 Payments:**
+NIP-90 integrates payment suggestions directly into public events. Providers responding to a job request include an amount or invoice. You pick the best result and pay that provider’s invoice. It’s still Lightning-based, but now tied to a competitive, open marketplace flow.
 
-**Key Points:**
+In both cases, Onyx uses the same underlying Lightning payment logic. The difference is that MCP is a direct relationship (you ask a known provider and pay them), while NIP-90 is about public competition and picking a winner.
 
-1. **Paying MCP Servers Directly:**
-   MCP servers can present their own payment requirements (such as providing a Lightning invoice) as part of their response when fulfilling a request. For instance, after transcribing audio or providing a summary, the MCP server can return:
-   - The requested data (transcript, summary, analysis).
-   - A Lightning invoice (e.g., a `bolt11` string) for the service rendered.
-
-   Onyx, the host application, can then automatically pay the invoice from the user’s allocated budget. This payment step doesn’t depend on NIP-90—it’s a separate concern. The Onyx client includes built-in logic to handle instant micropayments directly to the MCP server based on user-defined rules.
-
-2. **NIP-90 as a Marketplace Layer:**
-   NIP-90 events combine job requests, responses, and payment hints directly on the Nostr network. This is beneficial when:
-   - You’re not dealing with a known MCP server you trust.
-   - You want multiple providers to respond, letting you choose the best result.
-   - You value the open, competitive environment where providers bid and respond publicly.
-
-   In such cases, NIP-90 includes standardized tags (like `amount` or a `bolt11` invoice) to streamline the payment process. The Onyx client sees these tags when providers respond, chooses the best result, and pays the corresponding invoice. Here, payment is part of a public, competitive workflow.
-
-3. **Integration Flexibility:**
-   You don’t have to choose either MCP or NIP-90 strictly for payment. Payment in both scenarios uses the same underlying Lightning mechanism within Onyx:
-   - **MCP scenario:** The server you connected to and trust sends you an invoice directly after delivering its result. You pay it immediately, no public bidding or multiple responses required.
-   - **NIP-90 scenario:** You broadcast a job request to a public marketplace and get multiple results. You pick the best one and pay that provider’s invoice. NIP-90 makes it natural to handle payments this way because the protocol defines how to represent job requests, results, and payment expectations in a single open forum.
-
-**In Summary:**
-MCP doesn’t prevent you from paying providers. It simply focuses on a direct, negotiated relationship between a client (Onyx) and a known server. You can still receive and pay invoices as part of that interaction. NIP-90 formalizes a marketplace approach, making job requests public and letting multiple providers compete, with payment integrated into the public event structure. Both approaches rely on Onyx’s built-in Lightning integration to ensure that payment is instant, effortless, and user-controlled.
+---
 
 ## Conclusion
 
-The combination of MCP, NIP-89, NIP-90, and Bitcoin Lightning micropayments lays a robust foundation for an open AI ecosystem. By building on open protocols, OpenAgents creates a future where the best AI services are just a discovery query away, users remain in control of their data and budgets, and providers are fairly and instantly compensated for their contributions.
+By leveraging MCP, NIP-89, NIP-90, and Bitcoin Lightning micropayments, OpenAgents envisions an open, user-driven AI ecosystem that:
+
+- Empowers users to choose providers and control their data.
+- Encourages healthy competition and continuous improvement.
+- Supports flexible integration of known, trusted services alongside open-market exploration.
+- Aligns costs directly with delivered value, ensuring fairness and sustainability.
+
+This approach respects user privacy and autonomy, discourages monopolies, and nurtures a vibrant environment for AI innovation and growth.
