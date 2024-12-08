@@ -168,15 +168,36 @@ Combining both, you rely on MCP for core, trusted services while occasionally ta
 
 ---
 
-## Clarifying Payment Flows in MCP and NIP-90
+## Clarifying Payment Flows in MCP and Integrating NIP-90
 
-**MCP Payments:**
-MCP doesn’t define how you must pay, just that you can. Typically, the server returns a Lightning invoice alongside the requested output. Onyx then pays it automatically, respecting the user’s budgets. This is a direct, trust-based transaction between host and server.
+MCP itself does not specify a payment model. It focuses on capability negotiation, tool execution, and resource management, leaving economic arrangements outside its core specification. However, the OpenAgents ecosystem can incorporate payment logic by drawing on concepts from NIP-90 or other external mechanisms.
 
-**NIP-90 Payments:**
-NIP-90 integrates payment suggestions directly into public events. Providers responding to a job request include an amount or invoice. You pick the best result and pay that provider’s invoice. It’s still Lightning-based, but now tied to a competitive, open marketplace flow.
+**How We Add Payments to MCP Interactions:**
 
-In both cases, Onyx uses the same underlying Lightning payment logic. The difference is that MCP is a direct relationship (you ask a known provider and pay them), while NIP-90 is about public competition and picking a winner.
+- **Inspiration from NIP-90:**
+  NIP-90 defines how job requests, responses, and payment expectations are communicated on the Nostr network. Although MCP doesn’t inherently deal with payments, Onyx can borrow these ideas:
+  - After an MCP server completes a requested action (e.g., transcription or summarization), it can provide a payment request (like a Lightning invoice) in a structured, mutually understood format.
+  - Onyx can then pay this invoice, ensuring a fair exchange of value.
+  While this isn’t explicitly detailed in the MCP spec, it’s a logical extension: the MCP session includes the technical work (transcription, summarization), and payment is an additional layer, informed by NIP-90’s approach.
+
+- **Establishing a Payment Protocol “Adapter”:**
+  Consider a payment adapter that Onyx uses whenever it receives a result from an MCP server. This adapter:
+  - Checks if the server has included a payment request.
+  - References NIP-90’s standardized tags or formats for amount and invoice.
+  - Settles the invoice via Lightning.
+  By doing this, Onyx effectively merges MCP’s direct capability negotiation with NIP-90’s clear payment signaling model.
+
+**NIP-90 Still Shines for Marketplace Scenarios:**
+
+- When dealing with the open marketplace model—where multiple providers might respond to a single job request—NIP-90’s payment guidance is particularly useful. The user broadcasts a job, providers respond with data and an invoice, and the user picks and pays the preferred result.
+
+**MCP plus Payment Integration = Flexible and Fair:**
+
+- MCP handles the technical interaction (tool calls, resource access) between a known server and Onyx.
+- Payment logic, inspired by NIP-90’s event structure, can be overlaid on top of MCP sessions. Each time a server delivers a requested result, it includes a payment request. Onyx, following user-defined budgets, pays that invoice through Lightning.
+- This hybrid approach keeps MCP’s protocol simple and focused on data exchange, while allowing payment workflows to emerge based on community standards like NIP-90.
+
+In summary, MCP doesn’t define payments, but we can integrate payment logic by adapting NIP-90’s structures and conventions. This ensures that even in a stable MCP relationship, value exchange is just as seamless and user-friendly as the underlying AI capabilities.
 
 ---
 
