@@ -4,6 +4,13 @@ OpenAgents is an marketplace for AI agents built on open protocols.
 
 Our flagship product is our mobile app, [Onyx](https://github.com/OpenAgentsInc/onyx).
 
+This repo contains updated docs and specifications.
+
+## Further Reading
+
+- [Vision](./docs/vision.md)
+- [Open Protocols and Ecosystem Overview](./docs/open-protocols.md)
+
 ## Previous work
 
 - OpenAgents v1 (Laravel/Livewire) has moved to the [v1 branch](https://github.com/OpenAgentsInc/openagents/tree/v1).
