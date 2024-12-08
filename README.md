@@ -1,20 +1,14 @@
-# OpenAgents v3
+# OpenAgents
 
-OpenAgents is a platform for building, selling and using AI agents.
+OpenAgents is an marketplace for AI agents built on open protocols.
 
-We are building v3 from scratch here.
-
-## Tech Stack
-
-- Laravel
-- React
-- Inertia
-- Tailwind
+Our flagship product is our mobile app, [Onyx](https://github.com/OpenAgentsInc/onyx).
 
 ## Previous work
 
 - OpenAgents v1 (Laravel/Livewire) has moved to the [v1 branch](https://github.com/OpenAgentsInc/openagents/tree/v1).
 - OpenAgents v2 (NextJS) has its own repo [here](https://github.com/OpenAgentsInc/v2)
+- The most recent main branch has moved to the [v3incomplete branch](https://github.com/OpenAgentsInc/openagents/tree/v3incomplete).
 
 ## Resources
 
@@ -24,7 +18,7 @@ We are building v3 from scratch here.
 
 ## Video series
 
-We've chronicled most of the development of this platform over multiple months and 100+ videos on X.
+We've chronicled most of our development over a year and 140+ videos on X.
 
 See [episode one](https://twitter.com/OpenAgentsInc/status/1721942435125715086) or
 the [full episode list](https://github.com/OpenAgentsInc/openagents/wiki/Video-Series).
