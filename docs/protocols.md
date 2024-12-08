@@ -213,6 +213,35 @@ In other words, MCP is about maintaining steady, known relationships with AI ser
 
 Combining both approaches, Onyx empowers users to rely on known, trusted MCP services for their core tasks while occasionally tapping into NIP-90’s open marketplace for innovation and fresh perspectives.
 
+### Clarifying Payment Flows for MCP vs. NIP-90
+
+It’s true that both MCP and NIP-90 scenarios involve compensating service providers, and payment via Bitcoin’s Lightning Network can integrate seamlessly into either approach. The difference isn’t that NIP-90 is required for payment—it’s that NIP-90 provides a structured marketplace framework where requests and payment suggestions are embedded in public, discoverable events. MCP, on the other hand, focuses on direct, session-based capability negotiation and tool usage without mandating how payment is handled.
+
+**Key Points:**
+
+1. **Paying MCP Servers Directly:**
+   MCP servers can present their own payment requirements (such as providing a Lightning invoice) as part of their response when fulfilling a request. For instance, after transcribing audio or providing a summary, the MCP server can return:
+   - The requested data (transcript, summary, analysis).
+   - A Lightning invoice (e.g., a `bolt11` string) for the service rendered.
+
+   Onyx, the host application, can then automatically pay the invoice from the user’s allocated budget. This payment step doesn’t depend on NIP-90—it’s a separate concern. The Onyx client includes built-in logic to handle instant micropayments directly to the MCP server based on user-defined rules.
+
+2. **NIP-90 as a Marketplace Layer:**
+   NIP-90 events combine job requests, responses, and payment hints directly on the Nostr network. This is beneficial when:
+   - You’re not dealing with a known MCP server you trust.
+   - You want multiple providers to respond, letting you choose the best result.
+   - You value the open, competitive environment where providers bid and respond publicly.
+
+   In such cases, NIP-90 includes standardized tags (like `amount` or a `bolt11` invoice) to streamline the payment process. The Onyx client sees these tags when providers respond, chooses the best result, and pays the corresponding invoice. Here, payment is part of a public, competitive workflow.
+
+3. **Integration Flexibility:**
+   You don’t have to choose either MCP or NIP-90 strictly for payment. Payment in both scenarios uses the same underlying Lightning mechanism within Onyx:
+   - **MCP scenario:** The server you connected to and trust sends you an invoice directly after delivering its result. You pay it immediately, no public bidding or multiple responses required.
+   - **NIP-90 scenario:** You broadcast a job request to a public marketplace and get multiple results. You pick the best one and pay that provider’s invoice. NIP-90 makes it natural to handle payments this way because the protocol defines how to represent job requests, results, and payment expectations in a single open forum.
+
+**In Summary:**
+MCP doesn’t prevent you from paying providers. It simply focuses on a direct, negotiated relationship between a client (Onyx) and a known server. You can still receive and pay invoices as part of that interaction. NIP-90 formalizes a marketplace approach, making job requests public and letting multiple providers compete, with payment integrated into the public event structure. Both approaches rely on Onyx’s built-in Lightning integration to ensure that payment is instant, effortless, and user-controlled.
+
 ## Conclusion
 
 The combination of MCP, NIP-89, NIP-90, and Bitcoin Lightning micropayments lays a robust foundation for an open AI ecosystem. By building on open protocols, OpenAgents creates a future where the best AI services are just a discovery query away, users remain in control of their data and budgets, and providers are fairly and instantly compensated for their contributions.
