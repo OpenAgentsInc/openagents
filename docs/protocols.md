@@ -174,6 +174,45 @@ Traditional payment methods introduce friction: credit cards, subscriptions, and
 
 ---
 
+### Clarifying the Roles of MCP and NIP-90
+
+The Model Context Protocol (MCP) excels when you have known, trusted servers that provide well-defined capabilities—like transcription, summarization, or sentiment analysis—and you want a stable, ongoing connection to these services. MCP is ideal for structured, direct interactions where you negotiate features, exchange data, and receive outputs from a specific provider you already trust or discover through NIP-89.
+
+NIP-90, on the other hand, shines when you want to open a request to a broader marketplace and let multiple providers compete to fulfill it. This protocol is perfect if:
+- You aren’t sure which provider is best.
+- You want the flexibility to choose from a variety of responses.
+- You’re experimenting with new capabilities that you don’t have a trusted server for yet.
+
+In other words, MCP is about maintaining steady, known relationships with AI service providers, while NIP-90 is about creating an open “call for proposals” that anyone can answer, and then letting you pick the best result.
+
+### A Revised Voice-Driven Workflow Demonstrating When to Use MCP vs. NIP-90
+
+**Scenario:** Alice wants her recorded team meeting transcribed, summarized, and analyzed for sentiment. She trusts a few known MCP servers, but she also wants to explore new angles of analysis from a broader marketplace.
+
+1. **Transcription via MCP (Known Need, Trusted Provider):**
+   Alice uses NIP-89 to find a reputable transcription MCP server she’s used before. She requests transcription directly from this server through MCP because she knows its quality. The server returns a transcript promptly, and Onyx pays the invoice. MCP here ensures a smooth, reliable process with a known partner.
+
+2. **Summarization via MCP (Consistent Results from a Known Expert):**
+   The summarized insights about her meeting are important, and Alice trusts a specific MCP server recommended by NIP-89 for summarization tasks. She gets a clean, structured summary from a known, reliable source. The exchange is direct, stable, and predictable—perfect for MCP.
+
+3. **Sentiment Analysis via MCP (Trusted Provider for a Core Service):**
+   Alice also has a go-to sentiment analysis server discovered through NIP-89. She knows it consistently provides accurate tonal breakdowns. Using MCP, she sends the summary (or transcript excerpts) to this server. It responds with a nuanced sentiment profile. Onyx pays the invoice. Again, MCP is the natural choice for a known service with predictable output and quality.
+
+4. **Exploration of New Angles via NIP-90 (Marketplace for Additional Perspectives):**
+   After reviewing the results, Alice decides she wants a more experimental approach—maybe a provider that can categorize the feedback by department or topic, something neither of her known MCP servers offers. Instead of guessing who can provide it, she broadcasts a job request using NIP-90.
+
+   With NIP-90, multiple providers from the open marketplace see the job request and submit their proposals. Some might offer advanced clustering of comments, others might visualize sentiment trends. Alice can review several returned results and pick the best one. NIP-90 is ideal here because Alice is exploring new capabilities without a known provider. It’s a one-off, open “call for proposals” rather than a stable, known relationship.
+
+### Summary
+
+- **Use MCP:**
+  When you know the service you want, trust its quality, and want a stable, direct interaction. MCP helps you integrate that service’s capabilities seamlessly into your workflow, with clear negotiation of features and direct payment for value received.
+
+- **Use NIP-90:**
+  When you’re looking to experiment, discover new providers, or gather multiple competing solutions to a problem. NIP-90 creates a marketplace scenario, letting multiple providers offer their results so you can pick the one that best meets your needs.
+
+Combining both approaches, Onyx empowers users to rely on known, trusted MCP services for their core tasks while occasionally tapping into NIP-90’s open marketplace for innovation and fresh perspectives.
+
 ## Conclusion
 
 The combination of MCP, NIP-89, NIP-90, and Bitcoin Lightning micropayments lays a robust foundation for an open AI ecosystem. By building on open protocols, OpenAgents creates a future where the best AI services are just a discovery query away, users remain in control of their data and budgets, and providers are fairly and instantly compensated for their contributions.
