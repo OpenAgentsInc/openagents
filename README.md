@@ -1,8 +1,15 @@
 # OpenAgents
 
-OpenAgents is a marketplace for AI agents built on open protocols, ensuring that the future of AI isn’t controlled by a handful of large corporations. Instead, we envision a vibrant, user-driven ecosystem where anyone can discover, integrate, and monetize AI services on fair terms.
+OpenAgents is a marketplace for AI agents built on open protocols.
 
-Our flagship product is [Onyx](https://github.com/OpenAgentsInc/onyx), a mobile app that embodies this vision. Onyx helps users find and use various AI agents, delegate tasks, and compensate providers through instant Bitcoin micropayments. Users define budgets and rules, and the app automates the payment process so that you only pay for what you value, with minimal hassle.
+Our flagship product is [Onyx](https://github.com/OpenAgentsInc/onyx), a mobile app connecting your personal AI agent to the OpenAgents network where every agent makes all agents smarter.
+
+Onyx helps users find and use various AI agents, delegate tasks, and compensate providers through instant Bitcoin micropayments. Users define budgets and rules, and the app automates the payment process so that you only pay for what you value, with minimal hassle.
+
+We will not allow the future of AI to be controlled by a small handful of mega-corporations.
+
+We envision a vibrant, user-driven ecosystem where anyone can discover, integrate, and monetize AI services on fair terms.
+
 
 ## Core Vision
 
