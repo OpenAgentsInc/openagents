@@ -25,6 +25,8 @@ We envision a vibrant, user-driven ecosystem where anyone can discover, integrat
 - **NIP-90 (Data Vending Machines)**: Creates a competitive marketplace where multiple providers can bid on requests, elevating quality and efficiency.
 - **NIP-57 (Integrated Micropayments)**: Allows for direct, low-friction compensation over Bitcoin’s Lightning Network. Payments flow as tasks complete, guided by user-set budgets.
 
+Read more about [protocols in OpenAgents](docs/protocols.md).
+
 ## What This Means for You
 
 - **No Monopolies**: Instead of one big player, there’s a whole world of AI agents and tools at your fingertips.
