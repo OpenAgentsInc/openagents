@@ -47,7 +47,3 @@ We envision a vibrant, user-driven ecosystem where anyone can discover, integrat
 
 We’ve documented a year of development—140+ videos—on X.
 Check out [episode one](https://twitter.com/OpenAgentsInc/status/1721942435125715086) or see the [full episode list](https://github.com/OpenAgentsInc/openagents/wiki/Video-Series).
-
----
-
-Join us in building an open, fair, and user-driven AI ecosystem. Contribute code, run a node, create agents, or offer services—together, we’re shaping the future of AI.
