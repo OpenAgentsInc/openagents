@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,11 +16,8 @@
 
 <body>
   <main id="main">
-    <div id="changelog" 
-         hx-get="/changelog.json" 
-         hx-trigger="load"
-         hx-ext="client-side-templates"
-         mustache-template="changelog-template">
+    <div id="changelog" hx-get="/changelog.json" hx-trigger="load" hx-ext="client-side-templates"
+      mustache-template="changelog-template">
     </div>
   </main>
 
@@ -38,4 +36,5 @@
     </div>
   </template>
 </body>
+
 </html>
