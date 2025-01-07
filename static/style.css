@@ -18,6 +18,13 @@ body {
     background-color: #000000;
     color: #ffffff;
     position: fixed;
+    overflow: hidden;
+}
+
+#main {
+    height: 100%;
+    width: 100%;
+    overflow-y: auto;
 }
 
 #bg {
@@ -81,10 +88,6 @@ body {
     margin-bottom: 40px;
 }
 
-/* .card-wrapper:last-child {
-    margin-bottom: 0;
-} */
-
 .card {
     position: relative;
     display: block;
@@ -99,7 +102,6 @@ body {
         inset -1px 0 0 0 var(--theme-text),
         0 1px 0 0 var(--theme-text);
     display: block;
-    /* padding: calc((var(--font-size) * 0.5) * var(--theme-line-height-base)) 2ch calc(var(--font-size) * var(--theme-line-height-base)) 2ch; */
     padding: 16px 36px;
     overflow-x: auto;
     overflow-y: hidden;
