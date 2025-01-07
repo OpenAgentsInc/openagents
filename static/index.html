@@ -6,8 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="changelog.css" />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
   <title>OpenAgents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Commissioner:wght@100..900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/htmx.org@1.9.6"></script>
   <script src="https://unpkg.com/htmx.org/dist/ext/client-side-templates.js"></script>
   <script src="https://unpkg.com/mustache@latest"></script>
@@ -25,7 +27,7 @@
     <div class="changelog">
       {{#changes}}
       <div class="changelog-entry">
-        <div class="changelog-date">{{date}} - {{version}}</div>
+        <div class="changelog-date">{{version}} - {{date}}</div>
         <ul>
           {{#changes}}
           <li>{{.}}</li>
