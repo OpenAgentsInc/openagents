@@ -13,6 +13,5 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
                 .use_hidden_files()
                 .prefer_utf8(true)
                 .show_files_listing()
-                .default_handler(fs::NamedFile::open)
         );
 }
