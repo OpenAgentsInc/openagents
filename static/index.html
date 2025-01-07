@@ -1,26 +1,35 @@
-<script src="https://unpkg.com/htmx.org@1.9.6"></script>
-<script src="https://unpkg.com/htmx.org/dist/ext/client-side-templates.js"></script>
-<script src="https://unpkg.com/mustache@latest"></script>
-<script src="/dist/nostr-sub.js"></script>
-<script>
-  htmx.on('htmx:nostr-sub-event', console.log)
-</script>
+<!DOCTYPE html>
+<html>
 
-<form
-  hx-trigger="submit"
-  hx-ext="nostr-sub, client-side-templates"
-  mustache-template="event"
-  nostr-filter='{"kinds":[0]}'
->
-  <input name="author" />
-  <button>ok</button>
-</form>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <title>OpenAgents</title>
+  <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+  <script src="https://unpkg.com/htmx.org/dist/ext/client-side-templates.js"></script>
+  <script src="https://unpkg.com/mustache@latest"></script>
+  <script src="/dist/nostr-sub.js"></script>
+  <script>
+    htmx.on('htmx:nostr-sub-event', console.log)
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.145.0/three.min.js"></script>
+</head>
 
-<main id="main"></main>
+<body>
+  <form hx-trigger="submit" hx-ext="nostr-sub, client-side-templates" mustache-template="event"
+    nostr-filter='{"kinds":[0]}'>
+    <input name="author" placeholder="author pubkey" />
+    <button>nostr test</button>
+  </form>
 
-<template id="event">
-  <div id="main" hx-swap-oob="afterbegin">
-    at <em>{{created_at}}</em> <b>{{pubkey}}</b> said:
-    <p>{{content}}</p>
-  </div>
-</template>
+  <main id="main"></main>
+
+  <template id="event">
+    <div id="main" hx-swap-oob="afterbegin">
+      at <em>{{created_at}}</em> <b>{{pubkey}}</b> said:
+      <p>{{content}}</p>
+    </div>
+  </template>
+</body>
