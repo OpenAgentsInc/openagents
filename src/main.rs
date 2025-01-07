@@ -12,7 +12,10 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     env_logger::init();
 
-    info!("Starting server...");
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    
+    info!("Starting server on {}", addr);
     
     HttpServer::new(|| {
         App::new()
@@ -31,7 +34,7 @@ async fn main() -> std::io::Result<()> {
             )
             .configure(server::config::configure_app)
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(&addr)?
     .run()
     .await
 }
