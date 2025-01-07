@@ -11,6 +11,19 @@
   box-sizing: border-box;
 }
 
+.changelog {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 450px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border-left: 1px solid #333;
+  box-sizing: border-box;
+}
+
 .videos-title {
   color: #fff;
   font-size: 1.4em;
@@ -27,6 +40,8 @@
   background: rgba(0, 0, 0, 0.5);
   cursor: pointer;
   transition: transform 0.2s ease;
+  display: block;
+  text-decoration: none;
 }
 
 .video-entry:hover {
@@ -59,12 +74,12 @@
     height: auto;
     border: none;
   }
-
+  
   #main {
     width: 100%;
     height: auto;
   }
-
+  
   body {
     position: static;
     overflow: auto;
