@@ -13,8 +13,8 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
                 .index_file("index.html")
                 .use_hidden_files()
                 .prefer_utf8(true)
-                .content_type_fn(|path| {
-                    from_path(path).first_or_octet_stream()
+                .mime_override(|path| {
+                    Some(from_path(path).first_or_octet_stream())
                 })
         );
 }
