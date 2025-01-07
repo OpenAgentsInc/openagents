@@ -15,6 +15,7 @@
   <script src="https://unpkg.com/htmx.org/dist/ext/client-side-templates.js"></script>
   <script src="https://unpkg.com/mustache@latest"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.145.0/three.min.js"></script>
+  <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </head>
 
 <body>
@@ -73,11 +74,17 @@
     <div class="videos">
       <div class="videos-title">OpenAgents - Video Series</div>
       {{#videos}}
-      <a href="{{url}}" target="_blank" class="video-entry">
-        <img src="{{thumbnail}}" alt="{{title}}" class="video-thumbnail">
+      <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
+        {{#tweetId}}
+        <blockquote class="twitter-tweet" data-conversation="none" data-theme="dark">
+          <a href="{{url}}"></a>
+        </blockquote>
+        {{/tweetId}}
+        {{^tweetId}}
         <div class="video-title">{{title}}</div>
         <div class="video-date">{{date}}</div>
-      </a>
+        {{/tweetId}}
+      </div>
       {{/videos}}
     </div>
   </template>
