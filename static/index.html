@@ -72,7 +72,7 @@
 
   <template id="videos-template">
     <div class="videos">
-      <div class="videos-title">OpenAgents - Video Series</div>
+      <div class="videos-title">OpenAgents Video Series</div>
       {{#videos}}
       <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
         <div class="video-title">{{title}}</div>
@@ -80,7 +80,7 @@
         <div class="video-text">{{text}}</div>
         {{#tweetId}}
         <blockquote class="twitter-tweet" data-conversation="none" data-media-max-width="560" data-theme="dark">
-          <p lang="en" dir="ltr">Loading tweet...</p>
+          <p lang="en" dir="ltr">Loading X post...</p>
           <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}?ref_src=twsrc%5Etfw"></a>
         </blockquote>
         {{/tweetId}}
@@ -96,7 +96,7 @@
   <script src="js/main.js"></script>
   <script>
     // Reinitialize Twitter widgets after template rendering
-    document.body.addEventListener('htmx:afterSwap', function(evt) {
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
       if (window.twttr && window.twttr.widgets) {
         window.twttr.widgets.load();
       }
