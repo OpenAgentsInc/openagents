@@ -15,6 +15,7 @@ body {
     height: 100%;
     width: 100%;
     font-family: 'Commissioner', sans-serif;
+    font-size: 14px;
     background-color: #000000;
     color: #ffffff;
     position: fixed;
