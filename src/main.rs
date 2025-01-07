@@ -1,3 +1,5 @@
+mod server;
+
 use actix_web::{App, HttpServer};
 use actix_cors::Cors;
 use actix_web::middleware::{Logger, DefaultHeaders};
@@ -27,7 +29,7 @@ async fn main() -> std::io::Result<()> {
                     .add(("X-Frame-Options", "DENY"))
                     .add(("X-XSS-Protection", "1; mode=block"))
             )
-            .configure(crate::server::config::configure_app)
+            .configure(server::config::configure_app)
     })
     .bind(("127.0.0.1", 8080))?
     .run()
