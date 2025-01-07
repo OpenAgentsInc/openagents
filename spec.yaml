@@ -1,0 +1,17 @@
+name: openagents
+region: nyc3
+services:
+  - name: openagents
+    dockerfile_path: Dockerfile
+    source_dir: .
+    github:
+      branch: setup
+      deploy_on_push: true
+      repo: OpenAgentsInc/openagents
+    health_check:
+      http_path: /health
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+      - path: /
