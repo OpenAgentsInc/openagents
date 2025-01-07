@@ -72,7 +72,7 @@
 
   <template id="videos-template">
     <div class="videos">
-      <div class="videos-title">OpenAgents - Video Series</div>
+      <div class="videos-title">Recent videos</div>
       {{#videos}}
       <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
         {{#tweetId}}
@@ -97,7 +97,7 @@
   <script src="js/main.js"></script>
   <script>
     // Reinitialize Twitter widgets after template rendering
-    document.body.addEventListener('htmx:afterSwap', function(evt) {
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
       if (window.twttr && window.twttr.widgets) {
         window.twttr.widgets.load();
       }

@@ -1,31 +1,29 @@
 {
   "videos": [
     {
-      "title": "Onyx Beta Launch",
-      "url": "https://twitter.com/OpenAgentsInc/status/1870030269916340610",
-      "tweetId": "1870030269916340610",
-      "date": "March 20, 2024"
+      "title": "High-Velocity Bitcoin",
+      "url": "https://x.com/OpenAgentsInc/status/1874317831497462144",
+      "thumbnail": "https://placehold.co/600x400/222/444?text=Beta+Launch",
+      "tweetId": "1874317831497462144",
+      "date": "2024-12-31"
     },
     {
-      "title": "Code by Voice Demo",
-      "url": "https://twitter.com/OpenAgentsInc/status/1872388364013379949",
+      "title": "Code by Voice",
+      "url": "https://x.com/OpenAgentsInc/status/1872388364013379949",
       "tweetId": "1872388364013379949",
-      "date": "March 26, 2024"
+      "date": "2024-12-26"
     },
     {
-      "title": "AI Agent Automation",
-      "url": "#",
-      "date": "Coming Soon"
+      "title": "Neutrality Wins",
+      "url": "https://x.com/OpenAgentsInc/status/1870373254197613052",
+      "tweetId": "1870373254197613052",
+      "date": "2014-12-21"
     },
     {
-      "title": "Multi-Modal Interactions",
-      "url": "#",
-      "date": "Coming Soon"
-    },
-    {
-      "title": "Advanced Features Preview",
-      "url": "#",
-      "date": "Coming Soon"
+      "title": "Onyx Beta Launch",
+      "url": "https://x.com/OpenAgentsInc/status/1870030269916340610",
+      "tweetId": "1870030269916340610",
+      "date": "2024-12-20"
     }
   ]
 }
