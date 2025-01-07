@@ -1,0 +1,61 @@
+{
+  "changes": [
+    {
+      "date": "2025-01-03",
+      "version": "v0.1.0",
+      "changes": [
+        "Add basic bitcoin Lightning wallet",
+        "Note: Treat as experimental. Please do not use with more than ~$1 of bitcoin!"
+      ]
+    },
+    {
+      "date": "2024-12-29",
+      "version": "v0.0.6",
+      "changes": [
+        "New chat/recording UI",
+        "Support multiple GitHub tokens"
+      ]
+    },
+    {
+      "date": "2024-12-27",
+      "version": "v0.0.5",
+      "changes": [
+        "Chats are saved to device"
+      ]
+    },
+    {
+      "date": "2024-12-26",
+      "version": "v0.0.4",
+      "changes": [
+        "Added coder tools via GitHub API",
+        "Switched model to Gemini 1.5 Pro"
+      ]
+    },
+    {
+      "date": "2024-12-23",
+      "version": "v0.0.3",
+      "changes": [
+        "Revamped UI",
+        "Replaces local models with Llama 3.1 8B via Groq API (will soon have both)",
+        "Send voice chat to Onyx via Whisper (Groq API)",
+        "Adds over-the-air updates"
+      ]
+    },
+    {
+      "date": "2024-12-21",
+      "version": "v0.0.2",
+      "changes": [
+        "Added Llama 3.2 3B",
+        "Added model switcher",
+        "Improved model loading & error handling"
+      ]
+    },
+    {
+      "date": "2024-12-20",
+      "version": "v0.0.1",
+      "changes": [
+        "Added chat with Llama 3.2 1B"
+      ]
+    }
+  ]
+}
