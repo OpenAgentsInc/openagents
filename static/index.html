@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="changelog.css" />
+  <link rel="stylesheet" href="videos.css" />
   <title>OpenAgents</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,6 +22,9 @@
   <main id="main">
     <div id="changelog" hx-get="/changelog.json" hx-trigger="load" hx-ext="client-side-templates"
       mustache-template="changelog-template">
+    </div>
+    <div id="videos" hx-get="/videos.json" hx-trigger="load" hx-ext="client-side-templates"
+      mustache-template="videos-template">
     </div>
   </main>
 
@@ -62,6 +66,19 @@
         </ul>
       </div>
       {{/changes}}
+    </div>
+  </template>
+
+  <template id="videos-template">
+    <div class="videos">
+      <div class="videos-title">OpenAgents - Video Series</div>
+      {{#videos}}
+      <a href="{{url}}" target="_blank" class="video-entry">
+        <img src="{{thumbnail}}" alt="{{title}}" class="video-thumbnail">
+        <div class="video-title">{{title}}</div>
+        <div class="video-date">{{date}}</div>
+      </a>
+      {{/videos}}
     </div>
   </template>
 
