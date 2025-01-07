@@ -72,18 +72,16 @@
 
   <template id="videos-template">
     <div class="videos">
-      <div class="videos-title">Recent videos</div>
+      <div class="videos-title">OpenAgents - Video Series</div>
       {{#videos}}
       <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
-        {{#tweetId}}
-        <blockquote class="twitter-tweet" data-conversation="none" data-theme="dark">
-          <p lang="en" dir="ltr">Loading tweet...</p>
-          <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}"></a>
-        </blockquote>
-        {{/tweetId}}
-        {{^tweetId}}
         <div class="video-title">{{title}}</div>
         <div class="video-date">{{date}}</div>
+        {{#tweetId}}
+        <blockquote class="twitter-tweet" data-conversation="none" data-media-max-width="560" data-theme="dark">
+          <p lang="en" dir="ltr">Loading tweet...</p>
+          <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}?ref_src=twsrc%5Etfw"></a>
+        </blockquote>
         {{/tweetId}}
       </div>
       {{/videos}}
@@ -97,7 +95,7 @@
   <script src="js/main.js"></script>
   <script>
     // Reinitialize Twitter widgets after template rendering
-    document.body.addEventListener('htmx:afterSwap', function (evt) {
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
       if (window.twttr && window.twttr.widgets) {
         window.twttr.widgets.load();
       }
