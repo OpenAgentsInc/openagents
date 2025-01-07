@@ -41,3 +41,36 @@
   color: #fff;
   line-height: 1.4;
 }
+
+.changelog a {
+  color: #fff;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  transition: opacity 0.2s ease;
+}
+
+.changelog a:visited {
+  color: #ccc;
+}
+
+.changelog a:hover {
+  opacity: 0.8;
+}
+
+.intro-card {
+  margin-bottom: 20px;
+  padding: 20px;
+  border: 1px solid #222;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.download-links {
+  font-size: 1.2em;
+  margin: 15px 0;
+}
+
+.download-links a {
+  color: #fff;
+  font-weight: 500;
+}
