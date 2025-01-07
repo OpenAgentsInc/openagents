@@ -24,4 +24,8 @@ embedding.txt
 /storage/benchmarks/
 localimages
 .DS_Store
+.env
 .env.dusk.local
+/target
+.idea
+tags
