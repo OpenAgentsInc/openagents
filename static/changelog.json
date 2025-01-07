@@ -1,0 +1,9 @@
+{
+  "changes": [
+    {
+      "date": "2023-11-14",
+      "title": "Initial Release",
+      "description": "First public release of OpenAgents"
+    }
+  ]
+}
