@@ -1,8 +1,9 @@
 # Build stage for nostr-htmx frontend
 FROM node:18 as frontend-builder
 WORKDIR /app
-# Install just command runner
+# Install just command runner and esbuild
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+RUN npm install -g esbuild
 # Copy frontend files
 COPY static/ .
 # Install dependencies and build
