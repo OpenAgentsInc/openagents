@@ -48,14 +48,6 @@
   transform: translateY(-2px);
 }
 
-.video-thumbnail {
-  width: 100%;
-  height: 200px;
-  object-fit: cover;
-  border-radius: 2px;
-  margin-bottom: 10px;
-}
-
 .video-title {
   color: #fff;
   font-size: 1.1em;
@@ -65,6 +57,19 @@
 .video-date {
   color: #999;
   font-size: 0.9em;
+}
+
+.twitter-tweet {
+  margin: 0 auto !important;
+}
+
+.video-entry.coming-soon {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.video-entry.coming-soon:hover {
+  transform: none;
 }
 
 @media (max-width: 1200px) {
