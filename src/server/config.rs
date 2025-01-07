@@ -1,23 +1,26 @@
 use actix_files as fs;
 use actix_web::web;
-use actix_web::middleware::DefaultHeaders;
+use actix_web::http::header::ContentType;
+use actix_web::{HttpResponse, dev::ServiceResponse};
+use actix_service::ServiceFactory;
 
 use super::routes;
 
 pub fn configure_app(cfg: &mut web::ServiceConfig) {
     // Configure routes
     cfg.service(routes::health_check)
-        // Add MIME type headers for JavaScript files
+        // Serve static files from the static directory
         .service(
             fs::Files::new("/", "./static")
                 .index_file("index.html")
                 .use_hidden_files()
                 .prefer_utf8(true)
-                .default_handler(|req: actix_files::NamedFile| {
-                    if req.path().ends_with(".js") {
-                        req.set_content_type("application/javascript")
+                .mime_override(|path| {
+                    if path.ends_with(".js") {
+                        Some(mime::APPLICATION_JAVASCRIPT)
+                    } else {
+                        None
                     }
-                    Ok(req)
                 })
         );
 }
