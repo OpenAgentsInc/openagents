@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="changelog.css" />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
   <title>OpenAgents</title>
   <script src="https://unpkg.com/htmx.org@1.9.6"></script>
@@ -14,11 +16,8 @@
 
 <body>
   <main id="main">
-    <div id="changelog" 
-         hx-get="/changelog.json" 
-         hx-trigger="load"
-         hx-ext="client-side-templates"
-         mustache-template="changelog-template">
+    <div id="changelog" hx-get="/changelog.json" hx-trigger="load" hx-ext="client-side-templates"
+      mustache-template="changelog-template">
     </div>
   </main>
 
@@ -34,4 +33,5 @@
     </div>
   </template>
 </body>
+
 </html>
