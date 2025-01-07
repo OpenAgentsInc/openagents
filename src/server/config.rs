@@ -1,6 +1,6 @@
 use actix_files as fs;
 use actix_web::web;
-use mime_guess::from_path;
+use std::path::Path;
 
 use super::routes;
 
@@ -14,7 +14,12 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
                 .use_hidden_files()
                 .prefer_utf8(true)
                 .mime_override(|path| {
-                    Some(from_path(path).first_or_octet_stream())
+                    let path_str = path.to_str().unwrap_or("");
+                    if path_str.ends_with(".js") {
+                        Some(mime::APPLICATION_JAVASCRIPT)
+                    } else {
+                        None
+                    }
                 })
         );
 }
