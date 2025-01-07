@@ -4,25 +4,29 @@
       "title": "High-Velocity Bitcoin",
       "url": "https://x.com/OpenAgentsInc/status/1874317831497462144",
       "tweetId": "1874317831497462144",
-      "date": "2024-12-31"
+      "date": "2024-12-31",
+      "text": "Onyx is now a high-velocity Bitcoin development environment. You can now use Onyx to write Bitcoin scripts and test them locally."
     },
     {
       "title": "Code by Voice",
       "url": "https://x.com/OpenAgentsInc/status/1872388364013379949",
       "tweetId": "1872388364013379949",
-      "date": "2024-12-26"
+      "date": "2024-12-26",
+      "text": "Voice coding is now available in Onyx. You can write code by speaking to your phone, and Onyx will convert your speech to code in real-time."
     },
     {
       "title": "Neutrality Wins",
       "url": "https://x.com/OpenAgentsInc/status/1870373254197613052",
       "tweetId": "1870373254197613052",
-      "date": "2014-12-21"
+      "date": "2014-12-21",
+      "text": "We're building Onyx to be a neutral platform for AI development. No politics, no censorship, just pure technological advancement."
     },
     {
       "title": "Onyx Beta Launch",
       "url": "https://x.com/OpenAgentsInc/status/1870030269916340610",
       "tweetId": "1870030269916340610",
-      "date": "2024-12-20"
+      "date": "2024-12-20",
+      "text": "We launch Onyx v0.0.1, our first beta build for Android and iOS! This build includes a local version of Llama 3.2 1B that runs privately on your phone."
     }
   ]
 }
