@@ -77,7 +77,8 @@
       <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
         {{#tweetId}}
         <blockquote class="twitter-tweet" data-conversation="none" data-theme="dark">
-          <a href="{{url}}"></a>
+          <p lang="en" dir="ltr">Loading tweet...</p>
+          <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}"></a>
         </blockquote>
         {{/tweetId}}
         {{^tweetId}}
@@ -94,6 +95,14 @@
   <script src="js/ViewSystem.js"></script>
   <script src="js/SceneSystem.js"></script>
   <script src="js/main.js"></script>
+  <script>
+    // Reinitialize Twitter widgets after template rendering
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      if (window.twttr && window.twttr.widgets) {
+        window.twttr.widgets.load();
+      }
+    });
+  </script>
 </body>
 
 </html>
