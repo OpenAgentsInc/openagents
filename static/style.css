@@ -14,7 +14,7 @@ body {
     padding: 0;
     height: 100%;
     width: 100%;
-    font-family: "Commissioner", sans-serif;
+    font-family: 'JetBrains Mono', monospace;
     background-color: #000000;
     color: #ffffff;
     position: fixed;
@@ -23,7 +23,7 @@ body {
 
 #main {
     height: 100%;
-    width: 100%;
+    width: calc(100% - 300px);
     overflow-y: auto;
 }
 
@@ -51,7 +51,7 @@ body {
     position: fixed;
     top: 0;
     left: 0;
-    right: 0;
+    right: 300px;
     bottom: 0;
     z-index: 1;
     display: flex;
