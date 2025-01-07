@@ -1,0 +1,29 @@
+.changelog {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.changelog-entry {
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.changelog-date {
+  color: #666;
+  font-size: 0.9em;
+  margin-bottom: 5px;
+}
+
+.changelog-title {
+  font-weight: bold;
+  font-size: 1.1em;
+  margin-bottom: 8px;
+}
+
+.changelog-description {
+  color: #333;
+  line-height: 1.4;
+}
