@@ -17,6 +17,7 @@
 </head>
 
 <body>
+  <canvas id="bg"></canvas>
   <main id="main">
     <div id="changelog" hx-get="/changelog.json" hx-trigger="load" hx-ext="client-side-templates"
       mustache-template="changelog-template">
@@ -37,6 +38,12 @@
       {{/changes}}
     </div>
   </template>
+
+  <script src="js/OnyxOrb.js"></script>
+  <script src="js/LightingSystem.js"></script>
+  <script src="js/ViewSystem.js"></script>
+  <script src="js/SceneSystem.js"></script>
+  <script src="js/main.js"></script>
 </body>
 
 </html>
