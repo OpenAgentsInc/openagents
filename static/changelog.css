@@ -1,13 +1,13 @@
 .changelog {
   position: fixed;
   top: 0;
-  left: 0;
+  right: 0;
   width: 450px;
   height: 100%;
   overflow-y: auto;
   padding: 20px;
   background: rgba(0, 0, 0, 0.8);
-  border-right: 1px solid #333;
+  border-left: 1px solid #333;
   box-sizing: border-box;
 }
 
