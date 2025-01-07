@@ -1,20 +1,26 @@
 .changelog {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 20px;
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 300px;
   height: 100%;
   overflow-y: auto;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border-left: 1px solid #333;
+  box-sizing: border-box;
 }
 
 .changelog-entry {
   margin-bottom: 20px;
   padding: 15px;
-  border: 1px solid #1a1a1a;
+  border: 1px solid #333;
   border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .changelog-date {
-  color: #666;
+  color: #999;
   font-size: 0.9em;
   margin-bottom: 5px;
 }
@@ -25,7 +31,13 @@
   margin-bottom: 8px;
 }
 
-.changelog-description {
-  color: #333;
+.changelog ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.changelog li {
+  margin-bottom: 5px;
+  color: #fff;
   line-height: 1.4;
 }
