@@ -1,6 +1,8 @@
 import NDK, { NDKEvent, NDKSubscription, NDKNip07Signer } from '@nostr-dev-kit/ndk'
 import { NostrChatConfig, ChatState, ChannelMetadata, CreateChannelData } from './types'
 import { ChatStorage } from './storage'
+import { ChannelMethods } from './channel-methods'
+import { MessageMethods } from './message-methods'
 
 declare global {
   interface Window {
@@ -13,7 +15,7 @@ declare global {
   }
 }
 
-class NostrChat {
+class NostrChat extends ChannelMethods implements MessageMethods {
   private config: NostrChatConfig
   private state: ChatState
   private storage: ChatStorage
@@ -22,6 +24,7 @@ class NostrChat {
   private api: any
 
   constructor() {
+    super()
     this.config = {
       defaultRelays: [
         'wss://nostr-pub.wellorder.net',
@@ -154,6 +157,37 @@ class NostrChat {
     })
 
     sub.start()
+  }
+
+  private async processElement(element: HTMLElement) {
+    console.log('Processing element:', element)
+    
+    // Channel subscription
+    const channelId = element.getAttribute('nostr-chat-channel')
+    if (channelId) {
+      console.log('Found channel ID:', channelId)
+      await this.subscribeToChannel(channelId, element)
+    }
+
+    // Message posting
+    if (element.getAttribute('nostr-chat-post')) {
+      console.log('Setting up message posting form')
+      if (this.signer) {
+        this.setupMessagePosting(element as HTMLFormElement)
+      } else {
+        element.setAttribute('disabled', 'true')
+        element.setAttribute('title', 'Please install a Nostr extension to send messages')
+      }
+    }
+  }
+
+  private cleanupElement(element: HTMLElement) {
+    const channelId = element.getAttribute('nostr-chat-channel')
+    if (channelId && this.state.subscription) {
+      console.log('Cleaning up subscription for channel:', channelId)
+      this.state.subscription.stop()
+      this.state.subscription = undefined
+    }
   }
 }
 
