@@ -126,13 +126,8 @@
         </div>
     </template>
 
-    <!-- Load NDK and nostr-chat extension -->
-    <script type="module">
-        import ndk from '../ndk.js'
-        import '../dist/nostr/nostr-chat.js'
-
-        // Initialize NDK
-        ndk.connect()
-    </script>
+    <!-- Load bundled scripts -->
+    <script src="../dist/ndk.js"></script>
+    <script src="../dist/nostr/nostr-chat.js"></script>
 </body>
 </html>
