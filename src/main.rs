@@ -12,29 +12,50 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     env_logger::init();
 
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
-    let addr = format!("0.0.0.0:{}", port);
+    let base_port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string()).parse::<u16>().unwrap();
+    let max_retries = 10;
     
-    info!("Starting server on {}", addr);
+    let mut last_error = None;
     
-    HttpServer::new(|| {
-        App::new()
-            .wrap(
-                Cors::default()
-                    .allow_any_origin()
-                    .allow_any_method()
-                    .allow_any_header()
-            )
-            .wrap(Logger::default())
-            .wrap(
-                DefaultHeaders::new()
-                    .add(("X-Content-Type-Options", "nosniff"))
-                    .add(("X-Frame-Options", "DENY"))
-                    .add(("X-XSS-Protection", "1; mode=block"))
-            )
-            .configure(server::config::configure_app)
-    })
-    .bind(&addr)?
-    .run()
-    .await
+    for port in base_port..base_port+max_retries {
+        let addr = format!("0.0.0.0:{}", port);
+        info!("Attempting to start server on {}", addr);
+        
+        match HttpServer::new(|| {
+            App::new()
+                .wrap(
+                    Cors::default()
+                        .allow_any_origin()
+                        .allow_any_method()
+                        .allow_any_header()
+                )
+                .wrap(Logger::default())
+                .wrap(
+                    DefaultHeaders::new()
+                        .add(("X-Content-Type-Options", "nosniff"))
+                        .add(("X-Frame-Options", "DENY"))
+                        .add(("X-XSS-Protection", "1; mode=block"))
+                )
+                .configure(server::config::configure_app)
+        })
+        .bind(&addr)
+        {
+            Ok(server) => {
+                info!("Server successfully bound to {}", addr);
+                return server.run().await;
+            }
+            Err(e) => {
+                info!("Failed to bind to port {}: {}", port, e);
+                last_error = Some(e);
+                continue;
+            }
+        }
+    }
+    
+    Err(last_error.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("Failed to bind to any port in range {}-{}", base_port, base_port+max_retries-1)
+        )
+    }))
 }
