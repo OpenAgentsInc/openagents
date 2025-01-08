@@ -74,3 +74,14 @@
   color: #fff;
   font-weight: 500;
 }
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .changelog {
+    position: relative;
+    width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid #333;
+  }
+}
