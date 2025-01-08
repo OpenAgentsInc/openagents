@@ -12,6 +12,7 @@
     <link rel="canonical" href="https://openagents.com"/>
     <link rel="stylesheet" href="css/new.css"/>
     <link rel="stylesheet" href="css/chat.css"/>
+    <link rel="stylesheet" href="css/changelog.css"/>
     <script src="js/htmx.min.js"></script>
     <script src="js/client-side-templates.js"></script>
     <script src="js/mustache.js"></script>
@@ -21,11 +22,49 @@
     <div style="font-size:1.5em">OpenAgents, Inc.</div>
     <p>Intelligent software to empower humans.</p>
 
+    <div id="changelog" 
+         hx-get="/data/changelog.json" 
+         hx-trigger="load" 
+         hx-ext="client-side-templates"
+         mustache-template="changelog-template">
+    </div>
+
     <!-- Chat will be loaded here -->
     <div id="chat-container"
          hx-get="templates/chat.mustache"
          hx-trigger="load"
          mustache-template="chat"></div>
+
+    <template id="changelog-template">
+        <div class="changelog">
+            <div class="intro-card">
+                <p style="text-align: center; margin-top: 0; font-size: 1.2em;"><strong>Meet Onyx, your new personal AI agent.</strong></p>
+
+                <p style="text-align: center; font-size: 1.2em; margin: 15px 0;">Beta v0.1.0</p>
+
+                <div class="download-links">
+                    <p>Android: <a href="https://github.com/OpenAgentsInc/onyx/releases/download/v0.1.0/Onyx_v0.1.0.apk" download>Download APK</a> | <a href="https://github.com/OpenAgentsInc/onyx/releases/tag/v0.1.0" target="_blank">Release notes</a></p>
+
+                    <p>iOS: <a href="https://testflight.apple.com/join/9WfqDTgH" target="_blank">Download via TestFlight</a></p>
+                </div>
+
+                <p style="font-size: 0.8em; opacity: 0.7;">The most recent iOS build may still be awaiting approval. In the meantime the TestFlight link will give you access to the previous build. TestFlight will automatically download the latest version once it passes review.</p>
+
+                <p>Videos: <a href="https://x.com/OpenAgentsInc/status/1870030269916340610" target="_blank">Onyx Beta Launch</a> | <a href="https://x.com/OpenAgentsInc/status/1872388364013379949" target="_blank">Code by Voice</a></p>
+            </div>
+
+            {{#changes}}
+            <div class="changelog-entry">
+                <div class="changelog-date">{{version}} - {{date}}</div>
+                <ul>
+                    {{#changes}}
+                    <li>{{.}}</li>
+                    {{/changes}}
+                </ul>
+            </div>
+            {{/changes}}
+        </div>
+    </template>
 
     <!-- Load bundled scripts -->
     <script src="dist/ndk.js"></script>
