@@ -11,10 +11,24 @@
     <meta name="format-detection" content="telephone=no">
     <link rel="canonical" href="https://openagents.com"/>
     <link rel="stylesheet" href="new.css"/>
+    <link rel="stylesheet" href="css/chat.css"/>
+    <script src="js/htmx.min.js"></script>
+    <script src="js/client-side-templates.js"></script>
+    <script src="js/mustache.js"></script>
 </head>
 
 <body>
-        <div style="font-size:1.5em">OpenAgents, Inc.</div>
-        <p>Intelligent software to empower humans.</p>
+    <div style="font-size:1.5em">OpenAgents, Inc.</div>
+    <p>Intelligent software to empower humans.</p>
+
+    <!-- Chat will be loaded here -->
+    <div id="chat-container"
+         hx-get="templates/chat.mustache"
+         hx-trigger="load"
+         mustache-template="chat"></div>
+
+    <!-- Load bundled scripts -->
+    <script src="dist/ndk.js"></script>
+    <script src="dist/nostr/nostr-chat.js"></script>
 </body>
 </html>
