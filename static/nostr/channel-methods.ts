@@ -179,6 +179,7 @@ export class ChannelMethods {
 
     this.parent.getState().messages.set(event.id, event)
     const rendered = this.renderMessage(event)
+    if (!rendered) return // Skip if rendering failed
     
     const messagesContainer = container.querySelector('[data-messages]')
     if (messagesContainer) {
@@ -189,10 +190,13 @@ export class ChannelMethods {
     }
   }
 
-  private renderMessage(event: NDKEvent): HTMLElement {
+  private renderMessage(event: NDKEvent): HTMLElement | null {
     console.log('Rendering message:', event)
     const template = this.parent.getTemplates().get(this.parent.getConfig().messageTemplate?.slice(1) || 'message-template')
-    if (!template) throw new Error('Message template not found')
+    if (!template) {
+      console.error('Message template not found')
+      return null
+    }
 
     const clone = template.content.cloneNode(true) as HTMLElement
     const data = {
@@ -204,7 +208,14 @@ export class ChannelMethods {
       formatted_time: new Date(event.created_at * 1000).toLocaleString()
     }
 
-    this.parent.replaceTemplateVariables(clone, data)
-    return clone
+    // Get the first element child from the template
+    const messageElement = clone.firstElementChild as HTMLElement
+    if (!messageElement) {
+      console.error('Template has no element child')
+      return null
+    }
+
+    this.parent.replaceTemplateVariables(messageElement, data)
+    return messageElement
   }
 }
