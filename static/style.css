@@ -24,7 +24,7 @@ body {
 
 #logo-container {
     position: fixed;
-    top: 20px;
+    top: 15px;
     left: 0;
     width: 100%;
     text-align: center;
@@ -33,7 +33,7 @@ body {
 }
 
 #onyx-logo {
-    max-width: 150px;
+    max-width: 200px;
     height: auto;
 }
 
