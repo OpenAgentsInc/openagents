@@ -34,7 +34,15 @@ export class NostrChatBase {
     }
   }
 
-  protected replaceTemplateVariables(element: HTMLElement, data: Record<string, any>) {
+  // Expose state to child classes
+  getSigner() { return this.signer }
+  getState() { return this.state }
+  getConfig() { return this.config }
+  getTemplates() { return this.templates }
+  getStorage() { return this.storage }
+
+  // Utility methods
+  replaceTemplateVariables(element: HTMLElement, data: Record<string, any>) {
     const walker = document.createTreeWalker(
       element,
       NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
@@ -59,11 +67,11 @@ export class NostrChatBase {
     }
   }
 
-  protected dispatchEvent(name: string, detail: any) {
+  dispatchEvent(name: string, detail: any) {
     document.dispatchEvent(new CustomEvent(name, { detail }))
   }
 
-  protected handleError(message: string, error: any) {
+  handleError(message: string, error: any) {
     console.error(message, error)
     this.dispatchEvent('nostr-chat:error', { message, error })
   }
