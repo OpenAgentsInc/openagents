@@ -1,0 +1,54 @@
+.videos {
+  margin: 20px 0;
+  max-width: 800px;
+}
+
+.videos-title {
+  color: #fff;
+  font-size: 1.2em;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.video-entry {
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #222;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  display: block;
+  text-decoration: none;
+}
+
+.video-title {
+  color: #fff;
+  font-size: 1.1em;
+  margin-bottom: 5px;
+}
+
+.video-date {
+  color: #999;
+  font-size: 0.9em;
+  margin-bottom: 12px;
+}
+
+.video-text {
+  color: #bbb;
+  font-size: 0.9em;
+  margin-bottom: 15px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.twitter-tweet {
+  margin: 0 auto !important;
+}
+
+.video-entry.coming-soon {
+  opacity: 0.5;
+}
