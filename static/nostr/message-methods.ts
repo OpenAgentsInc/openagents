@@ -1,14 +1,21 @@
 import { NDKEvent } from '@nostr-dev-kit/ndk'
 import { NostrChatBase } from './base'
 
-export class MessageMethods extends NostrChatBase {
+export class MessageMethods {
+  private parent: NostrChatBase
+
+  constructor(parent: NostrChatBase) {
+    this.parent = parent
+  }
+
   async handleSubmit(form: HTMLFormElement) {
     console.log('Form submitted')
     const content = new FormData(form).get('content') as string
     if (!content?.trim()) return
 
     try {
-      if (!this.signer) {
+      const signer = this.parent.getSigner()
+      if (!signer) {
         throw new Error('No signer available')
       }
 
@@ -18,10 +25,10 @@ export class MessageMethods extends NostrChatBase {
       await window.ndk.publish(event)
       console.log('Message published successfully')
       form.reset()
-      this.dispatchEvent('nostr-chat:message-sent', { event })
+      this.parent.dispatchEvent('nostr-chat:message-sent', { event })
     } catch (error) {
       console.error('Failed to send message:', error)
-      this.handleError('Failed to send message', error)
+      this.parent.handleError('Failed to send message', error)
       // Show error to user
       const errorDiv = form.querySelector('.error-message') || document.createElement('div')
       errorDiv.className = 'error-message'
@@ -31,13 +38,14 @@ export class MessageMethods extends NostrChatBase {
   }
 
   private async createMessageEvent(content: string): Promise<NDKEvent> {
-    if (!this.state.channelId) throw new Error('No channel selected')
+    const channelId = this.parent.getState().channelId
+    if (!channelId) throw new Error('No channel selected')
 
     console.log('Creating message event with content:', content)
     const event = new NDKEvent(window.ndk)
     event.kind = 42
     event.content = content
-    event.tags = [['e', this.state.channelId, '', 'root']]
+    event.tags = [['e', channelId, '', 'root']]
     
     // Ensure the event is properly signed
     await event.sign()
