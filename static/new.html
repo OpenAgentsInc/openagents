@@ -13,9 +13,11 @@
     <link rel="stylesheet" href="css/new.css"/>
     <link rel="stylesheet" href="css/chat.css"/>
     <link rel="stylesheet" href="css/changelog.css"/>
+    <link rel="stylesheet" href="css/videos-new.css"/>
     <script src="js/htmx.min.js"></script>
     <script src="js/client-side-templates.js"></script>
     <script src="js/mustache.js"></script>
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </head>
 
 <body>
@@ -27,6 +29,13 @@
          hx-trigger="load" 
          hx-ext="client-side-templates"
          mustache-template="changelog-template">
+    </div>
+
+    <div id="videos" 
+         hx-get="/data/videos.json" 
+         hx-trigger="load" 
+         hx-ext="client-side-templates"
+         mustache-template="videos-template">
     </div>
 
     <!-- Chat will be loaded here -->
@@ -66,8 +75,35 @@
         </div>
     </template>
 
+    <template id="videos-template">
+        <div class="videos">
+            <div class="videos-title">Recent Videos</div>
+            {{#videos}}
+            <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
+                <div class="video-title">{{title}}</div>
+                <div class="video-date">{{date}}</div>
+                <div class="video-text">{{text}}</div>
+                {{#tweetId}}
+                <blockquote class="twitter-tweet" data-conversation="none" data-media-max-width="560" data-theme="dark">
+                    <p lang="en" dir="ltr">Loading X post...</p>
+                    <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}?ref_src=twsrc%5Etfw"></a>
+                </blockquote>
+                {{/tweetId}}
+            </div>
+            {{/videos}}
+        </div>
+    </template>
+
     <!-- Load bundled scripts -->
     <script src="dist/ndk.js"></script>
     <script src="dist/nostr/nostr-chat.js"></script>
+    <script>
+        // Reinitialize Twitter widgets after template rendering
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            if (window.twttr && window.twttr.widgets) {
+                window.twttr.widgets.load();
+            }
+        });
+    </script>
 </body>
 </html>
