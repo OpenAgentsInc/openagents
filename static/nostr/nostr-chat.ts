@@ -1,172 +1,71 @@
-// ... (keep all imports)
+import NDK, { NDKEvent, NDKSubscription, NDKNip07Signer } from '@nostr-dev-kit/ndk'
+import { NostrChatConfig, ChatState, ChannelMetadata, CreateChannelData } from './types'
+import { ChatStorage } from './storage'
 
-// Add this after setupFormHandlers() in the NostrChat class:
-
-private async handleCreateChannel(form: HTMLFormElement) {
-    console.log('Creating channel...')
-    const formData = new FormData(form)
-    const channelData: CreateChannelData = {
-        name: formData.get('name') as string,
-        about: formData.get('about') as string,
-        picture: formData.get('picture') as string || undefined,
-        relays: this.config.defaultRelays
+declare global {
+  interface Window {
+    htmx: any
+    nostr?: {
+      getPublicKey(): Promise<string>
+      signEvent(event: any): Promise<any>
     }
-
-    try {
-        if (!this.signer) {
-            throw new Error('No signer available')
-        }
-
-        // Create kind 40 event for channel creation
-        const event = new NDKEvent(window.ndk)
-        event.kind = 40
-        event.content = JSON.stringify(channelData)
-        
-        console.log('Signing channel creation event...')
-        await event.sign()
-        
-        console.log('Publishing channel...')
-        await window.ndk.publish(event)
-        
-        console.log('Channel created:', event)
-        
-        // Add to local state
-        this.state.channels.set(event.id, channelData)
-        
-        // Add to channel list UI
-        this.renderChannelItem(event.id, channelData)
-        
-        // Clear form
-        form.reset()
-        
-        // Show success message
-        const successDiv = document.createElement('div')
-        successDiv.className = 'success-message'
-        successDiv.textContent = 'Channel created successfully!'
-        form.appendChild(successDiv)
-        setTimeout(() => successDiv.remove(), 3000)
-
-        // Switch to the new channel
-        this.selectChannel(event.id)
-
-    } catch (error) {
-        console.error('Failed to create channel:', error)
-        const errorDiv = form.querySelector('.error-message') || document.createElement('div')
-        errorDiv.className = 'error-message'
-        errorDiv.textContent = 'Failed to create channel. Make sure your Nostr extension is unlocked.'
-        form.appendChild(errorDiv)
-    }
+    ndk: NDK
+  }
 }
 
-private renderChannelItem(channelId: string, metadata: ChannelMetadata) {
-    const template = this.templates.get('channel-item-template')
-    if (!template) {
-        console.error('Channel item template not found')
-        return
+class NostrChat {
+  private config: NostrChatConfig
+  private state: ChatState
+  private storage: ChatStorage
+  private templates: Map<string, HTMLTemplateElement>
+  private signer: NDKNip07Signer | null = null
+  private api: any
+
+  constructor() {
+    this.config = {
+      defaultRelays: [
+        'wss://nostr-pub.wellorder.net',
+        'wss://nostr.mom',
+        'wss://relay.nostr.band'
+      ],
+      messageTemplate: '#message-template',
+      autoScroll: true,
+      moderationEnabled: true,
+      pollInterval: 5000,
+      messageLimit: 50
     }
-
-    const clone = template.content.cloneNode(true) as HTMLElement
-    const data = {
-        id: channelId,
-        name: metadata.name,
-        about: metadata.about
-    }
-
-    this.replaceTemplateVariables(clone, data)
-    
-    const channelList = document.getElementById('channel-items')
-    if (channelList) {
-        const item = clone.querySelector('.channel-item')
-        if (item) {
-            item.addEventListener('click', () => this.selectChannel(channelId))
-            channelList.appendChild(item)
-        }
-    }
-}
-
-private async selectChannel(channelId: string) {
-    console.log('Selecting channel:', channelId)
-    
-    // Update UI
-    document.querySelectorAll('.channel-item').forEach(item => {
-        item.classList.remove('active')
-        if (item.getAttribute('data-channel-id') === channelId) {
-            item.classList.add('active')
-        }
-    })
-
-    // Show chat interface
-    const chatInterface = document.getElementById('chat-interface')
-    if (chatInterface) {
-        chatInterface.style.display = 'block'
-    }
-
-    // Set channel ID and subscribe
-    this.state.channelId = channelId
-    const container = document.querySelector('[data-messages]')?.parentElement
-    if (container) {
-        await this.subscribeToChannel(channelId, container)
-    }
-}
-
-// Update setupFormHandlers():
-private setupFormHandlers() {
-    document.addEventListener('submit', async (e) => {
-        const form = e.target as HTMLFormElement
-        e.preventDefault()
-
-        if (form.getAttribute('nostr-chat-create')) {
-            await this.handleCreateChannel(form)
-        } else if (form.getAttribute('nostr-chat-post')) {
-            await this.handleSubmit(form)
-        }
-    })
-}
-
-// Update constructor to initialize channels Map:
-constructor() {
-    // ... (keep existing initialization)
+    this.storage = new ChatStorage()
+    this.templates = new Map()
     this.state = {
-        messages: new Map(),
-        hiddenMessages: new Set(),
-        mutedUsers: new Set(),
-        moderationActions: [],
-        channels: new Map() // Add this line
+      messages: new Map(),
+      hiddenMessages: new Set(),
+      mutedUsers: new Set(),
+      moderationActions: [],
+      channels: new Map()
     }
-    
-    // ... (keep rest of constructor)
-}
 
-// Add method to load existing channels:
-private async loadExistingChannels() {
-    console.log('Loading existing channels...')
-    const sub = window.ndk.subscribe({
-        kinds: [40], // channel creation events
-        authors: [await this.signer?.user().then(user => user.pubkey)].filter(Boolean)
-    })
+    // Bind methods
+    this.loadTemplates = this.loadTemplates.bind(this)
+    this.setupHtmxExtension = this.setupHtmxExtension.bind(this)
+    this.processElement = this.processElement.bind(this)
+    this.cleanupElement = this.cleanupElement.bind(this)
+    this.handleNewMessage = this.handleNewMessage.bind(this)
+    this.handleSubmit = this.handleSubmit.bind(this)
+    this.handleCreateChannel = this.handleCreateChannel.bind(this)
+  }
 
-    sub.on('event', (event: NDKEvent) => {
-        try {
-            const metadata = JSON.parse(event.content)
-            this.state.channels.set(event.id, metadata)
-            this.renderChannelItem(event.id, metadata)
-        } catch (error) {
-            console.error('Failed to parse channel metadata:', error)
-        }
-    })
-
-    sub.start()
-}
-
-// Update init() to load existing channels:
-async init() {
+  // Initialize the extension
+  async init() {
     console.log('Initializing NostrChat...')
     await this.initializeSigner()
     this.setupHtmxExtension()
     this.loadTemplates()
     this.setupFormHandlers()
-    await this.loadExistingChannels() // Add this line
+    await this.loadExistingChannels()
     console.log('NostrChat initialized')
+  }
 }
 
-// ... (keep rest of the class implementation)
+// Initialize the extension
+const nostrChat = new NostrChat()
+nostrChat.init()
