@@ -2,7 +2,13 @@ import { NDKEvent } from '@nostr-dev-kit/ndk'
 import { NostrChatBase } from './base'
 import { ChannelMetadata, CreateChannelData } from './types'
 
-export class ChannelMethods extends NostrChatBase {
+export class ChannelMethods {
+  private parent: NostrChatBase
+
+  constructor(parent: NostrChatBase) {
+    this.parent = parent
+  }
+
   async handleCreateChannel(form: HTMLFormElement) {
     console.log('Creating channel...')
     const formData = new FormData(form)
@@ -10,11 +16,12 @@ export class ChannelMethods extends NostrChatBase {
       name: formData.get('name') as string,
       about: formData.get('about') as string,
       picture: formData.get('picture') as string || undefined,
-      relays: this.config.defaultRelays
+      relays: this.parent.getConfig().defaultRelays
     }
 
     try {
-      if (!this.signer) {
+      const signer = this.parent.getSigner()
+      if (!signer) {
         throw new Error('No signer available')
       }
 
@@ -32,7 +39,7 @@ export class ChannelMethods extends NostrChatBase {
       console.log('Channel created:', event)
       
       // Add to local state
-      this.state.channels.set(event.id, channelData)
+      this.parent.getState().channels.set(event.id, channelData)
       
       // Add to channel list UI
       this.renderChannelItem(event.id, channelData)
@@ -60,7 +67,7 @@ export class ChannelMethods extends NostrChatBase {
   }
 
   renderChannelItem(channelId: string, metadata: ChannelMetadata) {
-    const template = this.templates.get('channel-item-template')
+    const template = this.parent.getTemplates().get('channel-item-template')
     if (!template) {
       console.error('Channel item template not found')
       return
@@ -73,7 +80,7 @@ export class ChannelMethods extends NostrChatBase {
       about: metadata.about
     }
 
-    this.replaceTemplateVariables(clone, data)
+    this.parent.replaceTemplateVariables(clone, data)
     
     const channelList = document.getElementById('channel-items')
     if (channelList) {
@@ -103,7 +110,7 @@ export class ChannelMethods extends NostrChatBase {
     }
 
     // Set channel ID and subscribe
-    this.state.channelId = channelId
+    this.parent.getState().channelId = channelId
     const container = document.querySelector('[data-messages]')?.parentElement
     if (container) {
       await this.subscribeToChannel(channelId, container)
@@ -112,10 +119,10 @@ export class ChannelMethods extends NostrChatBase {
 
   async subscribeToChannel(channelId: string, element: HTMLElement) {
     console.log('Subscribing to channel:', channelId)
-    this.state.channelId = channelId
+    this.parent.getState().channelId = channelId
 
     // Load cached metadata
-    const cached = this.storage.getChannelMetadata(channelId)
+    const cached = this.parent.getStorage().getChannelMetadata(channelId)
     if (cached) {
       this.renderChannelMetadata(cached, element)
     }
@@ -131,7 +138,7 @@ export class ChannelMethods extends NostrChatBase {
       this.handleNewMessage(event, element)
     })
 
-    this.state.subscription = sub
+    this.parent.getState().subscription = sub
     sub.start()
 
     // Also fetch channel metadata
@@ -143,18 +150,18 @@ export class ChannelMethods extends NostrChatBase {
     metadataSub.on('event', (event: NDKEvent) => {
       console.log('Received channel metadata:', event)
       const metadata = JSON.parse(event.content)
-      this.storage.cacheChannelMetadata(channelId, metadata)
+      this.parent.getStorage().cacheChannelMetadata(channelId, metadata)
       this.renderChannelMetadata(metadata, element)
     })
   }
 
   renderChannelMetadata(metadata: ChannelMetadata, element: HTMLElement) {
     console.log('Rendering channel metadata:', metadata)
-    const template = this.templates.get('channel-metadata-template')
+    const template = this.parent.getTemplates().get('channel-metadata-template')
     if (!template) return
 
     const clone = template.content.cloneNode(true) as HTMLElement
-    this.replaceTemplateVariables(clone, metadata)
+    this.parent.replaceTemplateVariables(clone, metadata)
     
     const target = element.querySelector('[data-channel-metadata]')
     if (target) {
@@ -165,18 +172,18 @@ export class ChannelMethods extends NostrChatBase {
 
   async handleNewMessage(event: NDKEvent, container: HTMLElement) {
     console.log('Handling new message:', event)
-    if (this.storage.isMessageHidden(event.id) || 
-        this.storage.isUserMuted(event.pubkey)) {
+    if (this.parent.getStorage().isMessageHidden(event.id) || 
+        this.parent.getStorage().isUserMuted(event.pubkey)) {
       return
     }
 
-    this.state.messages.set(event.id, event)
+    this.parent.getState().messages.set(event.id, event)
     const rendered = this.renderMessage(event)
     
     const messagesContainer = container.querySelector('[data-messages]')
     if (messagesContainer) {
       messagesContainer.insertAdjacentElement('beforeend', rendered)
-      if (this.config.autoScroll) {
+      if (this.parent.getConfig().autoScroll) {
         messagesContainer.scrollTop = messagesContainer.scrollHeight
       }
     }
@@ -184,7 +191,7 @@ export class ChannelMethods extends NostrChatBase {
 
   private renderMessage(event: NDKEvent): HTMLElement {
     console.log('Rendering message:', event)
-    const template = this.templates.get(this.config.messageTemplate?.slice(1) || 'message-template')
+    const template = this.parent.getTemplates().get(this.parent.getConfig().messageTemplate?.slice(1) || 'message-template')
     if (!template) throw new Error('Message template not found')
 
     const clone = template.content.cloneNode(true) as HTMLElement
@@ -197,7 +204,7 @@ export class ChannelMethods extends NostrChatBase {
       formatted_time: new Date(event.created_at * 1000).toLocaleString()
     }
 
-    this.replaceTemplateVariables(clone, data)
+    this.parent.replaceTemplateVariables(clone, data)
     return clone
   }
 }
