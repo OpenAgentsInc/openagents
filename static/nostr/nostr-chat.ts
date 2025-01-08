@@ -1,7 +1,6 @@
 import NDK, { NDKEvent, NDKSubscription, NDKNip07Signer } from '@nostr-dev-kit/ndk'
 import { NostrChatConfig, ChatState, ChannelMetadata } from './types'
 import { ChatStorage } from './storage'
-import ndk from '../ndk'
 
 declare global {
   interface Window {
@@ -10,6 +9,7 @@ declare global {
       getPublicKey(): Promise<string>
       signEvent(event: any): Promise<any>
     }
+    ndk: NDK
   }
 }
 
@@ -41,6 +41,13 @@ class NostrChat {
       mutedUsers: new Set(),
       moderationActions: []
     }
+
+    // Bind methods
+    this.loadTemplates = this.loadTemplates.bind(this)
+    this.setupHtmxExtension = this.setupHtmxExtension.bind(this)
+    this.processElement = this.processElement.bind(this)
+    this.cleanupElement = this.cleanupElement.bind(this)
+    this.handleNewMessage = this.handleNewMessage.bind(this)
   }
 
   // Initialize the extension
@@ -54,7 +61,7 @@ class NostrChat {
     try {
       if (typeof window.nostr !== 'undefined') {
         this.signer = new NDKNip07Signer()
-        ndk.signer = this.signer
+        window.ndk.signer = this.signer
         console.log('NIP-07 signer initialized')
       } else {
         console.warn('No NIP-07 extension found. Message sending will be disabled.')
@@ -79,6 +86,9 @@ class NostrChat {
 
   private setupHtmxExtension() {
     window.htmx.defineExtension('nostr-chat', {
+      init: (apiRef: any) => {
+        this.api = apiRef
+      },
       onEvent: (name: string, evt: CustomEvent) => {
         switch (name) {
           case 'htmx:afterProcessNode':
@@ -89,6 +99,12 @@ class NostrChat {
             break
         }
       }
+    })
+  }
+
+  private loadTemplates() {
+    document.querySelectorAll('template[id]').forEach(template => {
+      this.templates.set(template.id, template as HTMLTemplateElement)
     })
   }
 
@@ -142,7 +158,7 @@ class NostrChat {
     }
 
     // Subscribe to channel messages
-    const sub = ndk.subscribe({
+    const sub = window.ndk.subscribe({
       kinds: [42], // channel messages
       '#e': [channelId],
     }, { closeOnEose: false })
@@ -155,7 +171,7 @@ class NostrChat {
     sub.start()
 
     // Also fetch channel metadata
-    const metadataSub = ndk.subscribe({
+    const metadataSub = window.ndk.subscribe({
       kinds: [41], // channel metadata
       '#e': [channelId],
     })
@@ -180,7 +196,7 @@ class NostrChat {
         }
 
         const event = await this.createMessageEvent(content)
-        await ndk.publish(event)
+        await window.ndk.publish(event)
         form.reset()
         this.dispatchEvent('nostr-chat:message-sent', { event })
       } catch (error) {
@@ -197,7 +213,7 @@ class NostrChat {
   private async createMessageEvent(content: string): Promise<NDKEvent> {
     if (!this.state.channelId) throw new Error('No channel selected')
 
-    const event = new NDKEvent()
+    const event = new NDKEvent(window.ndk)
     event.kind = 42
     event.content = content
     event.tags = [['e', this.state.channelId, '', 'root']]
@@ -205,8 +221,108 @@ class NostrChat {
     return event
   }
 
-  // Rest of the class implementation remains the same...
-  // (keeping all the other methods unchanged)
+  // Moderation
+  private setupHideButton(button: HTMLElement, messageId: string) {
+    button.addEventListener('click', () => {
+      const reason = button.getAttribute('nostr-chat-reason')
+      this.storage.hideMessage(messageId, reason)
+      this.dispatchEvent('nostr-chat:message-hidden', { messageId, reason })
+    })
+  }
+
+  private setupMuteButton(button: HTMLElement, pubkey: string) {
+    button.addEventListener('click', () => {
+      const reason = button.getAttribute('nostr-chat-reason')
+      this.storage.muteUser(pubkey, reason)
+      this.dispatchEvent('nostr-chat:user-muted', { pubkey, reason })
+    })
+  }
+
+  private renderMessage(event: NDKEvent): HTMLElement {
+    const template = this.templates.get(this.config.messageTemplate?.slice(1) || 'message-template')
+    if (!template) throw new Error('Message template not found')
+
+    const clone = template.content.cloneNode(true) as HTMLElement
+    // Replace template variables
+    const data = {
+      id: event.id,
+      pubkey: event.pubkey,
+      pubkey_short: event.pubkey.slice(0, 8),
+      content: event.content,
+      created_at: event.created_at,
+      formatted_time: new Date(event.created_at * 1000).toLocaleString()
+    }
+
+    this.replaceTemplateVariables(clone, data)
+    return clone
+  }
+
+  private renderChannelMetadata(metadata: ChannelMetadata, element: HTMLElement) {
+    const template = this.templates.get('channel-metadata-template')
+    if (!template) return
+
+    const clone = template.content.cloneNode(true) as HTMLElement
+    this.replaceTemplateVariables(clone, metadata)
+    
+    const target = element.querySelector('[data-channel-metadata]')
+    if (target) {
+      target.innerHTML = ''
+      target.appendChild(clone)
+    }
+  }
+
+  private replaceTemplateVariables(element: HTMLElement, data: Record<string, any>) {
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+      null
+    )
+
+    let node
+    while (node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        node.textContent = node.textContent?.replace(
+          /\{\{(\w+)\}\}/g,
+          (_, key) => data[key] || ''
+        )
+      } else if (node instanceof Element) {
+        Array.from(node.attributes).forEach(attr => {
+          attr.value = attr.value.replace(
+            /\{\{(\w+)\}\}/g,
+            (_, key) => data[key] || ''
+          )
+        })
+      }
+    }
+  }
+
+  // Event Handling
+  private async handleNewMessage(event: NDKEvent, container: HTMLElement) {
+    if (this.storage.isMessageHidden(event.id) || 
+        this.storage.isUserMuted(event.pubkey)) {
+      return
+    }
+
+    this.state.messages.set(event.id, event)
+    const rendered = this.renderMessage(event)
+    
+    const messagesContainer = container.querySelector('[data-messages]')
+    if (messagesContainer) {
+      messagesContainer.insertAdjacentElement('beforeend', rendered)
+      if (this.config.autoScroll) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight
+      }
+    }
+  }
+
+  private handleError(message: string, error: any) {
+    console.error(message, error)
+    this.dispatchEvent('nostr-chat:error', { message, error })
+  }
+
+  private dispatchEvent(name: string, detail: any) {
+    document.dispatchEvent(new CustomEvent(name, { detail }))
+  }
 }
 
 // Initialize the extension
