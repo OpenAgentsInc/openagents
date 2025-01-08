@@ -35,8 +35,40 @@ body {
     color: white;
     font-family: 'Berkeley Mono', monospace;
     margin: 0;
-    padding: 20px;
+    padding: 0;
     font-size: 14px;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: black;
+    padding: 20px;
+    z-index: 100;
+    border-bottom: 1px solid #222;
+}
+
+.container {
+    display: flex;
+    height: 100vh;
+    padding-top: 80px; /* Account for header */
+    box-sizing: border-box;
+}
+
+.column {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    border-right: 1px solid #222;
+    height: 100%;
+}
+
+.column:last-child {
+    border-right: none;
 }
 
 /* Specifically target input and textarea elements */
@@ -45,4 +77,35 @@ input[type="text"],
 input[type="url"],
 textarea {
     font-family: 'Berkeley Mono', monospace;
+}
+
+/* Override changelog and videos fixed positioning */
+.changelog, .videos {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    border: none !important;
+    background: none !important;
+    padding: 0 !important;
+}
+
+/* Mobile styles */
+@media (max-width: 1200px) {
+    .container {
+        flex-direction: column;
+        height: auto;
+        padding-top: 120px;
+    }
+
+    .column {
+        width: 100%;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid #222;
+        padding: 20px;
+    }
+
+    .column:last-child {
+        border-bottom: none;
+    }
 }
