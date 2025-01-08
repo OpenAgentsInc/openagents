@@ -1,2 +1,79 @@
-build:
+# Default recipe to run when just is called without arguments
+default: build
+
+# Clean the dist directory
+clean:
+    rm -rf dist
+
+# Create dist directory if it doesn't exist
+create-dist:
+    mkdir -p dist
+
+# Build all TypeScript files
+build: clean create-dist
+    # Build the original nostr-sub
     esbuild --bundle nostr-sub.ts --outdir=dist --sourcemap
+    # Build the new nostr chat extension
+    esbuild --bundle nostr/nostr-chat.ts \
+        --outdir=dist/nostr \
+        --sourcemap \
+        --format=esm \
+        --platform=browser \
+        --bundle \
+        --minify
+
+# Watch files for changes and rebuild
+watch:
+    esbuild --bundle nostr-sub.ts --outdir=dist --sourcemap --watch &
+    esbuild --bundle nostr/nostr-chat.ts \
+        --outdir=dist/nostr \
+        --sourcemap \
+        --format=esm \
+        --platform=browser \
+        --bundle \
+        --minify \
+        --watch
+
+# Serve the static directory (requires python3)
+serve:
+    python3 -m http.server 8000
+
+# Development mode: watch files and serve
+dev: clean create-dist
+    just watch & just serve
+
+# Build for production with optimizations
+prod: clean create-dist
+    esbuild --bundle nostr-sub.ts \
+        --outdir=dist \
+        --sourcemap \
+        --minify
+    esbuild --bundle nostr/nostr-chat.ts \
+        --outdir=dist/nostr \
+        --sourcemap \
+        --format=esm \
+        --platform=browser \
+        --bundle \
+        --minify \
+        --define:process.env.NODE_ENV=\"production\"
+
+# Copy static assets
+assets: create-dist
+    cp nostr/example.html dist/nostr/
+    cp -r css dist/
+    cp -r images dist/
+
+# Full build including assets
+all: prod assets
+
+# Show help
+help:
+    @echo "Available recipes:"
+    @echo "  build    - Build all TypeScript files (development)"
+    @echo "  watch    - Watch files for changes and rebuild"
+    @echo "  serve    - Start a local development server"
+    @echo "  dev      - Development mode: watch files and serve"
+    @echo "  prod     - Build for production with optimizations"
+    @echo "  clean    - Clean the dist directory"
+    @echo "  assets   - Copy static assets to dist"
+    @echo "  all      - Full production build including assets"
