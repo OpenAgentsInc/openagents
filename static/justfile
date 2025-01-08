@@ -7,32 +7,24 @@ clean:
 
 # Create dist directory if it doesn't exist
 create-dist:
-    mkdir -p dist
+    mkdir -p dist/nostr
+
+# Build NDK
+build-ndk:
+    esbuild ndk.ts --bundle --format=esm --platform=browser --outfile=dist/ndk.js --sourcemap
 
 # Build all TypeScript files
-build: clean create-dist
+build: clean create-dist build-ndk
     # Build the original nostr-sub
-    esbuild --bundle nostr-sub.ts --outdir=dist --sourcemap
+    esbuild nostr-sub.ts --bundle --format=esm --platform=browser --outfile=dist/nostr-sub.js --sourcemap
     # Build the new nostr chat extension
-    esbuild --bundle nostr/nostr-chat.ts \
-        --outdir=dist/nostr \
-        --sourcemap \
-        --format=esm \
-        --platform=browser \
-        --bundle \
-        --minify
+    esbuild nostr/nostr-chat.ts --bundle --format=esm --platform=browser --outfile=dist/nostr/nostr-chat.js --sourcemap
 
 # Watch files for changes and rebuild
 watch:
-    esbuild --bundle nostr-sub.ts --outdir=dist --sourcemap --watch &
-    esbuild --bundle nostr/nostr-chat.ts \
-        --outdir=dist/nostr \
-        --sourcemap \
-        --format=esm \
-        --platform=browser \
-        --bundle \
-        --minify \
-        --watch
+    esbuild ndk.ts --bundle --format=esm --platform=browser --outfile=dist/ndk.js --sourcemap --watch &
+    esbuild nostr-sub.ts --bundle --format=esm --platform=browser --outfile=dist/nostr-sub.js --sourcemap --watch &
+    esbuild nostr/nostr-chat.ts --bundle --format=esm --platform=browser --outfile=dist/nostr/nostr-chat.js --sourcemap --watch
 
 # Serve the static directory (requires python3)
 serve:
@@ -44,36 +36,14 @@ dev: clean create-dist
 
 # Build for production with optimizations
 prod: clean create-dist
-    esbuild --bundle nostr-sub.ts \
-        --outdir=dist \
-        --sourcemap \
-        --minify
-    esbuild --bundle nostr/nostr-chat.ts \
-        --outdir=dist/nostr \
-        --sourcemap \
-        --format=esm \
-        --platform=browser \
-        --bundle \
-        --minify \
-        --define:process.env.NODE_ENV=\"production\"
+    esbuild ndk.ts --bundle --format=esm --platform=browser --outfile=dist/ndk.js --sourcemap --minify
+    esbuild nostr-sub.ts --bundle --format=esm --platform=browser --outfile=dist/nostr-sub.js --sourcemap --minify
+    esbuild nostr/nostr-chat.ts --bundle --format=esm --platform=browser --outfile=dist/nostr/nostr-chat.js --sourcemap --minify
 
 # Copy static assets
 assets: create-dist
     cp nostr/example.html dist/nostr/
-    cp -r css dist/
-    cp -r images dist/
+    cp -r js dist/
 
 # Full build including assets
 all: prod assets
-
-# Show help
-help:
-    @echo "Available recipes:"
-    @echo "  build    - Build all TypeScript files (development)"
-    @echo "  watch    - Watch files for changes and rebuild"
-    @echo "  serve    - Start a local development server"
-    @echo "  dev      - Development mode: watch files and serve"
-    @echo "  prod     - Build for production with optimizations"
-    @echo "  clean    - Clean the dist directory"
-    @echo "  assets   - Copy static assets to dist"
-    @echo "  all      - Full production build including assets"
