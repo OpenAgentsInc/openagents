@@ -82,7 +82,7 @@
             <!-- Message input -->
             <form class="message-form"
                   nostr-chat-post="true"
-                  hx-trigger="submit">
+                  hx-on="submit: event.preventDefault()">
                 <input name="content" 
                        placeholder="Type a message..."
                        required>
