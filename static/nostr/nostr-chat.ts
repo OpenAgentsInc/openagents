@@ -1,60 +1,22 @@
-import NDK, { NDKEvent, NDKSubscription, NDKNip07Signer } from '@nostr-dev-kit/ndk'
-import { NostrChatConfig, ChatState, ChannelMetadata, CreateChannelData } from './types'
-import { ChatStorage } from './storage'
+import { NDKEvent, NDKNip07Signer } from '@nostr-dev-kit/ndk'
+import { NostrChatBase } from './base'
 import { ChannelMethods } from './channel-methods'
 import { MessageMethods } from './message-methods'
 
-declare global {
-  interface Window {
-    htmx: any
-    nostr?: {
-      getPublicKey(): Promise<string>
-      signEvent(event: any): Promise<any>
-    }
-    ndk: NDK
-  }
-}
-
-class NostrChat extends ChannelMethods implements MessageMethods {
-  private config: NostrChatConfig
-  private state: ChatState
-  private storage: ChatStorage
-  private templates: Map<string, HTMLTemplateElement>
-  private signer: NDKNip07Signer | null = null
-  private api: any
+class NostrChat extends NostrChatBase {
+  private channelMethods: ChannelMethods
+  private messageMethods: MessageMethods
 
   constructor() {
     super()
-    this.config = {
-      defaultRelays: [
-        'wss://nostr-pub.wellorder.net',
-        'wss://nostr.mom',
-        'wss://relay.nostr.band'
-      ],
-      messageTemplate: '#message-template',
-      autoScroll: true,
-      moderationEnabled: true,
-      pollInterval: 5000,
-      messageLimit: 50
-    }
-    this.storage = new ChatStorage()
-    this.templates = new Map()
-    this.state = {
-      messages: new Map(),
-      hiddenMessages: new Set(),
-      mutedUsers: new Set(),
-      moderationActions: [],
-      channels: new Map()
-    }
+    this.channelMethods = new ChannelMethods()
+    this.messageMethods = new MessageMethods()
 
     // Bind methods
     this.loadTemplates = this.loadTemplates.bind(this)
     this.setupHtmxExtension = this.setupHtmxExtension.bind(this)
     this.processElement = this.processElement.bind(this)
     this.cleanupElement = this.cleanupElement.bind(this)
-    this.handleNewMessage = this.handleNewMessage.bind(this)
-    this.handleSubmit = this.handleSubmit.bind(this)
-    this.handleCreateChannel = this.handleCreateChannel.bind(this)
   }
 
   async init() {
@@ -120,9 +82,9 @@ class NostrChat extends ChannelMethods implements MessageMethods {
       e.preventDefault()
 
       if (form.getAttribute('nostr-chat-create')) {
-        await this.handleCreateChannel(form)
+        await this.channelMethods.handleCreateChannel(form)
       } else if (form.getAttribute('nostr-chat-post')) {
-        await this.handleSubmit(form)
+        await this.messageMethods.handleSubmit(form)
       }
     })
   }
@@ -150,7 +112,7 @@ class NostrChat extends ChannelMethods implements MessageMethods {
       try {
         const metadata = JSON.parse(event.content)
         this.state.channels.set(event.id, metadata)
-        this.renderChannelItem(event.id, metadata)
+        this.channelMethods.renderChannelItem(event.id, metadata)
       } catch (error) {
         console.error('Failed to parse channel metadata:', error)
       }
@@ -166,14 +128,14 @@ class NostrChat extends ChannelMethods implements MessageMethods {
     const channelId = element.getAttribute('nostr-chat-channel')
     if (channelId) {
       console.log('Found channel ID:', channelId)
-      await this.subscribeToChannel(channelId, element)
+      await this.channelMethods.subscribeToChannel(channelId, element)
     }
 
     // Message posting
     if (element.getAttribute('nostr-chat-post')) {
       console.log('Setting up message posting form')
       if (this.signer) {
-        this.setupMessagePosting(element as HTMLFormElement)
+        this.messageMethods.setupMessagePosting(element as HTMLFormElement)
       } else {
         element.setAttribute('disabled', 'true')
         element.setAttribute('title', 'Please install a Nostr extension to send messages')
