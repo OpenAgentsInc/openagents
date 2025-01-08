@@ -1,2 +1,49 @@
-build:
-    esbuild --bundle nostr-sub.ts --outdir=dist --sourcemap
+# Default recipe to run when just is called without arguments
+default: build
+
+# Clean the dist directory
+clean:
+    rm -rf dist
+
+# Create dist directory if it doesn't exist
+create-dist:
+    mkdir -p dist/nostr
+
+# Build NDK
+build-ndk:
+    esbuild ndk.ts --bundle --format=iife --global-name=NDKLib --platform=browser --outfile=dist/ndk.js --sourcemap
+
+# Build all TypeScript files
+build: clean create-dist build-ndk
+    # Build the original nostr-sub
+    esbuild nostr-sub.ts --bundle --format=iife --platform=browser --outfile=dist/nostr-sub.js --sourcemap
+    # Build the new nostr chat extension
+    esbuild nostr/nostr-chat.ts --bundle --format=iife --platform=browser --outfile=dist/nostr/nostr-chat.js --sourcemap
+
+# Watch files for changes and rebuild
+watch:
+    esbuild ndk.ts --bundle --format=iife --global-name=NDKLib --platform=browser --outfile=dist/ndk.js --sourcemap --watch &
+    esbuild nostr-sub.ts --bundle --format=iife --platform=browser --outfile=dist/nostr-sub.js --sourcemap --watch &
+    esbuild nostr/nostr-chat.ts --bundle --format=iife --platform=browser --outfile=dist/nostr/nostr-chat.js --sourcemap --watch
+
+# Serve the static directory (requires python3)
+serve:
+    python3 -m http.server 8000
+
+# Development mode: watch files and serve
+dev: clean create-dist
+    just watch & just serve
+
+# Build for production with optimizations
+prod: clean create-dist
+    esbuild ndk.ts --bundle --format=iife --global-name=NDKLib --platform=browser --outfile=dist/ndk.js --sourcemap --minify
+    esbuild nostr-sub.ts --bundle --format=iife --platform=browser --outfile=dist/nostr-sub.js --sourcemap --minify
+    esbuild nostr/nostr-chat.ts --bundle --format=iife --platform=browser --outfile=dist/nostr/nostr-chat.js --sourcemap --minify
+
+# Copy static assets
+assets: create-dist
+    cp nostr/example.html dist/nostr/
+    cp -r js dist/
+
+# Full build including assets
+all: prod assets
