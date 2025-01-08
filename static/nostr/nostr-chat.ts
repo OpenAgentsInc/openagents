@@ -19,6 +19,7 @@ class NostrChat {
   private storage: ChatStorage
   private templates: Map<string, HTMLTemplateElement>
   private signer: NDKNip07Signer | null = null
+  private api: any // Add this line to store HTMX API reference
 
   constructor() {
     this.config = {
@@ -52,17 +53,22 @@ class NostrChat {
 
   // Initialize the extension
   async init() {
+    console.log('Initializing NostrChat...')
     await this.initializeSigner()
     this.setupHtmxExtension()
     this.loadTemplates()
+    console.log('NostrChat initialized')
   }
 
   private async initializeSigner() {
     try {
       if (typeof window.nostr !== 'undefined') {
+        console.log('Found nostr provider, initializing signer...')
         this.signer = new NDKNip07Signer()
         window.ndk.signer = this.signer
-        console.log('NIP-07 signer initialized')
+        // Test the signer
+        const pubkey = await this.signer.user().then(user => user.pubkey)
+        console.log('NIP-07 signer initialized with pubkey:', pubkey)
       } else {
         console.warn('No NIP-07 extension found. Message sending will be disabled.')
         this.disableMessageSending()
@@ -85,11 +91,14 @@ class NostrChat {
   }
 
   private setupHtmxExtension() {
+    console.log('Setting up HTMX extension...')
     window.htmx.defineExtension('nostr-chat', {
       init: (apiRef: any) => {
+        console.log('HTMX extension initialized with API')
         this.api = apiRef
       },
       onEvent: (name: string, evt: CustomEvent) => {
+        console.log('HTMX event:', name)
         switch (name) {
           case 'htmx:afterProcessNode':
             this.processElement(evt.target as HTMLElement)
@@ -104,19 +113,24 @@ class NostrChat {
 
   private loadTemplates() {
     document.querySelectorAll('template[id]').forEach(template => {
+      console.log('Loading template:', template.id)
       this.templates.set(template.id, template as HTMLTemplateElement)
     })
   }
 
   private async processElement(element: HTMLElement) {
+    console.log('Processing element:', element)
+    
     // Channel subscription
     const channelId = element.getAttribute('nostr-chat-channel')
     if (channelId) {
+      console.log('Found channel ID:', channelId)
       await this.subscribeToChannel(channelId, element)
     }
 
     // Message posting
     if (element.getAttribute('nostr-chat-post')) {
+      console.log('Setting up message posting form')
       if (this.signer) {
         this.setupMessagePosting(element as HTMLFormElement)
       } else {
@@ -142,6 +156,7 @@ class NostrChat {
   private cleanupElement(element: HTMLElement) {
     const channelId = element.getAttribute('nostr-chat-channel')
     if (channelId && this.state.subscription) {
+      console.log('Cleaning up subscription for channel:', channelId)
       this.state.subscription.stop()
       this.state.subscription = undefined
     }
@@ -149,6 +164,7 @@ class NostrChat {
 
   // Channel Operations
   private async subscribeToChannel(channelId: string, element: HTMLElement) {
+    console.log('Subscribing to channel:', channelId)
     this.state.channelId = channelId
 
     // Load cached metadata
@@ -164,6 +180,7 @@ class NostrChat {
     }, { closeOnEose: false })
 
     sub.on('event', (event: NDKEvent) => {
+      console.log('Received channel message:', event)
       this.handleNewMessage(event, element)
     })
 
@@ -177,6 +194,7 @@ class NostrChat {
     })
 
     metadataSub.on('event', (event: NDKEvent) => {
+      console.log('Received channel metadata:', event)
       const metadata = JSON.parse(event.content)
       this.storage.cacheChannelMetadata(channelId, metadata)
       this.renderChannelMetadata(metadata, element)
@@ -185,8 +203,10 @@ class NostrChat {
 
   // Message Operations
   private setupMessagePosting(form: HTMLFormElement) {
+    console.log('Setting up message form:', form)
     form.addEventListener('submit', async (e) => {
       e.preventDefault()
+      console.log('Form submitted')
       const content = new FormData(form).get('content') as string
       if (!content?.trim()) return
 
@@ -195,11 +215,15 @@ class NostrChat {
           throw new Error('No signer available')
         }
 
+        console.log('Creating message event...')
         const event = await this.createMessageEvent(content)
+        console.log('Publishing message:', event)
         await window.ndk.publish(event)
+        console.log('Message published successfully')
         form.reset()
         this.dispatchEvent('nostr-chat:message-sent', { event })
       } catch (error) {
+        console.error('Failed to send message:', error)
         this.handleError('Failed to send message', error)
         // Show error to user
         const errorDiv = form.querySelector('.error-message') || document.createElement('div')
@@ -213,10 +237,15 @@ class NostrChat {
   private async createMessageEvent(content: string): Promise<NDKEvent> {
     if (!this.state.channelId) throw new Error('No channel selected')
 
+    console.log('Creating message event with content:', content)
     const event = new NDKEvent(window.ndk)
     event.kind = 42
     event.content = content
     event.tags = [['e', this.state.channelId, '', 'root']]
+    
+    // Ensure the event is properly signed
+    await event.sign()
+    console.log('Event signed:', event)
     
     return event
   }
@@ -239,6 +268,7 @@ class NostrChat {
   }
 
   private renderMessage(event: NDKEvent): HTMLElement {
+    console.log('Rendering message:', event)
     const template = this.templates.get(this.config.messageTemplate?.slice(1) || 'message-template')
     if (!template) throw new Error('Message template not found')
 
@@ -258,6 +288,7 @@ class NostrChat {
   }
 
   private renderChannelMetadata(metadata: ChannelMetadata, element: HTMLElement) {
+    console.log('Rendering channel metadata:', metadata)
     const template = this.templates.get('channel-metadata-template')
     if (!template) return
 
@@ -298,6 +329,7 @@ class NostrChat {
 
   // Event Handling
   private async handleNewMessage(event: NDKEvent, container: HTMLElement) {
+    console.log('Handling new message:', event)
     if (this.storage.isMessageHidden(event.id) || 
         this.storage.isUserMuted(event.pubkey)) {
       return
