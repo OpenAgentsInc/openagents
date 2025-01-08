@@ -1,0 +1,38 @@
+<div class="chat-container">
+    <!-- Chat Interface -->
+    <div id="chat-interface">
+        <!-- Channel metadata -->
+        <div data-channel-metadata></div>
+
+        <!-- Chat messages -->
+        <div hx-ext="nostr-chat" class="chat-container">
+            <div class="messages" data-messages></div>
+            
+            <!-- Message input -->
+            <form class="message-form"
+                  nostr-chat-post="true"
+                  hx-on="submit: event.preventDefault()">
+                <input name="content" 
+                       placeholder="Type a message..."
+                       required>
+                <button type="submit">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Message template -->
+    <template id="message-template">
+        <div class="message" id="msg-{{id}}" 
+             data-pubkey="{{pubkey}}" 
+             data-timestamp="{{created_at}}">
+            <span class="author">{{pubkey_short}}</span>
+            <span class="time">{{formatted_time}}</span>
+            <div class="content">{{content}}</div>
+            <div class="actions">
+                <button nostr-chat-reply="{{id}}">Reply</button>
+                <button nostr-chat-hide="{{id}}">Hide</button>
+                <button nostr-chat-mute="{{pubkey}}">Mute User</button>
+            </div>
+        </div>
+    </template>
+</div>
