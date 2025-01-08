@@ -4,7 +4,7 @@ OpenAgents is a marketplace for AI agents built on open protocols.
 
 Our flagship product is [Onyx](https://github.com/OpenAgentsInc/onyx).
 
-This repo holds the backend and website, soon at [openagents.com](https://openagents.com)
+This repo holds the backend and website at [openagents.com](https://openagents.com)
 
 ## Previous Work
 
