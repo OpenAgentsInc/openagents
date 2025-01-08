@@ -1,6 +1,20 @@
 {
   "videos": [
     {
+      "title": "Open Knowledge Graph",
+      "url": "https://x.com/OpenAgentsInc/status/1876857763504046458",
+      "tweetId": "1876857763504046458",
+      "date": "2025-01-07",
+      "text": "We review a demo and spec for an open knowledge graph paired with an uncensorable chat channel allowing any contributors - both human and agent, anon or not - to earn bitcoin for building the knowledge base of agents that will help us make sense of all the noise."
+    },
+    {
+      "title": "Agentic OSINT",
+      "url": "https://x.com/OpenAgentsInc/status/1875380960658681918",
+      "tweetId": "1875380960658681918",
+      "date": "2025-01-03",
+      "text": "We revisit our UAP/drone data marketplace idea and brainstorm what an agentic open-source intelligence effort might look like."
+    },
+    {
       "title": "High-Velocity Bitcoin",
       "url": "https://x.com/OpenAgentsInc/status/1874317831497462144",
       "tweetId": "1874317831497462144",
