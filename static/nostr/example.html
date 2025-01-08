@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nostr Chat Example</title>
-    <script src="https://unpkg.com/htmx.org"></script>
-    <script src="https://unpkg.com/@nostr-dev-kit/ndk@^0.7.7/dist/browser/ndk.js"></script>
-    <script src="nostr-chat.js" defer></script>
+    <script src="../js/htmx.min.js"></script>
+    <script src="../js/client-side-templates.js"></script>
+    <script src="../js/mustache.js"></script>
     <style>
         .chat-container {
             max-width: 800px;
@@ -57,6 +57,14 @@
             padding: 10px;
             background: #f9f9f9;
         }
+        .error-message {
+            color: #721c24;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 8px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -66,7 +74,7 @@
 
         <!-- Chat messages -->
         <div hx-ext="nostr-chat"
-             nostr-chat-channel="<YOUR_CHANNEL_ID>"
+             nostr-chat-channel="d0d78e646ec8c9941359df7ebd7f0020091ed465d1615c0753fb9c4d5c91c98c"
              class="chat-container">
             
             <div class="messages" data-messages></div>
@@ -117,5 +125,14 @@
                  style="max-width: 100px; border-radius: 50%;">
         </div>
     </template>
+
+    <!-- Load NDK and nostr-chat extension -->
+    <script type="module">
+        import ndk from '../ndk.js'
+        import '../dist/nostr/nostr-chat.js'
+
+        // Initialize NDK
+        ndk.connect()
+    </script>
 </body>
 </html>
