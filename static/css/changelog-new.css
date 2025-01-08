@@ -1,0 +1,68 @@
+.changelog {
+  margin: 20px 0;
+  max-width: 800px;
+}
+
+.changelog-entry {
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #222;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.changelog-date {
+  color: #999;
+  font-size: 0.9em;
+  margin-bottom: 5px;
+}
+
+.changelog-title {
+  font-weight: bold;
+  font-size: 1.1em;
+  margin-bottom: 8px;
+}
+
+.changelog ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.changelog li {
+  margin-bottom: 5px;
+  color: #fff;
+  line-height: 1.4;
+}
+
+.changelog a {
+  color: #fff;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  transition: opacity 0.2s ease;
+}
+
+.changelog a:visited {
+  color: #ccc;
+}
+
+.changelog a:hover {
+  opacity: 0.8;
+}
+
+.intro-card {
+  margin-bottom: 20px;
+  padding: 20px;
+  border: 1px solid #222;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.download-links {
+  font-size: 1.1em;
+  margin: 15px 0;
+}
+
+.download-links a {
+  color: #fff;
+  font-weight: 500;
+}
