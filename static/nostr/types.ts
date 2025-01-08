@@ -41,4 +41,12 @@ export interface ChatState {
   mutedUsers: Set<string>
   moderationActions: ModerationAction[]
   lastFetch?: number
+  channels: Map<string, ChannelMetadata>
+}
+
+export interface CreateChannelData {
+  name: string
+  about: string
+  picture?: string
+  relays?: string[]
 }
