@@ -1,6 +1,37 @@
 <div class="chat-container">
+    <!-- Create Channel Form -->
+    <div class="channel-form">
+        <h2>Create New Channel</h2>
+        <form id="create-channel-form" nostr-chat-create="true" hx-on="submit: event.preventDefault()">
+            <div class="form-group">
+                <label for="channel-name">Channel Name</label>
+                <input type="text" id="channel-name" name="name" required 
+                       placeholder="My Awesome Channel">
+            </div>
+            <div class="form-group">
+                <label for="channel-about">Description</label>
+                <textarea id="channel-about" name="about" required 
+                          placeholder="What's this channel about?"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="channel-picture">Picture URL (optional)</label>
+                <input type="url" id="channel-picture" name="picture" 
+                       placeholder="https://example.com/image.jpg">
+            </div>
+            <button type="submit">Create Channel</button>
+        </form>
+    </div>
+
+    <!-- Channel List -->
+    <div class="channel-list">
+        <h3>Your Channels</h3>
+        <div id="channel-items">
+            <!-- Channel items will be inserted here -->
+        </div>
+    </div>
+
     <!-- Chat Interface -->
-    <div id="chat-interface">
+    <div id="chat-interface" style="display: none;">
         <!-- Channel metadata -->
         <div data-channel-metadata></div>
 
@@ -19,20 +50,39 @@
             </form>
         </div>
     </div>
-
-    <!-- Message template -->
-    <template id="message-template">
-        <div class="message" id="msg-{{id}}" 
-             data-pubkey="{{pubkey}}" 
-             data-timestamp="{{created_at}}">
-            <span class="author">{{pubkey_short}}</span>
-            <span class="time">{{formatted_time}}</span>
-            <div class="content">{{content}}</div>
-            <div class="actions">
-                <button nostr-chat-reply="{{id}}">Reply</button>
-                <button nostr-chat-hide="{{id}}">Hide</button>
-                <button nostr-chat-mute="{{pubkey}}">Mute User</button>
-            </div>
-        </div>
-    </template>
 </div>
+
+<!-- Message template -->
+<template id="message-template">
+    <div class="message" id="msg-{{id}}" 
+         data-pubkey="{{pubkey}}" 
+         data-timestamp="{{created_at}}">
+        <span class="author">{{pubkey_short}}</span>
+        <span class="time">{{formatted_time}}</span>
+        <div class="content">{{content}}</div>
+        <div class="actions">
+            <button nostr-chat-reply="{{id}}">Reply</button>
+            <button nostr-chat-hide="{{id}}">Hide</button>
+            <button nostr-chat-mute="{{pubkey}}">Mute User</button>
+        </div>
+    </div>
+</template>
+
+<!-- Channel metadata template -->
+<template id="channel-metadata-template">
+    <div class="channel-header">
+        <h2>{{name}}</h2>
+        <p>{{about}}</p>
+        <img src="{{picture}}" alt="Channel picture" 
+             style="max-width: 100px; border-radius: 50%;"
+             onerror="this.style.display='none'">
+    </div>
+</template>
+
+<!-- Channel item template -->
+<template id="channel-item-template">
+    <div class="channel-item" data-channel-id="{{id}}">
+        <h4>{{name}}</h4>
+        <p>{{about}}</p>
+    </div>
+</template>
