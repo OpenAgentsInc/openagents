@@ -29,3 +29,4 @@ localimages
 /target
 .idea
 tags
+static/nostr/*.js

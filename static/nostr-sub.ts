@@ -1,5 +1,4 @@
 import * as nip19 from 'nostr-tools/nip19'
-import ndk from './ndk.ts'
 import {NDKSubscription, NDKEvent} from '@nostr-dev-kit/ndk'
 
 type HTMXInternalAPI = {
@@ -20,9 +19,15 @@ type HTMXElementData = {
   sub: NDKSubscription
 }
 
+declare global {
+  interface Window {
+    htmx: any
+    ndk: any
+  }
+}
+
 let element: HTMLElement
 let api: HTMXInternalAPI
-// @ts-ignore
 const htmx: any = window.htmx
 
 htmx.defineExtension('nostr-sub', {
@@ -116,12 +121,12 @@ function subscribe(element: HTMLElement) {
   }
 
   console.log('triggering subscription', filter)
-  data.sub = ndk.subscribe(filter, {closeOnEose: false})
+  data.sub = window.ndk.subscribe(filter, {closeOnEose: false})
   data.sub.start()
   data.sub.on(
     'event',
     (response: NDKEvent) => {
-      response.ndk = ndk
+      response.ndk = window.ndk
       let raw: any = response.rawEvent()
       raw.author = response.author
       let html = JSON.stringify(raw)
