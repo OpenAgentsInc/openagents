@@ -19,7 +19,7 @@ class NostrChat {
   private storage: ChatStorage
   private templates: Map<string, HTMLTemplateElement>
   private signer: NDKNip07Signer | null = null
-  private api: any // Add this line to store HTMX API reference
+  private api: any // Store HTMX API reference
 
   constructor() {
     this.config = {
@@ -49,6 +49,7 @@ class NostrChat {
     this.processElement = this.processElement.bind(this)
     this.cleanupElement = this.cleanupElement.bind(this)
     this.handleNewMessage = this.handleNewMessage.bind(this)
+    this.handleSubmit = this.handleSubmit.bind(this)
   }
 
   // Initialize the extension
@@ -57,7 +58,46 @@ class NostrChat {
     await this.initializeSigner()
     this.setupHtmxExtension()
     this.loadTemplates()
+    this.setupFormHandlers()
     console.log('NostrChat initialized')
+  }
+
+  private setupFormHandlers() {
+    document.addEventListener('submit', async (e) => {
+      const form = e.target as HTMLFormElement
+      if (form.getAttribute('nostr-chat-post')) {
+        e.preventDefault()
+        await this.handleSubmit(form)
+      }
+    })
+  }
+
+  private async handleSubmit(form: HTMLFormElement) {
+    console.log('Form submitted')
+    const content = new FormData(form).get('content') as string
+    if (!content?.trim()) return
+
+    try {
+      if (!this.signer) {
+        throw new Error('No signer available')
+      }
+
+      console.log('Creating message event...')
+      const event = await this.createMessageEvent(content)
+      console.log('Publishing message:', event)
+      await window.ndk.publish(event)
+      console.log('Message published successfully')
+      form.reset()
+      this.dispatchEvent('nostr-chat:message-sent', { event })
+    } catch (error) {
+      console.error('Failed to send message:', error)
+      this.handleError('Failed to send message', error)
+      // Show error to user
+      const errorDiv = form.querySelector('.error-message') || document.createElement('div')
+      errorDiv.className = 'error-message'
+      errorDiv.textContent = 'Failed to send message. Make sure your Nostr extension is unlocked.'
+      form.appendChild(errorDiv)
+    }
   }
 
   private async initializeSigner() {
@@ -204,34 +244,6 @@ class NostrChat {
   // Message Operations
   private setupMessagePosting(form: HTMLFormElement) {
     console.log('Setting up message form:', form)
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault()
-      console.log('Form submitted')
-      const content = new FormData(form).get('content') as string
-      if (!content?.trim()) return
-
-      try {
-        if (!this.signer) {
-          throw new Error('No signer available')
-        }
-
-        console.log('Creating message event...')
-        const event = await this.createMessageEvent(content)
-        console.log('Publishing message:', event)
-        await window.ndk.publish(event)
-        console.log('Message published successfully')
-        form.reset()
-        this.dispatchEvent('nostr-chat:message-sent', { event })
-      } catch (error) {
-        console.error('Failed to send message:', error)
-        this.handleError('Failed to send message', error)
-        // Show error to user
-        const errorDiv = form.querySelector('.error-message') || document.createElement('div')
-        errorDiv.className = 'error-message'
-        errorDiv.textContent = 'Failed to send message. Make sure your Nostr extension is unlocked.'
-        form.appendChild(errorDiv)
-      }
-    })
   }
 
   private async createMessageEvent(content: string): Promise<NDKEvent> {
