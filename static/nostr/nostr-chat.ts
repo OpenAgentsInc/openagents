@@ -9,8 +9,9 @@ class NostrChat extends NostrChatBase {
 
   constructor() {
     super()
-    this.channelMethods = new ChannelMethods()
-    this.messageMethods = new MessageMethods()
+    // Pass 'this' as the shared state to child classes
+    this.channelMethods = new ChannelMethods(this)
+    this.messageMethods = new MessageMethods(this)
 
     // Bind methods
     this.loadTemplates = this.loadTemplates.bind(this)
@@ -151,6 +152,13 @@ class NostrChat extends NostrChatBase {
       this.state.subscription = undefined
     }
   }
+
+  // Expose state to child classes
+  getSigner() { return this.signer }
+  getState() { return this.state }
+  getConfig() { return this.config }
+  getTemplates() { return this.templates }
+  getStorage() { return this.storage }
 }
 
 // Initialize the extension
