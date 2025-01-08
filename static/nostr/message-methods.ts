@@ -1,6 +1,7 @@
 import { NDKEvent } from '@nostr-dev-kit/ndk'
+import { NostrChatBase } from './base'
 
-export class MessageMethods {
+export class MessageMethods extends NostrChatBase {
   async handleSubmit(form: HTMLFormElement) {
     console.log('Form submitted')
     const content = new FormData(form).get('content') as string
@@ -45,76 +46,7 @@ export class MessageMethods {
     return event
   }
 
-  private async handleNewMessage(event: NDKEvent, container: HTMLElement) {
-    console.log('Handling new message:', event)
-    if (this.storage.isMessageHidden(event.id) || 
-        this.storage.isUserMuted(event.pubkey)) {
-      return
-    }
-
-    this.state.messages.set(event.id, event)
-    const rendered = this.renderMessage(event)
-    
-    const messagesContainer = container.querySelector('[data-messages]')
-    if (messagesContainer) {
-      messagesContainer.insertAdjacentElement('beforeend', rendered)
-      if (this.config.autoScroll) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight
-      }
-    }
-  }
-
-  private renderMessage(event: NDKEvent): HTMLElement {
-    console.log('Rendering message:', event)
-    const template = this.templates.get(this.config.messageTemplate?.slice(1) || 'message-template')
-    if (!template) throw new Error('Message template not found')
-
-    const clone = template.content.cloneNode(true) as HTMLElement
-    // Replace template variables
-    const data = {
-      id: event.id,
-      pubkey: event.pubkey,
-      pubkey_short: event.pubkey.slice(0, 8),
-      content: event.content,
-      created_at: event.created_at,
-      formatted_time: new Date(event.created_at * 1000).toLocaleString()
-    }
-
-    this.replaceTemplateVariables(clone, data)
-    return clone
-  }
-
-  private replaceTemplateVariables(element: HTMLElement, data: Record<string, any>) {
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-      null
-    )
-
-    let node
-    while (node = walker.nextNode()) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        node.textContent = node.textContent?.replace(
-          /\{\{(\w+)\}\}/g,
-          (_, key) => data[key] || ''
-        )
-      } else if (node instanceof Element) {
-        Array.from(node.attributes).forEach(attr => {
-          attr.value = attr.value.replace(
-            /\{\{(\w+)\}\}/g,
-            (_, key) => data[key] || ''
-          )
-        })
-      }
-    }
-  }
-
-  private handleError(message: string, error: any) {
-    console.error(message, error)
-    this.dispatchEvent('nostr-chat:error', { message, error })
-  }
-
-  private dispatchEvent(name: string, detail: any) {
-    document.dispatchEvent(new CustomEvent(name, { detail }))
+  setupMessagePosting(form: HTMLFormElement) {
+    console.log('Setting up message form:', form)
   }
 }
