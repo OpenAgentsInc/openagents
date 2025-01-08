@@ -21,28 +21,38 @@
 </head>
 
 <body>
-    <div style="font-size:1.5em">OpenAgents, Inc.</div>
-    <p>Intelligent software to empower humans.</p>
-
-    <div id="changelog" 
-         hx-get="/data/changelog.json" 
-         hx-trigger="load" 
-         hx-ext="client-side-templates"
-         mustache-template="changelog-template">
+    <div class="header">
+        <div style="font-size:1.5em">OpenAgents, Inc.</div>
+        <p style="margin: 10px 0 0 0">Intelligent software to empower humans.</p>
     </div>
 
-    <div id="videos" 
-         hx-get="/data/videos.json" 
-         hx-trigger="load" 
-         hx-ext="client-side-templates"
-         mustache-template="videos-template">
-    </div>
+    <div class="container">
+        <div class="column">
+            <div id="changelog" 
+                 hx-get="/data/changelog.json" 
+                 hx-trigger="load" 
+                 hx-ext="client-side-templates"
+                 mustache-template="changelog-template">
+            </div>
+        </div>
 
-    <!-- Chat will be loaded here -->
-    <div id="chat-container"
-         hx-get="templates/chat.mustache"
-         hx-trigger="load"
-         mustache-template="chat"></div>
+        <div class="column">
+            <div id="videos" 
+                 hx-get="/data/videos.json" 
+                 hx-trigger="load" 
+                 hx-ext="client-side-templates"
+                 mustache-template="videos-template">
+            </div>
+        </div>
+
+        <div class="column">
+            <div id="chat-container"
+                 hx-get="templates/chat.mustache"
+                 hx-trigger="load"
+                 mustache-template="chat">
+            </div>
+        </div>
+    </div>
 
     <template id="changelog-template">
         <div class="changelog">
