@@ -38,3 +38,10 @@ body {
     padding: 20px;
     font-size: 14px;
 }
+
+/* Specifically target input and textarea elements */
+input[type="text"],
+input[type="url"],
+textarea {
+    font-family: 'Berkeley Mono', monospace;
+}
