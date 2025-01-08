@@ -1,6 +1,6 @@
 import NDK, { NDKNip07Signer } from "@nostr-dev-kit/ndk"
 
-// const nip07signer = new NDKNip07Signer()
+const nip07signer = new NDKNip07Signer()
 
 const ndk =
   // @ts-ignore
@@ -10,8 +10,8 @@ const ndk =
       'wss://nostr-pub.wellorder.net',
       'wss://nostr.mom',
       'wss://relay.nostr.band'
-    ]
-    // signer: nip07signer
+    ],
+    signer: nip07signer
   })
 
 // @ts-ignore
