@@ -41,7 +41,9 @@ async fn main() -> std::io::Result<()> {
         .bind(&addr)
         {
             Ok(server) => {
-                info!("Server successfully bound to {}", addr);
+                println!("\n🚀 Server running!");
+                println!("➜ Local:   \x1b[36mhttp://localhost:{}\x1b[0m", port);
+                println!("➜ Network: \x1b[36mhttp://0.0.0.0:{}\x1b[0m\n", port);
                 return server.run().await;
             }
             Err(e) => {
