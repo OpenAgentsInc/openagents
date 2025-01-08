@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nostr Chat Example</title>
+    <script src="https://unpkg.com/htmx.org"></script>
+    <script src="https://unpkg.com/@nostr-dev-kit/ndk@^0.7.7/dist/browser/ndk.js"></script>
+    <script src="nostr-chat.js" defer></script>
+    <style>
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .message .author {
+            font-weight: bold;
+            color: #2a6;
+        }
+        .message .time {
+            color: #666;
+            font-size: 0.8em;
+        }
+        .message .content {
+            margin-top: 5px;
+        }
+        .message .actions {
+            margin-top: 5px;
+            font-size: 0.8em;
+        }
+        .message-form {
+            display: flex;
+            gap: 10px;
+        }
+        .message-form input {
+            flex: 1;
+            padding: 8px;
+        }
+        .message-form button {
+            padding: 8px 16px;
+        }
+        .moderation-panel {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Channel metadata -->
+        <div data-channel-metadata></div>
+
+        <!-- Chat messages -->
+        <div hx-ext="nostr-chat"
+             nostr-chat-channel="<YOUR_CHANNEL_ID>"
+             class="chat-container">
+            
+            <div class="messages" data-messages></div>
+            
+            <!-- Message input -->
+            <form class="message-form"
+                  nostr-chat-post="true"
+                  hx-trigger="submit">
+                <input name="content" 
+                       placeholder="Type a message..."
+                       required>
+                <button type="submit">Send</button>
+            </form>
+        </div>
+
+        <!-- Moderation panel -->
+        <div class="moderation-panel">
+            <h3>Hidden Messages</h3>
+            <div id="hidden-messages"></div>
+            
+            <h3>Muted Users</h3>
+            <div id="muted-users"></div>
+        </div>
+    </div>
+
+    <!-- Message template -->
+    <template id="message-template">
+        <div class="message" id="msg-{{id}}" 
+             data-pubkey="{{pubkey}}" 
+             data-timestamp="{{created_at}}">
+            <span class="author">{{pubkey_short}}</span>
+            <span class="time">{{formatted_time}}</span>
+            <div class="content">{{content}}</div>
+            <div class="actions">
+                <button nostr-chat-reply="{{id}}">Reply</button>
+                <button nostr-chat-hide="{{id}}">Hide</button>
+                <button nostr-chat-mute="{{pubkey}}">Mute User</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Channel metadata template -->
+    <template id="channel-metadata-template">
+        <div class="channel-header">
+            <h2>{{name}}</h2>
+            <p>{{about}}</p>
+            <img src="{{picture}}" alt="Channel picture" 
+                 style="max-width: 100px; border-radius: 50%;">
+        </div>
+    </template>
+</body>
+</html>
