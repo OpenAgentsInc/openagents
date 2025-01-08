@@ -50,12 +50,14 @@ body {
     padding: 20px;
     z-index: 100;
     border-bottom: 1px solid #222;
+    height: 80px; /* Fixed height for header */
+    box-sizing: border-box;
 }
 
 .container {
     display: flex;
-    height: 100vh;
-    padding-top: 80px; /* Account for header */
+    height: calc(100vh - 80px); /* Subtract header height */
+    margin-top: 80px; /* Add margin equal to header height */
     box-sizing: border-box;
 }
 
@@ -94,7 +96,7 @@ textarea {
     .container {
         flex-direction: column;
         height: auto;
-        padding-top: 120px;
+        margin-top: 80px;
     }
 
     .column {
