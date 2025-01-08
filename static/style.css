@@ -22,10 +22,26 @@ body {
     overflow: hidden;
 }
 
+#logo-container {
+    position: fixed;
+    top: 15px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+}
+
+#onyx-logo {
+    max-width: 200px;
+    height: auto;
+}
+
 #main {
     height: 100%;
     width: calc(100% - 300px);
     overflow-y: auto;
+    padding-top: 100px; /* Add space for the logo */
 }
 
 #bg {
@@ -166,5 +182,21 @@ body {
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+    #main {
+        width: 100%;
+        padding-top: 80px;
+    }
+
+    #logo-container {
+        top: 10px;
+    }
+
+    #onyx-logo {
+        max-width: 120px;
     }
 }
