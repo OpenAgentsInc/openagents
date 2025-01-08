@@ -40,6 +40,7 @@ body {
 }
 
 /* Specifically target input and textarea elements */
+button,
 input[type="text"],
 input[type="url"],
 textarea {
