@@ -1,5 +1,6 @@
 use bitcoin_hashes::{sha256, Hash};
 use lazy_static::lazy_static;
+use actix::Message;
 use serde::{Deserialize, Serialize};
 use secp256k1::{schnorr, Secp256k1, VerifyOnly, XOnlyPublicKey};
 use std::collections::{HashMap, HashSet};
@@ -10,6 +11,8 @@ lazy_static! {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Message)]
+#[rtype(result = "()")]
 pub struct Event {
     pub id: String,
     pub pubkey: String,

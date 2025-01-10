@@ -1,4 +1,4 @@
-use actix::{Actor, StreamHandler};
+use actix::{Actor, StreamHandler, AsyncContext, ActorContext};
 use actix_web_actors::ws;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -96,10 +96,11 @@ impl RelayWs {
     }
 
     fn handle_subscription(&mut self, sub: Subscription, ctx: &mut ws::WebsocketContext<Self>) {
-        self.subscriptions.insert(sub.id.clone(), sub);
+        let sub_id = sub.id.clone();
+        self.subscriptions.insert(sub_id.clone(), sub);
         
         // Send EOSE
-        ctx.text(format!(r#"["EOSE", "{}"]"#, sub.id));
+        ctx.text(format!(r#"["EOSE", "{}"]"#, sub_id));
     }
 }
 

@@ -25,7 +25,7 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     // Channel for broadcasting events to all connected clients
-    let (event_tx, _) = broadcast::channel(1024);
+    let (event_tx, _): (broadcast::Sender<Event>, _) = broadcast::channel(1024);
     let event_tx = web::Data::new(event_tx);
 
     HttpServer::new(move || {
