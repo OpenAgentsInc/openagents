@@ -104,12 +104,14 @@ impl Database {
             query.push_str(&format!(" LIMIT {}", limit));
         }
 
-        let rows = sqlx::query(&query)
-            .execute(&self.pool)
-            .await?;
+        let rows = sqlx::query_as!(
+            Event,
+            &query
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
         let events = rows
-            .iter()
             .map(|row| {
                 Ok(Event {
                     id: row.get("id"),

@@ -53,8 +53,8 @@ impl RelayWs {
 
                     match array[0].as_str() {
                         Some("EVENT") => {
-                            if let Ok(event_cmd) = serde_json::from_value(value.clone()) {
-                                self.handle_event(event_cmd, ctx);
+                            if let Ok(event) = serde_json::from_value::<Event>(array[1].clone()) {
+                                self.handle_event(event, ctx);
                             }
                         }
                         Some("REQ") => {
