@@ -35,7 +35,7 @@ impl Database {
             event.kind as i32,
             event.content,
             event.sig,
-            serde_json::to_value(&event.tags)?
+            serde_json::to_value(&event.tags)? as _
         )
         .execute(&self.pool)
         .await?;
@@ -104,27 +104,25 @@ impl Database {
             query.push_str(&format!(" LIMIT {}", limit));
         }
 
-        let rows = sqlx::query_as!(
-            Event,
+        let rows = sqlx::query!(
             &query
         )
         .fetch_all(&self.pool)
         .await?;
 
         let events = rows
-            .map(|row| {
-                Ok(Event {
-                    id: row.get("id"),
-                    pubkey: row.get("pubkey"), 
-                    created_at: row.get::<i64, _>("created_at") as u64,
-                    kind: row.get::<i32, _>("kind") as u64,
-                    content: row.get("content"),
-                    sig: row.get("sig"),
-                    tags: serde_json::from_value(row.get("tags"))?,
-                    tagidx: None
-                })
+            .iter()
+            .map(|row| Event {
+                id: row.id.clone(),
+                pubkey: row.pubkey.clone(),
+                created_at: row.created_at as u64,
+                kind: row.kind as u64,
+                content: row.content.clone(),
+                sig: row.sig.clone(),
+                tags: serde_json::from_value(row.tags.clone()).unwrap_or_default(),
+                tagidx: None
             })
-            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+            .collect();
 
         Ok(events)
     }
