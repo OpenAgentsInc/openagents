@@ -24,21 +24,20 @@ impl Database {
     }
 
     pub async fn save_event(&self, event: &Event) -> Result<(), Box<dyn Error>> {
-        sqlx::query_as!(
-            Event,
+        sqlx::query_as::<_, Event>(
             r#"
             INSERT INTO events (id, pubkey, created_at, kind, content, sig, tags)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             "#,
-            event.id,
-            event.pubkey,
-            event.created_at as i64,
-            event.kind as i32,
-            event.content,
-            event.sig,
-            serde_json::to_value(&event.tags)?
         )
+        .bind(&event.id)
+        .bind(&event.pubkey)
+        .bind(event.created_at as i64)
+        .bind(event.kind as i32)
+        .bind(&event.content)
+        .bind(&event.sig)
+        .bind(serde_json::to_value(&event.tags)?)
         .execute(&self.pool)
         .await?;
 
@@ -106,11 +105,9 @@ impl Database {
             query.push_str(&format!(" LIMIT {}", limit));
         }
 
-        let rows = sqlx::query_as::<_, Event>(&query)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let events = rows.fetch_all(&self.pool).await?;
+        let events = sqlx::query_as::<_, Event>(&query)
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(events)
     }

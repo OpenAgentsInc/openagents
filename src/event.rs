@@ -3,6 +3,7 @@ use lazy_static::lazy_static;
 use actix::Message;
 use serde::{Deserialize, Serialize};
 use secp256k1::{schnorr, Secp256k1, VerifyOnly, XOnlyPublicKey};
+use sqlx::FromRow;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
@@ -10,7 +11,7 @@ lazy_static! {
     pub static ref SECP: Secp256k1<VerifyOnly> = Secp256k1::verification_only();
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct Event {
