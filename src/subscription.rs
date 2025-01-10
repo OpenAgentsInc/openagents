@@ -48,13 +48,13 @@ impl ReqFilter {
         }
 
         if let Some(since) = self.since {
-            if event.created_at < *since {
+            if event.created_at < since {
                 return false;
             }
         }
 
         if let Some(until) = self.until {
-            if event.created_at > *until {
+            if event.created_at > until {
                 return false;
             }
         }
