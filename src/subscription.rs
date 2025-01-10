@@ -12,9 +12,9 @@ pub struct Subscription {
 pub struct ReqFilter {
     pub ids: Option<Vec<String>>,
     pub authors: Option<Vec<String>>,
-    pub kinds: Option<Vec<u64>>,
-    pub since: Option<u64>,
-    pub until: Option<u64>,
+    pub kinds: Option<Vec<i32>>,
+    pub since: Option<i64>,
+    pub until: Option<i64>,
     pub limit: Option<u64>,
     #[serde(flatten)]
     pub tags: HashMap<String, Vec<String>>,
@@ -42,19 +42,19 @@ impl ReqFilter {
         }
 
         if let Some(kinds) = &self.kinds {
-            if !kinds.contains(&event.kind) {
+            if !kinds.iter().any(|&k| k == event.kind) {
                 return false;
             }
         }
 
         if let Some(since) = self.since {
-            if event.created_at < since {
+            if event.created_at < *since {
                 return false;
             }
         }
 
         if let Some(until) = self.until {
-            if event.created_at > until {
+            if event.created_at > *until {
                 return false;
             }
         }
