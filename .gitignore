@@ -30,3 +30,4 @@ localimages
 .idea
 tags
 static/nostr/*.js
+.aider*
