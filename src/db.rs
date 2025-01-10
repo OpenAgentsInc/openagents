@@ -24,20 +24,21 @@ impl Database {
     }
 
     pub async fn save_event(&self, event: &Event) -> Result<(), Box<dyn Error>> {
-        sqlx::query!(
+        sqlx::query_as::<_, Event>(
             r#"
             INSERT INTO events (id, pubkey, created_at, kind, content, sig, tags)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, pubkey, created_at, kind, content, sig, tags
             "#,
-            event.id,
-            event.pubkey,
-            event.created_at as i64,
-            event.kind as i32,
-            event.content,
-            event.sig,
-            serde_json::to_value(&event.tags)?
         )
-        .execute(&self.pool)
+        .bind(&event.id)
+        .bind(&event.pubkey)
+        .bind(event.created_at)
+        .bind(event.kind)
+        .bind(&event.content)
+        .bind(&event.sig)
+        .bind(serde_json::to_value(&event.tags)?)
+        .fetch_one(&self.pool)
         .await?;
 
         Ok(())
@@ -46,9 +47,9 @@ impl Database {
     pub async fn get_events_by_filter(&self, 
         ids: &Option<Vec<String>>,
         authors: &Option<Vec<String>>,
-        kinds: &Option<Vec<u64>>,
-        since: &Option<u64>,
-        until: &Option<u64>,
+        kinds: &Option<Vec<i32>>,
+        since: &Option<i64>,
+        until: &Option<i64>,
         limit: &Option<u64>,
         tag_filters: &[(char, HashSet<String>)]
     ) -> Result<Vec<Event>, Box<dyn Error>> {
@@ -85,7 +86,7 @@ impl Database {
         }
 
         // Add tag filters
-        for (i, (tag_char, values)) in tag_filters.iter().enumerate() {
+        for (_i, (tag_char, values)) in tag_filters.iter().enumerate() {
             query.push_str(&format!(
                 " AND tags @> ${}",
                 params.len() + 1
@@ -104,25 +105,9 @@ impl Database {
             query.push_str(&format!(" LIMIT {}", limit));
         }
 
-        let rows = sqlx::query(&query)
-            .execute(&self.pool)
+        let events = sqlx::query_as::<_, Event>(&query)
+            .fetch_all(&self.pool)
             .await?;
-
-        let events = rows
-            .iter()
-            .map(|row| {
-                Ok(Event {
-                    id: row.get("id"),
-                    pubkey: row.get("pubkey"), 
-                    created_at: row.get::<i64, _>("created_at") as u64,
-                    kind: row.get::<i32, _>("kind") as u64,
-                    content: row.get("content"),
-                    sig: row.get("sig"),
-                    tags: serde_json::from_value(row.get("tags"))?,
-                    tagidx: None
-                })
-            })
-            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
 
         Ok(events)
     }
