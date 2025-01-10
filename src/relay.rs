@@ -112,8 +112,9 @@ impl Actor for RelayWs {
 
         // Set up event receiver
         let addr = ctx.address();
+        let mut event_rx = self.event_rx.resubscribe();
         actix::spawn(async move {
-            while let Ok(event) = self.event_rx.recv().await {
+            while let Ok(event) = event_rx.recv().await {
                 addr.do_send(event);
             }
         });
