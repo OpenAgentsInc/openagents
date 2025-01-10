@@ -12,9 +12,9 @@ pub struct Subscription {
 pub struct ReqFilter {
     pub ids: Option<Vec<String>>,
     pub authors: Option<Vec<String>>,
-    pub kinds: Option<Vec<u64>>,
-    pub since: Option<u64>,
-    pub until: Option<u64>,
+    pub kinds: Option<Vec<i32>>,
+    pub since: Option<i64>,
+    pub until: Option<i64>,
     pub limit: Option<u64>,
     #[serde(flatten)]
     pub tags: HashMap<String, Vec<String>>,

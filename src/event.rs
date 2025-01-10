@@ -4,6 +4,7 @@ use actix::Message;
 use serde::{Deserialize, Serialize};
 use secp256k1::{schnorr, Secp256k1, VerifyOnly, XOnlyPublicKey};
 use sqlx::types::JsonValue;
+use sqlx::Row;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 

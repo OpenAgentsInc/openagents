@@ -86,7 +86,7 @@ impl Database {
         }
 
         // Add tag filters
-        for (i, (tag_char, values)) in tag_filters.iter().enumerate() {
+        for (_i, (tag_char, values)) in tag_filters.iter().enumerate() {
             query.push_str(&format!(
                 " AND tags @> ${}",
                 params.len() + 1
