@@ -19,3 +19,4 @@ uuid = { version = "1.4", features = ["v4"] }
 bitcoin_hashes = "0.12"
 secp256k1 = { version = "0.27", features = ["rand", "bitcoin_hashes"] }
 lazy_static = "1.4"
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "json"] }
