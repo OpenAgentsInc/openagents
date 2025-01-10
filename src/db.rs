@@ -28,17 +28,17 @@ impl Database {
             r#"
             INSERT INTO events (id, pubkey, created_at, kind, content, sig, tags)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING *
+            RETURNING id, pubkey, created_at, kind, content, sig, tags
             "#,
         )
         .bind(&event.id)
         .bind(&event.pubkey)
-        .bind(event.created_at as i64)
-        .bind(event.kind as i32)
+        .bind(event.created_at)
+        .bind(event.kind)
         .bind(&event.content)
         .bind(&event.sig)
         .bind(serde_json::to_value(&event.tags)?)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await?;
 
         Ok(())
