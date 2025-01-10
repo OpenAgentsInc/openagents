@@ -2,8 +2,9 @@ mod event;
 mod relay;
 mod subscription;
 mod db;
+mod server;
 
-use actix_web::{web, App, HttpServer, HttpResponse};
+use actix_web::{web, App, HttpServer};
 use actix_web_actors::ws;
 use actix_cors::Cors;
 use tokio::sync::broadcast;
@@ -49,9 +50,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(event_tx.clone())
             .app_data(db.clone())
             .route("/", web::get().to(ws_route))
-            .route("/health", web::get().to(|| async { 
-                HttpResponse::Ok().body("healthy") 
-            }))
+            .configure(server::config::configure_app)
     })
     .bind("127.0.0.1:8080")?
     .run()
