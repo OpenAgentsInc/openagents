@@ -91,8 +91,10 @@ impl RelayWs {
                     }
                 });
 
-                // Broadcast valid event
-                if let Err(e) = self.event_tx.send(event.clone()) {
+                // Build index and broadcast valid event
+                let mut event_to_broadcast = event.clone();
+                event_to_broadcast.build_index();
+                if let Err(e) = self.event_tx.send(event_to_broadcast) {
                     ctx.text(format!(r#"["NOTICE", "Error broadcasting event: {}"]"#, e));
                     return;
                 }
