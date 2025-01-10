@@ -137,8 +137,9 @@ impl RelayWs {
                 
             // Collect tag filters
             let tag_filters = sub_clone.filters.iter()
-                .flat_map(|f| f.generic_tags.iter())
-                .map(|(k, v)| (*k, v.clone()))
+                .flat_map(|f| f.tags.iter())
+                .filter(|(k, _)| k.starts_with('#'))
+                .map(|(k, v)| (k.chars().nth(1).unwrap(), v.clone().into_iter().collect()))
                 .collect::<Vec<_>>();
 
             match db.get_events_by_filter(
