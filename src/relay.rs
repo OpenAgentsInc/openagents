@@ -53,8 +53,8 @@ impl RelayWs {
 
                     match array[0].as_str() {
                         Some("EVENT") => {
-                            if let Ok(event_cmd) = serde_json::from_value(value.clone()) {
-                                self.handle_event(event_cmd, ctx);
+                            if let Ok(event) = serde_json::from_value::<Event>(array[1].clone()) {
+                                self.handle_event(event, ctx);
                             }
                         }
                         Some("REQ") => {
@@ -91,8 +91,10 @@ impl RelayWs {
                     }
                 });
 
-                // Broadcast valid event
-                if let Err(e) = self.event_tx.send(event.clone()) {
+                // Build index and broadcast valid event
+                let mut event_to_broadcast = event.clone();
+                event_to_broadcast.build_index();
+                if let Err(e) = self.event_tx.send(event_to_broadcast) {
                     ctx.text(format!(r#"["NOTICE", "Error broadcasting event: {}"]"#, e));
                     return;
                 }
@@ -137,8 +139,9 @@ impl RelayWs {
                 
             // Collect tag filters
             let tag_filters = sub_clone.filters.iter()
-                .flat_map(|f| f.generic_tags.iter())
-                .map(|(k, v)| (*k, v.clone()))
+                .flat_map(|f| f.tags.iter())
+                .filter(|(k, _)| k.starts_with('#'))
+                .map(|(k, v)| (k.chars().nth(1).unwrap(), v.clone().into_iter().collect()))
                 .collect::<Vec<_>>();
 
             match db.get_events_by_filter(

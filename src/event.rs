@@ -3,6 +3,8 @@ use lazy_static::lazy_static;
 use actix::Message;
 use serde::{Deserialize, Serialize};
 use secp256k1::{schnorr, Secp256k1, VerifyOnly, XOnlyPublicKey};
+use sqlx::types::JsonValue;
+use sqlx::Row;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
@@ -16,13 +18,31 @@ lazy_static! {
 pub struct Event {
     pub id: String,
     pub pubkey: String,
-    pub created_at: u64,
-    pub kind: u64,
+    pub created_at: i64,
+    pub kind: i32,
     pub tags: Vec<Vec<String>>,
     pub content: String,
     pub sig: String,
     #[serde(skip)]
     pub tagidx: Option<HashMap<char, HashSet<String>>>,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for Event {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        let tags: JsonValue = row.try_get("tags")?;
+        let tags: Vec<Vec<String>> = serde_json::from_value(tags).unwrap_or_default();
+        
+        Ok(Event {
+            id: row.try_get("id")?,
+            pubkey: row.try_get("pubkey")?,
+            created_at: row.try_get("created_at")?,
+            kind: row.try_get("kind")?,
+            tags,
+            content: row.try_get("content")?,
+            sig: row.try_get("sig")?,
+            tagidx: None,
+        })
+    }
 }
 
 impl Event {
