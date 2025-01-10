@@ -116,11 +116,6 @@ pub struct EventCmd {
     pub event: Event,
 }
 
-impl EventCmd {
-    pub fn event_id(&self) -> &str {
-        &self.event.id
-    }
-}
 
 #[cfg(test)]
 mod tests {

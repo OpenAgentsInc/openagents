@@ -11,7 +11,6 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct RelayWs {
-    id: String,
     hb: Instant,
     subscriptions: HashMap<String, Subscription>,
     event_tx: broadcast::Sender<Event>,
@@ -19,9 +18,8 @@ pub struct RelayWs {
 }
 
 impl RelayWs {
-    pub fn new(id: String, event_tx: broadcast::Sender<Event>) -> Self {
+    pub fn new(_id: String, event_tx: broadcast::Sender<Event>) -> Self {
         Self {
-            id,
             hb: Instant::now(),
             subscriptions: HashMap::new(),
             event_tx: event_tx.clone(),
