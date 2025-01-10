@@ -24,10 +24,12 @@ impl Database {
     }
 
     pub async fn save_event(&self, event: &Event) -> Result<(), Box<dyn Error>> {
-        sqlx::query!(
+        sqlx::query_as!(
+            Event,
             r#"
             INSERT INTO events (id, pubkey, created_at, kind, content, sig, tags)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
             "#,
             event.id,
             event.pubkey,
@@ -35,7 +37,7 @@ impl Database {
             event.kind as i32,
             event.content,
             event.sig,
-            serde_json::to_value(&event.tags)? as _
+            serde_json::to_value(&event.tags)?
         )
         .execute(&self.pool)
         .await?;
@@ -104,25 +106,11 @@ impl Database {
             query.push_str(&format!(" LIMIT {}", limit));
         }
 
-        let rows = sqlx::query!(
-            &query
-        )
+        let rows = sqlx::query_as::<_, Event>(&query)
         .fetch_all(&self.pool)
         .await?;
 
-        let events = rows
-            .iter()
-            .map(|row| Event {
-                id: row.id.clone(),
-                pubkey: row.pubkey.clone(),
-                created_at: row.created_at as u64,
-                kind: row.kind as u64,
-                content: row.content.clone(),
-                sig: row.sig.clone(),
-                tags: serde_json::from_value(row.tags.clone()).unwrap_or_default(),
-                tagidx: None
-            })
-            .collect();
+        let events = rows.fetch_all(&self.pool).await?;
 
         Ok(events)
     }
