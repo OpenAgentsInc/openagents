@@ -47,9 +47,9 @@ impl Database {
     pub async fn get_events_by_filter(&self, 
         ids: &Option<Vec<String>>,
         authors: &Option<Vec<String>>,
-        kinds: &Option<Vec<u64>>,
-        since: &Option<u64>,
-        until: &Option<u64>,
+        kinds: &Option<Vec<i32>>,
+        since: &Option<i64>,
+        until: &Option<i64>,
         limit: &Option<u64>,
         tag_filters: &[(char, HashSet<String>)]
     ) -> Result<Vec<Event>, Box<dyn Error>> {
