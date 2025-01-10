@@ -3,9 +3,11 @@ use actix_web_actors::ws;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
+use std::sync::Arc;
 
 use crate::event::Event;
 use crate::subscription::Subscription;
+use crate::db::Database;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -15,15 +17,17 @@ pub struct RelayWs {
     subscriptions: HashMap<String, Subscription>,
     event_tx: broadcast::Sender<Event>,
     event_rx: broadcast::Receiver<Event>,
+    db: Arc<Database>,
 }
 
 impl RelayWs {
-    pub fn new(_id: String, event_tx: broadcast::Sender<Event>) -> Self {
+    pub fn new(_id: String, event_tx: broadcast::Sender<Event>, db: Arc<Database>) -> Self {
         Self {
             hb: Instant::now(),
             subscriptions: HashMap::new(),
             event_tx: event_tx.clone(),
             event_rx: event_tx.subscribe(),
+            db: db,
         }
     }
 
@@ -78,6 +82,15 @@ impl RelayWs {
     fn handle_event(&mut self, event: Event, ctx: &mut ws::WebsocketContext<Self>) {
         match event.validate() {
             Ok(()) => {
+                // Save event to database
+                let db = self.db.clone();
+                let event_clone = event.clone();
+                actix::spawn(async move {
+                    if let Err(e) = db.save_event(&event_clone).await {
+                        log::error!("Failed to save event: {}", e);
+                    }
+                });
+
                 // Broadcast valid event
                 if let Err(e) = self.event_tx.send(event.clone()) {
                     ctx.text(format!(r#"["NOTICE", "Error broadcasting event: {}"]"#, e));
@@ -95,6 +108,53 @@ impl RelayWs {
 
     fn handle_subscription(&mut self, sub: Subscription, ctx: &mut ws::WebsocketContext<Self>) {
         let sub_id = sub.id.clone();
+        
+        // Query historical events
+        let db = self.db.clone();
+        let sub_clone = sub.clone();
+        let addr = ctx.address();
+        
+        actix::spawn(async move {
+            // Extract filter parameters from subscription
+            let ids = sub_clone.filters.iter()
+                .filter_map(|f| f.ids.clone())
+                .next();
+            let authors = sub_clone.filters.iter()
+                .filter_map(|f| f.authors.clone())
+                .next();
+            let kinds = sub_clone.filters.iter()
+                .filter_map(|f| f.kinds.clone())
+                .next();
+            let since = sub_clone.filters.iter()
+                .filter_map(|f| f.since)
+                .next();
+            let until = sub_clone.filters.iter()
+                .filter_map(|f| f.until)
+                .next();
+            let limit = sub_clone.filters.iter()
+                .filter_map(|f| f.limit)
+                .next();
+                
+            // Collect tag filters
+            let tag_filters = sub_clone.filters.iter()
+                .flat_map(|f| f.generic_tags.iter())
+                .map(|(k, v)| (*k, v.clone()))
+                .collect::<Vec<_>>();
+
+            match db.get_events_by_filter(
+                &ids, &authors, &kinds, &since, &until, &limit, &tag_filters
+            ).await {
+                Ok(events) => {
+                    for event in events {
+                        addr.do_send(event);
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to query events: {}", e);
+                }
+            }
+        });
+
         self.subscriptions.insert(sub_id.clone(), sub);
         
         // Send EOSE
