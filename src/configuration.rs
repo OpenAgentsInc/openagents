@@ -26,16 +26,10 @@ pub struct DatabaseSettings {
     pub host: String,
     pub database_name: String,
     pub require_ssl: bool,
-    #[serde(default = "default_connection_timeout")]
-    pub connection_timeout_secs: u64,
     #[serde(default = "default_max_retries")]
     pub max_connection_retries: u32,
     #[serde(default = "default_retry_interval")]
     pub retry_interval_secs: u64,
-}
-
-fn default_connection_timeout() -> u64 {
-    30 // 30 seconds default timeout
 }
 
 fn default_max_retries() -> u32 {
