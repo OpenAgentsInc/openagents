@@ -4,7 +4,7 @@ use crate::event::Event;
 use std::collections::HashSet;
 use std::error::Error;
 use std::time::Duration;
-use tracing::warn;
+use tracing::{warn, info};
 
 pub struct Database {
     pool: Pool<Postgres>
@@ -19,15 +19,21 @@ impl Database {
         let mut last_error = None;
         
         for attempt in 1..=max_retries {
+            info!("Attempting database connection (attempt {} of {})", attempt, max_retries);
+            
             match PgPoolOptions::new()
                 .max_connections(5)
+                .acquire_timeout(Duration::from_secs(30))
                 .connect_with(options.clone())
                 .await
             {
                 Ok(pool) => {
                     // Run migrations after successful connection
                     match sqlx::migrate!("./migrations").run(&pool).await {
-                        Ok(_) => return Ok(Self { pool }),
+                        Ok(_) => {
+                            info!("Successfully connected to database and ran migrations");
+                            return Ok(Self { pool });
+                        }
                         Err(e) => {
                             warn!("Migration failed on attempt {}: {}", attempt, e);
                             last_error = Some(e.into());
@@ -44,6 +50,7 @@ impl Database {
             }
 
             if attempt < max_retries {
+                info!("Waiting {} seconds before next attempt", retry_interval.as_secs());
                 tokio::time::sleep(retry_interval).await;
             }
         }
