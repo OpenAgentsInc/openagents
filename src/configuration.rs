@@ -4,6 +4,7 @@ use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 use tracing::info;
+use url::Url;
 
 #[derive(serde::Deserialize, Clone)]
 pub struct Settings {
@@ -50,25 +51,25 @@ fn default_admin_token() -> String {
 impl DatabaseSettings {
     pub fn connect_options(&self) -> PgConnectOptions {
         // First check for App Platform's DATABASE_URL
-        if std::env::var("DATABASE_URL").is_ok() {
-            info!("Using App Platform database environment variables");
-            let host = std::env::var("PGHOST").unwrap_or_else(|_| "localhost".to_string());
-            let port = std::env::var("PGPORT")
-                .ok()
-                .and_then(|p| p.parse().ok())
-                .unwrap_or(5432);
-            let username = std::env::var("PGUSER").unwrap_or_else(|_| "postgres".to_string());
-            let password = std::env::var("PGPASSWORD").unwrap_or_default();
-            let database = std::env::var("PGDATABASE").unwrap_or_else(|_| "postgres".to_string());
+        if let Ok(database_url) = std::env::var("DATABASE_URL") {
+            info!("Using DATABASE_URL from environment");
+            
+            // Parse the DATABASE_URL
+            let url = Url::parse(&database_url).expect("Invalid DATABASE_URL");
+            let host = url.host_str().unwrap_or("localhost");
+            let port = url.port().unwrap_or(5432);
+            let username = url.username();
+            let password = url.password().unwrap_or("");
+            let database = url.path().trim_start_matches('/');
             
             info!("Connecting to database at {}:{}", host, port);
             
             return PgConnectOptions::new()
-                .host(&host)
+                .host(host)
                 .port(port)
-                .username(&username)
-                .password(&password)
-                .database(&database)
+                .username(username)
+                .password(password)
+                .database(database)
                 .ssl_mode(PgSslMode::Require);
         }
 
