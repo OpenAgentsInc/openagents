@@ -18,7 +18,7 @@ pub struct LoginForm {
     password: String,
 }
 
-#[get("/")]
+#[get("")]
 pub async fn admin_dashboard() -> impl Responder {
     HttpResponse::Ok().content_type("text/html").body(include_str!("../../../templates/admin/dashboard.html"))
 }
