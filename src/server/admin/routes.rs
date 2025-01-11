@@ -214,9 +214,10 @@ mod tests {
             .await
             .unwrap();
 
-        // Create test table if it doesn't exist
+        // Drop and recreate test table
+        sqlx::query("DROP TABLE IF EXISTS events").execute(&pool).await.unwrap();
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS events (
+            "CREATE TABLE events (
                 id TEXT PRIMARY KEY,
                 pubkey TEXT NOT NULL,
                 created_at BIGINT NOT NULL,
