@@ -1,4 +1,11 @@
 application:
   host: 0.0.0.0
 database:
+  host: "localhost"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  database_name: "postgres"
   require_ssl: true
+  max_connection_retries: 20
+  retry_interval_secs: 15
