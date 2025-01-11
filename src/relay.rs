@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::event::Event;
 use crate::subscription::Subscription;
-use crate::db::Database;
+use crate::db::{Database, EventFilter};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
