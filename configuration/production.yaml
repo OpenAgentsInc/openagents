@@ -2,3 +2,6 @@ application:
   host: 0.0.0.0
 database:
   require_ssl: true
+  connection_timeout_secs: 60
+  max_connection_retries: 10
+  retry_interval_secs: 10
