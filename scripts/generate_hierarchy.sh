@@ -1,10 +1,22 @@
 #!/bin/bash
 
+# Check if tree command is available
+if ! command -v tree &> /dev/null; then
+    echo "Error: 'tree' command not found. Please install it first:"
+    echo "  brew install tree"
+    exit 1
+fi
+
 # Create docs directory if it doesn't exist
 mkdir -p docs
 
 # Function to process gitignore patterns into grep-compatible patterns
 process_gitignore() {
+    if [ ! -f .gitignore ]; then
+        echo "Warning: .gitignore file not found"
+        return
+    }
+    
     while IFS= read -r pattern; do
         # Skip empty lines and comments
         [[ -z "$pattern" || "$pattern" =~ ^# ]] && continue
@@ -23,13 +35,24 @@ TEMP_PATTERNS=$(mktemp)
 process_gitignore > "$TEMP_PATTERNS"
 
 # Generate the tree output, excluding gitignore patterns
-{
-    echo "# Project Hierarchy"
-    echo
-    echo "\`\`\`"
-    tree -I "$(paste -sd'|' "$TEMP_PATTERNS")" --dirsfirst
-    echo "\`\`\`"
-} > docs/hierarchy.md
+if [ -s "$TEMP_PATTERNS" ]; then
+    IGNORE_PATTERN=$(paste -sd'|' "$TEMP_PATTERNS")
+    {
+        echo "# Project Hierarchy"
+        echo
+        echo "\`\`\`"
+        tree -a -I "$IGNORE_PATTERN" --dirsfirst
+        echo "\`\`\`"
+    } > docs/hierarchy.md
+else
+    {
+        echo "# Project Hierarchy"
+        echo
+        echo "\`\`\`"
+        tree -a --dirsfirst
+        echo "\`\`\`"
+    } > docs/hierarchy.md
+fi
 
 # Clean up
 rm "$TEMP_PATTERNS"
