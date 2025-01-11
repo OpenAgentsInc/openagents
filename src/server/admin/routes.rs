@@ -1,6 +1,6 @@
 use crate::event::Event;
 use actix_web::{cookie::Cookie, get, post, web, HttpResponse, Responder, Result};
-use openagents::{configuration, database};
+use crate::{configuration, database};
 use secp256k1::{rand, KeyPair, Message, Secp256k1};
 use serde::Deserialize;
 use serde_json::json;
