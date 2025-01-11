@@ -2,6 +2,7 @@ use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     Error, HttpResponse, body::EitherBody,
 };
+use crate::configuration::get_configuration;
 use futures::future::{ready, LocalBoxFuture, Ready};
 
 pub struct AdminAuth;
@@ -52,7 +53,7 @@ where
         
         if let Some(auth_header) = req.headers().get("Authorization") {
             let expected = format!("Bearer {}", config.application.admin_token);
-            if auth_header == expected {
+            if auth_header.as_bytes() == expected.as_bytes() {
                 let fut = self.service.call(req);
                 return Box::pin(async move {
                     let res = fut.await?;
