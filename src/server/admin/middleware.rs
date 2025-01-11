@@ -127,6 +127,15 @@ where
                 });
             }
         };
+
+        // Skip auth in local development
+        if config.environment.as_str() == "local" {
+            let fut = self.service.call(req);
+            return Box::pin(async move {
+                let res = fut.await?;
+                Ok(res.map_into_left_body())
+            });
+        }
         
         // Allow access to login routes without authentication
         if req.path() == "/admin/login" {
