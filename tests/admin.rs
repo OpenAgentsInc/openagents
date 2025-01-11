@@ -2,28 +2,22 @@ use actix_web::{test, web, App};
 use openagents::server::admin::routes::{admin_stats, create_demo_event};
 use openagents::event::Event;
 
-#[actix_web::test]
-async fn test_create_demo_event() {
-    // Set up test database connection
+async fn setup_test_db() -> sqlx::PgPool {
     std::env::remove_var("DATABASE_URL");
 
     let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
         .await
         .unwrap();
 
-    // Drop and recreate test table - drop table first, then type
+    // Drop everything first
     sqlx::query("DROP TABLE IF EXISTS events CASCADE")
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("DROP TYPE IF EXISTS events CASCADE")
-        .execute(&pool)
-        .await
-        .unwrap();
 
-    // Create table with error handling
-    let create_result = sqlx::query(
-        "CREATE TABLE events (
+    // Create table (without trying to create type)
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS events (
             id TEXT PRIMARY KEY,
             pubkey TEXT NOT NULL,
             created_at BIGINT NOT NULL,
@@ -34,12 +28,15 @@ async fn test_create_demo_event() {
         )",
     )
     .execute(&pool)
-    .await;
+    .await
+    .unwrap();
 
-    if let Err(e) = create_result {
-        eprintln!("Error creating table: {}", e);
-        // Continue anyway as the table might already exist
-    }
+    pool
+}
+
+#[actix_web::test]
+async fn test_create_demo_event() {
+    let pool = setup_test_db().await;
 
     // Initialize app with test database
     let app = test::init_service(
@@ -86,38 +83,7 @@ async fn test_create_demo_event() {
 
 #[actix_web::test]
 async fn test_admin_stats() {
-    // Set up test database connection
-    std::env::remove_var("DATABASE_URL");
-
-    let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
-        .await
-        .unwrap();
-
-    // Drop and recreate test table - need to handle existing type
-    sqlx::query("DROP TABLE IF EXISTS events")
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    // Create table with error handling
-    let create_result = sqlx::query(
-        "CREATE TABLE events (
-            id TEXT PRIMARY KEY,
-            pubkey TEXT NOT NULL,
-            created_at BIGINT NOT NULL,
-            kind INTEGER NOT NULL,
-            tags JSONB NOT NULL,
-            content TEXT NOT NULL,
-            sig TEXT NOT NULL
-        )",
-    )
-    .execute(&pool)
-    .await;
-
-    if let Err(e) = create_result {
-        eprintln!("Error creating table: {}", e);
-        // Continue anyway as the table might already exist
-    }
+    let pool = setup_test_db().await;
 
     // Initialize app with test database
     let app = test::init_service(
