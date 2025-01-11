@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 18:41:05
+Generated on: 2025-01-11 18:54:39
 
 ### Structure
 
@@ -115,6 +115,7 @@ Generated on: 2025-01-11 18:41:05
 |       |-- dashboard.html
 |       `-- login.html
 |-- tests/
+|   |-- admin.rs
 |   `-- health_check.rs
 |-- Cargo.lock
 |-- Cargo.toml
@@ -123,5 +124,5 @@ Generated on: 2025-01-11 18:41:05
 |-- README.md
 `-- spec.yaml
 
-22 directories, 95 files
+22 directories, 96 files
 ```
