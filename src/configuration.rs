@@ -8,6 +8,7 @@ use url::Url;
 
 #[derive(serde::Deserialize, Clone)]
 pub struct Settings {
+    #[serde(default)]
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
 }
@@ -21,19 +22,36 @@ pub struct ApplicationSettings {
     pub admin_token: String,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Clone, Default)]
 pub struct DatabaseSettings {
+    #[serde(default)]
     pub username: String,
+    #[serde(default = "default_password")]
     pub password: Secret<String>,
-    #[serde(deserialize_with = "deserialize_number_from_string")]
+    #[serde(default = "default_port")]
     pub port: u16,
+    #[serde(default)]
     pub host: String,
+    #[serde(default)]
     pub database_name: String,
+    #[serde(default = "default_true")]
     pub require_ssl: bool,
 }
 
 fn default_admin_token() -> String {
     "admin-token".to_string()
+}
+
+fn default_password() -> Secret<String> {
+    Secret::new("".to_string())
+}
+
+fn default_port() -> u16 {
+    5432
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl DatabaseSettings {
