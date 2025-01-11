@@ -3,7 +3,8 @@ use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
 use crate::event::Event;
-use openagents::{database, configuration};
+use openagents::{database, configuration::Settings};
+use openagents::configuration;
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
@@ -147,7 +148,7 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
         }
 
         // Save to database
-        let config = crate::configuration::get_configuration()
+        let config = configuration::get_configuration()
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
         let pool = match database::get_connection_pool(&config).await {
