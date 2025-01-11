@@ -44,32 +44,23 @@ fn default_retry_interval() -> u64 {
 impl DatabaseSettings {
     pub fn connect_options(&self) -> PgConnectOptions {
         // First check for App Platform's DATABASE_URL
-        if let Ok(database_url) = std::env::var("DATABASE_URL") {
-            info!("Using DATABASE_URL from environment");
-            let mut options = PgConnectOptions::new()
-                .host(std::env::var("PGHOST").unwrap_or_else(|_| "localhost".to_string()).as_str())
-                .port(std::env::var("PGPORT").ok().and_then(|p| p.parse().ok()).unwrap_or(5432))
-                .username(std::env::var("PGUSER").unwrap_or_else(|_| "postgres".to_string()).as_str())
-                .password(std::env::var("PGPASSWORD").unwrap_or_default().as_str())
-                .database(std::env::var("PGDATABASE").unwrap_or_else(|_| "postgres".to_string()).as_str());
-            
-            options = options.ssl_mode(PgSslMode::Require);
-            return options;
-        }
-
-        // Then check for individual App Platform database variables
-        if let (Ok(host), Ok(port), Ok(user), Ok(password), Ok(database)) = (
-            std::env::var("PGHOST"),
-            std::env::var("PGPORT"),
-            std::env::var("PGUSER"),
-            std::env::var("PGPASSWORD"),
-            std::env::var("PGDATABASE"),
-        ) {
+        if std::env::var("DATABASE_URL").is_ok() {
             info!("Using App Platform database environment variables");
+            let host = std::env::var("PGHOST").unwrap_or_else(|_| "localhost".to_string());
+            let port = std::env::var("PGPORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(5432);
+            let username = std::env::var("PGUSER").unwrap_or_else(|_| "postgres".to_string());
+            let password = std::env::var("PGPASSWORD").unwrap_or_default();
+            let database = std::env::var("PGDATABASE").unwrap_or_else(|_| "postgres".to_string());
+            
+            info!("Connecting to database at {}:{}", host, port);
+            
             return PgConnectOptions::new()
                 .host(&host)
-                .port(port.parse().expect("Invalid PGPORT"))
-                .username(&user)
+                .port(port)
+                .username(&username)
                 .password(&password)
                 .database(&database)
                 .ssl_mode(PgSslMode::Require);
@@ -108,21 +99,28 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
 
     let environment_filename = format!("{}.yaml", environment.as_str());
 
-    let mut settings = Config::builder()
+    info!("Loading configuration from {:?}", base_path);
+    info!("Environment: {}", environment.as_str());
+    info!("Config file: {}", environment_filename);
+
+    let builder = Config::builder()
         .add_source(File::from(base_path.join("base.yaml")))
         .add_source(File::from(base_path.join(environment_filename)))
         .add_source(
             ConfigEnvironment::with_prefix("APP")
                 .prefix_separator("_")
                 .separator("__"),
-        )
-        .build()?;
+        );
 
     // Override port with $PORT if it exists (App Platform requirement)
-    if let Ok(port) = std::env::var("PORT") {
-        settings.set("application.port", port)?;
-    }
+    let builder = if let Ok(port) = std::env::var("PORT") {
+        info!("Using PORT from environment: {}", port);
+        builder.set_override("application.port", port)?
+    } else {
+        builder
+    };
 
+    let settings = builder.build()?;
     settings.try_deserialize::<Settings>()
 }
 
