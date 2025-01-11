@@ -3,8 +3,7 @@ use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
 use crate::event::Event;
-use openagents::{database, configuration::Settings};
-use openagents::configuration;
+use openagents::{database, configuration};
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
