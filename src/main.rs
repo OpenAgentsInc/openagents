@@ -12,7 +12,7 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::event::Event;
 use crate::relay::RelayWs;

@@ -1,9 +1,8 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpResponse,
+    Error, HttpResponse, body::BoxBody,
 };
 use futures::future::{ready, LocalBoxFuture, Ready};
-use std::future::Future;
 
 pub struct AdminAuth;
 
@@ -59,12 +58,8 @@ where
             }
         }
 
-        Box::pin(async move {
-            Ok(req.into_response(
-                HttpResponse::Unauthorized()
-                    .json(serde_json::json!({"error": "Unauthorized"}))
-                    .into_body(),
-            ))
-        })
+        let response = HttpResponse::Unauthorized()
+            .json(serde_json::json!({"error": "Unauthorized"}));
+        Box::pin(async move { Ok(req.into_response(response)) })
     }
 }
