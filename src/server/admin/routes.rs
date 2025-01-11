@@ -151,16 +151,20 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
             })));
         }
 
-        // Save to database
-        let config = configuration::get_configuration()
-            .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
+        // For tests, bypass database connection if DATABASE_URL is not set
+        let pool = if std::env::var("DATABASE_URL").is_err() && cfg!(test) {
+            sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres").await.unwrap()
+        } else {
+            let config = configuration::get_configuration()
+                .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
-        let pool = match database::get_connection_pool(&config).await {
-            Ok(pool) => pool,
-            Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
-                "status": "error",
-                "message": format!("Database error: {}", e)
-            })))
+            match database::get_connection_pool(&config).await {
+                Ok(pool) => pool,
+                Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Database error: {}", e)
+                })))
+            }
         };
 
         if let Err(e) = sqlx::query(
