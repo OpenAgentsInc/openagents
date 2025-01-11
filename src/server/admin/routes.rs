@@ -3,14 +3,14 @@ use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
 use crate::event::Event;
-use crate::database;
+use openagents::database;
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
     let config = crate::configuration::get_configuration()
         .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
-    let pool = match crate::database::get_connection_pool(&config).await {
+    let pool = match database::get_connection_pool(&config).await {
         Ok(pool) => pool,
         Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
             "error": format!("Database error: {}", e)
@@ -22,9 +22,9 @@ pub async fn admin_stats() -> Result<HttpResponse> {
         .fetch_one(&pool)
         .await {
             Ok(count) => count,
-            Err(e) => return HttpResponse::InternalServerError().json(json!({
+            Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
                 "error": format!("Failed to get event count: {}", e)
-            }))
+            })))
     };
 
     // Get events by kind
@@ -150,7 +150,7 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
         let config = crate::configuration::get_configuration()
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
-        let pool = match crate::database::get_connection_pool(&config).await {
+        let pool = match database::get_connection_pool(&config).await {
             Ok(pool) => pool,
             Err(e) => return HttpResponse::InternalServerError().json(json!({
                 "status": "error",
@@ -206,7 +206,7 @@ mod tests {
     async fn test_create_demo_event() {
         // Get initial count
         let config = crate::configuration::get_configuration().unwrap();
-        let pool = crate::database::get_connection_pool(&config).await.unwrap();
+        let pool = database::get_connection_pool(&config).await.unwrap();
         let initial_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
             .fetch_one(&pool)
             .await
