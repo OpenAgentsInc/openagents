@@ -1,4 +1,4 @@
-use config::{Config, ConfigError, Environment, File};
+use config::{Config, ConfigError, Environment as ConfigEnvironment, File};
 use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
@@ -36,7 +36,7 @@ impl DatabaseSettings {
             PgSslMode::Prefer
         };
 
-        let mut options = PgConnectOptions::new()
+        let options = PgConnectOptions::new()
             .host(&self.host)
             .username(&self.username)
             .password(self.password.expose_secret())
@@ -44,8 +44,7 @@ impl DatabaseSettings {
             .ssl_mode(ssl_mode)
             .database(&self.database_name);
         
-        options.log_statements(tracing::log::LevelFilter::Trace);
-        options
+        options.log_statements(tracing::log::LevelFilter::Trace)
     }
 }
 
@@ -54,7 +53,7 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
         .expect("Failed to determine current directory")
         .join("configuration");
 
-    let environment: Environment = std::env::var("APP_ENVIRONMENT")
+    let environment: AppEnvironment = std::env::var("APP_ENVIRONMENT")
         .unwrap_or_else(|_| "local".into())
         .try_into()
         .expect("Failed to parse APP_ENVIRONMENT");
@@ -65,7 +64,7 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
         .add_source(File::from(base_path.join("base.yaml")))
         .add_source(File::from(base_path.join(environment_filename)))
         .add_source(
-            Environment::with_prefix("APP")
+            ConfigEnvironment::with_prefix("APP")
                 .prefix_separator("_")
                 .separator("__"),
         )
@@ -74,21 +73,21 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
     settings.try_deserialize::<Settings>()
 }
 
-pub enum Environment {
+pub enum AppEnvironment {
     Local,
     Production,
 }
 
-impl Environment {
+impl AppEnvironment {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Environment::Local => "local",
-            Environment::Production => "production",
+            AppEnvironment::Local => "local",
+            AppEnvironment::Production => "production",
         }
     }
 }
 
-impl TryFrom<String> for Environment {
+impl TryFrom<String> for AppEnvironment {
     type Error = String;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
