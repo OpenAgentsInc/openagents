@@ -101,7 +101,7 @@ async fn main() -> std::io::Result<()> {
     info!("Starting server on {}", address);
 
     info!("Attempting to bind server...");
-    let mut server = HttpServer::new(move || {
+    let app_factory = move || {
         info!("Configuring new worker...");
         let cors = Cors::permissive();
         
@@ -111,7 +111,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(db.clone())
             .route("/", web::get().to(root_route))
             .configure(server::config::configure_app)
-    })
+    };
+
+    let mut server = HttpServer::new(app_factory)
     .bind(&address)
     .or_else(|e| {
         // Only attempt port increment in development/local environment
@@ -121,15 +123,7 @@ async fn main() -> std::io::Result<()> {
                 port += 1;
                 let new_address = format!("{}:{}", configuration.application.host, port);
                 info!("Address {} in use, trying {}", address, new_address);
-                if let Ok(server) = HttpServer::new(move || {
-                    let cors = Cors::permissive();
-                    App::new()
-                        .wrap(cors)
-                        .app_data(event_tx.clone())
-                        .app_data(db.clone())
-                        .route("/", web::get().to(root_route))
-                        .configure(server::config::configure_app)
-                }).bind(&new_address) {
+                if let Ok(server) = HttpServer::new(app_factory.clone()).bind(&new_address) {
                     return Ok(server);
                 }
             }
