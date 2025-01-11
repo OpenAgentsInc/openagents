@@ -134,7 +134,6 @@ where
         println!("Current environment: {}", env_str);
         
         if let Ok(env) = env_str.try_into() {
-            println!("Parsed environment: {:?}", env);
             if matches!(env, AppEnvironment::Local) {
                 println!("Bypassing auth in local environment");
                 let fut = self.service.call(req);
