@@ -3,11 +3,11 @@ use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
 use crate::event::Event;
-use openagents::database;
+use openagents::{database, configuration};
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
-    let config = crate::configuration::get_configuration()
+    let config = configuration::get_configuration()
         .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
     let pool = match database::get_connection_pool(&config).await {
@@ -84,7 +84,7 @@ pub async fn admin_login() -> impl Responder {
 
 #[post("/login")]
 pub async fn admin_login_post(form: web::Form<LoginForm>) -> impl Responder {
-    let config = match crate::configuration::get_configuration() {
+    let config = match configuration::get_configuration() {
         Ok(config) => config,
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
