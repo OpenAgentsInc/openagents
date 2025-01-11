@@ -1,14 +1,39 @@
 use actix_files as fs;
 use actix_web::web;
+use tracing::info;
+use std::fs as std_fs;
 
 use super::routes;
 
 pub fn configure_app(cfg: &mut web::ServiceConfig) {
+    // Log static directory contents
+    info!("Checking static directory contents:");
+    if let Ok(entries) = std_fs::read_dir("./static") {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                info!("  {:?}", entry.path());
+            }
+        }
+    } else {
+        info!("Could not read ./static directory");
+    }
+
+    if let Ok(entries) = std_fs::read_dir("/app/static") {
+        info!("Checking /app/static directory contents:");
+        for entry in entries {
+            if let Ok(entry) = entry {
+                info!("  {:?}", entry.path());
+            }
+        }
+    } else {
+        info!("Could not read /app/static directory");
+    }
+
     // Configure routes
     cfg.service(routes::health_check)
         // Serve static files from the static directory
         .service(
-            fs::Files::new("/", "./static")
+            fs::Files::new("/", "/app/static")
                 .index_file("index.html")
                 .use_hidden_files()
                 .prefer_utf8(true)
