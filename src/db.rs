@@ -1,21 +1,30 @@
-use sqlx::{Pool, Postgres};
-use sqlx::postgres::{PgPoolOptions, PgConnectOptions};
 use crate::event::Event;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::{Pool, Postgres};
 use std::collections::HashSet;
 use std::error::Error;
 use std::time::Duration;
 use tracing::{error, info};
 
 pub struct Database {
-    pool: Pool<Postgres>
+    pool: Pool<Postgres>,
+}
+
+#[derive(Default)]
+pub struct EventFilter {
+    pub ids: Option<Vec<String>>,
+    pub authors: Option<Vec<String>>,
+    pub kinds: Option<Vec<i32>>,
+    pub since: Option<i64>,
+    pub until: Option<i64>,
+    pub limit: Option<u64>,
+    pub tag_filters: Vec<(char, HashSet<String>)>,
 }
 
 impl Database {
-    pub async fn new_with_options(
-        options: PgConnectOptions,
-    ) -> Result<Self, Box<dyn Error>> {
+    pub async fn new_with_options(options: PgConnectOptions) -> Result<Self, Box<dyn Error>> {
         info!("Attempting to connect to database...");
-        
+
         match PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(Duration::from_secs(30))
@@ -63,64 +72,56 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_events_by_filter(&self, 
-        ids: &Option<Vec<String>>,
-        authors: &Option<Vec<String>>,
-        kinds: &Option<Vec<i32>>,
-        since: &Option<i64>,
-        until: &Option<i64>,
-        limit: &Option<u64>,
-        tag_filters: &[(char, HashSet<String>)]
+    pub async fn get_events_by_filter(
+        &self,
+        filter: EventFilter,
     ) -> Result<Vec<Event>, Box<dyn Error>> {
         let mut query = String::from(
             "SELECT id, pubkey, created_at, kind, content, sig, tags 
              FROM events 
-             WHERE 1=1"
+             WHERE 1=1",
         );
         let mut params = vec![];
 
-        if let Some(ids) = ids {
+        if let Some(ids) = filter.ids {
             query.push_str(" AND id = ANY($1)");
             params.push(serde_json::to_value(ids)?);
         }
 
-        if let Some(authors) = authors {
+        if let Some(authors) = filter.authors {
             query.push_str(" AND pubkey = ANY($2)");
             params.push(serde_json::to_value(authors)?);
         }
 
-        if let Some(kinds) = kinds {
+        if let Some(kinds) = filter.kinds {
             query.push_str(" AND kind = ANY($3)");
             params.push(serde_json::to_value(kinds)?);
         }
 
-        if let Some(since) = since {
+        if let Some(since) = filter.since {
             query.push_str(" AND created_at >= $4");
             params.push(serde_json::to_value(since)?);
         }
 
-        if let Some(until) = until {
+        if let Some(until) = filter.until {
             query.push_str(" AND created_at <= $5");
             params.push(serde_json::to_value(until)?);
         }
 
         // Add tag filters
-        for (_i, (tag_char, values)) in tag_filters.iter().enumerate() {
-            query.push_str(&format!(
-                " AND tags @> ${}",
-                params.len() + 1
-            ));
-            
+        for (tag_char, values) in filter.tag_filters.iter() {
+            query.push_str(&format!(" AND tags @> ${}", params.len() + 1));
+
             // Create JSONB array of tag values
             let tag_array: Vec<Vec<String>> = values
                 .iter()
                 .map(|v| vec![tag_char.to_string(), v.clone()])
                 .collect();
-            
+
             params.push(serde_json::to_value(tag_array)?);
         }
 
-        if let Some(limit) = limit {
+        if let Some(limit) = filter.limit {
             query.push_str(&format!(" LIMIT {}", limit));
         }
 

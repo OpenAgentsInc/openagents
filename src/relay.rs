@@ -1,13 +1,13 @@
-use actix::{Actor, StreamHandler, AsyncContext, ActorContext};
+use actix::{Actor, ActorContext, AsyncContext, StreamHandler};
 use actix_web_actors::ws;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
-use std::sync::Arc;
 
+use crate::db::{Database, EventFilter};
 use crate::event::Event;
 use crate::subscription::Subscription;
-use crate::db::Database;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -27,7 +27,7 @@ impl RelayWs {
             subscriptions: HashMap::new(),
             event_tx: event_tx.clone(),
             event_rx: event_tx.subscribe(),
-            db: db,
+            db,
         }
     }
 
@@ -43,7 +43,7 @@ impl RelayWs {
 
     fn handle_client_message(&mut self, msg: &str, ctx: &mut ws::WebsocketContext<Self>) {
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(msg);
-        
+
         match parsed {
             Ok(value) => {
                 if let Some(array) = value.as_array() {
@@ -98,7 +98,7 @@ impl RelayWs {
                     ctx.text(format!(r#"["NOTICE", "Error broadcasting event: {}"]"#, e));
                     return;
                 }
-                
+
                 // Send OK message
                 ctx.text(format!(r#"["OK", "{}", "{}"]"#, event.id, true));
             }
@@ -110,43 +110,53 @@ impl RelayWs {
 
     fn handle_subscription(&mut self, sub: Subscription, ctx: &mut ws::WebsocketContext<Self>) {
         let sub_id = sub.id.clone();
-        
+
         // Query historical events
         let db = self.db.clone();
         let sub_clone = sub.clone();
         let addr = ctx.address();
-        
+
         actix::spawn(async move {
             // Extract filter parameters from subscription
-            let ids = sub_clone.filters.iter()
+            let ids = sub_clone
+                .filters
+                .iter()
                 .filter_map(|f| f.ids.clone())
                 .next();
-            let authors = sub_clone.filters.iter()
+            let authors = sub_clone
+                .filters
+                .iter()
                 .filter_map(|f| f.authors.clone())
                 .next();
-            let kinds = sub_clone.filters.iter()
+            let kinds = sub_clone
+                .filters
+                .iter()
                 .filter_map(|f| f.kinds.clone())
                 .next();
-            let since = sub_clone.filters.iter()
-                .filter_map(|f| f.since)
-                .next();
-            let until = sub_clone.filters.iter()
-                .filter_map(|f| f.until)
-                .next();
-            let limit = sub_clone.filters.iter()
-                .filter_map(|f| f.limit)
-                .next();
-                
+            let since = sub_clone.filters.iter().filter_map(|f| f.since).next();
+            let until = sub_clone.filters.iter().filter_map(|f| f.until).next();
+            let limit = sub_clone.filters.iter().filter_map(|f| f.limit).next();
+
             // Collect tag filters
-            let tag_filters = sub_clone.filters.iter()
+            let tag_filters = sub_clone
+                .filters
+                .iter()
                 .flat_map(|f| f.tags.iter())
                 .filter(|(k, _)| k.starts_with('#'))
                 .map(|(k, v)| (k.chars().nth(1).unwrap(), v.clone().into_iter().collect()))
                 .collect::<Vec<_>>();
 
-            match db.get_events_by_filter(
-                &ids, &authors, &kinds, &since, &until, &limit, &tag_filters
-            ).await {
+            let filter = EventFilter {
+                ids,
+                authors,
+                kinds,
+                since,
+                until,
+                limit,
+                tag_filters,
+            };
+
+            match db.get_events_by_filter(filter).await {
                 Ok(events) => {
                     for event in events {
                         addr.do_send(event);
@@ -159,7 +169,7 @@ impl RelayWs {
         });
 
         self.subscriptions.insert(sub_id.clone(), sub);
-        
+
         // Send EOSE
         ctx.text(format!(r#"["EOSE", "{}"]"#, sub_id));
     }

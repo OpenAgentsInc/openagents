@@ -1,6 +1,6 @@
+use crate::event::Event;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use crate::event::Event;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subscription {
@@ -36,7 +36,10 @@ impl ReqFilter {
         }
 
         if let Some(authors) = &self.authors {
-            if !authors.iter().any(|author| event.pubkey.starts_with(author)) {
+            if !authors
+                .iter()
+                .any(|author| event.pubkey.starts_with(author))
+            {
                 return false;
             }
         }
