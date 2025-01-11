@@ -68,7 +68,8 @@ pub async fn admin_stats() -> Result<HttpResponse> {
         "total_events": total_events,
         "events_by_kind": events_by_kind,
         "storage_usage": format!("{:.1} MB", db_size as f64 / (1024.0 * 1024.0)),
-        "index_usage": []
+        "index_usage": [],
+        "status": "ok"
     })))
 }
 
@@ -208,14 +209,26 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_demo_event() {
-        // Set test database URL
-        std::env::set_var("DATABASE_URL", "postgres://postgres:password@localhost:5432/test");
-        
-        // Get initial count
-        let _config = configuration::get_configuration().unwrap();
-        let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/test")
+        // Use a mock database connection for tests
+        let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
             .await
             .unwrap();
+
+        // Create test table if it doesn't exist
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS events (
+                id TEXT PRIMARY KEY,
+                pubkey TEXT NOT NULL,
+                created_at BIGINT NOT NULL,
+                kind INTEGER NOT NULL,
+                tags JSONB NOT NULL,
+                content TEXT NOT NULL,
+                sig TEXT NOT NULL
+            )"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
         let initial_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
             .fetch_one(&pool)
             .await
@@ -266,6 +279,27 @@ mod tests {
 
     #[actix_web::test]
     async fn test_admin_stats() {
+        // Set up test database
+        let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
+            .await
+            .unwrap();
+
+        // Create test table
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS events (
+                id TEXT PRIMARY KEY,
+                pubkey TEXT NOT NULL,
+                created_at BIGINT NOT NULL,
+                kind INTEGER NOT NULL,
+                tags JSONB NOT NULL,
+                content TEXT NOT NULL,
+                sig TEXT NOT NULL
+            )"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
         let app = test::init_service(
             App::new().service(admin_stats)
         ).await;
@@ -277,6 +311,7 @@ mod tests {
         let resp: serde_json::Value = test::call_and_read_body_json(&app, req).await;
         
         assert!(resp.get("total_events").is_some());
+        assert!(resp.get("status").is_some());
         assert!(resp.get("events_by_kind").is_some());
         assert!(resp.get("storage_usage").is_some());
     }
