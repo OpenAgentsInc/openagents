@@ -16,7 +16,6 @@ use crate::event::Event;
 use crate::relay::RelayWs;
 use crate::db::Database;
 use crate::configuration::get_configuration;
-use sqlx::postgres::PgPoolOptions;
 
 async fn ws_route(
     req: actix_web::HttpRequest,
