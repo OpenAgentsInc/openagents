@@ -43,11 +43,6 @@ IGNORE_PATTERN=$(process_gitignore)
     echo
     echo "Generated on: $(date '+%Y-%m-%d %H:%M:%S')"
     echo
-    echo "### Legend"
-    echo "- 📁 Directory"
-    echo "- 📄 File" 
-    echo "- 🔒 Hidden file/directory"
-    echo
     echo "### Structure"
     echo
     echo "\`\`\`"
