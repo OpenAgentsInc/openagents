@@ -1,6 +1,6 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpResponse, body::BoxBody,
+    Error, HttpResponse,
 };
 use futures::future::{ready, LocalBoxFuture, Ready};
 
@@ -58,8 +58,10 @@ where
             }
         }
 
+        let (http_req, _) = req.into_parts();
         let response = HttpResponse::Unauthorized()
             .json(serde_json::json!({"error": "Unauthorized"}));
-        Box::pin(async move { Ok(req.into_response(response)) })
+        let res = ServiceResponse::new(http_req, response);
+        Box::pin(async move { Ok(res) })
     }
 }
