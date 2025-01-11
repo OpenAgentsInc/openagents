@@ -41,5 +41,14 @@ COPY --from=frontend-builder /app /app/static
 # Copy configuration files
 COPY configuration /app/configuration/
 
-ENV APP_ENVIRONMENT production
+# Set environment variables
+ENV APP_ENVIRONMENT=production
+ENV RUST_LOG=info
+ENV RUST_BACKTRACE=1
+
+# Create a non-root user and switch to it
+RUN useradd -m -u 1001 -U app
+RUN chown -R app:app /app
+USER app
+
 ENTRYPOINT ["./openagents"]
