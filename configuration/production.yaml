@@ -6,6 +6,7 @@ database:
   username: "${DATABASE_USER:postgres}"
   password: "${DATABASE_PASSWORD:postgres}"
   database_name: "${DATABASE_NAME:postgres}"
-  require_ssl: true
+  require_ssl: true  # Required for DigitalOcean managed databases
+  ssl_mode: "require"
   max_connection_retries: 20
   retry_interval_secs: 15

@@ -70,10 +70,21 @@ impl DatabaseSettings {
                 .username(username)
                 .password(password)
                 .database(database)
-                .ssl_mode(PgSslMode::Prefer);
+                .ssl_mode(PgSslMode::Require)  // Force SSL for DigitalOcean
+                .application_name("openagents")
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .keepalives(true)
+                .keepalives_idle(std::time::Duration::from_secs(30))
+                .statement_timeout(std::time::Duration::from_secs(30));
 
             options = options.log_statements(tracing::log::LevelFilter::Debug);
             options = options.log_slow_statements(tracing::log::LevelFilter::Debug, std::time::Duration::from_secs(1));
+            
+            info!("Database connection options:");
+            info!("  SSL Mode: Required");
+            info!("  Connect Timeout: 10s");
+            info!("  Statement Timeout: 30s");
+            info!("  Keepalives: enabled");
             
             return options;
         }
