@@ -1,7 +1,7 @@
 pub mod configuration;
 pub mod database;
 mod db;
-mod event;
+pub mod event;
 mod relay;
 pub mod server;
 mod subscription;
