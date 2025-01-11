@@ -52,12 +52,6 @@ if [ -s "$TEMP_PATTERNS" ]; then
         echo "\`\`\`"
         tree -a -I "$IGNORE_PATTERN" --dirsfirst -F --charset=ascii
         echo "\`\`\`"
-        echo
-        echo "### Summary"
-        echo
-        echo "\`\`\`"
-        tree -a -I "$IGNORE_PATTERN" --dirsfirst -F --charset=ascii --summary
-        echo "\`\`\`"
     } > docs/hierarchy.md
 else
     {
@@ -74,12 +68,6 @@ else
         echo
         echo "\`\`\`"
         tree -a --dirsfirst -F --charset=ascii
-        echo "\`\`\`"
-        echo
-        echo "### Summary"
-        echo
-        echo "\`\`\`"
-        tree -a --dirsfirst -F --charset=ascii --summary
         echo "\`\`\`"
     } > docs/hierarchy.md
 fi
