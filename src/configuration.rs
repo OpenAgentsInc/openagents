@@ -108,7 +108,7 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
 
     let environment_filename = format!("{}.yaml", environment.as_str());
 
-    let settings = Config::builder()
+    let mut settings = Config::builder()
         .add_source(File::from(base_path.join("base.yaml")))
         .add_source(File::from(base_path.join(environment_filename)))
         .add_source(
@@ -117,6 +117,11 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
                 .separator("__"),
         )
         .build()?;
+
+    // Override port with $PORT if it exists (App Platform requirement)
+    if let Ok(port) = std::env::var("PORT") {
+        settings.set("application.port", port)?;
+    }
 
     settings.try_deserialize::<Settings>()
 }
