@@ -1,6 +1,6 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpResponse, body::EitherBody,
+    Error, HttpResponse, body::EitherBody, cookie::Cookie,
 };
 use crate::configuration::get_configuration;
 use futures::future::{ready, LocalBoxFuture, Ready};
@@ -128,9 +128,35 @@ where
             }
         };
         
+        // Check Authorization header
         if let Some(auth_header) = req.headers().get("Authorization") {
             let expected = format!("Bearer {}", config.application.admin_token);
             if auth_header.as_bytes() == expected.as_bytes() {
+                let fut = self.service.call(req);
+                return Box::pin(async move {
+                    let res = fut.await?;
+                    Ok(res.map_into_left_body())
+                });
+            }
+        }
+
+        // Check URL query parameter
+        if let Some(token) = req.query_string().split('&')
+            .find(|p| p.starts_with("token="))
+            .map(|p| p.trim_start_matches("token="))
+        {
+            if token == config.application.admin_token {
+                let fut = self.service.call(req);
+                return Box::pin(async move {
+                    let res = fut.await?;
+                    Ok(res.map_into_left_body())
+                });
+            }
+        }
+
+        // Check session cookie
+        if let Some(cookie) = req.cookie("admin_session") {
+            if cookie.value() == config.application.admin_token {
                 let fut = self.service.call(req);
                 return Box::pin(async move {
                     let res = fut.await?;
