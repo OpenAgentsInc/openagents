@@ -89,7 +89,9 @@ async fn main() -> std::io::Result<()> {
     );
     info!("Starting server on {}", address);
 
+    info!("Attempting to bind server...");
     let server = HttpServer::new(move || {
+        info!("Configuring new worker...");
         let cors = Cors::permissive();
         
         App::new()
@@ -103,9 +105,12 @@ async fn main() -> std::io::Result<()> {
     
     // Log the actual bound address
     let addresses = server.addrs();
+    info!("Server addresses:");
     for addr in addresses {
-        info!("Server bound to: http://{}", addr);
+        info!("🚀 Server ready at: http://{}", addr);
+        info!("Admin endpoint: http://{}/admin/stats", addr);
     }
     
+    info!("Starting server...");
     server.run().await
 }
