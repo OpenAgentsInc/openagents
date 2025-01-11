@@ -113,7 +113,8 @@ async fn main() -> std::io::Result<()> {
             .configure(server::config::configure_app)
     };
 
-    let server = HttpServer::new(move || app_factory())
+    let factory = app_factory.clone();
+    let server = HttpServer::new(factory)
     .bind(&address)
     .or_else(|e| {
         // Only attempt port increment in development/local environment
@@ -123,7 +124,7 @@ async fn main() -> std::io::Result<()> {
                 port += 1;
                 let new_address = format!("{}:{}", configuration.application.host, port);
                 info!("Address {} in use, trying {}", address, new_address);
-                if let Ok(server) = HttpServer::new(move || app_factory()).bind(&new_address) {
+                if let Ok(server) = HttpServer::new(app_factory.clone()).bind(&new_address) {
                     return Ok(server);
                 }
             }
