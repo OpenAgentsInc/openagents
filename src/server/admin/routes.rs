@@ -7,7 +7,7 @@ use openagents::{database, configuration};
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
-    let config: openagents::configuration::Settings = configuration::get_configuration()
+    let config = configuration::get_configuration()
         .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
     let pool = match database::get_connection_pool(&config).await {
