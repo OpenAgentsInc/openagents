@@ -213,7 +213,9 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_demo_event() {
-        // Use a mock database connection for tests
+        // Set up test database connection
+        std::env::remove_var("DATABASE_URL");
+        
         let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
             .await
             .unwrap();
@@ -234,13 +236,12 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        let initial_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
 
+        // Initialize app with test database
         let app = test::init_service(
-            App::new().service(create_demo_event)
+            App::new()
+                .app_data(web::Data::new(pool.clone()))
+                .service(create_demo_event)
         ).await;
 
         let req = test::TestRequest::post()
@@ -265,7 +266,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(final_count, initial_count + 1);
+        assert_eq!(final_count, 1);
 
         // Verify event details in database
         let saved_event = sqlx::query_as::<_, Event>(
