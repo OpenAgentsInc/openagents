@@ -22,7 +22,7 @@ pub struct ApplicationSettings {
     pub admin_token: String,
 }
 
-#[derive(serde::Deserialize, Clone, Default)]
+#[derive(serde::Deserialize, Clone)]
 pub struct DatabaseSettings {
     #[serde(default)]
     pub username: String,
@@ -38,12 +38,25 @@ pub struct DatabaseSettings {
     pub require_ssl: bool,
 }
 
+impl Default for DatabaseSettings {
+    fn default() -> Self {
+        Self {
+            username: String::new(),
+            password: Secret::new(String::new()),
+            port: 5432,
+            host: String::new(),
+            database_name: String::new(),
+            require_ssl: true,
+        }
+    }
+}
+
 fn default_admin_token() -> String {
     "admin-token".to_string()
 }
 
 fn default_password() -> Secret<String> {
-    Secret::new("".to_string())
+    Secret::new(String::new())
 }
 
 fn default_port() -> u16 {
