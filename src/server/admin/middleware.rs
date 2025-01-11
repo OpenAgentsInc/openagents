@@ -39,7 +39,7 @@ where
     S::Future: 'static,
     B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -53,7 +53,7 @@ where
                 let fut = self.service.call(req);
                 return Box::pin(async move {
                     let res = fut.await?;
-                    Ok(res)
+                    Ok(res.map_into_left_body())
                 });
             }
         }
