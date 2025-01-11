@@ -13,6 +13,75 @@ impl AdminAuth {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test, App, web, HttpResponse};
+
+    async fn test_endpoint() -> HttpResponse {
+        HttpResponse::Ok().json(serde_json::json!({"status": "ok"}))
+    }
+
+    #[actix_web::test]
+    async fn test_admin_auth_valid_token() {
+        let app = test::init_service(
+            App::new()
+                .service(
+                    web::scope("/admin")
+                        .wrap(AdminAuth::new())
+                        .route("/test", web::get().to(test_endpoint))
+                )
+        ).await;
+
+        let req = test::TestRequest::get()
+            .uri("/admin/test")
+            .insert_header(("Authorization", "Bearer admin-token"))
+            .to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+    }
+
+    #[actix_web::test]
+    async fn test_admin_auth_invalid_token() {
+        let app = test::init_service(
+            App::new()
+                .service(
+                    web::scope("/admin")
+                        .wrap(AdminAuth::new())
+                        .route("/test", web::get().to(test_endpoint))
+                )
+        ).await;
+
+        let req = test::TestRequest::get()
+            .uri("/admin/test")
+            .insert_header(("Authorization", "Bearer wrong-token"))
+            .to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 401);
+    }
+
+    #[actix_web::test]
+    async fn test_admin_auth_missing_token() {
+        let app = test::init_service(
+            App::new()
+                .service(
+                    web::scope("/admin")
+                        .wrap(AdminAuth::new())
+                        .route("/test", web::get().to(test_endpoint))
+                )
+        ).await;
+
+        let req = test::TestRequest::get()
+            .uri("/admin/test")
+            .to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 401);
+    }
+}
+
 impl<S, B> Transform<S, ServiceRequest> for AdminAuth
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
