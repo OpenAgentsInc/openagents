@@ -11,8 +11,7 @@ use actix_cors::Cors;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 use std::sync::Arc;
-use std::time::Duration;
-use tracing::info;
+use tracing::{info, error};
 
 use crate::event::Event;
 use crate::relay::RelayWs;
@@ -46,48 +45,44 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
     dotenv::dotenv().ok();
 
-    info!("Starting application...");
-    info!("Environment: {}", std::env::var("APP_ENVIRONMENT").unwrap_or_else(|_| "not set".to_string()));
-    info!("Port from env: {}", std::env::var("PORT").unwrap_or_else(|_| "not set".to_string()));
+    error!("Starting application...");
+    error!("Environment: {}", std::env::var("APP_ENVIRONMENT").unwrap_or_else(|_| "not set".to_string()));
+    error!("Port from env: {}", std::env::var("PORT").unwrap_or_else(|_| "not set".to_string()));
     
     // Log database-related environment variables
-    info!("DATABASE_URL: {}", std::env::var("DATABASE_URL").is_ok());
-    info!("PGHOST: {}", std::env::var("PGHOST").is_ok());
-    info!("PGPORT: {}", std::env::var("PGPORT").is_ok());
-    info!("PGUSER: {}", std::env::var("PGUSER").is_ok());
-    info!("PGDATABASE: {}", std::env::var("PGDATABASE").is_ok());
+    error!("DATABASE_URL present: {}", std::env::var("DATABASE_URL").is_ok());
+    error!("APP_DATABASE__HOST present: {}", std::env::var("APP_DATABASE__HOST").is_ok());
+    error!("APP_DATABASE__PORT present: {}", std::env::var("APP_DATABASE__PORT").is_ok());
+    error!("APP_DATABASE__USERNAME present: {}", std::env::var("APP_DATABASE__USERNAME").is_ok());
+    error!("APP_DATABASE__DATABASE_NAME present: {}", std::env::var("APP_DATABASE__DATABASE_NAME").is_ok());
     
     // Print current directory and its contents
     let current_dir = std::env::current_dir().expect("Failed to get current directory");
-    info!("Current directory: {:?}", current_dir);
+    error!("Current directory: {:?}", current_dir);
     if let Ok(entries) = std::fs::read_dir(&current_dir) {
-        info!("Directory contents:");
+        error!("Directory contents:");
         for entry in entries {
             if let Ok(entry) = entry {
-                info!("  {:?}", entry.path());
+                error!("  {:?}", entry.path());
             }
         }
     }
 
     // Load configuration
-    info!("Loading configuration...");
+    error!("Loading configuration...");
     let configuration = get_configuration().expect("Failed to read configuration.");
-    info!("Configuration loaded successfully");
-    info!("App port: {}", configuration.application.port);
-    info!("App host: {}", configuration.application.host);
+    error!("Configuration loaded successfully");
+    error!("App port: {}", configuration.application.port);
+    error!("App host: {}", configuration.application.host);
     
-    // Initialize database using configuration with retries
-    info!("Initializing database connection...");
+    // Initialize database
+    error!("Initializing database connection...");
     let db = Arc::new(
-        Database::new_with_options(
-            configuration.database.connect_options(),
-            configuration.database.max_connection_retries,
-            Duration::from_secs(configuration.database.retry_interval_secs),
-        )
-        .await
-        .expect("Failed to connect to database after all retries")
+        Database::new_with_options(configuration.database.connect_options())
+            .await
+            .expect("Failed to connect to database")
     );
-    info!("Database connection established successfully");
+    error!("Database connection established successfully");
     let db = web::Data::new(db);
 
     // Channel for broadcasting events to all connected clients
@@ -98,11 +93,11 @@ async fn main() -> std::io::Result<()> {
         "{}:{}",
         configuration.application.host, configuration.application.port
     );
-    info!("Starting server on {}", address);
+    error!("Starting server on {}", address);
 
-    info!("Attempting to bind server...");
+    error!("Attempting to bind server...");
     let app_factory = move || {
-        info!("Configuring new worker...");
+        error!("Configuring new worker...");
         let cors = Cors::permissive();
         
         App::new()
@@ -123,7 +118,7 @@ async fn main() -> std::io::Result<()> {
             while port < configuration.application.port + 10 {
                 port += 1;
                 let new_address = format!("{}:{}", configuration.application.host, port);
-                info!("Address {} in use, trying {}", address, new_address);
+                error!("Address {} in use, trying {}", address, new_address);
                 if let Ok(server) = HttpServer::new(app_factory.clone()).bind(&new_address) {
                     return Ok(server);
                 }
@@ -135,12 +130,12 @@ async fn main() -> std::io::Result<()> {
     
     // Log the actual bound address
     let addresses = server.addrs();
-    info!("Server addresses:");
+    error!("Server addresses:");
     for addr in addresses {
-        info!("🚀 Server ready at: http://{}", addr);
-        info!("Admin endpoint: http://{}/admin/stats", addr);
+        error!("🚀 Server ready at: http://{}", addr);
+        error!("Admin endpoint: http://{}/admin/stats", addr);
     }
     
-    info!("Starting server...");
+    error!("Starting server...");
     server.run().await
 }
