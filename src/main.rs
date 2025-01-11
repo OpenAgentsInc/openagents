@@ -11,7 +11,7 @@ use actix_cors::Cors;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 use std::sync::Arc;
-use tracing::{info, debug, warn, error};
+use tracing::{info, debug, warn};
 
 use crate::event::Event;
 use crate::relay::RelayWs;
