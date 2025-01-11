@@ -1,4 +1,5 @@
 use actix_web::{get, post, web, HttpResponse, Responder, cookie::Cookie, Result};
+use secp256k1::Message;
 use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
@@ -15,10 +16,11 @@ pub async fn admin_stats() -> Result<HttpResponse> {
         sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/test").await.unwrap()
     } else {
         match database::get_connection_pool(&config).await {
-        Ok(pool) => pool,
-        Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
-            "error": format!("Database error: {}", e)
-        })))
+            Ok(pool) => pool,
+            Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": format!("Database error: {}", e)
+            })))
+        }
     };
 
     // Get total events count
@@ -155,12 +157,11 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
         let pool = match database::get_connection_pool(&config).await {
-                Ok(pool) => pool,
-                Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
-                    "status": "error",
-                    "message": format!("Database error: {}", e)
-                })))
-            }
+            Ok(pool) => pool,
+            Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Database error: {}", e)
+            })))
         };
 
         if let Err(e) = sqlx::query(
