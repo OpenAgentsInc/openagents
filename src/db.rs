@@ -9,20 +9,6 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn new(database_url: &str) -> Result<Self, Box<dyn Error>> {
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect(database_url)
-            .await?;
-
-        // Run migrations
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await?;
-
-        Ok(Self { pool })
-    }
-
     pub async fn new_with_options(options: PgConnectOptions) -> Result<Self, Box<dyn Error>> {
         let pool = PgPoolOptions::new()
             .max_connections(5)
