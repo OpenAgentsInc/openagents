@@ -9,15 +9,26 @@ async fn setup_test_db() -> sqlx::PgPool {
         .await
         .unwrap();
 
-    // Drop everything first
-    sqlx::query("DROP TABLE IF EXISTS events CASCADE")
+    // Create a test schema and set it as the search path
+    sqlx::query("CREATE SCHEMA IF NOT EXISTS test_schema")
+        .execute(&pool)
+        .await
+        .unwrap();
+    
+    sqlx::query("SET search_path TO test_schema")
         .execute(&pool)
         .await
         .unwrap();
 
-    // Create table (without trying to create type)
+    // Drop and recreate the test table in our test schema
+    sqlx::query("DROP TABLE IF EXISTS test_schema.events")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Create table in test schema
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS events (
+        "CREATE TABLE test_schema.events (
             id TEXT PRIMARY KEY,
             pubkey TEXT NOT NULL,
             created_at BIGINT NOT NULL,
@@ -25,7 +36,7 @@ async fn setup_test_db() -> sqlx::PgPool {
             tags JSONB NOT NULL,
             content TEXT NOT NULL,
             sig TEXT NOT NULL
-        )",
+        )"
     )
     .execute(&pool)
     .await
@@ -62,14 +73,14 @@ async fn test_create_demo_event() {
     assert_eq!(event["tags"][0][1], "demo");
 
     // Verify event was saved to database
-    let final_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
+    let final_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM test_schema.events")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(final_count, 1);
 
     // Verify event details in database
-    let saved_event = sqlx::query_as::<_, Event>("SELECT * FROM events WHERE id = $1")
+    let saved_event = sqlx::query_as::<_, Event>("SELECT * FROM test_schema.events WHERE id = $1")
         .bind(event["id"].as_str().unwrap())
         .fetch_one(&pool)
         .await
