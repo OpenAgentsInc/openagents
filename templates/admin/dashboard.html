@@ -72,6 +72,21 @@
         </div>
       </div>
     </div>
+
+    <div class="stats-panel">
+      <h2>Admin Actions</h2>
+      <div style="margin-top: 15px;">
+        <button 
+          class="stat-card" 
+          style="width: 100%; cursor: pointer; border: none;"
+          hx-post="/admin/demo-event"
+          hx-swap="none"
+          hx-trigger="click"
+        >
+          Create Demo Event
+        </button>
+      </div>
+    </div>
   </div>
 
   <script src="/js/three.min.js"></script>
