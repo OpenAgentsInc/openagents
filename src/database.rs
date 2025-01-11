@@ -1,5 +1,6 @@
 use sqlx::postgres::{PgPoolOptions, PgConnectOptions};
-use sqlx::PgPool;
+use sqlx::{PgPool, postgres::PgSslMode};
+use secrecy::ExposeSecret;
 use crate::configuration::Settings;
 
 pub async fn get_connection_pool(configuration: &Settings) -> Result<PgPool, sqlx::Error> {
@@ -13,7 +14,11 @@ pub async fn get_connection_pool(configuration: &Settings) -> Result<PgPool, sql
             .username(&configuration.database.username)
             .password(configuration.database.password.expose_secret())
             .database(&configuration.database.database_name)
-            .require_ssl(configuration.database.require_ssl);
+            .ssl_mode(if configuration.database.require_ssl {
+                PgSslMode::Require
+            } else {
+                PgSslMode::Prefer
+            });
 
         match PgPoolOptions::new()
             .max_connections(5)
@@ -33,8 +38,8 @@ pub async fn get_connection_pool(configuration: &Settings) -> Result<PgPool, sql
 }
 
 pub async fn migrate_database(pool: &PgPool) -> Result<(), sqlx::Error> {
-    match sqlx::migrate!("./migrations").run(pool).await {
-        Ok(_) => Ok(()),
-        Err(e) => Err(sqlx::Error::Migration(e))
-    }
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(format!("Migration error: {}", e)))
 }
