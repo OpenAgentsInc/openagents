@@ -3,7 +3,7 @@ use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
 use crate::event::Event;
-use openagents::database;
+use crate::database;
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
@@ -12,9 +12,9 @@ pub async fn admin_stats() -> Result<HttpResponse> {
 
     let pool = match crate::database::get_connection_pool(&config).await {
         Ok(pool) => pool,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
+        Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
             "error": format!("Database error: {}", e)
-        }))
+        })))
     };
 
     // Get total events count
@@ -59,12 +59,12 @@ pub async fn admin_stats() -> Result<HttpResponse> {
         }))
     };
 
-    HttpResponse::Ok().json(json!({
+    Ok(HttpResponse::Ok().json(json!({
         "total_events": total_events,
         "events_by_kind": events_by_kind,
         "storage_usage": format!("{:.1} MB", db_size as f64 / (1024.0 * 1024.0)),
         "index_usage": []
-    }))
+    })))
 }
 
 #[derive(Deserialize)]
@@ -140,10 +140,10 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
 
         // Validate the event
         if let Err(e) = event.validate() {
-            return HttpResponse::InternalServerError().json(json!({
+            return Ok(HttpResponse::InternalServerError().json(json!({
                 "status": "error",
                 "message": format!("Event validation failed: {}", e)
-            }));
+            })));
         }
 
         // Save to database
@@ -177,15 +177,15 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
             }));
         }
 
-        HttpResponse::Ok().json(json!({
+        Ok(HttpResponse::Ok().json(json!({
             "status": "success",
             "event": event
-        }))
+        })))
     } else {
-        HttpResponse::InternalServerError().json(json!({
+        Ok(HttpResponse::InternalServerError().json(json!({
             "status": "error",
             "message": "Failed to canonicalize event"
-        }))
+        })))
     }
 }
 
