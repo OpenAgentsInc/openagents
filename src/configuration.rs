@@ -64,13 +64,18 @@ impl DatabaseSettings {
             
             info!("Connecting to database at {}:{}", host, port);
             
-            return PgConnectOptions::new()
+            let mut options = PgConnectOptions::new()
                 .host(host)
                 .port(port)
                 .username(username)
                 .password(password)
                 .database(database)
                 .ssl_mode(PgSslMode::Prefer);
+
+            options = options.log_statements(tracing::log::LevelFilter::Debug);
+            options = options.log_slow_statements(tracing::log::LevelFilter::Debug, std::time::Duration::from_secs(1));
+            
+            return options;
         }
 
         // Fall back to configuration file settings
@@ -129,17 +134,25 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
         builder
     };
 
-    // Log the final configuration
+    let settings = builder.build()?;
+    let settings = settings.try_deserialize::<Settings>()?;
+
+    // Log the final configuration after deserialization
     info!("Final configuration:");
-    if let Ok(port) = std::env::var("PORT") {
-        info!("  Port (from env): {}", port);
-    }
+    info!("  Host: {}", settings.application.host);
+    info!("  Port: {}", settings.application.port);
+    
     if let Ok(db_url) = std::env::var("DATABASE_URL") {
-        info!("  Using DATABASE_URL from environment");
+        info!("  Database: Using DATABASE_URL from environment");
+        let url = Url::parse(&db_url).expect("Invalid DATABASE_URL");
+        info!("  Database Host: {}", url.host_str().unwrap_or("unknown"));
+        info!("  Database Port: {}", url.port().unwrap_or(5432));
+    } else {
+        info!("  Database Host: {}", settings.database.host);
+        info!("  Database Port: {}", settings.database.port);
     }
 
-    let settings = builder.build()?;
-    settings.try_deserialize::<Settings>()
+    Ok(settings)
 }
 
 pub enum AppEnvironment {
