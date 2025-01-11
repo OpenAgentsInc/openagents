@@ -68,6 +68,7 @@ mod tests {
 
     #[actix_web::test]
     async fn test_admin_auth_missing_token() {
+        let original_env = std::env::var("APP_ENVIRONMENT").ok();
         std::env::set_var("APP_ENVIRONMENT", "production");
         
         let app = test::init_service(
@@ -86,7 +87,12 @@ mod tests {
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), 401);
         
-        std::env::remove_var("APP_ENVIRONMENT");
+        // Restore original environment
+        if let Some(env) = original_env {
+            std::env::set_var("APP_ENVIRONMENT", env);
+        } else {
+            std::env::remove_var("APP_ENVIRONMENT");
+        }
     }
 }
 

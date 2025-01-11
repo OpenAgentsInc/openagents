@@ -12,7 +12,7 @@ pub async fn admin_stats() -> Result<HttpResponse> {
 
     // For tests, bypass database connection if DATABASE_URL is not set
     let pool = if std::env::var("DATABASE_URL").is_err() && cfg!(test) {
-        sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/test").await.unwrap()
+        sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres").await.unwrap()
     } else {
         match database::get_connection_pool(&config).await {
             Ok(pool) => pool,
