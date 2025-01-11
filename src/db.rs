@@ -3,24 +3,59 @@ use sqlx::postgres::{PgPoolOptions, PgConnectOptions};
 use crate::event::Event;
 use std::collections::HashSet;
 use std::error::Error;
+use std::time::Duration;
+use tracing::{warn, info};
 
 pub struct Database {
     pool: Pool<Postgres>
 }
 
 impl Database {
-    pub async fn new_with_options(options: PgConnectOptions) -> Result<Self, Box<dyn Error>> {
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect_with(options)
-            .await?;
+    pub async fn new_with_options(
+        options: PgConnectOptions,
+        max_retries: u32,
+        retry_interval: Duration
+    ) -> Result<Self, Box<dyn Error>> {
+        let mut last_error = None;
+        
+        for attempt in 1..=max_retries {
+            info!("Attempting database connection (attempt {} of {})", attempt, max_retries);
+            
+            match PgPoolOptions::new()
+                .max_connections(5)
+                .acquire_timeout(Duration::from_secs(30))
+                .connect_with(options.clone())
+                .await
+            {
+                Ok(pool) => {
+                    // Run migrations after successful connection
+                    match sqlx::migrate!("./migrations").run(&pool).await {
+                        Ok(_) => {
+                            info!("Successfully connected to database and ran migrations");
+                            return Ok(Self { pool });
+                        }
+                        Err(e) => {
+                            warn!("Migration failed on attempt {}: {}", attempt, e);
+                            last_error = Some(e.into());
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "Database connection attempt {} of {} failed: {}",
+                        attempt, max_retries, e
+                    );
+                    last_error = Some(e.into());
+                }
+            }
 
-        // Run migrations
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await?;
+            if attempt < max_retries {
+                info!("Waiting {} seconds before next attempt", retry_interval.as_secs());
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
 
-        Ok(Self { pool })
+        Err(last_error.unwrap_or_else(|| "Failed to connect to database".into()))
     }
 
     pub async fn save_event(&self, event: &Event) -> Result<(), Box<dyn Error>> {

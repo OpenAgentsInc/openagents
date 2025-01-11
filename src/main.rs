@@ -11,6 +11,7 @@ use actix_cors::Cors;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::event::Event;
 use crate::relay::RelayWs;
@@ -36,11 +37,15 @@ async fn main() -> std::io::Result<()> {
     // Load configuration
     let configuration = get_configuration().expect("Failed to read configuration.");
     
-    // Initialize database using configuration
+    // Initialize database using configuration with retries
     let db = Arc::new(
-        Database::new_with_options(configuration.database.connect_options())
-            .await
-            .expect("Failed to connect to database")
+        Database::new_with_options(
+            configuration.database.connect_options(),
+            configuration.database.max_connection_retries,
+            Duration::from_secs(configuration.database.retry_interval_secs),
+        )
+        .await
+        .expect("Failed to connect to database after all retries")
     );
     let db = web::Data::new(db);
 
