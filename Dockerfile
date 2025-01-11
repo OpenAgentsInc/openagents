@@ -28,11 +28,20 @@ RUN cargo build --release --bin openagents
 # Runtime stage
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
+
+# Install certificates and DNS utilities first
 RUN apt-get update -y \
-    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && apt-get install -y --no-install-recommends \
+       openssl \
+       ca-certificates \
+       dnsutils \
+    && update-ca-certificates \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
+
+# Verify DNS resolution works
+RUN dig +short nostr-db-do-user-17766209-0.h.db.ondigitalocean.com || echo "DNS check failed"
 
 # Copy the built executable
 COPY --from=builder /app/target/release/openagents openagents

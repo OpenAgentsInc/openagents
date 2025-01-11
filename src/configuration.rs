@@ -64,13 +64,27 @@ impl DatabaseSettings {
             
             info!("Connecting to database at {}:{}", host, port);
             
+            info!("Attempting DNS resolution for host: {}", host);
+            
+            // Try to resolve the hostname first
+            if let Ok(addrs) = tokio::net::lookup_host(format!("{}:{}", host, port)).await {
+                let addrs: Vec<_> = addrs.collect();
+                info!("DNS resolution successful. Found {} addresses", addrs.len());
+                for addr in addrs {
+                    info!("  Resolved address: {}", addr);
+                }
+            } else {
+                info!("DNS resolution failed for host: {}", host);
+            }
+
             let mut options = PgConnectOptions::new()
                 .host(host)
                 .port(port)
                 .username(username)
                 .password(password)
                 .database(database)
-                .ssl_mode(PgSslMode::Require);  // Force SSL for DigitalOcean
+                .ssl_mode(PgSslMode::Require)  // Force SSL for DigitalOcean
+                .application_name("openagents");
 
             options = options.log_statements(tracing::log::LevelFilter::Debug);
             options = options.log_slow_statements(tracing::log::LevelFilter::Debug, std::time::Duration::from_secs(1));
