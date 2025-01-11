@@ -130,11 +130,13 @@ where
 
         // Skip auth in local development
         use crate::configuration::AppEnvironment;
-        if let Ok(env) = std::env::var("APP_ENVIRONMENT")
-            .unwrap_or_else(|_| "local".into())
-            .try_into() 
-        {
+        let env_str = std::env::var("APP_ENVIRONMENT").unwrap_or_else(|_| "local".into());
+        println!("Current environment: {}", env_str);
+        
+        if let Ok(env) = env_str.try_into() {
+            println!("Parsed environment: {:?}", env);
             if matches!(env, AppEnvironment::Local) {
+                println!("Bypassing auth in local environment");
                 let fut = self.service.call(req);
                 return Box::pin(async move {
                     let res = fut.await?;
