@@ -51,20 +51,24 @@ fn default_admin_token() -> String {
 impl DatabaseSettings {
     pub fn connect_options(&self) -> PgConnectOptions {
         // Log all environment variables (excluding sensitive ones)
-        for (key, _) in std::env::vars() {
+        info!("Environment variables present:");
+        for (key, value) in std::env::vars() {
             if !key.contains("SECRET") && !key.contains("PASSWORD") && !key.contains("KEY") {
-                info!("Environment variable present: {}", key);
+                info!("  {}: {}", key, value);
+            } else {
+                info!("  {}: [REDACTED]", key);
             }
         }
 
         // First check for App Platform's DATABASE_URL
         if let Ok(database_url) = std::env::var("DATABASE_URL") {
-            info!("Found DATABASE_URL in environment");
+            error!("!!! USING DATABASE_URL FROM ENVIRONMENT !!!");
+            error!("!!! THIS IS THE ACTUAL URL WE'RE USING !!!");
             
             // Parse the DATABASE_URL
             let url = match Url::parse(&database_url) {
                 Ok(url) => {
-                    info!("Successfully parsed DATABASE_URL");
+                    error!("Successfully parsed DATABASE_URL");
                     url
                 },
                 Err(e) => {
@@ -80,12 +84,12 @@ impl DatabaseSettings {
             let password = url.password().unwrap_or("");
             let database = url.path().trim_start_matches('/');
             
-            info!("Database connection details:");
-            info!("  Host: {}", host);
-            info!("  Port: {}", port);
-            info!("  Username: {}", username);
-            info!("  Database: {}", database);
-            info!("  SSL Mode: Required (DigitalOcean requirement)");
+            error!("!!! ACTUAL DATABASE CONNECTION DETAILS !!!");
+            error!("  Host: {}", host);
+            error!("  Port: {}", port);
+            error!("  Username: {}", username);
+            error!("  Database Name: {}", database);
+            error!("  SSL Mode: REQUIRE (forced for DigitalOcean)");
             
             let mut options = PgConnectOptions::new()
                 .host(host)
@@ -99,31 +103,35 @@ impl DatabaseSettings {
             // Enable detailed logging for troubleshooting
             options = options
                 .log_statements(tracing::log::LevelFilter::Debug)
-                .log_slow_statements(tracing::log::LevelFilter::Debug, std::time::Duration::from_secs(1));
-
-            // Set additional connection parameters for DigitalOcean
-            options = options
-                .statement_cache_capacity(0) // Disable statement cache initially
-                .connect_timeout(std::time::Duration::from_secs(10));
+                .log_slow_statements(tracing::log::LevelFilter::Debug, std::time::Duration::from_secs(1))
+                .statement_cache_capacity(0);
             
-            info!("Database connection options configured with:");
-            info!("  Statement cache: Disabled");
-            info!("  Connect timeout: 10 seconds");
-            info!("  Slow query logging: Enabled (1 second threshold)");
+            error!("Database connection options configured:");
+            error!("  Statement cache: DISABLED");
+            error!("  Slow query logging: ENABLED (1 second threshold)");
             
             return options;
         }
 
-        warn!("DATABASE_URL not found in environment, falling back to configuration file");
-        info!("Using configuration file database settings");
+        error!("!!! NO DATABASE_URL FOUND - USING CONFIG FILE !!!");
+        error!("Using configuration file database settings");
         
         let ssl_mode = if self.require_ssl {
-            info!("SSL is required by configuration");
+            error!("SSL is REQUIRED by configuration");
             PgSslMode::Require
         } else {
-            info!("SSL is preferred but not required");
+            error!("SSL is PREFERRED but not required");
             PgSslMode::Prefer
         };
+
+        error!("!!! ACTUAL DATABASE CONNECTION DETAILS FROM CONFIG !!!");
+        error!("  Host: {}", self.host);
+        error!("  Port: {}", self.port);
+        error!("  Username: {}", self.username);
+        error!("  Database Name: {}", self.database_name);
+        error!("  SSL Mode: {}", if self.require_ssl { "REQUIRE" } else { "PREFER" });
+        error!("  Max Retries: {}", self.max_connection_retries);
+        error!("  Retry Interval: {}s", self.retry_interval_secs);
 
         let mut options = PgConnectOptions::new()
             .host(&self.host)
@@ -136,31 +144,24 @@ impl DatabaseSettings {
         options = options
             .log_statements(tracing::log::LevelFilter::Debug)
             .log_slow_statements(tracing::log::LevelFilter::Debug, std::time::Duration::from_secs(1))
-            .statement_cache_capacity(0)
-            .connect_timeout(std::time::Duration::from_secs(10));
-
-        info!("Configured database connection from file:");
-        info!("  Host: {}", self.host);
-        info!("  Port: {}", self.port);
-        info!("  Database: {}", self.database_name);
-        info!("  SSL Mode: {}", if self.require_ssl { "Required" } else { "Preferred" });
+            .statement_cache_capacity(0);
 
         options
     }
 }
 
 pub fn get_configuration() -> Result<Settings, ConfigError> {
-    info!("Starting configuration loading process");
+    error!("!!! STARTING CONFIGURATION LOADING !!!");
     
     let base_path = std::env::current_dir()
         .expect("Failed to determine current directory")
         .join("configuration");
 
-    info!("Configuration directory: {:?}", base_path);
+    error!("Configuration directory: {:?}", base_path);
 
     let environment: AppEnvironment = std::env::var("APP_ENVIRONMENT")
         .unwrap_or_else(|_| {
-            info!("APP_ENVIRONMENT not set, defaulting to 'local'");
+            error!("APP_ENVIRONMENT not set, defaulting to 'local'");
             "local".into()
         })
         .try_into()
@@ -168,8 +169,9 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
 
     let environment_filename = format!("{}.yaml", environment.as_str());
     
-    info!("Environment: {}", environment.as_str());
-    info!("Loading configuration from: {}", environment_filename);
+    error!("!!! ENVIRONMENT DETAILS !!!");
+    error!("  Current Environment: {}", environment.as_str());
+    error!("  Config File: {}", environment_filename);
 
     let builder = Config::builder()
         .add_source(File::from(base_path.join("base.yaml")))
@@ -182,42 +184,45 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
 
     // Override port with $PORT if it exists (App Platform requirement)
     let builder = if let Ok(port) = std::env::var("PORT") {
-        info!("Using PORT from environment: {}", port);
+        error!("Using PORT from environment: {}", port);
         builder
             .set_override("application.port", port)?
             .set_override("application.host", "0.0.0.0")?
     } else {
-        info!("No PORT environment variable found, using configuration value");
+        error!("No PORT environment variable found, using configuration value");
         builder
     };
 
     let settings = builder.build()?;
     let settings = settings.try_deserialize::<Settings>()?;
 
-    info!("Configuration loaded successfully");
-    info!("Application settings:");
-    info!("  Host: {}", settings.application.host);
-    info!("  Port: {}", settings.application.port);
+    error!("!!! FINAL CONFIGURATION !!!");
+    error!("Application settings:");
+    error!("  Host: {}", settings.application.host);
+    error!("  Port: {}", settings.application.port);
     
     if let Ok(db_url) = std::env::var("DATABASE_URL") {
-        info!("Database configuration source: DATABASE_URL environment variable");
+        error!("Database configuration source: DATABASE_URL");
         match Url::parse(&db_url) {
             Ok(url) => {
-                info!("  Database Host: {}", url.host_str().unwrap_or("unknown"));
-                info!("  Database Port: {}", url.port().unwrap_or(5432));
+                error!("  Database Host: {}", url.host_str().unwrap_or("unknown"));
+                error!("  Database Port: {}", url.port().unwrap_or(5432));
+                error!("  Database Name: {}", url.path().trim_start_matches('/'));
+                error!("  Username: {}", url.username());
             },
             Err(e) => {
-                error!("Failed to parse DATABASE_URL: {}", e);
+                error!("!!! FAILED TO PARSE DATABASE_URL: {} !!!", e);
             }
         }
     } else {
-        info!("Database configuration source: configuration file");
-        info!("  Database Host: {}", settings.database.host);
-        info!("  Database Port: {}", settings.database.port);
-        info!("  Database Name: {}", settings.database.database_name);
-        info!("  SSL Required: {}", settings.database.require_ssl);
-        info!("  Max Retries: {}", settings.database.max_connection_retries);
-        info!("  Retry Interval: {}s", settings.database.retry_interval_secs);
+        error!("Database configuration source: configuration file");
+        error!("  Database Host: {}", settings.database.host);
+        error!("  Database Port: {}", settings.database.port);
+        error!("  Database Name: {}", settings.database.database_name);
+        error!("  Username: {}", settings.database.username);
+        error!("  SSL Required: {}", settings.database.require_ssl);
+        error!("  Max Retries: {}", settings.database.max_connection_retries);
+        error!("  Retry Interval: {}s", settings.database.retry_interval_secs);
     }
 
     Ok(settings)
@@ -245,7 +250,7 @@ impl TryFrom<String> for AppEnvironment {
             "local" => Ok(Self::Local),
             "production" => Ok(Self::Production),
             other => {
-                error!("Invalid environment specified: {}", other);
+                error!("!!! INVALID ENVIRONMENT SPECIFIED: {} !!!", other);
                 Err(format!(
                     "{} is not a supported environment. Use either `local` or `production`.",
                     other
