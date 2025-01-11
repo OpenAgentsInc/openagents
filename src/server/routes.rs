@@ -1,4 +1,6 @@
 use actix_web::{get, HttpResponse, Responder};
+use actix_files::NamedFile;
+use std::path::PathBuf;
 
 #[get("/health")]
 pub async fn health_check() -> impl Responder {
@@ -7,6 +9,11 @@ pub async fn health_check() -> impl Responder {
     }))
 }
 
+#[get("/new")]
+pub async fn new_page() -> impl Responder {
+    let path: PathBuf = "./static/new.html".into();
+    NamedFile::open(path)
+}
 
 #[cfg(test)]
 mod tests {
