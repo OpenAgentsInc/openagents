@@ -11,7 +11,7 @@ use actix_cors::Cors;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 use std::sync::Arc;
-use tracing::{info, debug, warn};
+use tracing::{info, debug, warn, error};
 
 use crate::event::Event;
 use crate::relay::RelayWs;
@@ -45,45 +45,20 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
     dotenv::dotenv().ok();
 
-    info!("Starting application...");
-    debug!("Environment: {}", std::env::var("APP_ENVIRONMENT").unwrap_or_else(|_| "not set".to_string()));
-    debug!("Port from env: {}", std::env::var("PORT").unwrap_or_else(|_| "not set".to_string()));
+    info!("🚀 Starting OpenAgents...");
     
-    // Log database-related environment variables
-    debug!("Environment variables:");
-    debug!("  DATABASE_URL present: {}", std::env::var("DATABASE_URL").is_ok());
-    debug!("  APP_DATABASE__HOST present: {}", std::env::var("APP_DATABASE__HOST").is_ok());
-    debug!("  APP_DATABASE__PORT present: {}", std::env::var("APP_DATABASE__PORT").is_ok());
-    debug!("  APP_DATABASE__USERNAME present: {}", std::env::var("APP_DATABASE__USERNAME").is_ok());
-    debug!("  APP_DATABASE__DATABASE_NAME present: {}", std::env::var("APP_DATABASE__DATABASE_NAME").is_ok());
-    
-    // Print current directory and its contents
-    let current_dir = std::env::current_dir().expect("Failed to get current directory");
-    debug!("Current directory: {:?}", current_dir);
-    if let Ok(entries) = std::fs::read_dir(&current_dir) {
-        debug!("Directory contents:");
-        for entry in entries {
-            if let Ok(entry) = entry {
-                debug!("  {:?}", entry.path());
-            }
-        }
-    }
-
     // Load configuration
-    info!("Loading configuration...");
+    debug!("Loading configuration...");
     let configuration = get_configuration().expect("Failed to read configuration.");
-    debug!("Configuration loaded successfully");
-    debug!("App port: {}", configuration.application.port);
-    debug!("App host: {}", configuration.application.host);
     
     // Initialize database
-    info!("Initializing database connection...");
+    info!("Connecting to database...");
     let db = Arc::new(
         Database::new_with_options(configuration.database.connect_options())
             .await
             .expect("Failed to connect to database")
     );
-    info!("Database connection established successfully");
+    info!("✅ Database connected");
     let db = web::Data::new(db);
 
     // Channel for broadcasting events to all connected clients
@@ -96,9 +71,8 @@ async fn main() -> std::io::Result<()> {
     );
     info!("Starting server on {}", address);
 
-    debug!("Attempting to bind server...");
     let app_factory = move || {
-        debug!("Configuring new worker...");
+        debug!("Initializing worker...");
         let cors = Cors::permissive();
         
         App::new()
@@ -119,8 +93,9 @@ async fn main() -> std::io::Result<()> {
             while port < configuration.application.port + 10 {
                 port += 1;
                 let new_address = format!("{}:{}", configuration.application.host, port);
-                warn!("Address {} in use, trying {}", address, new_address);
+                warn!("Port {} in use, trying {}", configuration.application.port, port);
                 if let Ok(server) = HttpServer::new(app_factory.clone()).bind(&new_address) {
+                    info!("Found available port: {}", port);
                     return Ok(server);
                 }
             }
@@ -131,12 +106,11 @@ async fn main() -> std::io::Result<()> {
     
     // Log the actual bound address
     let addresses = server.addrs();
-    info!("Server ready at:");
+    info!("✨ Server ready:");
     for addr in addresses {
-        info!("  🚀 http://{}", addr);
-        info!("  Admin endpoint: http://{}/admin/stats", addr);
+        info!("  🌎 http://{}", addr);
+        info!("  🔧 Admin: http://{}/admin/stats", addr);
     }
     
-    info!("Starting server...");
     server.run().await
 }
