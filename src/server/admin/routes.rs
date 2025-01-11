@@ -83,7 +83,7 @@ pub async fn create_demo_event() -> impl Responder {
 
         // Sign the event
         let msg = Message::from_slice(digest.as_ref()).expect("32 bytes");
-        let sig = secp.sign_schnorr(&msg, &keypair);
+        let sig = secp.sign_schnorr_with_rng(&msg, &keypair, &mut rand::thread_rng());
         event.sig = sig.to_string();
 
         // Validate the event
@@ -119,7 +119,7 @@ pub fn admin_config(cfg: &mut web::ServiceConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, App, web};
+    use actix_web::{test, App};
 
     #[actix_web::test]
     async fn test_create_demo_event() {
