@@ -61,64 +61,9 @@ impl DatabaseSettings {
             .password(self.password.expose_secret())
             .port(self.port)
             .ssl_mode(ssl_mode)
-            .database(&self.database_name)
-            .connect_timeout(Duration::from_secs(self.connection_timeout_secs));
+            .database(&self.database_name);
 
         options = options.log_statements(tracing::log::LevelFilter::Trace);
         options
-    }
-}
-
-pub fn get_configuration() -> Result<Settings, ConfigError> {
-    let base_path = std::env::current_dir()
-        .expect("Failed to determine current directory")
-        .join("configuration");
-
-    let environment: AppEnvironment = std::env::var("APP_ENVIRONMENT")
-        .unwrap_or_else(|_| "local".into())
-        .try_into()
-        .expect("Failed to parse APP_ENVIRONMENT");
-
-    let environment_filename = format!("{}.yaml", environment.as_str());
-
-    let settings = Config::builder()
-        .add_source(File::from(base_path.join("base.yaml")))
-        .add_source(File::from(base_path.join(environment_filename)))
-        .add_source(
-            ConfigEnvironment::with_prefix("APP")
-                .prefix_separator("_")
-                .separator("__"),
-        )
-        .build()?;
-
-    settings.try_deserialize::<Settings>()
-}
-
-pub enum AppEnvironment {
-    Local,
-    Production,
-}
-
-impl AppEnvironment {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            AppEnvironment::Local => "local",
-            AppEnvironment::Production => "production",
-        }
-    }
-}
-
-impl TryFrom<String> for AppEnvironment {
-    type Error = String;
-
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        match s.to_lowercase().as_str() {
-            "local" => Ok(Self::Local),
-            "production" => Ok(Self::Production),
-            other => Err(format!(
-                "{} is not a supported environment. Use either `local` or `production`.",
-                other
-            )),
-        }
     }
 }
