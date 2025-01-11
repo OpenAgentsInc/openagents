@@ -10,7 +10,11 @@ pub async fn admin_stats() -> Result<HttpResponse> {
     let config = configuration::get_configuration()
         .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
-    let pool = match database::get_connection_pool(&config).await {
+    // For tests, bypass database connection if DATABASE_URL is not set
+    let pool = if std::env::var("DATABASE_URL").is_err() && cfg!(test) {
+        sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/test").await.unwrap()
+    } else {
+        match database::get_connection_pool(&config).await {
         Ok(pool) => pool,
         Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
             "error": format!("Database error: {}", e)
@@ -151,11 +155,12 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
             .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
         let pool = match database::get_connection_pool(&config).await {
-            Ok(pool) => pool,
-            Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
-                "status": "error",
-                "message": format!("Database error: {}", e)
-            })))
+                Ok(pool) => pool,
+                Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Database error: {}", e)
+                })))
+            }
         };
 
         if let Err(e) = sqlx::query(
@@ -204,9 +209,14 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_demo_event() {
+        // Set test database URL
+        std::env::set_var("DATABASE_URL", "postgres://postgres:password@localhost:5432/test");
+        
         // Get initial count
         let config = configuration::get_configuration().unwrap();
-        let pool = database::get_connection_pool(&config).await.unwrap();
+        let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/test")
+            .await
+            .unwrap();
         let initial_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
             .fetch_one(&pool)
             .await
