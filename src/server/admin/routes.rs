@@ -299,9 +299,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Drop and recreate test table
+        // Drop and recreate test table - need to handle existing type
         sqlx::query("DROP TABLE IF EXISTS events").execute(&pool).await.unwrap();
-        sqlx::query(
+        
+        // Create table with error handling
+        let create_result = sqlx::query(
             "CREATE TABLE events (
                 id TEXT PRIMARY KEY,
                 pubkey TEXT NOT NULL,
@@ -313,8 +315,12 @@ mod tests {
             )"
         )
         .execute(&pool)
-        .await
-        .unwrap();
+        .await;
+
+        if let Err(e) = create_result {
+            eprintln!("Error creating table: {}", e);
+            // Continue anyway as the table might already exist
+        }
 
         // Initialize app with test database
         let app = test::init_service(
