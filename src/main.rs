@@ -112,7 +112,7 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(root_route))
             .configure(server::config::configure_app)
     })
-    .try_bind(&address)
+    .bind(&address)
     .or_else(|e| {
         // Only attempt port increment in development/local environment
         if configuration.application.host == "127.0.0.1" {
@@ -129,7 +129,7 @@ async fn main() -> std::io::Result<()> {
                         .app_data(db.clone())
                         .route("/", web::get().to(root_route))
                         .configure(server::config::configure_app)
-                }).try_bind(&new_address) {
+                }).bind(&new_address) {
                     return Ok(server);
                 }
             }
