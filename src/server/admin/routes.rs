@@ -3,8 +3,7 @@ use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
 use crate::event::Event;
-use crate::configuration::Settings;
-use crate::database;
+use openagents::database;
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
@@ -55,9 +54,9 @@ pub async fn admin_stats() -> Result<HttpResponse> {
     .fetch_one(&pool)
     .await {
         Ok(size) => size,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
+        Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
             "error": format!("Failed to get database size: {}", e)
-        }))
+        })))
     };
 
     Ok(HttpResponse::Ok().json(json!({
