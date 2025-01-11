@@ -3,7 +3,8 @@ use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
 use crate::event::Event;
-use openagents::database;
+use crate::configuration::Settings;
+use crate::database;
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
@@ -37,9 +38,9 @@ pub async fn admin_stats() -> Result<HttpResponse> {
     .fetch_all(&pool)
     .await {
         Ok(kinds) => kinds,
-        Err(e) => return HttpResponse::InternalServerError().json(json!({
+        Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
             "error": format!("Failed to get event kinds: {}", e)
-        }))
+        })))
     };
 
     let events_by_kind: serde_json::Map<String, serde_json::Value> = kinds
@@ -152,10 +153,10 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
 
         let pool = match database::get_connection_pool(&config).await {
             Ok(pool) => pool,
-            Err(e) => return HttpResponse::InternalServerError().json(json!({
+            Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
                 "status": "error",
                 "message": format!("Database error: {}", e)
-            }))
+            })))
         };
 
         if let Err(e) = sqlx::query(
@@ -171,10 +172,10 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
         .bind(&event.sig)
         .execute(&pool)
         .await {
-            return HttpResponse::InternalServerError().json(json!({
+            return Ok(HttpResponse::InternalServerError().json(json!({
                 "status": "error", 
                 "message": format!("Failed to save event: {}", e)
-            }));
+            })));
         }
 
         Ok(HttpResponse::Ok().json(json!({
