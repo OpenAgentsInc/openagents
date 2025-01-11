@@ -1,14 +1,14 @@
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use tracing::error;
+use tracing::{info, debug};
 use crate::configuration::Settings;
 
 pub async fn get_connection_pool(configuration: &Settings) -> Result<PgPool, sqlx::Error> {
-    error!("Creating database connection pool...");
+    info!("Creating database connection pool...");
     
     let connect_options = configuration.database.connect_options();
 
-    error!("Attempting to connect to database...");
+    debug!("Attempting to connect to database...");
 
     PgPoolOptions::new()
         .max_connections(5)
@@ -17,7 +17,7 @@ pub async fn get_connection_pool(configuration: &Settings) -> Result<PgPool, sql
 }
 
 pub async fn migrate_database(pool: &PgPool) -> Result<(), sqlx::Error> {
-    error!("Running database migrations...");
+    info!("Running database migrations...");
     sqlx::migrate!("./migrations")
         .run(pool)
         .await
