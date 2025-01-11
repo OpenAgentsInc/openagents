@@ -22,7 +22,7 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/admin")
             .wrap(AdminAuth::new())
-            .configure(routes::admin::routes::admin_config)
+            .configure(crate::server::admin::routes::admin_config)
     );
 
     // Configure non-admin routes
