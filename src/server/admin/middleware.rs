@@ -1,6 +1,6 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpResponse, body::EitherBody, cookie::Cookie,
+    Error, HttpResponse, body::EitherBody,
 };
 use crate::configuration::get_configuration;
 use futures::future::{ready, LocalBoxFuture, Ready};
@@ -129,7 +129,7 @@ where
         };
 
         // Skip auth in local development
-        if config.environment.as_str() == "local" {
+        if matches!(config.application.environment, crate::configuration::AppEnvironment::Local) {
             let fut = self.service.call(req);
             return Box::pin(async move {
                 let res = fut.await?;
