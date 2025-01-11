@@ -1,6 +1,5 @@
 use actix_files as fs;
 use actix_web::web;
-use tracing::info;
 
 use super::{routes, admin::middleware::AdminAuth};
 
