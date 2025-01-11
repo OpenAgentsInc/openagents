@@ -8,10 +8,6 @@ pub async fn health_check() -> impl Responder {
     }))
 }
 
-pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(health_check);
-    admin::routes::admin_config(cfg);
-}
 
 #[cfg(test)]
 mod tests {
