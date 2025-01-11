@@ -1,5 +1,4 @@
-use crate::server::admin;
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{get, HttpResponse, Responder};
 
 #[get("/health")]
 pub async fn health_check() -> impl Responder {

@@ -70,7 +70,7 @@ impl DatabaseSettings {
                 .username(username)
                 .password(password)
                 .database(database)
-                .ssl_mode(PgSslMode::Require);
+                .ssl_mode(PgSslMode::Prefer);
         }
 
         // Fall back to configuration file settings

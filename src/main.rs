@@ -19,15 +19,23 @@ use crate::relay::RelayWs;
 use crate::db::Database;
 use crate::configuration::get_configuration;
 
-async fn ws_route(
+async fn root_route(
     req: actix_web::HttpRequest,
     stream: web::Payload,
     event_tx: web::Data<broadcast::Sender<Event>>,
     db: web::Data<Arc<Database>>,
 ) -> Result<actix_web::HttpResponse, actix_web::Error> {
-    let id = Uuid::new_v4().to_string();
-    let ws = RelayWs::new(id, event_tx.get_ref().clone(), db.get_ref().clone());
-    ws::start(ws, &req, stream)
+    // Check if this is a WebSocket upgrade request
+    if req.headers().contains_key("Upgrade") {
+        let id = Uuid::new_v4().to_string();
+        let ws = RelayWs::new(id, event_tx.get_ref().clone(), db.get_ref().clone());
+        ws::start(ws, &req, stream)
+    } else {
+        // Not a WebSocket request, serve index.html
+        Ok(actix_web::HttpResponse::Ok()
+            .content_type("text/html")
+            .body(std::fs::read_to_string("static/index.html").unwrap()))
+    }
 }
 
 #[actix_web::main]
@@ -93,7 +101,7 @@ async fn main() -> std::io::Result<()> {
     info!("Starting server on {}", address);
 
     info!("Attempting to bind server...");
-    let server = HttpServer::new(move || {
+    let app_factory = move || {
         info!("Configuring new worker...");
         let cors = Cors::permissive();
         
@@ -101,10 +109,29 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(event_tx.clone())
             .app_data(db.clone())
-            .route("/", web::get().to(ws_route))
+            .route("/", web::get().to(root_route))
             .configure(server::config::configure_app)
-    })
-    .bind(&address)?;
+    };
+
+    let factory = app_factory.clone();
+    let server = HttpServer::new(factory)
+    .bind(&address)
+    .or_else(|e| {
+        // Only attempt port increment in development/local environment
+        if configuration.application.host == "127.0.0.1" {
+            let mut port = configuration.application.port;
+            while port < configuration.application.port + 10 {
+                port += 1;
+                let new_address = format!("{}:{}", configuration.application.host, port);
+                info!("Address {} in use, trying {}", address, new_address);
+                if let Ok(server) = HttpServer::new(app_factory.clone()).bind(&new_address) {
+                    return Ok(server);
+                }
+            }
+        }
+        // If we're not in development or couldn't find a free port, return original error
+        Err(e)
+    })?;
     
     // Log the actual bound address
     let addresses = server.addrs();
