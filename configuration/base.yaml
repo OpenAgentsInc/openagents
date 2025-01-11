@@ -8,3 +8,5 @@ database:
   password: "password"
   database_name: "openagents"
   require_ssl: false
+  max_connection_retries: 5
+  retry_interval_secs: 5
