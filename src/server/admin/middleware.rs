@@ -144,7 +144,7 @@ where
         }
         
         // Allow access to login routes without authentication
-        if req.path() == "/admin/login" {
+        if req.path() == "/admin/login" || req.path() == "/admin/login/" {
             let fut = self.service.call(req);
             return Box::pin(async move {
                 let res = fut.await?;
