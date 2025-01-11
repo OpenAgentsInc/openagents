@@ -46,10 +46,13 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        // TODO: Implement proper authentication
-        // For now, just check for a hardcoded admin token
+        let config = get_configuration().map_err(|e| {
+            actix_web::error::ErrorInternalServerError(format!("Config error: {}", e))
+        })?;
+        
         if let Some(auth_header) = req.headers().get("Authorization") {
-            if auth_header == "Bearer admin-token" {
+            let expected = format!("Bearer {}", config.application.admin_token);
+            if auth_header == expected {
                 let fut = self.service.call(req);
                 return Box::pin(async move {
                     let res = fut.await?;

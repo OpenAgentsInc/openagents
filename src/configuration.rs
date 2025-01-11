@@ -16,6 +16,8 @@ pub struct ApplicationSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
+    #[serde(default = "default_admin_token")]
+    pub admin_token: String,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -39,6 +41,10 @@ fn default_max_retries() -> u32 {
 
 fn default_retry_interval() -> u64 {
     5 // 5 seconds between retries
+}
+
+fn default_admin_token() -> String {
+    "admin-token".to_string() // Default fallback value
 }
 
 impl DatabaseSettings {
