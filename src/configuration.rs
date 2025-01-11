@@ -122,10 +122,21 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
     // Override port with $PORT if it exists (App Platform requirement)
     let builder = if let Ok(port) = std::env::var("PORT") {
         info!("Using PORT from environment: {}", port);
-        builder.set_override("application.port", port)?
+        builder
+            .set_override("application.port", port)?
+            .set_override("application.host", "0.0.0.0")?  // Ensure we bind to all interfaces
     } else {
         builder
     };
+
+    // Log the final configuration
+    info!("Final configuration:");
+    if let Ok(port) = std::env::var("PORT") {
+        info!("  Port (from env): {}", port);
+    }
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        info!("  Using DATABASE_URL from environment");
+    }
 
     let settings = builder.build()?;
     settings.try_deserialize::<Settings>()
