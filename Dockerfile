@@ -37,7 +37,7 @@ RUN apt-get update -y \
 # Copy the built executable
 COPY --from=builder /app/target/release/openagents openagents
 # Copy static files including the built JS
-COPY --from=frontend-builder /app /app/static
+COPY --from=frontend-builder /app/* /app/static/
 # Copy configuration files
 COPY configuration /app/configuration/
 
@@ -50,5 +50,8 @@ ENV RUST_BACKTRACE=1
 RUN useradd -m -u 1001 -U app
 RUN chown -R app:app /app
 USER app
+
+# List contents for verification
+RUN ls -la /app/static
 
 ENTRYPOINT ["./openagents"]
