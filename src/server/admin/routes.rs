@@ -1,7 +1,7 @@
 use actix_web::{get, web, HttpResponse, Responder};
 use serde_json::json;
 
-#[get("/admin/stats")]
+#[get("/stats")]
 pub async fn admin_stats() -> impl Responder {
     // TODO: Implement actual database stats
     HttpResponse::Ok().json(json!({
