@@ -4,7 +4,7 @@ use crate::event::Event;
 use std::collections::HashSet;
 use std::error::Error;
 use std::time::Duration;
-use tracing::{warn, info, error};
+use tracing::error;
 
 pub struct Database {
     pool: Pool<Postgres>
