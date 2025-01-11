@@ -12,6 +12,7 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{info, warn};
 
 use crate::event::Event;
 use crate::relay::RelayWs;
@@ -34,10 +35,38 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
     dotenv::dotenv().ok();
 
+    info!("Starting application...");
+    info!("Environment: {}", std::env::var("APP_ENVIRONMENT").unwrap_or_else(|_| "not set".to_string()));
+    info!("Port from env: {}", std::env::var("PORT").unwrap_or_else(|_| "not set".to_string()));
+    
+    // Log database-related environment variables
+    info!("DATABASE_URL: {}", std::env::var("DATABASE_URL").is_ok());
+    info!("PGHOST: {}", std::env::var("PGHOST").is_ok());
+    info!("PGPORT: {}", std::env::var("PGPORT").is_ok());
+    info!("PGUSER: {}", std::env::var("PGUSER").is_ok());
+    info!("PGDATABASE: {}", std::env::var("PGDATABASE").is_ok());
+    
+    // Print current directory and its contents
+    let current_dir = std::env::current_dir().expect("Failed to get current directory");
+    info!("Current directory: {:?}", current_dir);
+    if let Ok(entries) = std::fs::read_dir(&current_dir) {
+        info!("Directory contents:");
+        for entry in entries {
+            if let Ok(entry) = entry {
+                info!("  {:?}", entry.path());
+            }
+        }
+    }
+
     // Load configuration
+    info!("Loading configuration...");
     let configuration = get_configuration().expect("Failed to read configuration.");
+    info!("Configuration loaded successfully");
+    info!("App port: {}", configuration.application.port);
+    info!("App host: {}", configuration.application.host);
     
     // Initialize database using configuration with retries
+    info!("Initializing database connection...");
     let db = Arc::new(
         Database::new_with_options(
             configuration.database.connect_options(),
@@ -47,6 +76,7 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Failed to connect to database after all retries")
     );
+    info!("Database connection established successfully");
     let db = web::Data::new(db);
 
     // Channel for broadcasting events to all connected clients
@@ -57,6 +87,7 @@ async fn main() -> std::io::Result<()> {
         "{}:{}",
         configuration.application.host, configuration.application.port
     );
+    info!("Starting server on {}", address);
 
     HttpServer::new(move || {
         let cors = Cors::permissive();
