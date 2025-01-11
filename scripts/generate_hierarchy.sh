@@ -15,7 +15,7 @@ process_gitignore() {
     if [ ! -f .gitignore ]; then
         echo "Warning: .gitignore file not found"
         return
-    }
+    fi
     
     while IFS= read -r pattern; do
         # Skip empty lines and comments
