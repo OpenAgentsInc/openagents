@@ -1,6 +1,15 @@
 use actix_web::{test, web, App};
 use openagents::server::admin::routes::{admin_stats, create_demo_event};
 use openagents::event::Event;
+use tokio::sync::Mutex;
+use std::sync::Once;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
+}
+
+static INIT: Once = Once::new();
 
 async fn setup_test_db() -> sqlx::PgPool {
     // Use a dedicated test database
@@ -35,6 +44,9 @@ async fn setup_test_db() -> sqlx::PgPool {
 
 #[actix_web::test]
 async fn test_create_demo_event() {
+    // Ensure tests run sequentially
+    let _lock = TEST_MUTEX.lock().await;
+    
     let pool = setup_test_db().await;
 
     // Set test database URL for the application code
@@ -85,6 +97,9 @@ async fn test_create_demo_event() {
 
 #[actix_web::test]
 async fn test_admin_stats() {
+    // Ensure tests run sequentially
+    let _lock = TEST_MUTEX.lock().await;
+    
     let pool = setup_test_db().await;
 
     // Set test database URL for the application code
