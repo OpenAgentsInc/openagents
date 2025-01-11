@@ -123,8 +123,11 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
     let mut event = Event {
         id: "".to_string(),
         pubkey: keypair.public_key().x_only_public_key().0.serialize().iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<String>(),
+            .fold(String::with_capacity(64), |mut acc, b| {
+                use std::fmt::Write;
+                write!(acc, "{:02x}", b).unwrap();
+                acc
+            }),
         created_at: chrono::Utc::now().timestamp(),
         kind: 1,
         tags: vec![vec!["t".to_string(), "demo".to_string()]],

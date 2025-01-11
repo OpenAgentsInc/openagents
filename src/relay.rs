@@ -27,7 +27,7 @@ impl RelayWs {
             subscriptions: HashMap::new(),
             event_tx: event_tx.clone(),
             event_rx: event_tx.subscribe(),
-            db: db,
+            db,
         }
     }
 

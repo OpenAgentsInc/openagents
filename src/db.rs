@@ -63,15 +63,18 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_events_by_filter(&self, 
-        ids: &Option<Vec<String>>,
-        authors: &Option<Vec<String>>,
-        kinds: &Option<Vec<i32>>,
-        since: &Option<i64>,
-        until: &Option<i64>,
-        limit: &Option<u64>,
-        tag_filters: &[(char, HashSet<String>)]
-    ) -> Result<Vec<Event>, Box<dyn Error>> {
+    #[derive(Default)]
+    pub struct EventFilter<'a> {
+        pub ids: &'a Option<Vec<String>>,
+        pub authors: &'a Option<Vec<String>>,
+        pub kinds: &'a Option<Vec<i32>>,
+        pub since: &'a Option<i64>,
+        pub until: &'a Option<i64>,
+        pub limit: &'a Option<u64>,
+        pub tag_filters: &'a [(char, HashSet<String>)],
+    }
+
+    pub async fn get_events_by_filter(&self, filter: EventFilter<'_>) -> Result<Vec<Event>, Box<dyn Error>> {
         let mut query = String::from(
             "SELECT id, pubkey, created_at, kind, content, sig, tags 
              FROM events 
@@ -105,7 +108,7 @@ impl Database {
         }
 
         // Add tag filters
-        for (_i, (tag_char, values)) in tag_filters.iter().enumerate() {
+        for (tag_char, values) in filter.tag_filters.iter() {
             query.push_str(&format!(
                 " AND tags @> ${}",
                 params.len() + 1

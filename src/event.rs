@@ -77,13 +77,14 @@ impl Event {
     }
 
     pub fn to_canonical(&self) -> Option<String> {
-        let mut elements = Vec::new();
-        elements.push(serde_json::Value::Number(0.into())); // id placeholder
-        elements.push(serde_json::Value::String(self.pubkey.clone()));
-        elements.push(serde_json::Value::Number(self.created_at.into()));
-        elements.push(serde_json::Value::Number(self.kind.into()));
-        elements.push(self.tags_to_canonical());
-        elements.push(serde_json::Value::String(self.content.clone()));
+        let elements = vec![
+            serde_json::Value::Number(0.into()), // id placeholder
+            serde_json::Value::String(self.pubkey.clone()),
+            serde_json::Value::Number(self.created_at.into()),
+            serde_json::Value::Number(self.kind.into()),
+            self.tags_to_canonical(),
+            serde_json::Value::String(self.content.clone())
+        ];
 
         serde_json::to_string(&serde_json::Value::Array(elements)).ok()
     }
