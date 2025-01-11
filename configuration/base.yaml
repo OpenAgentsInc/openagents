@@ -8,3 +8,6 @@ database:
   password: "password"
   database_name: "openagents"
   require_ssl: false
+  connection_timeout_secs: 30
+  max_connection_retries: 5
+  retry_interval_secs: 5
