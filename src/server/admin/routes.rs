@@ -12,9 +12,17 @@ pub async fn admin_stats() -> Result<HttpResponse> {
 
     // For tests, bypass database connection if DATABASE_URL is not set
     let pool = if std::env::var("DATABASE_URL").is_err() && cfg!(test) {
-        sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
+        let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
             .await
-            .unwrap()
+            .unwrap();
+        
+        // Set search path for test environment
+        sqlx::query("SET search_path TO test_schema")
+            .execute(&pool)
+            .await
+            .unwrap();
+            
+        pool
     } else {
         match database::get_connection_pool(&config).await {
             Ok(pool) => pool,
@@ -26,8 +34,11 @@ pub async fn admin_stats() -> Result<HttpResponse> {
         }
     };
 
-    // Get total events count
-    let total_events: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM events")
+    // Get total events count - use schema-qualified table name in test mode
+    let table_name = if cfg!(test) { "test_schema.events" } else { "events" };
+    let query = format!("SELECT COUNT(*) FROM {}", table_name);
+    
+    let total_events: i64 = match sqlx::query_scalar(&query)
         .fetch_one(&pool)
         .await
     {
@@ -40,14 +51,17 @@ pub async fn admin_stats() -> Result<HttpResponse> {
     };
 
     // Get events by kind
-    let kinds: Vec<(i32, i64)> = match sqlx::query_as(
+    let query = format!(
         "SELECT kind, COUNT(*) as count 
-         FROM events 
+         FROM {} 
          GROUP BY kind 
          ORDER BY kind",
-    )
-    .fetch_all(&pool)
-    .await
+        table_name
+    );
+    
+    let kinds: Vec<(i32, i64)> = match sqlx::query_as(&query)
+        .fetch_all(&pool)
+        .await
     {
         Ok(kinds) => kinds,
         Err(e) => {
@@ -176,9 +190,17 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
 
         // For tests, bypass database connection if DATABASE_URL is not set
         let pool = if std::env::var("DATABASE_URL").is_err() && cfg!(test) {
-            sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
+            let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
                 .await
-                .unwrap()
+                .unwrap();
+                
+            // Set search path for test environment
+            sqlx::query("SET search_path TO test_schema")
+                .execute(&pool)
+                .await
+                .unwrap();
+                
+            pool
         } else {
             let config = configuration::get_configuration().map_err(|e| {
                 actix_web::error::ErrorInternalServerError(format!("Config error: {}", e))
@@ -195,19 +217,24 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
             }
         };
 
-        if let Err(e) = sqlx::query(
-            "INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig) 
+        // Use schema-qualified table name in test mode
+        let table_name = if cfg!(test) { "test_schema.events" } else { "events" };
+        let query = format!(
+            "INSERT INTO {} (id, pubkey, created_at, kind, tags, content, sig) 
              VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        )
-        .bind(&event.id)
-        .bind(&event.pubkey)
-        .bind(event.created_at)
-        .bind(event.kind)
-        .bind(serde_json::to_value(&event.tags).unwrap())
-        .bind(&event.content)
-        .bind(&event.sig)
-        .execute(&pool)
-        .await
+            table_name
+        );
+
+        if let Err(e) = sqlx::query(&query)
+            .bind(&event.id)
+            .bind(&event.pubkey)
+            .bind(event.created_at)
+            .bind(event.kind)
+            .bind(serde_json::to_value(&event.tags).unwrap())
+            .bind(&event.content)
+            .bind(&event.sig)
+            .execute(&pool)
+            .await
         {
             return Ok(HttpResponse::InternalServerError().json(json!({
                 "status": "error",
