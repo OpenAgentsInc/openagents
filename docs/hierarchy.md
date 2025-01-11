@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 13:33:45
+Generated on: 2025-01-11 18:40:34
 
 ### Structure
 
@@ -24,6 +24,7 @@ Generated on: 2025-01-11 13:33:45
 |   |-- configuration.md
 |   |-- hierarchy.md
 |   |-- htmx-nostr-chat.md
+|   |-- newsletter.md
 |   `-- rust-setup.md
 |-- migrations/
 |   `-- 20250110000000_initial.sql
@@ -47,6 +48,16 @@ Generated on: 2025-01-11 13:33:45
 |   |-- relay.rs
 |   `-- subscription.rs
 |-- static/
+|   |-- css/
+|   |   |-- changelog.css
+|   |   |-- chat.css
+|   |   |-- new.css
+|   |   |-- style.css
+|   |   |-- videos-new.css
+|   |   `-- videos.css
+|   |-- data/
+|   |   |-- changelog.json
+|   |   `-- videos.json
 |   |-- dist/
 |   |   |-- nostr/
 |   |   |   |-- nostr-chat.js
@@ -55,6 +66,15 @@ Generated on: 2025-01-11 13:33:45
 |   |   |-- ndk.js.map
 |   |   |-- nostr-sub.js
 |   |   `-- nostr-sub.js.map
+|   |-- fonts/
+|   |   |-- BerkeleyMono-Bold.woff
+|   |   |-- BerkeleyMono-Bold.woff2
+|   |   |-- BerkeleyMono-BoldItalic.woff
+|   |   |-- BerkeleyMono-BoldItalic.woff2
+|   |   |-- BerkeleyMono-Italic.woff
+|   |   |-- BerkeleyMono-Italic.woff2
+|   |   |-- BerkeleyMono-Regular.woff
+|   |   `-- BerkeleyMono-Regular.woff2
 |   |-- js/
 |   |   |-- LightingSystem.js
 |   |   |-- OnyxOrb.js
@@ -74,31 +94,37 @@ Generated on: 2025-01-11 13:33:45
 |   |   |-- nostr-chat.ts
 |   |   |-- storage.ts
 |   |   `-- types.ts
+|   |-- templates/
+|   |   |-- changelog-new.mustache
+|   |   |-- changelog.mustache
+|   |   `-- chat.mustache
 |   |-- README.md
-|   |-- changelog.css
-|   |-- changelog.json
 |   |-- favicon.ico
 |   |-- index.html
 |   |-- justfile
 |   |-- ndk.ts
+|   |-- new.html
 |   |-- nostr-sub.ts
 |   |-- nostr.html
 |   |-- onyx.png
 |   |-- package.json
-|   |-- style.css
 |   |-- tsconfig.json
-|   |-- videos.css
-|   |-- videos.json
 |   `-- yarn.lock
 |-- templates/
 |   `-- admin/
 |       |-- dashboard.html
 |       `-- login.html
+|-- tests/
+|   |-- api/
+|   |   |-- health_check.rs
+|   |   `-- mod.rs
+|   `-- health_check.rs
 |-- Cargo.lock
 |-- Cargo.toml
+|-- DEVELOPMENT.md
 |-- Dockerfile
 |-- README.md
 `-- spec.yaml
 
-17 directories, 77 files
+23 directories, 97 files
 ```
