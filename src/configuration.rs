@@ -41,12 +41,12 @@ pub struct DatabaseSettings {
 impl Default for DatabaseSettings {
     fn default() -> Self {
         Self {
-            username: String::new(),
-            password: Secret::new(String::new()),
+            username: "postgres".to_string(),
+            password: Secret::new("postgres".to_string()),
             port: 5432,
-            host: String::new(),
-            database_name: String::new(),
-            require_ssl: true,
+            host: "127.0.0.1".to_string(),
+            database_name: "openagents".to_string(),
+            require_ssl: false,
         }
     }
 }
@@ -109,13 +109,19 @@ impl DatabaseSettings {
         error!("  Database Name: {}", self.database_name);
         error!("  SSL Mode: {}", if self.require_ssl { "REQUIRE" } else { "PREFER" });
 
-        PgConnectOptions::new()
+        let mut options = PgConnectOptions::new()
             .host(&self.host)
             .username(&self.username)
             .password(self.password.expose_secret())
             .port(self.port)
-            .ssl_mode(ssl_mode)
-            .database(&self.database_name)
+            .ssl_mode(ssl_mode);
+
+        // Only set database name if it's not empty
+        if !self.database_name.is_empty() {
+            options = options.database(&self.database_name);
+        }
+
+        options
     }
 }
 
@@ -124,7 +130,7 @@ fn default_admin_token() -> String {
 }
 
 fn default_password() -> Secret<String> {
-    Secret::new(String::new())
+    Secret::new("postgres".to_string())
 }
 
 fn default_port() -> u16 {
@@ -143,7 +149,10 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
         .join("configuration");
 
     let environment: AppEnvironment = std::env::var("APP_ENVIRONMENT")
-        .unwrap_or_else(|_| "local".into())
+        .unwrap_or_else(|_| {
+            error!("APP_ENVIRONMENT not set, defaulting to 'local'");
+            "local".into()
+        })
         .try_into()
         .expect("Failed to parse APP_ENVIRONMENT");
 
