@@ -3,6 +3,7 @@ use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
+use tracing::info;
 
 #[derive(serde::Deserialize, Clone)]
 pub struct Settings {
@@ -42,6 +43,34 @@ fn default_retry_interval() -> u64 {
 
 impl DatabaseSettings {
     pub fn connect_options(&self) -> PgConnectOptions {
+        // First check for App Platform's DATABASE_URL
+        if let Ok(database_url) = std::env::var("DATABASE_URL") {
+            info!("Using DATABASE_URL from environment");
+            return PgConnectOptions::from_str(&database_url)
+                .expect("Invalid DATABASE_URL")
+                .ssl_mode(PgSslMode::Require);
+        }
+
+        // Then check for individual App Platform database variables
+        if let (Ok(host), Ok(port), Ok(user), Ok(password), Ok(database)) = (
+            std::env::var("PGHOST"),
+            std::env::var("PGPORT"),
+            std::env::var("PGUSER"),
+            std::env::var("PGPASSWORD"),
+            std::env::var("PGDATABASE"),
+        ) {
+            info!("Using App Platform database environment variables");
+            return PgConnectOptions::new()
+                .host(&host)
+                .port(port.parse().expect("Invalid PGPORT"))
+                .username(&user)
+                .password(&password)
+                .database(&database)
+                .ssl_mode(PgSslMode::Require);
+        }
+
+        // Fall back to configuration file settings
+        info!("Using configuration file database settings");
         let ssl_mode = if self.require_ssl {
             PgSslMode::Require
         } else {
