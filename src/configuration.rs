@@ -46,9 +46,15 @@ impl DatabaseSettings {
         // First check for App Platform's DATABASE_URL
         if let Ok(database_url) = std::env::var("DATABASE_URL") {
             info!("Using DATABASE_URL from environment");
-            return PgConnectOptions::from_str(&database_url)
-                .expect("Invalid DATABASE_URL")
-                .ssl_mode(PgSslMode::Require);
+            let mut options = PgConnectOptions::new()
+                .host(std::env::var("PGHOST").unwrap_or_else(|_| "localhost".to_string()).as_str())
+                .port(std::env::var("PGPORT").ok().and_then(|p| p.parse().ok()).unwrap_or(5432))
+                .username(std::env::var("PGUSER").unwrap_or_else(|_| "postgres".to_string()).as_str())
+                .password(std::env::var("PGPASSWORD").unwrap_or_default().as_str())
+                .database(std::env::var("PGDATABASE").unwrap_or_else(|_| "postgres".to_string()).as_str());
+            
+            options = options.ssl_mode(PgSslMode::Require);
+            return options;
         }
 
         // Then check for individual App Platform database variables
