@@ -205,7 +205,7 @@ mod tests {
     #[actix_web::test]
     async fn test_create_demo_event() {
         // Get initial count
-        let config = crate::configuration::get_configuration().unwrap();
+        let config = configuration::get_configuration().unwrap();
         let pool = database::get_connection_pool(&config).await.unwrap();
         let initial_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
             .fetch_one(&pool)
