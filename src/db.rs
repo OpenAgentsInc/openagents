@@ -14,7 +14,7 @@ impl Database {
     pub async fn new_with_options(
         options: PgConnectOptions,
     ) -> Result<Self, Box<dyn Error>> {
-        error!("Attempting to connect to database...");
+        info!("Attempting to connect to database...");
         
         match PgPoolOptions::new()
             .max_connections(5)
@@ -23,10 +23,10 @@ impl Database {
             .await
         {
             Ok(pool) => {
-                error!("Database connection successful, running migrations...");
+                info!("Database connection successful, running migrations...");
                 match sqlx::migrate!("./migrations").run(&pool).await {
                     Ok(_) => {
-                        error!("Migrations completed successfully");
+                        info!("Migrations completed successfully");
                         Ok(Self { pool })
                     }
                     Err(e) => {
