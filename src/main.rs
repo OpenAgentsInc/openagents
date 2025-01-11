@@ -1,22 +1,22 @@
+mod configuration;
+mod db;
 mod event;
 mod relay;
-mod subscription;
-mod db;
 mod server;
-mod configuration;
+mod subscription;
 
+use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use actix_web_actors::ws;
-use actix_cors::Cors;
-use tokio::sync::broadcast;
-use uuid::Uuid;
 use std::sync::Arc;
-use tracing::{info, debug, warn};
+use tokio::sync::broadcast;
+use tracing::{debug, info, warn};
+use uuid::Uuid;
 
+use crate::configuration::get_configuration;
+use crate::db::Database;
 use crate::event::Event;
 use crate::relay::RelayWs;
-use crate::db::Database;
-use crate::configuration::get_configuration;
 
 async fn root_route(
     req: actix_web::HttpRequest,
@@ -46,17 +46,17 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
 
     info!("🚀 Starting OpenAgents...");
-    
+
     // Load configuration
     debug!("Loading configuration...");
     let configuration = get_configuration().expect("Failed to read configuration.");
-    
+
     // Initialize database
     info!("Connecting to database...");
     let db = Arc::new(
         Database::new_with_options(configuration.database.connect_options())
             .await
-            .expect("Failed to connect to database")
+            .expect("Failed to connect to database"),
     );
     info!("✅ Database connected");
     let db = web::Data::new(db);
@@ -74,7 +74,7 @@ async fn main() -> std::io::Result<()> {
     let app_factory = move || {
         debug!("Initializing worker...");
         let cors = Cors::permissive();
-        
+
         App::new()
             .wrap(cors)
             .app_data(event_tx.clone())
@@ -84,16 +84,17 @@ async fn main() -> std::io::Result<()> {
     };
 
     let factory = app_factory.clone();
-    let server = HttpServer::new(factory)
-    .bind(&address)
-    .or_else(|e| {
+    let server = HttpServer::new(factory).bind(&address).or_else(|e| {
         // Only attempt port increment in development/local environment
         if configuration.application.host == "127.0.0.1" {
             let mut port = configuration.application.port;
             while port < configuration.application.port + 10 {
                 port += 1;
                 let new_address = format!("{}:{}", configuration.application.host, port);
-                warn!("Port {} in use, trying {}", configuration.application.port, port);
+                warn!(
+                    "Port {} in use, trying {}",
+                    configuration.application.port, port
+                );
                 if let Ok(server) = HttpServer::new(app_factory.clone()).bind(&new_address) {
                     info!("Found available port: {}", port);
                     return Ok(server);
@@ -103,7 +104,7 @@ async fn main() -> std::io::Result<()> {
         // If we're not in development or couldn't find a free port, return original error
         Err(e)
     })?;
-    
+
     // Log the actual bound address
     let addresses = server.addrs();
     info!("✨ Server ready:");
@@ -111,6 +112,6 @@ async fn main() -> std::io::Result<()> {
         info!("  🌎 http://{}", addr);
         info!("  🔧 Admin: http://{}/admin/stats", addr);
     }
-    
+
     server.run().await
 }

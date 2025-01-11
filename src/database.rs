@@ -1,11 +1,11 @@
+use crate::configuration::Settings;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use tracing::{info, debug, error};
-use crate::configuration::Settings;
+use tracing::{debug, error, info};
 
 pub async fn get_connection_pool(configuration: &Settings) -> Result<PgPool, sqlx::Error> {
     info!("Creating database connection pool...");
-    
+
     let connect_options = configuration.database.connect_options();
 
     debug!("Attempting to connect to database...");
@@ -18,13 +18,10 @@ pub async fn get_connection_pool(configuration: &Settings) -> Result<PgPool, sql
 
 pub async fn migrate_database(pool: &PgPool) -> Result<(), sqlx::Error> {
     info!("Running database migrations...");
-    sqlx::migrate!("./migrations")
-        .run(pool)
-        .await
-        .map_err(|e| {
-            error!("Migration error: {}", e);
-            sqlx::Error::Protocol(format!("Migration error: {}", e))
-        })
+    sqlx::migrate!("./migrations").run(pool).await.map_err(|e| {
+        error!("Migration error: {}", e);
+        sqlx::Error::Protocol(format!("Migration error: {}", e))
+    })
 }
 
 #[cfg(test)]
@@ -42,7 +39,9 @@ mod tests {
     #[tokio::test]
     async fn test_migrate_database() {
         let config = configuration::get_configuration().expect("Failed to load config");
-        let pool = get_connection_pool(&config).await.expect("Failed to get pool");
+        let pool = get_connection_pool(&config)
+            .await
+            .expect("Failed to get pool");
         let result = migrate_database(&pool).await;
         assert!(result.is_ok(), "Should run migrations successfully");
     }

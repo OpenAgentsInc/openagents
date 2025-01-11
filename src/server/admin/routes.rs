@@ -1,9 +1,9 @@
-use actix_web::{get, post, web, HttpResponse, Responder, cookie::Cookie, Result};
-use serde_json::json;
-use serde::Deserialize;
-use secp256k1::{rand, KeyPair, Secp256k1, Message};
 use crate::event::Event;
-use openagents::{database, configuration};
+use actix_web::{cookie::Cookie, get, post, web, HttpResponse, Responder, Result};
+use openagents::{configuration, database};
+use secp256k1::{rand, KeyPair, Message, Secp256k1};
+use serde::Deserialize;
+use serde_json::json;
 
 #[get("/stats")]
 pub async fn admin_stats() -> Result<HttpResponse> {
@@ -12,24 +12,31 @@ pub async fn admin_stats() -> Result<HttpResponse> {
 
     // For tests, bypass database connection if DATABASE_URL is not set
     let pool = if std::env::var("DATABASE_URL").is_err() && cfg!(test) {
-        sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres").await.unwrap()
+        sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
+            .await
+            .unwrap()
     } else {
         match database::get_connection_pool(&config).await {
             Ok(pool) => pool,
-            Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
-                "error": format!("Database error: {}", e)
-            })))
+            Err(e) => {
+                return Ok(HttpResponse::InternalServerError().json(json!({
+                    "error": format!("Database error: {}", e)
+                })))
+            }
         }
     };
 
     // Get total events count
     let total_events: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM events")
         .fetch_one(&pool)
-        .await {
-            Ok(count) => count,
-            Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
+        .await
+    {
+        Ok(count) => count,
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(json!({
                 "error": format!("Failed to get event count: {}", e)
             })))
+        }
     };
 
     // Get events by kind
@@ -37,14 +44,17 @@ pub async fn admin_stats() -> Result<HttpResponse> {
         "SELECT kind, COUNT(*) as count 
          FROM events 
          GROUP BY kind 
-         ORDER BY kind"
+         ORDER BY kind",
     )
     .fetch_all(&pool)
-    .await {
+    .await
+    {
         Ok(kinds) => kinds,
-        Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
-            "error": format!("Failed to get event kinds: {}", e)
-        })))
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": format!("Failed to get event kinds: {}", e)
+            })))
+        }
     };
 
     let events_by_kind: serde_json::Map<String, serde_json::Value> = kinds
@@ -53,15 +63,16 @@ pub async fn admin_stats() -> Result<HttpResponse> {
         .collect();
 
     // Get database size
-    let db_size: i64 = match sqlx::query_scalar(
-        "SELECT pg_database_size(current_database())"
-    )
-    .fetch_one(&pool)
-    .await {
+    let db_size: i64 = match sqlx::query_scalar("SELECT pg_database_size(current_database())")
+        .fetch_one(&pool)
+        .await
+    {
         Ok(size) => size,
-        Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
-            "error": format!("Failed to get database size: {}", e)
-        })))
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": format!("Failed to get database size: {}", e)
+            })))
+        }
     };
 
     Ok(HttpResponse::Ok().json(json!({
@@ -80,12 +91,16 @@ pub struct LoginForm {
 
 #[get("")]
 pub async fn admin_dashboard() -> impl Responder {
-    HttpResponse::Ok().content_type("text/html").body(include_str!("../../../templates/admin/dashboard.html"))
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(include_str!("../../../templates/admin/dashboard.html"))
 }
 
 #[get("/login")]
 pub async fn admin_login() -> impl Responder {
-    HttpResponse::Ok().content_type("text/html").body(include_str!("../../../templates/admin/login.html"))
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(include_str!("../../../templates/admin/login.html"))
 }
 
 #[post("/login")]
@@ -119,10 +134,15 @@ use bitcoin_hashes::{sha256, Hash};
 pub async fn create_demo_event() -> Result<HttpResponse> {
     let secp = Secp256k1::new();
     let keypair = KeyPair::new(&secp, &mut rand::thread_rng());
-    
+
     let mut event = Event {
         id: "".to_string(),
-        pubkey: keypair.public_key().x_only_public_key().0.serialize().iter()
+        pubkey: keypair
+            .public_key()
+            .x_only_public_key()
+            .0
+            .serialize()
+            .iter()
             .fold(String::with_capacity(64), |mut acc, b| {
                 use std::fmt::Write;
                 write!(acc, "{:02x}", b).unwrap();
@@ -156,23 +176,28 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
 
         // For tests, bypass database connection if DATABASE_URL is not set
         let pool = if std::env::var("DATABASE_URL").is_err() && cfg!(test) {
-            sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres").await.unwrap()
+            sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
+                .await
+                .unwrap()
         } else {
-            let config = configuration::get_configuration()
-                .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
+            let config = configuration::get_configuration().map_err(|e| {
+                actix_web::error::ErrorInternalServerError(format!("Config error: {}", e))
+            })?;
 
             match database::get_connection_pool(&config).await {
                 Ok(pool) => pool,
-                Err(e) => return Ok(HttpResponse::InternalServerError().json(json!({
-                    "status": "error",
-                    "message": format!("Database error: {}", e)
-                })))
+                Err(e) => {
+                    return Ok(HttpResponse::InternalServerError().json(json!({
+                        "status": "error",
+                        "message": format!("Database error: {}", e)
+                    })))
+                }
             }
         };
 
         if let Err(e) = sqlx::query(
             "INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
         .bind(&event.id)
         .bind(&event.pubkey)
@@ -182,9 +207,10 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
         .bind(&event.content)
         .bind(&event.sig)
         .execute(&pool)
-        .await {
+        .await
+        {
             return Ok(HttpResponse::InternalServerError().json(json!({
-                "status": "error", 
+                "status": "error",
                 "message": format!("Failed to save event: {}", e)
             })));
         }
@@ -203,10 +229,10 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
 
 pub fn admin_config(cfg: &mut web::ServiceConfig) {
     cfg.service(admin_dashboard)
-       .service(admin_login)
-       .service(admin_login_post)
-       .service(admin_stats)
-       .service(create_demo_event);
+        .service(admin_login)
+        .service(admin_login_post)
+        .service(admin_stats)
+        .service(create_demo_event);
 }
 
 #[cfg(test)]
@@ -218,15 +244,21 @@ mod tests {
     async fn test_create_demo_event() {
         // Set up test database connection
         std::env::remove_var("DATABASE_URL");
-        
+
         let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
             .await
             .unwrap();
 
         // Drop and recreate test table - drop table first, then type
-        sqlx::query("DROP TABLE IF EXISTS events CASCADE").execute(&pool).await.unwrap();
-        sqlx::query("DROP TYPE IF EXISTS events CASCADE").execute(&pool).await.unwrap();
-        
+        sqlx::query("DROP TABLE IF EXISTS events CASCADE")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DROP TYPE IF EXISTS events CASCADE")
+            .execute(&pool)
+            .await
+            .unwrap();
+
         // Create table with error handling
         let create_result = sqlx::query(
             "CREATE TABLE events (
@@ -237,7 +269,7 @@ mod tests {
                 tags JSONB NOT NULL,
                 content TEXT NOT NULL,
                 sig TEXT NOT NULL
-            )"
+            )",
         )
         .execute(&pool)
         .await;
@@ -251,17 +283,16 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(pool.clone()))
-                .service(create_demo_event)
-        ).await;
+                .service(create_demo_event),
+        )
+        .await;
 
-        let req = test::TestRequest::post()
-            .uri("/demo-event")
-            .to_request();
+        let req = test::TestRequest::post().uri("/demo-event").to_request();
 
         let resp: serde_json::Value = test::call_and_read_body_json(&app, req).await;
-        
+
         assert_eq!(resp["status"], "success");
-        
+
         let event = &resp["event"];
         assert!(!event["id"].as_str().unwrap().is_empty());
         assert!(!event["pubkey"].as_str().unwrap().is_empty());
@@ -279,13 +310,11 @@ mod tests {
         assert_eq!(final_count, 1);
 
         // Verify event details in database
-        let saved_event = sqlx::query_as::<_, Event>(
-            "SELECT * FROM events WHERE id = $1"
-        )
-        .bind(event["id"].as_str().unwrap())
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let saved_event = sqlx::query_as::<_, Event>("SELECT * FROM events WHERE id = $1")
+            .bind(event["id"].as_str().unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
         assert_eq!(saved_event.id, event["id"].as_str().unwrap());
         assert_eq!(saved_event.pubkey, event["pubkey"].as_str().unwrap());
@@ -297,14 +326,17 @@ mod tests {
     async fn test_admin_stats() {
         // Set up test database connection
         std::env::remove_var("DATABASE_URL");
-        
+
         let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
             .await
             .unwrap();
 
         // Drop and recreate test table - need to handle existing type
-        sqlx::query("DROP TABLE IF EXISTS events").execute(&pool).await.unwrap();
-        
+        sqlx::query("DROP TABLE IF EXISTS events")
+            .execute(&pool)
+            .await
+            .unwrap();
+
         // Create table with error handling
         let create_result = sqlx::query(
             "CREATE TABLE events (
@@ -315,7 +347,7 @@ mod tests {
                 tags JSONB NOT NULL,
                 content TEXT NOT NULL,
                 sig TEXT NOT NULL
-            )"
+            )",
         )
         .execute(&pool)
         .await;
@@ -329,15 +361,14 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(pool.clone()))
-                .service(admin_stats)
-        ).await;
+                .service(admin_stats),
+        )
+        .await;
 
-        let req = test::TestRequest::get()
-            .uri("/stats")
-            .to_request();
+        let req = test::TestRequest::get().uri("/stats").to_request();
 
         let resp: serde_json::Value = test::call_and_read_body_json(&app, req).await;
-        
+
         assert!(resp.get("total_events").is_some());
         assert!(resp.get("status").is_some());
         assert!(resp.get("events_by_kind").is_some());

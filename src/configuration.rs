@@ -2,7 +2,7 @@ use config::{Config, ConfigError, Environment as ConfigEnvironment, File};
 use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
-use tracing::{info, error, debug};
+use tracing::{debug, error, info};
 use url::Url;
 
 #[derive(serde::Deserialize, Clone)]
@@ -55,12 +55,12 @@ impl DatabaseSettings {
         // First check for DATABASE_URL
         if let Ok(database_url) = std::env::var("DATABASE_URL") {
             info!("Using DATABASE_URL from environment");
-            
+
             let url = match Url::parse(&database_url) {
                 Ok(url) => {
                     debug!("Successfully parsed DATABASE_URL");
                     url
-                },
+                }
                 Err(e) => {
                     error!("Failed to parse DATABASE_URL: {}", e);
                     error!("DATABASE_URL format should be: postgres://username:password@host:port/database");
@@ -73,14 +73,14 @@ impl DatabaseSettings {
             let username = url.username();
             let password = url.password().unwrap_or("");
             let database = url.path().trim_start_matches('/');
-            
+
             info!("Database connection details:");
             info!("  Host: {}", host);
             info!("  Port: {}", port);
             info!("  Username: {}", username);
             info!("  Database Name: {}", database);
             info!("  SSL Mode: PREFER (auto-detect)");
-            
+
             return PgConnectOptions::new()
                 .host(host)
                 .port(port)
@@ -91,7 +91,7 @@ impl DatabaseSettings {
         }
 
         info!("Using configuration file for database settings");
-        
+
         let ssl_mode = if self.require_ssl {
             debug!("SSL is required by configuration");
             PgSslMode::Require
@@ -105,7 +105,14 @@ impl DatabaseSettings {
         debug!("  Port: {}", self.port);
         debug!("  Username: {}", self.username);
         debug!("  Database Name: {}", self.database_name);
-        debug!("  SSL Mode: {}", if self.require_ssl { "REQUIRE" } else { "PREFER" });
+        debug!(
+            "  SSL Mode: {}",
+            if self.require_ssl {
+                "REQUIRE"
+            } else {
+                "PREFER"
+            }
+        );
 
         let mut options = PgConnectOptions::new()
             .host(&self.host)
@@ -141,7 +148,7 @@ fn default_true() -> bool {
 
 pub fn get_configuration() -> Result<Settings, ConfigError> {
     info!("Loading configuration...");
-    
+
     let base_path = std::env::current_dir()
         .expect("Failed to determine current directory")
         .join("configuration");
@@ -155,7 +162,7 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
         .expect("Failed to parse APP_ENVIRONMENT");
 
     let environment_filename = format!("{}.yaml", environment.as_str());
-    
+
     info!("Environment: {}", environment.as_str());
     debug!("Loading config from: {}", environment_filename);
 

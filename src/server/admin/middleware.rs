@@ -1,8 +1,9 @@
-use actix_web::{
-    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpResponse, body::EitherBody,
-};
 use crate::configuration::get_configuration;
+use actix_web::{
+    body::EitherBody,
+    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
+    Error, HttpResponse,
+};
 use futures::future::{ready, LocalBoxFuture, Ready};
 
 pub struct AdminAuth;
@@ -16,7 +17,7 @@ impl AdminAuth {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, App, web, HttpResponse};
+    use actix_web::{test, web, App, HttpResponse};
 
     async fn test_endpoint() -> HttpResponse {
         HttpResponse::Ok().json(serde_json::json!({"status": "ok"}))
@@ -25,19 +26,19 @@ mod tests {
     #[actix_web::test]
     async fn test_admin_auth_valid_token() {
         let app = test::init_service(
-            App::new()
-                .service(
-                    web::scope("/admin")
-                        .wrap(AdminAuth::new())
-                        .route("/test", web::get().to(test_endpoint))
-                )
-        ).await;
+            App::new().service(
+                web::scope("/admin")
+                    .wrap(AdminAuth::new())
+                    .route("/test", web::get().to(test_endpoint)),
+            ),
+        )
+        .await;
 
         let req = test::TestRequest::get()
             .uri("/admin/test")
             .insert_header(("Authorization", "Bearer admin-token"))
             .to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_success());
     }
@@ -45,24 +46,24 @@ mod tests {
     #[actix_web::test]
     async fn test_admin_auth_invalid_token() {
         std::env::set_var("APP_ENVIRONMENT", "production");
-        
+
         let app = test::init_service(
-            App::new()
-                .service(
-                    web::scope("/admin")
-                        .wrap(AdminAuth::new())
-                        .route("/test", web::get().to(test_endpoint))
-                )
-        ).await;
+            App::new().service(
+                web::scope("/admin")
+                    .wrap(AdminAuth::new())
+                    .route("/test", web::get().to(test_endpoint)),
+            ),
+        )
+        .await;
 
         let req = test::TestRequest::get()
             .uri("/admin/test")
             .insert_header(("Authorization", "Bearer wrong-token"))
             .to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), 401);
-        
+
         std::env::remove_var("APP_ENVIRONMENT");
     }
 
@@ -70,23 +71,21 @@ mod tests {
     async fn test_admin_auth_missing_token() {
         let original_env = std::env::var("APP_ENVIRONMENT").ok();
         std::env::set_var("APP_ENVIRONMENT", "production");
-        
-        let app = test::init_service(
-            App::new()
-                .service(
-                    web::scope("/admin")
-                        .wrap(AdminAuth::new())
-                        .route("/test", web::get().to(test_endpoint))
-                )
-        ).await;
 
-        let req = test::TestRequest::get()
-            .uri("/admin/test")
-            .to_request();
-        
+        let app = test::init_service(
+            App::new().service(
+                web::scope("/admin")
+                    .wrap(AdminAuth::new())
+                    .route("/test", web::get().to(test_endpoint)),
+            ),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/admin/test").to_request();
+
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), 401);
-        
+
         // Restore original environment
         if let Some(env) = original_env {
             std::env::set_var("APP_ENVIRONMENT", env);
@@ -146,7 +145,7 @@ where
         use crate::configuration::AppEnvironment;
         let env_str = std::env::var("APP_ENVIRONMENT").unwrap_or_else(|_| "local".into());
         println!("Current environment: {}", env_str);
-        
+
         if let Ok(env) = env_str.try_into() {
             if matches!(env, AppEnvironment::Local) {
                 println!("Bypassing auth in local environment");
@@ -157,7 +156,7 @@ where
                 });
             }
         }
-        
+
         // Allow access to login routes without authentication
         let path = req.path();
         if path == "/admin/login" || path == "/admin/login/" || path.ends_with("/admin/login") {
@@ -181,7 +180,9 @@ where
         }
 
         // Check URL query parameter
-        if let Some(token) = req.query_string().split('&')
+        if let Some(token) = req
+            .query_string()
+            .split('&')
             .find(|p| p.starts_with("token="))
             .map(|p| p.trim_start_matches("token="))
         {
@@ -206,12 +207,9 @@ where
         }
 
         let (http_req, _) = req.into_parts();
-        let response = HttpResponse::Unauthorized()
-            .json(serde_json::json!({"error": "Unauthorized"}));
-        let res = ServiceResponse::new(
-            http_req,
-            response
-        ).map_into_right_body();
+        let response =
+            HttpResponse::Unauthorized().json(serde_json::json!({"error": "Unauthorized"}));
+        let res = ServiceResponse::new(http_req, response).map_into_right_body();
         Box::pin(async move { Ok(res) })
     }
 }
