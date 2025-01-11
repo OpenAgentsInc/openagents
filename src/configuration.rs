@@ -5,6 +5,7 @@ use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 use tracing::{info, warn, error};
 use url::Url;
+use std::net::ToSocketAddrs;
 
 #[derive(serde::Deserialize, Clone)]
 pub struct Settings {
@@ -48,22 +49,37 @@ fn default_admin_token() -> String {
     "admin-token".to_string() // Default fallback value
 }
 
+fn verify_host_resolution(host: &str, port: u16) {
+    error!("Attempting to resolve host: {}:{}", host, port);
+    match format!("{}:{}", host, port).to_socket_addrs() {
+        Ok(addr_iter) => {
+            for addr in addr_iter {
+                error!("Successfully resolved to address: {}", addr);
+            }
+        },
+        Err(e) => {
+            error!("!!! DNS RESOLUTION FAILED !!!");
+            error!("Error resolving {}: {}", host, e);
+            // Don't panic, let the connection attempt handle the error
+        }
+    }
+}
+
 impl DatabaseSettings {
     pub fn connect_options(&self) -> PgConnectOptions {
         // Log all environment variables (excluding sensitive ones)
-        info!("Environment variables present:");
+        error!("!!! ENVIRONMENT VARIABLES PRESENT !!!");
         for (key, value) in std::env::vars() {
             if !key.contains("SECRET") && !key.contains("PASSWORD") && !key.contains("KEY") {
-                info!("  {}: {}", key, value);
+                error!("  {}: {}", key, value);
             } else {
-                info!("  {}: [REDACTED]", key);
+                error!("  {}: [REDACTED]", key);
             }
         }
 
         // First check for App Platform's DATABASE_URL
         if let Ok(database_url) = std::env::var("DATABASE_URL") {
             error!("!!! USING DATABASE_URL FROM ENVIRONMENT !!!");
-            error!("!!! THIS IS THE ACTUAL URL WE'RE USING !!!");
             
             // Parse the DATABASE_URL
             let url = match Url::parse(&database_url) {
@@ -90,6 +106,9 @@ impl DatabaseSettings {
             error!("  Username: {}", username);
             error!("  Database Name: {}", database);
             error!("  SSL Mode: REQUIRE (forced for DigitalOcean)");
+            
+            // Verify DNS resolution
+            verify_host_resolution(host, port);
             
             let mut options = PgConnectOptions::new()
                 .host(host)
@@ -123,6 +142,9 @@ impl DatabaseSettings {
             error!("SSL is PREFERRED but not required");
             PgSslMode::Prefer
         };
+
+        // Verify DNS resolution
+        verify_host_resolution(&self.host, self.port);
 
         error!("!!! ACTUAL DATABASE CONNECTION DETAILS FROM CONFIG !!!");
         error!("  Host: {}", self.host);
