@@ -4,7 +4,6 @@ use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 use tracing::{info, warn, error};
-use url::Url;
 
 #[derive(serde::Deserialize, Clone)]
 pub struct Settings {
@@ -65,74 +64,6 @@ fn default_port() -> u16 {
 
 fn default_true() -> bool {
     true
-}
-
-impl DatabaseSettings {
-    pub fn connect_options(&self) -> PgConnectOptions {
-        // First check for DATABASE_URL
-        if let Ok(database_url) = std::env::var("DATABASE_URL") {
-            error!("!!! USING DATABASE_URL FROM ENVIRONMENT !!!");
-            
-            let url = match Url::parse(&database_url) {
-                Ok(url) => {
-                    error!("Successfully parsed DATABASE_URL");
-                    url
-                },
-                Err(e) => {
-                    error!("Failed to parse DATABASE_URL: {}", e);
-                    error!("DATABASE_URL format should be: postgres://username:password@host:port/database");
-                    panic!("Invalid DATABASE_URL format");
-                }
-            };
-
-            let host = url.host_str().unwrap_or("localhost");
-            let port = url.port().unwrap_or(5432);
-            let username = url.username();
-            let password = url.password().unwrap_or("");
-            let database = url.path().trim_start_matches('/');
-            
-            error!("!!! ACTUAL DATABASE CONNECTION DETAILS !!!");
-            error!("  Host: {}", host);
-            error!("  Port: {}", port);
-            error!("  Username: {}", username);
-            error!("  Database Name: {}", database);
-            error!("  SSL Mode: REQUIRE (forced for DigitalOcean)");
-            
-            return PgConnectOptions::new()
-                .host(host)
-                .port(port)
-                .username(username)
-                .password(password)
-                .database(database)
-                .ssl_mode(PgSslMode::Require);
-        }
-
-        error!("!!! NO DATABASE_URL FOUND - USING CONFIG FILE !!!");
-        error!("Using configuration file database settings");
-        
-        let ssl_mode = if self.require_ssl {
-            error!("SSL is REQUIRED by configuration");
-            PgSslMode::Require
-        } else {
-            error!("SSL is PREFERRED but not required");
-            PgSslMode::Prefer
-        };
-
-        error!("!!! ACTUAL DATABASE CONNECTION DETAILS FROM CONFIG !!!");
-        error!("  Host: {}", self.host);
-        error!("  Port: {}", self.port);
-        error!("  Username: {}", self.username);
-        error!("  Database Name: {}", self.database_name);
-        error!("  SSL Mode: {}", if self.require_ssl { "REQUIRE" } else { "PREFER" });
-
-        PgConnectOptions::new()
-            .host(&self.host)
-            .username(&self.username)
-            .password(self.password.expose_secret())
-            .port(self.port)
-            .ssl_mode(ssl_mode)
-            .database(&self.database_name)
-    }
 }
 
 pub fn get_configuration() -> Result<Settings, ConfigError> {
