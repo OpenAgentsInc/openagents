@@ -63,7 +63,7 @@ where
             .json(serde_json::json!({"error": "Unauthorized"}));
         let res: ServiceResponse<B> = ServiceResponse::new(
             http_req,
-            response.map_into_right_body(),
+            response.map_into_left_body(),
         );
         Box::pin(async move { Ok(res) })
     }
