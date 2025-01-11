@@ -2,8 +2,7 @@ use config::{Config, ConfigError, Environment as ConfigEnvironment, File};
 use secrecy::{ExposeSecret, Secret};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
-use sqlx::ConnectOptions;
-use tracing::{info, warn, error, debug};
+use tracing::{info, error, debug};
 use url::Url;
 
 #[derive(serde::Deserialize, Clone)]
@@ -80,7 +79,7 @@ impl DatabaseSettings {
             info!("  Port: {}", port);
             info!("  Username: {}", username);
             info!("  Database Name: {}", database);
-            info!("  SSL Mode: REQUIRE (forced for DigitalOcean)");
+            info!("  SSL Mode: PREFER (auto-detect)");
             
             return PgConnectOptions::new()
                 .host(host)
@@ -88,7 +87,7 @@ impl DatabaseSettings {
                 .username(username)
                 .password(password)
                 .database(database)
-                .ssl_mode(PgSslMode::Require);
+                .ssl_mode(PgSslMode::Prefer);
         }
 
         info!("Using configuration file for database settings");
