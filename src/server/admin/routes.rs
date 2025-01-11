@@ -6,11 +6,59 @@ use crate::event::Event;
 
 #[get("/stats")]
 pub async fn admin_stats() -> impl Responder {
-    // TODO: Implement actual database stats
+    let pool = match crate::get_connection_pool() {
+        Ok(pool) => pool,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "error": format!("Database error: {}", e)
+        }))
+    };
+
+    // Get total events count
+    let total_events: i64 = match sqlx::query_scalar("SELECT COUNT(*) FROM events")
+        .fetch_one(&pool)
+        .await {
+            Ok(count) => count,
+            Err(e) => return HttpResponse::InternalServerError().json(json!({
+                "error": format!("Failed to get event count: {}", e)
+            }))
+    };
+
+    // Get events by kind
+    let kinds: Vec<(i32, i64)> = match sqlx::query_as(
+        "SELECT kind, COUNT(*) as count 
+         FROM events 
+         GROUP BY kind 
+         ORDER BY kind"
+    )
+    .fetch_all(&pool)
+    .await {
+        Ok(kinds) => kinds,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "error": format!("Failed to get event kinds: {}", e)
+        }))
+    };
+
+    let events_by_kind: serde_json::Map<String, serde_json::Value> = kinds
+        .into_iter()
+        .map(|(kind, count)| (kind.to_string(), json!(count)))
+        .collect();
+
+    // Get database size
+    let db_size: i64 = match sqlx::query_scalar(
+        "SELECT pg_database_size(current_database())"
+    )
+    .fetch_one(&pool)
+    .await {
+        Ok(size) => size,
+        Err(e) => return HttpResponse::InternalServerError().json(json!({
+            "error": format!("Failed to get database size: {}", e)
+        }))
+    };
+
     HttpResponse::Ok().json(json!({
-        "total_events": 0,
-        "events_by_kind": {},
-        "storage_usage": "0 MB",
+        "total_events": total_events,
+        "events_by_kind": events_by_kind,
+        "storage_usage": format!("{:.1} MB", db_size as f64 / (1024.0 * 1024.0)),
         "index_usage": []
     }))
 }
@@ -94,8 +142,34 @@ pub async fn create_demo_event() -> impl Responder {
             }));
         }
 
-        // TODO: Save to database
-        
+        // Save to database
+        let pool = match crate::get_connection_pool() {
+            Ok(pool) => pool,
+            Err(e) => return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Database error: {}", e)
+            }))
+        };
+
+        if let Err(e) = sqlx::query(
+            "INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7)"
+        )
+        .bind(&event.id)
+        .bind(&event.pubkey)
+        .bind(event.created_at)
+        .bind(event.kind)
+        .bind(serde_json::to_value(&event.tags).unwrap())
+        .bind(&event.content)
+        .bind(&event.sig)
+        .execute(&pool)
+        .await {
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error", 
+                "message": format!("Failed to save event: {}", e)
+            }));
+        }
+
         HttpResponse::Ok().json(json!({
             "status": "success",
             "event": event
@@ -123,6 +197,13 @@ mod tests {
 
     #[actix_web::test]
     async fn test_create_demo_event() {
+        // Get initial count
+        let pool = crate::get_connection_pool().unwrap();
+        let initial_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
         let app = test::init_service(
             App::new().service(create_demo_event)
         ).await;
@@ -143,6 +224,27 @@ mod tests {
         assert_eq!(event["content"], "This is a demo event");
         assert_eq!(event["tags"][0][0], "t");
         assert_eq!(event["tags"][0][1], "demo");
+
+        // Verify event was saved to database
+        let final_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(final_count, initial_count + 1);
+
+        // Verify event details in database
+        let saved_event = sqlx::query_as::<_, Event>(
+            "SELECT * FROM events WHERE id = $1"
+        )
+        .bind(event["id"].as_str().unwrap())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(saved_event.id, event["id"].as_str().unwrap());
+        assert_eq!(saved_event.pubkey, event["pubkey"].as_str().unwrap());
+        assert_eq!(saved_event.kind, 1);
+        assert_eq!(saved_event.content, "This is a demo event");
     }
 
     #[actix_web::test]
