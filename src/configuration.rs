@@ -4,6 +4,7 @@ use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 use tracing::{info, warn, error};
+use url::Url;
 
 #[derive(serde::Deserialize, Clone)]
 pub struct Settings {
@@ -37,33 +38,69 @@ fn default_admin_token() -> String {
 
 impl DatabaseSettings {
     pub fn connect_options(&self) -> PgConnectOptions {
-        error!("!!! CONNECTING TO DATABASE !!!");
-        error!("  Host: {}", self.host);
-        error!("  Port: {}", self.port);
-        error!("  Database: {}", self.database_name);
-        error!("  Username: {}", self.username);
-        error!("  SSL Required: {}", self.require_ssl);
+        // First check for DATABASE_URL
+        if let Ok(database_url) = std::env::var("DATABASE_URL") {
+            error!("!!! USING DATABASE_URL FROM ENVIRONMENT !!!");
+            
+            let url = match Url::parse(&database_url) {
+                Ok(url) => {
+                    error!("Successfully parsed DATABASE_URL");
+                    url
+                },
+                Err(e) => {
+                    error!("Failed to parse DATABASE_URL: {}", e);
+                    error!("DATABASE_URL format should be: postgres://username:password@host:port/database");
+                    panic!("Invalid DATABASE_URL format");
+                }
+            };
 
+            let host = url.host_str().unwrap_or("localhost");
+            let port = url.port().unwrap_or(5432);
+            let username = url.username();
+            let password = url.password().unwrap_or("");
+            let database = url.path().trim_start_matches('/');
+            
+            error!("!!! ACTUAL DATABASE CONNECTION DETAILS !!!");
+            error!("  Host: {}", host);
+            error!("  Port: {}", port);
+            error!("  Username: {}", username);
+            error!("  Database Name: {}", database);
+            error!("  SSL Mode: REQUIRE (forced for DigitalOcean)");
+            
+            return PgConnectOptions::new()
+                .host(host)
+                .port(port)
+                .username(username)
+                .password(password)
+                .database(database)
+                .ssl_mode(PgSslMode::Require);
+        }
+
+        error!("!!! NO DATABASE_URL FOUND - USING CONFIG FILE !!!");
+        error!("Using configuration file database settings");
+        
         let ssl_mode = if self.require_ssl {
+            error!("SSL is REQUIRED by configuration");
             PgSslMode::Require
         } else {
+            error!("SSL is PREFERRED but not required");
             PgSslMode::Prefer
         };
 
-        let mut options = PgConnectOptions::new()
+        error!("!!! ACTUAL DATABASE CONNECTION DETAILS FROM CONFIG !!!");
+        error!("  Host: {}", self.host);
+        error!("  Port: {}", self.port);
+        error!("  Username: {}", self.username);
+        error!("  Database Name: {}", self.database_name);
+        error!("  SSL Mode: {}", if self.require_ssl { "REQUIRE" } else { "PREFER" });
+
+        PgConnectOptions::new()
             .host(&self.host)
             .username(&self.username)
             .password(self.password.expose_secret())
             .port(self.port)
             .ssl_mode(ssl_mode)
-            .database(&self.database_name);
-
-        options = options
-            .log_statements(tracing::log::LevelFilter::Debug)
-            .log_slow_statements(tracing::log::LevelFilter::Debug, std::time::Duration::from_secs(1))
-            .statement_cache_capacity(0);
-
-        options
+            .database(&self.database_name)
     }
 }
 
@@ -100,12 +137,18 @@ pub fn get_configuration() -> Result<Settings, ConfigError> {
     error!("Application:");
     error!("  Host: {}", settings.application.host);
     error!("  Port: {}", settings.application.port);
-    error!("Database:");
-    error!("  Host: {}", settings.database.host);
-    error!("  Port: {}", settings.database.port);
-    error!("  Name: {}", settings.database.database_name);
-    error!("  Username: {}", settings.database.username);
-    error!("  SSL Required: {}", settings.database.require_ssl);
+
+    // Only log database settings if DATABASE_URL is not present
+    if std::env::var("DATABASE_URL").is_err() {
+        error!("Database:");
+        error!("  Host: {}", settings.database.host);
+        error!("  Port: {}", settings.database.port);
+        error!("  Name: {}", settings.database.database_name);
+        error!("  Username: {}", settings.database.username);
+        error!("  SSL Required: {}", settings.database.require_ssl);
+    } else {
+        error!("Database: Using DATABASE_URL from environment");
+    }
 
     Ok(settings)
 }
