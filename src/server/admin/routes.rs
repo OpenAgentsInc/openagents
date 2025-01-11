@@ -1,15 +1,14 @@
-use actix_web::{get, post, web, HttpResponse, Responder, cookie::Cookie};
+use actix_web::{get, post, web, HttpResponse, Responder, cookie::Cookie, Result};
 use serde_json::json;
 use serde::Deserialize;
 use secp256k1::{rand, KeyPair, Secp256k1};
 use crate::event::Event;
+use openagents::database;
 
 #[get("/stats")]
-pub async fn admin_stats() -> impl Responder {
+pub async fn admin_stats() -> Result<HttpResponse> {
     let config = crate::configuration::get_configuration()
-        .map_err(|e| HttpResponse::InternalServerError().json(json!({
-            "error": format!("Config error: {}", e)
-        })))?;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
     let pool = match crate::database::get_connection_pool(&config).await {
         Ok(pool) => pool,
@@ -112,7 +111,7 @@ use bitcoin_hashes::{sha256, Hash};
 use secp256k1::Message;
 
 #[post("/demo-event")]
-pub async fn create_demo_event() -> impl Responder {
+pub async fn create_demo_event() -> Result<HttpResponse> {
     let secp = Secp256k1::new();
     let keypair = KeyPair::new(&secp, &mut rand::thread_rng());
     
@@ -149,9 +148,7 @@ pub async fn create_demo_event() -> impl Responder {
 
         // Save to database
         let config = crate::configuration::get_configuration()
-            .map_err(|e| HttpResponse::InternalServerError().json(json!({
-                "error": format!("Config error: {}", e)
-            })))?;
+            .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
 
         let pool = match crate::database::get_connection_pool(&config).await {
             Ok(pool) => pool,
