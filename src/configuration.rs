@@ -64,19 +64,8 @@ impl DatabaseSettings {
             
             info!("Connecting to database at {}:{}", host, port);
             
-            info!("Attempting DNS resolution for host: {}", host);
+            info!("Attempting connection to database host: {}", host);
             
-            // Try to resolve the hostname first
-            if let Ok(addrs) = tokio::net::lookup_host(format!("{}:{}", host, port)).await {
-                let addrs: Vec<_> = addrs.collect();
-                info!("DNS resolution successful. Found {} addresses", addrs.len());
-                for addr in addrs {
-                    info!("  Resolved address: {}", addr);
-                }
-            } else {
-                info!("DNS resolution failed for host: {}", host);
-            }
-
             let mut options = PgConnectOptions::new()
                 .host(host)
                 .port(port)
