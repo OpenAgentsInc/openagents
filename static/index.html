@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="changelog.css" />
-  <link rel="stylesheet" href="videos.css" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/changelog.css" />
+  <link rel="stylesheet" href="css/videos.css" />
   <title>OpenAgents</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,10 +24,10 @@
     <img src="onyx.png" alt="Onyx" id="onyx-logo" />
   </div>
   <main id="main">
-    <div id="changelog" hx-get="/changelog.json" hx-trigger="load" hx-ext="client-side-templates"
+    <div id="changelog" hx-get="/data/changelog.json" hx-trigger="load" hx-ext="client-side-templates"
       mustache-template="changelog-template">
     </div>
-    <div id="videos" hx-get="/videos.json" hx-trigger="load" hx-ext="client-side-templates"
+    <div id="videos" hx-get="/data/videos.json" hx-trigger="load" hx-ext="client-side-templates"
       mustache-template="videos-template">
     </div>
   </main>
