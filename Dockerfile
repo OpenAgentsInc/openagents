@@ -38,6 +38,8 @@ RUN apt-get update -y \
 COPY --from=builder /app/target/release/openagents openagents
 # Copy static files including the built JS
 COPY --from=frontend-builder /app /app/static
+# Copy configuration files
+COPY --from=builder /app/configuration configuration/
 
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./openagents"]

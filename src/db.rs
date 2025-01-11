@@ -1,5 +1,5 @@
 use sqlx::{Pool, Postgres};
-use sqlx::postgres::PgPoolOptions;
+use sqlx::postgres::{PgPoolOptions, PgConnectOptions};
 use crate::event::Event;
 use std::collections::HashSet;
 use std::error::Error;
@@ -9,10 +9,10 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn new(database_url: &str) -> Result<Self, Box<dyn Error>> {
+    pub async fn new_with_options(options: PgConnectOptions) -> Result<Self, Box<dyn Error>> {
         let pool = PgPoolOptions::new()
             .max_connections(5)
-            .connect(database_url)
+            .connect_with(options)
             .await?;
 
         // Run migrations

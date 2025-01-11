@@ -3,6 +3,7 @@ mod relay;
 mod subscription;
 mod db;
 mod server;
+mod configuration;
 
 use actix_web::{web, App, HttpServer};
 use actix_web_actors::ws;
@@ -14,6 +15,7 @@ use std::sync::Arc;
 use crate::event::Event;
 use crate::relay::RelayWs;
 use crate::db::Database;
+use crate::configuration::get_configuration;
 
 async fn ws_route(
     req: actix_web::HttpRequest,
@@ -31,16 +33,25 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
     dotenv::dotenv().ok();
 
-    // Initialize database
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    let db = Arc::new(Database::new(&database_url).await
-        .expect("Failed to connect to database"));
+    // Load configuration
+    let configuration = get_configuration().expect("Failed to read configuration.");
+    
+    // Initialize database using configuration
+    let db = Arc::new(
+        Database::new_with_options(configuration.database.connect_options())
+            .await
+            .expect("Failed to connect to database")
+    );
     let db = web::Data::new(db);
 
     // Channel for broadcasting events to all connected clients
     let (event_tx, _): (broadcast::Sender<Event>, _) = broadcast::channel(1024);
     let event_tx = web::Data::new(event_tx);
+
+    let address = format!(
+        "{}:{}",
+        configuration.application.host, configuration.application.port
+    );
 
     HttpServer::new(move || {
         let cors = Cors::permissive();
@@ -52,7 +63,7 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(ws_route))
             .configure(server::config::configure_app)
     })
-    .bind("127.0.0.1:8080")?
+    .bind(&address)?
     .run()
     .await
 }
