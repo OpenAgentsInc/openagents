@@ -1,13 +1,23 @@
 use sqlx::{Pool, Postgres};
 use sqlx::postgres::{PgPoolOptions, PgConnectOptions};
 use crate::event::Event;
-use std::collections::HashSet;
 use std::error::Error;
 use std::time::Duration;
 use tracing::{error, info};
 
 pub struct Database {
     pool: Pool<Postgres>
+}
+
+#[derive(Default)]
+pub struct EventFilter<'a> {
+    pub ids: &'a Option<Vec<String>>,
+    pub authors: &'a Option<Vec<String>>,
+    pub kinds: &'a Option<Vec<i32>>,
+    pub since: &'a Option<i64>,
+    pub until: &'a Option<i64>,
+    pub limit: &'a Option<u64>,
+    pub tag_filters: &'a [(char, HashSet<String>)],
 }
 
 impl Database {
@@ -63,18 +73,7 @@ impl Database {
         Ok(())
     }
 
-    #[derive(Default)]
-    pub struct EventFilter<'a> {
-        pub ids: &'a Option<Vec<String>>,
-        pub authors: &'a Option<Vec<String>>,
-        pub kinds: &'a Option<Vec<i32>>,
-        pub since: &'a Option<i64>,
-        pub until: &'a Option<i64>,
-        pub limit: &'a Option<u64>,
-        pub tag_filters: &'a [(char, HashSet<String>)],
-    }
-
-    pub async fn get_events_by_filter(&self, filter: EventFilter<'_>) -> Result<Vec<Event>, Box<dyn Error>> {
+    pub async fn get_events_by_filter<'a>(&self, filter: EventFilter<'a>) -> Result<Vec<Event>, Box<dyn Error>> {
         let mut query = String::from(
             "SELECT id, pubkey, created_at, kind, content, sig, tags 
              FROM events 
@@ -82,27 +81,27 @@ impl Database {
         );
         let mut params = vec![];
 
-        if let Some(ids) = ids {
+        if let Some(ids) = filter.ids {
             query.push_str(" AND id = ANY($1)");
             params.push(serde_json::to_value(ids)?);
         }
 
-        if let Some(authors) = authors {
+        if let Some(authors) = filter.authors {
             query.push_str(" AND pubkey = ANY($2)");
             params.push(serde_json::to_value(authors)?);
         }
 
-        if let Some(kinds) = kinds {
+        if let Some(kinds) = filter.kinds {
             query.push_str(" AND kind = ANY($3)");
             params.push(serde_json::to_value(kinds)?);
         }
 
-        if let Some(since) = since {
+        if let Some(since) = filter.since {
             query.push_str(" AND created_at >= $4");
             params.push(serde_json::to_value(since)?);
         }
 
-        if let Some(until) = until {
+        if let Some(until) = filter.until {
             query.push_str(" AND created_at <= $5");
             params.push(serde_json::to_value(until)?);
         }
@@ -123,7 +122,7 @@ impl Database {
             params.push(serde_json::to_value(tag_array)?);
         }
 
-        if let Some(limit) = limit {
+        if let Some(limit) = filter.limit {
             query.push_str(&format!(" LIMIT {}", limit));
         }
 
