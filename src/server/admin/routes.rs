@@ -1,8 +1,7 @@
 use actix_web::{get, post, web, HttpResponse, Responder, cookie::Cookie, Result};
-use secp256k1::Message;
 use serde_json::json;
 use serde::Deserialize;
-use secp256k1::{rand, KeyPair, Secp256k1};
+use secp256k1::{rand, KeyPair, Secp256k1, Message};
 use crate::event::Event;
 use openagents::{database, configuration};
 
@@ -114,7 +113,6 @@ pub async fn admin_login_post(form: web::Form<LoginForm>) -> impl Responder {
 }
 
 use bitcoin_hashes::{sha256, Hash};
-use secp256k1::Message;
 
 #[post("/demo-event")]
 pub async fn create_demo_event() -> Result<HttpResponse> {
@@ -214,7 +212,7 @@ mod tests {
         std::env::set_var("DATABASE_URL", "postgres://postgres:password@localhost:5432/test");
         
         // Get initial count
-        let config = configuration::get_configuration().unwrap();
+        let _config = configuration::get_configuration().unwrap();
         let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/test")
             .await
             .unwrap();
