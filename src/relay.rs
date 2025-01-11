@@ -144,9 +144,17 @@ impl RelayWs {
                 .map(|(k, v)| (k.chars().nth(1).unwrap(), v.clone().into_iter().collect()))
                 .collect::<Vec<_>>();
 
-            match db.get_events_by_filter(
-                &ids, &authors, &kinds, &since, &until, &limit, &tag_filters
-            ).await {
+            let filter = EventFilter {
+                ids,
+                authors,
+                kinds,
+                since,
+                until,
+                limit,
+                tag_filters,
+            };
+            
+            match db.get_events_by_filter(filter).await {
                 Ok(events) => {
                     for event in events {
                         addr.do_send(event);

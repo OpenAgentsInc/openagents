@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use sqlx::{Pool, Postgres};
 use sqlx::postgres::{PgPoolOptions, PgConnectOptions};
 use crate::event::Event;
@@ -10,14 +11,14 @@ pub struct Database {
 }
 
 #[derive(Default)]
-pub struct EventFilter<'a> {
-    pub ids: &'a Option<Vec<String>>,
-    pub authors: &'a Option<Vec<String>>,
-    pub kinds: &'a Option<Vec<i32>>,
-    pub since: &'a Option<i64>,
-    pub until: &'a Option<i64>,
-    pub limit: &'a Option<u64>,
-    pub tag_filters: &'a [(char, HashSet<String>)],
+pub struct EventFilter {
+    pub ids: Option<Vec<String>>,
+    pub authors: Option<Vec<String>>,
+    pub kinds: Option<Vec<i32>>,
+    pub since: Option<i64>,
+    pub until: Option<i64>,
+    pub limit: Option<u64>,
+    pub tag_filters: Vec<(char, HashSet<String>)>,
 }
 
 impl Database {
@@ -73,7 +74,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_events_by_filter<'a>(&self, filter: EventFilter<'a>) -> Result<Vec<Event>, Box<dyn Error>> {
+    pub async fn get_events_by_filter(&self, filter: EventFilter) -> Result<Vec<Event>, Box<dyn Error>> {
         let mut query = String::from(
             "SELECT id, pubkey, created_at, kind, content, sig, tags 
              FROM events 
