@@ -89,7 +89,7 @@ async fn main() -> std::io::Result<()> {
     );
     info!("Starting server on {}", address);
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         let cors = Cors::permissive();
         
         App::new()
@@ -99,7 +99,13 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(ws_route))
             .configure(server::config::configure_app)
     })
-    .bind(&address)?
-    .run()
-    .await
+    .bind(&address)?;
+    
+    // Log the actual bound address
+    let addresses = server.addrs();
+    for addr in addresses {
+        info!("Server bound to: http://{}", addr);
+    }
+    
+    server.run().await
 }
