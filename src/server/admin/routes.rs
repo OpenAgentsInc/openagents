@@ -220,9 +220,9 @@ mod tests {
             .await
             .unwrap();
 
-        // Drop and recreate test table
-        sqlx::query("DROP TYPE IF EXISTS events CASCADE").execute(&pool).await.unwrap();
+        // Drop and recreate test table - drop table first, then type
         sqlx::query("DROP TABLE IF EXISTS events CASCADE").execute(&pool).await.unwrap();
+        sqlx::query("DROP TYPE IF EXISTS events CASCADE").execute(&pool).await.unwrap();
         
         // Create table with error handling
         let create_result = sqlx::query(
