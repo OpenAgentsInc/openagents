@@ -18,17 +18,6 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
         info!("Could not read ./static directory");
     }
 
-    if let Ok(entries) = std_fs::read_dir("/app/static") {
-        info!("Checking /app/static directory contents:");
-        for entry in entries {
-            if let Ok(entry) = entry {
-                info!("  {:?}", entry.path());
-            }
-        }
-    } else {
-        info!("Could not read /app/static directory");
-    }
-
     // Configure admin routes with authentication
     cfg.service(
         web::scope("/admin")
@@ -40,43 +29,7 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
     cfg.service(routes::health_check)
         // Serve static files from the static directory
         .service(
-            fs::Files::new("/", "/app/static")
-                .index_file("index.html")
-                .use_hidden_files()
-                .prefer_utf8(true)
-                .show_files_listing()
-        );
-}
-=======
-    // Log static directory contents
-    info!("Checking static directory contents:");
-    if let Ok(entries) = std_fs::read_dir("./static") {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                info!("  {:?}", entry.path());
-            }
-        }
-    } else {
-        info!("Could not read ./static directory");
-    }
-
-    if let Ok(entries) = std_fs::read_dir("/app/static") {
-        info!("Checking /app/static directory contents:");
-        for entry in entries {
-            if let Ok(entry) = entry {
-                info!("  {:?}", entry.path());
-            }
-        }
-    } else {
-        info!("Could not read /app/static directory");
-    }
-
-    // Configure routes
->>>>>>> origin/main
-    cfg.service(routes::health_check)
-        // Serve static files from the static directory
-        .service(
-            fs::Files::new("/", "/app/static")
+            fs::Files::new("/", "./static")
                 .index_file("index.html")
                 .use_hidden_files()
                 .prefer_utf8(true)
