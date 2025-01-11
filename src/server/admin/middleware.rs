@@ -47,9 +47,17 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let config = get_configuration().map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("Config error: {}", e))
-        })?;
+        let config = match get_configuration() {
+            Ok(config) => config,
+            Err(e) => {
+                let (http_req, _) = req.into_parts();
+                let response = HttpResponse::InternalServerError()
+                    .json(serde_json::json!({"error": format!("Config error: {}", e)}));
+                return Box::pin(async move {
+                    Ok(ServiceResponse::new(http_req, response).map_into_right_body())
+                });
+            }
+        };
         
         if let Some(auth_header) = req.headers().get("Authorization") {
             let expected = format!("Bearer {}", config.application.admin_token);
