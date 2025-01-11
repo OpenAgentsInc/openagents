@@ -1,63 +1,116 @@
+mod event;
+mod relay;
+mod subscription;
+mod db;
 mod server;
+mod configuration;
 
-use actix_web::{App, HttpServer};
+use actix_web::{web, App, HttpServer};
+use actix_web_actors::ws;
 use actix_cors::Cors;
-use actix_web::middleware::{Logger, DefaultHeaders};
-use dotenv::dotenv;
-use log::info;
+use tokio::sync::broadcast;
+use uuid::Uuid;
+use std::sync::Arc;
+use tracing::{info, debug, warn};
+
+use crate::event::Event;
+use crate::relay::RelayWs;
+use crate::db::Database;
+use crate::configuration::get_configuration;
+
+async fn root_route(
+    req: actix_web::HttpRequest,
+    stream: web::Payload,
+    event_tx: web::Data<broadcast::Sender<Event>>,
+    db: web::Data<Arc<Database>>,
+) -> Result<actix_web::HttpResponse, actix_web::Error> {
+    // Check if this is a WebSocket upgrade request
+    if req.headers().contains_key("Upgrade") {
+        let id = Uuid::new_v4().to_string();
+        let ws = RelayWs::new(id, event_tx.get_ref().clone(), db.get_ref().clone());
+        ws::start(ws, &req, stream)
+    } else {
+        // Not a WebSocket request, serve index.html
+        Ok(actix_web::HttpResponse::Ok()
+            .content_type("text/html")
+            .body(std::fs::read_to_string("static/index.html").unwrap()))
+    }
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // Initialize environment
-    dotenv().ok();
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
     env_logger::init();
+    dotenv::dotenv().ok();
 
-    let base_port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string()).parse::<u16>().unwrap();
-    let max_retries = 10;
+    info!("🚀 Starting OpenAgents...");
     
-    let mut last_error = None;
+    // Load configuration
+    debug!("Loading configuration...");
+    let configuration = get_configuration().expect("Failed to read configuration.");
     
-    for port in base_port..base_port+max_retries {
-        let addr = format!("0.0.0.0:{}", port);
-        info!("Attempting to start server on {}", addr);
+    // Initialize database
+    info!("Connecting to database...");
+    let db = Arc::new(
+        Database::new_with_options(configuration.database.connect_options())
+            .await
+            .expect("Failed to connect to database")
+    );
+    info!("✅ Database connected");
+    let db = web::Data::new(db);
+
+    // Channel for broadcasting events to all connected clients
+    let (event_tx, _): (broadcast::Sender<Event>, _) = broadcast::channel(1024);
+    let event_tx = web::Data::new(event_tx);
+
+    let address = format!(
+        "{}:{}",
+        configuration.application.host, configuration.application.port
+    );
+    info!("Starting server on {}", address);
+
+    let app_factory = move || {
+        debug!("Initializing worker...");
+        let cors = Cors::permissive();
         
-        match HttpServer::new(|| {
-            App::new()
-                .wrap(
-                    Cors::default()
-                        .allow_any_origin()
-                        .allow_any_method()
-                        .allow_any_header()
-                )
-                .wrap(Logger::default())
-                .wrap(
-                    DefaultHeaders::new()
-                        .add(("X-Content-Type-Options", "nosniff"))
-                        .add(("X-Frame-Options", "DENY"))
-                        .add(("X-XSS-Protection", "1; mode=block"))
-                )
-                .configure(server::config::configure_app)
-        })
-        .bind(&addr)
-        {
-            Ok(server) => {
-                println!("\n🚀 Server running!");
-                println!("➜ Local:   \x1b[36mhttp://localhost:{}\x1b[0m", port);
-                println!("➜ Network: \x1b[36mhttp://0.0.0.0:{}\x1b[0m\n", port);
-                return server.run().await;
-            }
-            Err(e) => {
-                info!("Failed to bind to port {}: {}", port, e);
-                last_error = Some(e);
-                continue;
+        App::new()
+            .wrap(cors)
+            .app_data(event_tx.clone())
+            .app_data(db.clone())
+            .route("/", web::get().to(root_route))
+            .configure(server::config::configure_app)
+    };
+
+    let factory = app_factory.clone();
+    let server = HttpServer::new(factory)
+    .bind(&address)
+    .or_else(|e| {
+        // Only attempt port increment in development/local environment
+        if configuration.application.host == "127.0.0.1" {
+            let mut port = configuration.application.port;
+            while port < configuration.application.port + 10 {
+                port += 1;
+                let new_address = format!("{}:{}", configuration.application.host, port);
+                warn!("Port {} in use, trying {}", configuration.application.port, port);
+                if let Ok(server) = HttpServer::new(app_factory.clone()).bind(&new_address) {
+                    info!("Found available port: {}", port);
+                    return Ok(server);
+                }
             }
         }
+        // If we're not in development or couldn't find a free port, return original error
+        Err(e)
+    })?;
+    
+    // Log the actual bound address
+    let addresses = server.addrs();
+    info!("✨ Server ready:");
+    for addr in addresses {
+        info!("  🌎 http://{}", addr);
+        info!("  🔧 Admin: http://{}/admin/stats", addr);
     }
     
-    Err(last_error.unwrap_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::AddrInUse,
-            format!("Failed to bind to any port in range {}-{}", base_port, base_port+max_retries-1)
-        )
-    }))
+    server.run().await
 }

@@ -1,10 +1,17 @@
 use actix_files as fs;
 use actix_web::web;
 
-use super::routes;
+use super::{routes, admin::middleware::AdminAuth};
 
 pub fn configure_app(cfg: &mut web::ServiceConfig) {
-    // Configure routes
+    // Configure admin routes with authentication
+    cfg.service(
+        web::scope("/admin")
+            .wrap(AdminAuth::new())
+            .configure(crate::server::admin::routes::admin_config)
+    );
+
+    // Configure non-admin routes
     cfg.service(routes::health_check)
         .service(routes::new_page)
         // Serve static files from the static directory
