@@ -129,7 +129,19 @@ where
         };
 
         // Skip auth in local development
-        if matches!(config.application.environment, crate::configuration::AppEnvironment::Local) {
+        use crate::configuration::AppEnvironment;
+        if let Ok(env) = std::env::var("APP_ENVIRONMENT")
+            .unwrap_or_else(|_| "local".into())
+            .try_into() 
+        {
+            if matches!(env, AppEnvironment::Local) {
+                let fut = self.service.call(req);
+                return Box::pin(async move {
+                    let res = fut.await?;
+                    Ok(res.map_into_left_body())
+                });
+            }
+        }
             let fut = self.service.call(req);
             return Box::pin(async move {
                 let res = fut.await?;
