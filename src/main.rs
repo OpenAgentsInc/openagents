@@ -12,7 +12,7 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::event::Event;
 use crate::relay::RelayWs;
@@ -32,6 +32,9 @@ async fn ws_route(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
     env_logger::init();
     dotenv::dotenv().ok();
 
@@ -89,7 +92,9 @@ async fn main() -> std::io::Result<()> {
     );
     info!("Starting server on {}", address);
 
-    HttpServer::new(move || {
+    info!("Attempting to bind server...");
+    let server = HttpServer::new(move || {
+        info!("Configuring new worker...");
         let cors = Cors::permissive();
         
         App::new()
@@ -99,7 +104,16 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(ws_route))
             .configure(server::config::configure_app)
     })
-    .bind(&address)?
-    .run()
-    .await
+    .bind(&address)?;
+    
+    // Log the actual bound address
+    let addresses = server.addrs();
+    info!("Server addresses:");
+    for addr in addresses {
+        info!("🚀 Server ready at: http://{}", addr);
+        info!("Admin endpoint: http://{}/admin/stats", addr);
+    }
+    
+    info!("Starting server...");
+    server.run().await
 }
