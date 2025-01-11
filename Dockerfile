@@ -37,7 +37,7 @@ RUN apt-get update -y \
 # Copy the built executable
 COPY --from=builder /app/target/release/openagents openagents
 # Copy static files including the built JS
-COPY --from=frontend-builder /app/* /app/static/
+COPY --from=frontend-builder /app /app/static
 # Copy configuration files
 COPY configuration /app/configuration/
 
