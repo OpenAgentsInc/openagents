@@ -44,6 +44,8 @@ mod tests {
 
     #[actix_web::test]
     async fn test_admin_auth_invalid_token() {
+        std::env::set_var("APP_ENVIRONMENT", "production");
+        
         let app = test::init_service(
             App::new()
                 .service(
@@ -60,10 +62,15 @@ mod tests {
         
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), 401);
+        
+        std::env::remove_var("APP_ENVIRONMENT");
     }
 
     #[actix_web::test]
     async fn test_admin_auth_missing_token() {
+        let original_env = std::env::var("APP_ENVIRONMENT").ok();
+        std::env::set_var("APP_ENVIRONMENT", "production");
+        
         let app = test::init_service(
             App::new()
                 .service(
@@ -79,6 +86,13 @@ mod tests {
         
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), 401);
+        
+        // Restore original environment
+        if let Some(env) = original_env {
+            std::env::set_var("APP_ENVIRONMENT", env);
+        } else {
+            std::env::remove_var("APP_ENVIRONMENT");
+        }
     }
 }
 
@@ -127,10 +141,62 @@ where
                 });
             }
         };
+
+        // Skip auth in local development
+        use crate::configuration::AppEnvironment;
+        let env_str = std::env::var("APP_ENVIRONMENT").unwrap_or_else(|_| "local".into());
+        println!("Current environment: {}", env_str);
         
+        if let Ok(env) = env_str.try_into() {
+            if matches!(env, AppEnvironment::Local) {
+                println!("Bypassing auth in local environment");
+                let fut = self.service.call(req);
+                return Box::pin(async move {
+                    let res = fut.await?;
+                    Ok(res.map_into_left_body())
+                });
+            }
+        }
+        
+        // Allow access to login routes without authentication
+        let path = req.path();
+        if path == "/admin/login" || path == "/admin/login/" || path.ends_with("/admin/login") {
+            let fut = self.service.call(req);
+            return Box::pin(async move {
+                let res = fut.await?;
+                Ok(res.map_into_left_body())
+            });
+        }
+
+        // Check Authorization header
         if let Some(auth_header) = req.headers().get("Authorization") {
             let expected = format!("Bearer {}", config.application.admin_token);
             if auth_header.as_bytes() == expected.as_bytes() {
+                let fut = self.service.call(req);
+                return Box::pin(async move {
+                    let res = fut.await?;
+                    Ok(res.map_into_left_body())
+                });
+            }
+        }
+
+        // Check URL query parameter
+        if let Some(token) = req.query_string().split('&')
+            .find(|p| p.starts_with("token="))
+            .map(|p| p.trim_start_matches("token="))
+        {
+            if token == config.application.admin_token {
+                let fut = self.service.call(req);
+                return Box::pin(async move {
+                    let res = fut.await?;
+                    Ok(res.map_into_left_body())
+                });
+            }
+        }
+
+        // Check session cookie
+        if let Some(cookie) = req.cookie("admin_session") {
+            if cookie.value() == config.application.admin_token {
                 let fut = self.service.call(req);
                 return Box::pin(async move {
                     let res = fut.await?;
