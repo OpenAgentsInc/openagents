@@ -3,32 +3,20 @@ use openagents::server::admin::routes::{admin_stats, create_demo_event};
 use openagents::event::Event;
 
 async fn setup_test_db() -> sqlx::PgPool {
-    std::env::remove_var("DATABASE_URL");
-
-    let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
+    // Use a dedicated test database
+    let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/openagents_test")
         .await
         .unwrap();
 
-    // Create a test schema and set it as the search path
-    sqlx::query("CREATE SCHEMA IF NOT EXISTS test_schema")
-        .execute(&pool)
-        .await
-        .unwrap();
-    
-    sqlx::query("SET search_path TO test_schema")
+    // Drop and recreate test table
+    sqlx::query("DROP TABLE IF EXISTS events")
         .execute(&pool)
         .await
         .unwrap();
 
-    // Drop and recreate the test table in our test schema
-    sqlx::query("DROP TABLE IF EXISTS test_schema.events")
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    // Create table in test schema
+    // Create table
     sqlx::query(
-        "CREATE TABLE test_schema.events (
+        "CREATE TABLE events (
             id TEXT PRIMARY KEY,
             pubkey TEXT NOT NULL,
             created_at BIGINT NOT NULL,
@@ -48,6 +36,9 @@ async fn setup_test_db() -> sqlx::PgPool {
 #[actix_web::test]
 async fn test_create_demo_event() {
     let pool = setup_test_db().await;
+
+    // Set test database URL for the application code
+    std::env::set_var("DATABASE_URL", "postgres://postgres:password@localhost:5432/openagents_test");
 
     // Initialize app with test database
     let app = test::init_service(
@@ -73,14 +64,14 @@ async fn test_create_demo_event() {
     assert_eq!(event["tags"][0][1], "demo");
 
     // Verify event was saved to database
-    let final_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM test_schema.events")
+    let final_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(final_count, 1);
 
     // Verify event details in database
-    let saved_event = sqlx::query_as::<_, Event>("SELECT * FROM test_schema.events WHERE id = $1")
+    let saved_event = sqlx::query_as::<_, Event>("SELECT * FROM events WHERE id = $1")
         .bind(event["id"].as_str().unwrap())
         .fetch_one(&pool)
         .await
@@ -95,6 +86,9 @@ async fn test_create_demo_event() {
 #[actix_web::test]
 async fn test_admin_stats() {
     let pool = setup_test_db().await;
+
+    // Set test database URL for the application code
+    std::env::set_var("DATABASE_URL", "postgres://postgres:password@localhost:5432/openagents_test");
 
     // Initialize app with test database
     let app = test::init_service(
