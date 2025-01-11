@@ -24,3 +24,4 @@ sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "json", "tls-
 config = "0.13"
 secrecy = { version = "0.8", features = ["serde"] }
 tracing = { version = "0.1", features = ["log"] }
+url = "2.4"
