@@ -285,14 +285,17 @@ mod tests {
 
     #[actix_web::test]
     async fn test_admin_stats() {
-        // Set up test database
+        // Set up test database connection
+        std::env::remove_var("DATABASE_URL");
+        
         let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost:5432/postgres")
             .await
             .unwrap();
 
-        // Create test table
+        // Drop and recreate test table
+        sqlx::query("DROP TABLE IF EXISTS events").execute(&pool).await.unwrap();
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS events (
+            "CREATE TABLE events (
                 id TEXT PRIMARY KEY,
                 pubkey TEXT NOT NULL,
                 created_at BIGINT NOT NULL,
@@ -306,8 +309,11 @@ mod tests {
         .await
         .unwrap();
 
+        // Initialize app with test database
         let app = test::init_service(
-            App::new().service(admin_stats)
+            App::new()
+                .app_data(web::Data::new(pool.clone()))
+                .service(admin_stats)
         ).await;
 
         let req = test::TestRequest::get()
