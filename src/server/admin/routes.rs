@@ -6,7 +6,12 @@ use crate::event::Event;
 
 #[get("/stats")]
 pub async fn admin_stats() -> impl Responder {
-    let pool = match crate::get_connection_pool() {
+    let config = crate::configuration::get_configuration()
+        .map_err(|e| HttpResponse::InternalServerError().json(json!({
+            "error": format!("Config error: {}", e)
+        })))?;
+
+    let pool = match crate::database::get_connection_pool(&config).await {
         Ok(pool) => pool,
         Err(e) => return HttpResponse::InternalServerError().json(json!({
             "error": format!("Database error: {}", e)
@@ -143,7 +148,12 @@ pub async fn create_demo_event() -> impl Responder {
         }
 
         // Save to database
-        let pool = match crate::get_connection_pool() {
+        let config = crate::configuration::get_configuration()
+            .map_err(|e| HttpResponse::InternalServerError().json(json!({
+                "error": format!("Config error: {}", e)
+            })))?;
+
+        let pool = match crate::database::get_connection_pool(&config).await {
             Ok(pool) => pool,
             Err(e) => return HttpResponse::InternalServerError().json(json!({
                 "status": "error",
@@ -198,7 +208,8 @@ mod tests {
     #[actix_web::test]
     async fn test_create_demo_event() {
         // Get initial count
-        let pool = crate::get_connection_pool().unwrap();
+        let config = crate::configuration::get_configuration().unwrap();
+        let pool = crate::database::get_connection_pool(&config).await.unwrap();
         let initial_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events")
             .fetch_one(&pool)
             .await
