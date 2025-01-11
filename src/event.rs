@@ -1,8 +1,8 @@
+use actix::Message;
 use bitcoin_hashes::{sha256, Hash};
 use lazy_static::lazy_static;
-use actix::Message;
-use serde::{Deserialize, Serialize};
 use secp256k1::{schnorr, Secp256k1, VerifyOnly, XOnlyPublicKey};
+use serde::{Deserialize, Serialize};
 use sqlx::types::JsonValue;
 use sqlx::Row;
 use std::collections::{HashMap, HashSet};
@@ -12,8 +12,7 @@ lazy_static! {
     pub static ref SECP: Secp256k1<VerifyOnly> = Secp256k1::verification_only();
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Message)]
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct Event {
     pub id: String,
@@ -31,7 +30,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for Event {
     fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
         let tags: JsonValue = row.try_get("tags")?;
         let tags: Vec<Vec<String>> = serde_json::from_value(tags).unwrap_or_default();
-        
+
         Ok(Event {
             id: row.try_get("id")?,
             pubkey: row.try_get("pubkey")?,
@@ -48,8 +47,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for Event {
 impl Event {
     pub fn validate(&self) -> Result<(), &'static str> {
         // Validate event format and signature
-        let canonical = self.to_canonical()
-            .ok_or("Could not canonicalize event")?;
+        let canonical = self.to_canonical().ok_or("Could not canonicalize event")?;
 
         // Compute SHA256 of canonical form
         let digest: sha256::Hash = sha256::Hash::hash(canonical.as_bytes());
@@ -61,14 +59,14 @@ impl Event {
         }
 
         // Verify signature
-        let sig = schnorr::Signature::from_str(&self.sig)
-            .map_err(|_| "Invalid signature format")?;
+        let sig =
+            schnorr::Signature::from_str(&self.sig).map_err(|_| "Invalid signature format")?;
 
         let msg = secp256k1::Message::from_slice(digest.as_ref())
             .map_err(|_| "Could not create message from digest")?;
 
-        let pubkey = XOnlyPublicKey::from_str(&self.pubkey)
-            .map_err(|_| "Invalid public key format")?;
+        let pubkey =
+            XOnlyPublicKey::from_str(&self.pubkey).map_err(|_| "Invalid public key format")?;
 
         SECP.verify_schnorr(&sig, &msg, &pubkey)
             .map_err(|_| "Invalid signature")?;
@@ -77,13 +75,14 @@ impl Event {
     }
 
     pub fn to_canonical(&self) -> Option<String> {
-        let mut elements = Vec::new();
-        elements.push(serde_json::Value::Number(0.into())); // id placeholder
-        elements.push(serde_json::Value::String(self.pubkey.clone()));
-        elements.push(serde_json::Value::Number(self.created_at.into()));
-        elements.push(serde_json::Value::Number(self.kind.into()));
-        elements.push(self.tags_to_canonical());
-        elements.push(serde_json::Value::String(self.content.clone()));
+        let elements = vec![
+            serde_json::Value::Number(0.into()), // id placeholder
+            serde_json::Value::String(self.pubkey.clone()),
+            serde_json::Value::Number(self.created_at.into()),
+            serde_json::Value::Number(self.kind.into()),
+            self.tags_to_canonical(),
+            serde_json::Value::String(self.content.clone()),
+        ];
 
         serde_json::to_string(&serde_json::Value::Array(elements)).ok()
     }
@@ -91,7 +90,8 @@ impl Event {
     fn tags_to_canonical(&self) -> serde_json::Value {
         let mut tags = Vec::new();
         for tag in &self.tags {
-            let tag_array = tag.iter()
+            let tag_array = tag
+                .iter()
                 .map(|s| serde_json::Value::String(s.clone()))
                 .collect();
             tags.push(serde_json::Value::Array(tag_array));
@@ -105,13 +105,11 @@ impl Event {
         }
 
         let mut idx: HashMap<char, HashSet<String>> = HashMap::new();
-        
+
         for tag in self.tags.iter().filter(|t| t.len() > 1) {
             if let Some(tag_char) = tag.first().and_then(|s| s.chars().next()) {
                 if let Some(tag_val) = tag.get(1) {
-                    idx.entry(tag_char)
-                        .or_default()
-                        .insert(tag_val.clone());
+                    idx.entry(tag_char).or_default().insert(tag_val.clone());
                 }
             }
         }
@@ -136,7 +134,6 @@ pub struct EventCmd {
     pub event: Event,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,7 +142,7 @@ mod tests {
     fn test_event_validation() {
         let event = Event {
             id: "a6b6c6d6e6f6".into(),
-            pubkey: "0123456789abcdef".into(), 
+            pubkey: "0123456789abcdef".into(),
             created_at: 1234567890,
             kind: 1,
             tags: vec![],
@@ -185,7 +182,7 @@ mod tests {
             kind: 1,
             tags: vec![
                 vec!["e".into(), "123".into()],
-                vec!["p".into(), "456".into()]
+                vec!["p".into(), "456".into()],
             ],
             content: "test".into(),
             sig: "0123456789abcdef".into(),
@@ -193,12 +190,12 @@ mod tests {
         };
 
         event.build_index();
-        
+
         let mut check = HashSet::new();
         check.insert("123".into());
-        
+
         assert!(event.generic_tag_val_intersect('e', &check));
-        
+
         check.clear();
         check.insert("789".into());
         assert!(!event.generic_tag_val_intersect('e', &check));

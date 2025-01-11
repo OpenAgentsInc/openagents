@@ -1,0 +1,2 @@
+- `cargo watch -x check -x test -x run`
+- `cargo watch -x check -x "test -- --test-threads=1" -x run`
