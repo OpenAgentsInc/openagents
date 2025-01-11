@@ -1,6 +1,6 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpResponse,
+    Error, HttpResponse, body::EitherBody,
 };
 use futures::future::{ready, LocalBoxFuture, Ready};
 
@@ -18,7 +18,7 @@ where
     S::Future: 'static,
     B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type Transform = AdminAuthMiddleware<S>;
     type InitError = ();
@@ -63,7 +63,7 @@ where
             .json(serde_json::json!({"error": "Unauthorized"}));
         let res = ServiceResponse::new(
             http_req,
-            response,
+            response
         ).map_into_right_body();
         Box::pin(async move { Ok(res) })
     }
