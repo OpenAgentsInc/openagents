@@ -1,8 +1,7 @@
 use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpResponse, body::BoxBody,
+    Error, HttpResponse,
 };
-use actix_web::web::Bytes;
 use futures::future::{ready, LocalBoxFuture, Ready};
 
 pub struct AdminAuth;
@@ -64,8 +63,8 @@ where
             .json(serde_json::json!({"error": "Unauthorized"}));
         let res = ServiceResponse::new(
             http_req,
-            response.map_into_boxed_body(),
-        ).map_into_boxed_body();
+            response,
+        ).map_into_right_body();
         Box::pin(async move { Ok(res) })
     }
 }
