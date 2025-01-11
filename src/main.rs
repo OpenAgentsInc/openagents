@@ -101,7 +101,7 @@ async fn main() -> std::io::Result<()> {
     info!("Starting server on {}", address);
 
     info!("Attempting to bind server...");
-    let server = HttpServer::new(move || {
+    let mut server = HttpServer::new(move || {
         info!("Configuring new worker...");
         let cors = Cors::permissive();
         
@@ -112,7 +112,31 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(root_route))
             .configure(server::config::configure_app)
     })
-    .bind(&address)?;
+    .try_bind(&address)
+    .or_else(|e| {
+        // Only attempt port increment in development/local environment
+        if configuration.application.host == "127.0.0.1" {
+            let mut port = configuration.application.port;
+            while port < configuration.application.port + 10 {
+                port += 1;
+                let new_address = format!("{}:{}", configuration.application.host, port);
+                info!("Address {} in use, trying {}", address, new_address);
+                if let Ok(server) = HttpServer::new(move || {
+                    let cors = Cors::permissive();
+                    App::new()
+                        .wrap(cors)
+                        .app_data(event_tx.clone())
+                        .app_data(db.clone())
+                        .route("/", web::get().to(root_route))
+                        .configure(server::config::configure_app)
+                }).try_bind(&new_address) {
+                    return Ok(server);
+                }
+            }
+        }
+        // If we're not in development or couldn't find a free port, return original error
+        Err(e)
+    })?;
     
     // Log the actual bound address
     let addresses = server.addrs();
