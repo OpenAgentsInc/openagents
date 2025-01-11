@@ -40,16 +40,46 @@ if [ -s "$TEMP_PATTERNS" ]; then
     {
         echo "# Project Hierarchy"
         echo
+        echo "Generated on: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo
+        echo "### Legend"
+        echo "- 📁 Directory"
+        echo "- 📄 File"
+        echo "- 🔒 Hidden file/directory"
+        echo
+        echo "### Structure"
+        echo
         echo "\`\`\`"
-        tree -a -I "$IGNORE_PATTERN" --dirsfirst
+        tree -a -I "$IGNORE_PATTERN" --dirsfirst -F --charset=ascii
+        echo "\`\`\`"
+        echo
+        echo "### Summary"
+        echo
+        echo "\`\`\`"
+        tree -a -I "$IGNORE_PATTERN" --dirsfirst -F --charset=ascii --summary
         echo "\`\`\`"
     } > docs/hierarchy.md
 else
     {
         echo "# Project Hierarchy"
         echo
+        echo "Generated on: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo
+        echo "### Legend"
+        echo "- 📁 Directory"
+        echo "- 📄 File"
+        echo "- 🔒 Hidden file/directory"
+        echo
+        echo "### Structure"
+        echo
         echo "\`\`\`"
-        tree -a --dirsfirst
+        tree -a --dirsfirst -F --charset=ascii
+        echo "\`\`\`"
+        echo
+        echo "### Summary"
+        echo
+        echo "\`\`\`"
+        tree -a --dirsfirst -F --charset=ascii --summary
         echo "\`\`\`"
     } > docs/hierarchy.md
 fi
