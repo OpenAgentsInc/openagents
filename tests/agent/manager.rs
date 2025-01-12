@@ -133,7 +133,7 @@ impl MockAgentManager {
             instance.status = status;
             
             // Update instance state for error recovery
-            if matches!(status, InstanceStatus::Failed) {
+            if matches!(status, InstanceStatus::Error) {
                 if let Some(task) = self.tasks.iter().find(|t| t.instance_id == instance_id) {
                     let recovery_task = self.create_task(task.plan_id, instance_id, "recovery_task");
                     self.update_task_status(recovery_task.id, TaskStatus::Running);
@@ -160,7 +160,7 @@ impl MockAgentManager {
             // Update instance status based on task status
             if matches!(status, TaskStatus::Failed) {
                 if let Some(instance) = self.instances.iter_mut().find(|i| i.id == task.instance_id) {
-                    instance.status = InstanceStatus::Failed;
+                    instance.status = InstanceStatus::Error;
                 }
             }
             true
