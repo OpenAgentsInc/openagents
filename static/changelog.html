@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
+    <meta name="application-name" content="OpenAgents"/>
+    <meta name="description" content="Software to increase human agency."/>
+    <meta name="author" content="OpenAgents, Inc.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/changelog.css"/>
+    <script src="js/htmx.min.js"></script>
+    <script src="js/client-side-templates.js"></script>
+    <script src="js/mustache.js"></script>
+</head>
+
+<body class="bg-black text-white font-mono min-h-screen">
+    <div class="container mx-auto max-w-[60rem] px-4">
+        <header class="py-5 border-b border-zinc-800 mb-5">
+            <div class="flex justify-between items-center">
+                <div>
+                    <div class="text-xs font-bold">OpenAgents, Inc.</div>
+                    <p class="text-xs mt-2">Software to increase human agency.</p>
+                </div>
+                <nav>
+                    <ul class="flex space-x-6">
+                        <li><a href="/" class="text-xs text-white hover:text-zinc-300">Home</a></li>
+                        <li><a href="/company" class="text-xs text-white hover:text-zinc-300">Company</a></li>
+                        <li><a href="/mobile-app" class="text-xs text-white hover:text-zinc-300">Mobile App</a></li>
+                        <li><a href="/business" class="text-xs text-white hover:text-zinc-300">Business Services</a></li>
+                        <li><a href="/video-series" class="text-xs text-white hover:text-zinc-300">Video Series</a></li>
+                        <li><a href="/contact" class="text-xs text-white hover:text-zinc-300">Contact</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <div id="changelog" 
+             hx-get="/data/changelog.json" 
+             hx-trigger="load" 
+             hx-ext="client-side-templates"
+             mustache-template="changelog-template">
+        </div>
+
+        <template id="changelog-template">
+            <div class="space-y-8">
+                <div class="bg-zinc-900 rounded-lg p-6 space-y-4">
+                    <p class="text-xs font-bold text-center">Meet Onyx, your new personal AI agent.</p>
+
+                    <p class="text-xs text-center">Beta v0.1.0</p>
+
+                    <div class="space-y-2">
+                        <p>Android: <a href="https://github.com/OpenAgentsInc/onyx/releases/download/v0.1.0/Onyx_v0.1.0.apk" class="text-white hover:text-zinc-300 underline" download>Download APK</a> | <a href="https://github.com/OpenAgentsInc/onyx/releases/tag/v0.1.0" class="text-white hover:text-zinc-300 underline" target="_blank">Release notes</a></p>
+
+                        <p>iOS: <a href="https://testflight.apple.com/join/9WfqDTgH" class="text-white hover:text-zinc-300 underline" target="_blank">Download via TestFlight</a></p>
+                    </div>
+
+                    <p class="text-xs text-zinc-300">The most recent iOS build may still be awaiting approval. In the meantime the TestFlight link will give you access to the previous build. TestFlight will automatically download the latest version once it passes review.</p>
+
+                    <p>Videos: <a href="https://x.com/OpenAgentsInc/status/1870030269916340610" class="text-white hover:text-zinc-300 underline" target="_blank">Onyx Beta Launch</a> | <a href="https://x.com/OpenAgentsInc/status/1872388364013379949" class="text-white hover:text-zinc-300 underline" target="_blank">Code by Voice</a></p>
+                </div>
+
+                {{#changes}}
+                <div class="border border-zinc-800 rounded-lg p-4">
+                    <div class="text-xs font-bold mb-2">{{version}} - {{date}}</div>
+                    <ul class="list-disc list-inside space-y-1">
+                        {{#changes}}
+                        <li>{{.}}</li>
+                        {{/changes}}
+                    </ul>
+                </div>
+                {{/changes}}
+            </div>
+        </template>
+    </div>
+</body>
+</html>

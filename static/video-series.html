@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
+    <meta name="application-name" content="OpenAgents"/>
+    <meta name="description" content="Software to increase human agency."/>
+    <meta name="author" content="OpenAgents, Inc.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/videos-new.css"/>
+    <script src="js/htmx.min.js"></script>
+    <script src="js/client-side-templates.js"></script>
+    <script src="js/mustache.js"></script>
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+</head>
+
+<body class="bg-black text-white font-mono min-h-screen">
+    <div class="container mx-auto max-w-[60rem] px-4">
+        <header class="py-5 border-b border-zinc-800 mb-5">
+            <div class="flex justify-between items-center">
+                <div>
+                    <div class="text-xs font-bold">OpenAgents, Inc.</div>
+                    <p class="text-xs mt-2">Software to increase human agency.</p>
+                </div>
+                <nav>
+                    <ul class="flex space-x-6">
+                        <li><a href="/" class="text-xs text-white hover:text-zinc-300">Home</a></li>
+                        <li><a href="/company" class="text-xs text-white hover:text-zinc-300">Company</a></li>
+                        <li><a href="/mobile-app" class="text-xs text-white hover:text-zinc-300">Mobile App</a></li>
+                        <li><a href="/business" class="text-xs text-white hover:text-zinc-300">Business Services</a></li>
+                        <li><a href="/video-series" class="text-xs text-white hover:text-zinc-300">Video Series</a></li>
+                        <li><a href="/contact" class="text-xs text-white hover:text-zinc-300">Contact</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <div id="videos" 
+             hx-get="/data/videos.json" 
+             hx-trigger="load" 
+             hx-ext="client-side-templates"
+             mustache-template="videos-template">
+        </div>
+
+        <template id="videos-template">
+            <div class="videos">
+                <div class="videos-title">Recent Videos</div>
+                {{#videos}}
+                <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
+                    <div class="video-title">{{title}}</div>
+                    <div class="video-date">{{date}}</div>
+                    <div class="video-text">{{text}}</div>
+                    {{#tweetId}}
+                    <blockquote class="twitter-tweet" data-conversation="none" data-media-max-width="560" data-theme="dark">
+                        <p lang="en" dir="ltr">Loading X post...</p>
+                        <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}?ref_src=twsrc%5Etfw"></a>
+                    </blockquote>
+                    {{/tweetId}}
+                </div>
+                {{/videos}}
+            </div>
+        </template>
+
+        <script>
+            document.body.addEventListener('htmx:afterSwap', function (evt) {
+                if (window.twttr && window.twttr.widgets) {
+                    window.twttr.widgets.load();
+                }
+            });
+        </script>
+    </div>
+</body>
+</html>

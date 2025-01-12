@@ -23,9 +23,23 @@ pub async fn agents_page() -> impl Responder {
     NamedFile::open(path)
 }
 
+#[get("/video-series")]
+pub async fn video_series_page() -> impl Responder {
+    let path: PathBuf = "./static/video-series.html".into();
+    NamedFile::open(path)
+}
+
+#[get("/changelog")]
+pub async fn changelog_page() -> impl Responder {
+    let path: PathBuf = "./static/changelog.html".into();
+    NamedFile::open(path)
+}
+
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(health_check)
         .service(new_page)
         .service(agents_page)
+        .service(video_series_page)
+        .service(changelog_page)
         .route("/subscriptions", web::post().to(subscribe));
 }
