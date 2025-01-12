@@ -27,33 +27,33 @@
             <p class="mt-2">Intelligent software to empower humans.</p>
         </div>
         
-        <div class="flex">
-        <div class="flex-1 overflow-y-auto p-5 border-r border-gray-800">
-            <div id="changelog" 
-                 hx-get="/data/changelog.json" 
-                 hx-trigger="load" 
-                 hx-ext="client-side-templates"
-                 mustache-template="changelog-template">
+        <div class="flex mb-8">
+            <div class="flex-1 overflow-y-auto p-5 border-r border-gray-800">
+                <div id="changelog" 
+                     hx-get="/data/changelog.json" 
+                     hx-trigger="load" 
+                     hx-ext="client-side-templates"
+                     mustache-template="changelog-template">
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-5">
+                <div id="videos" 
+                     hx-get="/data/videos.json" 
+                     hx-trigger="load" 
+                     hx-ext="client-side-templates"
+                     mustache-template="videos-template">
+                </div>
             </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-5 border-r border-gray-800">
-            <div id="videos" 
-                 hx-get="/data/videos.json" 
-                 hx-trigger="load" 
-                 hx-ext="client-side-templates"
-                 mustache-template="videos-template">
-            </div>
-        </div>
-
-        <div class="flex-1 overflow-y-auto p-5">
+        <div class="border-t border-gray-800 pt-8">
             <div id="chat-container"
                  hx-get="templates/chat.mustache"
                  hx-trigger="load"
                  mustache-template="chat">
             </div>
         </div>
-    </div>
 
     <template id="changelog-template">
         <div class="space-y-8">
