@@ -1,8 +1,12 @@
 use openagents::agents::agent::{Agent, AgentInstance, Plan, Task, InstanceStatus, PlanStatus, TaskStatus};
 use uuid::Uuid;
 use serde_json::json;
+use chrono::Utc;
 
+// Import test modules
+#[path = "agent/manager.rs"]
 mod manager;
+#[path = "agent/nostr.rs"]
 mod nostr;
 
 #[test]
@@ -19,7 +23,7 @@ fn test_agent_creation() {
             "cpu_limit": 1000,
             "capabilities": ["read", "write"]
         }),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
     };
 
     assert_eq!(agent.name, "Test Agent");
@@ -34,7 +38,7 @@ fn test_agent_instance_lifecycle() {
         id: Uuid::new_v4(),
         agent_id,
         status: InstanceStatus::Starting,
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         ended_at: None,
     };
 
@@ -55,7 +59,7 @@ fn test_plan_creation_and_tasks() {
         description: "A test plan".into(),
         status: PlanStatus::Created,
         task_ids: vec![],
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         ended_at: None,
         metadata: json!({
             "priority": "high",
@@ -72,7 +76,7 @@ fn test_plan_creation_and_tasks() {
         priority: 1,
         input: json!({"test": "input"}),
         output: None,
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         started_at: None,
         ended_at: None,
         error: None,
@@ -95,7 +99,7 @@ fn test_task_state_transitions() {
         priority: 1,
         input: json!({}),
         output: None,
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         started_at: None,
         ended_at: None,
         error: None,
@@ -110,8 +114,8 @@ fn test_task_state_transitions() {
     // Create a task that simulates completion
     let completed_task = Task {
         status: TaskStatus::Completed,
-        started_at: Some(chrono::Utc::now().timestamp()),
-        ended_at: Some(chrono::Utc::now().timestamp()),
+        started_at: Some(Utc::now().timestamp()),
+        ended_at: Some(Utc::now().timestamp()),
         output: Some(json!({"result": "success"})),
         ..task
     };
@@ -124,8 +128,8 @@ fn test_task_state_transitions() {
     // Create a task that simulates failure
     let failed_task = Task {
         status: TaskStatus::Failed,
-        started_at: Some(chrono::Utc::now().timestamp()),
-        ended_at: Some(chrono::Utc::now().timestamp()),
+        started_at: Some(Utc::now().timestamp()),
+        ended_at: Some(Utc::now().timestamp()),
         error: Some("Test error".into()),
         ..task
     };
@@ -151,7 +155,7 @@ fn test_agent_config_validation() {
             "dependencies": [],
             "required_integrations": ["nostr"]
         }),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
     };
 
     let config = agent.config.as_object().unwrap();
