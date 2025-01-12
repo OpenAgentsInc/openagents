@@ -26,27 +26,27 @@
             <div class="mt-4">
                 <nav hx-ext="client-side-templates">
                     <ul class="flex flex-col space-y-2">
-                        <li hx-get="/templates/button.mustache" 
+                        <li hx-post="/api/button" 
                             hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/", "text": "Home"}'></li>
-                        <li hx-get="/templates/button.mustache" 
+                        <li hx-post="/api/button"
                             hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/company", "text": "Company"}'></li>
-                        <li hx-get="/templates/button.mustache" 
+                        <li hx-post="/api/button"
                             hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/mobile-app", "text": "Mobile App"}'></li>
-                        <li hx-get="/templates/button.mustache" 
+                        <li hx-post="/api/button"
                             hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/business", "text": "Services"}'></li>
-                        <li hx-get="/templates/button.mustache" 
+                        <li hx-post="/api/button"
                             hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/video-series", "text": "Video Series"}'></li>
-                        <li hx-get="/templates/button.mustache" 
+                        <li hx-post="/api/button"
                             hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/contact", "text": "Contact"}'></li>
@@ -56,8 +56,18 @@
         </header>
 
         <template id="button-template">
-            {{{template}}}
+            <a class="btn-nav black bg-white hover:bg-gray-100 text-black font-mono text-xs py-2 px-4 w-full inline-flex items-center" href="{{href}}"><i class="nav-active-icon mr-2"></i>{{text}}</a>
         </template>
     </div>
+
+    <script>
+        document.addEventListener('htmx:afterRequest', function(evt) {
+            if (evt.detail.elt.hasAttribute('mustache-template')) {
+                var template = document.getElementById(evt.detail.elt.getAttribute('mustache-template'));
+                var data = JSON.parse(evt.detail.elt.getAttribute('hx-vals'));
+                evt.detail.elt.innerHTML = Mustache.render(template.innerHTML, data);
+            }
+        });
+    </script>
 </body>
 </html>
