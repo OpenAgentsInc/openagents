@@ -210,6 +210,11 @@ impl MockAgentManager {
         key: &str,
         value: serde_json::Value,
     ) -> bool {
+        // First verify the instance exists
+        if !self.instances.iter().any(|i| i.id == instance_id) {
+            return false;
+        }
+
         if let Some(state) = self.instance_states.get_mut(&instance_id) {
             if let Some(obj) = state.as_object_mut() {
                 obj.insert(key.to_string(), value);
