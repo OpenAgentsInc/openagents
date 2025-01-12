@@ -1,8 +1,7 @@
 use actix_web::{test, web, App};
+use openagents::configuration::get_configuration;
+use openagents::emailoptin::subscribe;
 use sqlx::PgPool;
-use uuid::Uuid;
-
-use crate::configuration::get_configuration;
 
 #[tokio::test]
 async fn subscribe_returns_a_200_for_valid_form_data() {
@@ -23,7 +22,7 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     // Act
     let request = test::TestRequest::post()
         .uri("/subscriptions")
-        .header("Content-Type", "application/x-www-form-urlencoded")
+        .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
         .set_payload(body)
         .to_request();
 
@@ -65,7 +64,7 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
         // Act
         let request = test::TestRequest::post()
             .uri("/subscriptions")
-            .header("Content-Type", "application/x-www-form-urlencoded")
+            .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
             .set_payload(invalid_body)
             .to_request();
 
