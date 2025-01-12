@@ -11,10 +11,12 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
         .await
         .expect("Failed to connect to Postgres");
 
-    // Create subscriptions table if it doesn't exist
+    // Drop table if exists and recreate
+    sqlx::query!("DROP TABLE IF EXISTS subscriptions").execute(&connection_pool).await.expect("Failed to drop table");
+    
     sqlx::query!(
         r#"
-        CREATE TABLE IF NOT EXISTS subscriptions (
+        CREATE TABLE subscriptions (
             id uuid PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
@@ -52,13 +54,18 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     let request = test::TestRequest::post()
         .uri("/subscriptions")
         .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
-        .set_payload(body)
+        .set_payload(body.clone())
         .to_request();
     
     let response = test::call_service(&app, request).await;
     
-    // Assert
-    assert!(response.status().is_success());
+    // Assert with more detailed error message
+    assert!(
+        response.status().is_success(),
+        "Failed with status {} and body {:?}",
+        response.status(),
+        body
+    );
 
     let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
         .fetch_one(&connection_pool)
