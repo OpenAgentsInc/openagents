@@ -1,5 +1,5 @@
-use openagents::server::admin::middleware::AdminAuth;
 use actix_web::{test, web, App, HttpResponse};
+use openagents::server::admin::middleware::AdminAuth;
 
 async fn test_endpoint() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({"status": "ok"}))
