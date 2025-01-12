@@ -1,49 +1,37 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="css/style.css" />
-  <link rel="stylesheet" href="css/changelog.css" />
-  <link rel="stylesheet" href="css/videos.css" />
-  <title>OpenAgents</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
-  <script src="js/htmx.min.js"></script>
-  <script src="js/client-side-templates.js"></script>
-  <script src="js/mustache.js"></script>
-  <script src="js/three.min.js"></script>
-  <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+    <meta charset="UTF-8">
+    <title>OpenAgents</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="HandheldFriendly" content="True"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
+    <meta name="application-name" content="OpenAgents"/>
+    <meta name="description" content="Software to increase human agency."/>
+    <meta name="author" content="OpenAgents, Inc.">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="canonical" href="https://openagents.com"/>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body>
-  <canvas id="bg"></canvas>
-  <div id="logo-container">
-    <img src="onyx.png" alt="Onyx" id="onyx-logo" />
-  </div>
-  <main id="main">
-    <div class="flex justify-center space-x-4 mt-8">
-      <a href="/changelog" class="text-xs text-white hover:text-zinc-300 underline">View Changelog</a>
-      <a href="/video-series" class="text-xs text-white hover:text-zinc-300 underline">Watch Video Series</a>
-    </div>
-  </main>
-
-
-  <script src="js/OnyxOrb.js"></script>
-  <script src="js/LightingSystem.js"></script>
-  <script src="js/ViewSystem.js"></script>
-  <script src="js/SceneSystem.js"></script>
-  <script src="js/main.js"></script>
-  <script>
-    // Reinitialize Twitter widgets after template rendering
-    document.body.addEventListener('htmx:afterSwap', function (evt) {
-      if (window.twttr && window.twttr.widgets) {
-        window.twttr.widgets.load();
-      }
-    });
-  </script>
+<body class="bg-black text-white font-mono min-h-screen mx-auto max-w-[60rem] border border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1">
+    <div class="container px-2">
+        <header class="py-2 border-b border-white/25 mb-5">
+            <div class="flex justify-between items-center w-full">
+                <span class="text-lg font-bold">OpenAgents</span>
+            </div>
+            <div class="mt-4">
+                <nav>
+                    <ul class="flex space-x-6">
+                        <li><a href="/" class="text-xs text-white hover:text-zinc-300">Home</a></li>
+                        <li><a href="/company" class="text-xs text-white hover:text-zinc-300">Company</a></li>
+                        <li><a href="/mobile-app" class="text-xs text-white hover:text-zinc-300">Mobile App</a></li>
+                        <li><a href="/business" class="text-xs text-white hover:text-zinc-300">Services</a></li>
+                        <li><a href="/video-series" class="text-xs text-white hover:text-zinc-300">Video Series</a></li>
+                        <li><a href="/contact" class="text-xs text-white hover:text-zinc-300">Contact</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
 </body>
-
 </html>
