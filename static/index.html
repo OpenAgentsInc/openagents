@@ -14,6 +14,26 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
     <script src="js/mustache.js"></script>
+    <style>
+        @font-face {
+            font-family: 'Univers LT Pro';
+            src: url('/fonts/UniversLTPro-55Roman.woff2') format('woff2');
+            font-weight: 400;
+            font-style: normal;
+        }
+        .btn-nav {
+            font-family: 'Univers LT Pro',-apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto;
+            font-stretch: normal;
+            position: relative;
+            top: -0.125rem;
+            height: 1.5rem;
+            padding: 0.25rem 0 0.05rem 0;
+            border: 0.1rem solid #fff;
+            box-shadow: 2px 2px #666;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+    </style>
 </head>
 
 <body class="bg-black text-white font-mono min-h-screen mx-auto max-w-[60rem] border border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1">
@@ -31,7 +51,7 @@
         </header>
 
         <template id="button-template">
-            <a class="btn-nav bg-black hover:bg-gray-900 text-white font-mono text-xs py-2 px-4 border border-white inline-flex items-center justify-center whitespace-nowrap" href="{{href}}"><i class="nav-active-icon mr-2"></i>{{text}}</a>
+            <a class="btn-nav bg-black hover:bg-gray-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none mr-2" href="{{href}}"><i class="nav-active-icon mr-2"></i>{{text}}</a>
         </template>
     </div>
 
