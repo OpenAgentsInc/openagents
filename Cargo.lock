@@ -1618,6 +1618,7 @@ dependencies = [
  "serde-aux",
  "serde_json",
  "sqlx",
+ "time",
  "tokio",
  "tracing",
  "url",
@@ -2271,10 +2272,12 @@ dependencies = [
  "smallvec",
  "sqlformat",
  "thiserror 1.0.69",
+ "time",
  "tokio",
  "tokio-stream",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -2354,7 +2357,9 @@ dependencies = [
  "sqlx-core",
  "stringprep",
  "thiserror 1.0.69",
+ "time",
  "tracing",
+ "uuid",
  "whoami",
 ]
 
@@ -2392,7 +2397,9 @@ dependencies = [
  "sqlx-core",
  "stringprep",
  "thiserror 1.0.69",
+ "time",
  "tracing",
+ "uuid",
  "whoami",
 ]
 
@@ -2414,9 +2421,11 @@ dependencies = [
  "percent-encoding",
  "serde",
  "sqlx-core",
+ "time",
  "tracing",
  "url",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]

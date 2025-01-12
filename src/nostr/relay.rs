@@ -5,9 +5,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 
-use crate::db::{Database, EventFilter};
-use crate::event::Event;
-use crate::subscription::Subscription;
+use crate::nostr::db::{Database, EventFilter};
+use crate::nostr::event::Event;
+use crate::nostr::subscription::Subscription;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
