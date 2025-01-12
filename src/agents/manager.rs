@@ -7,6 +7,7 @@ use sqlx::types::Uuid;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use time::OffsetDateTime;
 
 const MAX_RETRIES: u32 = 3;
 const DEFAULT_MEMORY_LIMIT: u64 = 512; // MB
@@ -51,7 +52,7 @@ impl AgentManager {
             description: description.to_string(),
             pubkey: pubkey.to_string(),
             enabled: true,
-            config,
+            config: config.clone(),
             created_at: Utc::now().timestamp(),
         };
 
@@ -65,7 +66,7 @@ impl AgentManager {
             agent.description,
             agent.pubkey,
             agent.enabled,
-            agent.config as serde_json::Value
+            config
         )
         .execute(&self.pool)
         .await?;
@@ -91,7 +92,7 @@ impl AgentManager {
             pubkey: record.pubkey,
             enabled: record.enabled,
             config: record.config,
-            created_at: record.created_at.timestamp(),
+            created_at: record.created_at.unix_timestamp(),
         })
     }
 
@@ -239,7 +240,7 @@ impl AgentManager {
                     "#,
                     instance_id,
                     key,
-                    value as serde_json::Value
+                    value
                 )
                 .execute(&self.pool)
                 .await?;
