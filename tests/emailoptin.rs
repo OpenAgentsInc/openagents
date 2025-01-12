@@ -7,7 +7,7 @@ use sqlx::PgPool;
 async fn subscribe_returns_a_200_for_valid_form_data() {
     // Arrange
     let configuration = get_configuration().expect("Failed to read configuration");
-    let connection_pool = PgPool::connect(&configuration.database.connection_string())
+    let connection_pool = PgPool::connect_with(configuration.database.connect_options())
         .await
         .expect("Failed to connect to Postgres");
     
@@ -44,7 +44,7 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
 async fn subscribe_returns_a_400_when_data_is_missing() {
     // Arrange
     let configuration = get_configuration().expect("Failed to read configuration");
-    let connection_pool = PgPool::connect(&configuration.database.connection_string())
+    let connection_pool = PgPool::connect_with(configuration.database.connect_options())
         .await
         .expect("Failed to connect to Postgres");
     
