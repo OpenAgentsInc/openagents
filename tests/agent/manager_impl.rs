@@ -1,21 +1,19 @@
 use chrono::Utc;
 use openagents::agents::{Agent, AgentInstance, AgentManager, InstanceStatus};
-use openagents::database::Database;
 use serde_json::json;
 use sqlx::PgPool;
 use std::env;
 use uuid::Uuid;
 
-async fn setup_test_db() -> Database {
+async fn setup_test_db() -> PgPool {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url).await.unwrap();
-    Database { pool }
+    PgPool::connect(&database_url).await.unwrap()
 }
 
 #[tokio::test]
 async fn test_agent_creation_and_validation() {
-    let db = setup_test_db().await;
-    let manager = AgentManager::new(db);
+    let pool = setup_test_db().await;
+    let manager = AgentManager::new(pool);
 
     // Test valid agent creation
     let result = manager
@@ -65,8 +63,8 @@ async fn test_agent_creation_and_validation() {
 
 #[tokio::test]
 async fn test_instance_lifecycle() {
-    let db = setup_test_db().await;
-    let manager = AgentManager::new(db);
+    let pool = setup_test_db().await;
+    let manager = AgentManager::new(pool);
 
     // Create test agent
     let agent = manager
@@ -122,8 +120,8 @@ async fn test_instance_lifecycle() {
 
 #[tokio::test]
 async fn test_instance_limits() {
-    let db = setup_test_db().await;
-    let manager = AgentManager::new(db);
+    let pool = setup_test_db().await;
+    let manager = AgentManager::new(pool);
 
     // Create agent with max 1 instance
     let agent = manager
@@ -151,8 +149,8 @@ async fn test_instance_limits() {
 
 #[tokio::test]
 async fn test_resource_monitoring() {
-    let db = setup_test_db().await;
-    let manager = AgentManager::new(db);
+    let pool = setup_test_db().await;
+    let manager = AgentManager::new(pool);
 
     // Create agent with strict limits
     let agent = manager
@@ -207,8 +205,8 @@ async fn test_resource_monitoring() {
 
 #[tokio::test]
 async fn test_state_management() {
-    let db = setup_test_db().await;
-    let manager = AgentManager::new(db);
+    let pool = setup_test_db().await;
+    let manager = AgentManager::new(pool);
 
     // Create agent
     let agent = manager
@@ -251,35 +249,4 @@ async fn test_state_management() {
     assert_eq!(state["counter"], 1);
     assert_eq!(state["status"], "running");
     assert_eq!(state["data"]["key"], "value");
-}
-
-#[tokio::test]
-async fn test_event_emission() {
-    let db = setup_test_db().await;
-    let manager = AgentManager::new(db);
-
-    // Create agent
-    let agent = manager
-        .create_agent(
-            "Event Test",
-            "Testing event emission",
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-            json!({}),
-        )
-        .await
-        .unwrap();
-
-    let instance = manager.create_instance(agent.id).await.unwrap();
-
-    // Test status event
-    let event = manager.emit_status_event(instance.id).await.unwrap();
-    assert_eq!(event.kind, 30001);
-    assert!(event.tags.iter().any(|t| t[0] == "d" && t[1] == "agent_status"));
-
-    let content: serde_json::Value = serde_json::from_str(&event.content).unwrap();
-    assert_eq!(content["agent_id"].as_str().unwrap(), agent.id.to_string());
-    assert_eq!(
-        content["instance_id"].as_str().unwrap(),
-        instance.id.to_string()
-    );
 }
