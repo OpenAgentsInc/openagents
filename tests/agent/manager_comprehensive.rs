@@ -64,7 +64,7 @@ async fn test_agent_validation_errors() {
 #[tokio::test]
 async fn test_instance_state_persistence() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Create agent with initial state
     let agent = manager
