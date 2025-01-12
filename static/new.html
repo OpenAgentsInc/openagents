@@ -10,7 +10,7 @@
     <meta name="author" content="OpenAgents, Inc.">
     <meta name="format-detection" content="telephone=no">
     <link rel="canonical" href="https://openagents.com"/>
-    <link rel="stylesheet" href="css/new.css"/>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/chat.css"/>
     <link rel="stylesheet" href="css/changelog.css"/>
     <link rel="stylesheet" href="css/videos-new.css"/>
@@ -20,14 +20,14 @@
     <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </head>
 
-<body>
-    <div class="header">
-        <div style="font-size:1.5em">OpenAgents, Inc.</div>
-        <p style="margin: 10px 0 0 0">Intelligent software to empower humans.</p>
+<body class="bg-black text-white font-mono min-h-screen">
+    <div class="fixed top-0 left-0 right-0 bg-black border-b border-gray-800 p-5 z-50">
+        <div class="text-2xl">OpenAgents, Inc.</div>
+        <p class="mt-2">Intelligent software to empower humans.</p>
     </div>
 
-    <div class="container">
-        <div class="column">
+    <div class="max-w-[60rem] mx-auto mt-[80px] flex">
+        <div class="flex-1 overflow-y-auto p-5 border-r border-gray-800">
             <div id="changelog" 
                  hx-get="/data/changelog.json" 
                  hx-trigger="load" 
@@ -36,7 +36,7 @@
             </div>
         </div>
 
-        <div class="column">
+        <div class="flex-1 overflow-y-auto p-5 border-r border-gray-800">
             <div id="videos" 
                  hx-get="/data/videos.json" 
                  hx-trigger="load" 
@@ -45,7 +45,7 @@
             </div>
         </div>
 
-        <div class="column">
+        <div class="flex-1 overflow-y-auto p-5">
             <div id="chat-container"
                  hx-get="templates/chat.mustache"
                  hx-trigger="load"
