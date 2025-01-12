@@ -68,6 +68,44 @@ fn create_agent_control_event(agent: &Agent, command: &str) -> Event {
     }
 }
 
+fn create_agent_error_event(agent: &Agent, error_code: &str, message: &str) -> Event {
+    Event {
+        id: "e9f9g9h9i9j9".into(),
+        pubkey: agent.pubkey.clone(),
+        created_at: Utc::now().timestamp(),
+        kind: 20002,
+        tags: vec![
+            vec!["p".into(), agent.pubkey.clone()],
+            vec!["e".into(), "error".into()],
+            vec!["c".into(), error_code.into()],
+        ],
+        content: json!({
+            "error": message,
+            "code": error_code,
+            "timestamp": Utc::now().timestamp()
+        })
+        .to_string(),
+        sig: "0123456789abcdef".into(),
+        tagidx: None,
+    }
+}
+
+fn create_agent_metric_event(agent: &Agent, metrics: serde_json::Value) -> Event {
+    Event {
+        id: "m1n1o1p1q1r1".into(),
+        pubkey: agent.pubkey.clone(),
+        created_at: Utc::now().timestamp(),
+        kind: 30002,
+        tags: vec![
+            vec!["p".into(), agent.pubkey.clone()],
+            vec!["m".into(), "metrics".into()],
+        ],
+        content: metrics.to_string(),
+        sig: "0123456789abcdef".into(),
+        tagidx: None,
+    }
+}
+
 #[test]
 fn test_agent_status_event() {
     let agent = Agent {
@@ -152,6 +190,63 @@ fn test_agent_control_event() {
 }
 
 #[test]
+fn test_agent_error_event() {
+    let agent = Agent {
+        id: Uuid::new_v4(),
+        name: "Error Test Agent".into(),
+        description: "Testing error events".into(),
+        pubkey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
+        enabled: true,
+        config: json!({}),
+        created_at: Utc::now().timestamp(),
+    };
+
+    let event = create_agent_error_event(&agent, "TASK_ERROR", "Task execution failed");
+
+    assert_eq!(event.kind, 20002);
+    assert!(event.tags.iter().any(|t| t[0] == "e" && t[1] == "error"));
+    assert!(event.tags.iter().any(|t| t[0] == "c" && t[1] == "TASK_ERROR"));
+
+    let content: serde_json::Value = serde_json::from_str(&event.content).unwrap();
+    assert_eq!(content["error"].as_str().unwrap(), "Task execution failed");
+    assert_eq!(content["code"].as_str().unwrap(), "TASK_ERROR");
+    assert!(content["timestamp"].is_number());
+}
+
+#[test]
+fn test_agent_metric_event() {
+    let agent = Agent {
+        id: Uuid::new_v4(),
+        name: "Metric Test Agent".into(),
+        description: "Testing metric events".into(),
+        pubkey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
+        enabled: true,
+        config: json!({}),
+        created_at: Utc::now().timestamp(),
+    };
+
+    let metrics = json!({
+        "memory_usage": 256,
+        "cpu_usage": 45.5,
+        "task_count": 3,
+        "error_count": 0,
+        "uptime": 3600
+    });
+
+    let event = create_agent_metric_event(&agent, metrics.clone());
+
+    assert_eq!(event.kind, 30002);
+    assert!(event.tags.iter().any(|t| t[0] == "m" && t[1] == "metrics"));
+
+    let content: serde_json::Value = serde_json::from_str(&event.content).unwrap();
+    assert_eq!(content["memory_usage"].as_u64().unwrap(), 256);
+    assert_eq!(content["cpu_usage"].as_f64().unwrap(), 45.5);
+    assert_eq!(content["task_count"].as_u64().unwrap(), 3);
+    assert_eq!(content["error_count"].as_u64().unwrap(), 0);
+    assert_eq!(content["uptime"].as_u64().unwrap(), 3600);
+}
+
+#[test]
 fn test_event_tag_indexing() {
     let agent = Agent {
         id: Uuid::new_v4(),
@@ -179,4 +274,41 @@ fn test_event_tag_indexing() {
     check.insert("agent_status".into());
 
     assert!(event.generic_tag_val_intersect('d', &check));
+}
+
+#[test]
+fn test_event_validation() {
+    let agent = Agent {
+        id: Uuid::new_v4(),
+        name: "Validation Test Agent".into(),
+        description: "Testing event validation".into(),
+        pubkey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
+        enabled: true,
+        config: json!({}),
+        created_at: Utc::now().timestamp(),
+    };
+
+    let instance = AgentInstance {
+        id: Uuid::new_v4(),
+        agent_id: agent.id,
+        status: InstanceStatus::Running,
+        created_at: Utc::now().timestamp(),
+        ended_at: None,
+    };
+
+    let event = create_agent_status_event(&agent, &instance);
+
+    // Validate event structure
+    assert!(!event.id.is_empty());
+    assert_eq!(event.pubkey.len(), 64);
+    assert!(event.created_at > 0);
+    assert!(!event.sig.is_empty());
+
+    // Validate content is valid JSON
+    let content: Result<serde_json::Value, _> = serde_json::from_str(&event.content);
+    assert!(content.is_ok());
+
+    // Validate required tags
+    assert!(event.tags.iter().any(|t| t[0] == "p"));
+    assert!(event.tags.iter().any(|t| t[0] == "d"));
 }
