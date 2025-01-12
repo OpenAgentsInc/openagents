@@ -129,38 +129,44 @@ impl MockAgentManager {
     }
 
     pub fn update_instance_status(&mut self, instance_id: Uuid, status: InstanceStatus) -> bool {
+        // First check if instance exists
         let instance_exists = self.instances.iter().any(|i| i.id == instance_id);
         if !instance_exists {
             return false;
         }
 
-        // Handle error recovery case first
-        let mut should_recover = false;
-        let mut recovery_plan_id = None;
-        
-        if matches!(status, InstanceStatus::Error) {
-            if let Some(task) = self.tasks.iter().find(|t| t.instance_id == instance_id) {
-                should_recover = true;
-                recovery_plan_id = Some(task.plan_id);
+        // Handle error recovery preparation
+        let recovery_info = if matches!(status, InstanceStatus::Error) {
+            self.tasks.iter()
+                .find(|t| t.instance_id == instance_id)
+                .map(|task| task.plan_id)
+        } else {
+            None
+        };
+
+        // If we need recovery, handle it first
+        if let Some(plan_id) = recovery_info {
+            let recovery_task = self.create_task(plan_id, instance_id, "recovery_task");
+            let task_id = recovery_task.id;
+            
+            // Update task statuses
+            self.update_task_status(task_id, TaskStatus::Running);
+            self.update_task_status(task_id, TaskStatus::Completed);
+            
+            // Finally update the instance status to Running
+            if let Some(instance) = self.instances.iter_mut().find(|i| i.id == instance_id) {
+                instance.status = InstanceStatus::Running;
             }
+            return true;
         }
 
-        // Update instance status
+        // If no recovery needed, just update the status
         if let Some(instance) = self.instances.iter_mut().find(|i| i.id == instance_id) {
-            instance.status = status.clone();
-            
-            // Perform recovery if needed
-            if should_recover {
-                if let Some(plan_id) = recovery_plan_id {
-                    let recovery_task = self.create_task(plan_id, instance_id, "recovery_task");
-                    self.update_task_status(recovery_task.id, TaskStatus::Running);
-                    self.update_task_status(recovery_task.id, TaskStatus::Completed);
-                    instance.status = InstanceStatus::Running;
-                }
-            }
+            instance.status = status;
+            return true;
         }
-        
-        true
+
+        false
     }
 
     pub fn update_task_status(&mut self, task_id: Uuid, status: TaskStatus) -> bool {
