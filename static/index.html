@@ -24,14 +24,14 @@
             </div>
             <div class="mt-4">
                 <nav>
-                    <ul class="flex flex-col space-y-2" id="nav-buttons">
+                    <ul class="flex flex-row space-x-2 justify-between" id="nav-buttons">
                     </ul>
                 </nav>
             </div>
         </header>
 
         <template id="button-template">
-            <a class="btn-nav black bg-white hover:bg-gray-100 text-black font-mono text-xs py-2 px-4 w-full inline-flex items-center" href="{{href}}"><i class="nav-active-icon mr-2"></i>{{text}}</a>
+            <a class="btn-nav bg-black hover:bg-gray-900 text-white font-mono text-xs py-2 px-4 border border-white inline-flex items-center whitespace-nowrap" href="{{href}}"><i class="nav-active-icon mr-2"></i>{{text}}</a>
         </template>
     </div>
 
@@ -50,6 +50,7 @@
 
         buttons.forEach(button => {
             const li = document.createElement('li');
+            li.className = "flex-1";
             li.innerHTML = Mustache.render(template, button);
             navButtons.appendChild(li);
         });
