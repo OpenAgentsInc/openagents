@@ -24,36 +24,30 @@
                 <span class="text-lg font-bold">OpenAgents</span>
             </div>
             <div class="mt-4">
-                <nav>
+                <nav hx-ext="client-side-templates">
                     <ul class="flex flex-col space-y-2">
                         <li hx-get="/templates/button.mustache" 
-                            hx-trigger="load" 
-                            hx-ext="client-side-templates"
+                            hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/", "text": "Home"}'></li>
                         <li hx-get="/templates/button.mustache" 
-                            hx-trigger="load" 
-                            hx-ext="client-side-templates"
+                            hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/company", "text": "Company"}'></li>
                         <li hx-get="/templates/button.mustache" 
-                            hx-trigger="load" 
-                            hx-ext="client-side-templates"
+                            hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/mobile-app", "text": "Mobile App"}'></li>
                         <li hx-get="/templates/button.mustache" 
-                            hx-trigger="load" 
-                            hx-ext="client-side-templates"
+                            hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/business", "text": "Services"}'></li>
                         <li hx-get="/templates/button.mustache" 
-                            hx-trigger="load" 
-                            hx-ext="client-side-templates"
+                            hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/video-series", "text": "Video Series"}'></li>
                         <li hx-get="/templates/button.mustache" 
-                            hx-trigger="load" 
-                            hx-ext="client-side-templates"
+                            hx-trigger="load"
                             mustache-template="button-template"
                             hx-vals='{"href": "/contact", "text": "Contact"}'></li>
                     </ul>
