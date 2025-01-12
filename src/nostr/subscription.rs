@@ -1,4 +1,4 @@
-use crate::event::Event;
+use crate::nostr::event::Event;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 

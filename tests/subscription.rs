@@ -1,5 +1,5 @@
-use openagents::event::Event;
-use openagents::subscription::ReqFilter;
+use openagents::nostr::event::Event;
+use openagents::nostr::subscription::ReqFilter;
 use std::collections::HashMap;
 
 #[test]

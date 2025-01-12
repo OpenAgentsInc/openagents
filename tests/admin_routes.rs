@@ -1,6 +1,6 @@
 use actix_web::{test, web, App};
 use lazy_static::lazy_static;
-use openagents::event::Event;
+use openagents::nostr::event::Event;
 use openagents::server::admin::routes::{admin_stats, create_demo_event};
 use tokio::sync::Mutex;
 

@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 19:20:34
+Generated on: 2025-01-11 19:32:00
 
 ### Structure
 
@@ -32,6 +32,12 @@ Generated on: 2025-01-11 19:20:34
 |-- scripts/
 |   `-- generate_hierarchy.sh*
 |-- src/
+|   |-- nostr/
+|   |   |-- db.rs
+|   |   |-- event.rs
+|   |   |-- mod.rs
+|   |   |-- relay.rs
+|   |   `-- subscription.rs
 |   |-- server/
 |   |   |-- admin/
 |   |   |   |-- middleware.rs
@@ -42,13 +48,9 @@ Generated on: 2025-01-11 19:20:34
 |   |   `-- routes.rs
 |   |-- configuration.rs
 |   |-- database.rs
-|   |-- db.rs
 |   |-- emailoptin.rs
-|   |-- event.rs
 |   |-- lib.rs
-|   |-- main.rs
-|   |-- relay.rs
-|   `-- subscription.rs
+|   `-- main.rs
 |-- static/
 |   |-- css/
 |   |   |-- changelog.css
@@ -131,5 +133,5 @@ Generated on: 2025-01-11 19:20:34
 |-- README.md
 `-- spec.yaml
 
-22 directories, 103 files
+23 directories, 104 files
 ```

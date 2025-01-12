@@ -1,11 +1,8 @@
 pub mod configuration;
 pub mod database;
-mod db;
 mod emailoptin;
-pub mod event;
-mod relay;
+pub mod nostr;
 pub mod server;
-pub mod subscription;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
@@ -16,9 +13,9 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::configuration::get_configuration;
-use crate::db::Database;
-use crate::event::Event;
-use crate::relay::RelayWs;
+use crate::nostr::db::Database;
+use crate::nostr::event::Event;
+use crate::nostr::relay::RelayWs;
 
 async fn root_route(
     req: actix_web::HttpRequest,

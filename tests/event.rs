@@ -1,4 +1,4 @@
-use openagents::event::Event;
+use openagents::nostr::event::Event;
 use std::collections::HashSet;
 
 #[test]
