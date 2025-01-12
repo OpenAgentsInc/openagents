@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 19:11:49
+Generated on: 2025-01-11 19:20:34
 
 ### Structure
 
@@ -27,7 +27,8 @@ Generated on: 2025-01-11 19:11:49
 |   |-- newsletter.md
 |   `-- rust-setup.md
 |-- migrations/
-|   `-- 20250110000000_initial.sql
+|   |-- 20250110000000_initial.sql
+|   `-- 20250112001624_create_subscriptions_table.sql
 |-- scripts/
 |   `-- generate_hierarchy.sh*
 |-- src/
@@ -42,6 +43,7 @@ Generated on: 2025-01-11 19:11:49
 |   |-- configuration.rs
 |   |-- database.rs
 |   |-- db.rs
+|   |-- emailoptin.rs
 |   |-- event.rs
 |   |-- lib.rs
 |   |-- main.rs
@@ -129,5 +131,5 @@ Generated on: 2025-01-11 19:11:49
 |-- README.md
 `-- spec.yaml
 
-22 directories, 101 files
+22 directories, 103 files
 ```
