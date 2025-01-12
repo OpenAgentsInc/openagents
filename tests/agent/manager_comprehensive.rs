@@ -255,7 +255,7 @@ async fn test_cache_consistency() {
 #[tokio::test]
 async fn test_edge_cases() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Test non-existent agent
     let result = manager.create_instance(Uuid::new_v4()).await;
