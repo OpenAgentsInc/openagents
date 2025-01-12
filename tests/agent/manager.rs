@@ -93,7 +93,7 @@ impl MockAgentManager {
 
     pub fn update_task_status(&mut self, task_id: Uuid, status: TaskStatus) -> bool {
         if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
-            task.status = status;
+            task.status = status.clone();
             if matches!(status, TaskStatus::Running) {
                 task.started_at = Some(Utc::now().timestamp());
             }
@@ -112,7 +112,7 @@ fn test_agent_manager_creation() {
     let mut manager = MockAgentManager::new();
     
     // Create an agent
-    let agent = manager.create_agent(
+    let _agent = manager.create_agent(
         "Test Agent",
         "A test agent",
         json!({
