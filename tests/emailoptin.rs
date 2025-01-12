@@ -43,6 +43,14 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
 
     let response = test::call_service(&app, request).await;
 
+    // Print debug information
+    println!("Response status: {}", response.status());
+    let body = test::read_body(response).await;
+    println!("Response body: {:?}", body);
+
+    // Create new request for assertion since we consumed the response
+    let response = test::call_service(&app, request).await;
+    
     // Assert
     assert!(response.status().is_success());
 
