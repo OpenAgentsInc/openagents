@@ -10,6 +10,21 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     let connection_pool = PgPool::connect_with(configuration.database.connect_options())
         .await
         .expect("Failed to connect to Postgres");
+
+    // Create subscriptions table if it doesn't exist
+    sqlx::query!(
+        r#"
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            id uuid PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            subscribed_at timestamptz NOT NULL
+        )
+        "#,
+    )
+    .execute(&connection_pool)
+    .await
+    .expect("Failed to create subscriptions table");
     
     let app = test::init_service(
         App::new()
