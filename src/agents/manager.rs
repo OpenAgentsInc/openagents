@@ -1,9 +1,9 @@
 use crate::agents::agent::{Agent, AgentInstance, InstanceStatus};
-use sqlx::PgPool;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use serde_json::json;
 use sqlx::types::Uuid;
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -111,9 +111,7 @@ impl AgentManager {
         .fetch_one(&self.pool)
         .await?;
 
-        let max_instances = agent.config["max_instances"]
-            .as_u64()
-            .unwrap_or(1) as i64;
+        let max_instances = agent.config["max_instances"].as_u64().unwrap_or(1) as i64;
 
         if instance_count.count.unwrap_or(0) >= max_instances {
             return Err(anyhow!("Maximum instance limit reached"));
@@ -142,7 +140,8 @@ impl AgentManager {
 
         // Initialize instance state if specified
         if let Some(initial_state) = agent.config.get("initial_state") {
-            self.set_instance_state(instance.id, initial_state.clone()).await?;
+            self.set_instance_state(instance.id, initial_state.clone())
+                .await?;
         }
 
         // Initialize metrics
@@ -159,7 +158,10 @@ impl AgentManager {
         .await?;
 
         // Cache instance
-        self.instances.write().await.insert(instance.id, instance.clone());
+        self.instances
+            .write()
+            .await
+            .insert(instance.id, instance.clone());
 
         Ok(instance)
     }
@@ -170,12 +172,9 @@ impl AgentManager {
         status: InstanceStatus,
     ) -> Result<bool> {
         // Validate instance exists
-        let instance = sqlx::query!(
-            "SELECT id FROM agent_instances WHERE id = $1",
-            instance_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
+        let instance = sqlx::query!("SELECT id FROM agent_instances WHERE id = $1", instance_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         if instance.is_none() {
             return Ok(false);
@@ -210,12 +209,9 @@ impl AgentManager {
         state: serde_json::Value,
     ) -> Result<bool> {
         // Validate instance exists
-        let instance = sqlx::query!(
-            "SELECT id FROM agent_instances WHERE id = $1",
-            instance_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
+        let instance = sqlx::query!("SELECT id FROM agent_instances WHERE id = $1", instance_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         if instance.is_none() {
             return Ok(false);
@@ -340,7 +336,10 @@ impl AgentManager {
 
     // Helper Methods
     fn validate_agent_config(&self, config: serde_json::Value) -> Result<serde_json::Value> {
-        let mut config = config.as_object().ok_or(anyhow!("Invalid config format"))?.clone();
+        let mut config = config
+            .as_object()
+            .ok_or(anyhow!("Invalid config format"))?
+            .clone();
 
         // Ensure required fields with defaults
         if !config.contains_key("version") {
@@ -357,17 +356,23 @@ impl AgentManager {
         }
 
         // Validate limits
-        let memory_limit = config["memory_limit"].as_u64().ok_or(anyhow!("Invalid memory_limit"))?;
+        let memory_limit = config["memory_limit"]
+            .as_u64()
+            .ok_or(anyhow!("Invalid memory_limit"))?;
         if memory_limit == 0 || memory_limit > 4096 {
             return Err(anyhow!("memory_limit must be between 1 and 4096"));
         }
 
-        let cpu_limit = config["cpu_limit"].as_f64().ok_or(anyhow!("Invalid cpu_limit"))?;
+        let cpu_limit = config["cpu_limit"]
+            .as_f64()
+            .ok_or(anyhow!("Invalid cpu_limit"))?;
         if cpu_limit <= 0.0 || cpu_limit > 400.0 {
             return Err(anyhow!("cpu_limit must be between 0 and 400"));
         }
 
-        let max_instances = config["max_instances"].as_u64().ok_or(anyhow!("Invalid max_instances"))?;
+        let max_instances = config["max_instances"]
+            .as_u64()
+            .ok_or(anyhow!("Invalid max_instances"))?;
         if max_instances == 0 || max_instances > 100 {
             return Err(anyhow!("max_instances must be between 1 and 100"));
         }
