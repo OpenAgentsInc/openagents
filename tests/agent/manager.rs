@@ -237,4 +237,50 @@ impl MockAgentManager {
     }
 }
 
-// Keep all existing tests unchanged
+// Tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_lifecycle() {
+        let mut manager = MockAgentManager::new();
+        
+        // Create agent
+        let config = json!({
+            "max_instances": 2,
+            "min_platform_version": "1.0",
+            "max_platform_version": "2.0",
+            "initial_state": {"status": "ready"}
+        });
+        
+        let agent = manager.create_agent("test_agent", "Test Agent", config);
+        
+        // Create instance
+        let instance = manager.create_instance(agent.id);
+        assert!(matches!(instance.status, InstanceStatus::Starting));
+        
+        // Update instance status
+        assert!(manager.update_instance_status(instance.id, InstanceStatus::Running));
+        
+        // Create plan and task
+        let plan = manager.create_plan(agent.id, "test_plan");
+        let task = manager.create_task(plan.id, instance.id, "test_task");
+        
+        // Update task status
+        assert!(manager.update_task_status(task.id, TaskStatus::Running));
+        assert!(manager.update_task_status(task.id, TaskStatus::Completed));
+        
+        // Test instance state management
+        assert!(manager.set_instance_state(instance.id, json!({"key": "value"})));
+        assert_eq!(
+            manager.get_instance_state(instance.id),
+            Some(json!({"key": "value"}))
+        );
+        assert!(manager.update_instance_state(instance.id, "new_key", json!("new_value")));
+        
+        // Test version compatibility
+        assert!(manager.check_version_compatibility(&agent, "1.5"));
+        assert!(!manager.check_version_compatibility(&agent, "0.9"));
+    }
+}
