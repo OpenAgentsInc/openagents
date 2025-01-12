@@ -1,13 +1,12 @@
-use openagents::agents::agent::{Agent, AgentInstance, Plan, Task, InstanceStatus, PlanStatus, TaskStatus};
-use uuid::Uuid;
-use serde_json::json;
-use chrono::Utc;
-
-// Import test modules
 #[path = "agent/manager.rs"]
 mod manager;
 #[path = "agent/nostr.rs"]
 mod nostr;
+
+use openagents::agents::agent::{Agent, AgentInstance, Plan, Task, InstanceStatus, PlanStatus, TaskStatus};
+use uuid::Uuid;
+use serde_json::json;
+use chrono::Utc;
 
 #[test]
 fn test_agent_creation() {
