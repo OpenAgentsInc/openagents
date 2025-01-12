@@ -62,7 +62,7 @@ async fn test_agent_creation_and_validation() {
 #[tokio::test]
 async fn test_instance_lifecycle() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Create test agent
     let agent = manager
