@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 13:33:45
+Generated on: 2025-01-11 19:53:18
 
 ### Structure
 
@@ -24,12 +24,22 @@ Generated on: 2025-01-11 13:33:45
 |   |-- configuration.md
 |   |-- hierarchy.md
 |   |-- htmx-nostr-chat.md
+|   |-- newsletter.md
 |   `-- rust-setup.md
 |-- migrations/
-|   `-- 20250110000000_initial.sql
+|   |-- 20250110000000_initial.sql
+|   `-- 20250112001624_create_subscriptions_table.sql
 |-- scripts/
 |   `-- generate_hierarchy.sh*
 |-- src/
+|   |-- agents/
+|   |   `-- agent.rs
+|   |-- nostr/
+|   |   |-- db.rs
+|   |   |-- event.rs
+|   |   |-- mod.rs
+|   |   |-- relay.rs
+|   |   `-- subscription.rs
 |   |-- server/
 |   |   |-- admin/
 |   |   |   |-- middleware.rs
@@ -40,13 +50,20 @@ Generated on: 2025-01-11 13:33:45
 |   |   `-- routes.rs
 |   |-- configuration.rs
 |   |-- database.rs
-|   |-- db.rs
-|   |-- event.rs
+|   |-- emailoptin.rs
 |   |-- lib.rs
-|   |-- main.rs
-|   |-- relay.rs
-|   `-- subscription.rs
+|   `-- main.rs
 |-- static/
+|   |-- css/
+|   |   |-- changelog.css
+|   |   |-- chat.css
+|   |   |-- new.css
+|   |   |-- style.css
+|   |   |-- videos-new.css
+|   |   `-- videos.css
+|   |-- data/
+|   |   |-- changelog.json
+|   |   `-- videos.json
 |   |-- dist/
 |   |   |-- nostr/
 |   |   |   |-- nostr-chat.js
@@ -55,6 +72,15 @@ Generated on: 2025-01-11 13:33:45
 |   |   |-- ndk.js.map
 |   |   |-- nostr-sub.js
 |   |   `-- nostr-sub.js.map
+|   |-- fonts/
+|   |   |-- BerkeleyMono-Bold.woff
+|   |   |-- BerkeleyMono-Bold.woff2
+|   |   |-- BerkeleyMono-BoldItalic.woff
+|   |   |-- BerkeleyMono-BoldItalic.woff2
+|   |   |-- BerkeleyMono-Italic.woff
+|   |   |-- BerkeleyMono-Italic.woff2
+|   |   |-- BerkeleyMono-Regular.woff
+|   |   `-- BerkeleyMono-Regular.woff2
 |   |-- js/
 |   |   |-- LightingSystem.js
 |   |   |-- OnyxOrb.js
@@ -74,31 +100,41 @@ Generated on: 2025-01-11 13:33:45
 |   |   |-- nostr-chat.ts
 |   |   |-- storage.ts
 |   |   `-- types.ts
+|   |-- templates/
+|   |   |-- changelog-new.mustache
+|   |   |-- changelog.mustache
+|   |   `-- chat.mustache
 |   |-- README.md
-|   |-- changelog.css
-|   |-- changelog.json
 |   |-- favicon.ico
 |   |-- index.html
 |   |-- justfile
 |   |-- ndk.ts
+|   |-- new.html
 |   |-- nostr-sub.ts
 |   |-- nostr.html
 |   |-- onyx.png
 |   |-- package.json
-|   |-- style.css
 |   |-- tsconfig.json
-|   |-- videos.css
-|   |-- videos.json
 |   `-- yarn.lock
 |-- templates/
 |   `-- admin/
 |       |-- dashboard.html
 |       `-- login.html
+|-- tests/
+|   |-- nostr/
+|   |   |-- database.rs
+|   |   |-- event.rs
+|   |   `-- subscription.rs
+|   |-- admin_middleware.rs
+|   |-- admin_routes.rs
+|   |-- emailoptin.rs
+|   `-- health_check.rs
 |-- Cargo.lock
 |-- Cargo.toml
+|-- DEVELOPMENT.md
 |-- Dockerfile
 |-- README.md
 `-- spec.yaml
 
-17 directories, 77 files
+25 directories, 105 files
 ```

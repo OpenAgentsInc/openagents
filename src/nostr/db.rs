@@ -1,4 +1,4 @@
-use crate::event::Event;
+use crate::nostr::event::Event;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{Pool, Postgres};
 use std::collections::HashSet;
