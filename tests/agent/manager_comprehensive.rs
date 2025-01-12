@@ -12,7 +12,7 @@ async fn setup_test_db() -> PgPool {
 #[tokio::test]
 async fn test_agent_validation_errors() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Test invalid pubkey
     let result = manager
