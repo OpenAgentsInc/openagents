@@ -21,12 +21,13 @@
 </head>
 
 <body class="bg-black text-white font-mono min-h-screen">
-    <div class="fixed top-0 left-0 right-0 bg-black border-b border-gray-800 p-5 z-50">
-        <div class="text-2xl">OpenAgents, Inc.</div>
-        <p class="mt-2">Intelligent software to empower humans.</p>
-    </div>
-
-    <div class="max-w-[60rem] mx-auto mt-[80px] flex">
+    <div class="max-w-[60rem] mx-auto px-5">
+        <div class="py-5 border-b border-gray-800 mb-5">
+            <div class="text-2xl">OpenAgents, Inc.</div>
+            <p class="mt-2">Intelligent software to empower humans.</p>
+        </div>
+        
+        <div class="flex">
         <div class="flex-1 overflow-y-auto p-5 border-r border-gray-800">
             <div id="changelog" 
                  hx-get="/data/changelog.json" 
