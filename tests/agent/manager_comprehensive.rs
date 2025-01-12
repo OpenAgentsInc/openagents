@@ -198,7 +198,7 @@ async fn test_resource_monitoring_and_limits() {
 #[tokio::test]
 async fn test_cache_consistency() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Create agent and instance
     let agent = manager
