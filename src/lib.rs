@@ -1,6 +1,7 @@
 pub mod configuration;
 pub mod database;
 mod db;
+mod emailoptin;
 pub mod event;
 mod relay;
 pub mod server;
