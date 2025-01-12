@@ -15,14 +15,7 @@
     <script src="js/htmx.min.js"></script>
     <script src="js/mustache.js"></script>
     <style>
-        @font-face {
-            font-family: 'Univers LT Pro';
-            src: url('/fonts/UniversLTPro-55Roman.woff2') format('woff2');
-            font-weight: 400;
-            font-style: normal;
-        }
         .btn-nav {
-            font-family: 'Univers LT Pro',-apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto;
             font-stretch: normal;
             position: relative;
             top: -0.125rem;
@@ -51,7 +44,7 @@
         </header>
 
         <template id="button-template">
-            <a class="btn-nav bg-black hover:bg-gray-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none mr-2" href="{{href}}"><i class="nav-active-icon mr-2"></i>{{text}}</a>
+            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none mr-4 px-6" href="{{href}}"></i>{{text}}</a>
         </template>
     </div>
 
