@@ -48,7 +48,13 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     let body = test::read_body(response).await;
     println!("Response body: {:?}", body);
 
-    // Create new request for assertion since we consumed the response
+    // Create new request since the previous one was consumed
+    let request = test::TestRequest::post()
+        .uri("/subscriptions")
+        .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
+        .set_payload(body)
+        .to_request();
+    
     let response = test::call_service(&app, request).await;
     
     // Assert
