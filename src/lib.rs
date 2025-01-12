@@ -1,6 +1,6 @@
 pub mod configuration;
 pub mod database;
-mod emailoptin;
+pub mod emailoptin;
 pub mod nostr;
 pub mod server;
 
