@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
     // Unique identifier for the agent
     pub id: Uuid,
@@ -19,7 +19,7 @@ pub struct Agent {
     pub created_at: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInstance {
     // Unique identifier for this instance
     pub id: Uuid,
@@ -33,7 +33,7 @@ pub struct AgentInstance {
     pub ended_at: Option<i64>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plan {
     // Unique identifier for the plan
     pub id: Uuid,
@@ -55,7 +55,7 @@ pub struct Plan {
     pub metadata: serde_json::Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     // Unique identifier for the task
     pub id: Uuid,
@@ -83,7 +83,7 @@ pub struct Task {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InstanceStatus {
     Starting,
     Running,
@@ -93,7 +93,7 @@ pub enum InstanceStatus {
     Error,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlanStatus {
     Created,
     InProgress,
@@ -102,7 +102,7 @@ pub enum PlanStatus {
     Cancelled,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskStatus {
     Pending,
     Scheduled,
