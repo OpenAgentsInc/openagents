@@ -12,6 +12,9 @@
     <meta name="format-detection" content="telephone=no">
     <link rel="canonical" href="https://openagents.com"/>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/htmx.min.js"></script>
+    <script src="js/client-side-templates.js"></script>
+    <script src="js/mustache.js"></script>
 </head>
 
 <body class="bg-black text-white font-mono min-h-screen mx-auto max-w-[60rem] border border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1">
@@ -22,13 +25,37 @@
             </div>
             <div class="mt-4">
                 <nav>
-                    <ul class="flex space-x-6">
-                        <li><a href="/" class="text-xs text-white hover:text-zinc-300">Home</a></li>
-                        <li><a href="/company" class="text-xs text-white hover:text-zinc-300">Company</a></li>
-                        <li><a href="/mobile-app" class="text-xs text-white hover:text-zinc-300">Mobile App</a></li>
-                        <li><a href="/business" class="text-xs text-white hover:text-zinc-300">Services</a></li>
-                        <li><a href="/video-series" class="text-xs text-white hover:text-zinc-300">Video Series</a></li>
-                        <li><a href="/contact" class="text-xs text-white hover:text-zinc-300">Contact</a></li>
+                    <ul class="flex flex-col space-y-2">
+                        <li hx-get="/templates/button.mustache" 
+                            hx-trigger="load" 
+                            hx-ext="client-side-templates"
+                            mustache-template="button"
+                            hx-vals='{"href": "/", "text": "Home"}'></li>
+                        <li hx-get="/templates/button.mustache" 
+                            hx-trigger="load" 
+                            hx-ext="client-side-templates"
+                            mustache-template="button"
+                            hx-vals='{"href": "/company", "text": "Company"}'></li>
+                        <li hx-get="/templates/button.mustache" 
+                            hx-trigger="load" 
+                            hx-ext="client-side-templates"
+                            mustache-template="button"
+                            hx-vals='{"href": "/mobile-app", "text": "Mobile App"}'></li>
+                        <li hx-get="/templates/button.mustache" 
+                            hx-trigger="load" 
+                            hx-ext="client-side-templates"
+                            mustache-template="button"
+                            hx-vals='{"href": "/business", "text": "Services"}'></li>
+                        <li hx-get="/templates/button.mustache" 
+                            hx-trigger="load" 
+                            hx-ext="client-side-templates"
+                            mustache-template="button"
+                            hx-vals='{"href": "/video-series", "text": "Video Series"}'></li>
+                        <li hx-get="/templates/button.mustache" 
+                            hx-trigger="load" 
+                            hx-ext="client-side-templates"
+                            mustache-template="button"
+                            hx-vals='{"href": "/contact", "text": "Contact"}'></li>
                     </ul>
                 </nav>
             </div>
