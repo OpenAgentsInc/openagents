@@ -34,6 +34,7 @@ config = "0.13"
 secrecy = { version = "0.8", features = ["serde"] }
 tracing = { version = "0.1", features = ["log"] }
 url = "2.4"
+time = "0.3.37"
 
 [dev-dependencies]
 actix-web = "4.4"
