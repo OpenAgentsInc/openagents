@@ -13,7 +13,6 @@
     <link rel="canonical" href="https://openagents.com"/>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
-    <script src="js/client-side-templates.js"></script>
     <script src="js/mustache.js"></script>
 </head>
 
@@ -24,32 +23,8 @@
                 <span class="text-lg font-bold">OpenAgents</span>
             </div>
             <div class="mt-4">
-                <nav hx-ext="client-side-templates">
-                    <ul class="flex flex-col space-y-2">
-                        <li hx-post="/api/button" 
-                            hx-trigger="load"
-                            mustache-template="button-template"
-                            hx-vals='{"href": "/", "text": "Home"}'></li>
-                        <li hx-post="/api/button"
-                            hx-trigger="load"
-                            mustache-template="button-template"
-                            hx-vals='{"href": "/company", "text": "Company"}'></li>
-                        <li hx-post="/api/button"
-                            hx-trigger="load"
-                            mustache-template="button-template"
-                            hx-vals='{"href": "/mobile-app", "text": "Mobile App"}'></li>
-                        <li hx-post="/api/button"
-                            hx-trigger="load"
-                            mustache-template="button-template"
-                            hx-vals='{"href": "/business", "text": "Services"}'></li>
-                        <li hx-post="/api/button"
-                            hx-trigger="load"
-                            mustache-template="button-template"
-                            hx-vals='{"href": "/video-series", "text": "Video Series"}'></li>
-                        <li hx-post="/api/button"
-                            hx-trigger="load"
-                            mustache-template="button-template"
-                            hx-vals='{"href": "/contact", "text": "Contact"}'></li>
+                <nav>
+                    <ul class="flex flex-col space-y-2" id="nav-buttons">
                     </ul>
                 </nav>
             </div>
@@ -61,12 +36,22 @@
     </div>
 
     <script>
-        document.addEventListener('htmx:afterRequest', function(evt) {
-            if (evt.detail.elt.hasAttribute('mustache-template')) {
-                var template = document.getElementById(evt.detail.elt.getAttribute('mustache-template'));
-                var data = JSON.parse(evt.detail.elt.getAttribute('hx-vals'));
-                evt.detail.elt.innerHTML = Mustache.render(template.innerHTML, data);
-            }
+        const buttons = [
+            { href: "/", text: "Home" },
+            { href: "/company", text: "Company" },
+            { href: "/mobile-app", text: "Mobile App" },
+            { href: "/business", text: "Services" },
+            { href: "/video-series", text: "Video Series" },
+            { href: "/contact", text: "Contact" }
+        ];
+
+        const template = document.getElementById('button-template').innerHTML;
+        const navButtons = document.getElementById('nav-buttons');
+
+        buttons.forEach(button => {
+            const li = document.createElement('li');
+            li.innerHTML = Mustache.render(template, button);
+            navButtons.appendChild(li);
         });
     </script>
 </body>
