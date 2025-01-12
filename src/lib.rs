@@ -4,7 +4,7 @@ mod db;
 pub mod event;
 mod relay;
 pub mod server;
-mod subscription;
+pub mod subscription;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
