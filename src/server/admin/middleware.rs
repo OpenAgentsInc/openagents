@@ -8,9 +8,15 @@ use futures::future::{ready, LocalBoxFuture, Ready};
 
 pub struct AdminAuth;
 
+impl Default for AdminAuth {
+    fn default() -> Self {
+        AdminAuth
+    }
+}
+
 impl AdminAuth {
     pub fn new() -> Self {
-        AdminAuth
+        Self::default()
     }
 }
 
