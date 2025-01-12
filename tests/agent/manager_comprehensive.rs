@@ -125,7 +125,7 @@ async fn test_instance_state_persistence() {
 #[tokio::test]
 async fn test_resource_monitoring_and_limits() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Create agent with strict limits
     let agent = manager
