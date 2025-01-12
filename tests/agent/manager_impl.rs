@@ -1,9 +1,7 @@
-use chrono::Utc;
-use openagents::agents::{Agent, AgentInstance, AgentManager, InstanceStatus};
+use openagents::agents::{AgentManager, InstanceStatus};
 use serde_json::json;
 use sqlx::PgPool;
 use std::env;
-use uuid::Uuid;
 
 async fn setup_test_db() -> PgPool {
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -13,7 +11,7 @@ async fn setup_test_db() -> PgPool {
 #[tokio::test]
 async fn test_agent_creation_and_validation() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Test valid agent creation
     let result = manager

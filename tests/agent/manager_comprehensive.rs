@@ -1,5 +1,4 @@
-use chrono::Utc;
-use openagents::agents::{Agent, AgentInstance, AgentManager, InstanceStatus};
+use openagents::agents::{AgentManager, InstanceStatus};
 use serde_json::json;
 use sqlx::PgPool;
 use std::env;
@@ -245,27 +244,17 @@ async fn test_cache_consistency() {
         .await
         .unwrap();
 
-    // Verify all caches are consistent
-    let cached_metrics = manager
-        .instance_metrics
-        .read()
-        .await
-        .get(&instance.id)
-        .cloned()
-        .unwrap();
+    // Verify instance status through public API
+    let instance_status = manager.get_instance(instance.id).await.unwrap().status;
+    assert!(matches!(instance_status, InstanceStatus::Running));
+
+    // Verify metrics through public API
+    let cached_metrics = manager.get_instance_metrics(instance.id).await.unwrap().unwrap();
     assert_eq!(cached_metrics, metrics);
 
-    let cached_state = manager
-        .instance_states
-        .read()
-        .await
-        .get(&instance.id)
-        .cloned()
-        .unwrap();
+    // Verify state through public API 
+    let cached_state = manager.get_instance_state(instance.id).await.unwrap().unwrap();
     assert_eq!(cached_state, state);
-
-    let cached_instance = manager.instances.read().await.get(&instance.id).cloned().unwrap();
-    assert!(matches!(cached_instance.status, InstanceStatus::Running));
 }
 
 #[tokio::test]
