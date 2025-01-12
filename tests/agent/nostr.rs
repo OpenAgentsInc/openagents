@@ -205,7 +205,10 @@ fn test_agent_error_event() {
 
     assert_eq!(event.kind, 20002);
     assert!(event.tags.iter().any(|t| t[0] == "e" && t[1] == "error"));
-    assert!(event.tags.iter().any(|t| t[0] == "c" && t[1] == "TASK_ERROR"));
+    assert!(event
+        .tags
+        .iter()
+        .any(|t| t[0] == "c" && t[1] == "TASK_ERROR"));
 
     let content: serde_json::Value = serde_json::from_str(&event.content).unwrap();
     assert_eq!(content["error"].as_str().unwrap(), "Task execution failed");

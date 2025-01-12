@@ -52,8 +52,9 @@ impl MockAgentManager {
         // Check resource limits
         if let Some(agent) = self.agents.iter().find(|a| a.id == agent_id) {
             let current_count = self.instance_counts.get(&agent_id).unwrap_or(&0);
-            
-            if let Some(max_instances) = agent.config.get("max_instances").and_then(|v| v.as_u64()) {
+
+            if let Some(max_instances) = agent.config.get("max_instances").and_then(|v| v.as_u64())
+            {
                 if *current_count >= max_instances as usize {
                     return AgentInstance {
                         id: Uuid::new_v4(),
@@ -64,7 +65,7 @@ impl MockAgentManager {
                     };
                 }
             }
-            
+
             let instance = AgentInstance {
                 id: Uuid::new_v4(),
                 agent_id,
@@ -72,15 +73,16 @@ impl MockAgentManager {
                 created_at: Utc::now().timestamp(),
                 ended_at: None,
             };
-            
+
             self.instances.push(instance.clone());
             *self.instance_counts.entry(agent_id).or_insert(0) += 1;
-            
+
             // Initialize instance state
             if let Some(initial_state) = agent.config.get("initial_state") {
-                self.instance_states.insert(instance.id, initial_state.clone());
+                self.instance_states
+                    .insert(instance.id, initial_state.clone());
             }
-            
+
             instance
         } else {
             AgentInstance {
@@ -137,7 +139,8 @@ impl MockAgentManager {
 
         // Handle error recovery preparation
         let recovery_info = if matches!(status, InstanceStatus::Error) {
-            self.tasks.iter()
+            self.tasks
+                .iter()
                 .find(|t| t.instance_id == instance_id)
                 .map(|task| task.plan_id)
         } else {
@@ -148,11 +151,11 @@ impl MockAgentManager {
         if let Some(plan_id) = recovery_info {
             let recovery_task = self.create_task(plan_id, instance_id, "recovery_task");
             let task_id = recovery_task.id;
-            
+
             // Update task statuses
             self.update_task_status(task_id, TaskStatus::Running);
             self.update_task_status(task_id, TaskStatus::Completed);
-            
+
             // Finally update the instance status to Running
             if let Some(instance) = self.instances.iter_mut().find(|i| i.id == instance_id) {
                 instance.status = InstanceStatus::Running;
@@ -178,10 +181,11 @@ impl MockAgentManager {
             if matches!(status, TaskStatus::Completed | TaskStatus::Failed) {
                 task.ended_at = Some(Utc::now().timestamp());
             }
-            
+
             // Update instance status based on task status
             if matches!(status, TaskStatus::Failed) {
-                if let Some(instance) = self.instances.iter_mut().find(|i| i.id == task.instance_id) {
+                if let Some(instance) = self.instances.iter_mut().find(|i| i.id == task.instance_id)
+                {
                     instance.status = InstanceStatus::Error;
                 }
             }
@@ -199,11 +203,11 @@ impl MockAgentManager {
             false
         }
     }
-    
+
     pub fn get_instance_state(&self, instance_id: Uuid) -> Option<serde_json::Value> {
         self.instance_states.get(&instance_id).cloned()
     }
-    
+
     pub fn update_instance_state(
         &mut self,
         instance_id: Uuid,
@@ -228,16 +232,17 @@ impl MockAgentManager {
         } else {
             let mut new_state = serde_json::Map::new();
             new_state.insert(key.to_string(), value);
-            self.instance_states.insert(instance_id, serde_json::Value::Object(new_state));
+            self.instance_states
+                .insert(instance_id, serde_json::Value::Object(new_state));
             true
         }
     }
-    
+
     pub fn check_version_compatibility(&self, agent: &Agent, platform_version: &str) -> bool {
         let config = agent.config.as_object().unwrap();
         let min_version = config["min_platform_version"].as_str().unwrap();
         let max_version = config["max_platform_version"].as_str().unwrap();
-        
+
         platform_version >= min_version && platform_version <= max_version
     }
 }
@@ -250,7 +255,7 @@ mod tests {
     #[test]
     fn test_agent_lifecycle() {
         let mut manager = MockAgentManager::new();
-        
+
         // Create agent
         let config = json!({
             "max_instances": 2,
@@ -258,24 +263,24 @@ mod tests {
             "max_platform_version": "2.0",
             "initial_state": {"status": "ready"}
         });
-        
+
         let agent = manager.create_agent("test_agent", "Test Agent", config);
-        
+
         // Create instance
         let instance = manager.create_instance(agent.id);
         assert!(matches!(instance.status, InstanceStatus::Starting));
-        
+
         // Update instance status
         assert!(manager.update_instance_status(instance.id, InstanceStatus::Running));
-        
+
         // Create plan and task
         let plan = manager.create_plan(agent.id, "test_plan");
         let task = manager.create_task(plan.id, instance.id, "test_task");
-        
+
         // Update task status
         assert!(manager.update_task_status(task.id, TaskStatus::Running));
         assert!(manager.update_task_status(task.id, TaskStatus::Completed));
-        
+
         // Test instance state management
         assert!(manager.set_instance_state(instance.id, json!({"key": "value"})));
         assert_eq!(
@@ -283,7 +288,7 @@ mod tests {
             Some(json!({"key": "value"}))
         );
         assert!(manager.update_instance_state(instance.id, "new_key", json!("new_value")));
-        
+
         // Test version compatibility
         assert!(manager.check_version_compatibility(&agent, "1.5"));
         assert!(!manager.check_version_compatibility(&agent, "0.9"));
@@ -292,20 +297,20 @@ mod tests {
     #[test]
     fn test_instance_limits() {
         let mut manager = MockAgentManager::new();
-        
+
         // Create agent with max 1 instance
         let config = json!({
             "max_instances": 1,
             "min_platform_version": "1.0",
             "max_platform_version": "2.0"
         });
-        
+
         let agent = manager.create_agent("test_agent", "Test Agent", config);
-        
+
         // First instance should succeed
         let instance1 = manager.create_instance(agent.id);
         assert!(matches!(instance1.status, InstanceStatus::Starting));
-        
+
         // Second instance should fail
         let instance2 = manager.create_instance(agent.id);
         assert!(matches!(instance2.status, InstanceStatus::Error));
@@ -315,22 +320,22 @@ mod tests {
     #[test]
     fn test_error_recovery() {
         let mut manager = MockAgentManager::new();
-        
+
         let config = json!({
             "max_instances": 2,
             "min_platform_version": "1.0",
             "max_platform_version": "2.0"
         });
-        
+
         let agent = manager.create_agent("test_agent", "Test Agent", config);
         let instance = manager.create_instance(agent.id);
         let plan = manager.create_plan(agent.id, "test_plan");
         let task = manager.create_task(plan.id, instance.id, "test_task");
-        
+
         // Simulate error and recovery
         assert!(manager.update_task_status(task.id, TaskStatus::Failed));
         assert!(manager.update_instance_status(instance.id, InstanceStatus::Error));
-        
+
         // Verify instance recovered to Running state
         if let Some(recovered_instance) = manager.instances.iter().find(|i| i.id == instance.id) {
             assert!(matches!(recovered_instance.status, InstanceStatus::Running));
@@ -340,30 +345,30 @@ mod tests {
     #[test]
     fn test_instance_state_management() {
         let mut manager = MockAgentManager::new();
-        
+
         let config = json!({
             "max_instances": 1,
             "initial_state": {"counter": 0}
         });
-        
+
         let agent = manager.create_agent("test_agent", "Test Agent", config);
         let instance = manager.create_instance(agent.id);
-        
+
         // Test initial state
         assert_eq!(
             manager.get_instance_state(instance.id),
             Some(json!({"counter": 0}))
         );
-        
+
         // Test state updates
         assert!(manager.update_instance_state(instance.id, "counter", json!(1)));
         assert!(manager.update_instance_state(instance.id, "status", json!("ready")));
-        
+
         // Verify final state
         let final_state = manager.get_instance_state(instance.id).unwrap();
         assert_eq!(final_state["counter"], json!(1));
         assert_eq!(final_state["status"], json!("ready"));
-        
+
         // Test non-existent instance
         assert!(!manager.update_instance_state(Uuid::new_v4(), "test", json!(true)));
     }
@@ -371,21 +376,21 @@ mod tests {
     #[test]
     fn test_task_status_transitions() {
         let mut manager = MockAgentManager::new();
-        
+
         let config = json!({"max_instances": 1});
         let agent = manager.create_agent("test_agent", "Test Agent", config);
         let instance = manager.create_instance(agent.id);
         let plan = manager.create_plan(agent.id, "test_plan");
         let task = manager.create_task(plan.id, instance.id, "test_task");
-        
+
         // Test valid transitions
         assert!(manager.update_task_status(task.id, TaskStatus::Scheduled));
         assert!(manager.update_task_status(task.id, TaskStatus::Running));
         assert!(manager.update_task_status(task.id, TaskStatus::Completed));
-        
+
         // Test non-existent task
         assert!(!manager.update_task_status(Uuid::new_v4(), TaskStatus::Running));
-        
+
         // Verify timestamps
         if let Some(completed_task) = manager.tasks.iter().find(|t| t.id == task.id) {
             assert!(completed_task.started_at.is_some());
