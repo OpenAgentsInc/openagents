@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 19:33:06
+Generated on: 2025-01-11 19:53:18
 
 ### Structure
 
@@ -32,6 +32,8 @@ Generated on: 2025-01-11 19:33:06
 |-- scripts/
 |   `-- generate_hierarchy.sh*
 |-- src/
+|   |-- agents/
+|   |   `-- agent.rs
 |   |-- nostr/
 |   |   |-- db.rs
 |   |   |-- event.rs
@@ -134,5 +136,5 @@ Generated on: 2025-01-11 19:33:06
 |-- README.md
 `-- spec.yaml
 
-24 directories, 104 files
+25 directories, 105 files
 ```
