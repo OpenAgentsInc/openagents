@@ -36,15 +36,15 @@
                 <span class="text-lg font-bold">OpenAgents</span>
             </div>
             <div class="mt-4">
-                <nav class="flex justify-center">
-                    <ul class="flex flex-row items-center justify-center gap-4 flex-wrap" id="nav-buttons">
+                <nav>
+                    <ul class="grid grid-cols-6 gap-2 sm:grid-cols-3 md:grid-cols-3" id="nav-buttons">
                     </ul>
                 </nav>
             </div>
         </header>
 
         <template id="button-template">
-            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none mr-4 px-6" href="{{href}}"></i>{{text}}</a>
+            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6" href="{{href}}">{{text}}</a>
         </template>
     </div>
 
@@ -63,7 +63,7 @@
 
         buttons.forEach(button => {
             const li = document.createElement('li');
-            li.className = "flex-1 flex justify-center";
+            li.className = "flex justify-center mb-1";
             li.innerHTML = Mustache.render(template, button);
             navButtons.appendChild(li);
         });
