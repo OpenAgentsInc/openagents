@@ -119,7 +119,7 @@ async fn test_instance_lifecycle() {
 #[tokio::test]
 async fn test_instance_limits() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Create agent with max 1 instance
     let agent = manager
