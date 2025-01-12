@@ -129,22 +129,38 @@ impl MockAgentManager {
     }
 
     pub fn update_instance_status(&mut self, instance_id: Uuid, status: InstanceStatus) -> bool {
+        let instance_exists = self.instances.iter().any(|i| i.id == instance_id);
+        if !instance_exists {
+            return false;
+        }
+
+        // Handle error recovery case first
+        let mut should_recover = false;
+        let mut recovery_plan_id = None;
+        
+        if matches!(status, InstanceStatus::Error) {
+            if let Some(task) = self.tasks.iter().find(|t| t.instance_id == instance_id) {
+                should_recover = true;
+                recovery_plan_id = Some(task.plan_id);
+            }
+        }
+
+        // Update instance status
         if let Some(instance) = self.instances.iter_mut().find(|i| i.id == instance_id) {
-            instance.status = status;
+            instance.status = status.clone();
             
-            // Update instance state for error recovery
-            if matches!(status, InstanceStatus::Error) {
-                if let Some(task) = self.tasks.iter().find(|t| t.instance_id == instance_id) {
-                    let recovery_task = self.create_task(task.plan_id, instance_id, "recovery_task");
+            // Perform recovery if needed
+            if should_recover {
+                if let Some(plan_id) = recovery_plan_id {
+                    let recovery_task = self.create_task(plan_id, instance_id, "recovery_task");
                     self.update_task_status(recovery_task.id, TaskStatus::Running);
                     self.update_task_status(recovery_task.id, TaskStatus::Completed);
                     instance.status = InstanceStatus::Running;
                 }
             }
-            true
-        } else {
-            false
         }
+        
+        true
     }
 
     pub fn update_task_status(&mut self, task_id: Uuid, status: TaskStatus) -> bool {
