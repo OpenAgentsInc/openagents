@@ -112,6 +112,46 @@ impl MockAgentManager {
             false
         }
     }
+
+    pub fn set_instance_state(&mut self, instance_id: Uuid, state: serde_json::Value) -> bool {
+        if let Some(instance) = self.instances.iter_mut().find(|i| i.id == instance_id) {
+            // In a real implementation, this would persist to storage
+            true
+        } else {
+            false
+        }
+    }
+    
+    pub fn get_instance_state(&self, instance_id: Uuid) -> Option<serde_json::Value> {
+        if let Some(instance) = self.instances.iter().find(|i| i.id == instance_id) {
+            Some(json!({})) // Mock implementation
+        } else {
+            None
+        }
+    }
+    
+    pub fn update_instance_state(
+        &mut self,
+        instance_id: Uuid,
+        key: &str,
+        value: serde_json::Value,
+    ) -> bool {
+        if let Some(instance) = self.instances.iter_mut().find(|i| i.id == instance_id) {
+            // In a real implementation, this would update specific state keys
+            true
+        } else {
+            false
+        }
+    }
+    
+    pub fn check_version_compatibility(&self, agent: &Agent, platform_version: &str) -> bool {
+        // Simple version check implementation
+        let config = agent.config.as_object().unwrap();
+        let min_version = config["min_platform_version"].as_str().unwrap();
+        let max_version = config["max_platform_version"].as_str().unwrap();
+        
+        platform_version >= min_version && platform_version <= max_version
+    }
 }
 
 #[test]
@@ -212,4 +252,137 @@ fn test_concurrent_tasks() {
 
     assert_eq!(completed_count, 3);
     assert_eq!(failed_count, 2);
+}
+
+#[test]
+fn test_resource_limits() {
+    let mut manager = MockAgentManager::new();
+
+    // Create agent with resource limits
+    let agent = manager.create_agent(
+        "Resource Test",
+        "Testing resource limits",
+        json!({
+            "memory_limit": 512,
+            "cpu_limit": 1000,
+            "max_instances": 2
+        }),
+    );
+
+    // Create first instance - should succeed
+    let instance1 = manager.create_instance(agent.id);
+    assert!(matches!(instance1.status, InstanceStatus::Starting));
+
+    // Create second instance - should succeed
+    let instance2 = manager.create_instance(agent.id);
+    assert!(matches!(instance2.status, InstanceStatus::Starting));
+
+    // Create third instance - should fail due to max_instances limit
+    let instance3 = manager.create_instance(agent.id);
+    assert!(matches!(instance3.status, InstanceStatus::Error));
+}
+
+#[test]
+fn test_error_recovery() {
+    let mut manager = MockAgentManager::new();
+    
+    // Create agent and instance
+    let agent = manager.create_agent("Recovery Test", "Testing error recovery", json!({}));
+    let instance = manager.create_instance(agent.id);
+    let plan = manager.create_plan(agent.id, "Recovery Plan");
+    
+    // Create task that will fail
+    let task = manager.create_task(plan.id, instance.id, "failing_task");
+    
+    // Simulate task failure
+    assert!(manager.update_task_status(task.id, TaskStatus::Running));
+    assert!(manager.update_task_status(task.id, TaskStatus::Failed));
+    
+    // Test recovery mechanism
+    let recovered_task = manager.create_task(plan.id, instance.id, "recovery_task");
+    assert!(manager.update_task_status(recovered_task.id, TaskStatus::Running));
+    assert!(manager.update_task_status(recovered_task.id, TaskStatus::Completed));
+    
+    // Verify instance recovered
+    assert!(matches!(
+        manager.instances.iter().find(|i| i.id == instance.id).unwrap().status,
+        InstanceStatus::Running
+    ));
+}
+
+#[test]
+fn test_state_persistence() {
+    let mut manager = MockAgentManager::new();
+    
+    // Create agent with initial state
+    let agent = manager.create_agent(
+        "State Test",
+        "Testing state persistence",
+        json!({
+            "initial_state": {
+                "counter": 0,
+                "last_run": null
+            }
+        }),
+    );
+    
+    let instance = manager.create_instance(agent.id);
+    
+    // Update state
+    let new_state = json!({
+        "counter": 1,
+        "last_run": Utc::now().timestamp()
+    });
+    
+    assert!(manager.set_instance_state(instance.id, new_state.clone()));
+    
+    // Verify state persistence
+    let stored_state = manager.get_instance_state(instance.id).unwrap();
+    assert_eq!(stored_state["counter"], 1);
+    assert!(stored_state["last_run"].is_number());
+}
+
+#[test]
+fn test_concurrent_state_updates() {
+    let mut manager = MockAgentManager::new();
+    
+    // Create agent and instance
+    let agent = manager.create_agent("Concurrent Test", "Testing concurrent updates", json!({}));
+    let instance = manager.create_instance(agent.id);
+    
+    // Simulate concurrent state updates
+    let updates = vec![
+        ("counter", json!(1)),
+        ("status", json!("running")),
+        ("timestamp", json!(Utc::now().timestamp())),
+    ];
+    
+    // All updates should succeed and maintain consistency
+    for (key, value) in updates {
+        assert!(manager.update_instance_state(instance.id, key, value.clone()));
+        let stored = manager.get_instance_state(instance.id).unwrap();
+        assert_eq!(stored[key], value);
+    }
+}
+
+#[test]
+fn test_agent_version_compatibility() {
+    let mut manager = MockAgentManager::new();
+    
+    // Create agent with version requirements
+    let agent = manager.create_agent(
+        "Version Test",
+        "Testing version compatibility",
+        json!({
+            "version": "1.0.0",
+            "min_platform_version": "0.5.0",
+            "max_platform_version": "2.0.0"
+        }),
+    );
+    
+    // Test version compatibility checks
+    assert!(manager.check_version_compatibility(&agent, "1.0.0"));
+    assert!(manager.check_version_compatibility(&agent, "1.5.0"));
+    assert!(!manager.check_version_compatibility(&agent, "0.4.0"));
+    assert!(!manager.check_version_compatibility(&agent, "2.1.0"));
 }
