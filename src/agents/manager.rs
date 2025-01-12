@@ -7,7 +7,6 @@ use sqlx::types::Uuid;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use time::OffsetDateTime;
 
 const MAX_RETRIES: u32 = 3;
 const DEFAULT_MEMORY_LIMIT: u64 = 512; // MB
@@ -77,7 +76,8 @@ impl AgentManager {
     pub async fn get_agent(&self, id: Uuid) -> Result<Agent> {
         let record = sqlx::query!(
             r#"
-            SELECT id, name, description, pubkey, enabled, config, created_at
+            SELECT id, name, description, pubkey, enabled, config, 
+                   EXTRACT(EPOCH FROM created_at)::BIGINT as created_at
             FROM agents WHERE id = $1
             "#,
             id
@@ -92,7 +92,7 @@ impl AgentManager {
             pubkey: record.pubkey,
             enabled: record.enabled,
             config: record.config,
-            created_at: record.created_at.unix_timestamp(),
+            created_at: record.created_at,
         })
     }
 
