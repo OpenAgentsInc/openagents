@@ -204,7 +204,7 @@ async fn test_resource_monitoring() {
 #[tokio::test]
 async fn test_state_management() {
     let pool = setup_test_db().await;
-    let manager = AgentManager::new(pool);
+    let manager = AgentManager::new(pool.clone());
 
     // Create agent
     let agent = manager
