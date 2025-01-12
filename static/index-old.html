@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/changelog.css" />
+  <link rel="stylesheet" href="css/videos.css" />
+  <title>OpenAgents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <script src="js/htmx.min.js"></script>
+  <script src="js/client-side-templates.js"></script>
+  <script src="js/mustache.js"></script>
+  <script src="js/three.min.js"></script>
+  <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+</head>
+
+<body>
+  <canvas id="bg"></canvas>
+  <div id="logo-container">
+    <img src="onyx.png" alt="Onyx" id="onyx-logo" />
+  </div>
+  <main id="main">
+    <div class="flex justify-center space-x-4 mt-8">
+      <a href="/changelog" class="text-xs text-white hover:text-zinc-300 underline">View Changelog</a>
+      <a href="/video-series" class="text-xs text-white hover:text-zinc-300 underline">Watch Video Series</a>
+    </div>
+  </main>
+
+
+  <script src="js/OnyxOrb.js"></script>
+  <script src="js/LightingSystem.js"></script>
+  <script src="js/ViewSystem.js"></script>
+  <script src="js/SceneSystem.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    // Reinitialize Twitter widgets after template rendering
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+      if (window.twttr && window.twttr.widgets) {
+        window.twttr.widgets.load();
+      }
+    });
+  </script>
+</body>
+
+</html>

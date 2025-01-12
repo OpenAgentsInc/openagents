@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="HandheldFriendly" content="True"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
+    <meta name="application-name" content="OpenAgents"/>
+    <meta name="description" content="Intelligent software to empower humans."/>
+    <meta name="author" content="OpenAgents, Inc.">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="canonical" href="https://openagents.com"/>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/chat.css"/>
+    <link rel="stylesheet" href="css/changelog.css"/>
+    <link rel="stylesheet" href="css/videos-new.css"/>
+    <script src="js/htmx.min.js"></script>
+    <script src="js/client-side-templates.js"></script>
+    <script src="js/mustache.js"></script>
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+</head>
+
+<body class="bg-black text-white font-mono min-h-screen">
+    <div class="container mx-auto max-w-[60rem] px-4">
+        <div class="py-5 border-b border-zinc-800 mb-5">
+            <div class="text-2xl">OpenAgents, Inc.</div>
+            <p class="mt-2">Intelligent software to empower humans.</p>
+        </div>
+        
+        <div class="flex mb-8">
+            <div class="flex-1 overflow-y-auto p-5 border-r border-zinc-800">
+                <div id="changelog" 
+                     hx-get="/data/changelog.json" 
+                     hx-trigger="load" 
+                     hx-ext="client-side-templates"
+                     mustache-template="changelog-template">
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-5">
+                <div id="videos" 
+                     hx-get="/data/videos.json" 
+                     hx-trigger="load" 
+                     hx-ext="client-side-templates"
+                     mustache-template="videos-template">
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t border-zinc-800 pt-8">
+            <div id="chat-container"
+                 hx-get="templates/chat.mustache"
+                 hx-trigger="load"
+                 mustache-template="chat">
+            </div>
+        </div>
+
+    <template id="changelog-template">
+        <div class="space-y-8">
+            <div class="bg-zinc-900 rounded-lg p-6 space-y-4">
+                <p class="text-xl font-bold text-center">Meet Onyx, your new personal AI agent.</p>
+
+                <p class="text-xl text-center">Beta v0.1.0</p>
+
+                <div class="space-y-2">
+                    <p>Android: <a href="https://github.com/OpenAgentsInc/onyx/releases/download/v0.1.0/Onyx_v0.1.0.apk" class="text-white hover:text-zinc-300 underline" download>Download APK</a> | <a href="https://github.com/OpenAgentsInc/onyx/releases/tag/v0.1.0" class="text-white hover:text-zinc-300 underline" target="_blank">Release notes</a></p>
+
+                    <p>iOS: <a href="https://testflight.apple.com/join/9WfqDTgH" class="text-white hover:text-zinc-300 underline" target="_blank">Download via TestFlight</a></p>
+                </div>
+
+                <p class="text-sm text-zinc-300">The most recent iOS build may still be awaiting approval. In the meantime the TestFlight link will give you access to the previous build. TestFlight will automatically download the latest version once it passes review.</p>
+
+                <p>Videos: <a href="https://x.com/OpenAgentsInc/status/1870030269916340610" class="text-white hover:text-zinc-300 underline" target="_blank">Onyx Beta Launch</a> | <a href="https://x.com/OpenAgentsInc/status/1872388364013379949" class="text-white hover:text-zinc-300 underline" target="_blank">Code by Voice</a></p>
+            </div>
+
+            {{#changes}}
+            <div class="border border-zinc-800 rounded-lg p-4">
+                <div class="text-lg font-bold mb-2">{{version}} - {{date}}</div>
+                <ul class="list-disc list-inside space-y-1">
+                    {{#changes}}
+                    <li>{{.}}</li>
+                    {{/changes}}
+                </ul>
+            </div>
+            {{/changes}}
+        </div>
+    </template>
+
+    <template id="videos-template">
+        <div class="videos">
+            <div class="videos-title">Recent Videos</div>
+            {{#videos}}
+            <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
+                <div class="video-title">{{title}}</div>
+                <div class="video-date">{{date}}</div>
+                <div class="video-text">{{text}}</div>
+                {{#tweetId}}
+                <blockquote class="twitter-tweet" data-conversation="none" data-media-max-width="560" data-theme="dark">
+                    <p lang="en" dir="ltr">Loading X post...</p>
+                    <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}?ref_src=twsrc%5Etfw"></a>
+                </blockquote>
+                {{/tweetId}}
+            </div>
+            {{/videos}}
+        </div>
+    </template>
+
+    <!-- Load bundled scripts -->
+    <script src="dist/ndk.js"></script>
+    <script src="dist/nostr/nostr-chat.js"></script>
+    <script>
+        // Reinitialize Twitter widgets after template rendering
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            if (window.twttr && window.twttr.widgets) {
+                window.twttr.widgets.load();
+            }
+        });
+    </script>
+</body>
+</html>
