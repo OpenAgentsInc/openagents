@@ -1,9 +1,10 @@
 use openagents::agents::agent::{Agent, AgentInstance, Plan, Task, InstanceStatus, PlanStatus, TaskStatus};
 use uuid::Uuid;
 use serde_json::json;
+use chrono::Utc;
 
 // Mock structures for testing
-struct MockAgentManager {
+pub struct MockAgentManager {
     agents: Vec<Agent>,
     instances: Vec<AgentInstance>,
     plans: Vec<Plan>,
@@ -11,7 +12,7 @@ struct MockAgentManager {
 }
 
 impl MockAgentManager {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             agents: Vec::new(),
             instances: Vec::new(),
@@ -20,7 +21,7 @@ impl MockAgentManager {
         }
     }
 
-    fn create_agent(&mut self, name: &str, description: &str, config: serde_json::Value) -> Agent {
+    pub fn create_agent(&mut self, name: &str, description: &str, config: serde_json::Value) -> Agent {
         let agent = Agent {
             id: Uuid::new_v4(),
             name: name.into(),
@@ -28,25 +29,25 @@ impl MockAgentManager {
             pubkey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
             enabled: true,
             config,
-            created_at: chrono::Utc::now().timestamp(),
+            created_at: Utc::now().timestamp(),
         };
         self.agents.push(agent.clone());
         agent
     }
 
-    fn create_instance(&mut self, agent_id: Uuid) -> AgentInstance {
+    pub fn create_instance(&mut self, agent_id: Uuid) -> AgentInstance {
         let instance = AgentInstance {
             id: Uuid::new_v4(),
             agent_id,
             status: InstanceStatus::Starting,
-            created_at: chrono::Utc::now().timestamp(),
+            created_at: Utc::now().timestamp(),
             ended_at: None,
         };
         self.instances.push(instance.clone());
         instance
     }
 
-    fn create_plan(&mut self, agent_id: Uuid, name: &str) -> Plan {
+    pub fn create_plan(&mut self, agent_id: Uuid, name: &str) -> Plan {
         let plan = Plan {
             id: Uuid::new_v4(),
             agent_id,
@@ -54,7 +55,7 @@ impl MockAgentManager {
             description: "Test plan".into(),
             status: PlanStatus::Created,
             task_ids: Vec::new(),
-            created_at: chrono::Utc::now().timestamp(),
+            created_at: Utc::now().timestamp(),
             ended_at: None,
             metadata: json!({}),
         };
@@ -62,7 +63,7 @@ impl MockAgentManager {
         plan
     }
 
-    fn create_task(&mut self, plan_id: Uuid, instance_id: Uuid, task_type: &str) -> Task {
+    pub fn create_task(&mut self, plan_id: Uuid, instance_id: Uuid, task_type: &str) -> Task {
         let task = Task {
             id: Uuid::new_v4(),
             plan_id,
@@ -72,7 +73,7 @@ impl MockAgentManager {
             priority: 1,
             input: json!({}),
             output: None,
-            created_at: chrono::Utc::now().timestamp(),
+            created_at: Utc::now().timestamp(),
             started_at: None,
             ended_at: None,
             error: None,
@@ -81,7 +82,7 @@ impl MockAgentManager {
         task
     }
 
-    fn update_instance_status(&mut self, instance_id: Uuid, status: InstanceStatus) -> bool {
+    pub fn update_instance_status(&mut self, instance_id: Uuid, status: InstanceStatus) -> bool {
         if let Some(instance) = self.instances.iter_mut().find(|i| i.id == instance_id) {
             instance.status = status;
             true
@@ -90,14 +91,14 @@ impl MockAgentManager {
         }
     }
 
-    fn update_task_status(&mut self, task_id: Uuid, status: TaskStatus) -> bool {
+    pub fn update_task_status(&mut self, task_id: Uuid, status: TaskStatus) -> bool {
         if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
             task.status = status;
             if matches!(status, TaskStatus::Running) {
-                task.started_at = Some(chrono::Utc::now().timestamp());
+                task.started_at = Some(Utc::now().timestamp());
             }
             if matches!(status, TaskStatus::Completed | TaskStatus::Failed) {
-                task.ended_at = Some(chrono::Utc::now().timestamp());
+                task.ended_at = Some(Utc::now().timestamp());
             }
             true
         } else {
