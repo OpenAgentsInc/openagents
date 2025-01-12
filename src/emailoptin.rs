@@ -10,8 +10,6 @@ pub struct FormData {
 }
 
 pub async fn subscribe(form: web::Form<FormData>, db: web::Data<PgPool>) -> HttpResponse {
-    let now: DateTime<Utc> = Utc::now();
-    
     match sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at)
@@ -20,7 +18,7 @@ pub async fn subscribe(form: web::Form<FormData>, db: web::Data<PgPool>) -> Http
         Uuid::new_v4(),
         form.email,
         form.name,
-        now.naive_utc()
+        Utc::now()
     )
     .execute(db.as_ref())
     .await
