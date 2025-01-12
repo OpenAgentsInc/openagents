@@ -4,3 +4,6 @@ mod core;
 mod manager;
 #[path = "agent/nostr.rs"]
 mod nostr;
+
+#[path = "nostr/mod.rs"]
+mod nostr_tests;
