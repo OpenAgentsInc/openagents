@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 20:31:46
+Generated on: 2025-01-11 21:52:48
 
 ### Structure
 
@@ -123,11 +123,13 @@ Generated on: 2025-01-11 20:31:46
 |       `-- login.html
 |-- tests/
 |   |-- agent/
+|   |   |-- core.rs
 |   |   |-- manager.rs
 |   |   `-- nostr.rs
 |   |-- nostr/
 |   |   |-- database.rs
 |   |   |-- event.rs
+|   |   |-- mod.rs
 |   |   `-- subscription.rs
 |   |-- admin_middleware.rs
 |   |-- admin_routes.rs
@@ -141,5 +143,5 @@ Generated on: 2025-01-11 20:31:46
 |-- README.md
 `-- spec.yaml
 
-26 directories, 109 files
+26 directories, 111 files
 ```

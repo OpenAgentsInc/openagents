@@ -1,6 +1,6 @@
 use actix_web::{web, HttpResponse};
-use sqlx::PgPool;
 use sqlx::types::time::OffsetDateTime;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]

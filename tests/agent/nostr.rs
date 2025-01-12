@@ -1,8 +1,8 @@
+use chrono::Utc;
 use openagents::agents::agent::{Agent, AgentInstance, InstanceStatus};
 use openagents::nostr::event::Event;
-use uuid::Uuid;
 use serde_json::json;
-use chrono::Utc;
+use uuid::Uuid;
 
 fn create_agent_status_event(agent: &Agent, instance: &AgentInstance) -> Event {
     Event {
@@ -20,7 +20,8 @@ fn create_agent_status_event(agent: &Agent, instance: &AgentInstance) -> Event {
             "status": format!("{:?}", instance.status),
             "name": agent.name,
             "config": agent.config
-        }).to_string(),
+        })
+        .to_string(),
         sig: "0123456789abcdef".into(),
         tagidx: None,
     }
@@ -40,7 +41,8 @@ fn create_agent_task_event(agent: &Agent, task_type: &str, progress: u8) -> Even
         content: json!({
             "task": task_type,
             "progress": progress
-        }).to_string(),
+        })
+        .to_string(),
         sig: "0123456789abcdef".into(),
         tagidx: None,
     }
@@ -59,7 +61,8 @@ fn create_agent_control_event(agent: &Agent, command: &str) -> Event {
         content: json!({
             "command": command,
             "reason": "user_requested"
-        }).to_string(),
+        })
+        .to_string(),
         sig: "0123456789abcdef".into(),
         tagidx: None,
     }
@@ -91,8 +94,11 @@ fn test_agent_status_event() {
     let event = create_agent_status_event(&agent, &instance);
 
     assert_eq!(event.kind, 30001);
-    assert!(event.tags.iter().any(|t| t[0] == "d" && t[1] == "agent_status"));
-    
+    assert!(event
+        .tags
+        .iter()
+        .any(|t| t[0] == "d" && t[1] == "agent_status"));
+
     let content: serde_json::Value = serde_json::from_str(&event.content).unwrap();
     assert_eq!(content["agent_id"].as_str().unwrap(), agent.id.to_string());
     assert_eq!(content["status"].as_str().unwrap(), "Running");
@@ -113,8 +119,11 @@ fn test_agent_task_event() {
     let event = create_agent_task_event(&agent, "analyze_data", 75);
 
     assert_eq!(event.kind, 1001);
-    assert!(event.tags.iter().any(|t| t[0] == "t" && t[1] == "task_update"));
-    
+    assert!(event
+        .tags
+        .iter()
+        .any(|t| t[0] == "t" && t[1] == "task_update"));
+
     let content: serde_json::Value = serde_json::from_str(&event.content).unwrap();
     assert_eq!(content["task"].as_str().unwrap(), "analyze_data");
     assert_eq!(content["progress"].as_u64().unwrap(), 75);
@@ -136,7 +145,7 @@ fn test_agent_control_event() {
 
     assert_eq!(event.kind, 20001);
     assert!(event.tags.iter().any(|t| t[0] == "c" && t[1] == "control"));
-    
+
     let content: serde_json::Value = serde_json::from_str(&event.content).unwrap();
     assert_eq!(content["command"].as_str().unwrap(), "pause");
     assert_eq!(content["reason"].as_str().unwrap(), "user_requested");
@@ -168,6 +177,6 @@ fn test_event_tag_indexing() {
     use std::collections::HashSet;
     let mut check = HashSet::new();
     check.insert("agent_status".into());
-    
+
     assert!(event.generic_tag_val_intersect('d', &check));
 }

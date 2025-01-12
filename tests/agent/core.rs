@@ -1,7 +1,9 @@
-use openagents::agents::agent::{Agent, AgentInstance, Plan, Task, InstanceStatus, PlanStatus, TaskStatus};
-use uuid::Uuid;
-use serde_json::json;
 use chrono::Utc;
+use openagents::agents::agent::{
+    Agent, AgentInstance, InstanceStatus, Plan, PlanStatus, Task, TaskStatus,
+};
+use serde_json::json;
+use uuid::Uuid;
 
 #[test]
 fn test_agent_creation() {
@@ -45,7 +47,7 @@ fn test_agent_instance_lifecycle() {
 fn test_plan_creation_and_tasks() {
     let agent_id = Uuid::new_v4();
     let plan_id = Uuid::new_v4();
-    
+
     let plan = Plan {
         id: plan_id,
         agent_id,
@@ -108,7 +110,7 @@ fn test_task_state_transitions() {
     // Clone task first to avoid ownership issues
     let task1 = task.clone();
     let task2 = task.clone();
-    
+
     // Create a task that simulates completion
     let completed_task = Task {
         status: TaskStatus::Completed,
@@ -157,17 +159,17 @@ fn test_agent_config_validation() {
     };
 
     let config = agent.config.as_object().unwrap();
-    
+
     // Test required fields
     assert!(config.contains_key("version"));
     assert!(config.contains_key("memory_limit"));
     assert!(config.contains_key("cpu_limit"));
-    
+
     // Test capabilities array
     let capabilities = config["capabilities"].as_array().unwrap();
     assert!(capabilities.contains(&json!("read")));
     assert!(capabilities.contains(&json!("write")));
-    
+
     // Test version format
     let version = config["version"].as_str().unwrap();
     assert!(version.split('.').count() == 3);

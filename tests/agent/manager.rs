@@ -1,7 +1,9 @@
-use openagents::agents::agent::{Agent, AgentInstance, Plan, Task, InstanceStatus, PlanStatus, TaskStatus};
-use uuid::Uuid;
-use serde_json::json;
 use chrono::Utc;
+use openagents::agents::agent::{
+    Agent, AgentInstance, InstanceStatus, Plan, PlanStatus, Task, TaskStatus,
+};
+use serde_json::json;
+use uuid::Uuid;
 
 // Mock structures for testing
 pub struct MockAgentManager {
@@ -21,7 +23,12 @@ impl MockAgentManager {
         }
     }
 
-    pub fn create_agent(&mut self, name: &str, description: &str, config: serde_json::Value) -> Agent {
+    pub fn create_agent(
+        &mut self,
+        name: &str,
+        description: &str,
+        config: serde_json::Value,
+    ) -> Agent {
         let agent = Agent {
             id: Uuid::new_v4(),
             name: name.into(),
@@ -110,7 +117,7 @@ impl MockAgentManager {
 #[test]
 fn test_agent_manager_creation() {
     let mut manager = MockAgentManager::new();
-    
+
     // Create an agent
     let _agent = manager.create_agent(
         "Test Agent",
@@ -118,9 +125,9 @@ fn test_agent_manager_creation() {
         json!({
             "version": "1.0.0",
             "memory_limit": 512
-        })
+        }),
     );
-    
+
     assert_eq!(manager.agents.len(), 1);
     assert_eq!(manager.agents[0].name, "Test Agent");
 }
@@ -128,14 +135,14 @@ fn test_agent_manager_creation() {
 #[test]
 fn test_instance_lifecycle_management() {
     let mut manager = MockAgentManager::new();
-    
+
     // Create agent and instance
     let agent = manager.create_agent("Lifecycle Test", "Testing lifecycle", json!({}));
     let instance = manager.create_instance(agent.id);
-    
+
     // Test initial state
     assert!(matches!(instance.status, InstanceStatus::Starting));
-    
+
     // Test status transitions
     assert!(manager.update_instance_status(instance.id, InstanceStatus::Running));
     assert!(manager.update_instance_status(instance.id, InstanceStatus::Paused));
@@ -146,21 +153,21 @@ fn test_instance_lifecycle_management() {
 #[test]
 fn test_plan_and_task_management() {
     let mut manager = MockAgentManager::new();
-    
+
     // Setup agent and instance
     let agent = manager.create_agent("Task Test", "Testing tasks", json!({}));
     let instance = manager.create_instance(agent.id);
-    
+
     // Create plan
     let plan = manager.create_plan(agent.id, "Test Plan");
     assert_eq!(plan.name, "Test Plan");
-    
+
     // Create tasks
     let task1 = manager.create_task(plan.id, instance.id, "task_type_1");
     let task2 = manager.create_task(plan.id, instance.id, "task_type_2");
-    
+
     assert_eq!(manager.tasks.len(), 2);
-    
+
     // Test task status updates
     assert!(manager.update_task_status(task1.id, TaskStatus::Running));
     assert!(manager.update_task_status(task1.id, TaskStatus::Completed));
@@ -170,17 +177,17 @@ fn test_plan_and_task_management() {
 #[test]
 fn test_concurrent_tasks() {
     let mut manager = MockAgentManager::new();
-    
+
     // Setup
     let agent = manager.create_agent("Concurrent Test", "Testing concurrent tasks", json!({}));
     let instance = manager.create_instance(agent.id);
     let plan = manager.create_plan(agent.id, "Concurrent Plan");
-    
+
     // Create multiple tasks
     let tasks: Vec<Task> = (0..5)
         .map(|i| manager.create_task(plan.id, instance.id, &format!("task_{}", i)))
         .collect();
-    
+
     // Simulate concurrent execution
     for (i, task) in tasks.iter().enumerate() {
         assert!(manager.update_task_status(task.id, TaskStatus::Running));
@@ -190,17 +197,19 @@ fn test_concurrent_tasks() {
             assert!(manager.update_task_status(task.id, TaskStatus::Failed));
         }
     }
-    
+
     // Verify final states
-    let completed_count = manager.tasks
+    let completed_count = manager
+        .tasks
         .iter()
         .filter(|t| matches!(t.status, TaskStatus::Completed))
         .count();
-    let failed_count = manager.tasks
+    let failed_count = manager
+        .tasks
         .iter()
         .filter(|t| matches!(t.status, TaskStatus::Failed))
         .count();
-    
+
     assert_eq!(completed_count, 3);
     assert_eq!(failed_count, 2);
 }

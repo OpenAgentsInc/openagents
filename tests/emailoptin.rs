@@ -12,8 +12,11 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
         .expect("Failed to connect to Postgres");
 
     // Drop table if exists and recreate
-    sqlx::query!("DROP TABLE IF EXISTS subscriptions").execute(&connection_pool).await.expect("Failed to drop table");
-    
+    sqlx::query!("DROP TABLE IF EXISTS subscriptions")
+        .execute(&connection_pool)
+        .await
+        .expect("Failed to drop table");
+
     sqlx::query!(
         r#"
         CREATE TABLE subscriptions (
@@ -27,12 +30,13 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     .execute(&connection_pool)
     .await
     .expect("Failed to create subscriptions table");
-    
+
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(connection_pool.clone()))
-            .route("/subscriptions", web::post().to(subscribe))
-    ).await;
+            .route("/subscriptions", web::post().to(subscribe)),
+    )
+    .await;
 
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
 
@@ -47,7 +51,7 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
 
     // Print debug information
     println!("Response status: {}", response.status());
-    
+
     // Assert with more detailed error message
     assert!(
         response.status().is_success(),
@@ -71,12 +75,13 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
     let connection_pool = PgPool::connect_with(configuration.database.connect_options())
         .await
         .expect("Failed to connect to Postgres");
-    
+
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(connection_pool.clone()))
-            .route("/subscriptions", web::post().to(subscribe))
-    ).await;
+            .route("/subscriptions", web::post().to(subscribe)),
+    )
+    .await;
 
     let test_cases = vec![
         ("name=le%20guin", "missing the email"),
