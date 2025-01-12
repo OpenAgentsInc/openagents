@@ -25,17 +25,17 @@
         <header class="py-5 border-b border-zinc-800 mb-5">
             <div class="flex justify-between items-center">
                 <div>
-                    <div class="text-lg font-bold">OpenAgents, Inc.</div>
-                    <p class="text-sm mt-2">Software to increase human agency.</p>
+                    <div class="text-xs font-bold">OpenAgents, Inc.</div>
+                    <p class="text-xs mt-2">Software to increase human agency.</p>
                 </div>
                 <nav>
                     <ul class="flex space-x-6">
-                        <li><a href="/" class="text-sm text-white hover:text-zinc-300">Home</a></li>
-                        <li><a href="/company" class="text-sm text-white hover:text-zinc-300">Company</a></li>
-                        <li><a href="/mobile-app" class="text-sm text-white hover:text-zinc-300">Mobile App</a></li>
-                        <li><a href="/business" class="text-sm text-white hover:text-zinc-300">Business Services</a></li>
-                        <li><a href="/videos" class="text-sm text-white hover:text-zinc-300">Video Series</a></li>
-                        <li><a href="/contact" class="text-sm text-white hover:text-zinc-300">Contact</a></li>
+                        <li><a href="/" class="text-xs text-white hover:text-zinc-300">Home</a></li>
+                        <li><a href="/company" class="text-xs text-white hover:text-zinc-300">Company</a></li>
+                        <li><a href="/mobile-app" class="text-xs text-white hover:text-zinc-300">Mobile App</a></li>
+                        <li><a href="/business" class="text-xs text-white hover:text-zinc-300">Business Services</a></li>
+                        <li><a href="/videos" class="text-xs text-white hover:text-zinc-300">Video Series</a></li>
+                        <li><a href="/contact" class="text-xs text-white hover:text-zinc-300">Contact</a></li>
                     </ul>
                 </nav>
             </div>
@@ -72,9 +72,9 @@
     <template id="changelog-template">
         <div class="space-y-8">
             <div class="bg-zinc-900 rounded-lg p-6 space-y-4">
-                <p class="text-base font-bold text-center">Meet Onyx, your new personal AI agent.</p>
+                <p class="text-xs font-bold text-center">Meet Onyx, your new personal AI agent.</p>
 
-                <p class="text-base text-center">Beta v0.1.0</p>
+                <p class="text-xs text-center">Beta v0.1.0</p>
 
                 <div class="space-y-2">
                     <p>Android: <a href="https://github.com/OpenAgentsInc/onyx/releases/download/v0.1.0/Onyx_v0.1.0.apk" class="text-white hover:text-zinc-300 underline" download>Download APK</a> | <a href="https://github.com/OpenAgentsInc/onyx/releases/tag/v0.1.0" class="text-white hover:text-zinc-300 underline" target="_blank">Release notes</a></p>
@@ -82,14 +82,14 @@
                     <p>iOS: <a href="https://testflight.apple.com/join/9WfqDTgH" class="text-white hover:text-zinc-300 underline" target="_blank">Download via TestFlight</a></p>
                 </div>
 
-                <p class="text-sm text-zinc-300">The most recent iOS build may still be awaiting approval. In the meantime the TestFlight link will give you access to the previous build. TestFlight will automatically download the latest version once it passes review.</p>
+                <p class="text-xs text-zinc-300">The most recent iOS build may still be awaiting approval. In the meantime the TestFlight link will give you access to the previous build. TestFlight will automatically download the latest version once it passes review.</p>
 
                 <p>Videos: <a href="https://x.com/OpenAgentsInc/status/1870030269916340610" class="text-white hover:text-zinc-300 underline" target="_blank">Onyx Beta Launch</a> | <a href="https://x.com/OpenAgentsInc/status/1872388364013379949" class="text-white hover:text-zinc-300 underline" target="_blank">Code by Voice</a></p>
             </div>
 
             {{#changes}}
             <div class="border border-zinc-800 rounded-lg p-4">
-                <div class="text-base font-bold mb-2">{{version}} - {{date}}</div>
+                <div class="text-xs font-bold mb-2">{{version}} - {{date}}</div>
                 <ul class="list-disc list-inside space-y-1">
                     {{#changes}}
                     <li>{{.}}</li>
