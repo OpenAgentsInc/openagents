@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 23:29:59
+Generated on: 2025-01-12 09:19:27
 
 ### Structure
 
@@ -28,12 +28,14 @@ Generated on: 2025-01-11 23:29:59
 |   `-- rust-setup.md
 |-- migrations/
 |   |-- 20250110000000_initial.sql
-|   `-- 20250112001624_create_subscriptions_table.sql
+|   |-- 20250112001624_create_subscriptions_table.sql
+|   `-- 20250112002000_create_agent_tables.sql
 |-- scripts/
 |   `-- generate_hierarchy.sh*
 |-- src/
 |   |-- agents/
 |   |   |-- agent.rs
+|   |   |-- manager.rs
 |   |   `-- mod.rs
 |   |-- nostr/
 |   |   |-- db.rs
@@ -58,7 +60,6 @@ Generated on: 2025-01-11 23:29:59
 |   |-- css/
 |   |   |-- changelog.css
 |   |   |-- chat.css
-|   |   |-- new.css
 |   |   |-- style.css
 |   |   |-- videos-new.css
 |   |   `-- videos.css
@@ -67,6 +68,8 @@ Generated on: 2025-01-11 23:29:59
 |   |   `-- videos.json
 |   |-- dist/
 |   |   |-- nostr/
+|   |   |   |-- nostr-agent.js
+|   |   |   |-- nostr-agent.js.map
 |   |   |   |-- nostr-chat.js
 |   |   |   `-- nostr-chat.js.map
 |   |   |-- ndk.js
@@ -93,10 +96,12 @@ Generated on: 2025-01-11 23:29:59
 |   |   |-- mustache.js
 |   |   `-- three.min.js
 |   |-- nostr/
+|   |   |-- agent-methods.ts
 |   |   |-- base.ts
 |   |   |-- channel-methods.ts
 |   |   |-- example.html
 |   |   |-- message-methods.ts
+|   |   |-- nostr-agent.ts
 |   |   |-- nostr-chat.js
 |   |   |-- nostr-chat.ts
 |   |   |-- storage.ts
@@ -106,6 +111,7 @@ Generated on: 2025-01-11 23:29:59
 |   |   |-- changelog.mustache
 |   |   `-- chat.mustache
 |   |-- README.md
+|   |-- agents.html
 |   |-- favicon.ico
 |   |-- index.html
 |   |-- justfile
@@ -125,6 +131,9 @@ Generated on: 2025-01-11 23:29:59
 |   |-- agent/
 |   |   |-- core.rs
 |   |   |-- manager.rs
+|   |   |-- manager_comprehensive.rs
+|   |   |-- manager_impl.rs
+|   |   |-- mod.rs
 |   |   `-- nostr.rs
 |   |-- nostr/
 |   |   |-- database.rs
@@ -141,7 +150,8 @@ Generated on: 2025-01-11 23:29:59
 |-- DEVELOPMENT.md
 |-- Dockerfile
 |-- README.md
+|-- html
 `-- spec.yaml
 
-26 directories, 111 files
+26 directories, 121 files
 ```

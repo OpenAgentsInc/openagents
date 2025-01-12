@@ -24,7 +24,10 @@ async fn test_agent_validation_errors() {
         )
         .await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Invalid pubkey length"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Invalid pubkey length"));
 
     // Test invalid config - memory limit
     let result = manager
@@ -89,7 +92,11 @@ async fn test_instance_state_persistence() {
     let instance = manager.create_instance(agent.id).await.unwrap();
 
     // Verify initial state
-    let state = manager.get_instance_state(instance.id).await.unwrap().unwrap();
+    let state = manager
+        .get_instance_state(instance.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(state["counter"], 0);
     assert_eq!(state["status"], "initialized");
     assert_eq!(state["nested"]["key"], "value");
@@ -108,7 +115,11 @@ async fn test_instance_state_persistence() {
         .unwrap();
 
     // Verify updated state
-    let state = manager.get_instance_state(instance.id).await.unwrap().unwrap();
+    let state = manager
+        .get_instance_state(instance.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(state["counter"], 1);
     assert_eq!(state["status"], "running");
     assert_eq!(state["new_key"], true);
@@ -245,7 +256,11 @@ async fn test_cache_consistency() {
         .unwrap();
 
     // Verify instance exists and is running by checking state
-    let cached_state = manager.get_instance_state(instance.id).await.unwrap().unwrap();
+    let cached_state = manager
+        .get_instance_state(instance.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(cached_state, state);
 
     // Verify metrics indirectly through resource limits check
@@ -273,17 +288,17 @@ async fn test_edge_cases() {
         .unwrap();
 
     // Disable agent in database
-    sqlx::query!(
-        "UPDATE agents SET enabled = false WHERE id = $1",
-        agent.id
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    sqlx::query!("UPDATE agents SET enabled = false WHERE id = $1", agent.id)
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let result = manager.create_instance(agent.id).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Agent is disabled"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Agent is disabled"));
 
     // Test empty state
     let agent = manager

@@ -17,8 +17,15 @@ pub async fn new_page() -> impl Responder {
     NamedFile::open(path)
 }
 
+#[get("/agents")]
+pub async fn agents_page() -> impl Responder {
+    let path: PathBuf = "./static/agents.html".into();
+    NamedFile::open(path)
+}
+
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(health_check)
         .service(new_page)
+        .service(agents_page)
         .route("/subscriptions", web::post().to(subscribe));
 }

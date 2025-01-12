@@ -35,12 +35,7 @@ async fn test_agent_creation_and_validation() {
 
     // Test invalid pubkey
     let result = manager
-        .create_agent(
-            "Invalid Agent",
-            "Invalid pubkey",
-            "invalid",
-            json!({}),
-        )
+        .create_agent("Invalid Agent", "Invalid pubkey", "invalid", json!({}))
         .await;
     assert!(result.is_err());
 
@@ -225,7 +220,11 @@ async fn test_state_management() {
     let instance = manager.create_instance(agent.id).await.unwrap();
 
     // Verify initial state
-    let state = manager.get_instance_state(instance.id).await.unwrap().unwrap();
+    let state = manager
+        .get_instance_state(instance.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(state["counter"], 0);
     assert_eq!(state["status"], "initialized");
 
@@ -243,7 +242,11 @@ async fn test_state_management() {
         .unwrap();
 
     // Verify updated state
-    let state = manager.get_instance_state(instance.id).await.unwrap().unwrap();
+    let state = manager
+        .get_instance_state(instance.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(state["counter"], 1);
     assert_eq!(state["status"], "running");
     assert_eq!(state["data"]["key"], "value");
