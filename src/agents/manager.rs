@@ -1,6 +1,5 @@
-use crate::agents::agent::{Agent, AgentInstance, InstanceStatus, Plan, PlanStatus, Task, TaskStatus};
-use crate::database::Database;
-use crate::nostr::event::Event;
+use crate::agents::agent::{Agent, AgentInstance, InstanceStatus};
+use sqlx::PgPool;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use serde_json::json;
@@ -14,16 +13,16 @@ const DEFAULT_MEMORY_LIMIT: u64 = 512; // MB
 const DEFAULT_CPU_LIMIT: f64 = 100.0; // Percentage
 
 pub struct AgentManager {
-    db: Database,
+    pool: PgPool,
     instances: Arc<RwLock<HashMap<Uuid, AgentInstance>>>,
     instance_states: Arc<RwLock<HashMap<Uuid, serde_json::Value>>>,
     instance_metrics: Arc<RwLock<HashMap<Uuid, serde_json::Value>>>,
 }
 
 impl AgentManager {
-    pub fn new(db: Database) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self {
-            db,
+            pool,
             instances: Arc::new(RwLock::new(HashMap::new())),
             instance_states: Arc::new(RwLock::new(HashMap::new())),
             instance_metrics: Arc::new(RwLock::new(HashMap::new())),
@@ -66,9 +65,9 @@ impl AgentManager {
             agent.description,
             agent.pubkey,
             agent.enabled,
-            agent.config
+            agent.config as serde_json::Value
         )
-        .execute(&self.db.pool)
+        .execute(&self.pool)
         .await?;
 
         Ok(agent)
@@ -77,13 +76,12 @@ impl AgentManager {
     pub async fn get_agent(&self, id: Uuid) -> Result<Agent> {
         let record = sqlx::query!(
             r#"
-            SELECT id, name, description, pubkey, enabled, config, 
-                   EXTRACT(EPOCH FROM created_at) as created_at
+            SELECT id, name, description, pubkey, enabled, config, created_at
             FROM agents WHERE id = $1
             "#,
             id
         )
-        .fetch_one(&self.db.pool)
+        .fetch_one(&self.pool)
         .await?;
 
         Ok(Agent {
@@ -93,7 +91,7 @@ impl AgentManager {
             pubkey: record.pubkey,
             enabled: record.enabled,
             config: record.config,
-            created_at: record.created_at.unwrap_or(0.0) as i64,
+            created_at: record.created_at.timestamp(),
         })
     }
 
@@ -110,7 +108,7 @@ impl AgentManager {
             "SELECT COUNT(*) as count FROM agent_instances WHERE agent_id = $1 AND status != 'Stopped'",
             agent_id
         )
-        .fetch_one(&self.db.pool)
+        .fetch_one(&self.pool)
         .await?;
 
         let max_instances = agent.config["max_instances"]
@@ -139,7 +137,7 @@ impl AgentManager {
             instance.agent_id,
             format!("{:?}", instance.status),
         )
-        .execute(&self.db.pool)
+        .execute(&self.pool)
         .await?;
 
         // Initialize instance state if specified
@@ -176,7 +174,7 @@ impl AgentManager {
             "SELECT id FROM agent_instances WHERE id = $1",
             instance_id
         )
-        .fetch_optional(&self.db.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
         if instance.is_none() {
@@ -194,7 +192,7 @@ impl AgentManager {
             format!("{:?}", status),
             instance_id
         )
-        .execute(&self.db.pool)
+        .execute(&self.pool)
         .await?;
 
         // Update cache
@@ -216,7 +214,7 @@ impl AgentManager {
             "SELECT id FROM agent_instances WHERE id = $1",
             instance_id
         )
-        .fetch_optional(&self.db.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
         if instance.is_none() {
@@ -228,7 +226,7 @@ impl AgentManager {
             "DELETE FROM agent_states WHERE instance_id = $1",
             instance_id
         )
-        .execute(&self.db.pool)
+        .execute(&self.pool)
         .await?;
 
         // Insert new state
@@ -241,9 +239,9 @@ impl AgentManager {
                     "#,
                     instance_id,
                     key,
-                    value
+                    value as serde_json::Value
                 )
-                .execute(&self.db.pool)
+                .execute(&self.pool)
                 .await?;
             }
         }
@@ -266,7 +264,7 @@ impl AgentManager {
             "#,
             instance_id
         )
-        .fetch_all(&self.db.pool)
+        .fetch_all(&self.pool)
         .await?;
 
         if records.is_empty() {
@@ -294,13 +292,13 @@ impl AgentManager {
             VALUES ($1, $2, $3, $4, $5, $6)
             "#,
             instance_id,
-            metrics["memory_usage"].as_i64().unwrap_or(0),
+            metrics["memory_usage"].as_i64().unwrap_or(0) as i32,
             metrics["cpu_usage"].as_f64().unwrap_or(0.0),
-            metrics["task_count"].as_i64().unwrap_or(0),
-            metrics["error_count"].as_i64().unwrap_or(0),
-            metrics["uptime"].as_i64().unwrap_or(0)
+            metrics["task_count"].as_i64().unwrap_or(0) as i32,
+            metrics["error_count"].as_i64().unwrap_or(0) as i32,
+            metrics["uptime"].as_i64().unwrap_or(0) as i32
         )
-        .execute(&self.db.pool)
+        .execute(&self.pool)
         .await?;
 
         // Update cache
@@ -375,35 +373,5 @@ impl AgentManager {
         }
 
         Ok(serde_json::Value::Object(config))
-    }
-
-    pub async fn emit_status_event(&self, instance_id: Uuid) -> Result<Event> {
-        let instance = match self.instances.read().await.get(&instance_id) {
-            Some(i) => i.clone(),
-            None => return Err(anyhow!("Instance not found")),
-        };
-
-        let agent = self.get_agent(instance.agent_id).await?;
-        
-        Ok(Event {
-            id: format!("status_{}", Uuid::new_v4()),
-            pubkey: agent.pubkey.clone(),
-            created_at: Utc::now().timestamp(),
-            kind: 30001,
-            tags: vec![
-                vec!["d".into(), "agent_status".into()],
-                vec!["p".into(), agent.pubkey.clone()],
-            ],
-            content: json!({
-                "agent_id": agent.id.to_string(),
-                "instance_id": instance.id.to_string(),
-                "status": format!("{:?}", instance.status),
-                "name": agent.name,
-                "config": agent.config
-            })
-            .to_string(),
-            sig: "0".repeat(64),
-            tagidx: None,
-        })
     }
 }
