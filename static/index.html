@@ -31,42 +31,15 @@
 
 <body class="bg-black text-white font-mono min-h-screen mx-auto max-w-[60rem] border border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1">
     <div class="container px-2">
-        <header class="py-2 mb-5">
-            <div class="flex justify-between items-center w-full">
-                <span class="text-lg font-bold">OpenAgents</span>
-            </div>
-            <div class="mt-4">
-                <nav>
-                    <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-                    </ul>
-                </nav>
-            </div>
-        </header>
+        <div hx-get="/templates/header.mustache"
+             hx-trigger="load"
+             hx-ext="client-side-templates"
+             mustache-template="header-template">
+        </div>
 
         <template id="button-template">
             <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6" href="{{href}}">{{text}}</a>
         </template>
     </div>
-
-    <script>
-        const buttons = [
-            { href: "/", text: "Home" },
-            { href: "/mobile-app", text: "Mobile App" },
-            { href: "/business", text: "Services" },
-            { href: "/video-series", text: "Video Series" },
-            { href: "/company", text: "Company" },
-            { href: "/contact", text: "Contact" }
-        ];
-
-        const template = document.getElementById('button-template').innerHTML;
-        const navButtons = document.getElementById('nav-buttons');
-
-        buttons.forEach(button => {
-            const li = document.createElement('li');
-            li.className = "flex justify-center mb-1";
-            li.innerHTML = Mustache.render(template, button);
-            navButtons.appendChild(li);
-        });
-    </script>
 </body>
 </html>
