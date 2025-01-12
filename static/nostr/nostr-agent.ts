@@ -1,10 +1,11 @@
-import NDK from '@nostr-dev-kit/ndk'
+import NDK, { NDKNip07Signer } from '@nostr-dev-kit/ndk'
 import { NostrAgentMethods } from './agent-methods'
 
 declare global {
   interface Window {
     NDK: typeof NDK
     NostrAgent: typeof NostrAgent
+    nostr?: any
   }
 }
 
@@ -23,7 +24,10 @@ export class NostrAgent extends NostrAgentMethods {
 
       // Try to get NIP-07 signer
       try {
-        this.signer = new NDK.Signer()
+        if (!window.nostr) {
+          throw new Error('No NIP-07 provider found. Please install a Nostr signer extension.')
+        }
+        this.signer = new NDKNip07Signer()
         await this.api.connect()
       } catch (error) {
         this.handleError('Failed to initialize NIP-07 signer', error)
