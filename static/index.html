@@ -29,12 +29,12 @@
                         <li hx-get="/templates/button.mustache" 
                             hx-trigger="load" 
                             hx-ext="client-side-templates"
-                            mustache-template="button"
+                            mustache-template="button-template"
                             hx-vals='{"href": "/", "text": "Home"}'></li>
                         <li hx-get="/templates/button.mustache" 
                             hx-trigger="load" 
                             hx-ext="client-side-templates"
-                            mustache-template="button"
+                            mustache-template="button-template"
                             hx-vals='{"href": "/company", "text": "Company"}'></li>
                         <li hx-get="/templates/button.mustache" 
                             hx-trigger="load" 
@@ -60,5 +60,10 @@
                 </nav>
             </div>
         </header>
+
+        <template id="button-template">
+            {{{template}}}
+        </template>
+    </div>
 </body>
 </html>
