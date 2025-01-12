@@ -1,8 +1,8 @@
 use actix_web::{test, web, App};
-use openagents::server::admin::routes::{admin_stats, create_demo_event};
-use openagents::event::Event;
-use tokio::sync::Mutex;
 use lazy_static::lazy_static;
+use openagents::event::Event;
+use openagents::server::admin::routes::{admin_stats, create_demo_event};
+use tokio::sync::Mutex;
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -30,7 +30,7 @@ async fn setup_test_db() -> sqlx::PgPool {
             tags JSONB NOT NULL,
             content TEXT NOT NULL,
             sig TEXT NOT NULL
-        )"
+        )",
     )
     .execute(&pool)
     .await
@@ -43,11 +43,14 @@ async fn setup_test_db() -> sqlx::PgPool {
 async fn test_create_demo_event() {
     // Ensure tests run sequentially
     let _lock = TEST_MUTEX.lock().await;
-    
+
     let pool = setup_test_db().await;
 
     // Set test database URL for the application code
-    std::env::set_var("DATABASE_URL", "postgres://postgres:password@localhost:5432/openagents_test");
+    std::env::set_var(
+        "DATABASE_URL",
+        "postgres://postgres:password@localhost:5432/openagents_test",
+    );
 
     // Initialize app with test database
     let app = test::init_service(
@@ -96,11 +99,14 @@ async fn test_create_demo_event() {
 async fn test_admin_stats() {
     // Ensure tests run sequentially
     let _lock = TEST_MUTEX.lock().await;
-    
+
     let pool = setup_test_db().await;
 
     // Set test database URL for the application code
-    std::env::set_var("DATABASE_URL", "postgres://postgres:password@localhost:5432/openagents_test");
+    std::env::set_var(
+        "DATABASE_URL",
+        "postgres://postgres:password@localhost:5432/openagents_test",
+    );
 
     // Initialize app with test database
     let app = test::init_service(
