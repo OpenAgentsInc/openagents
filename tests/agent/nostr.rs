@@ -1,13 +1,14 @@
-use openagents::nostr::event::Event;
 use openagents::agents::agent::{Agent, AgentInstance, InstanceStatus};
+use openagents::nostr::event::Event;
 use uuid::Uuid;
 use serde_json::json;
+use chrono::Utc;
 
 fn create_agent_status_event(agent: &Agent, instance: &AgentInstance) -> Event {
     Event {
         id: "a6b6c6d6e6f6".into(),
         pubkey: agent.pubkey.clone(),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         kind: 30001,
         tags: vec![
             vec!["d".into(), "agent_status".into()],
@@ -29,7 +30,7 @@ fn create_agent_task_event(agent: &Agent, task_type: &str, progress: u8) -> Even
     Event {
         id: "b7c7d7e7f7g7".into(),
         pubkey: agent.pubkey.clone(),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         kind: 1001,
         tags: vec![
             vec!["p".into(), agent.pubkey.clone()],
@@ -49,7 +50,7 @@ fn create_agent_control_event(agent: &Agent, command: &str) -> Event {
     Event {
         id: "c8d8e8f8g8h8".into(),
         pubkey: agent.pubkey.clone(),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         kind: 20001,
         tags: vec![
             vec!["p".into(), agent.pubkey.clone()],
@@ -76,14 +77,14 @@ fn test_agent_status_event() {
             "version": "1.0.0",
             "memory_limit": 512
         }),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
     };
 
     let instance = AgentInstance {
         id: Uuid::new_v4(),
         agent_id: agent.id,
         status: InstanceStatus::Running,
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         ended_at: None,
     };
 
@@ -106,7 +107,7 @@ fn test_agent_task_event() {
         pubkey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
         enabled: true,
         config: json!({}),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
     };
 
     let event = create_agent_task_event(&agent, "analyze_data", 75);
@@ -128,7 +129,7 @@ fn test_agent_control_event() {
         pubkey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
         enabled: true,
         config: json!({}),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
     };
 
     let event = create_agent_control_event(&agent, "pause");
@@ -150,14 +151,14 @@ fn test_event_tag_indexing() {
         pubkey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
         enabled: true,
         config: json!({}),
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
     };
 
     let instance = AgentInstance {
         id: Uuid::new_v4(),
         agent_id: agent.id,
         status: InstanceStatus::Running,
-        created_at: chrono::Utc::now().timestamp(),
+        created_at: Utc::now().timestamp(),
         ended_at: None,
     };
 
