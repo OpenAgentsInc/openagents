@@ -283,4 +283,108 @@ mod tests {
         assert!(manager.check_version_compatibility(&agent, "1.5"));
         assert!(!manager.check_version_compatibility(&agent, "0.9"));
     }
+
+    #[test]
+    fn test_instance_limits() {
+        let mut manager = MockAgentManager::new();
+        
+        // Create agent with max 1 instance
+        let config = json!({
+            "max_instances": 1,
+            "min_platform_version": "1.0",
+            "max_platform_version": "2.0"
+        });
+        
+        let agent = manager.create_agent("test_agent", "Test Agent", config);
+        
+        // First instance should succeed
+        let instance1 = manager.create_instance(agent.id);
+        assert!(matches!(instance1.status, InstanceStatus::Starting));
+        
+        // Second instance should fail
+        let instance2 = manager.create_instance(agent.id);
+        assert!(matches!(instance2.status, InstanceStatus::Error));
+        assert!(instance2.ended_at.is_some());
+    }
+
+    #[test]
+    fn test_error_recovery() {
+        let mut manager = MockAgentManager::new();
+        
+        let config = json!({
+            "max_instances": 2,
+            "min_platform_version": "1.0",
+            "max_platform_version": "2.0"
+        });
+        
+        let agent = manager.create_agent("test_agent", "Test Agent", config);
+        let instance = manager.create_instance(agent.id);
+        let plan = manager.create_plan(agent.id, "test_plan");
+        let task = manager.create_task(plan.id, instance.id, "test_task");
+        
+        // Simulate error and recovery
+        assert!(manager.update_task_status(task.id, TaskStatus::Failed));
+        assert!(manager.update_instance_status(instance.id, InstanceStatus::Error));
+        
+        // Verify instance recovered to Running state
+        if let Some(recovered_instance) = manager.instances.iter().find(|i| i.id == instance.id) {
+            assert!(matches!(recovered_instance.status, InstanceStatus::Running));
+        }
+    }
+
+    #[test]
+    fn test_instance_state_management() {
+        let mut manager = MockAgentManager::new();
+        
+        let config = json!({
+            "max_instances": 1,
+            "initial_state": {"counter": 0}
+        });
+        
+        let agent = manager.create_agent("test_agent", "Test Agent", config);
+        let instance = manager.create_instance(agent.id);
+        
+        // Test initial state
+        assert_eq!(
+            manager.get_instance_state(instance.id),
+            Some(json!({"counter": 0}))
+        );
+        
+        // Test state updates
+        assert!(manager.update_instance_state(instance.id, "counter", json!(1)));
+        assert!(manager.update_instance_state(instance.id, "status", json!("ready")));
+        
+        // Verify final state
+        let final_state = manager.get_instance_state(instance.id).unwrap();
+        assert_eq!(final_state["counter"], json!(1));
+        assert_eq!(final_state["status"], json!("ready"));
+        
+        // Test non-existent instance
+        assert!(!manager.update_instance_state(Uuid::new_v4(), "test", json!(true)));
+    }
+
+    #[test]
+    fn test_task_status_transitions() {
+        let mut manager = MockAgentManager::new();
+        
+        let config = json!({"max_instances": 1});
+        let agent = manager.create_agent("test_agent", "Test Agent", config);
+        let instance = manager.create_instance(agent.id);
+        let plan = manager.create_plan(agent.id, "test_plan");
+        let task = manager.create_task(plan.id, instance.id, "test_task");
+        
+        // Test valid transitions
+        assert!(manager.update_task_status(task.id, TaskStatus::Scheduled));
+        assert!(manager.update_task_status(task.id, TaskStatus::Running));
+        assert!(manager.update_task_status(task.id, TaskStatus::Completed));
+        
+        // Test non-existent task
+        assert!(!manager.update_task_status(Uuid::new_v4(), TaskStatus::Running));
+        
+        // Verify timestamps
+        if let Some(completed_task) = manager.tasks.iter().find(|t| t.id == task.id) {
+            assert!(completed_task.started_at.is_some());
+            assert!(completed_task.ended_at.is_some());
+        }
+    }
 }
