@@ -29,7 +29,7 @@ bitcoin_hashes = "0.12"
 secp256k1 = { version = "0.27", features = ["rand", "bitcoin_hashes", "global-context"] }
 chrono = "0.4"
 lazy_static = "1.4"
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "json", "tls-native-tls"] }
+sqlx = { version = "0.7", features = ["time", "uuid", "runtime-tokio", "postgres", "json", "tls-native-tls"] }
 config = "0.13"
 secrecy = { version = "0.8", features = ["serde"] }
 tracing = { version = "0.1", features = ["log"] }
