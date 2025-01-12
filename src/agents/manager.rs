@@ -92,7 +92,7 @@ impl AgentManager {
             pubkey: record.pubkey,
             enabled: record.enabled,
             config: record.config,
-            created_at: record.created_at,
+            created_at: record.created_at.unwrap_or(0),
         })
     }
 
