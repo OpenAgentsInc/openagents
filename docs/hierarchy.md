@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-11 19:53:18
+Generated on: 2025-01-11 21:52:48
 
 ### Structure
 
@@ -33,7 +33,8 @@ Generated on: 2025-01-11 19:53:18
 |   `-- generate_hierarchy.sh*
 |-- src/
 |   |-- agents/
-|   |   `-- agent.rs
+|   |   |-- agent.rs
+|   |   `-- mod.rs
 |   |-- nostr/
 |   |   |-- db.rs
 |   |   |-- event.rs
@@ -121,12 +122,18 @@ Generated on: 2025-01-11 19:53:18
 |       |-- dashboard.html
 |       `-- login.html
 |-- tests/
+|   |-- agent/
+|   |   |-- core.rs
+|   |   |-- manager.rs
+|   |   `-- nostr.rs
 |   |-- nostr/
 |   |   |-- database.rs
 |   |   |-- event.rs
+|   |   |-- mod.rs
 |   |   `-- subscription.rs
 |   |-- admin_middleware.rs
 |   |-- admin_routes.rs
+|   |-- agent.rs
 |   |-- emailoptin.rs
 |   `-- health_check.rs
 |-- Cargo.lock
@@ -136,5 +143,5 @@ Generated on: 2025-01-11 19:53:18
 |-- README.md
 `-- spec.yaml
 
-25 directories, 105 files
+26 directories, 111 files
 ```
