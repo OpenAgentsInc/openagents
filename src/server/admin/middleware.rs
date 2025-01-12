@@ -16,7 +16,7 @@ impl Default for AdminAuth {
 
 impl AdminAuth {
     pub fn new() -> Self {
-        Self::default()
+        AdminAuth
     }
 }
 
