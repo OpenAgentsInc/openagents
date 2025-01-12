@@ -110,13 +110,17 @@ fn test_task_state_transitions() {
     assert!(task.ended_at.is_none());
     assert!(task.error.is_none());
 
+    // Clone task first to avoid ownership issues
+    let task1 = task.clone();
+    let task2 = task.clone();
+    
     // Create a task that simulates completion
     let completed_task = Task {
         status: TaskStatus::Completed,
         started_at: Some(Utc::now().timestamp()),
         ended_at: Some(Utc::now().timestamp()),
         output: Some(json!({"result": "success"})),
-        ..task
+        ..task1
     };
 
     assert!(matches!(completed_task.status, TaskStatus::Completed));
@@ -130,7 +134,7 @@ fn test_task_state_transitions() {
         started_at: Some(Utc::now().timestamp()),
         ended_at: Some(Utc::now().timestamp()),
         error: Some("Test error".into()),
-        ..task
+        ..task2
     };
 
     assert!(matches!(failed_task.status, TaskStatus::Failed));
