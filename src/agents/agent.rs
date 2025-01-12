@@ -11,8 +11,8 @@ pub struct Agent {
     pub description: String,
     // Nostr public key for agent identification and messaging
     pub pubkey: String,
-    // Current operational status (running, stopped, etc)
-    pub status: AgentStatus,
+    // Whether this agent definition is enabled for creating new instances
+    pub enabled: bool,
     // JSON configuration settings
     pub config: serde_json::Value,
     // Unix timestamp of agent creation
@@ -21,6 +21,12 @@ pub struct Agent {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AgentInstance {
+    // Unique identifier for this instance
+    pub id: Uuid,
+    // Reference to the parent agent
+    pub agent_id: Uuid,
+    // Current operational status of this instance
+    pub status: InstanceStatus,
     // Unix timestamp when this instance started running
     pub created_at: i64,
     // Unix timestamp when this instance stopped running (None if still running)
@@ -28,9 +34,11 @@ pub struct AgentInstance {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum AgentStatus {
+pub enum InstanceStatus {
+    Starting,
     Running,
-    Stopped,
     Paused,
+    Stopping,
+    Stopped,
     Error,
 }
