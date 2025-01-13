@@ -4,7 +4,6 @@ use axum::{
     routing::get,
     Router,
     http::header::HeaderMap,
-    extract::Path,
 };
 use tower_http::services::ServeDir;
 use std::path::PathBuf;
