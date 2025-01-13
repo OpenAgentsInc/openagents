@@ -24,6 +24,25 @@
              hx-trigger="load"
              mustache-template="header-template"
              hx-preserve="true">
+            <header class="py-2 mb-5">
+                <div class="flex justify-between items-center w-full">
+                    <span class="text-lg font-bold">OpenAgents</span>
+                </div>
+                <div class="mt-4">
+                    <nav>
+                        <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/"
+                                   hx-boost="true"
+                                   hx-push-url="true"
+                                   hx-target="#content"
+                                   hx-swap="innerHTML show:top">Home</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            </header>
         </div>
 
         <template id="header-template">
