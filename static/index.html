@@ -22,14 +22,31 @@
         <div id="header-container"
              hx-get="/templates/header.json"
              hx-trigger="load"
-             mustache-template="header-template">
+             mustache-template="header-template"
+             hx-preserve="true">
         </div>
 
         <template id="header-template">
-            <div hx-get="/templates/header.mustache"
-                 hx-trigger="load"
-                 mustache-template="header-content">
-            </div>
+            <header class="py-2 mb-5">
+                <div class="flex justify-between items-center w-full">
+                    <span class="text-lg font-bold">OpenAgents</span>
+                </div>
+                <div class="mt-4">
+                    <nav>
+                        <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
+                            {{#buttons}}
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="{{href}}"
+                                   hx-boost="true"
+                                   hx-target="body"
+                                   hx-swap="innerHTML">{{text}}</a>
+                            </li>
+                            {{/buttons}}
+                        </ul>
+                    </nav>
+                </div>
+            </header>
         </template>
 
         <div id="content">
