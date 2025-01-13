@@ -18,43 +18,46 @@
 
 <body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
     <div class="container mx-auto">
-        <!-- Header container without template processing for navigation -->
-        <div id="header-container">
-            <header class="py-2 mb-5">
-                <div class="flex justify-between items-center w-full">
-                    <span class="text-lg font-bold">OpenAgents</span>
-                </div>
-                <div class="mt-4">
-                    <nav>
-                        <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-                            <!-- This will be replaced by the template -->
+        <header class="py-2 mb-5">
+            <div class="flex justify-between items-center w-full">
+                <span class="text-lg font-bold">OpenAgents</span>
+            </div>
+            <div class="mt-4">
+                <nav>
+                    <div id="nav-buttons"
+                         hx-ext="client-side-templates"
+                         hx-get="/templates/header.json"
+                         hx-trigger="load"
+                         mustache-template="header-template"
+                         hx-swap="innerHTML">
+                        <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6">
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/"
+                                   hx-boost="true"
+                                   hx-push-url="true"
+                                   hx-target="#content"
+                                   hx-swap="innerHTML show:top">Home</a>
+                            </li>
                         </ul>
-                    </nav>
-                </div>
-            </header>
-        </div>
-
-        <!-- Separate container for template loading -->
-        <div id="header-template-loader" 
-             hx-ext="client-side-templates"
-             hx-get="/templates/header.json"
-             hx-trigger="load"
-             mustache-template="header-template"
-             hx-target="#nav-buttons"
-             hx-swap="innerHTML">
-        </div>
+                    </div>
+                </nav>
+            </div>
+        </header>
 
         <template id="header-template">
-            {{#buttons}}
-            <li class="flex justify-center mb-1">
-                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                   href="{{href}}"
-                   hx-boost="true"
-                   hx-push-url="true"
-                   hx-target="#content"
-                   hx-swap="innerHTML show:top">{{text}}</a>
-            </li>
-            {{/buttons}}
+            <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6">
+                {{#buttons}}
+                <li class="flex justify-center mb-1">
+                    <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                       href="{{href}}"
+                       hx-boost="true"
+                       hx-push-url="true"
+                       hx-target="#content"
+                       hx-swap="innerHTML show:top">{{text}}</a>
+                </li>
+                {{/buttons}}
+            </ul>
         </template>
 
         <div id="content">
