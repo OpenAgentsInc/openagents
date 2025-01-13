@@ -9,19 +9,61 @@
 <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
     <div class="flex min-h-screen mx-auto">
         <div class="w-[60rem] m-6 px-4 border border-white">
-            <div class="flex gap-4 py-4">
+            <div class="grid grid-cols-3 lg:grid-cols-6 gap-4 py-4">
                 <a href="/" 
-                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
                    hx-get="/"
                    hx-push-url="true"
                    hx-target="#content"
-                   hx-swap="innerHTML">Home</a>
-                <a href="/about" 
-                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
-                   hx-get="/about"
+                   hx-swap="innerHTML">
+                   Home
+                   {% if path == "/" %}<span class="w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+                </a>
+                <a href="/mobile-app" 
+                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+                   hx-get="/mobile-app"
                    hx-push-url="true"
                    hx-target="#content"
-                   hx-swap="innerHTML">About</a>
+                   hx-swap="innerHTML">
+                   Mobile App
+                   {% if path == "/mobile-app" %}<span class="w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+                </a>
+                <a href="/business" 
+                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+                   hx-get="/business"
+                   hx-push-url="true"
+                   hx-target="#content"
+                   hx-swap="innerHTML">
+                   Services
+                   {% if path == "/business" %}<span class="w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+                </a>
+                <a href="/video-series" 
+                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+                   hx-get="/video-series"
+                   hx-push-url="true"
+                   hx-target="#content"
+                   hx-swap="innerHTML">
+                   Video Series
+                   {% if path == "/video-series" %}<span class="w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+                </a>
+                <a href="/company" 
+                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+                   hx-get="/company"
+                   hx-push-url="true"
+                   hx-target="#content"
+                   hx-swap="innerHTML">
+                   Company
+                   {% if path == "/company" %}<span class="w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+                </a>
+                <a href="/contact" 
+                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+                   hx-get="/contact"
+                   hx-push-url="true"
+                   hx-target="#content"
+                   hx-swap="innerHTML">
+                   Contact
+                   {% if path == "/contact" %}<span class="w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+                </a>
             </div>
             <div id="content">
                 <h1>{{title}}</h1>
