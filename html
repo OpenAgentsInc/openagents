@@ -29,7 +29,7 @@
                             {{#buttons}}
                             <li class="flex justify-center mb-1">
                                 <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="{{href}}">{{text}}</a>
+                                   href="{{href}}" hx-boost="true" hx-target="#content" hx-select="#content">{{text}}</a>
                             </li>
                             {{/buttons}}
                         </ul>
@@ -82,6 +82,10 @@
              hx-trigger="load"
              mustache-template="agents">
         </div>
+    </div>
+    
+    <div id="content">
+        <!-- Page specific content goes here -->
     </div>
     
     <div id="content">
