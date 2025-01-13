@@ -5,65 +5,67 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
     <meta name="application-name" content="OpenAgents"/>
-    <meta name="description" content="Company Information"/>
+    <meta name="description" content="About OpenAgents - Our mission and values"/>
     <meta name="author" content="OpenAgents, Inc.">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="canonical" href="https://openagents.com/company"/>
+    <title>Company - OpenAgents</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
     <script src="js/client-side-templates.js"></script>
     <script src="js/mustache.js"></script>
 </head>
 
-<body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 py-2 px-4 pb-1 mx-auto">
-    <div class="container mx-auto" hx-ext="client-side-templates">
-        <div hx-get="/templates/header.json"
+<body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
+    <div class="container mx-auto">
+        <!-- Header loaded via template -->
+        <div id="header-container" 
+             hx-ext="client-side-templates"
+             hx-get="/templates/header.json"
              hx-trigger="load"
-             mustache-template="header-template">
+             mustache-template="header-template"
+             hx-swap="innerHTML">
         </div>
 
         <template id="header-template">
-            <div id="header-container">
-                <header class="py-2 mb-5">
-                    <div class="flex justify-between items-center w-full">
-                        <span class="text-lg font-bold">OpenAgents</span>
-                    </div>
-                    <div class="mt-4">
-                        <nav>
-                            <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-                                {{#buttons}}
-                                <li class="flex justify-center mb-1">
-                                    <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                       href="{{href}}"
-                                       hx-boost="true"
-                                       hx-push-url="true"
-                                       hx-target="#content"
-                                       hx-select="#content"
-                                       hx-swap="innerHTML">{{text}}</a>
-                                </li>
-                                {{/buttons}}
-                            </ul>
-                        </nav>
-                    </div>
-                </header>
-            </div>
+            <header class="py-2 mb-5" id="static-header">
+                <div class="flex justify-between items-center w-full">
+                    <span class="text-lg font-bold">{{header.title}}</span>
+                </div>
+                <div class="mt-4">
+                    <nav>
+                        <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
+                            {{#header.buttons}}
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="{{href}}"
+                                   hx-get="{{href}}"
+                                   hx-push-url="true"
+                                   hx-target="#page-content"
+                                   hx-select="#page-content"
+                                   hx-swap="innerHTML show:top">{{text}}</a>
+                            </li>
+                            {{/header.buttons}}
+                        </ul>
+                    </nav>
+                </div>
+            </header>
         </template>
 
-        <div id="content">
-            <h1 class="text-3xl font-bold mb-4">Company</h1>
-            <p class="mb-4">Welcome to the Company page. Here you can find information about our company, our mission, and our team.</p>
-            <p class="mb-4">Our company is dedicated to providing innovative solutions to help businesses and individuals achieve their goals. We believe in the power of technology to transform lives and create new opportunities.</p>
-            <p class="mb-4">Our team is composed of experienced professionals who are passionate about what they do. We are committed to delivering high-quality products and services that meet the needs of our customers.</p>
-            <p class="mb-4">Thank you for visiting our Company page. We look forward to working with you and helping you achieve your goals.</p>
+        <!-- Content area that gets swapped -->
+        <div id="page-content">
+            <div id="content">
+                <div class="prose prose-invert max-w-none">
+                    <h1 class="text-3xl font-bold mb-4">Company</h1>
+                    <p>Learn about OpenAgents, our mission, and our commitment to increasing human agency through technology.</p>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         document.body.addEventListener('htmx:afterSwap', function(evt) {
-            if (evt.detail.target === document.body) {
-                const header = document.querySelector('#header-container');
-                if (header) {
-                    evt.detail.shouldSwap = false;
-                }
-            }
+            window.scrollTo(0, 0);
         });
     </script>
 </body>
