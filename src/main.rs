@@ -13,6 +13,7 @@ async fn main() {
     
     let app = Router::new()
         .route("/", get(home))
+        .route("/about", get(about))
         .nest_service("/assets", ServeDir::new(assets_path));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
@@ -24,11 +25,21 @@ async fn main() {
 #[template(path = "base.html")]
 struct PageTemplate {
     title: String,
+    content: String,
 }
 
 async fn home() -> Html<String> {
     let template = PageTemplate {
         title: "Home".to_string(),
+        content: "Welcome to OpenAgents".to_string(),
+    };
+    Html(template.render().unwrap())
+}
+
+async fn about() -> Html<String> {
+    let template = PageTemplate {
+        title: "About".to_string(),
+        content: "We are building the future of AI agents".to_string(),
     };
     Html(template.render().unwrap())
 }
