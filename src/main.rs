@@ -27,8 +27,12 @@ async fn main() -> anyhow::Result<()> {
 
     info!("router initialized, now listening on port {}", port);
 
-    axum::Server::bind(&addr)
-        .serve(router.into_make_service())
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .context("failed to bind TcpListener")?;
+
+    info!("listening on {}", addr);
+    axum::serve(listener, router)
         .await
         .context("error while starting server")?;
 
