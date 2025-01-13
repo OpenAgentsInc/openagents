@@ -1,4 +1,5 @@
-use hypertext::{html, Html};
+use hypertext::html_elements::html;
+use hypertext::Html;
 
 #[derive(Debug)]
 pub struct Agent {
@@ -52,4 +53,3 @@ pub struct Agent {
             </div>
         }
     }
-
