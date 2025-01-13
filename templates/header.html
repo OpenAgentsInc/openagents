@@ -1,4 +1,4 @@
-{% import "button.html" as nav %}
+{% import "button.html" as nav -%}
 <header class="py-2 mb-5" id="static-header">
   <div class="flex justify-between items-center w-full">
     <span class="text-lg font-bold">OpenAgents</span>
@@ -6,24 +6,12 @@
   <div class="mt-4">
     <nav>
       <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-        <li class="flex justify-center mb-1">
-          {{ nav::nav_button(href="/", text="Home") }}
-        </li>
-        <li class="flex justify-center mb-1">
-          {{ nav::nav_button(href="/mobile-app", text="Mobile App") }}
-        </li>
-        <li class="flex justify-center mb-1">
-          {{ nav::nav_button(href="/business", text="Services") }}
-        </li>
-        <li class="flex justify-center mb-1">
-          {{ nav::nav_button(href="/video-series", text="Video Series") }}
-        </li>
-        <li class="flex justify-center mb-1">
-          {{ nav::nav_button(href="/company", text="Company") }}
-        </li>
-        <li class="flex justify-center mb-1">
-          {{ nav::nav_button(href="/contact", text="Contact") }}
-        </li>
+        <li class="flex justify-center mb-1">{{nav::nav_button(href="/", text="Home")}}</li>
+        <li class="flex justify-center mb-1">{{nav::nav_button(href="/mobile-app", text="Mobile App")}}</li>
+        <li class="flex justify-center mb-1">{{nav::nav_button(href="/business", text="Services")}}</li>
+        <li class="flex justify-center mb-1">{{nav::nav_button(href="/video-series", text="Video Series")}}</li>
+        <li class="flex justify-center mb-1">{{nav::nav_button(href="/company", text="Company")}}</li>
+        <li class="flex justify-center mb-1">{{nav::nav_button(href="/contact", text="Contact")}}</li>
       </ul>
     </nav>
   </div>
