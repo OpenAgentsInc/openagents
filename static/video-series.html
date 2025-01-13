@@ -15,11 +15,13 @@
     <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </head>
 
-<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto" hx-boost="true">
+<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
     <div class="container mx-auto" hx-ext="client-side-templates">
-        <div hx-get="/templates/header.json"
+        <div id="header-container"
+             hx-get="/templates/header.json"
              hx-trigger="load"
-             mustache-template="header-template">
+             mustache-template="header-template"
+             hx-preserve="true">
         </div>
 
         <template id="header-template">
@@ -33,7 +35,10 @@
                             {{#buttons}}
                             <li class="flex justify-center mb-1">
                                 <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="{{href}}">{{text}}</a>
+                                   href="{{href}}"
+                                   hx-boost="true"
+                                   hx-target="body"
+                                   hx-swap="innerHTML">{{text}}</a>
                             </li>
                             {{/buttons}}
                         </ul>
@@ -42,39 +47,50 @@
             </header>
         </template>
 
-        <div id="videos" 
-             hx-get="/data/videos.json" 
-             hx-trigger="load" 
-             hx-ext="client-side-templates"
-             mustache-template="videos-template">
-        </div>
-
-        <template id="videos-template">
-            <div class="videos">
-                <div class="videos-title">Recent Videos</div>
-                {{#videos}}
-                <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
-                    <div class="video-title">{{title}}</div>
-                    <div class="video-date">{{date}}</div>
-                    <div class="video-text">{{text}}</div>
-                    {{#tweetId}}
-                    <blockquote class="twitter-tweet" data-conversation="none" data-media-max-width="560" data-theme="dark">
-                        <p lang="en" dir="ltr">Loading X post...</p>
-                        <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}?ref_src=twsrc%5Etfw"></a>
-                    </blockquote>
-                    {{/tweetId}}
-                </div>
-                {{/videos}}
+        <div id="content">
+            <div id="videos" 
+                 hx-get="/data/videos.json" 
+                 hx-trigger="load" 
+                 hx-ext="client-side-templates"
+                 mustache-template="videos-template">
             </div>
-        </template>
 
-        <script>
-            document.body.addEventListener('htmx:afterSwap', function (evt) {
-                if (window.twttr && window.twttr.widgets) {
-                    window.twttr.widgets.load();
-                }
-            });
-        </script>
+            <template id="videos-template">
+                <div class="videos">
+                    <div class="videos-title">Recent Videos</div>
+                    {{#videos}}
+                    <div class="video-entry {{^tweetId}}coming-soon{{/tweetId}}">
+                        <div class="video-title">{{title}}</div>
+                        <div class="video-date">{{date}}</div>
+                        <div class="video-text">{{text}}</div>
+                        {{#tweetId}}
+                        <blockquote class="twitter-tweet" data-conversation="none" data-media-max-width="560" data-theme="dark">
+                            <p lang="en" dir="ltr">Loading X post...</p>
+                            <a href="https://twitter.com/OpenAgentsInc/status/{{tweetId}}?ref_src=twsrc%5Etfw"></a>
+                        </blockquote>
+                        {{/tweetId}}
+                    </div>
+                    {{/videos}}
+                </div>
+            </template>
+        </div>
     </div>
+
+    <script>
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            // Handle Twitter widget loading
+            if (window.twttr && window.twttr.widgets) {
+                window.twttr.widgets.load();
+            }
+            
+            // Preserve header state after content swap
+            if (evt.detail.target === document.body) {
+                const header = document.querySelector('#header-container');
+                if (header) {
+                    evt.detail.shouldSwap = false;
+                }
+            }
+        });
+    </script>
 </body>
 </html>
