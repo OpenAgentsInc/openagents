@@ -1,9 +1,9 @@
-{% import "nav_button.html" as nav -%}
+{% import "nav_button.html" as nav %}
 <div class="grid grid-cols-3 lg:grid-cols-6 gap-4 py-4">
-    {{ nav::nav_button(href="/", text="Home", current_path=path) }}
-    {{ nav::nav_button(href="/mobile-app", text="Mobile App", current_path=path) }}
-    {{ nav::nav_button(href="/business", text="Services", current_path=path) }}
-    {{ nav::nav_button(href="/video-series", text="Video Series", current_path=path) }}
-    {{ nav::nav_button(href="/company", text="Company", current_path=path) }}
-    {{ nav::nav_button(href="/contact", text="Contact", current_path=path) }}
+{{ nav::nav_button("/", "Home", path) }}
+{{ nav::nav_button("/mobile-app", "Mobile App", path) }}
+{{ nav::nav_button("/business", "Services", path) }}
+{{ nav::nav_button("/video-series", "Video Series", path) }}
+{{ nav::nav_button("/company", "Company", path) }}
+{{ nav::nav_button("/contact", "Contact", path) }}
 </div>
