@@ -1,6 +1,9 @@
+#[allow(unused_imports)]
 use actix_web::{web, HttpResponse};
+#[allow(unused_imports)]
 use sqlx::types::time::OffsetDateTime;
 use sqlx::PgPool;
+#[allow(unused_imports)]
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
