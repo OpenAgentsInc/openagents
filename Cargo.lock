@@ -1171,9 +1171,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "508fb3d4a66e3649600d00b2c82cd0ca52227ab2970537899903b3c9fd17ab21"
 dependencies = [
  "html-escape",
- "hypertext-macros",
+ "hypertext-macros 0.6.2",
  "itoa",
  "ryu",
+]
+
+[[package]]
+name = "hypertext-macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c8f98d04d9e2453dc371f01a970b269359007500f6c78d764b843e88a80614c"
+dependencies = [
+ "html-escape",
+ "proc-macro2",
+ "proc-macro2-diagnostics",
+ "quote",
+ "rstml 0.11.2",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1186,7 +1200,7 @@ dependencies = [
  "proc-macro2",
  "proc-macro2-diagnostics",
  "quote",
- "rstml",
+ "rstml 0.12.0",
  "syn 2.0.95",
 ]
 
@@ -1685,6 +1699,7 @@ dependencies = [
  "env_logger",
  "futures",
  "hypertext",
+ "hypertext-macros 0.1.0",
  "lazy_static",
  "log",
  "secp256k1",
@@ -2059,6 +2074,20 @@ dependencies = [
  "spki",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "rstml"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe542870b8f59dd45ad11d382e5339c9a1047cde059be136a7016095bbdefa77"
+dependencies = [
+ "proc-macro2",
+ "proc-macro2-diagnostics",
+ "quote",
+ "syn 2.0.95",
+ "syn_derive",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
