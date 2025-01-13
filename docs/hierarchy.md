@@ -1,11 +1,23 @@
 # Project Hierarchy
 
-Generated on: 2025-01-12 09:19:27
+Generated on: 2025-01-13 14:05:51
 
 ### Structure
 
 ```
 ./
+|-- assets/
+|   |-- fonts/
+|   |   |-- BerkeleyMono-Bold.woff
+|   |   |-- BerkeleyMono-Bold.woff2
+|   |   |-- BerkeleyMono-BoldItalic.woff
+|   |   |-- BerkeleyMono-BoldItalic.woff2
+|   |   |-- BerkeleyMono-Italic.woff
+|   |   |-- BerkeleyMono-Italic.woff2
+|   |   |-- BerkeleyMono-Regular.woff
+|   |   `-- BerkeleyMono-Regular.woff2
+|   |-- fonts.css
+|   `-- main.css
 |-- configuration/
 |   |-- base.yaml
 |   |-- local.yaml
@@ -55,6 +67,7 @@ Generated on: 2025-01-12 09:19:27
 |   |-- database.rs
 |   |-- emailoptin.rs
 |   |-- lib.rs
+|   |-- main-prev.rs
 |   `-- main.rs
 |-- static/
 |   |-- css/
@@ -76,15 +89,6 @@ Generated on: 2025-01-12 09:19:27
 |   |   |-- ndk.js.map
 |   |   |-- nostr-sub.js
 |   |   `-- nostr-sub.js.map
-|   |-- fonts/
-|   |   |-- BerkeleyMono-Bold.woff
-|   |   |-- BerkeleyMono-Bold.woff2
-|   |   |-- BerkeleyMono-BoldItalic.woff
-|   |   |-- BerkeleyMono-BoldItalic.woff2
-|   |   |-- BerkeleyMono-Italic.woff
-|   |   |-- BerkeleyMono-Italic.woff2
-|   |   |-- BerkeleyMono-Regular.woff
-|   |   `-- BerkeleyMono-Regular.woff2
 |   |-- js/
 |   |   |-- LightingSystem.js
 |   |   |-- OnyxOrb.js
@@ -113,6 +117,7 @@ Generated on: 2025-01-12 09:19:27
 |   |-- README.md
 |   |-- agents.html
 |   |-- favicon.ico
+|   |-- fonts.css
 |   |-- index.html
 |   |-- justfile
 |   |-- ndk.ts
@@ -123,10 +128,14 @@ Generated on: 2025-01-12 09:19:27
 |   |-- package.json
 |   |-- tsconfig.json
 |   `-- yarn.lock
+|-- styles/
+|   `-- tailwind.css
 |-- templates/
-|   `-- admin/
-|       |-- dashboard.html
-|       `-- login.html
+|   |-- admin/
+|   |   |-- dashboard.html
+|   |   `-- login.html
+|   |-- base.html
+|   `-- hello.html
 |-- tests/
 |   |-- agent/
 |   |   |-- core.rs
@@ -150,8 +159,10 @@ Generated on: 2025-01-12 09:19:27
 |-- DEVELOPMENT.md
 |-- Dockerfile
 |-- README.md
-|-- html
-`-- spec.yaml
+|-- package.json
+|-- pnpm-lock.yaml
+|-- spec.yaml
+`-- tailwind.config.cjs
 
-26 directories, 121 files
+28 directories, 130 files
 ```
