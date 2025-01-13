@@ -20,41 +20,7 @@
     <div class="container mx-auto">
         <!-- Header loaded via Rust template -->
         <div id="header-container">
-            <header class="py-2 mb-5">
-                <div class="flex justify-between items-center w-full">
-                    <span class="text-lg font-bold">OpenAgents</span>
-                </div>
-                <div class="mt-4">
-                    <nav>
-                        <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-                            <li class="flex justify-center mb-1">
-                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="/">Home</a>
-                            </li>
-                            <li class="flex justify-center mb-1">
-                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="/agents">Agents</a>
-                            </li>
-                            <li class="flex justify-center mb-1">
-                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="/nostr">Nostr</a>
-                            </li>
-                            <li class="flex justify-center mb-1">
-                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="/video-series">Video Series</a>
-                            </li>
-                            <li class="flex justify-center mb-1">
-                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="/company">Company</a>
-                            </li>
-                            <li class="flex justify-center mb-1">
-                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="/contact">Contact</a>
-                            </li>
-                        </ul>
-                    </nav>
-                </div>
-            </header>
+            {{ render_header_template(buttons) }}
         </div>
 
         <!-- Content area that gets swapped -->
