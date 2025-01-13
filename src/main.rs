@@ -4,6 +4,7 @@ use axum::{
     routing::get,
     Router,
     http::header::HeaderMap,
+    extract::Path,
 };
 use tower_http::services::ServeDir;
 use std::path::PathBuf;
@@ -14,7 +15,11 @@ async fn main() {
     
     let app = Router::new()
         .route("/", get(home))
-        .route("/about", get(about))
+        .route("/mobile-app", get(mobile_app))
+        .route("/business", get(business))
+        .route("/video-series", get(video_series))
+        .route("/company", get(company))
+        .route("/contact", get(contact))
         .nest_service("/assets", ServeDir::new(assets_path));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
@@ -27,6 +32,7 @@ async fn main() {
 struct PageTemplate {
     title: String,
     content: String,
+    path: String,
 }
 
 #[derive(Template)]
@@ -40,26 +46,88 @@ async fn home(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Home".to_string();
     let content = "Welcome to OpenAgents".to_string();
+    let path = "/".to_string();
 
     if is_htmx {
         let template = ContentTemplate { title, content };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, content };
+        let template = PageTemplate { title, content, path };
         Html(template.render().unwrap())
     }
 }
 
-async fn about(headers: HeaderMap) -> Html<String> {
+async fn mobile_app(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "About".to_string();
-    let content = "We are building the future of AI agents".to_string();
+    let title = "Mobile App".to_string();
+    let content = "Our mobile app is coming soon".to_string();
+    let path = "/mobile-app".to_string();
 
     if is_htmx {
         let template = ContentTemplate { title, content };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, content };
+        let template = PageTemplate { title, content, path };
+        Html(template.render().unwrap())
+    }
+}
+
+async fn business(headers: HeaderMap) -> Html<String> {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Services".to_string();
+    let content = "Enterprise AI solutions".to_string();
+    let path = "/business".to_string();
+
+    if is_htmx {
+        let template = ContentTemplate { title, content };
+        Html(template.render().unwrap())
+    } else {
+        let template = PageTemplate { title, content, path };
+        Html(template.render().unwrap())
+    }
+}
+
+async fn video_series(headers: HeaderMap) -> Html<String> {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Video Series".to_string();
+    let content = "Watch our latest content".to_string();
+    let path = "/video-series".to_string();
+
+    if is_htmx {
+        let template = ContentTemplate { title, content };
+        Html(template.render().unwrap())
+    } else {
+        let template = PageTemplate { title, content, path };
+        Html(template.render().unwrap())
+    }
+}
+
+async fn company(headers: HeaderMap) -> Html<String> {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Company".to_string();
+    let content = "About our mission and team".to_string();
+    let path = "/company".to_string();
+
+    if is_htmx {
+        let template = ContentTemplate { title, content };
+        Html(template.render().unwrap())
+    } else {
+        let template = PageTemplate { title, content, path };
+        Html(template.render().unwrap())
+    }
+}
+
+async fn contact(headers: HeaderMap) -> Html<String> {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Contact".to_string();
+    let content = "Get in touch with us".to_string();
+    let path = "/contact".to_string();
+
+    if is_htmx {
+        let template = ContentTemplate { title, content };
+        Html(template.render().unwrap())
+    } else {
+        let template = PageTemplate { title, content, path };
         Html(template.render().unwrap())
     }
 }
