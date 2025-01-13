@@ -5,64 +5,67 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
     <meta name="application-name" content="OpenAgents"/>
-    <meta name="description" content="Business Services"/>
+    <meta name="description" content="Business services and solutions from OpenAgents"/>
     <meta name="author" content="OpenAgents, Inc.">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="canonical" href="https://openagents.com/business"/>
+    <title>Services - OpenAgents</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
     <script src="js/client-side-templates.js"></script>
     <script src="js/mustache.js"></script>
 </head>
 
-<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
-    <div class="container mx-auto" hx-ext="client-side-templates">
-        <div id="header-container"
+<body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
+    <div class="container mx-auto">
+        <!-- Header loaded via template -->
+        <div id="header-container" 
+             hx-ext="client-side-templates"
              hx-get="/templates/header.json"
              hx-trigger="load"
              mustache-template="header-template"
-             hx-preserve="true">
+             hx-swap="innerHTML">
         </div>
 
         <template id="header-template">
-            <header class="py-2 mb-5">
+            <header class="py-2 mb-5" id="static-header">
                 <div class="flex justify-between items-center w-full">
-                    <span class="text-lg font-bold">OpenAgents</span>
+                    <span class="text-lg font-bold">{{header.title}}</span>
                 </div>
                 <div class="mt-4">
                     <nav>
                         <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-                            {{#buttons}}
+                            {{#header.buttons}}
                             <li class="flex justify-center mb-1">
                                 <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
                                    href="{{href}}"
-                                   hx-boost="true"
+                                   hx-get="{{href}}"
                                    hx-push-url="true"
-                                   hx-target="body"
-                                   hx-scroll="false"
-                                   hx-swap="innerHTML">{{text}}</a>
+                                   hx-target="#page-content"
+                                   hx-select="#page-content"
+                                   hx-swap="innerHTML show:top">{{text}}</a>
                             </li>
-                            {{/buttons}}
+                            {{/header.buttons}}
                         </ul>
                     </nav>
                 </div>
             </header>
         </template>
 
-        <div id="content">
-            <h1 class="text-3xl font-bold mb-4">Business Services</h1>
-            <p class="mb-4">Welcome to our Business Services page. Here you can find information about the various services we offer to help your business grow and succeed.</p>
-            <p class="mb-4">Our team of experts is dedicated to providing top-notch services tailored to meet your specific needs. Whether you are looking for consulting, software development, or marketing solutions, we have you covered.</p>
-            <p class="mb-4">Contact us today to learn more about how we can assist you in achieving your business goals.</p>
+        <!-- Content area that gets swapped -->
+        <div id="page-content">
+            <div id="content">
+                <div class="prose prose-invert max-w-none">
+                    <h1 class="text-3xl font-bold mb-4">Services</h1>
+                    <p>Explore our range of business services and solutions designed to enhance your organization's capabilities.</p>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         document.body.addEventListener('htmx:afterSwap', function(evt) {
-            if (evt.detail.target === document.body) {
-                const header = document.querySelector('#header-container');
-                if (header) {
-                    evt.detail.shouldSwap = false;
-                }
-            }
+            window.scrollTo(0, 0);
         });
     </script>
 </body>
