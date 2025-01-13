@@ -12,15 +12,17 @@ module.exports = {
         mono: ["Berkeley Mono", ...fontFamily.mono],
         sans: ["Inter var", ...fontFamily.sans],
       },
+      borderWidth: {
+        '1': '1px',
+      },
+      boxShadow: {
+        'nav': '2px 2px 0 0 rgba(255, 255, 255, 0.5)',
+      },
     },
   },
-  plugins: [
-    require('@tailwindcss/forms'),
+  safelist: [
+    'border',
+    'border-white',
+    'shadow-nav'
   ],
-  future: {
-    hoverOnlyWhenSupported: true,
-  },
-  experimental: {
-    optimizeUniversalDefaults: true,
-  },
 };
