@@ -1,18 +1,16 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <link href="/assets/main.css" rel="stylesheet" />
     <link href="/assets/fonts.css" rel="stylesheet" />
     <title>{{title}}</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-    {% block head %}{% endblock %}
-  </head>
-  <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
+</head>
+<body class="fixed min-h-screen w-screen bg-black text-white font-mono">
     <div id="content" class="flex min-h-screen mx-auto">
-      <div class="w-[60rem] m-6 px-4 border border-white">
-        {% include "header.html" %}
-        {% block content %}{% endblock %}
-      </div>
+        <div class="w-[60rem] m-6 px-4 border border-white">
+            {% block content %}{% endblock %}
+        </div>
     </div>
-  </body>
+</body>
 </html>
