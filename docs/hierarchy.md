@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-12 09:19:27
+Generated on: 2025-01-12 20:32:11
 
 ### Structure
 
@@ -76,6 +76,8 @@ Generated on: 2025-01-12 09:19:27
 |   |   |-- ndk.js.map
 |   |   |-- nostr-sub.js
 |   |   `-- nostr-sub.js.map
+|   |-- docs/
+|   |   `-- hierarchy.md
 |   |-- fonts/
 |   |   |-- BerkeleyMono-Bold.woff
 |   |   |-- BerkeleyMono-Bold.woff2
@@ -107,21 +109,31 @@ Generated on: 2025-01-12 09:19:27
 |   |   |-- storage.ts
 |   |   `-- types.ts
 |   |-- templates/
+|   |   |-- button.mustache
 |   |   |-- changelog-new.mustache
 |   |   |-- changelog.mustache
-|   |   `-- chat.mustache
+|   |   |-- chat.mustache
+|   |   |-- header.json
+|   |   `-- textinput.mustache
 |   |-- README.md
 |   |-- agents.html
+|   |-- business.html
+|   |-- changelog.html
+|   |-- company.html
+|   |-- contact.html
 |   |-- favicon.ico
+|   |-- index-old.html
 |   |-- index.html
 |   |-- justfile
+|   |-- mobile-app.html
 |   |-- ndk.ts
-|   |-- new.html
+|   |-- new-backup.html
 |   |-- nostr-sub.ts
 |   |-- nostr.html
 |   |-- onyx.png
 |   |-- package.json
 |   |-- tsconfig.json
+|   |-- video-series.html
 |   `-- yarn.lock
 |-- templates/
 |   `-- admin/
@@ -153,5 +165,5 @@ Generated on: 2025-01-12 09:19:27
 |-- html
 `-- spec.yaml
 
-26 directories, 121 files
+27 directories, 132 files
 ```

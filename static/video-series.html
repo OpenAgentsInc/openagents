@@ -15,14 +15,31 @@
     <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </head>
 
-<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
-    <div class="container mx-auto">
-        <div hx-get="/templates/header.mustache"
-             hx-trigger="load">
+<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto" hx-boost="true">
+    <div class="container mx-auto" hx-ext="client-side-templates">
+        <div hx-get="/templates/header.json"
+             hx-trigger="load"
+             mustache-template="header-template">
         </div>
 
-        <template id="button-template">
-            {{> button}}
+        <template id="header-template">
+            <header class="py-2 mb-5">
+                <div class="flex justify-between items-center w-full">
+                    <span class="text-lg font-bold">OpenAgents</span>
+                </div>
+                <div class="mt-4">
+                    <nav>
+                        <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
+                            {{#buttons}}
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="{{href}}">{{text}}</a>
+                            </li>
+                            {{/buttons}}
+                        </ul>
+                    </nav>
+                </div>
+            </header>
         </template>
 
         <div id="videos" 
