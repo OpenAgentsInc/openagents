@@ -13,11 +13,13 @@
     <script src="js/mustache.js"></script>
 </head>
 
-<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto" hx-boost="true">
-    <div class="header-container" hx-ext="client-side-templates">
-        <div hx-get="/templates/header.json"
+<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
+    <div class="container mx-auto" hx-ext="client-side-templates">
+        <div id="header-container"
+             hx-get="/templates/header.json"
              hx-trigger="load"
-             mustache-template="header-template">
+             mustache-template="header-template"
+             hx-preserve="true">
         </div>
 
         <template id="header-template">
@@ -31,7 +33,10 @@
                             {{#buttons}}
                             <li class="flex justify-center mb-1">
                                 <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="{{href}}">{{text}}</a>
+                                   href="{{href}}"
+                                   hx-boost="true"
+                                   hx-target="body"
+                                   hx-swap="innerHTML">{{text}}</a>
                             </li>
                             {{/buttons}}
                         </ul>
@@ -40,9 +45,7 @@
             </header>
         </template>
 
-    </div>
-    
-    <div id="content">
+        <div id="content">
             <h1 class="text-3xl font-bold mb-4">Company</h1>
             <p class="mb-4">Welcome to the Company page. Here you can find information about our company, our mission, and our team.</p>
             <p class="mb-4">Our company is dedicated to providing innovative solutions to help businesses and individuals achieve their goals. We believe in the power of technology to transform lives and create new opportunities.</p>
@@ -50,5 +53,16 @@
             <p class="mb-4">Thank you for visiting our Company page. We look forward to working with you and helping you achieve your goals.</p>
         </div>
     </div>
+
+    <script>
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            if (evt.detail.target === document.body) {
+                const header = document.querySelector('#header-container');
+                if (header) {
+                    evt.detail.shouldSwap = false;
+                }
+            }
+        });
+    </script>
 </body>
 </html>
