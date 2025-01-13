@@ -40,7 +40,8 @@
                                    href="{{href}}"
                                    hx-boost="true"
                                    hx-push-url="true"
-                                   hx-target="body"
+                                   hx-target="#content"
+                                   hx-select="#content"
                                    hx-swap="innerHTML">{{text}}</a>
                             </li>
                             {{/buttons}}
@@ -56,32 +57,8 @@
     </div>
 
     <script>
-        // Prevent scroll on navigation
-        document.body.addEventListener('htmx:beforeSwap', function(evt) {
-            if (evt.detail.target === document.body) {
-                evt.detail.shouldScroll = false;
-            }
-        });
-
-        // Preserve header state
         document.body.addEventListener('htmx:afterSwap', function(evt) {
-            if (evt.detail.target === document.body) {
-                const header = document.querySelector('#header-container');
-                if (header) {
-                    evt.detail.shouldSwap = false;
-                }
-            }
-        });
-
-        // Store scroll position
-        let lastScrollPosition = 0;
-        document.body.addEventListener('htmx:beforeRequest', function(evt) {
-            lastScrollPosition = window.scrollY;
-        });
-
-        // Restore scroll position
-        document.body.addEventListener('htmx:afterRequest', function(evt) {
-            window.scrollTo(0, lastScrollPosition);
+            window.scrollTo(0, 0);
         });
     </script>
 </body>
