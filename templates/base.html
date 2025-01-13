@@ -9,14 +9,23 @@
 <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
     <div class="flex min-h-screen mx-auto">
         <div class="w-[60rem] m-6 px-4 border border-white">
-            <div id="page-content">
-                <h1>{{title}}</h1>
+            <div class="flex gap-4 py-4">
                 <a href="/" 
                    class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
                    hx-get="/"
                    hx-push-url="true"
-                   hx-target="#page-content"
-                   hx-swap="innerHTML show:top">Home</a>
+                   hx-target="#content"
+                   hx-swap="innerHTML">Home</a>
+                <a href="/about" 
+                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+                   hx-get="/about"
+                   hx-push-url="true"
+                   hx-target="#content"
+                   hx-swap="innerHTML">About</a>
+            </div>
+            <div id="content">
+                <h1>{{title}}</h1>
+                <p>{{content}}</p>
             </div>
         </div>
     </div>
