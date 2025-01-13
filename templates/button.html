@@ -1,11 +1,11 @@
-{% macro nav_button(href, text) -%}
-<a
-  class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 py-1 border border-white"
-  href="{{href}}"
-  hx-get="{{href}}"
-  hx-push-url="true"
-  hx-target="#page-content"
-  hx-select="#page-content"
-  hx-swap="innerHTML show:top"
->{{text}}</a>
-{%- endmacro %}
+{% macro nav_button(href, text, current_path) %}
+<a href="{{href}}" 
+   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+   hx-get="{{href}}"
+   hx-push-url="true"
+   hx-target="#content"
+   hx-swap="innerHTML">
+   {{text}}
+   {% if current_path == href %}<span class="nav-dot w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+</a>
+{% endmacro nav_button %}
