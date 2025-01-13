@@ -10,7 +10,9 @@
     <div id="content" class="flex min-h-screen mx-auto">
         <div class="w-[60rem] m-6 px-4 border border-white">
             {% include "header.html" %}
-            {% block content %}{% endblock %}
+            <div id="page-content">
+                <h1>{{title}}</h1>
+            </div>
         </div>
     </div>
 </body>
