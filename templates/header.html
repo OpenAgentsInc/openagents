@@ -1,16 +1,56 @@
-{% import "nav_button.html" as nav -%}
-<header class="py-2 mb-5" id="static-header">
-  <div class="flex justify-between items-center w-full">
-    <span class="text-lg font-bold">OpenAgents</span>
-  </div>
-  <nav class="mt-4">
-    <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-      <li class="flex justify-center mb-1">{{ nav::nav_button(href="/", text="Home") }}</li>
-      <li class="flex justify-center mb-1">{{ nav::nav_button(href="/mobile-app", text="Mobile App") }}</li>
-      <li class="flex justify-center mb-1">{{ nav::nav_button(href="/business", text="Services") }}</li>
-      <li class="flex justify-center mb-1">{{ nav::nav_button(href="/video-series", text="Video Series") }}</li>
-      <li class="flex justify-center mb-1">{{ nav::nav_button(href="/company", text="Company") }}</li>
-      <li class="flex justify-center mb-1">{{ nav::nav_button(href="/contact", text="Contact") }}</li>
-    </ul>
-  </nav>
-</header>
+<div class="grid grid-cols-3 lg:grid-cols-6 gap-4 py-4">
+    <a href="/" 
+       class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+       hx-get="/"
+       hx-push-url="true"
+       hx-target="#content"
+       hx-swap="innerHTML">
+       Home
+       {% if path == "/" %}<span class="nav-dot w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+    </a>
+    <a href="/mobile-app" 
+       class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+       hx-get="/mobile-app"
+       hx-push-url="true"
+       hx-target="#content"
+       hx-swap="innerHTML">
+       Mobile App
+       {% if path == "/mobile-app" %}<span class="nav-dot w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+    </a>
+    <a href="/business" 
+       class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+       hx-get="/business"
+       hx-push-url="true"
+       hx-target="#content"
+       hx-swap="innerHTML">
+       Services
+       {% if path == "/business" %}<span class="nav-dot w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+    </a>
+    <a href="/video-series" 
+       class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+       hx-get="/video-series"
+       hx-push-url="true"
+       hx-target="#content"
+       hx-swap="innerHTML">
+       Video Series
+       {% if path == "/video-series" %}<span class="nav-dot w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+    </a>
+    <a href="/company" 
+       class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+       hx-get="/company"
+       hx-push-url="true"
+       hx-target="#content"
+       hx-swap="innerHTML">
+       Company
+       {% if path == "/company" %}<span class="nav-dot w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+    </a>
+    <a href="/contact" 
+       class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+       hx-get="/contact"
+       hx-push-url="true"
+       hx-target="#content"
+       hx-swap="innerHTML">
+       Contact
+       {% if path == "/contact" %}<span class="nav-dot w-1.5 h-1.5 rounded-full bg-white"></span>{% endif %}
+    </a>
+</div>
