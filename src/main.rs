@@ -15,8 +15,8 @@ async fn main() {
     let app = Router::new()
         .route("/", get(home))
         .route("/mobile-app", get(mobile_app))
-        .route("/business", get(business))
         .route("/video-series", get(video_series))
+        .route("/services", get(business))
         .route("/company", get(company))
         .route("/contact", get(contact))
         .nest_service("/assets", ServeDir::new(assets_path));
