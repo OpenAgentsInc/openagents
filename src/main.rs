@@ -4,10 +4,16 @@ use axum::{
     routing::get,
     Router,
 };
+use tower_http::services::ServeDir;
+use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/", get(handler));
+    let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
+    
+    let app = Router::new()
+        .route("/", get(handler))
+        .nest_service("/assets", ServeDir::new(assets_path));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
     println!("listening on {}", listener.local_addr().unwrap());
