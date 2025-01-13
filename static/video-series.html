@@ -37,7 +37,9 @@
                                 <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
                                    href="{{href}}"
                                    hx-boost="true"
+                                   hx-push-url="true"
                                    hx-target="body"
+                                   hx-scroll="false"
                                    hx-swap="innerHTML">{{text}}</a>
                             </li>
                             {{/buttons}}
