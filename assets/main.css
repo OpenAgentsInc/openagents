@@ -642,6 +642,10 @@ video {
   display: grid;
 }
 
+.h-1\.5 {
+  height: 0.375rem;
+}
+
 .min-h-screen {
   min-height: 100vh;
 }
@@ -656,6 +660,10 @@ video {
 
 .w-\[60rem\] {
   width: 60rem;
+}
+
+.w-1\.5 {
+  width: 0.375rem;
 }
 
 .max-w-7xl {
@@ -688,6 +696,10 @@ video {
   gap: 0.5rem;
 }
 
+.gap-4 {
+  gap: 1rem;
+}
+
 .space-x-4 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-x-reverse: 0;
   margin-right: calc(1rem * var(--tw-space-x-reverse));
@@ -696,6 +708,10 @@ video {
 
 .whitespace-nowrap {
   white-space: nowrap;
+}
+
+.rounded-full {
+  border-radius: 9999px;
 }
 
 .border {
@@ -726,6 +742,11 @@ video {
   background-color: rgb(17 24 39 / var(--tw-bg-opacity, 1));
 }
 
+.bg-white {
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));
+}
+
 .px-4 {
   padding-left: 1rem;
   padding-right: 1rem;
@@ -749,6 +770,11 @@ video {
 .py-2 {
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
+}
+
+.py-4 {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
 }
 
 .pt-16 {
