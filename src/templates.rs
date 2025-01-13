@@ -1,7 +1,16 @@
 
 use hypertext::{html_elements, maud, GlobalAttributes, Renderable};
 
-pub mod templates {
+pub struct Agent {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub status: String,
+    pub memory_usage: u32,
+    pub memory_limit: u32,
+    pub cpu_usage: u32,
+    pub cpu_limit: u32,
+}
     use super::*;
 
     pub fn render_header_template(buttons: Vec<(&str, &str)>) -> String {
@@ -59,14 +68,3 @@ pub mod templates {
         }.render().into()
     }
 
-    pub struct Agent {
-        pub id: String,
-        pub name: String,
-        pub description: String,
-        pub status: String,
-        pub memory_usage: u32,
-        pub memory_limit: u32,
-        pub cpu_usage: u32,
-        pub cpu_limit: u32,
-    }
-}
