@@ -24,7 +24,7 @@ pub mod templates {
                     }
                 }
             }
-        }.render()
+        }.render().into()
     }
 
     pub fn render_agent_item_template(agent: &Agent) -> String {
@@ -45,18 +45,18 @@ pub mod templates {
                     }
                 }
                 div.agent-actions {
-                    button.btn-nav.bg-black.hover:bg-zinc-900.text-white.text-xs.inline-flex.items-center.justify-center.whitespace-nowrap.select-none.text-center.align-middle.no-underline.outline-none.w-full.px-6.border.border-white nostr-action="start" data-agent-id=(agent.id) {
+                    button.btn-nav.bg-black.hover:bg-zinc-900.text-white.text-xs.inline-flex.items-center.justify-center.whitespace-nowrap.select-none.text-center.align-middle.no-underline.outline-none.w-full.px-6.border.border-white formaction="start" data-agent-id=(agent.id) {
                         "Start"
                     }
-                    button.btn-nav.bg-black.hover:bg-zinc-900.text-white.text-xs.inline-flex.items-center.justify-center.whitespace-nowrap.select-none.text-center.align-middle.no-underline.outline-none.w-full.px-6.border.border-white nostr-action="stop" data-agent-id=(agent.id) {
+                    button.btn-nav.bg-black.hover:bg-zinc-900.text-white.text-xs.inline-flex.items-center.justify-center.whitespace-nowrap.select-none.text-center.align-middle.no-underline.outline-none.w-full.px-6.border.border-white formaction="stop" data-agent-id=(agent.id) {
                         "Stop"
                     }
-                    button.btn-nav.bg-red-600.hover:bg-red-700.text-white.text-xs.inline-flex.items-center.justify-center.whitespace-nowrap.select-none.text-center.align-middle.no-underline.outline-none.w-full.px-6.border.border-white nostr-action="delete" data-agent-id=(agent.id) {
+                    button.btn-nav.bg-red-600.hover:bg-red-700.text-white.text-xs.inline-flex.items-center.justify-center.whitespace-nowrap.select-none.text-center.align-middle.no-underline.outline-none.w-full.px-6.border.border-white formaction="delete" data-agent-id=(agent.id) {
                         "Delete"
                     }
                 }
             }
-        }.render()
+        }.render().into()
     }
 
     pub struct Agent {
