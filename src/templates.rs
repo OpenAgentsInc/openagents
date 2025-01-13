@@ -1,10 +1,10 @@
 
-use hypertext::{html, Html};
+use hypertext::{html_elements, maud, GlobalAttributes, Renderable};
 
 
 pub mod templates {
-    pub fn render_header_template(buttons: Vec<(&str, &str)>) -> Html {
-        html! {
+    pub fn render_header_template(buttons: Vec<(&str, &str)>) -> String {
+        maud! {
             <header class="py-2 mb-5">
                 <div class="flex justify-between items-center w-full">
                     <span class="text-lg font-bold">"OpenAgents"</span>
@@ -24,8 +24,8 @@ pub mod templates {
         }
     }
 
-    pub fn render_agent_item_template(agent: &Agent) -> Html {
-        html! {
+    pub fn render_agent_item_template(agent: &Agent) -> String {
+        maud! {
             <div class="agent-item border border-gray-300 rounded-lg p-4 mb-4" data-agent-id={agent.id}>
                 <h3 class="text-lg font-bold mb-2">{agent.name}</h3>
                 <p class="text-sm text-gray-700 mb-2">{agent.description}</p>
