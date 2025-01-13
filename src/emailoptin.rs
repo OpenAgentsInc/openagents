@@ -1,9 +1,6 @@
-#[allow(unused_imports)]
 use actix_web::{web, HttpResponse};
-#[allow(unused_imports)]
-use sqlx::types::time::OffsetDateTime;
 use sqlx::PgPool;
-#[allow(unused_imports)]
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -13,15 +10,18 @@ pub struct FormData {
 }
 
 pub async fn subscribe(form: web::Form<FormData>, db: web::Data<PgPool>) -> HttpResponse {
+    let id = Uuid::new_v4();
+    let now = OffsetDateTime::now_utc();
+
     match sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at)
         VALUES ($1, $2, $3, $4)
         "#,
-        Uuid::new_v4(),
+        id,
         form.email,
         form.name,
-        OffsetDateTime::now_utc()
+        now
     )
     .execute(db.as_ref())
     .await
