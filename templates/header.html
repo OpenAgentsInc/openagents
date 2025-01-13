@@ -1,4 +1,4 @@
-{% import "button.html" as nav %}
+{% import "nav_button.html" as nav -%}
 <div class="grid grid-cols-3 lg:grid-cols-6 gap-4 py-4">
     {{ nav::nav_button(href="/", text="Home", current_path=path) }}
     {{ nav::nav_button(href="/mobile-app", text="Mobile App", current_path=path) }}
