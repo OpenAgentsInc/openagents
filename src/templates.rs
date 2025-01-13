@@ -1,4 +1,6 @@
+
 use hypertext::{html, Html};
+
 
 pub mod templates {
     pub fn render_header_template(buttons: Vec<(&str, &str)>) -> Html {
