@@ -3,6 +3,7 @@ use axum::{
     response::Html,
     routing::get,
     Router,
+    http::header::HeaderMap,
 };
 use tower_http::services::ServeDir;
 use std::path::PathBuf;
@@ -28,18 +29,37 @@ struct PageTemplate {
     content: String,
 }
 
-async fn home() -> Html<String> {
-    let template = PageTemplate {
-        title: "Home".to_string(),
-        content: "Welcome to OpenAgents".to_string(),
-    };
-    Html(template.render().unwrap())
+#[derive(Template)]
+#[template(path = "content.html")]
+struct ContentTemplate {
+    title: String,
+    content: String,
 }
 
-async fn about() -> Html<String> {
-    let template = PageTemplate {
-        title: "About".to_string(),
-        content: "We are building the future of AI agents".to_string(),
-    };
-    Html(template.render().unwrap())
+async fn home(headers: HeaderMap) -> Html<String> {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Home".to_string();
+    let content = "Welcome to OpenAgents".to_string();
+
+    if is_htmx {
+        let template = ContentTemplate { title, content };
+        Html(template.render().unwrap())
+    } else {
+        let template = PageTemplate { title, content };
+        Html(template.render().unwrap())
+    }
+}
+
+async fn about(headers: HeaderMap) -> Html<String> {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "About".to_string();
+    let content = "We are building the future of AI agents".to_string();
+
+    if is_htmx {
+        let template = ContentTemplate { title, content };
+        Html(template.render().unwrap())
+    } else {
+        let template = PageTemplate { title, content };
+        Html(template.render().unwrap())
+    }
 }
