@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-13 14:05:51
+Generated on: 2025-01-13 15:16:46
 
 ### Structure
 
@@ -135,6 +135,8 @@ Generated on: 2025-01-13 14:05:51
 |   |   |-- dashboard.html
 |   |   `-- login.html
 |   |-- base.html
+|   |-- content.html
+|   |-- header.html
 |   `-- hello.html
 |-- tests/
 |   |-- agent/
@@ -164,5 +166,5 @@ Generated on: 2025-01-13 14:05:51
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-28 directories, 130 files
+28 directories, 132 files
 ```
