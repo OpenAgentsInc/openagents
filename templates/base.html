@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <link href="/assets/main.css" rel="stylesheet" />
-    <link href="https://rsms.me/inter/inter.css" rel="stylesheet" />
+    <link href="/static/css/fonts.css" rel="stylesheet" />
     <!-- Allow any inheriting page to set it's own title -->
     <title>{% block title %}{{ title }}{% endblock %}</title>
 
@@ -17,7 +17,7 @@
     <!-- Allow any inheriting page to extend head with additional assets -->
     {% block head %}{% endblock %}
   </head>
-  <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
+  <body class="fixed min-h-screen w-screen bg-black text-white" style="font-family: 'Berkeley Mono', monospace;">
     <div id="content" class="min-h-screen">
       <!-- Inheriting pages will have their content rendered here, similar to app root in React, Angular, etc. -->
       {% block content %}{% endblock %}
