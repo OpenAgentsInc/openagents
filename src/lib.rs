@@ -4,6 +4,7 @@ pub mod database;
 pub mod emailoptin;
 pub mod nostr;
 pub mod server;
+pub mod templates;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
