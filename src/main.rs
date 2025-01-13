@@ -51,39 +51,83 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn hello() -> impl IntoResponse {
-    let template = HelloTemplate {};
-    HtmlTemplate(template)
-}
-
-async fn mobile_app() -> impl IntoResponse {
-    let template = HelloTemplate {};
-    HtmlTemplate(template)
-}
-
-async fn business() -> impl IntoResponse {
-    let template = HelloTemplate {};
-    HtmlTemplate(template)
-}
-
-async fn video_series() -> impl IntoResponse {
-    let template = HelloTemplate {};
-    HtmlTemplate(template)
-}
-
-async fn company() -> impl IntoResponse {
-    let template = HelloTemplate {};
-    HtmlTemplate(template)
-}
-
-async fn contact() -> impl IntoResponse {
-    let template = HelloTemplate {};
-    HtmlTemplate(template)
+#[derive(Template)]
+#[template(path = "hello.html")]
+struct HelloTemplate {
+    title: String,
 }
 
 #[derive(Template)]
 #[template(path = "hello.html")]
-struct HelloTemplate;
+struct MobileAppTemplate {
+    title: String,
+}
+
+#[derive(Template)]
+#[template(path = "hello.html")]
+struct BusinessTemplate {
+    title: String,
+}
+
+#[derive(Template)]
+#[template(path = "hello.html")]
+struct VideoSeriesTemplate {
+    title: String,
+}
+
+#[derive(Template)]
+#[template(path = "hello.html")]
+struct CompanyTemplate {
+    title: String,
+}
+
+#[derive(Template)]
+#[template(path = "hello.html")]
+struct ContactTemplate {
+    title: String,
+}
+
+async fn hello() -> impl IntoResponse {
+    let template = HelloTemplate {
+        title: "Home".to_string(),
+    };
+    HtmlTemplate(template)
+}
+
+async fn mobile_app() -> impl IntoResponse {
+    let template = MobileAppTemplate {
+        title: "Mobile App".to_string(),
+    };
+    HtmlTemplate(template)
+}
+
+async fn business() -> impl IntoResponse {
+    let template = BusinessTemplate {
+        title: "Services".to_string(),
+    };
+    HtmlTemplate(template)
+}
+
+async fn video_series() -> impl IntoResponse {
+    let template = VideoSeriesTemplate {
+        title: "Video Series".to_string(),
+    };
+    HtmlTemplate(template)
+}
+
+async fn company() -> impl IntoResponse {
+    let template = CompanyTemplate {
+        title: "Company".to_string(),
+    };
+    HtmlTemplate(template)
+}
+
+async fn contact() -> impl IntoResponse {
+    let template = ContactTemplate {
+        title: "Contact".to_string(),
+    };
+    HtmlTemplate(template)
+}
 
 /// A wrapper type that we'll use to encapsulate HTML parsed by askama into valid HTML for axum to serve.
 struct HtmlTemplate<T>(T);
