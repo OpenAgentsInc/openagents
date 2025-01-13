@@ -4,12 +4,20 @@
     <link href="/assets/main.css" rel="stylesheet" />
     <link href="/assets/fonts.css" rel="stylesheet" />
     <title>{{title}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
     <div class="flex min-h-screen mx-auto">
         <div class="w-[60rem] m-6 px-4 border border-white">
-            <h1>{{title}}</h1>
-            <a href="/" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white">Home</a>
+            <div id="page-content">
+                <h1>{{title}}</h1>
+                <a href="/" 
+                   class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white"
+                   hx-get="/"
+                   hx-push-url="true"
+                   hx-target="#page-content"
+                   hx-swap="innerHTML show:top">Home</a>
+            </div>
         </div>
     </div>
 </body>
