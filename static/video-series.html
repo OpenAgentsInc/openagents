@@ -24,17 +24,15 @@
                     <p class="text-xs mt-2">Software to increase human agency.</p>
                 </div>
                 <nav>
-                    <ul class="flex space-x-6">
-                        <li><a href="/" class="text-xs text-white hover:text-zinc-300">Home</a></li>
-                        <li><a href="/company" class="text-xs text-white hover:text-zinc-300">Company</a></li>
-                        <li><a href="/mobile-app" class="text-xs text-white hover:text-zinc-300">Mobile App</a></li>
-                        <li><a href="/business" class="text-xs text-white hover:text-zinc-300">Business Services</a></li>
-                        <li><a href="/video-series" class="text-xs text-white hover:text-zinc-300">Video Series</a></li>
-                        <li><a href="/contact" class="text-xs text-white hover:text-zinc-300">Contact</a></li>
+                    <ul class="flex space-x-6" id="nav-buttons">
                     </ul>
                 </nav>
             </div>
         </header>
+
+        <template id="button-template">
+            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none mr-4 px-6" href="{{href}}"></i>{{text}}</a>
+        </template>
 
         <div id="videos" 
              hx-get="/data/videos.json" 
@@ -67,6 +65,25 @@
                 if (window.twttr && window.twttr.widgets) {
                     window.twttr.widgets.load();
                 }
+            });
+
+            const buttons = [
+                { href: "/", text: "Home" },
+                { href: "/company", text: "Company" },
+                { href: "/mobile-app", text: "Mobile App" },
+                { href: "/business", text: "Services" },
+                { href: "/video-series", text: "Video Series" },
+                { href: "/contact", text: "Contact" }
+            ];
+
+            const template = document.getElementById('button-template').innerHTML;
+            const navButtons = document.getElementById('nav-buttons');
+
+            buttons.forEach(button => {
+                const li = document.createElement('li');
+                li.className = "flex-1 flex justify-center";
+                li.innerHTML = Mustache.render(template, button);
+                navButtons.appendChild(li);
             });
         </script>
     </div>
