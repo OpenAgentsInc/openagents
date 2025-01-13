@@ -1,5 +1,5 @@
 use actix_web::web::Html;
-use hypertext::html_elements::html;
+use hypertext::macros::html;
 
 #[derive(Debug)]
 pub struct Agent {
