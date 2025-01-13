@@ -14,10 +14,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
     <script src="js/mustache.js"></script>
+    <script src="js/client-side-templates.js"></script>
 </head>
 
 <body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
-    <div class="container mx-auto">
+    <div class="container mx-auto" hx-ext="client-side-templates">
         <div hx-get="/templates/header.mustache"
              hx-trigger="load">
         </div>
