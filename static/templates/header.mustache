@@ -1,36 +1,10 @@
-<header class="py-2 mb-5">
-    <div class="flex justify-between items-center w-full">
-        <span class="text-lg font-bold">OpenAgents</span>
-    </div>
-    <div class="mt-4">
-        <nav>
-            <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-            </ul>
-        </nav>
-    </div>
-</header>
-
-<script>
-    const buttons = [
-        { href: "/", text: "Home" },
-        { href: "/mobile-app", text: "Mobile App" },
-        { href: "/business", text: "Services" },
-        { href: "/video-series", text: "Video Series" },
-        { href: "/company", text: "Company" },
-        { href: "/contact", text: "Contact" }
-    ];
-
-    const template = document.getElementById('button-template').innerHTML;
-    const navButtons = document.getElementById('nav-buttons');
-
-    buttons.forEach(button => {
-        const li = document.createElement('li');
-        li.className = "flex justify-center mb-1";
-        li.innerHTML = Mustache.render(template, button);
-        navButtons.appendChild(li);
-    });
-</script>
-
-<template id="button-template">
-    {{> button}}
-</template>
+{
+    "buttons": [
+        { "href": "/", "text": "Home" },
+        { "href": "/mobile-app", "text": "Mobile App" },
+        { "href": "/business", "text": "Services" },
+        { "href": "/video-series", "text": "Video Series" },
+        { "href": "/company", "text": "Company" },
+        { "href": "/contact", "text": "Contact" }
+    ]
+}
