@@ -80,18 +80,11 @@
 
     <script>
         document.body.addEventListener('htmx:afterSwap', function(evt) {
-            // Handle Twitter widget loading
+            // Always reload Twitter widgets after any content swap
             if (window.twttr && window.twttr.widgets) {
                 window.twttr.widgets.load();
             }
-            
-            // Preserve header state after content swap
-            if (evt.detail.target === document.body) {
-                const header = document.querySelector('#header-container');
-                if (header) {
-                    evt.detail.shouldSwap = false;
-                }
-            }
+            window.scrollTo(0, 0);
         });
     </script>
 </body>
