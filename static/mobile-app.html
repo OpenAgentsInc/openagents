@@ -14,13 +14,7 @@
 </head>
 
 <body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto" hx-boost="true">
-    <div class="container mx-auto" hx-ext="client-side-templates">
-        <div id="header-container"
-             hx-get="/templates/header.json"
-             hx-trigger="load"
-             mustache-template="header-template"
-             hx-preserve="true">
-        </div>
+    <div class="container mx-auto">
 
         <template id="header-template">
             <header class="py-2 mb-5">
