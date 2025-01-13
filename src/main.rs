@@ -53,77 +53,47 @@ async fn main() -> anyhow::Result<()> {
 
 #[derive(Template)]
 #[template(path = "hello.html")]
-struct HelloTemplate {
-    title: String,
-}
-
-#[derive(Template)]
-#[template(path = "hello.html")]
-struct MobileAppTemplate {
-    title: String,
-}
-
-#[derive(Template)]
-#[template(path = "hello.html")]
-struct BusinessTemplate {
-    title: String,
-}
-
-#[derive(Template)]
-#[template(path = "hello.html")]
-struct VideoSeriesTemplate {
-    title: String,
-}
-
-#[derive(Template)]
-#[template(path = "hello.html")]
-struct CompanyTemplate {
-    title: String,
-}
-
-#[derive(Template)]
-#[template(path = "hello.html")]
-struct ContactTemplate {
+struct PageTemplate {
     title: String,
 }
 
 async fn hello() -> impl IntoResponse {
-    let template = HelloTemplate {
+    let template = PageTemplate {
         title: "Home".to_string(),
     };
     HtmlTemplate(template)
 }
 
 async fn mobile_app() -> impl IntoResponse {
-    let template = MobileAppTemplate {
+    let template = PageTemplate {
         title: "Mobile App".to_string(),
     };
     HtmlTemplate(template)
 }
 
 async fn business() -> impl IntoResponse {
-    let template = BusinessTemplate {
+    let template = PageTemplate {
         title: "Services".to_string(),
     };
     HtmlTemplate(template)
 }
 
 async fn video_series() -> impl IntoResponse {
-    let template = VideoSeriesTemplate {
+    let template = PageTemplate {
         title: "Video Series".to_string(),
     };
     HtmlTemplate(template)
 }
 
 async fn company() -> impl IntoResponse {
-    let template = CompanyTemplate {
+    let template = PageTemplate {
         title: "Company".to_string(),
     };
     HtmlTemplate(template)
 }
 
 async fn contact() -> impl IntoResponse {
-    let template = ContactTemplate {
+    let template = PageTemplate {
         title: "Contact".to_string(),
     };
     HtmlTemplate(template)
