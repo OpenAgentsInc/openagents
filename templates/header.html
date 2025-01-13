@@ -4,29 +4,24 @@
   </div>
   <div class="mt-4">
     <nav>
-      <ul
-        class="grid grid-cols-3 gap-2 lg:grid-cols-6"
-        id="nav-buttons"
-      >
+      <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
         <li class="flex justify-center mb-1">
-          <a
-            class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 py-1 border border-white"
-            href="/"
-            hx-get="/"
-            hx-push-url="true"
-            hx-target="#page-content"
-            hx-select="#page-content"
-            hx-swap="innerHTML show:top"
-          >Home</a>
-          <a
-            class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 py-1 border border-white"
-            href="/mobile-app"
-            hx-get="/mobile-app"
-            hx-push-url="true"
-            hx-target="#page-content"
-            hx-select="#page-content"
-            hx-swap="innerHTML show:top"
-          >Mobile App</a>
+          {% include "button.html" with href="/" text="Home" %}
+        </li>
+        <li class="flex justify-center mb-1">
+          {% include "button.html" with href="/mobile-app" text="Mobile App" %}
+        </li>
+        <li class="flex justify-center mb-1">
+          {% include "button.html" with href="/business" text="Services" %}
+        </li>
+        <li class="flex justify-center mb-1">
+          {% include "button.html" with href="/video-series" text="Video Series" %}
+        </li>
+        <li class="flex justify-center mb-1">
+          {% include "button.html" with href="/company" text="Company" %}
+        </li>
+        <li class="flex justify-center mb-1">
+          {% include "button.html" with href="/contact" text="Contact" %}
         </li>
       </ul>
     </nav>
