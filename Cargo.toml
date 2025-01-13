@@ -37,7 +37,7 @@ url = "2.4"
 time = "0.3.37"
 anyhow = "1.0"
 hypertext-macros = "0.6.2"
-hypertext = "0.6.2"
+hypertext = { version = "0.6.2", features = ["alloc"] }
 
 [dev-dependencies]
 actix-web = "4.4"

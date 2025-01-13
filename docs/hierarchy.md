@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-12 20:32:11
+Generated on: 2025-01-12 23:42:11
 
 ### Structure
 
@@ -55,7 +55,8 @@ Generated on: 2025-01-12 20:32:11
 |   |-- database.rs
 |   |-- emailoptin.rs
 |   |-- lib.rs
-|   `-- main.rs
+|   |-- main.rs
+|   `-- templates.rs
 |-- static/
 |   |-- css/
 |   |   |-- changelog.css
@@ -109,12 +110,8 @@ Generated on: 2025-01-12 20:32:11
 |   |   |-- storage.ts
 |   |   `-- types.ts
 |   |-- templates/
-|   |   |-- button.mustache
 |   |   |-- changelog-new.mustache
-|   |   |-- changelog.mustache
-|   |   |-- chat.mustache
-|   |   |-- header.json
-|   |   `-- textinput.mustache
+|   |   `-- header.json
 |   |-- README.md
 |   |-- agents.html
 |   |-- business.html
@@ -165,5 +162,5 @@ Generated on: 2025-01-12 20:32:11
 |-- html
 `-- spec.yaml
 
-27 directories, 132 files
+27 directories, 129 files
 ```
