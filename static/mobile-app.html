@@ -7,17 +7,23 @@
     <meta name="application-name" content="OpenAgents"/>
     <meta name="description" content="Mobile App for OpenAgents"/>
     <meta name="author" content="OpenAgents, Inc.">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="canonical" href="https://openagents.com/mobile-app"/>
+    <title>Mobile App - OpenAgents</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
     <script src="js/client-side-templates.js"></script>
     <script src="js/mustache.js"></script>
 </head>
 
-<body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto" hx-boost="true">
-    <div class="container mx-auto" hx-ext="client-side-templates">
-        <div hx-get="/templates/header.json"
+<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
+    <div class="container mx-auto">
+        <div id="header-container" 
+             hx-ext="client-side-templates"
+             hx-get="/templates/header.json"
              hx-trigger="load"
-             mustache-template="header-template">
+             mustache-template="header-template"
+             hx-preserve="true">
         </div>
 
         <template id="header-template">
@@ -34,9 +40,9 @@
                                    href="{{href}}"
                                    hx-boost="true"
                                    hx-push-url="true"
-                                   hx-target="body"
-                                   hx-scroll="false"
-                                   hx-swap="innerHTML">{{text}}</a>
+                                   hx-target="#content"
+                                   hx-select="#content"
+                                   hx-swap="innerHTML show:top">{{text}}</a>
                             </li>
                             {{/buttons}}
                         </ul>
@@ -46,18 +52,23 @@
         </template>
 
         <div id="content">
-            <h1 class="text-3xl font-bold mb-4">Mobile App</h1>
-            <p>Welcome to the Mobile App page of OpenAgents. Here you can find information about our mobile application.</p>
+            <div class="prose prose-invert max-w-none">
+                <h1 class="text-3xl font-bold mb-4">Mobile App</h1>
+                <p>Welcome to the Mobile App page of OpenAgents. Here you can find information about our mobile application.</p>
+            </div>
         </div>
     </div>
 
     <script>
         document.body.addEventListener('htmx:afterSwap', function(evt) {
-            if (evt.detail.target === document.body) {
-                const header = document.querySelector('#header-container');
-                if (header) {
-                    evt.detail.shouldSwap = false;
-                }
+            window.scrollTo(0, 0);
+        });
+
+        // Prevent template processing on subsequent navigation
+        document.body.addEventListener('htmx:beforeSwap', function(evt) {
+            if (evt.detail.target.id === 'content') {
+                evt.detail.shouldSwap = true;
+                evt.detail.isError = false;
             }
         });
     </script>
