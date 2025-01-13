@@ -35,11 +35,39 @@ pub async fn changelog_page() -> impl Responder {
     NamedFile::open(path)
 }
 
+#[get("/mobile-app")]
+pub async fn mobile_app_page() -> impl Responder {
+    let path: PathBuf = "./static/mobile-app.html".into();
+    NamedFile::open(path)
+}
+
+#[get("/business")]
+pub async fn business_page() -> impl Responder {
+    let path: PathBuf = "./static/business.html".into();
+    NamedFile::open(path)
+}
+
+#[get("/company")]
+pub async fn company_page() -> impl Responder {
+    let path: PathBuf = "./static/company.html".into();
+    NamedFile::open(path)
+}
+
+#[get("/contact")]
+pub async fn contact_page() -> impl Responder {
+    let path: PathBuf = "./static/contact.html".into();
+    NamedFile::open(path)
+}
+
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(health_check)
         .service(new_page)
         .service(agents_page)
         .service(video_series_page)
         .service(changelog_page)
+        .service(mobile_app_page)
+        .service(business_page)
+        .service(company_page)
+        .service(contact_page)
         .route("/subscriptions", web::post().to(subscribe));
 }
