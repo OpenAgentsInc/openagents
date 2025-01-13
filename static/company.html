@@ -14,7 +14,7 @@
 </head>
 
 <body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
-    <div class="container mx-auto" hx-ext="client-side-templates">
+    <div class="header-container" hx-ext="client-side-templates">
         <div hx-get="/templates/header.json"
              hx-trigger="load"
              mustache-template="header-template">
@@ -40,7 +40,9 @@
             </header>
         </template>
 
-        <div class="content">
+    </div>
+    
+    <div id="content">
             <h1 class="text-3xl font-bold mb-4">Company</h1>
             <p class="mb-4">Welcome to the Company page. Here you can find information about our company, our mission, and our team.</p>
             <p class="mb-4">Our company is dedicated to providing innovative solutions to help businesses and individuals achieve their goals. We believe in the power of technology to transform lives and create new opportunities.</p>
