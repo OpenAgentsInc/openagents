@@ -36,8 +36,7 @@ tracing = { version = "0.1", features = ["log"] }
 url = "2.4"
 time = "0.3.37"
 anyhow = "1.0"
-hypertext-macros = "0.6.2"
-hypertext = { version = "0.6.2", features = ["alloc"] }
+hypertext = { version = "0.6.2", features = ["alloc", "macros"] }
 
 [dev-dependencies]
 actix-web = "4.4"
