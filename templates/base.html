@@ -3,19 +3,12 @@
   <head>
     <link href="/assets/main.css" rel="stylesheet" />
     <link href="/static/css/fonts.css" rel="stylesheet" />
-    <!-- Allow any inheriting page to set it's own title -->
     <title>{% block title %}{{ title }}{% endblock %}</title>
-
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-
-    <!-- Allow any inheriting page to extend head with additional assets -->
     {% block head %}{% endblock %}
   </head>
   <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
     <div id="content" class="flex min-h-screen">
-      <!-- Inheriting pages will have their content rendered here, similar to app root in React, Angular, etc. -->
       {% block content %}{% endblock %}
     </div>
   </body>
