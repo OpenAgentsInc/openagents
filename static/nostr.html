@@ -8,9 +8,8 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
   <title>OpenAgents</title>
   <script src="js/htmx.min.js"></script>
-  <script src="js/client-side-templates.js"></script>
-  <script src="js/mustache.js"></script>
-  <script src="/dist/nostr-sub.js"></script>
+  <script src="dist/ndk.js"></script>
+  <script src="dist/nostr/nostr-chat.js"></script>
   <script>
     htmx.on('htmx:nostr-sub-event', console.log)
   </script>
@@ -18,40 +17,41 @@
 
 <body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto" hx-boost="true">
   <div>
-
-    <template id="header-template">
-        <header class="py-2 mb-5">
-            <div class="flex justify-between items-center w-full">
-                <span class="text-lg font-bold">OpenAgents</span>
-            </div>
-            <div class="mt-4">
-                <nav>
-                    <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-                        {{#buttons}}
-                        <li class="flex justify-center mb-1">
-                            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                               href="{{href}}">{{text}}</a>
-                        </li>
-                        {{/buttons}}
-                    </ul>
-                </nav>
-            </div>
-        </header>
-    </template>
+    <header class="py-2 mb-5">
+      <div class="flex justify-between items-center w-full">
+        <span class="text-lg font-bold">OpenAgents</span>
+      </div>
+      <div class="mt-4">
+        <nav>
+          <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
+            <li class="flex justify-center mb-1">
+              <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" href="/">Home</a>
+            </li>
+            <li class="flex justify-center mb-1">
+              <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" href="/agents">Agents</a>
+            </li>
+            <li class="flex justify-center mb-1">
+              <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" href="/nostr">Nostr</a>
+            </li>
+            <li class="flex justify-center mb-1">
+              <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" href="/video-series">Video Series</a>
+            </li>
+            <li class="flex justify-center mb-1">
+              <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" href="/company">Company</a>
+            </li>
+            <li class="flex justify-center mb-1">
+              <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" href="/contact">Contact</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
   </div>
 
-  <form hx-trigger="submit" hx-ext="nostr-sub, client-side-templates" mustache-template="event"
-    nostr-filter='{"kinds":[0]}'>
+  <form hx-trigger="submit" hx-ext="nostr-sub, client-side-templates" nostr-filter='{"kinds":[0]}'>
     <input name="author" placeholder="author pubkey" />
     <button>nostr test</button>
   </form>
 
   <main id="main"></main>
-
-  <template id="event">
-    <div id="main" hx-swap-oob="afterbegin">
-      at <em>{{created_at}}</em> <b>{{pubkey}}</b> said:
-      <p>{{content}}</p>
-    </div>
-  </template>
 </body>

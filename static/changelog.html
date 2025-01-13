@@ -10,53 +10,49 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/changelog.css"/>
     <script src="js/htmx.min.js"></script>
-    <script src="js/client-side-templates.js"></script>
-    <script src="js/mustache.js"></script>
 </head>
 
 <body class="bg-black text-white font-mono min-h-screen">
     <div class="container mx-auto max-w-[60rem] px-4">
-        <div id="header-container" 
-             hx-ext="client-side-templates"
-             hx-get="/templates/header.json"
-             hx-trigger="load"
-             mustache-template="header-template"
-             hx-swap="innerHTML">
-        </div>
-
-        <template id="header-template">
-            <header class="py-2 mb-5" id="static-header">
+        <div id="header-container">
+            <header class="py-2 mb-5">
                 <div class="flex justify-between items-center w-full">
-                    <span class="text-lg font-bold">{{header.title}}</span>
+                    <span class="text-lg font-bold">OpenAgents</span>
                 </div>
                 <div class="mt-4">
                     <nav>
                         <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-                            {{#header.buttons}}
                             <li class="flex justify-center mb-1">
                                 <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="{{href}}"
-                                   hx-get="{{href}}"
-                                   hx-push-url="true"
-                                   hx-target="#page-content"
-                                   hx-select="#page-content"
-                                   hx-swap="innerHTML show:top">{{text}}</a>
+                                   href="/">Home</a>
                             </li>
-                            {{/header.buttons}}
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/agents">Agents</a>
+                            </li>
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/nostr">Nostr</a>
+                            </li>
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/video-series">Video Series</a>
+                            </li>
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/company">Company</a>
+                            </li>
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/contact">Contact</a>
+                            </li>
                         </ul>
                     </nav>
                 </div>
             </header>
-        </template>
-
-        <div id="changelog" 
-             hx-get="/data/changelog.json" 
-             hx-trigger="load" 
-             hx-ext="client-side-templates"
-             mustache-template="changelog-template">
         </div>
 
-        <template id="changelog-template">
+        <div id="changelog">
             <div class="space-y-8">
                 <div class="bg-zinc-900 rounded-lg p-6 space-y-4">
                     <p class="text-xs font-bold text-center">Meet Onyx, your new personal AI agent.</p>
@@ -74,18 +70,64 @@
                     <p>Videos: <a href="https://x.com/OpenAgentsInc/status/1870030269916340610" class="text-white hover:text-zinc-300 underline" target="_blank">Onyx Beta Launch</a> | <a href="https://x.com/OpenAgentsInc/status/1872388364013379949" class="text-white hover:text-zinc-300 underline" target="_blank">Code by Voice</a></p>
                 </div>
 
-                {{#changes}}
                 <div class="border border-zinc-800 rounded-lg p-4">
-                    <div class="text-xs font-bold mb-2">{{version}} - {{date}}</div>
+                    <div class="text-xs font-bold mb-2">v0.1.0 - 2025-01-03</div>
                     <ul class="list-disc list-inside space-y-1">
-                        {{#changes}}
-                        <li>{{.}}</li>
-                        {{/changes}}
+                        <li>Add basic bitcoin Lightning wallet</li>
+                        <li>Note: Treat as experimental. Please do not use with more than ~$1 of bitcoin!</li>
                     </ul>
                 </div>
-                {{/changes}}
+
+                <div class="border border-zinc-800 rounded-lg p-4">
+                    <div class="text-xs font-bold mb-2">v0.0.6 - 2024-12-29</div>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>New chat/recording UI</li>
+                        <li>Support multiple GitHub tokens</li>
+                    </ul>
+                </div>
+
+                <div class="border border-zinc-800 rounded-lg p-4">
+                    <div class="text-xs font-bold mb-2">v0.0.5 - 2024-12-27</div>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>Chats are saved to device</li>
+                    </ul>
+                </div>
+
+                <div class="border border-zinc-800 rounded-lg p-4">
+                    <div class="text-xs font-bold mb-2">v0.0.4 - 2024-12-26</div>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>Added coder tools via GitHub API</li>
+                        <li>Switched model to Gemini 1.5 Pro</li>
+                    </ul>
+                </div>
+
+                <div class="border border-zinc-800 rounded-lg p-4">
+                    <div class="text-xs font-bold mb-2">v0.0.3 - 2024-12-23</div>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>Revamped UI</li>
+                        <li>Replaces local models with Llama 3.1 8B via Groq API (will soon have both)</li>
+                        <li>Send voice chat to Onyx via Whisper (Groq API)</li>
+                        <li>Adds over-the-air updates</li>
+                    </ul>
+                </div>
+
+                <div class="border border-zinc-800 rounded-lg p-4">
+                    <div class="text-xs font-bold mb-2">v0.0.2 - 2024-12-21</div>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>Added Llama 3.2 3B</li>
+                        <li>Added model switcher</li>
+                        <li>Improved model loading & error handling</li>
+                    </ul>
+                </div>
+
+                <div class="border border-zinc-800 rounded-lg p-4">
+                    <div class="text-xs font-bold mb-2">v0.0.1 - 2024-12-20</div>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>Added chat with Llama 3.2 1B</li>
+                    </ul>
+                </div>
             </div>
-        </template>
+        </div>
     </div>
 </body>
 </html>

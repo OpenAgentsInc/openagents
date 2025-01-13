@@ -12,45 +12,48 @@
     <title>Services - OpenAgents</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
-    <script src="js/client-side-templates.js"></script>
-    <script src="js/mustache.js"></script>
 </head>
 
 <body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
     <div class="container mx-auto">
-        <!-- Header loaded via template -->
-        <div id="header-container" 
-             hx-ext="client-side-templates"
-             hx-get="/templates/header.json"
-             hx-trigger="load"
-             mustache-template="header-template"
-             hx-swap="innerHTML">
-        </div>
-
-        <template id="header-template">
-            <header class="py-2 mb-5" id="static-header">
+        <!-- Header loaded via Rust template -->
+        <div id="header-container">
+            <header class="py-2 mb-5">
                 <div class="flex justify-between items-center w-full">
-                    <span class="text-lg font-bold">{{header.title}}</span>
+                    <span class="text-lg font-bold">OpenAgents</span>
                 </div>
                 <div class="mt-4">
                     <nav>
                         <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
-                            {{#header.buttons}}
                             <li class="flex justify-center mb-1">
                                 <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="{{href}}"
-                                   hx-get="{{href}}"
-                                   hx-push-url="true"
-                                   hx-target="#page-content"
-                                   hx-select="#page-content"
-                                   hx-swap="innerHTML show:top">{{text}}</a>
+                                   href="/">Home</a>
                             </li>
-                            {{/header.buttons}}
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/agents">Agents</a>
+                            </li>
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/nostr">Nostr</a>
+                            </li>
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/video-series">Video Series</a>
+                            </li>
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/company">Company</a>
+                            </li>
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                                   href="/contact">Contact</a>
+                            </li>
                         </ul>
                     </nav>
                 </div>
             </header>
-        </template>
+        </div>
 
         <!-- Content area that gets swapped -->
         <div id="page-content">
