@@ -16,7 +16,8 @@
 
 <body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
     <div class="container mx-auto">
-        <header class="py-2 mb-5">
+        <!-- Static header that never changes -->
+        <header class="py-2 mb-5" id="static-header">
             <div class="flex justify-between items-center w-full">
                 <span class="text-lg font-bold">OpenAgents</span>
             </div>
@@ -26,49 +27,55 @@
                         <li class="flex justify-center mb-1">
                             <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
                                href="/"
-                               hx-boost="true"
+                               hx-get="/"
                                hx-push-url="true"
-                               hx-target="#content"
+                               hx-target="#page-content"
+                               hx-select="#page-content"
                                hx-swap="innerHTML show:top">Home</a>
                         </li>
                         <li class="flex justify-center mb-1">
                             <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
                                href="/mobile-app"
-                               hx-boost="true"
+                               hx-get="/mobile-app"
                                hx-push-url="true"
-                               hx-target="#content"
+                               hx-target="#page-content"
+                               hx-select="#page-content"
                                hx-swap="innerHTML show:top">Mobile App</a>
                         </li>
                         <li class="flex justify-center mb-1">
                             <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
                                href="/business"
-                               hx-boost="true"
+                               hx-get="/business"
                                hx-push-url="true"
-                               hx-target="#content"
+                               hx-target="#page-content"
+                               hx-select="#page-content"
                                hx-swap="innerHTML show:top">Services</a>
                         </li>
                         <li class="flex justify-center mb-1">
                             <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
                                href="/video-series"
-                               hx-boost="true"
+                               hx-get="/video-series"
                                hx-push-url="true"
-                               hx-target="#content"
+                               hx-target="#page-content"
+                               hx-select="#page-content"
                                hx-swap="innerHTML show:top">Video Series</a>
                         </li>
                         <li class="flex justify-center mb-1">
                             <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
                                href="/company"
-                               hx-boost="true"
+                               hx-get="/company"
                                hx-push-url="true"
-                               hx-target="#content"
+                               hx-target="#page-content"
+                               hx-select="#page-content"
                                hx-swap="innerHTML show:top">Company</a>
                         </li>
                         <li class="flex justify-center mb-1">
                             <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
                                href="/contact"
-                               hx-boost="true"
+                               hx-get="/contact"
                                hx-push-url="true"
-                               hx-target="#content"
+                               hx-target="#page-content"
+                               hx-select="#page-content"
                                hx-swap="innerHTML show:top">Contact</a>
                         </li>
                     </ul>
@@ -76,10 +83,13 @@
             </div>
         </header>
 
-        <div id="content">
-            <div class="prose prose-invert max-w-none">
-                <h1 class="text-3xl font-bold mb-4">Mobile App</h1>
-                <p>Welcome to the Mobile App page of OpenAgents. Here you can find information about our mobile application.</p>
+        <!-- Content area that gets swapped -->
+        <div id="page-content">
+            <div id="content">
+                <div class="prose prose-invert max-w-none">
+                    <h1 class="text-3xl font-bold mb-4">Mobile App</h1>
+                    <p>Welcome to the Mobile App page of OpenAgents. Here you can find information about our mobile application.</p>
+                </div>
             </div>
         </div>
     </div>
