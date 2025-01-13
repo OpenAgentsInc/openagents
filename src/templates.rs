@@ -1,6 +1,16 @@
 use hypertext::{html, Html};
 
-pub mod templates {
+#[derive(Debug)]
+pub struct Agent {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub status: String,
+    pub memory_usage: u32,
+    pub memory_limit: u32,
+    pub cpu_usage: u32,
+    pub cpu_limit: u32,
+}
     pub fn render_header_template(buttons: Vec<(&str, &str)>) -> Html {
         html! {
             <header class="py-2 mb-5">
@@ -43,14 +53,3 @@ pub mod templates {
         }
     }
 
-    pub struct Agent {
-        pub id: String,
-        pub name: String,
-        pub description: String,
-        pub status: String,
-        pub memory_usage: u32,
-        pub memory_limit: u32,
-        pub cpu_usage: u32,
-        pub cpu_limit: u32,
-    }
-}
