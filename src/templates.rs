@@ -11,8 +11,6 @@ pub struct Agent {
     pub cpu_usage: u32,
     pub cpu_limit: u32,
 }
-    use super::*;
-
     pub fn render_header_template(buttons: Vec<(&str, &str)>) -> String {
         maud! {
             header.py-2.mb-5 {
