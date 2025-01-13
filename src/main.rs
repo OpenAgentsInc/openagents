@@ -53,8 +53,8 @@ async fn main() -> anyhow::Result<()> {
 
 #[derive(Template)]
 #[template(path = "hello.html")]
-struct PageTemplate {
-    title: String,
+pub struct PageTemplate {
+    pub title: String,
 }
 
 async fn hello() -> impl IntoResponse {
