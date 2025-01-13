@@ -75,7 +75,8 @@
 }
 
 @media (max-width: 1200px) {
-  .changelog, .videos {
+  .changelog,
+  .videos {
     position: static;
     width: 100%;
     height: auto;

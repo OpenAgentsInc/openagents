@@ -31,7 +31,7 @@ class LightingSystem {
 
   update(time) {
     const lightTime = time * 0.002;
-    
+
     // Animate glow and pulse lights
     const intensity = 1.5 + Math.sin(lightTime) * 0.5;
     this.glowLight.intensity = intensity;

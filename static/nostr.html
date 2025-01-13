@@ -1,34 +1,41 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="css/style.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap"
+      rel="stylesheet"
+    />
+    <title>OpenAgents</title>
+    <script src="js/htmx.min.js"></script>
+    <script src="js/client-side-templates.js"></script>
+    <script src="js/mustache.js"></script>
+    <script src="/dist/nostr-sub.js"></script>
+    <script>
+      htmx.on("htmx:nostr-sub-event", console.log);
+    </script>
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="css/style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
-  <title>OpenAgents</title>
-  <script src="js/htmx.min.js"></script>
-  <script src="js/client-side-templates.js"></script>
-  <script src="js/mustache.js"></script>
-  <script src="/dist/nostr-sub.js"></script>
-  <script>
-    htmx.on('htmx:nostr-sub-event', console.log)
-  </script>
-</head>
+  <body>
+    <form
+      hx-trigger="submit"
+      hx-ext="nostr-sub, client-side-templates"
+      mustache-template="event"
+      nostr-filter='{"kinds":[0]}'
+    >
+      <input name="author" placeholder="author pubkey" />
+      <button>nostr test</button>
+    </form>
 
-<body>
-  <form hx-trigger="submit" hx-ext="nostr-sub, client-side-templates" mustache-template="event"
-    nostr-filter='{"kinds":[0]}'>
-    <input name="author" placeholder="author pubkey" />
-    <button>nostr test</button>
-  </form>
+    <main id="main"></main>
 
-  <main id="main"></main>
-
-  <template id="event">
-    <div id="main" hx-swap-oob="afterbegin">
-      at <em>{{created_at}}</em> <b>{{pubkey}}</b> said:
-      <p>{{content}}</p>
-    </div>
-  </template>
-</body>
+    <template id="event">
+      <div id="main" hx-swap-oob="afterbegin">
+        at <em>{{created_at}}</em> <b>{{pubkey}}</b> said:
+        <p>{{content}}</p>
+      </div>
+    </template>
+  </body>
+</html>

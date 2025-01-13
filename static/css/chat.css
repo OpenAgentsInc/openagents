@@ -1,144 +1,145 @@
 .chat-container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
 .messages {
-    height: 400px;
-    overflow-y: auto;
-    border: 1px solid #333;
-    padding: 10px;
-    margin-bottom: 20px;
-    background: rgba(255, 255, 255, 0.05);
+  height: 400px;
+  overflow-y: auto;
+  border: 1px solid #333;
+  padding: 10px;
+  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .message {
-    margin-bottom: 10px;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
+  margin-bottom: 10px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
 }
 
 .message .author {
-    font-weight: bold;
-    color: #2a6;
+  font-weight: bold;
+  color: #2a6;
 }
 
 .message .time {
-    color: #888;
-    font-size: 0.8em;
+  color: #888;
+  font-size: 0.8em;
 }
 
 .message .content {
-    margin-top: 5px;
+  margin-top: 5px;
 }
 
 .message .actions {
-    margin-top: 5px;
-    font-size: 0.8em;
+  margin-top: 5px;
+  font-size: 0.8em;
 }
 
 .message-form {
-    display: flex;
-    gap: 10px;
+  display: flex;
+  gap: 10px;
 }
 
 .message-form input {
-    flex: 1;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid #333;
-    color: white;
+  flex: 1;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid #333;
+  color: white;
 }
 
 .message-form button {
-    padding: 8px 16px;
-    background: #2a6;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
+  padding: 8px 16px;
+  background: #2a6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .message-form button:hover {
-    background: #195;
+  background: #195;
 }
 
 /* Channel Form Styles */
 .channel-form {
-    background: rgba(255, 255, 255, 0.05);
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    border: 1px solid #333;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #333;
 }
 
 .channel-form .form-group {
-    margin-bottom: 15px;
+  margin-bottom: 15px;
 }
 
 .channel-form label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
 }
 
-.channel-form input, .channel-form textarea {
-    width: 100%;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid #333;
-    border-radius: 4px;
-    color: white;
+.channel-form input,
+.channel-form textarea {
+  width: 100%;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: white;
 }
 
 .channel-form textarea {
-    height: 100px;
-    resize: vertical;
+  height: 100px;
+  resize: vertical;
 }
 
 .channel-form button {
-    background: #2a6;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 4px;
-    cursor: pointer;
+  background: #2a6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .channel-form button:hover {
-    background: #195;
+  background: #195;
 }
 
 /* Channel List Styles */
 .channel-list {
-    margin-bottom: 20px;
+  margin-bottom: 20px;
 }
 
 .channel-item {
-    padding: 10px;
-    border: 1px solid #333;
-    margin-bottom: 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    background: rgba(255, 255, 255, 0.05);
+  padding: 10px;
+  border: 1px solid #333;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .channel-item:hover {
-    background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .channel-item.active {
-    border-color: #2a6;
-    background: rgba(42, 102, 68, 0.2);
+  border-color: #2a6;
+  background: rgba(42, 102, 68, 0.2);
 }
 
 /* Channel Header Styles */
 .channel-header {
-    margin-bottom: 20px;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-    border: 1px solid #333;
+  margin-bottom: 20px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  border: 1px solid #333;
 }

@@ -37,7 +37,7 @@ class OnyxOrb extends THREE.Group {
     const edgeMaterial = new THREE.LineBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.4
+      opacity: 0.4,
     });
     this.edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
     this.add(this.edges);
@@ -47,7 +47,7 @@ class OnyxOrb extends THREE.Group {
       color: 0xffffff,
       transparent: true,
       opacity: 0.1,
-      side: THREE.BackSide
+      side: THREE.BackSide,
     });
     this.innerGlow = new THREE.Mesh(geometry.clone(), innerGlowMaterial);
     this.innerGlow.scale.multiplyScalar(0.98);

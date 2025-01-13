@@ -2,11 +2,11 @@ class SceneSystem {
   constructor(width, height) {
     this.scene = new THREE.Scene();
     this.setupFog();
-    
+
     // Initialize systems
     this.lighting = new LightingSystem(this.scene);
     this.viewSystem = new ViewSystem(width, height);
-    
+
     // Add view group to scene
     this.scene.add(this.viewSystem.getGroup());
   }

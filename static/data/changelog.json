@@ -11,17 +11,12 @@
     {
       "date": "2024-12-29",
       "version": "v0.0.6",
-      "changes": [
-        "New chat/recording UI",
-        "Support multiple GitHub tokens"
-      ]
+      "changes": ["New chat/recording UI", "Support multiple GitHub tokens"]
     },
     {
       "date": "2024-12-27",
       "version": "v0.0.5",
-      "changes": [
-        "Chats are saved to device"
-      ]
+      "changes": ["Chats are saved to device"]
     },
     {
       "date": "2024-12-26",
@@ -53,9 +48,7 @@
     {
       "date": "2024-12-20",
       "version": "v0.0.1",
-      "changes": [
-        "Added chat with Llama 3.2 1B"
-      ]
+      "changes": ["Added chat with Llama 3.2 1B"]
     }
   ]
 }

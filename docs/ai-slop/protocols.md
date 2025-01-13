@@ -143,6 +143,7 @@ By integrating Bitcoin’s Lightning Network, both MCP and NIP-90 scenarios bene
 
 3. **Summarization and Sentiment Analysis via MCP (Using NIP-89):**
    With a transcript ready, Onyx again queries NIP-89 for summarization and sentiment analysis servers. It finds two MCP servers:
+
    - Summarization server: Produces a concise, actionable summary of the meeting.
    - Sentiment analysis server: Provides a tone map, highlighting where the conversation was positive, neutral, or negative.
 
@@ -189,6 +190,7 @@ In this adapted model, when an MCP server receives a request (e.g., a transcript
 
 - **NIP-90’s Payment Signaling:**
   In NIP-90 job requests, service providers can send status or partial results and indicate that payment is required before further action. We adopt a similar pattern here:
+
   - Before delivering the full, final MCP result, the server sends a message indicating “payment-required” status.
   - Onyx pays the invoice, then the server proceeds to deliver the complete data.
 

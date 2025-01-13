@@ -10,7 +10,6 @@ We will not allow the future of AI to be controlled by a small handful of mega-c
 
 We envision a vibrant, user-driven ecosystem where anyone can discover, integrate, and monetize AI services on fair terms.
 
-
 ## Core Vision
 
 - **Openness Everywhere**: We rely on open models, open data, and Bitcoin as open money, fostering a flexible and transparent AI environment.
