@@ -1,13 +1,2 @@
 <h1>{{title}}</h1>
 <p>{{content}}</p>
-<script>
-    // Update active state on navigation
-    document.querySelectorAll('.nav-dot').forEach(dot => dot.remove());
-    const currentPath = window.location.pathname;
-    const activeLink = document.querySelector(`a[href="${currentPath}"]`);
-    if (activeLink) {
-        const dot = document.createElement('span');
-        dot.className = 'nav-dot w-1.5 h-1.5 rounded-full bg-white';
-        activeLink.appendChild(dot);
-    }
-</script>
