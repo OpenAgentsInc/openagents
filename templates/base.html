@@ -9,15 +9,11 @@
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap"
-      rel="stylesheet"
-    />
 
     <!-- Allow any inheriting page to extend head with additional assets -->
     {% block head %}{% endblock %}
   </head>
-  <body class="fixed min-h-screen w-screen bg-black text-white" style="font-family: 'Berkeley Mono', monospace;">
+  <body class="fixed min-h-screen w-screen bg-black text-white">
     <div id="content" class="min-h-screen">
       <!-- Inheriting pages will have their content rendered here, similar to app root in React, Angular, etc. -->
       {% block content %}{% endblock %}
