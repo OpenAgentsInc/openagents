@@ -1,10 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link href="/assets/main.css" rel="stylesheet" />
+    <link href="/assets/fonts.css" rel="stylesheet" />
     <title>{{title}}</title>
 </head>
-<body>
-    <h1>{{title}}</h1>
-    <a href="/" class="button">Home</a>
+<body class="fixed min-h-screen w-screen bg-black text-white font-mono">
+    <div class="flex min-h-screen mx-auto">
+        <div class="w-[60rem] m-6 px-4 border border-white">
+            <h1>{{title}}</h1>
+            <a href="/" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none px-6 py-1 border border-white">Home</a>
+        </div>
+    </div>
 </body>
 </html>
