@@ -17,7 +17,7 @@
     <script src="js/mustache.js"></script>
 </head>
 
-<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
+<body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
     <div class="container mx-auto">
         <div id="header-container" 
              hx-ext="client-side-templates"
@@ -42,7 +42,6 @@
                                    hx-boost="true"
                                    hx-push-url="true"
                                    hx-target="#content"
-                                   hx-select="#content"
                                    hx-swap="innerHTML show:top">{{text}}</a>
                             </li>
                             {{/buttons}}
@@ -63,14 +62,6 @@
     <script>
         document.body.addEventListener('htmx:afterSwap', function(evt) {
             window.scrollTo(0, 0);
-        });
-
-        // Prevent template processing on subsequent navigation
-        document.body.addEventListener('htmx:beforeSwap', function(evt) {
-            if (evt.detail.target.id === 'content') {
-                evt.detail.shouldSwap = true;
-                evt.detail.isError = false;
-            }
         });
     </script>
 </body>
