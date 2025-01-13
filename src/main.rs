@@ -25,10 +25,17 @@ async fn main() -> anyhow::Result<()> {
     let assets_path = std::env::current_dir().unwrap();
     let port = 8000_u16;
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
-    let router = Router::new().route("/", get(hello)).nest_service(
-        "/assets",
-        ServeDir::new(format!("{}/assets", assets_path.to_str().unwrap())),
-    );
+    let router = Router::new()
+        .route("/", get(hello))
+        .route("/mobile-app", get(mobile_app))
+        .route("/business", get(business))
+        .route("/video-series", get(video_series))
+        .route("/company", get(company))
+        .route("/contact", get(contact))
+        .nest_service(
+            "/assets",
+            ServeDir::new(format!("{}/assets", assets_path.to_str().unwrap())),
+        );
 
     info!("router initialized, now listening on port {}", port);
 
@@ -45,6 +52,31 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn hello() -> impl IntoResponse {
+    let template = HelloTemplate {};
+    HtmlTemplate(template)
+}
+
+async fn mobile_app() -> impl IntoResponse {
+    let template = HelloTemplate {};
+    HtmlTemplate(template)
+}
+
+async fn business() -> impl IntoResponse {
+    let template = HelloTemplate {};
+    HtmlTemplate(template)
+}
+
+async fn video_series() -> impl IntoResponse {
+    let template = HelloTemplate {};
+    HtmlTemplate(template)
+}
+
+async fn company() -> impl IntoResponse {
+    let template = HelloTemplate {};
+    HtmlTemplate(template)
+}
+
+async fn contact() -> impl IntoResponse {
     let template = HelloTemplate {};
     HtmlTemplate(template)
 }
