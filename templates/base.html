@@ -13,8 +13,8 @@
     <!-- Allow any inheriting page to extend head with additional assets -->
     {% block head %}{% endblock %}
   </head>
-  <body class="fixed min-h-screen w-screen bg-black text-white">
-    <div id="content" class="min-h-screen">
+  <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
+    <div id="content" class="flex min-h-screen">
       <!-- Inheriting pages will have their content rendered here, similar to app root in React, Angular, etc. -->
       {% block content %}{% endblock %}
     </div>
