@@ -11,6 +11,7 @@
     <meta name="author" content="OpenAgents, Inc.">
     <meta name="format-detection" content="telephone=no">
     <link rel="canonical" href="https://openagents.com"/>
+    <link rel="stylesheet" href="css/style.css"/>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
     <script src="js/client-side-templates.js"></script>
@@ -26,6 +27,21 @@
              hx-trigger="load"
              mustache-template="header-template"
              hx-swap="innerHTML">
+            <!-- Loading state -->
+            <header class="py-2 mb-5 opacity-40">
+                <div class="flex justify-between items-center w-full">
+                    <span class="text-lg font-bold">OpenAgents</span>
+                </div>
+                <div class="mt-4">
+                    <nav>
+                        <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6">
+                            <li class="flex justify-center mb-1">
+                                <a class="btn-nav bg-black text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white">Loading...</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            </header>
         </div>
 
         <template id="header-template">
