@@ -26,7 +26,7 @@ async fn main() {
 }
 
 #[derive(Template)]
-#[template(path = "hello.html")]
+#[template(path = "base.html")]
 struct PageTemplate {
     title: String,
 }
