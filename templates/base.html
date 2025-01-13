@@ -5,6 +5,18 @@
     <link href="/assets/fonts.css" rel="stylesheet" />
     <title>{{title}}</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script>
+        document.addEventListener('htmx:afterSettle', function() {
+            document.querySelectorAll('.nav-dot').forEach(dot => dot.remove());
+            const currentPath = window.location.pathname;
+            const activeLink = document.querySelector(`a[href="${currentPath}"]`);
+            if (activeLink) {
+                const dot = document.createElement('span');
+                dot.className = 'nav-dot w-1.5 h-1.5 rounded-full bg-white';
+                activeLink.appendChild(dot);
+            }
+        });
+    </script>
 </head>
 <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
     <div class="flex min-h-screen mx-auto">
