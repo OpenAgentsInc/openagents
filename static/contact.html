@@ -13,9 +13,16 @@
     <script src="js/mustache.js"></script>
 </head>
 
-<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto" hx-boost="true">
-    <div class="header-container">
-        <header class="py-2 mb-5">
+<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
+    <div class="container mx-auto" hx-ext="client-side-templates">
+        <div id="header-container"
+             hx-get="/templates/header.json"
+             hx-trigger="load"
+             mustache-template="header-template"
+             hx-preserve="true">
+        </div>
+
+        <template id="header-template">
             <header class="py-2 mb-5">
                 <div class="flex justify-between items-center w-full">
                     <span class="text-lg font-bold">OpenAgents</span>
@@ -26,7 +33,10 @@
                             {{#buttons}}
                             <li class="flex justify-center mb-1">
                                 <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                                   href="{{href}}">{{text}}</a>
+                                   href="{{href}}"
+                                   hx-boost="true"
+                                   hx-target="body"
+                                   hx-swap="innerHTML">{{text}}</a>
                             </li>
                             {{/buttons}}
                         </ul>
@@ -35,30 +45,43 @@
             </header>
         </template>
 
-        <div class="contact-form">
-            <h2 class="text-xl font-bold mb-4">Contact Us</h2>
-            <form id="contact-form">
-                <div class="form-group mb-4">
-                    <label for="name" class="block text-sm font-medium text-gray-700">Name</label>
-                    <input type="text" id="name" name="name" required
-                           class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                           placeholder="Your Name">
-                </div>
-                <div class="form-group mb-4">
-                    <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
-                    <input type="email" id="email" name="email" required
-                           class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                           placeholder="you@example.com">
-                </div>
-                <div class="form-group mb-4">
-                    <label for="message" class="block text-sm font-medium text-gray-700">Message</label>
-                    <textarea id="message" name="message" required
-                              class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                              placeholder="Your message..."></textarea>
-                </div>
-                <button type="submit" class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6">Send Message</button>
-            </form>
+        <div id="content">
+            <div class="contact-form">
+                <h2 class="text-xl font-bold mb-4">Contact Us</h2>
+                <form id="contact-form">
+                    <div class="form-group mb-4">
+                        <label for="name" class="block text-sm font-medium text-white">Name</label>
+                        <input type="text" id="name" name="name" required
+                               class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md bg-gray-800 text-white"
+                               placeholder="Your Name">
+                    </div>
+                    <div class="form-group mb-4">
+                        <label for="email" class="block text-sm font-medium text-white">Email</label>
+                        <input type="email" id="email" name="email" required
+                               class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md bg-gray-800 text-white"
+                               placeholder="you@example.com">
+                    </div>
+                    <div class="form-group mb-4">
+                        <label for="message" class="block text-sm font-medium text-white">Message</label>
+                        <textarea id="message" name="message" required
+                                  class="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md bg-gray-800 text-white"
+                                  placeholder="Your message..."></textarea>
+                    </div>
+                    <button type="submit" class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white">Send Message</button>
+                </form>
+            </div>
         </div>
     </div>
+
+    <script>
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            if (evt.detail.target === document.body) {
+                const header = document.querySelector('#header-container');
+                if (header) {
+                    evt.detail.shouldSwap = false;
+                }
+            }
+        });
+    </script>
 </body>
 </html>
