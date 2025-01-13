@@ -10,41 +10,7 @@
   <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
     <div id="content" class="flex min-h-screen mx-auto">
       <div class="w-[60rem] m-6 px-4 border border-white">
-        <header class="py-2 mb-5" id="static-header">
-          <div class="flex justify-between items-center w-full">
-            <span class="text-lg font-bold">OpenAgents</span>
-          </div>
-          <div class="mt-4">
-            <nav>
-              <ul
-                class="grid grid-cols-3 gap-2 lg:grid-cols-6"
-                id="nav-buttons"
-              >
-                <li class="flex justify-center mb-1">
-                  <a
-                    class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 py-1 border border-white"
-                    href="/"
-                    hx-get="/"
-                    hx-push-url="true"
-                    hx-target="#page-content"
-                    hx-select="#page-content"
-                    hx-swap="innerHTML show:top"
-                  >Home</a>
-                  <a
-                    class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 py-1 border border-white"
-                    href="/mobile-app"
-                    hx-get="/mobile-app"
-                    hx-push-url="true"
-                    hx-target="#page-content"
-                    hx-select="#page-content"
-                    hx-swap="innerHTML show:top"
-                  >Mobile App</a>
-                </li>
-              </ul>
-            </nav>
-          </div>
-        </header>
-
+        {% include "header.html" %}
         {% block content %}{% endblock %}
       </div>
     </div>
