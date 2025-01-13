@@ -13,8 +13,6 @@
     <link rel="canonical" href="https://openagents.com"/>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/htmx.min.js"></script>
-    <script src="js/client-side-templates.js"></script>
-    <script src="js/mustache.js"></script>
 </head>
 
 <body class="bg-black text-white font-mono max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
@@ -25,31 +23,59 @@
             </div>
             <div class="mt-4">
                 <nav>
-                    <div id="nav-buttons"
-                         hx-ext="client-side-templates"
-                         hx-get="/templates/header.json"
-                         hx-trigger="load"
-                         mustache-template="header-template"
-                         hx-swap="innerHTML">
-                    </div>
+                    <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6" id="nav-buttons">
+                        <li class="flex justify-center mb-1">
+                            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                               href="/"
+                               hx-boost="true"
+                               hx-push-url="true"
+                               hx-target="#content"
+                               hx-swap="innerHTML show:top">Home</a>
+                        </li>
+                        <li class="flex justify-center mb-1">
+                            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                               href="/mobile-app"
+                               hx-boost="true"
+                               hx-push-url="true"
+                               hx-target="#content"
+                               hx-swap="innerHTML show:top">Mobile App</a>
+                        </li>
+                        <li class="flex justify-center mb-1">
+                            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                               href="/business"
+                               hx-boost="true"
+                               hx-push-url="true"
+                               hx-target="#content"
+                               hx-swap="innerHTML show:top">Services</a>
+                        </li>
+                        <li class="flex justify-center mb-1">
+                            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                               href="/video-series"
+                               hx-boost="true"
+                               hx-push-url="true"
+                               hx-target="#content"
+                               hx-swap="innerHTML show:top">Video Series</a>
+                        </li>
+                        <li class="flex justify-center mb-1">
+                            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                               href="/company"
+                               hx-boost="true"
+                               hx-push-url="true"
+                               hx-target="#content"
+                               hx-swap="innerHTML show:top">Company</a>
+                        </li>
+                        <li class="flex justify-center mb-1">
+                            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
+                               href="/contact"
+                               hx-boost="true"
+                               hx-push-url="true"
+                               hx-target="#content"
+                               hx-swap="innerHTML show:top">Contact</a>
+                        </li>
+                    </ul>
                 </nav>
             </div>
         </header>
-
-        <template id="header-template">
-            <ul class="grid grid-cols-3 gap-2 lg:grid-cols-6">
-                {{#buttons}}
-                <li class="flex justify-center mb-1">
-                    <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" 
-                       href="{{href}}"
-                       hx-boost="true"
-                       hx-push-url="true"
-                       hx-target="#content"
-                       hx-swap="innerHTML show:top">{{text}}</a>
-                </li>
-                {{/buttons}}
-            </ul>
-        </template>
 
         <div id="content">
             <div class="prose prose-invert max-w-none">
