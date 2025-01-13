@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
+    <meta name="application-name" content="OpenAgents"/>
+    <meta name="description" content="Business Services"/>
+    <meta name="author" content="OpenAgents, Inc.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/htmx.min.js"></script>
+    <script src="js/mustache.js"></script>
+</head>
+
+<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
+    <div class="container mx-auto">
+        <div hx-get="/templates/header.mustache"
+             hx-trigger="load">
+        </div>
+
+        <template id="button-template">
+            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" href="{{href}}" hx-boost="true">{{text}}</a>
+        </template>
+
+        <div class="content">
+            <h1 class="text-3xl font-bold mb-4">Business Services</h1>
+            <p class="mb-4">Welcome to our Business Services page. Here you can find information about the various services we offer to help your business grow and succeed.</p>
+            <p class="mb-4">Our team of experts is dedicated to providing top-notch services tailored to meet your specific needs. Whether you are looking for consulting, software development, or marketing solutions, we have you covered.</p>
+            <p class="mb-4">Contact us today to learn more about how we can assist you in achieving your business goals.</p>
+        </div>
+    </div>
+</body>
+</html>

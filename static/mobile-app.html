@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
+    <meta name="application-name" content="OpenAgents"/>
+    <meta name="description" content="Mobile App for OpenAgents"/>
+    <meta name="author" content="OpenAgents, Inc.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/htmx.min.js"></script>
+    <script src="js/mustache.js"></script>
+</head>
+
+<body class="bg-black text-white font-mono min-h-screen max-w-[60rem] sm:border sm:border-white leading-6 mt-8 mb-8 py-2 px-4 pb-1 mx-auto">
+    <div class="container mx-auto">
+        <div hx-get="/templates/header.mustache"
+             hx-trigger="load">
+        </div>
+
+        <template id="button-template">
+            <a class="btn-nav bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center whitespace-nowrap select-none text-center align-middle no-underline outline-none w-full px-6 border border-white" href="{{href}}" hx-boost="true">{{text}}</a>
+        </template>
+
+        <div class="content">
+            <h1 class="text-3xl font-bold mb-4">Mobile App</h1>
+            <p>Welcome to the Mobile App page of OpenAgents. Here you can find information about our mobile application.</p>
+        </div>
+    </div>
+</body>
+</html>
