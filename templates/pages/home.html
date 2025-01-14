@@ -1,21 +1,13 @@
+{% import "macros/blog.html" as blog %}
+
 <div class="container mx-auto">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <!-- News Column -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+        <!-- About Column -->
         <div class="border p-4">
-            <h2 class="font-bold mb-4">Latest News</h2>
+            <h2 class="font-bold mb-4">About OpenAgents</h2>
             <div class="space-y-4 text-sm">
-                <div class="border-b pb-2">
-                    <span class="text-gray-500">January 14, 2025</span>
-                    <p>Launched new website</p>
-                </div>
-                <div class="border-b pb-2">
-                    <span class="text-gray-500">January 10, 2025</span>
-                    <p>Partnership announced with leading cloud providers</p>
-                </div>
-                <div class="border-b pb-2">
-                    <span class="text-gray-500">January 5, 2025</span>
-                    <p>New developer tools released for beta testing</p>
-                </div>
+                <p>OpenAgents is an Austin-based applied AI lab building the agentic economy on open protocols.</p>
+                <p>We're rapidly developing Onyx, our mobile app now in open beta for Android and iOS. It's a beautiful mobile application that provides access to a decentralized marketplace of agents, where providers are incentivized via bitcoin rewards to help build the best agents.</p>
             </div>
         </div>
 
@@ -32,6 +24,29 @@
                 <li>Incentivized Interoperability</li>
             </ul>
         </div>
+    </div>
+
+    <!-- Blog Section -->
+    <div class="border p-4">
+        <h2 class="font-bold mb-6">Latest Updates</h2>
+        
+        {% call blog::blog_post(
+            "January 14, 2025",
+            "New Website Launch",
+            "We're excited to announce the launch of our new website, featuring improved navigation and detailed information about our projects and vision."
+        ) %}
+        
+        {% call blog::blog_post(
+            "January 10, 2025",
+            "Cloud Provider Partnerships",
+            "OpenAgents has established strategic partnerships with leading cloud providers to ensure robust infrastructure for our decentralized agent marketplace."
+        ) %}
+        
+        {% call blog::blog_post(
+            "January 5, 2025",
+            "Developer Tools Beta",
+            "Our latest suite of developer tools has entered beta testing, enabling creators to build and deploy AI agents more efficiently than ever."
+        ) %}
     </div>
 </div>
 
