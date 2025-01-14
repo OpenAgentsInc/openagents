@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-14 07:33:05
+Generated on: 2025-01-14 08:36:34
 
 ### Structure
 
@@ -69,65 +69,6 @@ Generated on: 2025-01-14 07:33:05
 |   |-- emailoptin.rs
 |   |-- lib.rs
 |   `-- main.rs
-|-- static/
-|   |-- css/
-|   |   |-- changelog.css
-|   |   |-- chat.css
-|   |   |-- style.css
-|   |   |-- videos-new.css
-|   |   `-- videos.css
-|   |-- data/
-|   |   |-- changelog.json
-|   |   `-- videos.json
-|   |-- dist/
-|   |   |-- nostr/
-|   |   |   |-- nostr-agent.js
-|   |   |   |-- nostr-agent.js.map
-|   |   |   |-- nostr-chat.js
-|   |   |   `-- nostr-chat.js.map
-|   |   |-- ndk.js
-|   |   |-- ndk.js.map
-|   |   |-- nostr-sub.js
-|   |   `-- nostr-sub.js.map
-|   |-- js/
-|   |   |-- LightingSystem.js
-|   |   |-- OnyxOrb.js
-|   |   |-- SceneSystem.js
-|   |   |-- ViewSystem.js
-|   |   |-- client-side-templates.js
-|   |   |-- htmx.min.js
-|   |   |-- main.js
-|   |   |-- mustache.js
-|   |   `-- three.min.js
-|   |-- nostr/
-|   |   |-- agent-methods.ts
-|   |   |-- base.ts
-|   |   |-- channel-methods.ts
-|   |   |-- example.html
-|   |   |-- message-methods.ts
-|   |   |-- nostr-agent.ts
-|   |   |-- nostr-chat.js
-|   |   |-- nostr-chat.ts
-|   |   |-- storage.ts
-|   |   `-- types.ts
-|   |-- templates/
-|   |   |-- changelog-new.mustache
-|   |   |-- changelog.mustache
-|   |   `-- chat.mustache
-|   |-- README.md
-|   |-- agents.html
-|   |-- favicon.ico
-|   |-- fonts.css
-|   |-- index.html
-|   |-- justfile
-|   |-- ndk.ts
-|   |-- new.html
-|   |-- nostr-sub.ts
-|   |-- nostr.html
-|   |-- onyx.png
-|   |-- package.json
-|   |-- tsconfig.json
-|   `-- yarn.lock
 |-- styles/
 |   `-- tailwind.css
 |-- templates/
@@ -182,5 +123,5 @@ Generated on: 2025-01-14 07:33:05
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-32 directories, 144 files
+24 directories, 93 files
 ```
