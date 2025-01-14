@@ -55,13 +55,6 @@ struct ContentTemplate {
     title: String,
 }
 
-#[derive(Template)]
-#[template(path = "layouts/base.html")]
-struct HomeTemplate {
-    title: String,
-    path: String,
-}
-
 struct HtmlTemplate<T>(T);
 
 impl<T> IntoResponse for HtmlTemplate<T>
@@ -81,7 +74,7 @@ where
 }
 
 async fn home(_headers: HeaderMap) -> Html<String> {
-    let template = HomeTemplate {
+    let template = PageTemplate {
         title: "Home".to_string(),
         path: "/".to_string(),
     };
