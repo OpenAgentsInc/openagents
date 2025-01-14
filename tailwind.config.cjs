@@ -20,6 +20,12 @@ module.exports = {
         'nav-hover': '3px 3px 0 0 rgba(255, 255, 255, 0.5)',
         'nav-active': '1px 1px 0 0 rgba(255, 255, 255, 0.5)',
       },
+      transitionTimingFunction: {
+        'nav': 'cubic-bezier(0.4, 0, 0.2, 1)',
+      },
+      transitionDuration: {
+        'nav': '150ms',
+      },
     },
   },
   safelist: [
