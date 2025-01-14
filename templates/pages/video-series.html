@@ -1,59 +1,44 @@
+{% import "macros/video.html" as video %}
+
 <div class="container mx-auto px-4">
     <h1 class="text-xl font-bold mb-6">Recent Videos</h1>
     
     <div class="space-y-6">
-        <div class="border-b pb-4">
-            <div class="flex items-center gap-4 mb-2">
-                <h2 class="text-lg font-semibold">Open Knowledge Graph</h2>
-                <a href="https://x.com/OpenAgentsInc/status/1876857763504046458" target="_blank" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-4 py-1 border border-white shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav">Watch on X</a>
-            </div>
-            <p class="text-zinc-500 text-sm mb-2">January 7, 2025</p>
-            <p class="text-sm mb-4">We review a demo and spec for an open knowledge graph paired with an uncensorable chat channel allowing any contributors - both human and agent, anon or not - to earn bitcoin for building the knowledge base of agents that will help us make sense of all the noise.</p>
-        </div>
-
-        <div class="border-b pb-4">
-            <div class="flex items-center gap-4 mb-2">
-                <h2 class="text-lg font-semibold">Agentic OSINT</h2>
-                <a href="https://x.com/OpenAgentsInc/status/1875380960658681918" target="_blank" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-4 py-1 border border-white shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav">Watch on X</a>
-            </div>
-            <p class="text-zinc-500 text-sm mb-2">January 3, 2025</p>
-            <p class="text-sm mb-4">We revisit our UAP/drone data marketplace idea and brainstorm what an agentic open-source intelligence effort might look like.</p>
-        </div>
-
-        <div class="border-b pb-4">
-            <div class="flex items-center gap-4 mb-2">
-                <h2 class="text-lg font-semibold">High-Velocity Bitcoin</h2>
-                <a href="https://x.com/OpenAgentsInc/status/1874317831497462144" target="_blank" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-4 py-1 border border-white shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav">Watch on X</a>
-            </div>
-            <p class="text-zinc-500 text-sm mb-2">December 31, 2024</p>
-            <p class="text-sm mb-4">We discuss bitcoin as store of value (SoV) vs. medium of exchange (MoE).</p>
-        </div>
-
-        <div class="border-b pb-4">
-            <div class="flex items-center gap-4 mb-2">
-                <h2 class="text-lg font-semibold">Code by Voice</h2>
-                <a href="https://x.com/OpenAgentsInc/status/1872388364013379949" target="_blank" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-4 py-1 border border-white shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav">Watch on X</a>
-            </div>
-            <p class="text-zinc-500 text-sm mb-2">December 26, 2024</p>
-            <p class="text-sm mb-4">What if you had a coding agent in your pocket? Now you do. (Live in v0.0.4) We demo Onyx fixing a bug in its own codebase -- without us typing a single word or line of code.</p>
-        </div>
-
-        <div class="border-b pb-4">
-            <div class="flex items-center gap-4 mb-2">
-                <h2 class="text-lg font-semibold">Speak to Onyx</h2>
-                <a href="https://x.com/OpenAgentsInc/status/1871390476705947913" target="_blank" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-4 py-1 border border-white shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav">Watch on X</a>
-            </div>
-            <p class="text-zinc-500 text-sm mb-2">December 23, 2024</p>
-            <p class="text-sm mb-4">We demonstrate voice chat capabilities in the latest Onyx beta release.</p>
-        </div>
-
-        <div class="border-b pb-4">
-            <div class="flex items-center gap-4 mb-2">
-                <h2 class="text-lg font-semibold">Onyx Beta Launch</h2>
-                <a href="https://x.com/OpenAgentsInc/status/1870030269916340610" target="_blank" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-4 py-1 border border-white shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav">Watch on X</a>
-            </div>
-            <p class="text-zinc-500 text-sm mb-2">December 20, 2024</p>
-            <p class="text-sm mb-4">We launch Onyx v0.0.1, our first beta build for Android and iOS! This build includes a local version of Llama 3.2 1B that runs privately on your phone.</p>
-        </div>
+        {% call video::video_entry(
+            "Open Knowledge Graph",
+            "January 7, 2025",
+            "We review a demo and spec for an open knowledge graph paired with an uncensorable chat channel allowing any contributors - both human and agent, anon or not - to earn bitcoin for building the knowledge base of agents that will help us make sense of all the noise.",
+            "https://x.com/OpenAgentsInc/status/1876857763504046458"
+        ) %}
+        {% call video::video_entry(
+            "Agentic OSINT",
+            "January 3, 2025",
+            "We revisit our UAP/drone data marketplace idea and brainstorm what an agentic open-source intelligence effort might look like.",
+            "https://x.com/OpenAgentsInc/status/1875380960658681918"
+        ) %}
+        {% call video::video_entry(
+            "High-Velocity Bitcoin",
+            "December 31, 2024",
+            "We discuss bitcoin as store of value (SoV) vs. medium of exchange (MoE).",
+            "https://x.com/OpenAgentsInc/status/1874317831497462144"
+        ) %}
+        {% call video::video_entry(
+            "Code by Voice",
+            "December 26, 2024",
+            "What if you had a coding agent in your pocket? Now you do. (Live in v0.0.4) We demo Onyx fixing a bug in its own codebase -- without us typing a single word or line of code.",
+            "https://x.com/OpenAgentsInc/status/1872388364013379949"
+        ) %}
+        {% call video::video_entry(
+            "Speak to Onyx",
+            "December 23, 2024",
+            "We demonstrate voice chat capabilities in the latest Onyx beta release.",
+            "https://x.com/OpenAgentsInc/status/1871390476705947913"
+        ) %}
+        {% call video::video_entry(
+            "Onyx Beta Launch",
+            "December 20, 2024",
+            "We launch Onyx v0.0.1, our first beta build for Android and iOS! This build includes a local version of Llama 3.2 1B that runs privately on your phone.",
+            "https://x.com/OpenAgentsInc/status/1870030269916340610"
+        ) %}
     </div>
 </div>

@@ -1,0 +1,8 @@
+{% macro video_entry(title, date, description, tweet_url) %}
+<div class="border-b pb-4">
+    <h2 class="text-lg font-semibold mb-2">{{title}}</h2>
+    <a href="{{tweet_url}}" target="_blank" class="bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-4 py-1 border border-white shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav mb-2">Watch on X</a>
+    <p class="text-zinc-500 text-sm mb-2">{{date}}</p>
+    <p class="text-sm mb-4">{{description}}</p>
+</div>
+{% endmacro %}
