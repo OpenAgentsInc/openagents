@@ -27,24 +27,7 @@
     <div class="flex min-h-screen justify-center">
         <div class="w-[60rem] max-w-full m-6 px-4 border border-white">
             {% include "header.html" %}
-            <div id="content">
-                {% match path %}
-                    {% when "/" %}
-                        {% include "pages/home.html" %}
-                    {% when "/mobile-app" %}
-                        {% include "pages/mobile-app.html" %}
-                    {% when "/video-series" %}
-                        {% include "pages/video-series.html" %}
-                    {% when "/services" %}
-                        {% include "pages/services.html" %}
-                    {% when "/company" %}
-                        {% include "pages/company.html" %}
-                    {% when "/contact" %}
-                        {% include "pages/contact.html" %}
-                    {% else %}
-                        {% include "pages/another-page.html" %}
-                {% endmatch %}
-            </div>
+            {% include "layouts/content.html" %}
         </div>
     </div>
 </body>
