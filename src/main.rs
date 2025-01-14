@@ -28,7 +28,8 @@ async fn main() {
         .route("/services", get(business))
         .route("/company", get(company))
         .route("/coming-soon", get(coming_soon))
-        .nest_service("/", ServeDir::new(assets_path));
+        .nest_service("/assets", ServeDir::new(&assets_path))
+        .fallback_service(ServeDir::new(assets_path));
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
