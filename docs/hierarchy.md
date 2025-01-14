@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-14 04:59:45
+Generated on: 2025-01-14 06:05:43
 
 ### Structure
 
@@ -69,6 +69,7 @@ Generated on: 2025-01-14 04:59:45
 |   |-- emailoptin.rs
 |   |-- lib.rs
 |   |-- main-prev.rs
+|   |-- main-prev2.rs
 |   `-- main.rs
 |-- static/
 |   |-- css/
@@ -135,10 +136,22 @@ Generated on: 2025-01-14 04:59:45
 |   |-- admin/
 |   |   |-- dashboard.html
 |   |   `-- login.html
+|   |-- components/
+|   |   |-- features.html
+|   |   `-- hero.html
+|   |-- layouts/
+|   |   |-- base.html
+|   |   `-- content.html
 |   |-- macros/
 |   |   `-- nav.html
-|   |-- base.html
-|   |-- content.html
+|   |-- pages/
+|   |   |-- another-page.html
+|   |   |-- company.html
+|   |   |-- contact.html
+|   |   |-- home.html
+|   |   |-- mobile-app.html
+|   |   |-- services.html
+|   |   `-- video-series.html
 |   `-- header.html
 |-- tests/
 |   |-- agent/
@@ -169,5 +182,5 @@ Generated on: 2025-01-14 04:59:45
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-29 directories, 134 files
+32 directories, 144 files
 ```
