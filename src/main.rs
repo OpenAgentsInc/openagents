@@ -59,7 +59,6 @@ struct ContentTemplate {
 #[template(path = "layouts/base.html")]
 struct HomeTemplate {
     title: String,
-    content: String,
     path: String,
 }
 
@@ -84,7 +83,6 @@ where
 async fn home(_headers: HeaderMap) -> Html<String> {
     let template = HomeTemplate {
         title: "Home".to_string(),
-        content: "Welcome to OpenAgents".to_string(),
         path: "/".to_string(),
     };
     Html(template.render().unwrap())
