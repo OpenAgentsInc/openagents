@@ -7,7 +7,7 @@ use axum::{
 };
 use std::path::PathBuf;
 use tower_http::services::ServeDir;
-use tracing::{debug, info};
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
