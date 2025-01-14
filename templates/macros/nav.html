@@ -1,7 +1,7 @@
 {% macro nav_button(href, text, current_path) %}
 <a
   href="{{href}}"
-  class="relative bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-4 py-1 border {% if current_path == href %}border-white/90{% else %}border-white{% endif %} shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav group"
+  class="relative bg-black hover:bg-zinc-900 text-white text-xs inline-flex items-center justify-center gap-2 whitespace-nowrap select-none text-center align-middle no-underline outline-none px-3 md:px-4 py-2 md:py-1 border {% if current_path == href %}border-white/90{% else %}border-white{% endif %} shadow-nav hover:shadow-nav-hover active:shadow-nav-active transition-all duration-nav ease-nav group touch-manipulation"
   hx-get="{{href}}"
   hx-push-url="true"
   hx-target="#content"
