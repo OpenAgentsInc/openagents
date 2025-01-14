@@ -18,7 +18,7 @@ async fn main() {
         .route("/video-series", get(video_series))
         .route("/services", get(business))
         .route("/company", get(company))
-        .route("/contact", get(contact))
+        .route("/coming-soon", get(coming_soon))
         .nest_service("/assets", ServeDir::new(assets_path));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
@@ -119,10 +119,10 @@ async fn company(headers: HeaderMap) -> Response {
     }
 }
 
-async fn contact(headers: HeaderMap) -> Response {
+async fn coming_soon(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Contact".to_string();
-    let path = "/contact".to_string();
+    let title = "Coming Soon".to_string();
+    let path = "/coming-soon".to_string();
 
     if is_htmx {
         let content = ContentTemplate { path: &path }.render().unwrap();
