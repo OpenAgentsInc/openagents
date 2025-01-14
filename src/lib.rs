@@ -43,7 +43,7 @@ pub async fn run() -> std::io::Result<()> {
         std::env::set_var("RUST_LOG", "info");
     }
     env_logger::init();
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     info!("🚀 Starting OpenAgents...");
 
