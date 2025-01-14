@@ -24,6 +24,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: true
     # Service containers to run alongside the `test` container job
     services:
       postgres:
