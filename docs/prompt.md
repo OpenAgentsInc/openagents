@@ -1,13 +1,12 @@
 Scrape:
-- https://joeymckenzie.tech/blog/templates-with-rust-axum-htmx-askama
+- https://www.reddit.com/r/htmx/comments/qekes7/updating_document_title/
 
 Read:
 - docs/hierarchy.md
 - src/main.rs
 - Cargo.toml
-- templates/base.html
-- templates/content.html
-- templates/header.html
-- templates/macros/nav.html
+- templates/layouts/base.html
+- pages/home.html
 
-Right now page content is hardcoded. I need separate templates per page, based on the Rust/Axum tutorial I linked. Start by adding only one template, for the home page.
+Right now the document title does not update as we navigate around. Fix that. Edit directly to this branch.
+
