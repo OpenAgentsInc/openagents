@@ -103,8 +103,6 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    env:
-      SQLX_OFFLINE: true
     steps:
       - uses: actions/checkout@v4
       - name: Install the Rust toolchain
@@ -117,8 +115,6 @@ jobs:
   coverage:
     name: Code coverage
     runs-on: ubuntu-latest
-    env:
-      SQLX_OFFLINE: true
     services:
       postgres:
         image: postgres:14
