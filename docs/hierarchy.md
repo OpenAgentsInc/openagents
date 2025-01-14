@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-14 06:05:43
+Generated on: 2025-01-14 07:33:05
 
 ### Structure
 
@@ -68,8 +68,6 @@ Generated on: 2025-01-14 06:05:43
 |   |-- database.rs
 |   |-- emailoptin.rs
 |   |-- lib.rs
-|   |-- main-prev.rs
-|   |-- main-prev2.rs
 |   `-- main.rs
 |-- static/
 |   |-- css/
@@ -143,11 +141,13 @@ Generated on: 2025-01-14 06:05:43
 |   |   |-- base.html
 |   |   `-- content.html
 |   |-- macros/
-|   |   `-- nav.html
+|   |   |-- blog.html
+|   |   |-- nav.html
+|   |   `-- video.html
 |   |-- pages/
-|   |   |-- another-page.html
+|   |   |-- 404.html
+|   |   |-- coming-soon.html
 |   |   |-- company.html
-|   |   |-- contact.html
 |   |   |-- home.html
 |   |   |-- mobile-app.html
 |   |   |-- services.html
