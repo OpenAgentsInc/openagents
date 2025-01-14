@@ -46,8 +46,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Install sqlx-cli
-        run:
-          cargo install sqlx-cli
+        run: cargo install sqlx-cli
           --version=${{ env.SQLX_VERSION }}
           --features ${{ env.SQLX_FEATURES }}
           --no-default-features
@@ -78,14 +77,14 @@ jobs:
             host: 0.0.0.0
             admin_token: admin-token
           environment: production" > configuration/base.yaml
-          
+
           echo "application:
             host: 0.0.0.0
             admin_token: admin-token
           database:
             require_ssl: false
           environment: production" > configuration/production.yaml
-          
+
           echo "application:
             host: 0.0.0.0
             admin_token: admin-token
@@ -208,14 +207,14 @@ jobs:
             host: 0.0.0.0
             admin_token: admin-token
           environment: production" > configuration/base.yaml
-          
+
           echo "application:
             host: 0.0.0.0
             admin_token: admin-token
           database:
             require_ssl: false
           environment: production" > configuration/production.yaml
-          
+
           echo "application:
             host: 0.0.0.0
             admin_token: admin-token
