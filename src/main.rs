@@ -1,9 +1,9 @@
 use askama::Template;
 use axum::{
-    response::Html,
+    response::{Html, IntoResponse, Response},
     routing::get,
     Router,
-    http::header::HeaderMap,
+    http::header::{HeaderMap, HeaderValue},
 };
 use tower_http::services::ServeDir;
 use std::path::PathBuf;
@@ -27,19 +27,19 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn another_page(headers: HeaderMap) -> Html<String> {
+async fn another_page(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Another Page".to_string();
     let path = "/another-page".to_string();
 
     if is_htmx {
-        let mut response_headers = HeaderMap::new();
-        response_headers.insert("HX-Title", title.parse().unwrap());
         let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
-        Html(content)
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response
     } else {
         let template = PageTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        Html(template.render().unwrap()).into_response()
     }
 }
 
@@ -57,98 +57,98 @@ struct ContentTemplate<'a> {
     path: &'a str,
 }
 
-async fn home(headers: HeaderMap) -> Html<String> {
+async fn home(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Home".to_string();
     let path = "/".to_string();
 
     if is_htmx {
-        let mut response_headers = HeaderMap::new();
-        response_headers.insert("HX-Title", title.parse().unwrap());
         let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
-        Html(content)
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response
     } else {
         let template = PageTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        Html(template.render().unwrap()).into_response()
     }
 }
 
-async fn mobile_app(headers: HeaderMap) -> Html<String> {
+async fn mobile_app(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Mobile App".to_string();
     let path = "/mobile-app".to_string();
 
     if is_htmx {
-        let mut response_headers = HeaderMap::new();
-        response_headers.insert("HX-Title", title.parse().unwrap());
         let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
-        Html(content)
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response
     } else {
         let template = PageTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        Html(template.render().unwrap()).into_response()
     }
 }
 
-async fn business(headers: HeaderMap) -> Html<String> {
+async fn business(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Services".to_string();
     let path = "/services".to_string();
 
     if is_htmx {
-        let mut response_headers = HeaderMap::new();
-        response_headers.insert("HX-Title", title.parse().unwrap());
         let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
-        Html(content)
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response
     } else {
         let template = PageTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        Html(template.render().unwrap()).into_response()
     }
 }
 
-async fn video_series(headers: HeaderMap) -> Html<String> {
+async fn video_series(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Video Series".to_string();
     let path = "/video-series".to_string();
 
     if is_htmx {
-        let mut response_headers = HeaderMap::new();
-        response_headers.insert("HX-Title", title.parse().unwrap());
         let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
-        Html(content)
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response
     } else {
         let template = PageTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        Html(template.render().unwrap()).into_response()
     }
 }
 
-async fn company(headers: HeaderMap) -> Html<String> {
+async fn company(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Company".to_string();
     let path = "/company".to_string();
 
     if is_htmx {
-        let mut response_headers = HeaderMap::new();
-        response_headers.insert("HX-Title", title.parse().unwrap());
         let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
-        Html(content)
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response
     } else {
         let template = PageTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        Html(template.render().unwrap()).into_response()
     }
 }
 
-async fn contact(headers: HeaderMap) -> Html<String> {
+async fn contact(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Contact".to_string();
     let path = "/contact".to_string();
 
     if is_htmx {
-        let mut response_headers = HeaderMap::new();
-        response_headers.insert("HX-Title", title.parse().unwrap());
         let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
-        Html(content)
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response
     } else {
         let template = PageTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        Html(template.render().unwrap()).into_response()
     }
 }
