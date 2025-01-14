@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-14 08:40:28
+Generated on: 2025-01-14 08:52:59
 
 ### Structure
 
@@ -16,6 +16,7 @@ Generated on: 2025-01-14 08:40:28
 |   |   |-- BerkeleyMono-Italic.woff2
 |   |   |-- BerkeleyMono-Regular.woff
 |   |   `-- BerkeleyMono-Regular.woff2
+|   |-- favicon.ico
 |   |-- fonts.css
 |   `-- main.css
 |-- configuration/
@@ -123,5 +124,5 @@ Generated on: 2025-01-14 08:40:28
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-24 directories, 93 files
+24 directories, 94 files
 ```
