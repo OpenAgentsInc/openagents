@@ -25,7 +25,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     env:
-      SQLX_OFFLINE: true
+      DATABASE_URL: "postgres://postgres:password@localhost:5432/postgres"
     # Service containers to run alongside the `test` container job
     services:
       postgres:
@@ -117,11 +117,12 @@ jobs:
   coverage:
     name: Code coverage
     runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: true
     services:
       postgres:
         image: postgres:14
         env:
-          SQLX_OFFLINE: true
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
           POSTGRES_DB: postgres
