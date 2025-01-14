@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-13 15:16:46
+Generated on: 2025-01-14 04:59:45
 
 ### Structure
 
@@ -37,6 +37,7 @@ Generated on: 2025-01-13 15:16:46
 |   |-- hierarchy.md
 |   |-- htmx-nostr-chat.md
 |   |-- newsletter.md
+|   |-- prompt.md
 |   `-- rust-setup.md
 |-- migrations/
 |   |-- 20250110000000_initial.sql
@@ -134,10 +135,11 @@ Generated on: 2025-01-13 15:16:46
 |   |-- admin/
 |   |   |-- dashboard.html
 |   |   `-- login.html
+|   |-- macros/
+|   |   `-- nav.html
 |   |-- base.html
 |   |-- content.html
-|   |-- header.html
-|   `-- hello.html
+|   `-- header.html
 |-- tests/
 |   |-- agent/
 |   |   |-- core.rs
@@ -163,8 +165,9 @@ Generated on: 2025-01-13 15:16:46
 |-- README.md
 |-- package.json
 |-- pnpm-lock.yaml
+|-- postcss.config.js
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-28 directories, 132 files
+29 directories, 134 files
 ```
