@@ -41,19 +41,13 @@ struct ContentTemplate {
     content: String,
 }
 
-async fn home(headers: HeaderMap) -> Html<String> {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Home".to_string();
-    let content = "Welcome to OpenAgents".to_string();
-    let path = "/".to_string();
+#[derive(Template)]
+#[template(path = "pages/home.html")]
+struct HomeTemplate;
 
-    if is_htmx {
-        let template = ContentTemplate { title, content };
-        Html(template.render().unwrap())
-    } else {
-        let template = PageTemplate { title, content, path };
-        Html(template.render().unwrap())
-    }
+async fn home(headers: HeaderMap) -> Html<String> {
+    let template = HomeTemplate;
+    Html(template.render().unwrap())
 }
 
 async fn mobile_app(headers: HeaderMap) -> Html<String> {
