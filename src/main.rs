@@ -34,26 +34,26 @@ async fn another_page(headers: HeaderMap) -> Html<String> {
     let path = "/another-page".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title, path };
+        let template = ContentTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, path };
+        let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
     }
 }
 
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
-struct PageTemplate {
-    title: String,
-    path: String,
+struct PageTemplate<'a> {
+    title: &'a str,
+    path: &'a str,
 }
 
 #[derive(Template)]
 #[template(path = "layouts/content.html")]
-struct ContentTemplate {
-    title: String,
-    path: String,
+struct ContentTemplate<'a> {
+    title: &'a str,
+    path: &'a str,
 }
 
 struct HtmlTemplate<T>(T);
@@ -76,8 +76,8 @@ where
 
 async fn home(_headers: HeaderMap) -> Html<String> {
     let template = PageTemplate {
-        title: "Home".to_string(),
-        path: "/".to_string(),
+        title: "Home",
+        path: "/",
     };
     Html(template.render().unwrap())
 }
