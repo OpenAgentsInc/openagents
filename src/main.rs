@@ -33,7 +33,7 @@ async fn another_page(headers: HeaderMap) -> Response {
     let path = "/another-page".to_string();
 
     if is_htmx {
-        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
         response
@@ -53,7 +53,6 @@ struct PageTemplate<'a> {
 #[derive(Template)]
 #[template(path = "layouts/content.html")]
 struct ContentTemplate<'a> {
-    title: &'a str,
     path: &'a str,
 }
 
@@ -63,7 +62,7 @@ async fn home(headers: HeaderMap) -> Response {
     let path = "/".to_string();
 
     if is_htmx {
-        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
         response
@@ -79,7 +78,7 @@ async fn mobile_app(headers: HeaderMap) -> Response {
     let path = "/mobile-app".to_string();
 
     if is_htmx {
-        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
         response
@@ -95,7 +94,7 @@ async fn business(headers: HeaderMap) -> Response {
     let path = "/services".to_string();
 
     if is_htmx {
-        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
         response
@@ -111,7 +110,7 @@ async fn video_series(headers: HeaderMap) -> Response {
     let path = "/video-series".to_string();
 
     if is_htmx {
-        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
         response
@@ -127,7 +126,7 @@ async fn company(headers: HeaderMap) -> Response {
     let path = "/company".to_string();
 
     if is_htmx {
-        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
         response
@@ -143,7 +142,7 @@ async fn contact(headers: HeaderMap) -> Response {
     let path = "/contact".to_string();
 
     if is_htmx {
-        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
         response
