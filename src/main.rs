@@ -79,7 +79,7 @@ async fn business(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Services".to_string();
     let content = "Enterprise AI solutions".to_string();
-    let path = "/business".to_string();
+    let path = "/services".to_string();
 
     if is_htmx {
         let template = ContentTemplate { title, content };
