@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-14 09:14:15
+Generated on: 2025-01-14 12:10:48
 
 ### Structure
 
@@ -45,7 +45,9 @@ Generated on: 2025-01-14 09:14:15
 |   |-- 20250112001624_create_subscriptions_table.sql
 |   `-- 20250112002000_create_agent_tables.sql
 |-- scripts/
-|   `-- generate_hierarchy.sh*
+|   |-- generate_hierarchy.sh*
+|   |-- init_db.sh*
+|   `-- init_redis.sh*
 |-- src/
 |   |-- agents/
 |   |   |-- agent.rs
@@ -91,7 +93,7 @@ Generated on: 2025-01-14 09:14:15
 |   |   |-- coming-soon.html
 |   |   |-- company.html
 |   |   |-- home.html
-|   |   |-- mobile-app.html
+|   |   |-- onyx.html
 |   |   |-- services.html
 |   |   `-- video-series.html
 |   `-- header.html
@@ -124,5 +126,5 @@ Generated on: 2025-01-14 09:14:15
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-24 directories, 94 files
+24 directories, 96 files
 ```
