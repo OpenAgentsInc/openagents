@@ -2,10 +2,11 @@ use axum::{
     routing::get,
     Router,
     Json,
+    http::Request,
+    body::Body,
 };
 use serde_json::json;
 use tower::ServiceExt;
-use http::Request;
 
 #[tokio::test]
 async fn health_check_works() {
@@ -15,14 +16,14 @@ async fn health_check_works() {
 
     // Act
     let response = app
-        .oneshot(Request::builder().uri("/health").body(()).unwrap())
+        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
     // Assert
     assert_eq!(response.status(), 200);
 
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body()).await.unwrap();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["status"], "healthy");
 }
