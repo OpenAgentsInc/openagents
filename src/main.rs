@@ -28,28 +28,14 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn another_page(headers: HeaderMap) -> Html<String> {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Another Page".to_string();
-    let content = "This is another page content".to_string(); 
-    let path = "/another-page".to_string();
-
-    if is_htmx {
-        let template = ContentTemplate { title, content };
-        Html(template.render().unwrap())
-    } else {
-        let template = PageTemplate { title, content, path };
-        Html(template.render().unwrap())
-    }
+async fn another_page() -> impl IntoResponse {
+    let template = AnotherPageTemplate {};
+    HtmlTemplate(template)
 }
 
 #[derive(Template)]
-#[template(path = "layouts/base.html")]
-struct AnotherPageTemplate {
-    title: String,
-    content: String,
-    path: String,
-}
+#[template(path = "pages/another-page.html")]
+struct AnotherPageTemplate;
 
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
