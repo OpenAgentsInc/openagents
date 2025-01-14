@@ -3,12 +3,13 @@
 <head>
     <link href="/assets/main.css" rel="stylesheet" />
     <link href="/assets/fonts.css" rel="stylesheet" />
-    <title id="page-title">OpenAgents - {{title}}</title>
+    <title>OpenAgents - {{title}}</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script>
-        document.body.addEventListener('htmx:beforeSwap', function(evt) {
-            if (evt.detail.xhr.getResponseHeader("HX-Title")) {
-                document.getElementById("page-title").textContent = evt.detail.xhr.getResponseHeader("HX-Title");
+        document.addEventListener('htmx:afterSettle', function(evt) {
+            const newTitle = evt.detail.xhr.getResponseHeader("HX-Title");
+            if (newTitle) {
+                document.title = newTitle;
             }
         });
     </script>
