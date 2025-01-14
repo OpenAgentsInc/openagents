@@ -14,7 +14,6 @@ async fn main() {
     
     let app = Router::new()
         .route("/", get(home))
-        .route("/another-page", get(another_page))
         .route("/mobile-app", get(mobile_app))
         .route("/video-series", get(video_series))
         .route("/services", get(business))
@@ -25,22 +24,6 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
     println!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
-}
-
-async fn another_page(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Another Page".to_string();
-    let path = "/another-page".to_string();
-
-    if is_htmx {
-        let content = ContentTemplate { path: &path }.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
-        response
-    } else {
-        let template = PageTemplate { title: &title, path: &path };
-        Html(template.render().unwrap()).into_response()
-    }
 }
 
 #[derive(Template)]
