@@ -16,7 +16,7 @@ module.exports = {
         '1': '1px',
       },
       boxShadow: {
-        'nav': '2px 2px 0 0 rgba(255, 255, 255, 0.5)',
+        'nav': '4px 4px 0 0 rgba(255, 255, 255, 0.75)',
       },
     },
   },
