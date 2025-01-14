@@ -22,7 +22,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: "postgres://postgres:password@localhost:5432/postgres"
+      DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
       APP_ENVIRONMENT: "production"
     services:
       postgres:
@@ -64,11 +64,15 @@ jobs:
           GRANT_QUERY="ALTER USER ${APP_USER} CREATEDB;"
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${GRANT_QUERY}"
 
+      - name: Create test database
+        run: |
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "CREATE DATABASE openagents_test;"
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "GRANT ALL PRIVILEGES ON DATABASE openagents_test TO ${APP_USER};"
+
       - name: Migrate database
         run: |
           SKIP_DOCKER=true ./scripts/init_db.sh
 
-      # Add this new step after database initialization
       - name: Run SQLx migrations
         run: |
           cargo sqlx database create
@@ -108,7 +112,7 @@ jobs:
     name: Code coverage
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: "postgres://postgres:password@localhost:5432/postgres"
+      DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
       APP_ENVIRONMENT: "production"
     services:
       postgres:
@@ -146,13 +150,20 @@ jobs:
           # Grant create db privileges to the app user
           GRANT_QUERY="ALTER USER ${APP_USER} CREATEDB;"
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${GRANT_QUERY}"
+
+      - name: Create test database
+        run: |
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "CREATE DATABASE openagents_test;"
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "GRANT ALL PRIVILEGES ON DATABASE openagents_test TO ${APP_USER};"
+
       - name: Migrate database
         run: SKIP_DOCKER=true ./scripts/init_db.sh
-      # Add this new step after database initialization
+      
       - name: Run SQLx migrations
         run: |
           cargo sqlx database create
           cargo sqlx migrate run
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
@@ -163,4 +174,3 @@ jobs:
         with:
           name: "Coverage report"
           path: coverage/
-
