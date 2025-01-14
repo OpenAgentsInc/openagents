@@ -23,7 +23,8 @@ async fn health_check_works() {
     // Assert
     assert_eq!(response.status(), 200);
 
-    let body = axum::body::to_bytes(response.into_body()).await.unwrap();
+    // Use a reasonable size limit for the health check response (1MB)
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["status"], "healthy");
 }
