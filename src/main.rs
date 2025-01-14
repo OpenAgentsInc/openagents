@@ -56,30 +56,18 @@ struct ContentTemplate<'a> {
     path: &'a str,
 }
 
-struct HtmlTemplate<T>(T);
+async fn home(headers: HeaderMap) -> Html<String> {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Home".to_string();
+    let path = "/".to_string();
 
-impl<T> IntoResponse for HtmlTemplate<T>
-where
-    T: Template,
-{
-    fn into_response(self) -> Response {
-        match self.0.render() {
-            Ok(html) => Html(html).into_response(),
-            Err(err) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to render template. Error: {}", err),
-            )
-                .into_response(),
-        }
+    if is_htmx {
+        let template = ContentTemplate { title: &title, path: &path };
+        Html(template.render().unwrap())
+    } else {
+        let template = PageTemplate { title: &title, path: &path };
+        Html(template.render().unwrap())
     }
-}
-
-async fn home(_headers: HeaderMap) -> Html<String> {
-    let template = PageTemplate {
-        title: "Home",
-        path: "/",
-    };
-    Html(template.render().unwrap())
 }
 
 async fn mobile_app(headers: HeaderMap) -> Html<String> {
