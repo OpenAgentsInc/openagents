@@ -34,7 +34,7 @@ async fn another_page(headers: HeaderMap) -> Html<String> {
     let path = "/another-page".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title };
+        let template = ContentTemplate { title, path };
         Html(template.render().unwrap())
     } else {
         let template = PageTemplate { title, path };
@@ -53,6 +53,7 @@ struct PageTemplate {
 #[template(path = "layouts/content.html")]
 struct ContentTemplate {
     title: String,
+    path: String,
 }
 
 struct HtmlTemplate<T>(T);
@@ -87,7 +88,7 @@ async fn mobile_app(headers: HeaderMap) -> Html<String> {
     let path = "/mobile-app".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title };
+        let template = ContentTemplate { title, path };
         Html(template.render().unwrap())
     } else {
         let template = PageTemplate { title, path };
