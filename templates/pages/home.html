@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <h1 class="text-4xl font-bold">Welcome to OpenAgents</h1>
+    
+    <div class="space-y-4">
+        <p class="text-lg">
+            OpenAgents is an open-source platform for building and deploying AI agents.
+        </p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="p-6 border border-white/90 hover:bg-zinc-900 transition-colors">
+                <h2 class="text-xl font-bold mb-2">Mobile App</h2>
+                <p>Access your AI agents on the go with our upcoming mobile app.</p>
+                <a href="/mobile-app" class="text-sm text-white/80 hover:text-white mt-2 inline-block">Learn more →</a>
+            </div>
+            
+            <div class="p-6 border border-white/90 hover:bg-zinc-900 transition-colors">
+                <h2 class="text-xl font-bold mb-2">Enterprise Solutions</h2>
+                <p>Custom AI solutions for your business needs.</p>
+                <a href="/services" class="text-sm text-white/80 hover:text-white mt-2 inline-block">Learn more →</a>
+            </div>
+        </div>
+        
+        <div class="mt-8">
+            <h2 class="text-2xl font-bold mb-4">Latest Content</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <a href="/video-series" class="p-4 border border-white/90 hover:bg-zinc-900 transition-colors">
+                    <h3 class="font-bold mb-2">Video Series</h3>
+                    <p class="text-sm text-white/80">Watch our latest tutorials and demos</p>
+                </a>
+                
+                <a href="/company" class="p-4 border border-white/90 hover:bg-zinc-900 transition-colors">
+                    <h3 class="font-bold mb-2">About Us</h3>
+                    <p class="text-sm text-white/80">Learn about our mission and team</p>
+                </a>
+                
+                <a href="/contact" class="p-4 border border-white/90 hover:bg-zinc-900 transition-colors">
+                    <h3 class="font-bold mb-2">Get in Touch</h3>
+                    <p class="text-sm text-white/80">Have questions? Contact us</p>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
