@@ -7,9 +7,18 @@ use axum::{
 };
 use std::path::PathBuf;
 use tower_http::services::ServeDir;
+use tracing::{debug, info};
 
 #[tokio::main]
 async fn main() {
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+    env_logger::init();
+    dotenv::dotenv().ok();
+
+    info!("🚀 Starting OpenAgents...");
+
     let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
 
     let app = Router::new()
@@ -21,8 +30,18 @@ async fn main() {
         .route("/coming-soon", get(coming_soon))
         .nest_service("/assets", ServeDir::new(assets_path));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    println!("listening on {}", listener.local_addr().unwrap());
+    // Get port from environment variable or use default
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(8000);
+
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let address = format!("{}:{}", host, port);
+
+    let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
+    info!("✨ Server ready:");
+    info!("  🌎 http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
 
