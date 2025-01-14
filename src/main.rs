@@ -1,17 +1,17 @@
 use askama::Template;
 use axum::{
+    http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
     routing::get,
     Router,
-    http::header::{HeaderMap, HeaderValue},
 };
-use tower_http::services::ServeDir;
 use std::path::PathBuf;
+use tower_http::services::ServeDir;
 
 #[tokio::main]
 async fn main() {
     let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
-    
+
     let app = Router::new()
         .route("/", get(home))
         .route("/mobile-app", get(mobile_app))
@@ -47,10 +47,16 @@ async fn home(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
-        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
         response
     } else {
-        let template = PageTemplate { title: &title, path: &path };
+        let template = PageTemplate {
+            title: &title,
+            path: &path,
+        };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -63,10 +69,16 @@ async fn mobile_app(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
-        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
         response
     } else {
-        let template = PageTemplate { title: &title, path: &path };
+        let template = PageTemplate {
+            title: &title,
+            path: &path,
+        };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -79,10 +91,16 @@ async fn business(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
-        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
         response
     } else {
-        let template = PageTemplate { title: &title, path: &path };
+        let template = PageTemplate {
+            title: &title,
+            path: &path,
+        };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -95,10 +113,16 @@ async fn video_series(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
-        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
         response
     } else {
-        let template = PageTemplate { title: &title, path: &path };
+        let template = PageTemplate {
+            title: &title,
+            path: &path,
+        };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -111,10 +135,16 @@ async fn company(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
-        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
         response
     } else {
-        let template = PageTemplate { title: &title, path: &path };
+        let template = PageTemplate {
+            title: &title,
+            path: &path,
+        };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -127,10 +157,16 @@ async fn coming_soon(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { path: &path }.render().unwrap();
         let mut response = Response::new(content.into());
-        response.headers_mut().insert("HX-Title", HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
         response
     } else {
-        let template = PageTemplate { title: &title, path: &path };
+        let template = PageTemplate {
+            title: &title,
+            path: &path,
+        };
         Html(template.render().unwrap()).into_response()
     }
 }
