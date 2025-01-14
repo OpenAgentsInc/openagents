@@ -5,6 +5,7 @@ This document explains how OpenAgents handles configuration, environment variabl
 ## Configuration Overview
 
 OpenAgents uses a layered configuration system that combines:
+
 - YAML configuration files
 - Environment variables
 - Platform-specific settings (e.g., DigitalOcean App Platform)
@@ -23,6 +24,7 @@ configuration/
 ### Environment Selection
 
 The active environment is determined by the `APP_ENVIRONMENT` variable:
+
 - Defaults to `local` if not set
 - Valid values: `local`, `production`
 
@@ -43,6 +45,7 @@ DATABASE_URL=postgres://username:password@host:port/database
 ```
 
 When `DATABASE_URL` is present:
+
 - SSL is automatically enabled (required for DigitalOcean)
 - Connection timeout is set to 10 seconds
 - Statement cache is initially disabled
@@ -74,6 +77,7 @@ database:
 ### Connection Parameters
 
 Default connection settings:
+
 - Connection timeout: 10 seconds
 - Statement cache: Initially disabled
 - Application name: "openagents"
@@ -99,6 +103,7 @@ Environment variables can override any configuration setting using the format:
 `APP_SECTION__KEY`
 
 Examples:
+
 - `APP_APPLICATION__PORT=8080`
 - `APP_DATABASE__HOST=custom-host`
 
@@ -107,11 +112,13 @@ Examples:
 The application logs detailed configuration information at startup:
 
 1. Environment Detection:
+
    - Current environment
    - Configuration file paths
    - Present environment variables (excluding sensitive data)
 
 2. Database Configuration:
+
    - Connection source (DATABASE_URL or configuration files)
    - Host and port
    - SSL mode
@@ -128,12 +135,14 @@ The application logs detailed configuration information at startup:
 ### DigitalOcean App Platform
 
 When deploying to DigitalOcean:
+
 1. Use the provided `DATABASE_URL`
 2. SSL is automatically required
 3. The `PORT` environment variable is automatically set
 4. Bind to `0.0.0.0` for proper routing
 
 Example DigitalOcean environment setup:
+
 ```
 APP_ENVIRONMENT=production
 DATABASE_URL=(provided by DigitalOcean)
@@ -145,12 +154,14 @@ PORT=(provided by DigitalOcean)
 Common issues and solutions:
 
 1. Database Connection Failures:
+
    - Verify DATABASE_URL format
    - Check SSL requirements
    - Verify network access and firewall rules
    - Review application logs for connection details
 
 2. Configuration Issues:
+
    - Verify environment variable names and format
    - Check configuration file syntax
    - Ensure proper environment selection
@@ -163,12 +174,14 @@ Common issues and solutions:
 ## Best Practices
 
 1. Production Deployments:
+
    - Always use `DATABASE_URL` when provided
    - Set `APP_ENVIRONMENT=production`
    - Enable SSL for database connections
    - Use secrets management for sensitive values
 
 2. Local Development:
+
    - Use `local.yaml` for development settings
    - Keep `base.yaml` as a template
    - Don't commit sensitive credentials
@@ -194,6 +207,7 @@ info!("  SSL Mode: Required");
 ```
 
 For additional debugging, check application logs for:
+
 - Configuration loading process
 - Database connection attempts
 - SSL/TLS negotiation

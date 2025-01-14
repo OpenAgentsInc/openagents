@@ -36,6 +36,11 @@ tracing = { version = "0.1", features = ["log"] }
 url = "2.4"
 time = "0.3.37"
 anyhow = "1.0"
+askama = "0.12.1"
+axum = "0.8.1"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.2", features = ["fs"] }
 
 [dev-dependencies]
 actix-web = "4.4"
