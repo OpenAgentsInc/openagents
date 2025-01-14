@@ -34,8 +34,9 @@ async fn another_page(headers: HeaderMap) -> Html<String> {
     let path = "/another-page".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Title", title.parse().unwrap());
+        (headers, Html(ContentTemplate { title: &title, path: &path }.render().unwrap()))
     } else {
         let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
