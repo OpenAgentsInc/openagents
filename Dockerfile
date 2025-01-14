@@ -26,6 +26,5 @@ RUN apt-get update -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/openagents openagents
 COPY configuration configuration
-COPY static static
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./openagents"]
