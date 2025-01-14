@@ -3,8 +3,9 @@ use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
     routing::get,
-    Router,
+    Json, Router,
 };
+use serde_json::json;
 use std::path::PathBuf;
 use tower_http::services::ServeDir;
 use tracing::info;
@@ -28,6 +29,7 @@ async fn main() {
         .route("/services", get(business))
         .route("/company", get(company))
         .route("/coming-soon", get(coming_soon))
+        .route("/health", get(health_check))
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path));
 
@@ -44,6 +46,10 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn health_check() -> Json<serde_json::Value> {
+    Json(json!({ "status": "healthy" }))
 }
 
 #[derive(Template)]
