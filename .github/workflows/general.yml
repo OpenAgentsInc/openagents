@@ -93,13 +93,8 @@ jobs:
             require_ssl: false
           environment: production" > configuration/local.yaml
 
-      - name: Verify environment
-        run: |
-          echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
-          echo "Current config files:"
-          cat configuration/base.yaml
-          cat configuration/production.yaml
-          cat configuration/local.yaml
+      - name: Show test file
+        run: cat tests/admin_middleware.rs
 
       - name: Run SQLx migrations
         run: |
@@ -107,12 +102,20 @@ jobs:
           cargo sqlx migrate run
 
       - name: Run tests
+        env:
+          APP_ENVIRONMENT: "production"
+          RUST_TEST_THREADS: "1"
         run: |
-          export APP_ENVIRONMENT=production
-          echo "APP_ENVIRONMENT is set to: $APP_ENVIRONMENT"
-          cargo test
+          # Set environment variable in a way that persists for child processes
+          echo "APP_ENVIRONMENT=production" >> $GITHUB_ENV
+          # Verify environment setting
+          echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
+          # Run tests with environment tracing
+          RUST_LOG=debug cargo test -- --nocapture
 
       - name: Check that queries are fresh
+        env:
+          APP_ENVIRONMENT: "production"
         run: |
           echo "Current directory contents:"
           ls -la
@@ -220,14 +223,6 @@ jobs:
             require_ssl: false
           environment: production" > configuration/local.yaml
 
-      - name: Verify environment
-        run: |
-          echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
-          echo "Current config files:"
-          cat configuration/base.yaml
-          cat configuration/production.yaml
-          cat configuration/local.yaml
-
       - name: Run SQLx migrations
         run: |
           cargo sqlx database create
@@ -239,11 +234,11 @@ jobs:
       - name: Generate code coverage
         env:
           APP_ENVIRONMENT: "production"
+          RUST_TEST_THREADS: "1"
         run: |
-          # Verify environment setting
+          echo "APP_ENVIRONMENT=production" >> $GITHUB_ENV
           echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
-          # Run coverage
-          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+          RUST_LOG=debug cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
 
       - name: Generate report
         run: cargo llvm-cov report --html --output-dir coverage
@@ -252,4 +247,3 @@ jobs:
         with:
           name: "Coverage report"
           path: coverage/
-
