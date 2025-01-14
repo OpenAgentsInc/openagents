@@ -119,6 +119,7 @@ jobs:
       postgres:
         image: postgres:14
         env:
+          SQLX_OFFLINE: true
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
           POSTGRES_DB: postgres
