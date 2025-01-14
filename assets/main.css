@@ -1097,6 +1097,10 @@ video {
   color: rgb(255 255 255 / 0.8);
 }
 
+.hover\:no-underline:hover {
+  text-decoration-line: none;
+}
+
 .hover\:shadow-nav-hover:hover {
   --tw-shadow: 3px 3px 0 0 rgba(255, 255, 255, 0.5);
   --tw-shadow-colored: 3px 3px 0 0 var(--tw-shadow-color);
