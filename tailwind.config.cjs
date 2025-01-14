@@ -26,20 +26,6 @@ module.exports = {
       transitionDuration: {
         'nav': '150ms',
       },
-      animation: {
-        'nav-in': 'nav-in 0.2s ease-out',
-        'nav-out': 'nav-out 0.2s ease-in',
-      },
-      keyframes: {
-        'nav-in': {
-          '0%': { transform: 'translateX(-4px)', opacity: '0' },
-          '100%': { transform: 'translateX(0)', opacity: '1' },
-        },
-        'nav-out': {
-          '0%': { transform: 'translateX(0)', opacity: '1' },
-          '100%': { transform: 'translateX(4px)', opacity: '0' },
-        },
-      },
     },
   },
   safelist: [
