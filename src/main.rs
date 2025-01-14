@@ -3,13 +3,12 @@ use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
     routing::get,
-    Router,
-    Json,
+    Json, Router,
 };
+use serde_json::json;
 use std::path::PathBuf;
 use tower_http::services::ServeDir;
 use tracing::info;
-use serde_json::json;
 
 #[tokio::main]
 async fn main() {
