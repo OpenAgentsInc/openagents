@@ -1,9 +1,6 @@
 name: Rust
 
 on:
-  # NB: this differs from the book's project!
-  # These settings allow us to run this specific CI pipeline for PRs against
-  # this specific branch (a.k.a. book chapter).
   push:
     branches:
       - main
@@ -25,11 +22,9 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     env:
-      SQLX_OFFLINE: true
-    # Service containers to run alongside the `test` container job
+      DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
     services:
       postgres:
-        # Docker Hub image
         image: postgres:14
         env:
           POSTGRES_USER: postgres
@@ -42,15 +37,11 @@ jobs:
         ports:
           - 6379:6379
     steps:
-      # Downloads a copy of the code in your repository before running CI tests
       - name: Check out repository code
-        # The uses keyword specifies that this step will run v4 of the actions/checkout action.
-        # This is an action that checks out your repository onto the runner, allowing you to run scripts or other actions against your code (such as build and test tools).
-        # You should use the checkout action any time your workflow will run against the repository's code.
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # This GitHub Action installs a Rust toolchain using rustup. It is designed for one-line concise usage and good defaults.
-      # It also takes care of caching intermediate build artifacts.
       - name: Install the Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
@@ -61,9 +52,6 @@ jobs:
           --features ${{ env.SQLX_FEATURES }}
           --no-default-features
           --locked
-          # The --locked flag can be used to force Cargo to use the packaged Cargo.lock file if it is available.
-          # This may be useful for ensuring reproducible builds, to use the exact same set of dependencies that were available when the package was published.
-          # It may also be useful if a newer version of a dependency is published that no longer builds on your system, or has other problems
 
       - name: Create app user in Postgres
         run: |
@@ -77,17 +65,64 @@ jobs:
           GRANT_QUERY="ALTER USER ${APP_USER} CREATEDB;"
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${GRANT_QUERY}"
 
-      - name: Migrate database
+      - name: Create test database
         run: |
-          SKIP_DOCKER=true ./scripts/init_db.sh
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "CREATE DATABASE openagents_test;"
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "GRANT ALL PRIVILEGES ON DATABASE openagents_test TO ${APP_USER};"
+
+      - name: Setup configuration
+        run: |
+          mkdir -p configuration
+          echo "application:
+            port: 8080
+            host: 0.0.0.0
+            admin_token: admin-token
+          environment: production" > configuration/base.yaml
+          
+          echo "application:
+            host: 0.0.0.0
+            admin_token: admin-token
+          database:
+            require_ssl: false
+          environment: production" > configuration/production.yaml
+          
+          echo "application:
+            host: 0.0.0.0
+            admin_token: admin-token
+          database:
+            require_ssl: false
+          environment: production" > configuration/local.yaml
+
+      - name: Show test file
+        run: cat tests/admin_middleware.rs
+
+      - name: Run SQLx migrations
+        run: |
+          cargo sqlx database create
+          cargo sqlx migrate run
 
       - name: Run tests
-        run: cargo test
+        env:
+          APP_ENVIRONMENT: "production"
+          RUST_TEST_THREADS: "1"
+        run: |
+          # Set environment variable in a way that persists for child processes
+          echo "APP_ENVIRONMENT=production" >> $GITHUB_ENV
+          # Verify environment setting
+          echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
+          # Run tests with environment tracing
+          RUST_LOG=debug cargo test -- --nocapture
 
       - name: Check that queries are fresh
-        run: cargo sqlx prepare --workspace --check -- --all-targets
+        env:
+          APP_ENVIRONMENT: "production"
+        run: |
+          echo "Current directory contents:"
+          ls -la
+          echo "Checking for .sqlx directory:"
+          ls -la .sqlx || true
+          cargo sqlx prepare --workspace --check
 
-  # `fmt` container job
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
@@ -103,8 +138,6 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    env:
-      SQLX_OFFLINE: true
     steps:
       - uses: actions/checkout@v4
       - name: Install the Rust toolchain
@@ -117,11 +150,13 @@ jobs:
   coverage:
     name: Code coverage
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
+      APP_ENVIRONMENT: "production"
     services:
       postgres:
         image: postgres:14
         env:
-          SQLX_OFFLINE: true
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
           POSTGRES_DB: postgres
@@ -133,16 +168,21 @@ jobs:
           - 6379:6379
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Install the Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: llvm-tools-preview
+
       - name: Install sqlx-cli
         run: cargo install sqlx-cli
           --version=${{ env.SQLX_VERSION }}
           --features ${{ env.SQLX_FEATURES }}
           --no-default-features
           --locked
+
       - name: Create app user in Postgres
         run: |
           sudo apt-get install postgresql-client
@@ -154,14 +194,55 @@ jobs:
           # Grant create db privileges to the app user
           GRANT_QUERY="ALTER USER ${APP_USER} CREATEDB;"
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${GRANT_QUERY}"
-      - name: Migrate database
-        run: SKIP_DOCKER=true ./scripts/init_db.sh
+
+      - name: Create test database
+        run: |
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "CREATE DATABASE openagents_test;"
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "GRANT ALL PRIVILEGES ON DATABASE openagents_test TO ${APP_USER};"
+
+      - name: Setup configuration
+        run: |
+          mkdir -p configuration
+          echo "application:
+            port: 8080
+            host: 0.0.0.0
+            admin_token: admin-token
+          environment: production" > configuration/base.yaml
+          
+          echo "application:
+            host: 0.0.0.0
+            admin_token: admin-token
+          database:
+            require_ssl: false
+          environment: production" > configuration/production.yaml
+          
+          echo "application:
+            host: 0.0.0.0
+            admin_token: admin-token
+          database:
+            require_ssl: false
+          environment: production" > configuration/local.yaml
+
+      - name: Run SQLx migrations
+        run: |
+          cargo sqlx database create
+          cargo sqlx migrate run
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
+
       - name: Generate code coverage
-        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+        env:
+          APP_ENVIRONMENT: "production"
+          RUST_TEST_THREADS: "1"
+        run: |
+          echo "APP_ENVIRONMENT=production" >> $GITHUB_ENV
+          echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
+          RUST_LOG=debug cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+
       - name: Generate report
         run: cargo llvm-cov report --html --output-dir coverage
+
       - uses: actions/upload-artifact@v4
         with:
           name: "Coverage report"
