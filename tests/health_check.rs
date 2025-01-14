@@ -1,21 +1,28 @@
-use actix_web::{test, web, App};
+use axum::{
+    routing::get,
+    Router,
+    Json,
+};
+use serde_json::json;
+use tower::ServiceExt;
+use http::Request;
 
 #[tokio::test]
 async fn health_check_works() {
     // Arrange
-    let app = test::init_service(App::new().route(
-        "/health",
-        web::get().to(|| async { web::Json(serde_json::json!({"status": "healthy"})) }),
-    ))
-    .await;
+    let app = Router::new()
+        .route("/health", get(|| async { Json(json!({"status": "healthy"})) }));
 
     // Act
-    let req = test::TestRequest::get().uri("/health").to_request();
-    let resp = test::call_service(&app, req).await;
+    let response = app
+        .oneshot(Request::builder().uri("/health").body(()).unwrap())
+        .await
+        .unwrap();
 
     // Assert
-    assert!(resp.status().is_success());
+    assert_eq!(response.status(), 200);
 
-    let body: serde_json::Value = test::read_body_json(resp).await;
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(body["status"], "healthy");
 }
