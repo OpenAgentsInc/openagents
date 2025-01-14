@@ -93,14 +93,13 @@ async fn home(_headers: HeaderMap) -> Html<String> {
 async fn mobile_app(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Mobile App".to_string();
-    let content = "Our mobile app is coming soon".to_string();
     let path = "/mobile-app".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title, content };
+        let template = ContentTemplate { title };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, content, path };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap())
     }
 }
@@ -108,14 +107,13 @@ async fn mobile_app(headers: HeaderMap) -> Html<String> {
 async fn business(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Services".to_string();
-    let content = "Enterprise AI solutions".to_string();
     let path = "/business".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title, content };
+        let template = ContentTemplate { title };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, content, path };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap())
     }
 }
@@ -123,14 +121,13 @@ async fn business(headers: HeaderMap) -> Html<String> {
 async fn video_series(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Video Series".to_string();
-    let content = "Watch our latest content".to_string();
     let path = "/video-series".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title, content };
+        let template = ContentTemplate { title };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, content, path };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap())
     }
 }
@@ -138,14 +135,13 @@ async fn video_series(headers: HeaderMap) -> Html<String> {
 async fn company(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Company".to_string();
-    let content = "About our mission and team".to_string();
     let path = "/company".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title, content };
+        let template = ContentTemplate { title };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, content, path };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap())
     }
 }
@@ -153,14 +149,13 @@ async fn company(headers: HeaderMap) -> Html<String> {
 async fn contact(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Contact".to_string();
-    let content = "Get in touch with us".to_string();
     let path = "/contact".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title, content };
+        let template = ContentTemplate { title };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, content, path };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap())
     }
 }
