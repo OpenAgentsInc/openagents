@@ -79,6 +79,9 @@ jobs:
           cargo sqlx migrate run
 
       - name: Run tests
+        env:
+          APP_ENVIRONMENT: "production"
+          DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
         run: cargo test
 
       - name: Check that queries are fresh
@@ -167,6 +170,9 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
+        env:
+          APP_ENVIRONMENT: "production"
+          DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
       - name: Generate report
         run: cargo llvm-cov report --html --output-dir coverage
