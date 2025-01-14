@@ -78,6 +78,24 @@ jobs:
           cargo sqlx database create
           cargo sqlx migrate run
 
+                - name: Setup configuration
+        run: |
+          mkdir -p configuration
+          echo "application:
+            port: 8080
+            host: 0.0.0.0
+            admin_token: admin-token" > configuration/base.yaml
+          
+          echo "application:
+            host: 0.0.0.0
+          database:
+            require_ssl: false" > configuration/production.yaml
+          
+          echo "application:
+            host: 0.0.0.0
+          database:
+            require_ssl: false" > configuration/local.yaml
+
       - name: Run tests
         env:
           APP_ENVIRONMENT: "production"
@@ -166,6 +184,24 @@ jobs:
         run: |
           cargo sqlx database create
           cargo sqlx migrate run
+
+                - name: Setup configuration
+        run: |
+          mkdir -p configuration
+          echo "application:
+            port: 8080
+            host: 0.0.0.0
+            admin_token: admin-token" > configuration/base.yaml
+          
+          echo "application:
+            host: 0.0.0.0
+          database:
+            require_ssl: false" > configuration/production.yaml
+          
+          echo "application:
+            host: 0.0.0.0
+          database:
+            require_ssl: false" > configuration/local.yaml
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
