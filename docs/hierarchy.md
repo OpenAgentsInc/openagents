@@ -1,11 +1,24 @@
 # Project Hierarchy
 
-Generated on: 2025-01-12 09:19:27
+Generated on: 2025-01-14 09:14:15
 
 ### Structure
 
 ```
 ./
+|-- assets/
+|   |-- fonts/
+|   |   |-- BerkeleyMono-Bold.woff
+|   |   |-- BerkeleyMono-Bold.woff2
+|   |   |-- BerkeleyMono-BoldItalic.woff
+|   |   |-- BerkeleyMono-BoldItalic.woff2
+|   |   |-- BerkeleyMono-Italic.woff
+|   |   |-- BerkeleyMono-Italic.woff2
+|   |   |-- BerkeleyMono-Regular.woff
+|   |   `-- BerkeleyMono-Regular.woff2
+|   |-- favicon.ico
+|   |-- fonts.css
+|   `-- main.css
 |-- configuration/
 |   |-- base.yaml
 |   |-- local.yaml
@@ -25,6 +38,7 @@ Generated on: 2025-01-12 09:19:27
 |   |-- hierarchy.md
 |   |-- htmx-nostr-chat.md
 |   |-- newsletter.md
+|   |-- prompt.md
 |   `-- rust-setup.md
 |-- migrations/
 |   |-- 20250110000000_initial.sql
@@ -56,77 +70,31 @@ Generated on: 2025-01-12 09:19:27
 |   |-- emailoptin.rs
 |   |-- lib.rs
 |   `-- main.rs
-|-- static/
-|   |-- css/
-|   |   |-- changelog.css
-|   |   |-- chat.css
-|   |   |-- style.css
-|   |   |-- videos-new.css
-|   |   `-- videos.css
-|   |-- data/
-|   |   |-- changelog.json
-|   |   `-- videos.json
-|   |-- dist/
-|   |   |-- nostr/
-|   |   |   |-- nostr-agent.js
-|   |   |   |-- nostr-agent.js.map
-|   |   |   |-- nostr-chat.js
-|   |   |   `-- nostr-chat.js.map
-|   |   |-- ndk.js
-|   |   |-- ndk.js.map
-|   |   |-- nostr-sub.js
-|   |   `-- nostr-sub.js.map
-|   |-- fonts/
-|   |   |-- BerkeleyMono-Bold.woff
-|   |   |-- BerkeleyMono-Bold.woff2
-|   |   |-- BerkeleyMono-BoldItalic.woff
-|   |   |-- BerkeleyMono-BoldItalic.woff2
-|   |   |-- BerkeleyMono-Italic.woff
-|   |   |-- BerkeleyMono-Italic.woff2
-|   |   |-- BerkeleyMono-Regular.woff
-|   |   `-- BerkeleyMono-Regular.woff2
-|   |-- js/
-|   |   |-- LightingSystem.js
-|   |   |-- OnyxOrb.js
-|   |   |-- SceneSystem.js
-|   |   |-- ViewSystem.js
-|   |   |-- client-side-templates.js
-|   |   |-- htmx.min.js
-|   |   |-- main.js
-|   |   |-- mustache.js
-|   |   `-- three.min.js
-|   |-- nostr/
-|   |   |-- agent-methods.ts
-|   |   |-- base.ts
-|   |   |-- channel-methods.ts
-|   |   |-- example.html
-|   |   |-- message-methods.ts
-|   |   |-- nostr-agent.ts
-|   |   |-- nostr-chat.js
-|   |   |-- nostr-chat.ts
-|   |   |-- storage.ts
-|   |   `-- types.ts
-|   |-- templates/
-|   |   |-- changelog-new.mustache
-|   |   |-- changelog.mustache
-|   |   `-- chat.mustache
-|   |-- README.md
-|   |-- agents.html
-|   |-- favicon.ico
-|   |-- index.html
-|   |-- justfile
-|   |-- ndk.ts
-|   |-- new.html
-|   |-- nostr-sub.ts
-|   |-- nostr.html
-|   |-- onyx.png
-|   |-- package.json
-|   |-- tsconfig.json
-|   `-- yarn.lock
+|-- styles/
+|   `-- tailwind.css
 |-- templates/
-|   `-- admin/
-|       |-- dashboard.html
-|       `-- login.html
+|   |-- admin/
+|   |   |-- dashboard.html
+|   |   `-- login.html
+|   |-- components/
+|   |   |-- features.html
+|   |   `-- hero.html
+|   |-- layouts/
+|   |   |-- base.html
+|   |   `-- content.html
+|   |-- macros/
+|   |   |-- blog.html
+|   |   |-- nav.html
+|   |   `-- video.html
+|   |-- pages/
+|   |   |-- 404.html
+|   |   |-- coming-soon.html
+|   |   |-- company.html
+|   |   |-- home.html
+|   |   |-- mobile-app.html
+|   |   |-- services.html
+|   |   `-- video-series.html
+|   `-- header.html
 |-- tests/
 |   |-- agent/
 |   |   |-- core.rs
@@ -150,8 +118,11 @@ Generated on: 2025-01-12 09:19:27
 |-- DEVELOPMENT.md
 |-- Dockerfile
 |-- README.md
-|-- html
-`-- spec.yaml
+|-- package.json
+|-- pnpm-lock.yaml
+|-- postcss.config.js
+|-- spec.yaml
+`-- tailwind.config.cjs
 
-26 directories, 121 files
+24 directories, 94 files
 ```
