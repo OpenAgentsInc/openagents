@@ -7,7 +7,6 @@ use axum::{
 };
 use std::path::PathBuf;
 use tower_http::services::ServeDir;
-use tower::ServiceExt;
 use tracing::info;
 
 #[tokio::main]
@@ -29,8 +28,7 @@ async fn main() {
         .route("/services", get(business))
         .route("/company", get(company))
         .route("/coming-soon", get(coming_soon))
-        .route("/favicon.ico", get(favicon))
-        .nest_service("/assets", ServeDir::new(assets_path));
+        .nest_service("/", ServeDir::new(assets_path));
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
@@ -45,18 +43,6 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
-}
-
-async fn favicon() -> impl IntoResponse {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/favicon.ico");
-    let req = axum::http::Request::builder()
-        .uri("/favicon.ico")
-        .body(())
-        .unwrap();
-    ServeDir::new(path.parent().unwrap())
-        .oneshot(req)
-        .await
-        .unwrap()
 }
 
 #[derive(Template)]
