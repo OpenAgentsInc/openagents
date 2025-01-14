@@ -16,7 +16,9 @@ module.exports = {
         '1': '1px',
       },
       boxShadow: {
-        'nav': '4px 4px 0 0 rgba(255, 255, 255, 0.75)',
+        'nav': '2px 2px 0 0 rgba(255, 255, 255, 0.25)',
+        'nav-hover': '3px 3px 0 0 rgba(255, 255, 255, 0.35)',
+        'nav-active': '1px 1px 0 0 rgba(255, 255, 255, 0.15)',
       },
     },
   },
