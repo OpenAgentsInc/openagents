@@ -1,8 +1,8 @@
 {% macro blog_post(date, title, content) %}
 <div class="border-b pb-4 mb-4">
-    <div class="flex items-center gap-4 mb-2">
-        <span class="text-gray-500 text-sm">{{date}}</span>
+    <div class="flex items-center justify-between mb-2">
         <h3 class="text-base font-semibold">{{title}}</h3>
+        <span class="text-gray-500 text-sm">{{date}}</span>
     </div>
     <p class="text-sm">{{content}}</p>
 </div>
