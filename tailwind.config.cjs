@@ -45,6 +45,8 @@ module.exports = {
   safelist: [
     'border',
     'border-white',
-    'shadow-nav'
+    'shadow-nav',
+    'animate-nav-in',
+    'animate-nav-out'
   ],
 };

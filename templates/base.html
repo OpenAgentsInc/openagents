@@ -12,7 +12,7 @@
             const activeLink = document.querySelector(`a[href="${currentPath}"]`);
             if (activeLink) {
                 const dot = document.createElement('span');
-                dot.className = 'nav-dot w-1.5 h-1.5 rounded-full bg-white';
+                dot.className = 'nav-dot w-1.5 h-1.5 rounded-full bg-white animate-nav-in';
                 activeLink.appendChild(dot);
             }
         }
