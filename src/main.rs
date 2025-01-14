@@ -102,7 +102,7 @@ async fn business(headers: HeaderMap) -> Html<String> {
     let path = "/services".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title };
+        let template = ContentTemplate { title, path };
         Html(template.render().unwrap())
     } else {
         let template = PageTemplate { title, path };
@@ -116,7 +116,7 @@ async fn video_series(headers: HeaderMap) -> Html<String> {
     let path = "/video-series".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title };
+        let template = ContentTemplate { title, path };
         Html(template.render().unwrap())
     } else {
         let template = PageTemplate { title, path };
@@ -130,7 +130,7 @@ async fn company(headers: HeaderMap) -> Html<String> {
     let path = "/company".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title };
+        let template = ContentTemplate { title, path };
         Html(template.render().unwrap())
     } else {
         let template = PageTemplate { title, path };
@@ -144,7 +144,7 @@ async fn contact(headers: HeaderMap) -> Html<String> {
     let path = "/contact".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title };
+        let template = ContentTemplate { title, path };
         Html(template.render().unwrap())
     } else {
         let template = PageTemplate { title, path };
