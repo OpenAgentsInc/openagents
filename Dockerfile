@@ -25,6 +25,7 @@ RUN apt-get update -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/openagents openagents
+COPY --from=builder /app/assets assets
 COPY configuration configuration
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./openagents"]
