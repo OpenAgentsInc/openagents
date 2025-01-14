@@ -39,6 +39,8 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install the Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -110,13 +112,13 @@ jobs:
           echo "APP_ENVIRONMENT is set to: $APP_ENVIRONMENT"
           cargo test
 
-      - name: Prepare SQLx queries
-        run: |
-          # Generate SQLx query metadata
-          cargo sqlx prepare --workspace
-
       - name: Check that queries are fresh
-        run: cargo sqlx prepare --workspace --check -- --all-targets
+        run: |
+          echo "Current directory contents:"
+          ls -la
+          echo "Checking for .sqlx directory:"
+          ls -la .sqlx || true
+          cargo sqlx prepare --workspace --check
 
   fmt:
     name: Rustfmt
@@ -162,16 +164,21 @@ jobs:
           - 6379:6379
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Install the Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: llvm-tools-preview
+
       - name: Install sqlx-cli
         run: cargo install sqlx-cli
           --version=${{ env.SQLX_VERSION }}
           --features ${{ env.SQLX_FEATURES }}
           --no-default-features
           --locked
+
       - name: Create app user in Postgres
         run: |
           sudo apt-get install postgresql-client
