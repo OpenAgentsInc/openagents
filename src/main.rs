@@ -7,6 +7,7 @@ use axum::{
 };
 use std::path::PathBuf;
 use tower_http::services::ServeDir;
+use tower::ServiceExt;
 use tracing::info;
 
 #[tokio::main]
@@ -48,8 +49,12 @@ async fn main() {
 
 async fn favicon() -> impl IntoResponse {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/favicon.ico");
+    let req = axum::http::Request::builder()
+        .uri("/favicon.ico")
+        .body(())
+        .unwrap();
     ServeDir::new(path.parent().unwrap())
-        .oneshot(axum::http::Request::new(()))
+        .oneshot(req)
         .await
         .unwrap()
 }
