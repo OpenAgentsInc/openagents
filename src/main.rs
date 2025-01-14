@@ -23,7 +23,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(home))
-        .route("/mobile-app", get(mobile_app))
+        .route("/onyx", get(mobile_app))
         .route("/video-series", get(video_series))
         .route("/services", get(business))
         .route("/company", get(company))
@@ -84,7 +84,7 @@ async fn home(headers: HeaderMap) -> Response {
 async fn mobile_app(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Mobile App".to_string();
-    let path = "/mobile-app".to_string();
+    let path = "/onyx".to_string();
 
     if is_htmx {
         let content = ContentTemplate { path: &path }.render().unwrap();
