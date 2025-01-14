@@ -69,16 +69,7 @@ jobs:
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "CREATE DATABASE openagents_test;"
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "GRANT ALL PRIVILEGES ON DATABASE openagents_test TO ${APP_USER};"
 
-      - name: Migrate database
-        run: |
-          SKIP_DOCKER=true ./scripts/init_db.sh
-
-      - name: Run SQLx migrations
-        run: |
-          cargo sqlx database create
-          cargo sqlx migrate run
-
-                - name: Setup configuration
+      - name: Setup configuration
         run: |
           mkdir -p configuration
           echo "application:
@@ -95,6 +86,11 @@ jobs:
             host: 0.0.0.0
           database:
             require_ssl: false" > configuration/local.yaml
+
+      - name: Run SQLx migrations
+        run: |
+          cargo sqlx database create
+          cargo sqlx migrate run
 
       - name: Run tests
         env:
@@ -177,15 +173,7 @@ jobs:
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "CREATE DATABASE openagents_test;"
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "GRANT ALL PRIVILEGES ON DATABASE openagents_test TO ${APP_USER};"
 
-      - name: Migrate database
-        run: SKIP_DOCKER=true ./scripts/init_db.sh
-      
-      - name: Run SQLx migrations
-        run: |
-          cargo sqlx database create
-          cargo sqlx migrate run
-
-                - name: Setup configuration
+      - name: Setup configuration
         run: |
           mkdir -p configuration
           echo "application:
@@ -202,6 +190,11 @@ jobs:
             host: 0.0.0.0
           database:
             require_ssl: false" > configuration/local.yaml
+
+      - name: Run SQLx migrations
+        run: |
+          cargo sqlx database create
+          cargo sqlx migrate run
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
