@@ -31,14 +31,13 @@ async fn main() {
 async fn another_page(headers: HeaderMap) -> Html<String> {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Another Page".to_string();
-    let content = include_str!("../templates/pages/another-page.html").to_string();
     let path = "/another-page".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title, content };
+        let template = ContentTemplate { title };
         Html(template.render().unwrap())
     } else {
-        let template = PageTemplate { title, content, path };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap())
     }
 }
@@ -47,7 +46,6 @@ async fn another_page(headers: HeaderMap) -> Html<String> {
 #[template(path = "layouts/base.html")]
 struct PageTemplate {
     title: String,
-    content: String,
     path: String,
 }
 
@@ -55,7 +53,6 @@ struct PageTemplate {
 #[template(path = "layouts/content.html")]
 struct ContentTemplate {
     title: String,
-    content: String,
 }
 
 #[derive(Template)]
