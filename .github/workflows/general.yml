@@ -110,6 +110,11 @@ jobs:
           echo "APP_ENVIRONMENT is set to: $APP_ENVIRONMENT"
           cargo test
 
+      - name: Prepare SQLx queries
+        run: |
+          # Generate SQLx query metadata
+          cargo sqlx prepare --workspace
+
       - name: Check that queries are fresh
         run: cargo sqlx prepare --workspace --check -- --all-targets
 
