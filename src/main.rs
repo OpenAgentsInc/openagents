@@ -1,7 +1,6 @@
 use askama::Template;
 use axum::{
-    http::StatusCode,
-    response::{Html, IntoResponse, Response},
+    response::Html,
     routing::get,
     Router,
     http::header::HeaderMap,
@@ -34,9 +33,10 @@ async fn another_page(headers: HeaderMap) -> Html<String> {
     let path = "/another-page".to_string();
 
     if is_htmx {
-        let mut headers = HeaderMap::new();
-        headers.insert("HX-Title", title.parse().unwrap());
-        (headers, Html(ContentTemplate { title: &title, path: &path }.render().unwrap()))
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert("HX-Title", title.parse().unwrap());
+        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        Html(content)
     } else {
         let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
@@ -63,8 +63,10 @@ async fn home(headers: HeaderMap) -> Html<String> {
     let path = "/".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert("HX-Title", title.parse().unwrap());
+        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        Html(content)
     } else {
         let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
@@ -77,8 +79,10 @@ async fn mobile_app(headers: HeaderMap) -> Html<String> {
     let path = "/mobile-app".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert("HX-Title", title.parse().unwrap());
+        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        Html(content)
     } else {
         let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
@@ -91,8 +95,10 @@ async fn business(headers: HeaderMap) -> Html<String> {
     let path = "/services".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert("HX-Title", title.parse().unwrap());
+        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        Html(content)
     } else {
         let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
@@ -105,8 +111,10 @@ async fn video_series(headers: HeaderMap) -> Html<String> {
     let path = "/video-series".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert("HX-Title", title.parse().unwrap());
+        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        Html(content)
     } else {
         let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
@@ -119,8 +127,10 @@ async fn company(headers: HeaderMap) -> Html<String> {
     let path = "/company".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert("HX-Title", title.parse().unwrap());
+        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        Html(content)
     } else {
         let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
@@ -133,8 +143,10 @@ async fn contact(headers: HeaderMap) -> Html<String> {
     let path = "/contact".to_string();
 
     if is_htmx {
-        let template = ContentTemplate { title: &title, path: &path };
-        Html(template.render().unwrap())
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert("HX-Title", title.parse().unwrap());
+        let content = ContentTemplate { title: &title, path: &path }.render().unwrap();
+        Html(content)
     } else {
         let template = PageTemplate { title: &title, path: &path };
         Html(template.render().unwrap())
