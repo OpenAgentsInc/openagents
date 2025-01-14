@@ -6,7 +6,7 @@
     <title>{{title}}</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script>
-        document.addEventListener('htmx:afterSettle', function() {
+        function updateActiveDot() {
             document.querySelectorAll('.nav-dot').forEach(dot => dot.remove());
             const currentPath = window.location.pathname;
             const activeLink = document.querySelector(`a[href="${currentPath}"]`);
@@ -15,7 +15,12 @@
                 dot.className = 'nav-dot w-1.5 h-1.5 rounded-full bg-white';
                 activeLink.appendChild(dot);
             }
-        });
+        }
+        
+        // Run on initial page load
+        document.addEventListener('DOMContentLoaded', updateActiveDot);
+        // Run after HTMX content updates
+        document.addEventListener('htmx:afterSettle', updateActiveDot);
     </script>
 </head>
 <body class="fixed min-h-screen w-screen bg-black text-white font-mono">
