@@ -27,7 +27,7 @@ async fn main() {
 }
 
 #[derive(Template)]
-#[template(path = "base.html")]
+#[template(path = "layouts/base.html")]
 struct PageTemplate {
     title: String,
     content: String,
@@ -35,14 +35,14 @@ struct PageTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "content.html")]
+#[template(path = "layouts/content.html")]
 struct ContentTemplate {
     title: String,
     content: String,
 }
 
 #[derive(Template)]
-#[template(path = "pages/home.html")]
+#[template(path = "layouts/base.html")]
 struct HomeTemplate {
     title: String,
     content: String,
