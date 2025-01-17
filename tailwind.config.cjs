@@ -27,9 +27,15 @@ module.exports = {
   },
   safelist: [
     "border",
-    "border-white",
+    "border-white", 
     "shadow-nav",
     "animate-nav-in",
     "animate-nav-out",
+    "my-2",
+    "py-2",
+    "py-3",
+    "md:py-1",
+    "md:py-2",
+    "md:py-3"
   ],
 };
