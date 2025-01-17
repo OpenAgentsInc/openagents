@@ -11,11 +11,6 @@ path = "src/main.rs"
 name = "openagents"
 
 [dependencies]
-actix = "0.13"
-actix-web = "4.4"
-actix-web-actors = "4.2"
-actix-files = "0.6"
-actix-cors = "0.6"
 env_logger = "0.10"
 dotenvy = "0.15"
 futures = "0.3"
