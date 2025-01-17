@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-16 21:38:26
+Generated on: 2025-01-17 12:33:05
 
 ### Structure
 
@@ -56,10 +56,10 @@ Generated on: 2025-01-16 21:38:26
 |   |   |-- manager.rs
 |   |   `-- mod.rs
 |   |-- nostr/
+|   |   |-- axum_relay.rs
 |   |   |-- db.rs
 |   |   |-- event.rs
 |   |   |-- mod.rs
-|   |   |-- relay.rs
 |   |   `-- subscription.rs
 |   |-- server/
 |   |   |-- admin/

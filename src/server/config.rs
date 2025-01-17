@@ -1,35 +1,27 @@
-use actix_files as fs;
-use actix_web::web;
 use std::env;
+use tower_http::services::ServeDir;
 
-use super::{admin::middleware::AdminAuth, services::RepomapService};
+use super::{admin::middleware::admin_auth, services::RepomapService};
 
-pub fn configure_app(cfg: &mut web::ServiceConfig) {
+pub fn configure_app() -> axum::Router {
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
-    let repomap_service = RepomapService::new(aider_api_key);
+    let _repomap_service = RepomapService::new(aider_api_key);
 
-    // Add repomap service to app data
-    cfg.app_data(web::Data::new(repomap_service));
-
-    // Configure admin routes with authentication
-    cfg.service(
-        web::scope("/admin")
-            .wrap(AdminAuth::new())
-            .configure(crate::server::admin::routes::admin_config),
-    );
-
-    // Serve static files from the static directory
-    cfg.service(
-        fs::Files::new("/static", "./static")
-            .show_files_listing()
-            .use_last_modified(true),
-    );
-
-    // Serve template files
-    cfg.service(
-        fs::Files::new("/templates", "./templates")
-            .show_files_listing()
-            .use_last_modified(true),
-    );
+    // Create the main router with state
+    axum::Router::new()
+        .route("/", axum::routing::get(|| async { "Hello, World!" }))
+        // Admin routes with authentication
+        .nest(
+            "/admin",
+            super::admin::routes::admin_routes().layer(axum::middleware::from_fn(admin_auth)),
+        )
+        // Static files
+        .nest_service("/static", ServeDir::new("./static").precompressed_gzip())
+        // Template files
+        .nest_service(
+            "/templates",
+            ServeDir::new("./templates").precompressed_gzip(),
+        )
+        .with_state(())
 }

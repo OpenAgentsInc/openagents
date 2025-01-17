@@ -1,21 +1,43 @@
 use crate::nostr::event::Event;
 use crate::{configuration, database};
-use actix_web::{cookie::Cookie, get, post, web, HttpResponse, Responder, Result};
+use axum::{
+    extract::Form,
+    http::{header, HeaderMap, StatusCode},
+    response::{Html, IntoResponse},
+};
+use bitcoin_hashes::{sha256, Hash};
 use secp256k1::{rand, KeyPair, Message, Secp256k1};
 use serde::Deserialize;
 use serde_json::json;
 
-#[get("/stats")]
-pub async fn admin_stats() -> Result<HttpResponse> {
-    let config = configuration::get_configuration()
-        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Config error: {}", e)))?;
+pub async fn admin_stats() -> impl IntoResponse {
+    let config = match configuration::get_configuration() {
+        Ok(config) => config,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "application/json")],
+                json!({
+                    "error": format!("Config error: {}", e)
+                })
+                .to_string(),
+            )
+                .into_response()
+        }
+    };
 
     let pool = match database::get_connection_pool(&config).await {
         Ok(pool) => pool,
         Err(e) => {
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "error": format!("Database error: {}", e)
-            })))
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "application/json")],
+                json!({
+                    "error": format!("Database error: {}", e)
+                })
+                .to_string(),
+            )
+                .into_response()
         }
     };
 
@@ -26,9 +48,15 @@ pub async fn admin_stats() -> Result<HttpResponse> {
     {
         Ok(count) => count,
         Err(e) => {
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "error": format!("Failed to get event count: {}", e)
-            })))
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "application/json")],
+                json!({
+                    "error": format!("Failed to get event count: {}", e)
+                })
+                .to_string(),
+            )
+                .into_response()
         }
     };
 
@@ -44,9 +72,15 @@ pub async fn admin_stats() -> Result<HttpResponse> {
     {
         Ok(kinds) => kinds,
         Err(e) => {
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "error": format!("Failed to get event kinds: {}", e)
-            })))
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "application/json")],
+                json!({
+                    "error": format!("Failed to get event kinds: {}", e)
+                })
+                .to_string(),
+            )
+                .into_response()
         }
     };
 
@@ -62,19 +96,31 @@ pub async fn admin_stats() -> Result<HttpResponse> {
     {
         Ok(size) => size,
         Err(e) => {
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "error": format!("Failed to get database size: {}", e)
-            })))
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "application/json")],
+                json!({
+                    "error": format!("Failed to get database size: {}", e)
+                })
+                .to_string(),
+            )
+                .into_response()
         }
     };
 
-    Ok(HttpResponse::Ok().json(json!({
-        "total_events": total_events,
-        "events_by_kind": events_by_kind,
-        "storage_usage": format!("{:.1} MB", db_size as f64 / (1024.0 * 1024.0)),
-        "index_usage": [],
-        "status": "ok"
-    })))
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/json")],
+        json!({
+            "total_events": total_events,
+            "events_by_kind": events_by_kind,
+            "storage_usage": format!("{:.1} MB", db_size as f64 / (1024.0 * 1024.0)),
+            "index_usage": [],
+            "status": "ok"
+        })
+        .to_string(),
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]
@@ -82,49 +128,42 @@ pub struct LoginForm {
     password: String,
 }
 
-#[get("")]
-pub async fn admin_dashboard() -> impl Responder {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(include_str!("../../../templates/admin/dashboard.html"))
+pub async fn admin_dashboard() -> impl IntoResponse {
+    Html(include_str!("../../../templates/admin/dashboard.html"))
 }
 
-#[get("/login")]
-pub async fn admin_login() -> impl Responder {
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(include_str!("../../../templates/admin/login.html"))
+pub async fn admin_login() -> impl IntoResponse {
+    Html(include_str!("../../../templates/admin/login.html"))
 }
 
-#[post("/login")]
-pub async fn admin_login_post(form: web::Form<LoginForm>) -> impl Responder {
+pub async fn admin_login_post(Form(form): Form<LoginForm>) -> impl IntoResponse {
     let config = match configuration::get_configuration() {
         Ok(config) => config,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, HeaderMap::new()).into_response();
+        }
     };
 
+    let mut headers = HeaderMap::new();
     if form.password == config.application.admin_token {
-        HttpResponse::Found()
-            .cookie(
-                Cookie::build("admin_session", config.application.admin_token)
-                    .path("/admin")
-                    .secure(true)
-                    .http_only(true)
-                    .finish(),
+        headers.insert(
+            header::SET_COOKIE,
+            format!(
+                "admin_session={}; Path=/admin; Secure; HttpOnly",
+                config.application.admin_token
             )
-            .append_header(("Location", "/admin"))
-            .finish()
+            .parse()
+            .unwrap(),
+        );
+        headers.insert(header::LOCATION, "/admin".parse().unwrap());
+        (StatusCode::FOUND, headers).into_response()
     } else {
-        HttpResponse::Found()
-            .append_header(("Location", "/admin/login?error=1"))
-            .finish()
+        headers.insert(header::LOCATION, "/admin/login?error=1".parse().unwrap());
+        (StatusCode::FOUND, headers).into_response()
     }
 }
 
-use bitcoin_hashes::{sha256, Hash};
-
-#[post("/demo-event")]
-pub async fn create_demo_event() -> Result<HttpResponse> {
+pub async fn create_demo_event() -> impl IntoResponse {
     let secp = Secp256k1::new();
     let keypair = KeyPair::new(&secp, &mut rand::thread_rng());
 
@@ -161,23 +200,47 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
 
         // Validate the event
         if let Err(e) = event.validate() {
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "status": "error",
-                "message": format!("Event validation failed: {}", e)
-            })));
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "application/json")],
+                json!({
+                    "status": "error",
+                    "message": format!("Event validation failed: {}", e)
+                })
+                .to_string(),
+            )
+                .into_response();
         }
 
-        let config = configuration::get_configuration().map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("Config error: {}", e))
-        })?;
+        let config = match configuration::get_configuration() {
+            Ok(config) => config,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    [(header::CONTENT_TYPE, "application/json")],
+                    json!({
+                        "status": "error",
+                        "message": format!("Config error: {}", e)
+                    })
+                    .to_string(),
+                )
+                    .into_response()
+            }
+        };
 
         let pool = match database::get_connection_pool(&config).await {
             Ok(pool) => pool,
             Err(e) => {
-                return Ok(HttpResponse::InternalServerError().json(json!({
-                    "status": "error",
-                    "message": format!("Database error: {}", e)
-                })))
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    [(header::CONTENT_TYPE, "application/json")],
+                    json!({
+                        "status": "error",
+                        "message": format!("Database error: {}", e)
+                    })
+                    .to_string(),
+                )
+                    .into_response()
             }
         };
 
@@ -195,28 +258,47 @@ pub async fn create_demo_event() -> Result<HttpResponse> {
         .execute(&pool)
         .await
         {
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "status": "error",
-                "message": format!("Failed to save event: {}", e)
-            })));
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "application/json")],
+                json!({
+                    "status": "error",
+                    "message": format!("Failed to save event: {}", e)
+                })
+                .to_string(),
+            )
+                .into_response();
         }
 
-        Ok(HttpResponse::Ok().json(json!({
-            "status": "success",
-            "event": event
-        })))
+        (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json")],
+            json!({
+                "status": "success",
+                "event": event
+            })
+            .to_string(),
+        )
+            .into_response()
     } else {
-        Ok(HttpResponse::InternalServerError().json(json!({
-            "status": "error",
-            "message": "Failed to canonicalize event"
-        })))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "application/json")],
+            json!({
+                "status": "error",
+                "message": "Failed to canonicalize event"
+            })
+            .to_string(),
+        )
+            .into_response()
     }
 }
 
-pub fn admin_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(admin_dashboard)
-        .service(admin_login)
-        .service(admin_login_post)
-        .service(admin_stats)
-        .service(create_demo_event);
+pub fn admin_routes() -> axum::Router {
+    axum::Router::new()
+        .route("/", axum::routing::get(admin_dashboard))
+        .route("/login", axum::routing::get(admin_login))
+        .route("/login", axum::routing::post(admin_login_post))
+        .route("/stats", axum::routing::get(admin_stats))
+        .route("/demo-event", axum::routing::post(create_demo_event))
 }

@@ -1,4 +1,3 @@
-use actix::Message;
 use bitcoin_hashes::{sha256, Hash};
 use lazy_static::lazy_static;
 use secp256k1::{schnorr, Secp256k1, VerifyOnly, XOnlyPublicKey};
@@ -12,8 +11,7 @@ lazy_static! {
     pub static ref SECP: Secp256k1<VerifyOnly> = Secp256k1::verification_only();
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "()")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub id: String,
     pub pubkey: String,
