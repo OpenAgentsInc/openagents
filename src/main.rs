@@ -7,14 +7,20 @@ use axum::{
 };
 use serde_json::json;
 use std::{env, path::PathBuf, sync::Arc};
+use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
 use tracing::info;
-use tokio::sync::broadcast;
 
 use openagents::{
     configuration::get_configuration,
-    generate_repomap, repomap, server::services::RepomapService, ContentTemplate, PageTemplate,
-    nostr::{axum_relay::{RelayState, ws_handler}, db::Database},
+    generate_repomap,
+    nostr::{
+        axum_relay::{ws_handler, RelayState},
+        db::Database,
+    },
+    repomap,
+    server::services::RepomapService,
+    ContentTemplate, PageTemplate,
 };
 
 #[tokio::main]
@@ -38,14 +44,14 @@ async fn main() {
 
     // Initialize Nostr components
     let (event_tx, _) = broadcast::channel(1024);
-    
+
     // Create database connection using configuration
     let db = Arc::new(
         Database::new_with_options(configuration.database.connect_options())
             .await
-            .expect("Failed to connect to database")
+            .expect("Failed to connect to database"),
     );
-    
+
     let relay_state = Arc::new(RelayState::new(event_tx, db));
 
     // Create separate routers for different state types

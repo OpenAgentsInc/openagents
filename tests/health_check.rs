@@ -18,7 +18,7 @@ async fn health_check_works() {
 
     // Assert
     assert_eq!(response.status_code(), 200);
-    
+
     let body: serde_json::Value = response.json();
     assert_eq!(body["status"], "healthy");
 }

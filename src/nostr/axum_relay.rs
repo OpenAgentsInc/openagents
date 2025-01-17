@@ -1,14 +1,18 @@
-use std::{collections::HashMap, sync::Arc, time::{Duration, Instant}};
-use tokio::sync::{broadcast, mpsc};
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    response::IntoResponse,
     extract::State,
+    response::IntoResponse,
 };
+use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde_json::Value;
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::sync::{broadcast, mpsc};
 use tracing::error;
-use bytes::Bytes;
 
 use super::{
     db::{Database, EventFilter},
@@ -64,11 +68,7 @@ pub async fn ws_handler(
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
-async fn handle_client_message(
-    msg: &str,
-    state: &Arc<RelayState>,
-    tx: &mpsc::Sender<Message>,
-) {
+async fn handle_client_message(msg: &str, state: &Arc<RelayState>, tx: &mpsc::Sender<Message>) {
     let parsed: Result<Value, _> = serde_json::from_str(msg);
 
     match parsed {
@@ -102,17 +102,15 @@ async fn handle_client_message(
         }
         Err(_) => {
             let _ = tx
-                .send(Message::Text(r#"["NOTICE", "Invalid message format"]"#.into()))
+                .send(Message::Text(
+                    r#"["NOTICE", "Invalid message format"]"#.into(),
+                ))
                 .await;
         }
     }
 }
 
-async fn handle_event(
-    event: Event,
-    state: &Arc<RelayState>,
-    tx: &mpsc::Sender<Message>,
-) {
+async fn handle_event(event: Event, state: &Arc<RelayState>, tx: &mpsc::Sender<Message>) {
     match event.validate() {
         Ok(()) => {
             // Save event to database

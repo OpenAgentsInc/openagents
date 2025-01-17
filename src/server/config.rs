@@ -17,10 +17,7 @@ pub fn configure_app() -> axum::Router {
             super::admin::routes::admin_routes().layer(axum::middleware::from_fn(admin_auth)),
         )
         // Static files
-        .nest_service(
-            "/static",
-            ServeDir::new("./static").precompressed_gzip(),
-        )
+        .nest_service("/static", ServeDir::new("./static").precompressed_gzip())
         // Template files
         .nest_service(
             "/templates",

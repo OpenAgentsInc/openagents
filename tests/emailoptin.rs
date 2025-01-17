@@ -70,7 +70,10 @@ async fn subscribe_returns_a_422_when_data_is_missing() {
 
     let test_cases = vec![
         (vec![("name", "le guin")], "missing the email"),
-        (vec![("email", "ursula_le_guin@gmail.com")], "missing the name"),
+        (
+            vec![("email", "ursula_le_guin@gmail.com")],
+            "missing the name",
+        ),
         (vec![], "missing both name and email"),
     ];
 

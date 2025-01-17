@@ -3,8 +3,8 @@ use axum_test::TestServer;
 use lazy_static::lazy_static;
 use openagents::nostr::event::Event;
 use openagents::server::admin::routes::{admin_stats, create_demo_event};
-use tokio::sync::Mutex;
 use serde_json::Value;
+use tokio::sync::Mutex;
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
