@@ -1,21 +1,17 @@
+use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RepomapRequest {
-    pub repo_url: String,
+#[derive(Debug, Clone)]
+pub struct RepomapService {
+    client: Client,
+    api_key: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RepomapResponse {
     pub repo_map: String,
     pub metadata: serde_json::Value,
-}
-
-pub struct RepomapService {
-    client: Client,
-    api_key: String,
 }
 
 impl RepomapService {
