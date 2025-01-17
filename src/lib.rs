@@ -18,20 +18,12 @@ use tracing::{info, error};
 pub mod filters {
     use pulldown_cmark::{html, Options, Parser};
 
-    pub fn markdown(s: &str) -> String {
-        let mut options = Options::empty();
-        options.insert(Options::ENABLE_STRIKETHROUGH);
-        options.insert(Options::ENABLE_TABLES);
-        
-        let parser = Parser::new_ext(s, options);
-        let mut html_output = String::new();
-        html::push_html(&mut html_output, parser);
-        
-        html_output
+    pub fn markdown(s: &str) -> &str {
+        s
     }
 
-    pub fn safe(s: &str) -> String {
-        s.to_string()
+    pub fn safe(s: &str) -> &str {
+        s
     }
 }
 
@@ -43,11 +35,11 @@ pub struct PageTemplate<'a> {
 }
 
 impl<'a> PageTemplate<'a> {
-    pub fn markdown(&self, s: &str) -> String {
+    pub fn markdown(&self, s: &'a str) -> &'a str {
         filters::markdown(s)
     }
 
-    pub fn safe(&self, s: &str) -> String {
+    pub fn safe(&self, s: &'a str) -> &'a str {
         filters::safe(s)
     }
 }
@@ -59,11 +51,11 @@ pub struct ContentTemplate<'a> {
 }
 
 impl<'a> ContentTemplate<'a> {
-    pub fn markdown(&self, s: &str) -> String {
+    pub fn markdown(&self, s: &'a str) -> &'a str {
         filters::markdown(s)
     }
 
-    pub fn safe(&self, s: &str) -> String {
+    pub fn safe(&self, s: &'a str) -> &'a str {
         filters::safe(s)
     }
 }
