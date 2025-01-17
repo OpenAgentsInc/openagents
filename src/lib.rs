@@ -35,10 +35,22 @@ pub struct PageTemplate<'a> {
     pub path: &'a str,
 }
 
+impl<'a> PageTemplate<'a> {
+    pub fn safe(&self, s: &str) -> String {
+        s.to_string()
+    }
+}
+
 #[derive(Template)]
 #[template(path = "layouts/content.html", escape = "none")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
+}
+
+impl<'a> ContentTemplate<'a> {
+    pub fn safe(&self, s: &str) -> String {
+        s.to_string()
+    }
 }
 
 #[derive(Debug, Deserialize)]
