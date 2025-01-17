@@ -1,4 +1,5 @@
-use actix_web::{test, web, App};
+use axum::{routing::get, Router};
+use axum_test::TestServer;
 use lazy_static::lazy_static;
 use openagents::nostr::event::Event;
 use openagents::server::admin::routes::{admin_stats, create_demo_event};
@@ -39,7 +40,7 @@ async fn setup_test_db() -> sqlx::PgPool {
     pool
 }
 
-#[actix_web::test]
+#[tokio::test]
 async fn test_create_demo_event() {
     // Ensure tests run sequentially
     let _lock = TEST_MUTEX.lock().await;
@@ -53,17 +54,16 @@ async fn test_create_demo_event() {
     );
 
     // Initialize app with test database
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .service(create_demo_event),
-    )
-    .await;
+    let app = Router::new()
+        .route("/demo-event", axum::routing::post(create_demo_event))
+        .with_state(pool.clone());
 
-    let req = test::TestRequest::post().uri("/demo-event").to_request();
+    let server = TestServer::new(app).unwrap();
 
-    let resp: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let response = server.post("/demo-event").await;
+    assert_eq!(response.status_code(), 200);
 
+    let resp: serde_json::Value = response.json();
     assert_eq!(resp["status"], "success");
 
     let event = &resp["event"];
@@ -95,7 +95,7 @@ async fn test_create_demo_event() {
     assert_eq!(saved_event.content, "This is a demo event");
 }
 
-#[actix_web::test]
+#[tokio::test]
 async fn test_admin_stats() {
     // Ensure tests run sequentially
     let _lock = TEST_MUTEX.lock().await;
@@ -109,17 +109,16 @@ async fn test_admin_stats() {
     );
 
     // Initialize app with test database
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .service(admin_stats),
-    )
-    .await;
+    let app = Router::new()
+        .route("/stats", get(admin_stats))
+        .with_state(pool.clone());
 
-    let req = test::TestRequest::get().uri("/stats").to_request();
+    let server = TestServer::new(app).unwrap();
 
-    let resp: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let response = server.get("/stats").await;
+    assert_eq!(response.status_code(), 200);
 
+    let resp: serde_json::Value = response.json();
     assert!(resp.get("total_events").is_some());
     assert!(resp.get("status").is_some());
     assert!(resp.get("events_by_kind").is_some());
