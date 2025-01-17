@@ -5,113 +5,93 @@ pub mod emailoptin;
 pub mod nostr;
 pub mod server;
 
-use actix_cors::Cors;
-use actix_web::{web, App, HttpServer};
-use actix_web_actors::ws;
+use askama::Template;
+use axum::{
+    extract::{Form, State},
+    http::header::{HeaderMap, HeaderValue},
+    response::{Html, IntoResponse, Response},
+};
+use pulldown_cmark::{html, Options, Parser};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::broadcast;
-use tracing::{debug, info, warn};
-use uuid::Uuid;
+use tracing::{error, info};
 
-use crate::configuration::get_configuration;
-use crate::nostr::db::Database;
-use crate::nostr::event::Event;
-use crate::nostr::relay::RelayWs;
+pub fn render_markdown(content: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
 
-async fn root_route(
-    req: actix_web::HttpRequest,
-    stream: web::Payload,
-    event_tx: web::Data<broadcast::Sender<Event>>,
-    db: web::Data<Arc<Database>>,
-) -> Result<actix_web::HttpResponse, actix_web::Error> {
-    // Check if this is a WebSocket upgrade request
-    if req.headers().contains_key("Upgrade") {
-        let id = Uuid::new_v4().to_string();
-        let ws = RelayWs::new(id, event_tx.get_ref().clone(), db.get_ref().clone());
-        ws::start(ws, &req, stream)
+    let parser = Parser::new_ext(content, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+
+    html_output
+}
+
+#[derive(Template)]
+#[template(path = "layouts/base.html", escape = "none")]
+pub struct PageTemplate<'a> {
+    pub title: &'a str,
+    pub path: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "layouts/content.html", escape = "none")]
+pub struct ContentTemplate<'a> {
+    pub path: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RepomapRequest {
+    pub repo_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RepomapResponse {
+    pub repo_map: String,
+    pub metadata: serde_json::Value,
+}
+
+pub async fn repomap(headers: HeaderMap) -> Response {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Repository Map";
+    let path = "/repomap";
+
+    if is_htmx {
+        let content = ContentTemplate { path }.render().unwrap();
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
+        response
     } else {
-        // Not a WebSocket request, serve index.html
-        Ok(actix_web::HttpResponse::Ok()
-            .content_type("text/html")
-            .body(std::fs::read_to_string("static/index.html").unwrap()))
+        let template = PageTemplate { title, path };
+        Html(template.render().unwrap()).into_response()
     }
 }
 
-#[actix_web::main]
-pub async fn run() -> std::io::Result<()> {
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-    env_logger::init();
-    dotenvy::dotenv().ok();
+pub async fn generate_repomap(
+    State(service): State<Arc<server::services::RepomapService>>,
+    Form(req): Form<RepomapRequest>,
+) -> Response {
+    info!("Generating repomap for: {}", req.repo_url);
 
-    info!("🚀 Starting OpenAgents...");
-
-    // Load configuration
-    debug!("Loading configuration...");
-    let configuration = get_configuration().expect("Failed to read configuration.");
-
-    // Initialize database
-    info!("Connecting to database...");
-    let db = Arc::new(
-        Database::new_with_options(configuration.database.connect_options())
-            .await
-            .expect("Failed to connect to database"),
-    );
-    info!("✅ Database connected");
-    let db = web::Data::new(db);
-
-    // Channel for broadcasting events to all connected clients
-    let (event_tx, _): (broadcast::Sender<Event>, _) = broadcast::channel(1024);
-    let event_tx = web::Data::new(event_tx);
-
-    let address = format!(
-        "{}:{}",
-        configuration.application.host, configuration.application.port
-    );
-    info!("Starting server on {}", address);
-
-    let app_factory = move || {
-        debug!("Initializing worker...");
-        let cors = Cors::permissive();
-
-        App::new()
-            .wrap(cors)
-            .app_data(event_tx.clone())
-            .app_data(db.clone())
-            .route("/", web::get().to(root_route))
-            .configure(server::config::configure_app)
-    };
-
-    let factory = app_factory.clone();
-    let server = HttpServer::new(factory).bind(&address).or_else(|e| {
-        // Only attempt port increment in development/local environment
-        if configuration.application.host == "127.0.0.1" {
-            let mut port = configuration.application.port;
-            while port < configuration.application.port + 10 {
-                port += 1;
-                let new_address = format!("{}:{}", configuration.application.host, port);
-                warn!(
-                    "Port {} in use, trying {}",
-                    configuration.application.port, port
-                );
-                if let Ok(server) = HttpServer::new(app_factory.clone()).bind(&new_address) {
-                    info!("Found available port: {}", port);
-                    return Ok(server);
-                }
-            }
+    match service.generate_repomap(req.repo_url).await {
+        Ok(repomap) => {
+            info!("Successfully generated repomap");
+            Html(repomap.repo_map).into_response()
         }
-        // If we're not in development or couldn't find a free port, return original error
-        Err(e)
-    })?;
-
-    // Log the actual bound address
-    let addresses = server.addrs();
-    info!("✨ Server ready:");
-    for addr in addresses {
-        info!("  🌎 http://{}", addr);
-        info!("  🔧 Admin: http://{}/admin/stats", addr);
+        Err(e) => {
+            error!("Failed to generate repomap: {}", e);
+            if let Some(source) = e.source() {
+                error!("Error source: {}", source);
+            }
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to generate repomap: {}", e),
+            )
+                .into_response()
+        }
     }
-
-    server.run().await
 }

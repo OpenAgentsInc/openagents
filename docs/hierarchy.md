@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-14 12:10:48
+Generated on: 2025-01-16 21:38:26
 
 ### Structure
 
@@ -39,7 +39,9 @@ Generated on: 2025-01-14 12:10:48
 |   |-- htmx-nostr-chat.md
 |   |-- newsletter.md
 |   |-- prompt.md
-|   `-- rust-setup.md
+|   |-- repomap.md
+|   |-- rust-setup.md
+|   `-- templates.md
 |-- migrations/
 |   |-- 20250110000000_initial.sql
 |   |-- 20250112001624_create_subscriptions_table.sql
@@ -64,14 +66,18 @@ Generated on: 2025-01-14 12:10:48
 |   |   |   |-- middleware.rs
 |   |   |   |-- mod.rs
 |   |   |   `-- routes.rs
+|   |   |-- services/
+|   |   |   |-- mod.rs
+|   |   |   `-- repomap.rs
 |   |   |-- config.rs
-|   |   |-- mod.rs
-|   |   `-- routes.rs
+|   |   `-- mod.rs
 |   |-- configuration.rs
 |   |-- database.rs
 |   |-- emailoptin.rs
+|   |-- filters.rs
 |   |-- lib.rs
-|   `-- main.rs
+|   |-- main.rs
+|   `-- template_filters.rs
 |-- styles/
 |   `-- tailwind.css
 |-- templates/
@@ -86,6 +92,7 @@ Generated on: 2025-01-14 12:10:48
 |   |   `-- content.html
 |   |-- macros/
 |   |   |-- blog.html
+|   |   |-- blog_post.html
 |   |   |-- nav.html
 |   |   `-- video.html
 |   |-- pages/
@@ -94,6 +101,7 @@ Generated on: 2025-01-14 12:10:48
 |   |   |-- company.html
 |   |   |-- home.html
 |   |   |-- onyx.html
+|   |   |-- repomap.html
 |   |   |-- services.html
 |   |   `-- video-series.html
 |   `-- header.html
@@ -114,7 +122,8 @@ Generated on: 2025-01-14 12:10:48
 |   |-- admin_routes.rs
 |   |-- agent.rs
 |   |-- emailoptin.rs
-|   `-- health_check.rs
+|   |-- health_check.rs
+|   `-- repomap.rs
 |-- Cargo.lock
 |-- Cargo.toml
 |-- DEVELOPMENT.md
@@ -126,5 +135,5 @@ Generated on: 2025-01-14 12:10:48
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-24 directories, 96 files
+25 directories, 104 files
 ```
