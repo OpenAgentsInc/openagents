@@ -10,9 +10,9 @@ use std::{env, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 use tokio::sync::broadcast;
-use sqlx::postgres::PgConnectOptions;
 
 use openagents::{
+    configuration::get_configuration,
     generate_repomap, repomap, server::services::RepomapService, ContentTemplate, PageTemplate,
     nostr::{axum_relay::{RelayState, ws_handler}, db::Database},
 };
@@ -29,6 +29,9 @@ async fn main() {
 
     let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
 
+    // Load configuration
+    let configuration = get_configuration().expect("Failed to read configuration");
+
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
     let repomap_service = Arc::new(RepomapService::new(aider_api_key));
@@ -36,20 +39,11 @@ async fn main() {
     // Initialize Nostr components
     let (event_tx, _) = broadcast::channel(1024);
     
-    // Use DATABASE_URL for connection
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
+    // Create database connection using configuration
     let db = Arc::new(
-        Database::new_with_options(
-            PgConnectOptions::new()
-                .host("localhost")
-                .port(5432)
-                .username("postgres")
-                .password("postgres")
-                .database("openagents")
-        )
-        .await
-        .expect("Failed to connect to database")
+        Database::new_with_options(configuration.database.connect_options())
+            .await
+            .expect("Failed to connect to database")
     );
     
     let relay_state = Arc::new(RelayState::new(event_tx, db));
