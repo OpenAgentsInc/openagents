@@ -3,60 +3,71 @@
 {% endblock %}
 
 <div class="space-y-8">
-    <div class="space-y-4">
-        <h1 class="text-3xl font-bold">Repository Map Generator</h1>
-        <p class="text-gray-300">Generate a detailed map of any GitHub repository's structure and relationships.</p>
+  <div class="space-y-4">
+    <h1 class="text-3xl font-bold">Repository Map Generator</h1>
+    <p class="text-gray-300">
+      Generate a detailed map of any GitHub repository's structure and
+      relationships.
+    </p>
+  </div>
+
+  <div class="space-y-6">
+    <!-- Repository URL Input Form -->
+    <form
+      hx-post="/repomap/generate"
+      hx-target="#repomap-result"
+      hx-indicator="#loading"
+      class="space-y-4"
+    >
+      <div>
+        <label for="repo_url" class="block text-sm font-medium text-gray-300">
+          GitHub Repository URL
+        </label>
+        <input
+          type="text"
+          name="repo_url"
+          id="repo_url"
+          placeholder="https://github.com/username/repo"
+          class="mt-1 block w-full rounded border border-gray-600 bg-black px-3 py-2 text-white placeholder-gray-500 focus:border-white focus:outline-none focus:ring-1 focus:ring-white"
+          required
+        />
+      </div>
+
+      <button
+        type="submit"
+        class="inline-flex items-center justify-center rounded border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+      >
+        Generate Map
+      </button>
+    </form>
+
+    <!-- Loading Indicator -->
+    <div
+      id="loading"
+      class="htmx-indicator flex items-center justify-center py-4"
+      style="display: none"
+    >
+      <div
+        class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"
+      ></div>
+      <span class="ml-2 text-gray-300">Generating repository map...</span>
     </div>
 
-    <div class="space-y-6">
-        <!-- Repository URL Input Form -->
-        <form hx-post="/repomap/generate" 
-              hx-target="#repomap-result"
-              hx-indicator="#loading"
-              class="space-y-4">
-            
-            <div>
-                <label for="repo_url" class="block text-sm font-medium text-gray-300">
-                    GitHub Repository URL
-                </label>
-                <input type="text" 
-                       name="repo_url" 
-                       id="repo_url"
-                       placeholder="https://github.com/username/repo"
-                       class="mt-1 block w-full rounded border border-gray-600 bg-black px-3 py-2 text-white placeholder-gray-500 focus:border-white focus:outline-none focus:ring-1 focus:ring-white"
-                       required>
-            </div>
-
-            <button type="submit"
-                    class="inline-flex items-center justify-center rounded border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2">
-                Generate Map
-            </button>
-        </form>
-
-        <!-- Loading Indicator -->
-        <div id="loading" 
-             class="htmx-indicator flex items-center justify-center py-4"
-             style="display: none;">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-            <span class="ml-2 text-gray-300">Generating repository map...</span>
-        </div>
-
-        <!-- Results Area -->
-        <div id="repomap-result" 
-             class="mt-6 prose prose-invert max-w-none">
-            <!-- Results will be inserted here -->
-        </div>
+    <!-- Results Area -->
+    <div id="repomap-result" class="mt-6 prose prose-invert max-w-none">
+      <!-- Results will be inserted here -->
     </div>
+  </div>
 </div>
 
 <script>
-    document.body.addEventListener('htmx:afterRequest', function(evt) {
-        if (evt.detail.successful && evt.detail.target.id === 'repomap-result') {
-            const response = JSON.parse(evt.detail.xhr.response);
-            const resultDiv = document.getElementById('repomap-result');
-            
-            // Convert the repomap markdown to HTML and display it
-            resultDiv.innerHTML = marked.parse(response.repo_map);
-        }
-    });
+  document.body.addEventListener("htmx:afterRequest", function (evt) {
+    if (evt.detail.successful && evt.detail.target.id === "repomap-result") {
+      const response = JSON.parse(evt.detail.xhr.response);
+      const resultDiv = document.getElementById("repomap-result");
+
+      // Convert the repomap markdown to HTML and display it
+      resultDiv.innerHTML = marked.parse(response.repo_map);
+    }
+  });
 </script>

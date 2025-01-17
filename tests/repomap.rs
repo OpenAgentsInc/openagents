@@ -1,26 +1,27 @@
 use axum::{
     body::Body,
-    http::{Request, StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, Request, StatusCode},
     routing::{get, post},
     Router,
 };
-use openagents::{
-    server::services::RepomapService,
-    repomap, generate_repomap,
-};
+use openagents::{generate_repomap, repomap, server::services::RepomapService};
+use serde_json::json;
 use std::sync::Arc;
 use tower::ServiceExt;
-use wiremock::{MockServer, Mock, ResponseTemplate};
 use wiremock::matchers::{method, path};
-use serde_json::json;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn test_get_repomap() {
-    let app = Router::new()
-        .route("/repomap", get(repomap));
+    let app = Router::new().route("/repomap", get(repomap));
 
     let response = app
-        .oneshot(Request::builder().uri("/repomap").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/repomap")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 

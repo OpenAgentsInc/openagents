@@ -8,7 +8,7 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
     let repomap_service = RepomapService::new(aider_api_key);
-    
+
     // Add repomap service to app data
     cfg.app_data(web::Data::new(repomap_service));
 

@@ -35,9 +35,10 @@ impl RepomapService {
 
     pub async fn generate_repomap(&self, repo_url: String) -> Result<RepomapResponse> {
         info!("Making request to aider service for repo: {}", repo_url);
-        
+
         let url = format!("{}/api/v1/repomap/generate", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Content-Type", "application/json")
             .header("X-API-Key", &self.api_key)
@@ -49,7 +50,7 @@ impl RepomapService {
 
         let status = response.status();
         let text = response.text().await?;
-        
+
         info!("Received response with status: {}", status);
         info!("Response body: {}", text);
 

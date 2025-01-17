@@ -6,14 +6,12 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
-use std::{path::PathBuf, env, sync::Arc};
+use std::{env, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 
 use openagents::{
-    server::services::RepomapService,
-    repomap, generate_repomap,
-    PageTemplate, ContentTemplate,
+    generate_repomap, repomap, server::services::RepomapService, ContentTemplate, PageTemplate,
 };
 
 #[tokio::main]
@@ -71,9 +69,7 @@ async fn home(headers: HeaderMap) -> Response {
     let path = "/";
 
     if is_htmx {
-        let content = ContentTemplate { 
-            path,
-        }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -81,10 +77,7 @@ async fn home(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = PageTemplate {
-            title,
-            path,
-        };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -95,9 +88,7 @@ async fn mobile_app(headers: HeaderMap) -> Response {
     let path = "/onyx";
 
     if is_htmx {
-        let content = ContentTemplate { 
-            path,
-        }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -105,10 +96,7 @@ async fn mobile_app(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = PageTemplate {
-            title,
-            path,
-        };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -119,9 +107,7 @@ async fn business(headers: HeaderMap) -> Response {
     let path = "/services";
 
     if is_htmx {
-        let content = ContentTemplate { 
-            path,
-        }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -129,10 +115,7 @@ async fn business(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = PageTemplate {
-            title,
-            path,
-        };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -143,9 +126,7 @@ async fn video_series(headers: HeaderMap) -> Response {
     let path = "/video-series";
 
     if is_htmx {
-        let content = ContentTemplate { 
-            path,
-        }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -153,10 +134,7 @@ async fn video_series(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = PageTemplate {
-            title,
-            path,
-        };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -167,9 +145,7 @@ async fn company(headers: HeaderMap) -> Response {
     let path = "/company";
 
     if is_htmx {
-        let content = ContentTemplate { 
-            path,
-        }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -177,10 +153,7 @@ async fn company(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = PageTemplate {
-            title,
-            path,
-        };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -191,9 +164,7 @@ async fn coming_soon(headers: HeaderMap) -> Response {
     let path = "/coming-soon";
 
     if is_htmx {
-        let content = ContentTemplate { 
-            path,
-        }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -201,10 +172,7 @@ async fn coming_soon(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = PageTemplate {
-            title,
-            path,
-        };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
     }
 }

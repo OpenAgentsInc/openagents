@@ -7,24 +7,24 @@ pub mod server;
 
 use askama::Template;
 use axum::{
+    extract::{Form, State},
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
-    extract::{State, Form},
 };
 use pulldown_cmark::{html, Options, Parser};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::{error, info};
 
 pub fn render_markdown(content: &str) -> String {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
-    
+
     let parser = Parser::new_ext(content, options);
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
-    
+
     html_output
 }
 
@@ -58,9 +58,7 @@ pub async fn repomap(headers: HeaderMap) -> Response {
     let path = "/repomap";
 
     if is_htmx {
-        let content = ContentTemplate { 
-            path,
-        }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -68,10 +66,7 @@ pub async fn repomap(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = PageTemplate {
-            title,
-            path,
-        };
+        let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -81,12 +76,12 @@ pub async fn generate_repomap(
     Form(req): Form<RepomapRequest>,
 ) -> Response {
     info!("Generating repomap for: {}", req.repo_url);
-    
+
     match service.generate_repomap(req.repo_url).await {
         Ok(repomap) => {
             info!("Successfully generated repomap");
             Html(repomap.repo_map).into_response()
-        },
+        }
         Err(e) => {
             error!("Failed to generate repomap: {}", e);
             if let Some(source) = e.source() {
@@ -94,8 +89,9 @@ pub async fn generate_repomap(
             }
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to generate repomap: {}", e)
-            ).into_response()
+                format!("Failed to generate repomap: {}", e),
+            )
+                .into_response()
         }
     }
 }
