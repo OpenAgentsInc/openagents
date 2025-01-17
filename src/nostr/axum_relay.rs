@@ -9,7 +9,6 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use serde_json::Value;
 use tracing::error;
 use bytes::Bytes;
-use anyhow::Error;
 
 use super::{
     db::{Database, EventFilter},
@@ -47,17 +46,13 @@ impl RelayState {
         subs.remove(id);
     }
 
-    pub async fn save_event(&self, event: &Event) -> Result<(), Error> {
-        self.db.save_event(event).await.map_err(Error::from)
+    pub async fn save_event(&self, event: &Event) -> Result<(), anyhow::Error> {
+        self.db.save_event(event).await
     }
 
     pub async fn get_subscription(&self, id: &str) -> Option<Subscription> {
         let subs = self.subscriptions.read().await;
         subs.get(id).cloned()
-    }
-
-    pub async fn get_events_by_filter(&self, filter: EventFilter) -> Result<Vec<Event>, Error> {
-        self.db.get_events_by_filter(filter).await.map_err(Error::from)
     }
 }
 
@@ -189,7 +184,7 @@ async fn handle_subscription(
         tag_filters,
     };
 
-    match state.get_events_by_filter(filter).await {
+    match state.db.get_events_by_filter(filter).await {
         Ok(events) => {
             for event in events {
                 if let Ok(event_json) = serde_json::to_string(&event) {
