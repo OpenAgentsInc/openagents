@@ -41,6 +41,8 @@ axum = "0.8.1"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["fs"] }
+reqwest = { version = "0.11", features = ["json"] }
+marked = "0.2"
 
 [dev-dependencies]
 actix-web = "4.4"
