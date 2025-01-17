@@ -55,7 +55,7 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
 }
 
 #[tokio::test]
-async fn subscribe_returns_a_400_when_data_is_missing() {
+async fn subscribe_returns_a_422_when_data_is_missing() {
     // Arrange
     let configuration = get_configuration().expect("Failed to read configuration");
     let connection_pool = PgPool::connect_with(configuration.database.connect_options())
@@ -79,8 +79,8 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
 
         assert_eq!(
             response.status_code(),
-            400,
-            "The API did not fail with 400 Bad Request when the payload was {}.",
+            422,
+            "The API did not fail with 422 Unprocessable Entity when the payload was {}.",
             error_message
         );
     }
