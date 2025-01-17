@@ -66,7 +66,7 @@ async fn test_create_demo_event() {
     let response = server.post("/demo-event").await;
     assert_eq!(response.status_code(), 200);
 
-    let resp = response.json::<Value>().await;
+    let resp = response.json::<Value>();
     assert_eq!(resp["status"], "success");
 
     let event = &resp["event"];
@@ -123,7 +123,7 @@ async fn test_admin_stats() {
     let response = server.get("/stats").await;
     assert_eq!(response.status_code(), 200);
 
-    let resp = response.json::<Value>().await;
+    let resp = response.json::<Value>();
     assert!(resp.get("total_events").is_some());
     assert!(resp.get("status").is_some());
     assert!(resp.get("events_by_kind").is_some());
