@@ -1,15 +1,14 @@
 use crate::nostr::event::Event;
 use crate::{configuration, database};
 use axum::{
-    extract::{Form, State},
+    extract::Form,
     http::{header, HeaderMap, StatusCode},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse},
 };
 use bitcoin_hashes::{sha256, Hash};
 use secp256k1::{rand, KeyPair, Message, Secp256k1};
 use serde::Deserialize;
 use serde_json::json;
-use std::sync::Arc;
 
 pub async fn admin_stats() -> impl IntoResponse {
     let config = match configuration::get_configuration() {
