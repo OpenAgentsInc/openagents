@@ -1,5 +1,6 @@
 use axum::{routing::get, Router};
 use axum_test::TestServer;
+use http::{header::HeaderName, HeaderValue};
 use openagents::server::admin::middleware::admin_auth;
 use serde_json::json;
 
@@ -11,13 +12,17 @@ async fn test_endpoint() -> axum::Json<serde_json::Value> {
 async fn test_admin_auth_valid_token() {
     let app = Router::new()
         .route("/admin/test", get(test_endpoint))
-        .layer(axum::middleware::from_fn(admin_auth));
+        .layer(axum::middleware::from_fn(admin_auth))
+        .into_make_service();
 
     let server = TestServer::new(app).unwrap();
 
     let response = server
         .get("/admin/test")
-        .add_header("Authorization", "Bearer admin-token")
+        .add_header(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_static("Bearer admin-token"),
+        )
         .await;
 
     assert_eq!(response.status_code(), 200);
@@ -29,13 +34,17 @@ async fn test_admin_auth_invalid_token() {
 
     let app = Router::new()
         .route("/admin/test", get(test_endpoint))
-        .layer(axum::middleware::from_fn(admin_auth));
+        .layer(axum::middleware::from_fn(admin_auth))
+        .into_make_service();
 
     let server = TestServer::new(app).unwrap();
 
     let response = server
         .get("/admin/test")
-        .add_header("Authorization", "Bearer wrong-token")
+        .add_header(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_static("Bearer wrong-token"),
+        )
         .await;
 
     assert_eq!(response.status_code(), 401);
@@ -50,7 +59,8 @@ async fn test_admin_auth_missing_token() {
 
     let app = Router::new()
         .route("/admin/test", get(test_endpoint))
-        .layer(axum::middleware::from_fn(admin_auth));
+        .layer(axum::middleware::from_fn(admin_auth))
+        .into_make_service();
 
     let server = TestServer::new(app).unwrap();
 
