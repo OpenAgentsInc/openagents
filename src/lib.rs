@@ -11,24 +11,21 @@ use axum::{
     response::{Html, IntoResponse, Response},
     extract::{State, Form},
 };
+use pulldown_cmark::{html, Options, Parser};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
 
-mod filters {
-    use pulldown_cmark::{html, Options, Parser};
-
-    pub fn markdown(s: &str) -> ::askama::Result<String> {
-        let mut options = Options::empty();
-        options.insert(Options::ENABLE_STRIKETHROUGH);
-        options.insert(Options::ENABLE_TABLES);
-        
-        let parser = Parser::new_ext(s, options);
-        let mut html_output = String::new();
-        html::push_html(&mut html_output, parser);
-        
-        Ok(html_output)
-    }
+pub fn render_markdown(content: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    
+    let parser = Parser::new_ext(content, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    
+    html_output
 }
 
 #[derive(Template)]
@@ -42,6 +39,14 @@ pub struct PageTemplate<'a> {
 #[template(path = "layouts/content.html")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "macros/blog_post.html")]
+pub struct BlogPostTemplate<'a> {
+    pub date: &'a str,
+    pub title: &'a str,
+    pub content: String,
 }
 
 #[derive(Debug, Deserialize)]
