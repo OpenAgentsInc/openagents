@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
 
 use super::{admin::middleware::admin_auth, services::RepomapService};
@@ -6,7 +6,7 @@ use super::{admin::middleware::admin_auth, services::RepomapService};
 pub fn configure_app() -> axum::Router {
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
-    let repomap_service = RepomapService::new(aider_api_key);
+    let repomap_service = Arc::new(RepomapService::new(aider_api_key));
 
     // Create the main router with state
     axum::Router::new()
