@@ -1,14 +1,14 @@
-{% extends "layouts/content.html" %}
-
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 {% endblock %}
 
-{% block content %}
-<div class="container mx-auto px-4 py-8">
-    <h1 class="text-3xl font-bold mb-8">Repository Map Generator</h1>
+<div class="space-y-8">
+    <div class="space-y-4">
+        <h1 class="text-3xl font-bold">Repository Map Generator</h1>
+        <p class="text-gray-300">Generate a detailed map of any GitHub repository's structure and relationships.</p>
+    </div>
 
-    <div class="bg-white shadow-md rounded-lg p-6">
+    <div class="space-y-6">
         <!-- Repository URL Input Form -->
         <form hx-post="/repomap/generate" 
               hx-target="#repomap-result"
@@ -16,19 +16,19 @@
               class="space-y-4">
             
             <div>
-                <label for="repo_url" class="block text-sm font-medium text-gray-700">
+                <label for="repo_url" class="block text-sm font-medium text-gray-300">
                     GitHub Repository URL
                 </label>
                 <input type="text" 
                        name="repo_url" 
                        id="repo_url"
                        placeholder="https://github.com/username/repo"
-                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                       class="mt-1 block w-full rounded border border-gray-600 bg-black px-3 py-2 text-white placeholder-gray-500 focus:border-white focus:outline-none focus:ring-1 focus:ring-white"
                        required>
             </div>
 
             <button type="submit"
-                    class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                    class="inline-flex items-center justify-center rounded border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2">
                 Generate Map
             </button>
         </form>
@@ -37,13 +37,13 @@
         <div id="loading" 
              class="htmx-indicator flex items-center justify-center py-4"
              style="display: none;">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            <span class="ml-2 text-gray-600">Generating repository map...</span>
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+            <span class="ml-2 text-gray-300">Generating repository map...</span>
         </div>
 
         <!-- Results Area -->
         <div id="repomap-result" 
-             class="mt-6 prose prose-indigo max-w-none">
+             class="mt-6 prose prose-invert max-w-none">
             <!-- Results will be inserted here -->
         </div>
     </div>
@@ -60,4 +60,3 @@
         }
     });
 </script>
-{% endblock %}
