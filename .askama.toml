@@ -3,4 +3,3 @@ dirs = ["templates"]
 
 [general.filters]
 markdown = "openagents::filters::markdown"
-safe = "askama::filters::safe"
