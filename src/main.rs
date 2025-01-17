@@ -4,10 +4,9 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
-    extract::Extension,
 };
 use serde_json::json;
-use std::{path::PathBuf, env};
+use std::{path::PathBuf, env, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 
@@ -31,7 +30,7 @@ async fn main() {
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
-    let repomap_service = RepomapService::new(aider_api_key);
+    let repomap_service = Arc::new(RepomapService::new(aider_api_key));
 
     let app = Router::new()
         .route("/", get(home))
@@ -43,7 +42,7 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
-        .layer(Extension(repomap_service))
+        .with_state(repomap_service)
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path));
 
