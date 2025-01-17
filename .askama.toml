@@ -1,6 +1,10 @@
 [general]
 dirs = ["templates"]
 
-[filters]
-markdown = "filters::markdown"
-safe = "filters::safe"
+[[general.filter]]
+name = "markdown"
+path = "crate::filters::markdown"
+
+[[general.filter]]
+name = "safe"
+path = "crate::filters::safe"
