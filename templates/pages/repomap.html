@@ -41,7 +41,8 @@
 
       <button
         type="submit"
-        class="inline-flex items-center justify-center rounded border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+        class="inline-flex items-center justify-center rounded border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        id="submit-button"
       >
         Generate Map
       </button>
@@ -67,13 +68,25 @@
 </div>
 
 <script>
-  document.body.addEventListener("htmx:afterRequest", function (evt) {
-    if (evt.detail.successful && evt.detail.target.id === "repomap-result") {
-      const response = JSON.parse(evt.detail.xhr.response);
-      const resultDiv = document.getElementById("repomap-result");
+  const submitButton = document.getElementById('submit-button');
+  
+  document.body.addEventListener("htmx:beforeRequest", function (evt) {
+    if (evt.detail.target.id === "repomap-result") {
+      submitButton.disabled = true;
+      submitButton.innerText = "Generating...";
+    }
+  });
 
-      // Convert the repomap markdown to HTML and display it
-      resultDiv.innerHTML = marked.parse(response.repo_map);
+  document.body.addEventListener("htmx:afterRequest", function (evt) {
+    if (evt.detail.target.id === "repomap-result") {
+      submitButton.disabled = false;
+      submitButton.innerText = "Generate Map";
+      
+      if (evt.detail.successful) {
+        const response = JSON.parse(evt.detail.xhr.response);
+        const resultDiv = document.getElementById("repomap-result");
+        resultDiv.innerHTML = marked.parse(response.repo_map);
+      }
     }
   });
 </script>
