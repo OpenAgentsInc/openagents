@@ -30,7 +30,7 @@ secp256k1 = { version = "0.27", features = ["rand", "bitcoin_hashes", "global-co
 chrono = "0.4"
 lazy_static = "1.4"
 sqlx = { version = "0.8.1", features = ["time", "uuid", "runtime-tokio", "postgres", "json", "tls-native-tls", "bigdecimal"] }
-config = "0.14"  # Updated to latest version
+config = "0.14"
 secrecy = { version = "0.8", features = ["serde"] }
 tracing = { version = "0.1", features = ["log"] }
 url = "2.4"
@@ -42,7 +42,6 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["fs"] }
 reqwest = { version = "0.11", features = ["json"] }
-marked = "0.2"
 
 [dev-dependencies]
 actix-web = "4.4"
