@@ -3,13 +3,13 @@ use tower_http::services::ServeDir;
 
 use super::{admin::middleware::admin_auth, services::RepomapService};
 
-pub fn configure_app() -> axum::Router<RepomapService> {
+pub fn configure_app() -> axum::Router {
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
     let repomap_service = RepomapService::new(aider_api_key);
 
-    // Create the main router
-    let app = axum::Router::new()
+    // Create the main router with state
+    axum::Router::new()
         // Admin routes with authentication
         .nest(
             "/admin",
@@ -24,8 +24,6 @@ pub fn configure_app() -> axum::Router<RepomapService> {
         .nest_service(
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
-        );
-
-    // Add state to the router
-    app.with_state(repomap_service)
+        )
+        .with_state(repomap_service)
 }
