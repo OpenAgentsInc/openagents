@@ -8,6 +8,10 @@ pub mod server;
 use askama::Template;
 
 mod template_filters;
+
+// Register custom filters
+pub static FILTERS: askama::Filters = askama::Filters::new()
+    .add("markdown", template_filters::markdown);
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
