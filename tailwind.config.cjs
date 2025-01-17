@@ -31,5 +31,6 @@ module.exports = {
     "shadow-nav",
     "animate-nav-in",
     "animate-nav-out",
+    "md:py-3"
   ],
 };
