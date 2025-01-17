@@ -34,7 +34,8 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
 
     let app = Router::new()
         .route("/subscriptions", post(subscribe))
-        .with_state(connection_pool.clone());
+        .with_state(connection_pool.clone())
+        .into_make_service();
 
     let server = TestServer::new(app).unwrap();
 
@@ -72,7 +73,8 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
 
     let app = Router::new()
         .route("/subscriptions", post(subscribe))
-        .with_state(connection_pool.clone());
+        .with_state(connection_pool.clone())
+        .into_make_service();
 
     let server = TestServer::new(app).unwrap();
 
