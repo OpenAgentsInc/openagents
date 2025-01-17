@@ -2,13 +2,11 @@ pub mod agents;
 pub mod configuration;
 pub mod database;
 pub mod emailoptin;
+pub mod filters;
 pub mod nostr;
 pub mod server;
 
 use askama::Template;
-
-mod template_filters;
-
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
@@ -19,14 +17,14 @@ use std::sync::Arc;
 use tracing::{info, error};
 
 #[derive(Template)]
-#[template(path = "layouts/base.html", print = "all", escape = "none")]
+#[template(path = "layouts/base.html")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "layouts/content.html", print = "all", escape = "none")]
+#[template(path = "layouts/content.html")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
