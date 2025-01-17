@@ -34,25 +34,16 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
 
     let app = Router::new()
         .route("/subscriptions", post(subscribe))
-        .with_state(connection_pool.clone())
-        .into_make_service();
+        .with_state(connection_pool.clone());
 
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app.into_make_service()).unwrap();
 
     let response = server
         .post("/subscriptions")
         .form(&[("name", "le guin"), ("email", "ursula_le_guin@gmail.com")])
         .await;
 
-    // Print debug information
-    println!("Response status: {}", response.status_code());
-
-    // Assert with more detailed error message
-    assert!(
-        response.status_code().is_success(),
-        "Failed with status {}",
-        response.status_code()
-    );
+    assert_eq!(response.status_code(), 200);
 
     let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
         .fetch_one(&connection_pool)
@@ -73,10 +64,9 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
 
     let app = Router::new()
         .route("/subscriptions", post(subscribe))
-        .with_state(connection_pool.clone())
-        .into_make_service();
+        .with_state(connection_pool.clone());
 
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app.into_make_service()).unwrap();
 
     let test_cases = vec![
         (vec![("name", "le guin")], "missing the email"),
@@ -85,10 +75,8 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
     ];
 
     for (invalid_form, error_message) in test_cases {
-        // Act
         let response = server.post("/subscriptions").form(&invalid_form).await;
 
-        // Assert
         assert_eq!(
             response.status_code(),
             400,
