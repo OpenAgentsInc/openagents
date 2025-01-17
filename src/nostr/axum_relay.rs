@@ -41,6 +41,10 @@ impl RelayState {
         let mut subs = self.subscriptions.write().await;
         subs.remove(id);
     }
+
+    pub async fn save_event(&self, event: &Event) -> Result<(), Box<dyn std::error::Error>> {
+        self.db.save_event(event).await
+    }
 }
 
 /// Handler for WebSocket upgrade
