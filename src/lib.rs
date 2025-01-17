@@ -5,11 +5,9 @@ pub mod emailoptin;
 pub mod nostr;
 pub mod server;
 
-use askama::{Template, filters};
+use askama::Template;
 
 mod template_filters;
-
-askama::filters::register_filter!("markdown", template_filters::markdown);
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
