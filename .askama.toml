@@ -1,2 +1,5 @@
 [general]
 dirs = ["templates"]
+
+[general.filters]
+raw = "openagents::filters::raw"
