@@ -57,7 +57,7 @@ async fn test_create_demo_event() {
     let app = Router::new()
         .route("/demo-event", axum::routing::post(create_demo_event))
         .with_state(pool.clone())
-        .into_service();
+        .into_make_service();
 
     let server = TestServer::new(app).unwrap();
 
@@ -113,7 +113,7 @@ async fn test_admin_stats() {
     let app = Router::new()
         .route("/stats", get(admin_stats))
         .with_state(pool.clone())
-        .into_service();
+        .into_make_service();
 
     let server = TestServer::new(app).unwrap();
 
