@@ -14,7 +14,6 @@ use openagents::{
     server::services::RepomapService,
     repomap, generate_repomap,
     PageTemplate, ContentTemplate,
-    process_markdown, safe_html,
 };
 
 #[tokio::main]
@@ -74,8 +73,6 @@ async fn home(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { 
             path,
-            process_markdown,
-            safe: safe_html,
         }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
@@ -87,8 +84,6 @@ async fn home(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
-            process_markdown,
-            safe: safe_html,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -102,8 +97,6 @@ async fn mobile_app(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { 
             path,
-            process_markdown,
-            safe: safe_html,
         }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
@@ -115,8 +108,6 @@ async fn mobile_app(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
-            process_markdown,
-            safe: safe_html,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -130,8 +121,6 @@ async fn business(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { 
             path,
-            process_markdown,
-            safe: safe_html,
         }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
@@ -143,8 +132,6 @@ async fn business(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
-            process_markdown,
-            safe: safe_html,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -158,8 +145,6 @@ async fn video_series(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { 
             path,
-            process_markdown,
-            safe: safe_html,
         }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
@@ -171,8 +156,6 @@ async fn video_series(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
-            process_markdown,
-            safe: safe_html,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -186,8 +169,6 @@ async fn company(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { 
             path,
-            process_markdown,
-            safe: safe_html,
         }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
@@ -199,8 +180,6 @@ async fn company(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
-            process_markdown,
-            safe: safe_html,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -214,8 +193,6 @@ async fn coming_soon(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { 
             path,
-            process_markdown,
-            safe: safe_html,
         }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
@@ -227,8 +204,6 @@ async fn coming_soon(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
-            process_markdown,
-            safe: safe_html,
         };
         Html(template.render().unwrap()).into_response()
     }
