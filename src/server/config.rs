@@ -2,7 +2,7 @@ use actix_files as fs;
 use actix_web::web;
 use std::env;
 
-use super::{admin::middleware::AdminAuth, routes, services::RepomapService};
+use super::{admin::middleware::AdminAuth, services::RepomapService};
 
 pub fn configure_app(cfg: &mut web::ServiceConfig) {
     // Initialize repomap service
@@ -18,9 +18,6 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
             .wrap(AdminAuth::new())
             .configure(crate::server::admin::routes::admin_config),
     );
-
-    // Configure non-admin routes
-    routes::configure_routes(cfg);
 
     // Serve static files from the static directory
     cfg.service(
