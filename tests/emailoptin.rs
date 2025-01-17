@@ -1,4 +1,5 @@
-use actix_web::{test, web, App};
+use axum::{routing::post, Router};
+use axum_test::TestServer;
 use openagents::configuration::get_configuration;
 use openagents::emailoptin::subscribe;
 use sqlx::PgPool;
@@ -31,32 +32,25 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
     .await
     .expect("Failed to create subscriptions table");
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(connection_pool.clone()))
-            .route("/subscriptions", web::post().to(subscribe)),
-    )
-    .await;
+    let app = Router::new()
+        .route("/subscriptions", post(subscribe))
+        .with_state(connection_pool.clone());
 
-    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+    let server = TestServer::new(app).unwrap();
 
-    // Act
-    let request = test::TestRequest::post()
-        .uri("/subscriptions")
-        .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
-        .set_payload(body)
-        .to_request();
-
-    let response = test::call_service(&app, request).await;
+    let response = server
+        .post("/subscriptions")
+        .form(&[("name", "le guin"), ("email", "ursula_le_guin@gmail.com")])
+        .await;
 
     // Print debug information
-    println!("Response status: {}", response.status());
+    println!("Response status: {}", response.status_code());
 
     // Assert with more detailed error message
     assert!(
-        response.status().is_success(),
+        response.status_code().is_success(),
         "Failed with status {}",
-        response.status()
+        response.status_code()
     );
 
     let saved = sqlx::query!("SELECT email, name FROM subscriptions",)
@@ -76,33 +70,26 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
         .await
         .expect("Failed to connect to Postgres");
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(connection_pool.clone()))
-            .route("/subscriptions", web::post().to(subscribe)),
-    )
-    .await;
+    let app = Router::new()
+        .route("/subscriptions", post(subscribe))
+        .with_state(connection_pool.clone());
+
+    let server = TestServer::new(app).unwrap();
 
     let test_cases = vec![
-        ("name=le%20guin", "missing the email"),
-        ("email=ursula_le_guin%40gmail.com", "missing the name"),
-        ("", "missing both name and email"),
+        (vec![("name", "le guin")], "missing the email"),
+        (vec![("email", "ursula_le_guin@gmail.com")], "missing the name"),
+        (vec![], "missing both name and email"),
     ];
 
-    for (invalid_body, error_message) in test_cases {
+    for (invalid_form, error_message) in test_cases {
         // Act
-        let request = test::TestRequest::post()
-            .uri("/subscriptions")
-            .insert_header(("Content-Type", "application/x-www-form-urlencoded"))
-            .set_payload(invalid_body)
-            .to_request();
-
-        let response = test::call_service(&app, request).await;
+        let response = server.post("/subscriptions").form(&invalid_form).await;
 
         // Assert
         assert_eq!(
+            response.status_code(),
             400,
-            response.status().as_u16(),
             "The API did not fail with 400 Bad Request when the payload was {}.",
             error_message
         );
