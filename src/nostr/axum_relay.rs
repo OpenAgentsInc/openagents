@@ -16,6 +16,7 @@ use super::{
 };
 
 /// Shared state for the WebSocket relay
+#[derive(Clone)]
 pub struct RelayState {
     subscriptions: Arc<tokio::sync::RwLock<HashMap<String, Subscription>>>,
     event_tx: broadcast::Sender<Event>,
@@ -30,6 +31,16 @@ impl RelayState {
             db,
         }
     }
+
+    pub async fn add_subscription(&self, id: String, sub: Subscription) {
+        let mut subs = self.subscriptions.write().await;
+        subs.insert(id, sub);
+    }
+
+    pub async fn remove_subscription(&self, id: &str) {
+        let mut subs = self.subscriptions.write().await;
+        subs.remove(id);
+    }
 }
 
 /// Handler for WebSocket upgrade
@@ -41,7 +52,7 @@ pub async fn ws_handler(
 }
 
 /// Main WebSocket connection handler
-async fn handle_socket(mut socket: WebSocket, state: Arc<RelayState>) {
+async fn handle_socket(socket: WebSocket, state: Arc<RelayState>) {
     let mut event_rx = state.event_tx.subscribe();
 
     // Split tasks between sender and receiver
