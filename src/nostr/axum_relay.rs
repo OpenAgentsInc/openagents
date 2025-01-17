@@ -5,7 +5,9 @@ use axum::{
     response::IntoResponse,
     extract::State,
 };
+use futures::{sink::SinkExt, stream::StreamExt};
 use serde_json::Value;
+use tracing::{error, info};
 
 use super::{
     db::{Database, EventFilter},
@@ -39,9 +41,11 @@ pub async fn ws_handler(
 }
 
 /// Main WebSocket connection handler
-async fn handle_socket(socket: WebSocket, state: Arc<RelayState>) {
-    let (mut sender, mut receiver) = socket.split();
+async fn handle_socket(mut socket: WebSocket, state: Arc<RelayState>) {
     let mut event_rx = state.event_tx.subscribe();
+
+    // Split tasks between sender and receiver
+    let (mut sender, mut receiver) = socket.split();
 
     // Spawn task to forward broadcast events to this client
     let send_task = tokio::spawn(async move {
@@ -49,10 +53,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<RelayState>) {
             // TODO: Check subscriptions and forward relevant events
             if let Ok(event_json) = serde_json::to_string(&event) {
                 // For now, broadcast to all - will filter based on subscriptions later
-                if let Err(_) = sender
-                    .send(Message::Text(format!(r#"["EVENT", "{}", {}]"#, "all", event_json)))
-                    .await
-                {
+                let msg = Message::Text(format!(r#"["EVENT", "{}", {}]"#, "all", event_json));
+                if sender.send(msg).await.is_err() {
                     break;
                 }
             }
@@ -66,7 +68,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<RelayState>) {
                 Message::Text(text) => {
                     if let Ok(value) = serde_json::from_str::<Value>(&text) {
                         // TODO: Handle client messages (EVENT, REQ, CLOSE)
-                        println!("Received message: {}", value);
+                        info!("Received message: {}", value);
                     }
                 }
                 Message::Close(_) => break,
@@ -77,7 +79,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<RelayState>) {
 
     // Wait for either task to finish
     tokio::select! {
-        _ = send_task => {},
-        _ = recv_task => {},
+        _ = send_task => {
+            error!("Send task completed");
+        }
+        _ = recv_task => {
+            error!("Receive task completed");
+        }
     }
 }
