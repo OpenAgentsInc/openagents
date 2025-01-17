@@ -9,7 +9,7 @@ pub fn configure_app() -> axum::Router {
     let repomap_service = RepomapService::new(aider_api_key);
 
     // Create the main router with state
-    axum::Router::new()
+    axum::Router::with_state(repomap_service)
         // Admin routes with authentication
         .nest(
             "/admin",
@@ -25,5 +25,4 @@ pub fn configure_app() -> axum::Router {
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
         )
-        .with_state(repomap_service)
 }
