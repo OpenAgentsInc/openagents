@@ -18,23 +18,21 @@ use crate::nostr::db::Database;
 use crate::nostr::event::Event;
 use crate::nostr::relay::RelayWs;
 
-async fn root_route(
+async fn ws_route(
     req: actix_web::HttpRequest,
     stream: web::Payload,
     event_tx: web::Data<broadcast::Sender<Event>>,
     db: web::Data<Arc<Database>>,
 ) -> Result<actix_web::HttpResponse, actix_web::Error> {
-    // Check if this is a WebSocket upgrade request
-    if req.headers().contains_key("Upgrade") {
-        let id = Uuid::new_v4().to_string();
-        let ws = RelayWs::new(id, event_tx.get_ref().clone(), db.get_ref().clone());
-        ws::start(ws, &req, stream)
-    } else {
-        // Not a WebSocket request, serve index.html
-        Ok(actix_web::HttpResponse::Ok()
-            .content_type("text/html")
-            .body(std::fs::read_to_string("static/index.html").unwrap()))
-    }
+    let id = Uuid::new_v4().to_string();
+    let ws = RelayWs::new(id, event_tx.get_ref().clone(), db.get_ref().clone());
+    ws::start(ws, &req, stream)
+}
+
+async fn index_route() -> Result<actix_web::HttpResponse, actix_web::Error> {
+    Ok(actix_web::HttpResponse::Ok()
+        .content_type("text/html")
+        .body(std::fs::read_to_string("static/index.html").unwrap()))
 }
 
 #[actix_web::main]
@@ -79,7 +77,11 @@ pub async fn run() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(event_tx.clone())
             .app_data(db.clone())
-            .route("/", web::get().to(root_route))
+            .service(
+                web::resource("/")
+                    .route(web::get().to(index_route))
+                    .route(web::get().guard(actix_web::guard::Header("upgrade", "websocket")).to(ws_route))
+            )
             .configure(server::config::configure_app)
     };
 
