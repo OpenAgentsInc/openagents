@@ -14,7 +14,7 @@ async fn test_admin_auth_valid_token() {
         .route("/admin/test", get(test_endpoint))
         .layer(axum::middleware::from_fn(admin_auth));
 
-    let server = TestServer::new(app.into_make_service()).unwrap();
+    let server = TestServer::new(app).unwrap();
 
     let response = server
         .get("/admin/test")

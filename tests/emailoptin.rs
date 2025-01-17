@@ -66,7 +66,7 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
         .route("/subscriptions", post(subscribe))
         .with_state(connection_pool.clone());
 
-    let server = TestServer::new(app.into_make_service()).unwrap();
+    let server = TestServer::new(app).unwrap();
 
     let test_cases = vec![
         (vec![("name", "le guin")], "missing the email"),

@@ -58,7 +58,7 @@ async fn test_create_demo_event() {
         .route("/demo-event", axum::routing::post(create_demo_event))
         .with_state(pool.clone());
 
-    let server = TestServer::new(app.into_make_service()).unwrap();
+    let server = TestServer::new(app).unwrap();
 
     let response = server.post("/demo-event").await;
     assert_eq!(response.status_code(), 200);
