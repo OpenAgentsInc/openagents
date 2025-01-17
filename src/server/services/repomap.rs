@@ -1,7 +1,7 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{info, error};
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct RepomapService {
