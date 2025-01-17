@@ -6,15 +6,13 @@ use axum::{
     Json, Router,
     extract::Extension,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{path::PathBuf, env};
 use tower_http::services::ServeDir;
 use tracing::info;
 
-use crate::server::{
-    services::RepomapService,
-    routes::repomap::{get_repomap, generate_repomap},
-};
+use crate::server::services::RepomapService;
 
 #[tokio::main]
 async fn main() {
@@ -40,7 +38,7 @@ async fn main() {
         .route("/company", get(company))
         .route("/coming-soon", get(coming_soon))
         .route("/health", get(health_check))
-        .route("/repomap", get(get_repomap))
+        .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
         .layer(Extension(repomap_service))
         .nest_service("/assets", ServeDir::new(&assets_path))
@@ -78,13 +76,24 @@ struct ContentTemplate<'a> {
     path: &'a str,
 }
 
-async fn home(headers: HeaderMap) -> Response {
+#[derive(Debug, Deserialize)]
+struct RepomapRequest {
+    repo_url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RepomapResponse {
+    repo_map: String,
+    metadata: serde_json::Value,
+}
+
+async fn repomap(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Home".to_string();
-    let path = "/".to_string();
+    let title = "Repository Map";
+    let path = "/repomap";
 
     if is_htmx {
-        let content = ContentTemplate { path: &path }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -93,8 +102,45 @@ async fn home(headers: HeaderMap) -> Response {
         response
     } else {
         let template = PageTemplate {
-            title: &title,
-            path: &path,
+            title,
+            path,
+        };
+        Html(template.render().unwrap()).into_response()
+    }
+}
+
+async fn generate_repomap(
+    Extension(service): Extension<RepomapService>,
+    Json(req): Json<RepomapRequest>,
+) -> impl IntoResponse {
+    match service.generate_repomap(req.repo_url).await {
+        Ok(repomap) => Json(repomap).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": format!("Failed to generate repomap: {}", e)
+            }))
+        ).into_response(),
+    }
+}
+
+async fn home(headers: HeaderMap) -> Response {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Home";
+    let path = "/";
+
+    if is_htmx {
+        let content = ContentTemplate { path }.render().unwrap();
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
+        response
+    } else {
+        let template = PageTemplate {
+            title,
+            path,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -102,11 +148,11 @@ async fn home(headers: HeaderMap) -> Response {
 
 async fn mobile_app(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Mobile App".to_string();
-    let path = "/onyx".to_string();
+    let title = "Mobile App";
+    let path = "/onyx";
 
     if is_htmx {
-        let content = ContentTemplate { path: &path }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -115,8 +161,8 @@ async fn mobile_app(headers: HeaderMap) -> Response {
         response
     } else {
         let template = PageTemplate {
-            title: &title,
-            path: &path,
+            title,
+            path,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -124,11 +170,11 @@ async fn mobile_app(headers: HeaderMap) -> Response {
 
 async fn business(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Services".to_string();
-    let path = "/services".to_string();
+    let title = "Services";
+    let path = "/services";
 
     if is_htmx {
-        let content = ContentTemplate { path: &path }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -137,8 +183,8 @@ async fn business(headers: HeaderMap) -> Response {
         response
     } else {
         let template = PageTemplate {
-            title: &title,
-            path: &path,
+            title,
+            path,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -146,11 +192,11 @@ async fn business(headers: HeaderMap) -> Response {
 
 async fn video_series(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Video Series".to_string();
-    let path = "/video-series".to_string();
+    let title = "Video Series";
+    let path = "/video-series";
 
     if is_htmx {
-        let content = ContentTemplate { path: &path }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -159,8 +205,8 @@ async fn video_series(headers: HeaderMap) -> Response {
         response
     } else {
         let template = PageTemplate {
-            title: &title,
-            path: &path,
+            title,
+            path,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -168,11 +214,11 @@ async fn video_series(headers: HeaderMap) -> Response {
 
 async fn company(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Company".to_string();
-    let path = "/company".to_string();
+    let title = "Company";
+    let path = "/company";
 
     if is_htmx {
-        let content = ContentTemplate { path: &path }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -181,8 +227,8 @@ async fn company(headers: HeaderMap) -> Response {
         response
     } else {
         let template = PageTemplate {
-            title: &title,
-            path: &path,
+            title,
+            path,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -190,11 +236,11 @@ async fn company(headers: HeaderMap) -> Response {
 
 async fn coming_soon(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Coming Soon".to_string();
-    let path = "/coming-soon".to_string();
+    let title = "Coming Soon";
+    let path = "/coming-soon";
 
     if is_htmx {
-        let content = ContentTemplate { path: &path }.render().unwrap();
+        let content = ContentTemplate { path }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -203,8 +249,8 @@ async fn coming_soon(headers: HeaderMap) -> Response {
         response
     } else {
         let template = PageTemplate {
-            title: &title,
-            path: &path,
+            title,
+            path,
         };
         Html(template.render().unwrap()).into_response()
     }
