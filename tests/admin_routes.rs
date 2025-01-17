@@ -58,12 +58,12 @@ async fn test_create_demo_event() {
         .route("/demo-event", axum::routing::post(create_demo_event))
         .with_state(pool.clone());
 
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::builder(app.into_make_service()).build().await;
 
     let response = server.post("/demo-event").await;
     assert_eq!(response.status_code(), 200);
 
-    let resp: serde_json::Value = response.json();
+    let resp: serde_json::Value = response.json().await;
     assert_eq!(resp["status"], "success");
 
     let event = &resp["event"];
@@ -113,12 +113,12 @@ async fn test_admin_stats() {
         .route("/stats", get(admin_stats))
         .with_state(pool.clone());
 
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::builder(app.into_make_service()).build().await;
 
     let response = server.get("/stats").await;
     assert_eq!(response.status_code(), 200);
 
-    let resp: serde_json::Value = response.json();
+    let resp: serde_json::Value = response.json().await;
     assert!(resp.get("total_events").is_some());
     assert!(resp.get("status").is_some());
     assert!(resp.get("events_by_kind").is_some());
