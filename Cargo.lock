@@ -1785,6 +1785,7 @@ dependencies = [
  "dotenvy",
  "env_logger",
  "futures",
+ "http 1.2.0",
  "http-body-util",
  "hyper 1.5.2",
  "lazy_static",
