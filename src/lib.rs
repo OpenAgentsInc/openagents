@@ -41,14 +41,6 @@ pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
 
-#[derive(Template)]
-#[template(path = "macros/blog_post.html")]
-pub struct BlogPostTemplate<'a> {
-    pub date: &'a str,
-    pub title: &'a str,
-    pub content: String,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct RepomapRequest {
     pub repo_url: String,
