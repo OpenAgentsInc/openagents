@@ -2,7 +2,6 @@ use crate::nostr::event::Event;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{Pool, Postgres};
 use std::collections::HashSet;
-use std::error::Error;
 use std::time::Duration;
 use tracing::{error, info};
 
@@ -22,7 +21,7 @@ pub struct EventFilter {
 }
 
 impl Database {
-    pub async fn new_with_options(options: PgConnectOptions) -> Result<Self, Box<dyn Error>> {
+    pub async fn new_with_options(options: PgConnectOptions) -> Result<Self, anyhow::Error> {
         info!("Attempting to connect to database...");
 
         match PgPoolOptions::new()
@@ -51,7 +50,7 @@ impl Database {
         }
     }
 
-    pub async fn save_event(&self, event: &Event) -> Result<(), Box<dyn Error>> {
+    pub async fn save_event(&self, event: &Event) -> Result<(), anyhow::Error> {
         sqlx::query_as::<_, Event>(
             r#"
             INSERT INTO events (id, pubkey, created_at, kind, content, sig, tags)
@@ -75,7 +74,7 @@ impl Database {
     pub async fn get_events_by_filter(
         &self,
         filter: EventFilter,
-    ) -> Result<Vec<Event>, Box<dyn Error>> {
+    ) -> Result<Vec<Event>, anyhow::Error> {
         let mut query = String::from(
             "SELECT id, pubkey, created_at, kind, content, sig, tags 
              FROM events 

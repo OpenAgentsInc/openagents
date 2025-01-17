@@ -1,6 +1,6 @@
-use axum::{body::Body, http::Request, routing::get, Json, Router};
+use axum::{routing::get, Json, Router};
+use axum_test::TestServer;
 use serde_json::json;
-use tower::ServiceExt;
 
 #[tokio::test]
 async fn health_check_works() {
@@ -10,24 +10,15 @@ async fn health_check_works() {
         get(|| async { Json(json!({"status": "healthy"})) }),
     );
 
+    // Create test server
+    let server = TestServer::new(app).unwrap();
+
     // Act
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let response = server.get("/health").await;
 
     // Assert
-    assert_eq!(response.status(), 200);
+    assert_eq!(response.status_code(), 200);
 
-    // Use a reasonable size limit for the health check response (1MB)
-    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
-        .await
-        .unwrap();
-    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let body: serde_json::Value = response.json();
     assert_eq!(body["status"], "healthy");
 }
