@@ -1,9 +1,10 @@
 use axum::{routing::get, Router};
-use axum_test::TestServer;
+use axum_test::{TestServer, TestServerConfig};
 use lazy_static::lazy_static;
 use openagents::nostr::event::Event;
 use openagents::server::admin::routes::{admin_stats, create_demo_event};
 use tokio::sync::Mutex;
+use tower::ServiceBuilder;
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -56,8 +57,7 @@ async fn test_create_demo_event() {
     // Initialize app with test database
     let app = Router::new()
         .route("/demo-event", axum::routing::post(create_demo_event))
-        .with_state(pool.clone())
-        .into_service();
+        .with_state(pool.clone());
 
     let server = TestServer::new(app).unwrap();
 
@@ -112,8 +112,7 @@ async fn test_admin_stats() {
     // Initialize app with test database
     let app = Router::new()
         .route("/stats", get(admin_stats))
-        .with_state(pool.clone())
-        .into_service();
+        .with_state(pool.clone());
 
     let server = TestServer::new(app).unwrap();
 
