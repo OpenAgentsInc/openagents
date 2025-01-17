@@ -29,6 +29,10 @@ pub mod filters {
         
         html_output
     }
+
+    pub fn safe(s: &str) -> String {
+        s.to_string()
+    }
 }
 
 #[derive(Template)]
@@ -42,6 +46,10 @@ impl<'a> PageTemplate<'a> {
     pub fn markdown(&self, s: &str) -> String {
         filters::markdown(s)
     }
+
+    pub fn safe(&self, s: &str) -> String {
+        filters::safe(s)
+    }
 }
 
 #[derive(Template)]
@@ -53,6 +61,10 @@ pub struct ContentTemplate<'a> {
 impl<'a> ContentTemplate<'a> {
     pub fn markdown(&self, s: &str) -> String {
         filters::markdown(s)
+    }
+
+    pub fn safe(&self, s: &str) -> String {
+        filters::safe(s)
     }
 }
 
