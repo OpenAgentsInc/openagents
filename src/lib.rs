@@ -9,8 +9,7 @@ use askama::Template;
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
-    extract::Extension,
-    Json,
+    extract::{Extension, Json},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -64,7 +63,7 @@ pub async fn repomap(headers: HeaderMap) -> Response {
 pub async fn generate_repomap(
     Extension(service): Extension<server::services::RepomapService>,
     Json(req): Json<RepomapRequest>,
-) -> impl IntoResponse {
+) -> Response {
     match service.generate_repomap(req.repo_url).await {
         Ok(repomap) => Json(repomap).into_response(),
         Err(e) => (
