@@ -11,7 +11,6 @@ use axum::{
     response::{Html, IntoResponse, Response},
     extract::{State, Form},
 };
-use pulldown_cmark::{html, Options, Parser};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
@@ -33,14 +32,14 @@ pub mod filters {
 }
 
 #[derive(Template)]
-#[template(path = "layouts/base.html")]
+#[template(path = "layouts/base.html", escape = "none")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "layouts/content.html")]
+#[template(path = "layouts/content.html", escape = "none")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
