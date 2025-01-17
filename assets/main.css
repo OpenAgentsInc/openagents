@@ -860,6 +860,10 @@ video {
   overflow: hidden;
 }
 
+.overflow-x-auto {
+  overflow-x: auto;
+}
+
 .overflow-x-hidden {
   overflow-x: hidden;
 }
@@ -914,6 +918,10 @@ video {
   border-color: rgb(255 255 255 / 0.9);
 }
 
+.border-white\/50 {
+  border-color: rgb(255 255 255 / 0.5);
+}
+
 .bg-black {
   --tw-bg-opacity: 1;
   background-color: rgb(0 0 0 / var(--tw-bg-opacity, 1));
@@ -929,8 +937,17 @@ video {
   background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));
 }
 
+.bg-zinc-900 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(24 24 27 / var(--tw-bg-opacity, 1));
+}
+
 .p-6 {
   padding: 1.5rem;
+}
+
+.p-4 {
+  padding: 1rem;
 }
 
 .px-3 {
@@ -1120,6 +1137,14 @@ video {
   color: rgb(107 114 128 / var(--tw-placeholder-opacity, 1));
 }
 
+.placeholder-white\/50::-moz-placeholder {
+  color: rgb(255 255 255 / 0.5);
+}
+
+.placeholder-white\/50::placeholder {
+  color: rgb(255 255 255 / 0.5);
+}
+
 .shadow-nav {
   --tw-shadow: 2px 2px 0 0 rgba(255, 255, 255, 0.5);
   --tw-shadow-colored: 2px 2px 0 0 var(--tw-shadow-color);
@@ -1259,6 +1284,14 @@ video {
   --tw-shadow: 1px 1px 0 0 rgba(255, 255, 255, 0.5);
   --tw-shadow-colored: 1px 1px 0 0 var(--tw-shadow-color);
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
+.disabled\:cursor-not-allowed:disabled {
+  cursor: not-allowed;
+}
+
+.disabled\:opacity-50:disabled {
+  opacity: 0.5;
 }
 
 @media (min-width: 640px) {

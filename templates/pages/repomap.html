@@ -5,16 +5,16 @@
 <div class="space-y-8">
   <div class="space-y-4 text-sm">
     <h1 class="text-lg font-bold mb-4">Repository Map Generator</h1>
-    <p class="text-gray-300 text-sm mb-4">
+    <p class="text-sm mb-4">
       Generate a detailed map of any GitHub repository's structure and
       relationships. This tool uses <a href="https://aider.chat" target="_blank" class="font-bold underline">Aider's</a> repository mapping technology to create a concise overview 
       that helps AI agents and developers understand codebases more effectively.
     </p>
-    <p class="text-gray-300 text-sm mb-4">
+    <p class="text-sm mb-4">
       The map includes key classes, functions, and their relationships, optimized to fit within LLM context windows
       while preserving the most important details about the codebase structure.
     </p>
-    <p class="mb-4">Read <a href="https://aider.chat/docs/repomap.html" target="_blank" class="font-bold underline">the Aider repomap documentation</a> for more information about repository maps.</p>
+    <p class="mb-4">Read <a href="https://aider.chat/docs/repomap.html" target="_blank" class="font-bold underline">the Aider repomap documentation</a> for more info.</p>
   </div>
 
   <div class="space-y-6">
@@ -26,7 +26,7 @@
       class="space-y-4"
     >
       <div>
-        <label for="repo_url" class="block text-sm font-medium text-gray-300">
+        <label for="repo_url" class="block text-sm font-medium">
           GitHub Repository URL
         </label>
         <input
@@ -34,7 +34,7 @@
           name="repo_url"
           id="repo_url"
           placeholder="https://github.com/username/repo"
-          class="mt-1 block w-[600px] border border-gray-600 bg-black px-3 py-2 text-white placeholder-gray-500 focus:border-white focus:outline-none focus:ring-1 focus:ring-white text-sm"
+          class="mt-1 block w-[600px] border border-white/50 bg-black px-3 py-2 text-white placeholder-white/50 focus:border-white focus:outline-none focus:ring-1 focus:ring-white text-sm"
           required
         />
       </div>
@@ -61,10 +61,7 @@
     </div>
 
     <!-- Results Area -->
-    <div id="repomap-result" class="mt-6 max-w-none">
-      <div class="text-xs overflow-x-auto p-4">
-        <!-- Results will be inserted here -->
-      </div>
+    <div id="repomap-result" class="text-xs max-w-none">
     </div>
   </div>
 </div>
