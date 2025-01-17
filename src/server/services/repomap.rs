@@ -25,9 +25,12 @@ impl RepomapService {
         }
     }
 
-    #[cfg(test)]
-    pub fn set_base_url(&mut self, url: &str) {
-        self.base_url = url.to_string();
+    pub fn with_base_url(api_key: String, base_url: String) -> Self {
+        Self {
+            client: Client::new(),
+            api_key,
+            base_url,
+        }
     }
 
     pub async fn generate_repomap(&self, repo_url: String) -> Result<RepomapResponse> {
