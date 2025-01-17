@@ -2,7 +2,6 @@ pub mod agents;
 pub mod configuration;
 pub mod database;
 pub mod emailoptin;
-pub mod filters;
 pub mod nostr;
 pub mod server;
 
@@ -12,9 +11,22 @@ use axum::{
     response::{Html, IntoResponse, Response},
     extract::{State, Form},
 };
+use pulldown_cmark::{html, Options, Parser};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
+
+fn process_markdown(content: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    
+    let parser = Parser::new_ext(content, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    
+    html_output
+}
 
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
