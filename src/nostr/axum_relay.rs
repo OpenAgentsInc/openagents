@@ -216,6 +216,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<RelayState>) {
     let state_clone = state.clone();
     let tx_clone = tx.clone();
 
+    // Create a persistent broadcast subscription
+    let mut event_rx = state_clone.event_tx.subscribe();
+
     // Spawn task to forward broadcast events to this client
     let send_task = tokio::spawn(async move {
         let last_active = Instant::now();
@@ -228,7 +231,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<RelayState>) {
                         break;
                     }
                 }
-                Ok(event) = state_clone.event_tx.subscribe().recv() => {
+                Ok(event) = event_rx.recv() => {
                     let subs = state_clone.subscriptions.read().await;
                     for (sub_id, sub) in subs.iter() {
                         if sub.interested_in_event(&event) {
