@@ -10,8 +10,13 @@ use askama_escape::Html as HtmlEscape;
 
 mod template_filters;
 
-// Register markdown filter
-askama::filters::register_filter("markdown", template_filters::markdown);
+// Custom filters must be registered at compile time
+pub mod filters {
+    use super::template_filters;
+    pub fn markdown(s: &str) -> ::askama::Result<String> {
+        template_filters::markdown(s)
+    }
+}
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
