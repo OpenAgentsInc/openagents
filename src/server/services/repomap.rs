@@ -7,6 +7,7 @@ use tracing::info;
 pub struct RepomapService {
     client: Client,
     api_key: String,
+    base_url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -20,14 +21,21 @@ impl RepomapService {
         Self {
             client: Client::new(),
             api_key,
+            base_url: "https://aider.openagents.com".to_string(),
         }
+    }
+
+    #[cfg(test)]
+    pub fn set_base_url(&mut self, url: &str) {
+        self.base_url = url.to_string();
     }
 
     pub async fn generate_repomap(&self, repo_url: String) -> Result<RepomapResponse> {
         info!("Making request to aider service for repo: {}", repo_url);
         
+        let url = format!("{}/api/v1/repomap/generate", self.base_url);
         let response = self.client
-            .post("https://aider.openagents.com/api/v1/repomap/generate")
+            .post(&url)
             .header("Content-Type", "application/json")
             .header("X-API-Key", &self.api_key)
             .json(&serde_json::json!({
