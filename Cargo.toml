@@ -50,4 +50,4 @@ actix-web = "4.4"
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }
 serde_json = "1.0"
 lazy_static = "1.4"
-wiremock = "0.5.24"
+wiremock = "0.6.2"
