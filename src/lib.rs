@@ -15,6 +15,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
 
+pub mod filters {
+    pub fn raw(s: &str) -> ::askama::Result<String> {
+        Ok(s.to_string())
+    }
+}
+
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
 pub struct PageTemplate<'a> {
