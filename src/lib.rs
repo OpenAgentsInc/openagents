@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
 
-pub mod filters {
+mod filters {
     use pulldown_cmark::{html, Options, Parser};
 
     pub fn markdown(s: &str) -> ::askama::Result<String> {
@@ -32,14 +32,14 @@ pub mod filters {
 }
 
 #[derive(Template)]
-#[template(path = "layouts/base.html", escape = "none", filter = "crate::filters")]
+#[template(path = "layouts/base.html")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "layouts/content.html", escape = "none", filter = "crate::filters")]
+#[template(path = "layouts/content.html")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
