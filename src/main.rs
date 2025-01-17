@@ -71,7 +71,10 @@ async fn home(headers: HeaderMap) -> Response {
     let path = "/";
 
     if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
+        let content = ContentTemplate { 
+            path,
+            process_markdown: openagents::process_markdown,
+        }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -82,6 +85,7 @@ async fn home(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
+            process_markdown: openagents::process_markdown,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -93,7 +97,10 @@ async fn mobile_app(headers: HeaderMap) -> Response {
     let path = "/onyx";
 
     if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
+        let content = ContentTemplate { 
+            path,
+            process_markdown: openagents::process_markdown,
+        }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -104,6 +111,7 @@ async fn mobile_app(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
+            process_markdown: openagents::process_markdown,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -115,7 +123,10 @@ async fn business(headers: HeaderMap) -> Response {
     let path = "/services";
 
     if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
+        let content = ContentTemplate { 
+            path,
+            process_markdown: openagents::process_markdown,
+        }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -126,6 +137,7 @@ async fn business(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
+            process_markdown: openagents::process_markdown,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -137,7 +149,10 @@ async fn video_series(headers: HeaderMap) -> Response {
     let path = "/video-series";
 
     if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
+        let content = ContentTemplate { 
+            path,
+            process_markdown: openagents::process_markdown,
+        }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -148,6 +163,7 @@ async fn video_series(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
+            process_markdown: openagents::process_markdown,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -159,7 +175,10 @@ async fn company(headers: HeaderMap) -> Response {
     let path = "/company";
 
     if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
+        let content = ContentTemplate { 
+            path,
+            process_markdown: openagents::process_markdown,
+        }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -170,6 +189,7 @@ async fn company(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
+            process_markdown: openagents::process_markdown,
         };
         Html(template.render().unwrap()).into_response()
     }
@@ -181,7 +201,10 @@ async fn coming_soon(headers: HeaderMap) -> Response {
     let path = "/coming-soon";
 
     if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
+        let content = ContentTemplate { 
+            path,
+            process_markdown: openagents::process_markdown,
+        }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -192,6 +215,7 @@ async fn coming_soon(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
+            process_markdown: openagents::process_markdown,
         };
         Html(template.render().unwrap()).into_response()
     }
