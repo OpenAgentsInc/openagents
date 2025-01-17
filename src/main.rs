@@ -9,9 +9,11 @@ use serde_json::json;
 use std::{env, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
+use tokio::sync::broadcast;
 
 use openagents::{
     generate_repomap, repomap, server::services::RepomapService, ContentTemplate, PageTemplate,
+    nostr::{axum_relay::{RelayState, ws_handler}, db::Database},
 };
 
 #[tokio::main]
@@ -30,6 +32,11 @@ async fn main() {
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
     let repomap_service = Arc::new(RepomapService::new(aider_api_key));
 
+    // Initialize Nostr components
+    let (event_tx, _) = broadcast::channel(1024);
+    let db = Arc::new(Database::new("nostr.db").await.unwrap());
+    let relay_state = Arc::new(RelayState::new(event_tx, db));
+
     let app = Router::new()
         .route("/", get(home))
         .route("/onyx", get(mobile_app))
@@ -40,6 +47,8 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
+        .route("/nostr/ws", get(ws_handler)) // New Axum WebSocket endpoint
+        .with_state(relay_state)
         .with_state(repomap_service)
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path));
