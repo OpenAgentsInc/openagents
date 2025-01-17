@@ -1,34 +1,51 @@
-use actix_web::{get, post, web, HttpResponse, Responder};
-use askama::Template;
+use axum::{
+    response::{Html, IntoResponse, Response},
+    Json,
+    http::header::{HeaderMap, HeaderValue},
+};
 use serde::{Deserialize, Serialize};
 use crate::server::services::repomap::{RepomapService, RepomapRequest};
 
 #[derive(Template)]
 #[template(path = "pages/repomap.html")]
-struct RepomapTemplate {
-    path: String,
+struct RepomapTemplate<'a> {
+    title: &'a str,
+    path: &'a str,
 }
 
-#[get("/repomap")]
-pub async fn get_repomap() -> impl Responder {
-    let template = RepomapTemplate {
-        path: "/repomap".to_string(),
-    };
-    match template.render() {
-        Ok(html) => HttpResponse::Ok().content_type("text/html").body(html),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Template error: {}", e)),
+pub async fn get_repomap(headers: HeaderMap) -> Response {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Repository Map";
+    let path = "/repomap";
+
+    if is_htmx {
+        let content = ContentTemplate { path }.render().unwrap();
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
+        response
+    } else {
+        let template = PageTemplate {
+            title,
+            path,
+        };
+        Html(template.render().unwrap()).into_response()
     }
 }
 
-#[post("/repomap/generate")]
 pub async fn generate_repomap(
-    req: web::Json<RepomapRequest>,
-    data: web::Data<RepomapService>,
-) -> impl Responder {
-    match data.generate_repomap(req.repo_url.clone()).await {
-        Ok(repomap) => HttpResponse::Ok().json(repomap),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": format!("Failed to generate repomap: {}", e)
-        }))
+    Json(req): Json<RepomapRequest>,
+    Extension(service): Extension<RepomapService>,
+) -> impl IntoResponse {
+    match service.generate_repomap(req.repo_url).await {
+        Ok(repomap) => Json(repomap).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": format!("Failed to generate repomap: {}", e)
+            }))
+        ).into_response(),
     }
 }
