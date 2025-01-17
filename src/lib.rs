@@ -32,14 +32,14 @@ pub mod filters {
 }
 
 #[derive(Template)]
-#[template(path = "layouts/base.html", escape = "none")]
+#[template(path = "layouts/base.html", escape = "none", filter = "crate::filters")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "layouts/content.html", escape = "none")]
+#[template(path = "layouts/content.html", escape = "none", filter = "crate::filters")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
