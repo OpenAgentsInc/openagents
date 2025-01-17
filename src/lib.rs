@@ -9,19 +9,6 @@ use askama::Template;
 
 mod template_filters;
 
-// Register custom filters at compile time
-pub mod filters {
-    use super::template_filters;
-    use askama::Result;
-
-    pub fn markdown(s: &str) -> Result<String> {
-        template_filters::markdown(s)
-    }
-
-    pub fn safe(s: &str) -> Result<String> {
-        Ok(s.to_string())
-    }
-}
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
@@ -32,14 +19,14 @@ use std::sync::Arc;
 use tracing::{info, error};
 
 #[derive(Template)]
-#[template(path = "layouts/base.html", print = "all")]
+#[template(path = "layouts/base.html", print = "all", escape = "none")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "layouts/content.html", print = "all")]
+#[template(path = "layouts/content.html", print = "all", escape = "none")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
