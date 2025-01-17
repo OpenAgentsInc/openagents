@@ -1,18 +1,19 @@
 use actix_web::{get, post, web, HttpResponse, Responder};
+use askama::Template;
 use serde::{Deserialize, Serialize};
 use crate::server::services::repomap::{RepomapService, RepomapRequest};
 
-#[derive(Debug, Serialize)]
-struct RepomapHtml {
-    content: String,
-}
+#[derive(Template)]
+#[template(path = "pages/repomap.html")]
+struct RepomapTemplate {}
 
 #[get("/repomap")]
 pub async fn get_repomap() -> impl Responder {
-    let html = include_str!("../../../templates/pages/repomap.html");
-    HttpResponse::Ok()
-        .content_type("text/html")
-        .body(html)
+    let template = RepomapTemplate {};
+    match template.render() {
+        Ok(html) => HttpResponse::Ok().content_type("text/html").body(html),
+        Err(e) => HttpResponse::InternalServerError().body(format!("Template error: {}", e)),
+    }
 }
 
 #[post("/repomap/generate")]
