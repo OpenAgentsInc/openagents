@@ -16,6 +16,18 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
 
+pub fn process_markdown(s: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    
+    let parser = Parser::new_ext(s, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    
+    html_output
+}
+
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
 pub struct PageTemplate<'a> {
@@ -29,18 +41,6 @@ pub struct PageTemplate<'a> {
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
     pub process_markdown: fn(&str) -> String,
-}
-
-fn process_markdown(s: &str) -> String {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    
-    let parser = Parser::new_ext(s, options);
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-    
-    html_output
 }
 
 #[derive(Debug, Deserialize)]
