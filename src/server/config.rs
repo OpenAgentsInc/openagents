@@ -24,8 +24,8 @@ pub fn configure_app() -> axum::Router {
         .nest_service(
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
-        )
-        .with_state(repomap_service);
+        );
 
-    app
+    // Add state to the router
+    app.with_state(repomap_service)
 }
