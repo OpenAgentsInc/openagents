@@ -9,10 +9,11 @@ use askama::Template;
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
-    extract::{Extension, Json},
+    extract::{State, Json},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
 
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
@@ -61,7 +62,7 @@ pub async fn repomap(headers: HeaderMap) -> Response {
 }
 
 pub async fn generate_repomap(
-    Extension(service): Extension<server::services::RepomapService>,
+    State(service): State<Arc<server::services::RepomapService>>,
     Json(req): Json<RepomapRequest>,
 ) -> Response {
     match service.generate_repomap(req.repo_url).await {
