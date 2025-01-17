@@ -1,0 +1,6 @@
+[general]
+dirs = ["templates"]
+
+[filters]
+markdown = "filters::markdown"
+safe = "filters::safe"
