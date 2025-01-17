@@ -29,14 +29,14 @@ use std::sync::Arc;
 use tracing::{info, error};
 
 #[derive(Template)]
-#[template(path = "layouts/base.html")]
+#[template(path = "layouts/base.html", print = "all")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "layouts/content.html")]
+#[template(path = "layouts/content.html", print = "all")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
