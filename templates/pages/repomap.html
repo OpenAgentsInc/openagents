@@ -85,7 +85,7 @@
       if (evt.detail.successful) {
         const response = JSON.parse(evt.detail.xhr.response);
         const resultDiv = document.getElementById("repomap-result");
-        resultDiv.innerHTML = marked.parse(response.repo_map);
+        resultDiv.innerHTML = `<pre class="text-xs overflow-x-auto p-4 bg-zinc-900 rounded"><code>${response.repo_map}</code></pre>`;
       }
     }
   });
