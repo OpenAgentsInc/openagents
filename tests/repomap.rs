@@ -44,9 +44,10 @@ async fn test_generate_repomap() {
 
     // Create service with mock server URL
     let aider_api_key = "test_key".to_string();
-    let mut repomap_service = RepomapService::new(aider_api_key);
-    repomap_service.set_base_url(&mock_server.uri());
-    let repomap_service = Arc::new(repomap_service);
+    let repomap_service = Arc::new(RepomapService::with_base_url(
+        aider_api_key,
+        mock_server.uri(),
+    ));
 
     let app = Router::new()
         .route("/repomap/generate", post(generate_repomap))
