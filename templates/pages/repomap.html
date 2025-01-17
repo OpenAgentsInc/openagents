@@ -34,14 +34,14 @@
           name="repo_url"
           id="repo_url"
           placeholder="https://github.com/username/repo"
-          class="mt-1 block w-[600px] rounded border border-gray-600 bg-black px-3 py-2 text-white placeholder-gray-500 focus:border-white focus:outline-none focus:ring-1 focus:ring-white text-sm"
+          class="mt-1 block w-[600px] border border-gray-600 bg-black px-3 py-2 text-white placeholder-gray-500 focus:border-white focus:outline-none focus:ring-1 focus:ring-white text-sm"
           required
         />
       </div>
 
       <button
         type="submit"
-        class="inline-flex items-center justify-center rounded border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        class="inline-flex items-center justify-center border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
         id="submit-button"
       >
         Generate Map
@@ -62,7 +62,9 @@
 
     <!-- Results Area -->
     <div id="repomap-result" class="mt-6 prose prose-invert max-w-none">
-      <!-- Results will be inserted here -->
+      <div class="text-xs overflow-x-auto p-4 bg-zinc-900">
+        <!-- Results will be inserted here -->
+      </div>
     </div>
   </div>
 </div>
@@ -84,8 +86,8 @@
       
       if (evt.detail.successful) {
         const response = JSON.parse(evt.detail.xhr.response);
-        const resultDiv = document.getElementById("repomap-result");
-        resultDiv.innerHTML = `<pre class="text-xs overflow-x-auto p-4 bg-zinc-900 rounded"><code>${response.repo_map}</code></pre>`;
+        const resultDiv = document.getElementById("repomap-result").firstElementChild;
+        resultDiv.innerHTML = `<pre><code>${response.repo_map}</code></pre>`;
       }
     }
   });
