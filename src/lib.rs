@@ -15,18 +15,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
 
-pub mod filters {
-    use pulldown_cmark::{html, Options, Parser};
-
-    pub fn markdown(s: &str) -> &str {
-        s
-    }
-
-    pub fn safe(s: &str) -> &str {
-        s
-    }
-}
-
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
 pub struct PageTemplate<'a> {
@@ -34,30 +22,10 @@ pub struct PageTemplate<'a> {
     pub path: &'a str,
 }
 
-impl<'a> PageTemplate<'a> {
-    pub fn markdown(&self, s: &'a str) -> &'a str {
-        filters::markdown(s)
-    }
-
-    pub fn safe(&self, s: &'a str) -> &'a str {
-        filters::safe(s)
-    }
-}
-
 #[derive(Template)]
 #[template(path = "layouts/content.html")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
-}
-
-impl<'a> ContentTemplate<'a> {
-    pub fn markdown(&self, s: &'a str) -> &'a str {
-        filters::markdown(s)
-    }
-
-    pub fn safe(&self, s: &'a str) -> &'a str {
-        filters::safe(s)
-    }
 }
 
 #[derive(Debug, Deserialize)]
