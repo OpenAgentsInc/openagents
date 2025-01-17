@@ -10,6 +10,7 @@ use std::{env, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 use tokio::sync::broadcast;
+use sqlx::postgres::PgConnectOptions;
 
 use openagents::{
     generate_repomap, repomap, server::services::RepomapService, ContentTemplate, PageTemplate,
@@ -34,10 +35,15 @@ async fn main() {
 
     // Initialize Nostr components
     let (event_tx, _) = broadcast::channel(1024);
-    let db = Arc::new(Database::new("nostr.db").await.unwrap());
+    let db = Arc::new(Database::new_with_options(PgConnectOptions::new()).await.unwrap());
     let relay_state = Arc::new(RelayState::new(event_tx, db));
 
-    let app = Router::new()
+    // Create separate routers for different state types
+    let nostr_router = Router::new()
+        .route("/ws", get(ws_handler))
+        .with_state(relay_state);
+
+    let main_router = Router::new()
         .route("/", get(home))
         .route("/onyx", get(mobile_app))
         .route("/video-series", get(video_series))
@@ -47,11 +53,12 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
-        .route("/nostr/ws", get(ws_handler)) // New Axum WebSocket endpoint
-        .with_state(relay_state)
-        .with_state(repomap_service)
         .nest_service("/assets", ServeDir::new(&assets_path))
-        .fallback_service(ServeDir::new(assets_path));
+        .fallback_service(ServeDir::new(assets_path.clone()))
+        .with_state(repomap_service);
+
+    // Merge routers
+    let app = main_router.nest("/nostr", nostr_router);
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
