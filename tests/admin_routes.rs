@@ -1,10 +1,9 @@
 use axum::{routing::get, Router};
-use axum_test::{TestServer, TestServerConfig};
+use axum_test::TestServer;
 use lazy_static::lazy_static;
 use openagents::nostr::event::Event;
 use openagents::server::admin::routes::{admin_stats, create_demo_event};
 use tokio::sync::Mutex;
-use tower::ServiceBuilder;
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
