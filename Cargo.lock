@@ -2039,6 +2039,7 @@ dependencies = [
  "askama_escape 0.1.0",
  "axum",
  "bitcoin_hashes",
+ "bytes",
  "chrono",
  "config",
  "dotenvy",
