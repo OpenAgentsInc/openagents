@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
+    http::{Request, StatusCode, header::CONTENT_TYPE},
     routing::{get, post},
     Router,
 };
@@ -38,8 +38,8 @@ async fn test_generate_repomap() {
             Request::builder()
                 .method("POST")
                 .uri("/repomap/generate")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"repo_url":"https://github.com/test/repo"}"#))
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("repo_url=https://github.com/test/repo"))
                 .unwrap(),
         )
         .await
