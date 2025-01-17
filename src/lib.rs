@@ -6,8 +6,12 @@ pub mod nostr;
 pub mod server;
 
 use askama::Template;
+use askama_escape::Html as HtmlEscape;
 
 mod template_filters;
+
+// Register markdown filter
+askama::filters::register_filter("markdown", template_filters::markdown);
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},

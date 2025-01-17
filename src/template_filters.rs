@@ -1,7 +1,7 @@
-use askama::Result;
+use askama::Error;
 use pulldown_cmark::{html, Options, Parser};
 
-pub fn markdown(s: &str) -> Result<String> {
+pub fn markdown(s: &str) -> Result<String, Error> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
