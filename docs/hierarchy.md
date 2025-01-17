@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-16 19:59:44
+Generated on: 2025-01-16 21:38:26
 
 ### Structure
 
@@ -40,7 +40,8 @@ Generated on: 2025-01-16 19:59:44
 |   |-- newsletter.md
 |   |-- prompt.md
 |   |-- repomap.md
-|   `-- rust-setup.md
+|   |-- rust-setup.md
+|   `-- templates.md
 |-- migrations/
 |   |-- 20250110000000_initial.sql
 |   |-- 20250112001624_create_subscriptions_table.sql
@@ -73,6 +74,7 @@ Generated on: 2025-01-16 19:59:44
 |   |-- configuration.rs
 |   |-- database.rs
 |   |-- emailoptin.rs
+|   |-- filters.rs
 |   |-- lib.rs
 |   |-- main.rs
 |   `-- template_filters.rs
@@ -90,6 +92,7 @@ Generated on: 2025-01-16 19:59:44
 |   |   `-- content.html
 |   |-- macros/
 |   |   |-- blog.html
+|   |   |-- blog_post.html
 |   |   |-- nav.html
 |   |   `-- video.html
 |   |-- pages/
@@ -132,5 +135,5 @@ Generated on: 2025-01-16 19:59:44
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-25 directories, 101 files
+25 directories, 104 files
 ```
