@@ -16,29 +16,31 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
 
-fn process_markdown(content: &str) -> String {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    
-    let parser = Parser::new_ext(content, options);
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-    
-    html_output
-}
-
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
+    pub process_markdown: fn(&str) -> String,
 }
 
 #[derive(Template)]
 #[template(path = "layouts/content.html")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
+    pub process_markdown: fn(&str) -> String,
+}
+
+fn process_markdown(s: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    
+    let parser = Parser::new_ext(s, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    
+    html_output
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,7 +60,10 @@ pub async fn repomap(headers: HeaderMap) -> Response {
     let path = "/repomap";
 
     if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
+        let content = ContentTemplate { 
+            path,
+            process_markdown,
+        }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -69,6 +74,7 @@ pub async fn repomap(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
+            process_markdown,
         };
         Html(template.render().unwrap()).into_response()
     }
