@@ -18,7 +18,7 @@ use tracing::{info, error};
 pub mod filters {
     use pulldown_cmark::{html, Options, Parser};
 
-    pub fn markdown(s: &str) -> ::askama::Result<String> {
+    pub fn markdown(s: &str) -> String {
         let mut options = Options::empty();
         options.insert(Options::ENABLE_STRIKETHROUGH);
         options.insert(Options::ENABLE_TABLES);
@@ -27,7 +27,7 @@ pub mod filters {
         let mut html_output = String::new();
         html::push_html(&mut html_output, parser);
         
-        Ok(html_output)
+        html_output
     }
 }
 
@@ -39,7 +39,7 @@ pub struct PageTemplate<'a> {
 }
 
 impl<'a> PageTemplate<'a> {
-    pub fn markdown(&self, s: &str) -> ::askama::Result<String> {
+    pub fn markdown(&self, s: &str) -> String {
         filters::markdown(s)
     }
 }
@@ -51,7 +51,7 @@ pub struct ContentTemplate<'a> {
 }
 
 impl<'a> ContentTemplate<'a> {
-    pub fn markdown(&self, s: &str) -> ::askama::Result<String> {
+    pub fn markdown(&self, s: &str) -> String {
         filters::markdown(s)
     }
 }
