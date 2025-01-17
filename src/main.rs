@@ -35,7 +35,19 @@ async fn main() {
 
     // Initialize Nostr components
     let (event_tx, _) = broadcast::channel(1024);
-    let db = Arc::new(Database::new_with_options(PgConnectOptions::new()).await.unwrap());
+    
+    // Use DATABASE_URL for connection
+    let database_url = env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+    let db = Arc::new(
+        Database::new_with_options(
+            PgConnectOptions::from_str(&database_url)
+                .expect("Invalid DATABASE_URL")
+        )
+        .await
+        .expect("Failed to connect to database")
+    );
+    
     let relay_state = Arc::new(RelayState::new(event_tx, db));
 
     // Create separate routers for different state types
