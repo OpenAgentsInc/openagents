@@ -1,6 +1,7 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tracing::{info, error};
 
 #[derive(Debug, Clone)]
 pub struct RepomapService {
@@ -23,6 +24,8 @@ impl RepomapService {
     }
 
     pub async fn generate_repomap(&self, repo_url: String) -> Result<RepomapResponse> {
+        info!("Making request to aider service for repo: {}", repo_url);
+        
         let response = self.client
             .post("https://aider.openagents.com/api/v1/repomap/generate")
             .header("Content-Type", "application/json")
@@ -33,7 +36,13 @@ impl RepomapService {
             .send()
             .await?;
 
-        let repomap = response.json::<RepomapResponse>().await?;
+        let status = response.status();
+        let text = response.text().await?;
+        
+        info!("Received response with status: {}", status);
+        info!("Response body: {}", text);
+
+        let repomap: RepomapResponse = serde_json::from_str(&text)?;
         Ok(repomap)
     }
 }
