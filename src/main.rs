@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
-use std::{env, path::PathBuf, sync::Arc};
+use std::{env, path::PathBuf, sync::Arc, str::FromStr};
 use tower_http::services::ServeDir;
 use tracing::info;
 use tokio::sync::broadcast;
@@ -41,7 +41,7 @@ async fn main() {
         .expect("DATABASE_URL must be set");
     let db = Arc::new(
         Database::new_with_options(
-            PgConnectOptions::from_str(&database_url)
+            PgConnectOptions::from(&database_url)
                 .expect("Invalid DATABASE_URL")
         )
         .await
