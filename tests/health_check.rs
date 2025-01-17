@@ -11,7 +11,7 @@ async fn health_check_works() {
     );
 
     // Create test server
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app.into_make_service()).unwrap();
 
     // Act
     let response = server.get("/health").await;

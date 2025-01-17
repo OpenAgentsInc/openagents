@@ -56,10 +56,9 @@ async fn test_create_demo_event() {
     // Initialize app with test database
     let app = Router::new()
         .route("/demo-event", axum::routing::post(create_demo_event))
-        .with_state(pool.clone())
-        .into_make_service();
+        .with_state(pool.clone());
 
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::new(app.into_make_service()).unwrap();
 
     let response = server.post("/demo-event").await;
     assert_eq!(response.status_code(), 200);
