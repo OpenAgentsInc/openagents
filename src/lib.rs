@@ -6,14 +6,16 @@ pub mod nostr;
 pub mod server;
 
 use askama::Template;
-use askama_escape::Html as HtmlEscape;
 
 mod template_filters;
 
-// Custom filters must be registered at compile time
+// Register custom filters at compile time
 pub mod filters {
     use super::template_filters;
-    pub fn markdown(s: &str) -> ::askama::Result<String> {
+    use askama::Result;
+
+    #[allow(dead_code)]
+    pub fn markdown(s: &str) -> Result<String> {
         template_filters::markdown(s)
     }
 }
