@@ -28,12 +28,17 @@ pub fn process_markdown(s: &str) -> String {
     html_output
 }
 
+pub fn safe_html(s: &str) -> String {
+    s.to_string()
+}
+
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
     pub process_markdown: fn(&str) -> String,
+    pub safe: fn(&str) -> String,
 }
 
 #[derive(Template)]
@@ -41,6 +46,7 @@ pub struct PageTemplate<'a> {
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
     pub process_markdown: fn(&str) -> String,
+    pub safe: fn(&str) -> String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +69,7 @@ pub async fn repomap(headers: HeaderMap) -> Response {
         let content = ContentTemplate { 
             path,
             process_markdown,
+            safe: safe_html,
         }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
@@ -75,6 +82,7 @@ pub async fn repomap(headers: HeaderMap) -> Response {
             title,
             path,
             process_markdown,
+            safe: safe_html,
         };
         Html(template.render().unwrap()).into_response()
     }
