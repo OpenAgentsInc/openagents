@@ -1,10 +1,5 @@
 [general]
 dirs = ["templates"]
 
-[[general.filter]]
-name = "markdown"
-path = "crate::filters::markdown"
-
-[[general.filter]]
-name = "safe"
-path = "crate::filters::safe"
+[general.filters]
+markdown = "openagents::filters::markdown"
