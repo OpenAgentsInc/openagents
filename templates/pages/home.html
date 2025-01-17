@@ -20,7 +20,7 @@
         </p>
         <p class="text-sm">
           <a href="/onyx" class="text-white/80 hover:text-white underline"
-            >Download Onyx in beta for Android & iOS now.</a
+            >Download Onyx in beta for Android &amp; iOS now.</a
           >
         </p>
       </div>
@@ -84,8 +84,18 @@
   <div class="border border-white p-6">
     <h2 class="text-lg font-bold mb-6">Latest Updates</h2>
 
-    {% call blog::blog_post( "January 14, 2025", "New Website", "We have a new
-    website! It uses Rust, HTMX, and a new font Berkeley Mono from the US
-    Graphics Company, from which we also drew inspiration on design." ) %}
+    {% call blog::blog_post("January 16, 2025", "Repo Map Tool", "
+    <p>
+      We've released a small tool for generating a concise map of a GitHub repo,
+      optimized for LLM chats &amp; agents, using the Aider repo map.
+      <a href=\"/repomap\" class=\"font-bold underline\">Try it here!</a>
+    </p>
+    ") %} {% call blog::blog_post("January 14, 2025", "New Website", "
+    <p>
+      We have a new website! It uses Rust, HTMX, and a new font Berkeley Mono
+      from the US Graphics Company, from which we also drew inspiration on
+      design.
+    </p>
+    ") %}
   </div>
 </div>
