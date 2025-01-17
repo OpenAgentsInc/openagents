@@ -38,32 +38,11 @@ pub struct PageTemplate<'a> {
     pub path: &'a str,
 }
 
-impl<'a> PageTemplate<'a> {
-    fn markdown(&self, s: &str) -> ::askama::Result<String> {
-        filters::markdown(s)
-    }
-
-    fn safe(&self, s: &str) -> ::askama::Result<String> {
-        filters::safe(s)
-    }
-}
-
 #[derive(Template)]
 #[template(path = "layouts/content.html", print = "all")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
-
-impl<'a> ContentTemplate<'a> {
-    fn markdown(&self, s: &str) -> ::askama::Result<String> {
-        filters::markdown(s)
-    }
-
-    fn safe(&self, s: &str) -> ::askama::Result<String> {
-        filters::safe(s)
-    }
-}
-
 
 #[derive(Debug, Deserialize)]
 pub struct RepomapRequest {
