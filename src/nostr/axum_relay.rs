@@ -10,7 +10,7 @@ use serde_json::Value;
 use tracing::{error, info};
 
 use super::{
-    db::{Database, EventFilter},
+    db::Database,
     event::Event,
     subscription::Subscription,
 };
@@ -53,7 +53,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<RelayState>) {
             // TODO: Check subscriptions and forward relevant events
             if let Ok(event_json) = serde_json::to_string(&event) {
                 // For now, broadcast to all - will filter based on subscriptions later
-                let msg = Message::Text(format!(r#"["EVENT", "{}", {}]"#, "all", event_json));
+                let msg = Message::Text(format!(r#"["EVENT", "{}", {}]"#, "all", event_json).into());
                 if sender.send(msg).await.is_err() {
                     break;
                 }
