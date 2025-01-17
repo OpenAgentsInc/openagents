@@ -24,10 +24,15 @@ pub fn configure_app(cfg: &mut web::ServiceConfig) {
 
     // Serve static files from the static directory
     cfg.service(
-        fs::Files::new("/", "./static")
-            .index_file("index.html")
-            .use_hidden_files()
-            .prefer_utf8(true)
-            .show_files_listing(),
+        fs::Files::new("/static", "./static")
+            .show_files_listing()
+            .use_last_modified(true),
+    );
+
+    // Serve template files
+    cfg.service(
+        fs::Files::new("/templates", "./templates")
+            .show_files_listing()
+            .use_last_modified(true),
     );
 }
