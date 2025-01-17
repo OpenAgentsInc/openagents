@@ -36,7 +36,7 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
         .route("/subscriptions", post(subscribe))
         .with_state(connection_pool.clone());
 
-    let server = TestServer::new(app.into_make_service()).unwrap();
+    let server = TestServer::new(app).unwrap();
 
     let response = server
         .post("/subscriptions")

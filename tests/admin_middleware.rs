@@ -1,6 +1,6 @@
 use axum::{routing::get, Router};
 use axum_test::TestServer;
-use http::{header::HeaderName, HeaderValue};
+use axum::http::{header::HeaderName, HeaderValue};
 use openagents::server::admin::middleware::admin_auth;
 use serde_json::json;
 
