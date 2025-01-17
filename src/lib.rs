@@ -16,20 +16,20 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, error};
 
-pub fn process_markdown(s: &str) -> String {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    
-    let parser = Parser::new_ext(s, options);
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-    
-    html_output
-}
+pub mod filters {
+    use pulldown_cmark::{html, Options, Parser};
 
-pub fn safe_html(s: &str) -> String {
-    s.to_string()
+    pub fn markdown(s: &str) -> ::askama::Result<String> {
+        let mut options = Options::empty();
+        options.insert(Options::ENABLE_STRIKETHROUGH);
+        options.insert(Options::ENABLE_TABLES);
+        
+        let parser = Parser::new_ext(s, options);
+        let mut html_output = String::new();
+        html::push_html(&mut html_output, parser);
+        
+        Ok(html_output)
+    }
 }
 
 #[derive(Template)]
@@ -37,16 +37,12 @@ pub fn safe_html(s: &str) -> String {
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
-    pub process_markdown: fn(&str) -> String,
-    pub safe: fn(&str) -> String,
 }
 
 #[derive(Template)]
 #[template(path = "layouts/content.html")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
-    pub process_markdown: fn(&str) -> String,
-    pub safe: fn(&str) -> String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,8 +64,6 @@ pub async fn repomap(headers: HeaderMap) -> Response {
     if is_htmx {
         let content = ContentTemplate { 
             path,
-            process_markdown,
-            safe: safe_html,
         }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
@@ -81,8 +75,6 @@ pub async fn repomap(headers: HeaderMap) -> Response {
         let template = PageTemplate {
             title,
             path,
-            process_markdown,
-            safe: safe_html,
         };
         Html(template.render().unwrap()).into_response()
     }
