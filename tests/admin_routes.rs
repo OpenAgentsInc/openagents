@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use openagents::nostr::event::Event;
 use openagents::server::admin::routes::{admin_stats, create_demo_event};
 use tokio::sync::Mutex;
+use serde_json::Value;
 
 lazy_static! {
     static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -65,7 +66,7 @@ async fn test_create_demo_event() {
     let response = server.post("/demo-event").await;
     assert_eq!(response.status_code(), 200);
 
-    let resp: serde_json::Value = response.json().await;
+    let resp = response.json::<Value>().await;
     assert_eq!(resp["status"], "success");
 
     let event = &resp["event"];
@@ -122,7 +123,7 @@ async fn test_admin_stats() {
     let response = server.get("/stats").await;
     assert_eq!(response.status_code(), 200);
 
-    let resp: serde_json::Value = response.json().await;
+    let resp = response.json::<Value>().await;
     assert!(resp.get("total_events").is_some());
     assert!(resp.get("status").is_some());
     assert!(resp.get("events_by_kind").is_some());
