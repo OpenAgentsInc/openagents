@@ -7,7 +7,8 @@ use axum::{
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde_json::Value;
-use tracing::{error, info};
+use tracing::error;
+use bytes::Bytes;
 
 use super::{
     db::{Database, EventFilter},
@@ -259,7 +260,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<RelayState>) {
                     if Instant::now().duration_since(last_active) > CLIENT_TIMEOUT {
                         return;
                     }
-                    if sender.send(Message::Ping(vec![])).await.is_err() {
+                    if sender.send(Message::Ping(Bytes::new())).await.is_err() {
                         return;
                     }
                 }
