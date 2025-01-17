@@ -32,16 +32,28 @@ pub mod filters {
 }
 
 #[derive(Template)]
-#[template(path = "layouts/base.html", filter = "crate::filters")]
+#[template(path = "layouts/base.html")]
 pub struct PageTemplate<'a> {
     pub title: &'a str,
     pub path: &'a str,
 }
 
+impl<'a> PageTemplate<'a> {
+    pub fn markdown(&self, s: &str) -> ::askama::Result<String> {
+        filters::markdown(s)
+    }
+}
+
 #[derive(Template)]
-#[template(path = "layouts/content.html", filter = "crate::filters")]
+#[template(path = "layouts/content.html")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
+}
+
+impl<'a> ContentTemplate<'a> {
+    pub fn markdown(&self, s: &str) -> ::askama::Result<String> {
+        filters::markdown(s)
+    }
 }
 
 #[derive(Debug, Deserialize)]
