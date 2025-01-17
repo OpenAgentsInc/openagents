@@ -5,16 +5,13 @@ use axum::{
     Router,
     extract::Extension,
 };
-use openagents::server::{
-    services::RepomapService,
-    routes::repomap::{get_repomap, generate_repomap},
-};
+use openagents::server::services::RepomapService;
 use tower::ServiceExt;
 
 #[tokio::test]
 async fn test_get_repomap() {
     let app = Router::new()
-        .route("/repomap", get(get_repomap));
+        .route("/repomap", get(openagents::repomap));
 
     let response = app
         .oneshot(Request::builder().uri("/repomap").body(Body::empty()).unwrap())
@@ -30,7 +27,7 @@ async fn test_generate_repomap() {
     let repomap_service = RepomapService::new(aider_api_key);
 
     let app = Router::new()
-        .route("/repomap/generate", post(generate_repomap))
+        .route("/repomap/generate", post(openagents::generate_repomap))
         .layer(Extension(repomap_service));
 
     let response = app
