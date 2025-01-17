@@ -1,5 +1,2 @@
 [general]
 dirs = ["templates"]
-
-[general.filters]
-markdown = "openagents::filters::markdown"
