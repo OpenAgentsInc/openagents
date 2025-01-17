@@ -2,13 +2,19 @@ use askama::Template;
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
+    extract::Extension,
 };
 use serde_json::json;
-use std::path::PathBuf;
+use std::{path::PathBuf, env};
 use tower_http::services::ServeDir;
 use tracing::info;
+
+use crate::server::{
+    services::RepomapService,
+    routes::repomap::{get_repomap, generate_repomap},
+};
 
 #[tokio::main]
 async fn main() {
@@ -22,6 +28,10 @@ async fn main() {
 
     let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
 
+    // Initialize repomap service
+    let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
+    let repomap_service = RepomapService::new(aider_api_key);
+
     let app = Router::new()
         .route("/", get(home))
         .route("/onyx", get(mobile_app))
@@ -30,6 +40,9 @@ async fn main() {
         .route("/company", get(company))
         .route("/coming-soon", get(coming_soon))
         .route("/health", get(health_check))
+        .route("/repomap", get(get_repomap))
+        .route("/repomap/generate", post(generate_repomap))
+        .layer(Extension(repomap_service))
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path));
 
