@@ -1,3 +1,5 @@
+{% import "macros/blog.html" as blog %}
+
 <div class="container mx-auto px-4 max-w-4xl">
   <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4 mb-8">
     <!-- About Column -->
@@ -82,10 +84,8 @@
   <div class="border border-white p-6">
     <h2 class="text-lg font-bold mb-6">Latest Updates</h2>
 
-    {% let repomap_content = "We've released a small tool for generating a concise map of a GitHub repo, optimized for LLM chats & agents, using the Aider repo map. [Try it here](/repomap)" %}
-    {% let website_content = "We have a new website! It uses Rust, HTMX, and a new font Berkeley Mono from the US Graphics Company, from which we also drew inspiration on design." %}
+    {% call blog::blog_post("January 16, 2025", "Repo Map Tool", render_markdown("We've released a small tool for generating a concise map of a GitHub repo, optimized for LLM chats & agents, using the Aider repo map. [Try it here](/repomap)")) %}
 
-    {% include "macros/blog_post.html" with date="January 16, 2025", title="Repo Map Tool", content=render_markdown(repomap_content) %}
-    {% include "macros/blog_post.html" with date="January 14, 2025", title="New Website", content=render_markdown(website_content) %}
+    {% call blog::blog_post("January 14, 2025", "New Website", render_markdown("We have a new website! It uses Rust, HTMX, and a new font Berkeley Mono from the US Graphics Company, from which we also drew inspiration on design.")) %}
   </div>
 </div>
