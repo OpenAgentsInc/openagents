@@ -1,4 +1,8 @@
-use actix_web::{web, HttpResponse};
+use axum::{
+    extract::{Form, State},
+    http::StatusCode,
+    response::IntoResponse,
+};
 use sqlx::types::time::OffsetDateTime;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -9,7 +13,10 @@ pub struct FormData {
     name: String,
 }
 
-pub async fn subscribe(form: web::Form<FormData>, db: web::Data<PgPool>) -> HttpResponse {
+pub async fn subscribe(
+    State(db): State<PgPool>,
+    Form(form): Form<FormData>,
+) -> impl IntoResponse {
     match sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at)
@@ -20,13 +27,13 @@ pub async fn subscribe(form: web::Form<FormData>, db: web::Data<PgPool>) -> Http
         form.name,
         OffsetDateTime::now_utc()
     )
-    .execute(db.as_ref())
+    .execute(&db)
     .await
     {
-        Ok(_) => HttpResponse::Ok().finish(),
+        Ok(_) => StatusCode::OK.into_response(),
         Err(e) => {
             tracing::error!("Failed to execute query: {}", e);
-            HttpResponse::InternalServerError().finish()
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
