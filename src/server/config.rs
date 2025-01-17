@@ -1,9 +1,17 @@
 use actix_files as fs;
 use actix_web::web;
+use std::env;
 
-use super::{admin::middleware::AdminAuth, routes};
+use super::{admin::middleware::AdminAuth, routes, services::RepomapService};
 
 pub fn configure_app(cfg: &mut web::ServiceConfig) {
+    // Initialize repomap service
+    let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
+    let repomap_service = RepomapService::new(aider_api_key);
+    
+    // Add repomap service to app data
+    cfg.app_data(web::Data::new(repomap_service));
+
     // Configure admin routes with authentication
     cfg.service(
         web::scope("/admin")
