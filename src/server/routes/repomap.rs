@@ -5,11 +5,15 @@ use crate::server::services::repomap::{RepomapService, RepomapRequest};
 
 #[derive(Template)]
 #[template(path = "pages/repomap.html")]
-struct RepomapTemplate {}
+struct RepomapTemplate {
+    path: String,
+}
 
 #[get("/repomap")]
 pub async fn get_repomap() -> impl Responder {
-    let template = RepomapTemplate {};
+    let template = RepomapTemplate {
+        path: "/repomap".to_string(),
+    };
     match template.render() {
         Ok(html) => HttpResponse::Ok().content_type("text/html").body(html),
         Err(e) => HttpResponse::InternalServerError().body(format!("Template error: {}", e)),
