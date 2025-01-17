@@ -56,9 +56,10 @@ async fn test_create_demo_event() {
     // Initialize app with test database
     let app = Router::new()
         .route("/demo-event", axum::routing::post(create_demo_event))
-        .with_state(pool.clone());
+        .with_state(pool.clone())
+        .into_make_service();
 
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::try_from(app).unwrap();
 
     let response = server.post("/demo-event").await;
     assert_eq!(response.status_code(), 200);
@@ -114,7 +115,7 @@ async fn test_admin_stats() {
         .with_state(pool.clone())
         .into_make_service();
 
-    let server = TestServer::new(app).unwrap();
+    let server = TestServer::try_from(app).unwrap();
 
     let response = server.get("/stats").await;
     assert_eq!(response.status_code(), 200);
