@@ -18,7 +18,7 @@ pub struct SolverResponse {
 
 impl SolverService {
     pub fn new() -> Self {
-        let api_key = std::env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
+        let api_key = std::env::var("AIDER_API_KEY").expect("AIDER_API_KEY must be set");
         Self {
             client: Client::new(),
             repomap_service: Arc::new(RepomapService::new(api_key)),

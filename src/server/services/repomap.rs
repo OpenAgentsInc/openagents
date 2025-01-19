@@ -54,7 +54,11 @@ impl RepomapService {
         info!("Received response with status: {}", status);
         info!("Response body: {}", text);
 
-        if !status.is_success() {
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            return Err(anyhow::anyhow!(
+                "Authentication failed - please check your AIDER_API_KEY environment variable"
+            ));
+        } else if !status.is_success() {
             return Err(anyhow::anyhow!(
                 "Aider service error ({}): {}", 
                 status,
