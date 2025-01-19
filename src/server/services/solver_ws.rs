@@ -224,19 +224,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
                 Message::Text(text) => {
-                    // Handle solver commands
-                    if let Ok(cmd) = serde_json::from_str::<SolverCommand>(&text) {
-                        match cmd.action.as_str() {
-                            "start" => {
-                                if let Some(issue_url) = cmd.issue_url {
-                                    info!("Starting solver for issue: {}", issue_url);
-                                    state_clone.solver_service.solve_issue_with_ws(
-                                        issue_url,
-                                        state_clone.update_tx.clone(),
-                                    ).await;
-                                }
+                    info!("Received message: {}", text);
+                    // Parse HTMX form data
+                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(issue_url) = data.get("issue_url") {
+                            if let Some(url) = issue_url.as_str() {
+                                info!("Starting solver for issue: {}", url);
+                                state_clone.solver_service.solve_issue_with_ws(
+                                    url.to_string(),
+                                    state_clone.update_tx.clone(),
+                                ).await.ok();
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -262,10 +260,4 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
     // Remove connection from state
     let mut conns = state.connections.write().await;
     conns.remove(&conn_id);
-}
-
-#[derive(Debug, Deserialize)]
-struct SolverCommand {
-    action: String,
-    issue_url: Option<String>,
 }
