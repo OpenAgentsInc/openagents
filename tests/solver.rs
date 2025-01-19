@@ -12,10 +12,10 @@ async fn test_solver_endpoint() {
     env::set_var("AIDER_API_KEY", "test_key");
 
     // Create app with solver service
-    let solver_service = Arc::new(SolverService::new());
+    let solver_service = SolverService::new();
     let app = axum::Router::new()
         .route("/", axum::routing::post(handle_solver))
-        .with_state(solver_service);
+        .with_state(Arc::new(solver_service));
 
     // Create test request
     let request = Request::builder()
