@@ -11,7 +11,7 @@ use tokio::net::TcpListener;
 #[tokio::test]
 async fn test_inference() {
     // Start mock server
-    let app = Router::new().route("/api/v1/chat/completions", post(mock_inference_handler));
+    let app = Router::new().route("/chat/completions", post(mock_inference_handler));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     
