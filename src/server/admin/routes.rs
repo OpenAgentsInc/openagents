@@ -1,4 +1,5 @@
 use crate::nostr::event::Event;
+use crate::server::services::{solver::SolverService, solver_ws::{SolverWsState, ws_handler}};
 use crate::{configuration, database};
 use axum::{
     extract::Form,
@@ -9,6 +10,7 @@ use bitcoin_hashes::{sha256, Hash};
 use secp256k1::{rand, KeyPair, Message, Secp256k1};
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
 
 pub async fn admin_stats() -> impl IntoResponse {
     let config = match configuration::get_configuration() {
@@ -295,10 +297,16 @@ pub async fn create_demo_event() -> impl IntoResponse {
 }
 
 pub fn admin_routes() -> axum::Router {
+    // Create shared solver service and WebSocket state
+    let solver_service = Arc::new(SolverService::new());
+    let ws_state = Arc::new(SolverWsState::new(solver_service.clone()));
+
     axum::Router::new()
         .route("/", axum::routing::get(admin_dashboard))
         .route("/login", axum::routing::get(admin_login))
         .route("/login", axum::routing::post(admin_login_post))
         .route("/stats", axum::routing::get(admin_stats))
         .route("/demo-event", axum::routing::post(create_demo_event))
+        .route("/ws", axum::routing::get(ws_handler))
+        .with_state(ws_state)
 }
