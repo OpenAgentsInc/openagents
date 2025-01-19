@@ -17,7 +17,7 @@ async fn test_github_api() {
     );
     
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let _addr = listener.local_addr().unwrap();
+    let addr = listener.local_addr().unwrap();
     
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
