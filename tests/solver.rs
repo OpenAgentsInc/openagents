@@ -72,8 +72,23 @@ async fn test_solver_generates_repomap() {
         println!("AIDER_API_KEY present: {}", env::var("AIDER_API_KEY").is_ok());
         
         println!("Starting API call chain...");
-        let result = result.await;
-        println!("API call chain completed");
+        
+        // Create a timeout for just the API call
+        let api_result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            result
+        ).await;
+        
+        match api_result {
+            Ok(result) => {
+                println!("API call completed within timeout");
+                result
+            },
+            Err(_) => {
+                println!("API call timed out at 30 seconds");
+                panic!("API call timed out - likely stuck in GitHub or OpenRouter API call");
+            }
+        }
         
         match result {
             Ok(response) => {
