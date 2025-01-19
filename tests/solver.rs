@@ -8,11 +8,8 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn test_solver_endpoint() {
-    // Ensure API keys are set for test
+    // Only set mock key for aider, other keys should be in environment
     env::set_var("AIDER_API_KEY", "test_key");
-    env::set_var("OPENROUTER_API_KEY", "test_key"); 
-    env::set_var("GITHUB_TOKEN", "test_key");
-    env::set_var("OPENROUTER_API_KEY", "test_key");
     
     // Create app with solver service
     let solver_service = Arc::new(SolverService::new());
@@ -37,14 +34,11 @@ async fn test_solver_endpoint() {
 
 #[tokio::test]
 async fn test_solver_generates_repomap() {
-    // Get required tokens from environment
-    let github_token = env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set for tests");
-    let openrouter_token = env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set for tests");
-    
-    // Set up test environment with required API keys
-    env::set_var("AIDER_API_KEY", "test_key"); // Mock API key ok for aider test
-    env::set_var("OPENROUTER_API_KEY", &openrouter_token); // Use real OpenRouter token
-    env::set_var("GITHUB_TOKEN", &github_token); // Use real GitHub token
+    // Environment variables should already be set:
+    // - GITHUB_TOKEN
+    // - OPENROUTER_API_KEY
+    // - AIDER_API_KEY (can be mock for tests)
+    env::set_var("AIDER_API_KEY", "test_key"); // Only setting mock key for aider
     
     let solver_service = SolverService::new();
     
