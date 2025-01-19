@@ -69,6 +69,7 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
+        .route("/solver", get(solver))
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path.clone()))
         .with_state(repomap_service);
@@ -194,6 +195,25 @@ async fn coming_soon(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Coming Soon";
     let path = "/coming-soon";
+
+    if is_htmx {
+        let content = ContentTemplate { path }.render().unwrap();
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
+        response
+    } else {
+        let template = PageTemplate { title, path };
+        Html(template.render().unwrap()).into_response()
+    }
+}
+
+async fn solver(headers: HeaderMap) -> Response {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Issue Solver";
+    let path = "/solver";
 
     if is_htmx {
         let content = ContentTemplate { path }.render().unwrap();
