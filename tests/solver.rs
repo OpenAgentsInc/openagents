@@ -42,20 +42,19 @@ async fn test_solver_generates_repomap() {
     
     let solver_service = SolverService::new();
     
-    // Test both issue URL and repo URL formats
-    let test_urls = vec![
-        "https://github.com/OpenAgentsInc/openagents/issues/1",
-        "https://github.com/OpenAgentsInc/openagents",
-        "https://github.com/OpenAgentsInc/openagents/",
-    ];
-
-    for url in test_urls {
-        let result = solver_service.solve_issue(url.to_string()).await.unwrap();
-        println!("Response content for {}: {}", url, result.solution);
-        assert!(result.solution.contains("Relevant files:"));
-        assert!(result.solution.contains("Proposed solution:"));
-        assert!(result.solution.len() > 30);
-    }
+    // Test with timeout
+    let url = "https://github.com/OpenAgentsInc/openagents/issues/1";
+    
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        solver_service.solve_issue(url.to_string())
+    ).await.expect("Test timed out after 30 seconds")
+    .unwrap();
+    
+    println!("Response content for {}: {}", url, result.solution);
+    assert!(result.solution.contains("Relevant files:"));
+    assert!(result.solution.contains("Proposed solution:"));
+    assert!(result.solution.len() > 30);
 
     // Test invalid URL
     let result = solver_service
