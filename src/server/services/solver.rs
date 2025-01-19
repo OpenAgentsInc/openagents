@@ -60,12 +60,16 @@ impl SolverService {
 
                 match self.openrouter_service.inference(files_prompt).await {
                     Ok(files_response) => {
+                        info!("Files response: {}", files_response.output);
+                        
                         // Parse the response as a markdown list
                         let files: Vec<String> = files_response.output
                             .lines()
-                            .filter(|line| line.starts_with("- "))
-                            .map(|line| line.trim_start_matches("- ").to_string())
+                            .filter(|line| line.trim().starts_with("- "))
+                            .map(|line| line.trim().trim_start_matches("- ").trim().to_string())
                             .collect();
+
+                        info!("Parsed files: {:?}", files);
 
                         // Create solution prompt with files list
                         let solution_prompt = format!(
