@@ -60,9 +60,12 @@ impl SolverService {
 
                 match self.openrouter_service.inference(files_prompt).await {
                     Ok(files_response) => {
-                        // Parse the response as a JSON array
-                        let files: Vec<String> = serde_json::from_str(&files_response.output)
-                            .map_err(|e| anyhow::anyhow!("Failed to parse files list: {}", e))?;
+                        // Parse the response as a markdown list
+                        let files: Vec<String> = files_response.output
+                            .lines()
+                            .filter(|line| line.starts_with("- "))
+                            .map(|line| line.trim_start_matches("- ").to_string())
+                            .collect();
 
                         // Create solution prompt with files list
                         let solution_prompt = format!(
