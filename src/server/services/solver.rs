@@ -30,11 +30,20 @@ impl SolverService {
         
         // Extract repo URL from issue URL
         // Example: https://github.com/username/repo/issues/1 -> https://github.com/username/repo
-        let repo_url = issue_url
-            .split("/issues/")
-            .next()
-            .unwrap_or(&issue_url)
-            .to_string();
+        let repo_url = if issue_url.contains("/issues/") {
+            issue_url
+                .split("/issues/")
+                .next()
+                .unwrap_or(&issue_url)
+                .to_string()
+        } else if issue_url.contains("github.com") {
+            // If it's already a repo URL, use it directly
+            issue_url.trim_end_matches('/').to_string()
+        } else {
+            return Err(anyhow::anyhow!("Invalid GitHub URL format"));
+        };
+
+        info!("Extracted repo URL: {}", repo_url);
         
         // Generate repomap
         let repomap_response = self.repomap_service.generate_repomap(repo_url).await?;
