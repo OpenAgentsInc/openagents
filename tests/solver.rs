@@ -46,11 +46,16 @@ async fn test_solver_generates_repomap() {
     let url = "https://github.com/OpenAgentsInc/openagents/issues/1";
     println!("Starting solver test with URL: {}", url);
     
-    // Create a future with logging
+    // Create a future with detailed logging
     let solve_future = async {
-        println!("Starting GitHub API call...");
-        let result = solver_service.solve_issue(url.to_string()).await;
-        println!("Completed GitHub API call");
+        println!("Starting solve_issue call...");
+        let result = solver_service.solve_issue(url.to_string());
+        println!("Created solve_issue future");
+        
+        println!("Awaiting GitHub API response...");
+        let result = result.await;
+        println!("GitHub API response received: {:?}", result.is_ok());
+        
         result
     };
     
