@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub struct SolverService {
     repomap_service: Arc<RepomapService>,
     openrouter_service: Arc<OpenRouterService>,
+    github_service: Arc<GitHubService>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,10 +20,12 @@ impl SolverService {
     pub fn new() -> Self {
         let aider_api_key = std::env::var("AIDER_API_KEY").expect("AIDER_API_KEY must be set");
         let openrouter_api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
+        let github_token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set");
         
         Self {
             repomap_service: Arc::new(RepomapService::new(aider_api_key)),
             openrouter_service: Arc::new(OpenRouterService::new(openrouter_api_key)),
+            github_service: Arc::new(GitHubService::new(github_token)),
         }
     }
 
@@ -49,13 +52,19 @@ impl SolverService {
         // Generate repomap
         match self.repomap_service.generate_repomap(repo_url.clone()).await {
             Ok(repomap_response) => {
+                // Get issue details from GitHub
+                let (owner, repo, issue_number) = GitHubService::parse_issue_url(&issue_url)?;
+                let issue = self.github_service.get_issue(&owner, &repo, issue_number).await?;
+
                 // First, ask for relevant files
                 let files_prompt = format!(
-                    "Given this GitHub repository map:\n\n{}\n\nAnd this issue URL: {}\n\n\
-                    Based on the repository structure, return a list of file paths that would be most relevant to review for solving this issue.\n\
+                    "Given this GitHub repository map:\n\n{}\n\n\
+                    And this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
+                    Based on the repository structure and issue description, return a list of file paths that would be most relevant to review for solving this issue.\n\
                     Format your response as a markdown list with one file per line, starting each line with a hyphen (-).",
                     repomap_response.repo_map,
-                    issue_url
+                    issue.title,
+                    issue.body
                 );
 
                 match self.openrouter_service.inference(files_prompt).await {
@@ -75,11 +84,12 @@ impl SolverService {
                         let solution_prompt = format!(
                             "Given this GitHub repository map:\n\n{}\n\n\
                             And these relevant files:\n{}\n\n\
-                            For this issue URL: {}\n\n\
+                            For this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
                             Analyze the codebase and propose a solution to the issue.",
                             repomap_response.repo_map,
                             files.join("\n"),
-                            issue_url
+                            issue.title,
+                            issue.body
                         );
 
                         // Get solution from OpenRouter
