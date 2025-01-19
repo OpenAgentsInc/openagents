@@ -1,14 +1,12 @@
 use askama::Template;
 use axum::{
-    extract::{Form, State},
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use serde_json::json;
-use serde::{Deserialize, Serialize}; 
-use openagents::server::services::SolverService;
+use openagents::{handle_solver, server::services::SolverService};
 use std::{env, path::PathBuf, sync::Arc};
 use tokio::sync::broadcast;
 use tower_http::services::ServeDir;

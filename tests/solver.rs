@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use openagents::server::services::SolverService;
+use openagents::{handle_solver, server::services::SolverService};
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -11,7 +11,7 @@ async fn test_solver_endpoint() {
     // Create app with solver service
     let solver_service = Arc::new(SolverService::new());
     let app = axum::Router::new()
-        .route("/", axum::routing::post(openagents::handle_solver))
+        .route("/", axum::routing::post(handle_solver))
         .with_state(solver_service);
 
     // Create test request

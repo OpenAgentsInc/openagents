@@ -5,6 +5,8 @@ pub mod emailoptin;
 pub mod nostr;
 pub mod server;
 
+pub use server::services::handle_solver;
+
 use askama::Template;
 use axum::{
     extract::{Form, State},
