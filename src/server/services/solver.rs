@@ -98,9 +98,9 @@ impl SolverService {
                         // Create solution prompt with files list
                         let solution_prompt = format!(
                             "Given this GitHub repository map:\n\n{}\n\n\
-                            And these relevant files:\n{}\n\n\
-                            For this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
-                            Analyze the codebase and propose a solution to the issue.",
+                             And these relevant files:\n{}\n\n\
+                             For this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
+                             Analyze the codebase and propose a solution to the issue.",
                             repomap_response.repo_map,
                             files.join("\n"),
                             issue.title,
@@ -113,15 +113,15 @@ impl SolverService {
                                 Ok(SolverResponse {
                                     solution: format!(
                                         "<div class='space-y-4'>\
-                                        <div class='text-sm text-gray-400'>Relevant files:</div>\
-                                        <div class='max-w-4xl overflow-x-auto'>\
-                                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
-                                        </div>\
-                                        <div class='text-sm text-gray-400'>Proposed solution:</div>\
-                                        <div class='max-w-4xl overflow-x-auto'>\
-                                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
-                                        </div>\
-                                        </div>",
+                                         <div class='text-sm text-gray-400'>Relevant files:</div>\
+                                         <div class='max-w-4xl overflow-x-auto'>\
+                                         <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
+                                         </div>\
+                                         <div class='text-sm text-gray-400'>Proposed solution:</div>\
+                                         <div class='max-w-4xl overflow-x-auto'>\
+                                         <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
+                                         </div>\
+                                         </div>",
                                         html_escape::encode_text(&files.join("\n")),
                                         html_escape::encode_text(&inference_response.output)
                                     ),
