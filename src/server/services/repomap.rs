@@ -54,7 +54,16 @@ impl RepomapService {
         info!("Received response with status: {}", status);
         info!("Response body: {}", text);
 
-        let repomap: RepomapResponse = serde_json::from_str(&text)?;
-        Ok(repomap)
+        if !status.is_success() {
+            return Err(anyhow::anyhow!(
+                "Aider service error ({}): {}", 
+                status,
+                text
+            ));
+        }
+
+        serde_json::from_str(&text).map_err(|e| {
+            anyhow::anyhow!("Failed to parse repomap response: {}", e)
+        })
     }
 }

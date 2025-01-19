@@ -46,16 +46,27 @@ impl SolverService {
         info!("Extracted repo URL: {}", repo_url);
         
         // Generate repomap
-        let repomap_response = self.repomap_service.generate_repomap(repo_url).await?;
-        
-        // Take first 200 characters of the repomap
-        let preview = repomap_response.repo_map
-            .chars()
-            .take(200)
-            .collect::<String>();
-        
-        Ok(SolverResponse {
-            solution: format!("Repository Map Preview:\n\n{}", preview),
-        })
+        match self.repomap_service.generate_repomap(repo_url).await {
+            Ok(repomap_response) => {
+                // Take first 200 characters of the repomap
+                let preview = repomap_response.repo_map
+                    .chars()
+                    .take(200)
+                    .collect::<String>();
+                
+                Ok(SolverResponse {
+                    solution: format!("Repository Map Preview:\n\n{}", preview),
+                })
+            }
+            Err(e) => {
+                // Return a more user-friendly error message
+                Ok(SolverResponse {
+                    solution: format!(
+                        "Unable to analyze repository at this time. Error: {}", 
+                        e
+                    ),
+                })
+            }
+        }
     }
 }
