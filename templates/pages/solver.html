@@ -107,7 +107,6 @@
     e.preventDefault();
     const formData = new FormData(form);
     const data = {
-      action: "start",
       issue_url: formData.get("issue_url")
     };
     // Send via WebSocket
