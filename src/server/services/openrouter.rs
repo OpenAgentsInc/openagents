@@ -24,6 +24,14 @@ impl OpenRouterService {
         }
     }
 
+    pub fn with_base_url(api_key: String, base_url: String) -> Self {
+        Self {
+            client: Client::new(),
+            api_key,
+            base_url,
+        }
+    }
+
     pub async fn inference(&self, prompt: String) -> Result<InferenceResponse> {
         info!("Making inference request to OpenRouter");
 
