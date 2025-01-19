@@ -37,8 +37,10 @@ async fn test_solver_endpoint() {
 
 #[tokio::test]
 async fn test_solver_generates_repomap() {
-    // Set up test environment
+    // Set up test environment with all required API keys
     env::set_var("AIDER_API_KEY", "test_key");
+    env::set_var("OPENROUTER_API_KEY", "test_key");
+    env::set_var("GITHUB_TOKEN", "test_key");
     
     let solver_service = SolverService::new();
     
