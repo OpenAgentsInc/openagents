@@ -55,14 +55,14 @@ impl SolverService {
                     .collect::<String>();
                 
                 Ok(SolverResponse {
-                    solution: format!("Repository Map Preview:\n\n{}", preview),
+                    solution: format!("<pre><code>{}</code></pre>", preview),
                 })
             }
             Err(e) => {
                 // Return a more user-friendly error message
                 Ok(SolverResponse {
                     solution: format!(
-                        "Unable to analyze repository at this time. Error: {}", 
+                        "<div class='text-red-500'>Error: {}</div>", 
                         e
                     ),
                 })
