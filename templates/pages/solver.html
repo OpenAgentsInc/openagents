@@ -45,3 +45,21 @@
     <span class="ml-2 text-gray-300">Solving...</span>
   </div>
 </form>
+
+<script>
+  const submitButton = document.getElementById("submit-button");
+
+  document.body.addEventListener("htmx:beforeRequest", function (evt) {
+    if (evt.detail.target.id === "solver-result") {
+      submitButton.disabled = true;
+      submitButton.innerText = "Solving...";
+    }
+  });
+
+  document.body.addEventListener("htmx:afterRequest", function (evt) {
+    if (evt.detail.target.id === "solver-result") {
+      submitButton.disabled = false;
+      submitButton.innerText = "Submit";
+    }
+  });
+</script>
