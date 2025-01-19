@@ -7,6 +7,7 @@ use tracing::info;
 pub struct GitHubService {
     client: Client,
     api_key: String,
+    base_url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,6 +23,15 @@ impl GitHubService {
         Self {
             client: Client::new(),
             api_key,
+            base_url: "https://api.github.com".to_string(),
+        }
+    }
+
+    pub fn new_with_base_url(api_key: String, base_url: String) -> Self {
+        Self {
+            client: Client::new(),
+            api_key,
+            base_url,
         }
     }
 
@@ -29,8 +39,8 @@ impl GitHubService {
         info!("Fetching GitHub issue: {}/{}/{}", owner, repo, issue_number);
 
         let url = format!(
-            "https://api.github.com/repos/{}/{}/issues/{}",
-            owner, repo, issue_number
+            "{}/repos/{}/{}/issues/{}",
+            self.base_url, owner, repo, issue_number
         );
 
         let response = self
