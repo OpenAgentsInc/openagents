@@ -80,26 +80,24 @@ async fn test_solver_generates_repomap() {
         ).await;
         
         match api_result {
-            Ok(result) => {
+            Ok(future_result) => {
                 println!("API call completed within timeout");
-                result
+                match future_result.await {
+                    Ok(response) => {
+                        println!("Solver response received successfully");
+                        println!("Solution length: {}", response.solution.len());
+                        Ok(response)
+                    }
+                    Err(e) => {
+                        println!("Solver error: {:?}", e);
+                        println!("Error type: {}", std::any::type_name_of_val(&e));
+                        Err(e)
+                    }
+                }
             },
             Err(_) => {
                 println!("API call timed out at 30 seconds");
                 panic!("API call timed out - likely stuck in GitHub or OpenRouter API call");
-            }
-        }
-        
-        match result {
-            Ok(response) => {
-                println!("Solver response received successfully");
-                println!("Solution length: {}", response.solution.len());
-                Ok(response)
-            }
-            Err(e) => {
-                println!("Solver error: {:?}", e);
-                println!("Error type: {}", std::any::type_name_of_val(&e));
-                Err(e)
             }
         }
     };
