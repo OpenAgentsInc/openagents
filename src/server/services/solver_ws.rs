@@ -26,7 +26,7 @@ pub struct SolverWsState {
     update_tx: broadcast::Sender<SolverUpdate>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum SolverUpdate {
     Progress {
@@ -43,7 +43,7 @@ pub enum SolverUpdate {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SolverStage {
     Init,
     Repomap,
@@ -123,7 +123,7 @@ impl SolverWsState {
         // Send HTML update to all connected clients
         let conns = self.connections.read().await;
         for tx in conns.values() {
-            let _ = tx.send(Message::Text(html.clone())).await;
+            let _ = tx.send(Message::Text(html.clone().into())).await;
         }
     }
 }
@@ -203,7 +203,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                             )
                         }
                     };
-                    if sender.send(Message::Text(html)).await.is_err() {
+                    if sender.send(Message::Text(html.into())).await.is_err() {
                         break;
                     }
                 }
