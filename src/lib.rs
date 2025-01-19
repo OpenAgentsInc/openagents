@@ -71,7 +71,7 @@ pub async fn repomap(headers: HeaderMap) -> Response {
     }
 }
 
-pub async fn solver(headers: HeaderMap) -> Response {
+pub async fn solver_page(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Issue Solver"; 
     let path = "/solver";

@@ -1,5 +1,6 @@
 use askama::Template;
 use axum::{
+    extract::{Form, State},
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -16,7 +17,6 @@ use tracing::info;
 use openagents::{
     configuration::get_configuration,
     generate_repomap,
-    solver,
     nostr::{
         axum_relay::{ws_handler, RelayState},
         db::Database,
@@ -73,7 +73,7 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
-        .route("/solver", get(solver))
+        .route("/solver", get(solver_page))
         .route("/solver", post(handle_solver))
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path.clone()))
@@ -233,21 +233,3 @@ async fn coming_soon(headers: HeaderMap) -> Response {
     }
 }
 
-async fn solver(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Issue Solver";
-    let path = "/solver";
-
-    if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = PageTemplate { title, path };
-        Html(template.render().unwrap()).into_response()
-    }
-}
