@@ -56,6 +56,7 @@ async fn test_solver_generates_repomap() {
 
     for url in test_urls {
         let result = solver_service.solve_issue(url.to_string()).await.unwrap();
+        println!("Response content for {}: {}", url, result.solution);
         assert!(result.solution.contains("Relevant files:"));
         assert!(result.solution.contains("Proposed solution:"));
         assert!(result.solution.len() > 30);
