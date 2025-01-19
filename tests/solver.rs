@@ -62,6 +62,16 @@ async fn test_solver_generates_repomap() {
         println!("Created solve_issue future");
         
         println!("Awaiting solver response...");
+        
+        // First try to get the GitHub issue directly to verify GitHub token works
+        println!("Testing GitHub API access...");
+        let github_service = &solver_service.github_service;
+        match github_service.get_issue("OpenAgentsInc", "openagents", 1).await {
+            Ok(issue) => println!("GitHub API test successful - got issue title: {}", issue.title),
+            Err(e) => println!("GitHub API test failed: {:?}", e),
+        }
+        
+        // Now try the full solver call
         match result.await {
             Ok(response) => {
                 println!("Solver response received successfully");
