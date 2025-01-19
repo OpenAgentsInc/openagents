@@ -53,7 +53,7 @@ async fn mock_github_handler() -> (StatusCode, Json<serde_json::Value>) {
         StatusCode::OK,
         Json(json!({
             "number": 1,
-            "title": "Test Issue <script>alert(&#x27;xss&#x27;)</script>",
+            "title": "Test Issue <script>alert('xss')</script>",
             "body": "Test description with <b>HTML</b> that needs escaping",
             "state": "open"
         }))
