@@ -10,6 +10,8 @@ use tower::ServiceExt;
 async fn test_solver_endpoint() {
     // Ensure API keys are set for test
     env::set_var("AIDER_API_KEY", "test_key");
+    env::set_var("OPENROUTER_API_KEY", "test_key"); 
+    env::set_var("GITHUB_TOKEN", "test_key");
     env::set_var("OPENROUTER_API_KEY", "test_key");
     
     // Create app with solver service
@@ -49,7 +51,8 @@ async fn test_solver_generates_repomap() {
 
     for url in test_urls {
         let result = solver_service.solve_issue(url.to_string()).await.unwrap();
-        assert!(result.solution.contains("Repository Map Preview:"));
+        assert!(result.solution.contains("Relevant files:"));
+        assert!(result.solution.contains("Proposed solution:"));
         assert!(result.solution.len() > 30);
     }
 
