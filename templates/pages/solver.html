@@ -5,58 +5,60 @@
   </p>
 </div>
 
-<form
-  ws-send
-  class="space-y-4"
->
-  <div>
-    <label for="issue_url" class="block text-sm font-medium">
-      GitHub Issue URL
-    </label>
-    <input
-      type="text"
-      name="issue_url"
-      id="issue_url"
-      value="https://github.com/OpenAgentsInc/openagents/issues/570"
-      placeholder="https://github.com/username/repo/issues/1"
-      class="mt-1 mb-2 block w-[600px] border border-white/50 bg-black px-3 py-2 text-white placeholder-white/50 focus:border-white focus:outline-none focus:ring-1 focus:ring-white text-sm"
-      required
-    />
-  </div>
-
-  <button
-    type="submit"
-    class="inline-flex items-center justify-center border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-    id="submit-button"
+<div hx-ext="ws" ws-connect="/ws">
+  <form
+    ws-send
+    class="space-y-4"
   >
-    Submit
-  </button>
+    <div>
+      <label for="issue_url" class="block text-sm font-medium">
+        GitHub Issue URL
+      </label>
+      <input
+        type="text"
+        name="issue_url"
+        id="issue_url"
+        value="https://github.com/OpenAgentsInc/openagents/issues/570"
+        placeholder="https://github.com/username/repo/issues/1"
+        class="mt-1 mb-2 block w-[600px] border border-white/50 bg-black px-3 py-2 text-white placeholder-white/50 focus:border-white focus:outline-none focus:ring-1 focus:ring-white text-sm"
+        required
+      />
+    </div>
 
-  <div
-    id="loading"
-    class="htmx-indicator flex items-center justify-center py-4"
-    style="display: none"
-  >
+    <button
+      type="submit"
+      class="inline-flex items-center justify-center border border-white bg-black px-4 py-2 text-sm font-medium text-white hover:bg-white hover:text-black focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+      id="submit-button"
+    >
+      Submit
+    </button>
+
     <div
-      class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"
-    ></div>
-    <span class="ml-2 text-gray-300">Solving...</span>
-  </div>
+      id="loading"
+      class="htmx-indicator flex items-center justify-center py-4"
+      style="display: none"
+    >
+      <div
+        class="animate-spin rounded-full h-8 w-8 border-b-2 border-white"
+      ></div>
+      <span class="ml-2 text-gray-300">Solving...</span>
+    </div>
 
-  <div class="space-y-4">
-    <div id="solver-progress">
-      <div class="progress-bar">
-        <div style="width: 0%"></div>
+    <div class="space-y-4">
+      <div id="solver-progress">
+        <div class="progress-bar">
+          <div style="width: 0%"></div>
+        </div>
+      </div>
+      <div id="solver-status" class="text-sm text-gray-400">
+        Ready
+      </div>
+      <div id="solver-result" class="mt-4 p-4 bg-black/50 border border-white/10 rounded">
+        No active solution
       </div>
     </div>
-    <div id="solver-status" class="text-sm text-gray-400">
-      Ready
-    </div>
-    <div id="solver-result" class="mt-4 p-4 bg-black/50 border border-white/10 rounded">
-      No active solution
-    </div>
-  </div>
-</form>
+  </form>
+</div>
 
 <style>
 .progress-bar {
@@ -73,6 +75,30 @@
 </style>
 
 <script>
+  document.addEventListener('htmx:wsConnecting', function(evt) {
+    console.log('Connecting to WebSocket...');
+  });
+
+  document.addEventListener('htmx:wsOpen', function(evt) {
+    console.log('Connected to WebSocket');
+  });
+
+  document.addEventListener('htmx:wsClose', function(evt) {
+    console.log('WebSocket connection closed');
+  });
+
+  document.addEventListener('htmx:wsError', function(evt) {
+    console.error('WebSocket error:', evt.detail.error);
+  });
+
+  document.addEventListener('htmx:wsBeforeMessage', function(evt) {
+    console.log('Sending message:', evt.detail.message);
+  });
+
+  document.addEventListener('htmx:wsAfterMessage', function(evt) {
+    console.log('Received message:', evt.detail.message);
+  });
+
   const submitButton = document.getElementById("submit-button");
   const form = document.querySelector("form");
 
