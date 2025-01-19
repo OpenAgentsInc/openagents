@@ -1117,6 +1117,14 @@ video {
   color: rgb(255 255 255 / 0.5);
 }
 
+.opacity-50 {
+  opacity: 0.5;
+}
+
+.opacity-75 {
+  opacity: 0.75;
+}
+
 .shadow-nav {
   --tw-shadow: 2px 2px 0 0 rgba(255, 255, 255, 0.5);
   --tw-shadow-colored: 2px 2px 0 0 var(--tw-shadow-color);

@@ -1,6 +1,6 @@
 <div class="mb-6">
   <h1>Issue Solver</h1>
-  <p>Enter a GitHub issue and we'll try to solve it for you</p>
+  <p class="text-xs opacity-75">Enter a GitHub issue and we'll try to solve it for you</p>
 </div>
 
 <form
@@ -9,6 +9,8 @@
   hx-indicator="#loading"
   class="space-y-4"
 >
+  <div id="solver-result" />
+
   <div>
     <label for="issue_url" class="block text-sm font-medium">
       GitHub Issue URL
@@ -17,8 +19,9 @@
       type="text"
       name="issue_url"
       id="issue_url"
+      value="https://github.com/OpenAgentsInc/openagents/issues/570"
       placeholder="https://github.com/username/repo/issues/1"
-      class="mt-1 block w-[600px] border border-white/50 bg-black px-3 py-2 text-white placeholder-white/50 focus:border-white focus:outline-none focus:ring-1 focus:ring-white text-sm"
+      class="mt-1 mb-2 block w-[600px] border border-white/50 bg-black px-3 py-2 text-white placeholder-white/50 focus:border-white focus:outline-none focus:ring-1 focus:ring-white text-sm"
       required
     />
   </div>
