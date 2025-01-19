@@ -34,8 +34,9 @@ async fn test_github_api() {
     // Test invalid URL
     assert!(GitHubService::parse_issue_url("https://github.com/invalid").is_err());
 
-    // Create service with mock token
-    let service = GitHubService::new("test_token".to_string());
+    // Create service with real token from env
+    let github_token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set");
+    let service = GitHubService::new(github_token);
     
     // Test getting issue
     let issue = service.get_issue("test-owner", "test-repo", 1).await.unwrap();
