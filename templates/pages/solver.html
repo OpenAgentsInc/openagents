@@ -6,13 +6,9 @@
 </div>
 
 <form
-  hx-post="/solver"
-  hx-target="#solver-result"
-  hx-indicator="#loading"
+  ws-send
   class="space-y-4"
 >
-  <div id="solver-result" />
-
   <div>
     <label for="issue_url" class="block text-sm font-medium">
       GitHub Issue URL
@@ -46,22 +42,69 @@
     ></div>
     <span class="ml-2 text-gray-300">Solving...</span>
   </div>
+
+  <div class="space-y-4">
+    <div id="solver-progress">
+      <div class="progress-bar">
+        <div style="width: 0%"></div>
+      </div>
+    </div>
+    <div id="solver-status" class="text-sm text-gray-400">
+      Ready
+    </div>
+    <div id="solver-result" class="mt-4 p-4 bg-black/50 border border-white/10 rounded">
+      No active solution
+    </div>
+  </div>
 </form>
+
+<style>
+.progress-bar {
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.progress-bar > div {
+  height: 100%;
+  background: #4CAF50;
+  transition: width 0.3s ease;
+}
+</style>
 
 <script>
   const submitButton = document.getElementById("submit-button");
+  const form = document.querySelector("form");
 
-  document.body.addEventListener("htmx:beforeRequest", function (evt) {
-    if (evt.detail.target.id === "solver-result") {
-      submitButton.disabled = true;
-      submitButton.innerText = "Solving...";
-    }
+  // Convert form submission to WebSocket message
+  form.addEventListener("submit", function(e) {
+    e.preventDefault();
+    const formData = new FormData(form);
+    const data = {
+      action: "start",
+      issue_url: formData.get("issue_url")
+    };
+    // Send via WebSocket
+    const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
+      detail: { messageBody: JSON.stringify(data) }
+    });
+    document.body.dispatchEvent(wsEvent);
+
+    // Update UI
+    submitButton.disabled = true;
+    submitButton.innerText = "Solving...";
+    document.getElementById("loading").style.display = "flex";
   });
 
-  document.body.addEventListener("htmx:afterRequest", function (evt) {
-    if (evt.detail.target.id === "solver-result") {
+  // Handle WebSocket events
+  document.body.addEventListener("htmx:wsAfterMessage", function(evt) {
+    const msg = evt.detail.message;
+    
+    // Check if it's a completion message
+    if (msg.includes('"type":"complete"')) {
       submitButton.disabled = false;
       submitButton.innerText = "Submit";
+      document.getElementById("loading").style.display = "none";
     }
   });
 </script>
