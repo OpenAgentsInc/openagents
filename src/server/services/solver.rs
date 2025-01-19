@@ -11,6 +11,12 @@ pub struct SolverService {
     github_service: Arc<GitHubService>,
 }
 
+impl Default for SolverService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SolverResponse {
     pub solution: String,
