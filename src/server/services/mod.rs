@@ -7,9 +7,11 @@ use std::sync::Arc;
 
 pub mod repomap;
 pub mod solver;
+pub mod openrouter;
 
 pub use repomap::RepomapService;
 pub use solver::SolverService;
+pub use openrouter::OpenRouterService;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SolverRequest {

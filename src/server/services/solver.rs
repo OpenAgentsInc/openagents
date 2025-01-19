@@ -2,13 +2,14 @@ use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use crate::server::services::RepomapService;
+use crate::server::services::{RepomapService, OpenRouterService};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct SolverService {
     client: Client,
     repomap_service: Arc<RepomapService>,
+    openrouter_service: Arc<OpenRouterService>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,10 +19,13 @@ pub struct SolverResponse {
 
 impl SolverService {
     pub fn new() -> Self {
-        let api_key = std::env::var("AIDER_API_KEY").expect("AIDER_API_KEY must be set");
+        let aider_api_key = std::env::var("AIDER_API_KEY").expect("AIDER_API_KEY must be set");
+        let openrouter_api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
+        
         Self {
             client: Client::new(),
-            repomap_service: Arc::new(RepomapService::new(api_key)),
+            repomap_service: Arc::new(RepomapService::new(aider_api_key)),
+            openrouter_service: Arc::new(OpenRouterService::new(openrouter_api_key)),
         }
     }
 
@@ -46,17 +50,31 @@ impl SolverService {
         info!("Extracted repo URL: {}", repo_url);
         
         // Generate repomap
-        match self.repomap_service.generate_repomap(repo_url).await {
+        match self.repomap_service.generate_repomap(repo_url.clone()).await {
             Ok(repomap_response) => {
-                // Take first 200 characters of the repomap
-                let preview = repomap_response.repo_map
-                    .chars()
-                    .take(200)
-                    .collect::<String>();
-                
-                Ok(SolverResponse {
-                    solution: format!("<pre><code>{}</code></pre>", preview),
-                })
+                // Create prompt for OpenRouter
+                let prompt = format!(
+                    "Given this GitHub repository map:\n\n{}\n\nAnd this issue URL: {}\n\nAnalyze the codebase and propose a solution to the issue.",
+                    repomap_response.repo_map,
+                    issue_url
+                );
+
+                // Get solution from OpenRouter
+                match self.openrouter_service.inference(prompt).await {
+                    Ok(inference_response) => {
+                        Ok(SolverResponse {
+                            solution: format!("<pre><code>{}</code></pre>", inference_response.output),
+                        })
+                    }
+                    Err(e) => {
+                        Ok(SolverResponse {
+                            solution: format!(
+                                "<div class='text-red-500'>Error getting solution: {}</div>",
+                                e
+                            ),
+                        })
+                    }
+                }
             }
             Err(e) => {
                 // Return a more user-friendly error message

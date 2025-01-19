@@ -8,8 +8,9 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn test_solver_endpoint() {
-    // Ensure AIDER_API_KEY is set for test
+    // Ensure API keys are set for test
     env::set_var("AIDER_API_KEY", "test_key");
+    env::set_var("OPENROUTER_API_KEY", "test_key");
     
     // Create app with solver service
     let solver_service = Arc::new(SolverService::new());
