@@ -31,3 +31,22 @@ async fn test_solver_endpoint() {
     // Assert status
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn test_solver_generates_repomap() {
+    // Set up test environment
+    env::set_var("AIDER_API_KEY", "test_key");
+    
+    // Create solver service directly
+    let solver_service = SolverService::new();
+    
+    // Test issue URL
+    let issue_url = "https://github.com/OpenAgentsInc/openagents/issues/1".to_string();
+    
+    // Call solve_issue
+    let result = solver_service.solve_issue(issue_url).await.unwrap();
+    
+    // Verify response contains repomap preview
+    assert!(result.solution.contains("Repository Map Preview:"));
+    assert!(result.solution.len() > 30); // Should have some content
+}
