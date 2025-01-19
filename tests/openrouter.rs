@@ -6,7 +6,6 @@ use axum::{
 };
 use openagents::server::services::OpenRouterService;
 use serde_json::json;
-use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
 #[tokio::test]
@@ -47,7 +46,8 @@ async fn mock_inference_handler(
     assert!(payload["messages"].as_array().unwrap().len() > 0);
 
     // Check auth header for error case
-    let auth_header = axum::http::HeaderMap::new()
+    let headers = axum::http::HeaderMap::new();
+    let auth_header = headers
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");

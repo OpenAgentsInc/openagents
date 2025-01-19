@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct SolverService {
-    client: Client,
     repomap_service: Arc<RepomapService>,
     openrouter_service: Arc<OpenRouterService>,
 }
@@ -23,7 +22,6 @@ impl SolverService {
         let openrouter_api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
         
         Self {
-            client: Client::new(),
             repomap_service: Arc::new(RepomapService::new(aider_api_key)),
             openrouter_service: Arc::new(OpenRouterService::new(openrouter_api_key)),
         }
