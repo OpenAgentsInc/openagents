@@ -6,7 +6,8 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize}; 
+use openagents::server::services::SolverService;
 use std::{env, path::PathBuf, sync::Arc};
 use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
@@ -15,6 +16,7 @@ use tracing::info;
 use openagents::{
     configuration::get_configuration,
     generate_repomap,
+    solver,
     nostr::{
         axum_relay::{ws_handler, RelayState},
         db::Database,
