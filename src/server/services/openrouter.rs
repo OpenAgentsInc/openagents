@@ -20,7 +20,7 @@ impl OpenRouterService {
         Self {
             client: Client::new(),
             api_key,
-            base_url: "https://openrouter.ai".to_string(),
+            base_url: "https://openrouter.ai/api/v1".to_string(),
         }
     }
 
