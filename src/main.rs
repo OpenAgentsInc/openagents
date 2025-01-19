@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
+use serde::{Deserialize, Serialize};
 use std::{env, path::PathBuf, sync::Arc};
 use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
@@ -13,7 +14,6 @@ use tracing::info;
 
 use openagents::{
     configuration::get_configuration,
-    start_solver,
     generate_repomap,
     nostr::{
         axum_relay::{ws_handler, RelayState},
@@ -41,7 +41,8 @@ async fn main() {
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
-    let repomap_service = Arc::new(RepomapService::new(aider_api_key));
+    let repomap_service = Arc::new(RepomapService::new(aider_api_key.clone()));
+    let solver_service = Arc::new(SolverService::new());
 
     // Initialize Nostr components
     let (event_tx, _) = broadcast::channel(1024);
@@ -71,7 +72,7 @@ async fn main() {
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
         .route("/solver", get(solver))
-        .route("/solver", post(start_solver))
+        .route("/solver", post(handle_solver))
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path.clone()))
         .with_state(repomap_service);
@@ -92,6 +93,24 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SolverRequest {
+    issue_url: String,
+}
+
+async fn handle_solver(
+    State(service): State<Arc<SolverService>>,
+    Form(req): Form<SolverRequest>,
+) -> impl IntoResponse {
+    match service.solve_issue(req.issue_url).await {
+        Ok(response) => Html(response.solution).into_response(),
+        Err(e) => {
+            eprintln!("Error solving issue: {}", e);
+            Html(format!("Error: {}", e)).into_response()
+        }
+    }
 }
 
 async fn health_check() -> Json<serde_json::Value> {
