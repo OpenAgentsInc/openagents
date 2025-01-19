@@ -1,7 +1,11 @@
-use crate::server::services::{GitHubService, OpenRouterService, RepomapService};
+use crate::server::services::{
+    solver_ws::{SolverStage, SolverUpdate},
+    GitHubService, OpenRouterService, RepomapService,
+};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use tracing::info;
 
 #[derive(Debug, Clone)]
@@ -36,8 +40,21 @@ impl SolverService {
         }
     }
 
-    pub async fn solve_issue(&self, issue_url: String) -> Result<SolverResponse> {
+    pub async fn solve_issue_with_ws(
+        &self,
+        issue_url: String,
+        update_tx: broadcast::Sender<SolverUpdate>,
+    ) -> Result<SolverResponse> {
         info!("Processing issue: {}", issue_url);
+
+        // Send initial progress update
+        let _ = update_tx.send(SolverUpdate::Progress {
+            stage: SolverStage::Init,
+            message: "Starting solver analysis".into(),
+            data: Some(serde_json::json!({
+                "issue_url": issue_url
+            })),
+        });
 
         // Extract repo URL from issue URL
         // Example: https://github.com/username/repo/issues/1 -> https://github.com/username/repo
@@ -51,10 +68,24 @@ impl SolverService {
             // If it's already a repo URL, use it directly
             issue_url.trim_end_matches('/').to_string()
         } else {
-            return Err(anyhow::anyhow!("Invalid GitHub URL format"));
+            let err = anyhow::anyhow!("Invalid GitHub URL format");
+            let _ = update_tx.send(SolverUpdate::Error {
+                message: "Invalid GitHub URL format".into(),
+                details: None,
+            });
+            return Err(err);
         };
 
         info!("Extracted repo URL: {}", repo_url);
+
+        // Send repomap progress update
+        let _ = update_tx.send(SolverUpdate::Progress {
+            stage: SolverStage::Repomap,
+            message: "Generating repository map".into(),
+            data: Some(serde_json::json!({
+                "repo_url": repo_url
+            })),
+        });
 
         // Generate repomap
         match self
@@ -69,6 +100,15 @@ impl SolverService {
                     .github_service
                     .get_issue(&owner, &repo, issue_number)
                     .await?;
+
+                // Send analysis progress update
+                let _ = update_tx.send(SolverUpdate::Progress {
+                    stage: SolverStage::Analysis,
+                    message: "Analyzing repository structure".into(),
+                    data: Some(serde_json::json!({
+                        "repomap": repomap_response.repo_map
+                    })),
+                });
 
                 // First, ask for relevant files
                 let files_prompt = format!(
@@ -95,6 +135,15 @@ impl SolverService {
 
                         info!("Parsed files: {:?}", files);
 
+                        // Send solution progress update
+                        let _ = update_tx.send(SolverUpdate::Progress {
+                            stage: SolverStage::Solution,
+                            message: "Generating solution".into(),
+                            data: Some(serde_json::json!({
+                                "files": files
+                            })),
+                        });
+
                         // Create solution prompt with files list
                         let solution_prompt = format!(
                             "Given this GitHub repository map:\n\n{}\n\n\
@@ -110,24 +159,47 @@ impl SolverService {
                         // Get solution from OpenRouter
                         match self.openrouter_service.inference(solution_prompt).await {
                             Ok(inference_response) => {
-                                Ok(SolverResponse {
-                                    solution: format!(
-                                        "<div class='space-y-4'>\
-                                         <div class='text-sm text-gray-400'>Relevant files:</div>\
-                                         <div class='max-w-4xl overflow-x-auto'>\
-                                         <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
-                                         </div>\
-                                         <div class='text-sm text-gray-400'>Proposed solution:</div>\
-                                         <div class='max-w-4xl overflow-x-auto'>\
-                                         <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
-                                         </div>\
-                                         </div>",
-                                        html_escape::encode_text(&files.join("\n")),
-                                        html_escape::encode_text(&inference_response.output)
-                                    ),
-                                })
+                                // Send PR progress update
+                                let _ = update_tx.send(SolverUpdate::Progress {
+                                    stage: SolverStage::PR,
+                                    message: "Preparing solution".into(),
+                                    data: Some(serde_json::json!({
+                                        "solution": inference_response.output
+                                    })),
+                                });
+
+                                let solution = format!(
+                                    "<div class='space-y-4'>\
+                                     <div class='text-sm text-gray-400'>Relevant files:</div>\
+                                     <div class='max-w-4xl overflow-x-auto'>\
+                                     <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
+                                     </div>\
+                                     <div class='text-sm text-gray-400'>Proposed solution:</div>\
+                                     <div class='max-w-4xl overflow-x-auto'>\
+                                     <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
+                                     </div>\
+                                     </div>",
+                                    html_escape::encode_text(&files.join("\n")),
+                                    html_escape::encode_text(&inference_response.output)
+                                );
+
+                                // Send complete update
+                                let _ = update_tx.send(SolverUpdate::Complete {
+                                    result: serde_json::json!({
+                                        "solution": solution,
+                                        "files": files,
+                                        "analysis": inference_response.output
+                                    }),
+                                });
+
+                                Ok(SolverResponse { solution })
                             }
                             Err(e) => {
+                                let _ = update_tx.send(SolverUpdate::Error {
+                                    message: "Error getting solution".into(),
+                                    details: Some(e.to_string()),
+                                });
+
                                 Ok(SolverResponse {
                                     solution: format!(
                                         "<div class='text-red-500'>Error getting solution: {}</div>",
@@ -137,20 +209,38 @@ impl SolverService {
                             }
                         }
                     }
-                    Err(e) => Ok(SolverResponse {
-                        solution: format!(
-                            "<div class='text-red-500'>Error identifying relevant files: {}</div>",
-                            e
-                        ),
-                    }),
+                    Err(e) => {
+                        let _ = update_tx.send(SolverUpdate::Error {
+                            message: "Error identifying relevant files".into(),
+                            details: Some(e.to_string()),
+                        });
+
+                        Ok(SolverResponse {
+                            solution: format!(
+                                "<div class='text-red-500'>Error identifying relevant files: {}</div>",
+                                e
+                            ),
+                        })
+                    }
                 }
             }
             Err(e) => {
+                let _ = update_tx.send(SolverUpdate::Error {
+                    message: "Error generating repository map".into(),
+                    details: Some(e.to_string()),
+                });
+
                 // Return a more user-friendly error message
                 Ok(SolverResponse {
                     solution: format!("<div class='text-red-500'>Error: {}</div>", e),
                 })
             }
         }
+    }
+
+    pub async fn solve_issue(&self, issue_url: String) -> Result<SolverResponse> {
+        // Create a temporary broadcast channel for this request
+        let (tx, _) = broadcast::channel(100);
+        self.solve_issue_with_ws(issue_url, tx).await
     }
 }
