@@ -42,12 +42,19 @@ async fn test_solver_generates_repomap() {
     
     let solver_service = SolverService::new();
     
-    // Test with timeout
+    // Test with timeout and detailed logging
     let url = "https://github.com/OpenAgentsInc/openagents/issues/1";
     println!("Starting solver test with URL: {}", url);
     
-    let solve_future = solver_service.solve_issue(url.to_string());
-    println!("Created solve_issue future");
+    // Create a future with logging
+    let solve_future = async {
+        println!("Starting GitHub API call...");
+        let result = solver_service.solve_issue(url.to_string()).await;
+        println!("Completed GitHub API call");
+        result
+    };
+    
+    println!("Created solve_issue future with logging");
     
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(30),
