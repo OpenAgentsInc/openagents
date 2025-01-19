@@ -23,6 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
+      AIDER_API_KEY: ${{ secrets.AIDER_API_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     services:
       postgres:
         image: postgres:14
@@ -152,6 +155,9 @@ jobs:
     env:
       DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
       APP_ENVIRONMENT: "production"
+      AIDER_API_KEY: ${{ secrets.AIDER_API_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     services:
       postgres:
         image: postgres:14

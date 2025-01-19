@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use openagents::{handle_solver, server::services::SolverService};
 use serde_json::json;
 use std::{env, path::PathBuf, sync::Arc};
 use tokio::sync::broadcast;
@@ -20,7 +21,7 @@ use openagents::{
     },
     repomap,
     server::services::RepomapService,
-    ContentTemplate, PageTemplate,
+    solver_page, ContentTemplate, PageTemplate,
 };
 
 #[tokio::main]
@@ -40,7 +41,8 @@ async fn main() {
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
-    let repomap_service = Arc::new(RepomapService::new(aider_api_key));
+    let repomap_service = Arc::new(RepomapService::new(aider_api_key.clone()));
+    let solver_service = Arc::new(SolverService::new());
 
     // Initialize Nostr components
     let (event_tx, _) = broadcast::channel(1024);
@@ -59,6 +61,11 @@ async fn main() {
         .route("/ws", get(ws_handler))
         .with_state(relay_state);
 
+    let solver_router = Router::new()
+        .route("/", get(solver_page))
+        .route("/", post(handle_solver))
+        .with_state(solver_service);
+
     let main_router = Router::new()
         .route("/", get(home))
         .route("/onyx", get(mobile_app))
@@ -69,6 +76,7 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
+        .nest("/solver", solver_router)
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path.clone()))
         .with_state(repomap_service);
