@@ -42,8 +42,8 @@ async fn test_github_api() {
     
     // Test getting issue
     let issue = service.get_issue("test-owner", "test-repo", 1).await.unwrap();
-    assert_eq!(issue.title, "Test Issue");
-    assert_eq!(issue.body, "Test description");
+    assert_eq!(issue.title, "Test Issue &lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;");
+    assert_eq!(issue.body, "Test description with &lt;b&gt;HTML&lt;/b&gt; that needs escaping");
     assert_eq!(issue.number, 1);
     assert_eq!(issue.state, "open");
 }

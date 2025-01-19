@@ -62,7 +62,13 @@ impl GitHubService {
             ));
         }
 
-        response.json::<GitHubIssue>().await.map_err(|e| anyhow::anyhow!(e))
+        let mut issue: GitHubIssue = response.json().await?;
+        
+        // Escape HTML in title and body
+        issue.title = html_escape::encode_text(&issue.title).into_owned();
+        issue.body = html_escape::encode_text(&issue.body).into_owned();
+        
+        Ok(issue)
     }
 
     pub fn parse_issue_url(url: &str) -> Result<(String, String, i32)> {
