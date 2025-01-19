@@ -41,6 +41,7 @@ reqwest = { version = "0.11", features = ["json"] }
 pulldown-cmark = "0.9"
 askama_escape = "0.1"
 bytes = "1.5"
+html-escape = "0.2"
 tokio-tungstenite = "0.21"
 hyper = { version = "1.2", features = ["full"] }
 http-body-util = "0.1"

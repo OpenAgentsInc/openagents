@@ -97,14 +97,14 @@ impl SolverService {
                             Ok(inference_response) => {
                                 Ok(SolverResponse {
                                     solution: format!(
-                                        "<div class='space-y-4'>\
+                                        "<div class='space-y-4 max-w-4xl overflow-x-auto'>\
                                         <div class='text-sm text-gray-400'>Relevant files:</div>\
-                                        <pre class='text-xs whitespace-pre-wrap'><code>{}</code></pre>\
+                                        <pre class='text-xs whitespace-pre-wrap break-words'><code>{}</code></pre>\
                                         <div class='text-sm text-gray-400'>Proposed solution:</div>\
-                                        <pre class='text-xs whitespace-pre-wrap'><code>{}</code></pre>\
+                                        <pre class='text-xs whitespace-pre-wrap break-words'><code>{}</code></pre>\
                                         </div>",
-                                        files.join("\n"),
-                                        inference_response.output
+                                        html_escape::encode_text(&files.join("\n")),
+                                        html_escape::encode_text(&inference_response.output)
                                     ),
                                 })
                             }
