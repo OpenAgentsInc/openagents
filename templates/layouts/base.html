@@ -39,7 +39,7 @@
       // Configure WebSocket URL based on current protocol
       document.addEventListener("DOMContentLoaded", function() {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = wsProtocol + '//' + window.location.host + '/admin/ws';
+        const wsUrl = wsProtocol + '//' + window.location.host + '/ws';
         document.body.setAttribute('ws-connect', wsUrl);
       });
     </script>
