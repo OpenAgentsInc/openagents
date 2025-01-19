@@ -1,5 +1,4 @@
 use anyhow::Result;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use crate::server::services::{RepomapService, OpenRouterService};

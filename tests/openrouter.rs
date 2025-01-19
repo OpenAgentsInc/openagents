@@ -39,6 +39,7 @@ async fn test_inference() {
 }
 
 async fn mock_inference_handler(
+    headers: axum::http::HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // Verify request payload
@@ -46,7 +47,6 @@ async fn mock_inference_handler(
     assert!(payload["messages"].as_array().unwrap().len() > 0);
 
     // Check auth header for error case
-    let headers = axum::http::HeaderMap::new();
     let auth_header = headers
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
