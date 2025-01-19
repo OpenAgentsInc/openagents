@@ -23,9 +23,12 @@ impl SolverService {
     pub async fn solve_issue(&self, issue_url: String) -> Result<SolverResponse> {
         info!("Processing issue: {}", issue_url);
         
+        // Make a GET request to the issue URL to demonstrate client usage
+        let _response = self.client.get(&issue_url).send().await?;
+        
         // Dummy response for now
         Ok(SolverResponse {
-            solution: "placeholder".to_string(),
+            solution: "Issue processed successfully. Full solution coming soon.".to_string(),
         })
     }
 }

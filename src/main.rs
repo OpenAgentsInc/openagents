@@ -17,6 +17,7 @@ use tracing::info;
 use openagents::{
     configuration::get_configuration,
     generate_repomap,
+    solver_page,
     nostr::{
         axum_relay::{ws_handler, RelayState},
         db::Database,
@@ -63,6 +64,11 @@ async fn main() {
         .route("/ws", get(ws_handler))
         .with_state(relay_state);
 
+    let solver_router = Router::new()
+        .route("/", get(solver_page))
+        .route("/", post(handle_solver))
+        .with_state(solver_service);
+
     let main_router = Router::new()
         .route("/", get(home))
         .route("/onyx", get(mobile_app))
@@ -73,8 +79,7 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
-        .route("/solver", get(solver_page))
-        .route("/solver", post(handle_solver))
+        .nest("/solver", solver_router)
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path.clone()))
         .with_state(repomap_service);
