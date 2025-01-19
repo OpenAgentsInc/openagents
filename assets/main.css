@@ -624,6 +624,10 @@ video {
   margin-bottom: 1.5rem;
 }
 
+.mb-12 {
+  margin-bottom: 3rem;
+}
+
 .mb-2 {
   margin-bottom: 0.5rem;
 }
@@ -1111,6 +1115,14 @@ video {
 
 .placeholder-white\/50::placeholder {
   color: rgb(255 255 255 / 0.5);
+}
+
+.opacity-50 {
+  opacity: 0.5;
+}
+
+.opacity-75 {
+  opacity: 0.75;
 }
 
 .shadow-nav {

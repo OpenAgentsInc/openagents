@@ -5,6 +5,8 @@ pub mod emailoptin;
 pub mod nostr;
 pub mod server;
 
+pub use server::services::handle_solver;
+
 use askama::Template;
 use axum::{
     extract::{Form, State},
@@ -56,6 +58,25 @@ pub async fn repomap(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Repository Map";
     let path = "/repomap";
+
+    if is_htmx {
+        let content = ContentTemplate { path }.render().unwrap();
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
+        response
+    } else {
+        let template = PageTemplate { title, path };
+        Html(template.render().unwrap()).into_response()
+    }
+}
+
+pub async fn solver_page(headers: HeaderMap) -> Response {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Issue Solver";
+    let path = "/solver";
 
     if is_htmx {
         let content = ContentTemplate { path }.render().unwrap();
