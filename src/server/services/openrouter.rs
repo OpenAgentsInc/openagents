@@ -43,7 +43,7 @@ impl OpenRouterService {
             .header("X-Title", "OpenAgents")
             .header("Content-Type", "application/json")
             .json(&serde_json::json!({
-                "model": "openai/gpt-3.5-turbo",
+                "model": "deepseek/deepseek-chat",
                 "messages": [{
                     "role": "user", 
                     "content": prompt

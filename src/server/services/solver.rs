@@ -49,24 +49,62 @@ impl SolverService {
         // Generate repomap
         match self.repomap_service.generate_repomap(repo_url.clone()).await {
             Ok(repomap_response) => {
-                // Create prompt for OpenRouter
-                let prompt = format!(
-                    "Given this GitHub repository map:\n\n{}\n\nAnd this issue URL: {}\n\nAnalyze the codebase and propose a solution to the issue.",
+                // First, ask for relevant files
+                let files_prompt = format!(
+                    "Given this GitHub repository map:\n\n{}\n\nAnd this issue URL: {}\n\n\
+                    Based on the repository structure, return ONLY an array of file paths that would be most relevant to review for solving this issue.\n\
+                    Return ONLY the JSON array, no other text.",
                     repomap_response.repo_map,
                     issue_url
                 );
 
-                // Get solution from OpenRouter
-                match self.openrouter_service.inference(prompt).await {
-                    Ok(inference_response) => {
-                        Ok(SolverResponse {
-                            solution: format!("<pre><code>{}</code></pre>", inference_response.output),
-                        })
+                match self.openrouter_service.inference(files_prompt).await {
+                    Ok(files_response) => {
+                        // Parse the response as a JSON array
+                        let files: Vec<String> = serde_json::from_str(&files_response.output)
+                            .map_err(|e| anyhow::anyhow!("Failed to parse files list: {}", e))?;
+
+                        // Create solution prompt with files list
+                        let solution_prompt = format!(
+                            "Given this GitHub repository map:\n\n{}\n\n\
+                            And these relevant files:\n{}\n\n\
+                            For this issue URL: {}\n\n\
+                            Analyze the codebase and propose a solution to the issue.",
+                            repomap_response.repo_map,
+                            files.join("\n"),
+                            issue_url
+                        );
+
+                        // Get solution from OpenRouter
+                        match self.openrouter_service.inference(solution_prompt).await {
+                            Ok(inference_response) => {
+                                Ok(SolverResponse {
+                                    solution: format!(
+                                        "<div class='space-y-4'>\
+                                        <div class='text-sm text-gray-400'>Relevant files:</div>\
+                                        <pre><code>{}</code></pre>\
+                                        <div class='text-sm text-gray-400'>Proposed solution:</div>\
+                                        <pre><code>{}</code></pre>\
+                                        </div>",
+                                        files.join("\n"),
+                                        inference_response.output
+                                    ),
+                                })
+                            }
+                            Err(e) => {
+                                Ok(SolverResponse {
+                                    solution: format!(
+                                        "<div class='text-red-500'>Error getting solution: {}</div>",
+                                        e
+                                    ),
+                                })
+                            }
+                        }
                     }
                     Err(e) => {
                         Ok(SolverResponse {
                             solution: format!(
-                                "<div class='text-red-500'>Error getting solution: {}</div>",
+                                "<div class='text-red-500'>Error identifying relevant files: {}</div>",
                                 e
                             ),
                         })

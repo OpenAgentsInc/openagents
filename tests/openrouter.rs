@@ -43,7 +43,7 @@ async fn mock_inference_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // Verify request payload
-    assert_eq!(payload["model"], "openai/gpt-3.5-turbo");
+    assert_eq!(payload["model"], "deepseek/deepseek-chat");
     assert!(payload["messages"].as_array().unwrap().len() > 0);
 
     // Verify required headers
