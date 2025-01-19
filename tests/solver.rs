@@ -82,7 +82,7 @@ async fn test_solver_generates_repomap() {
         match api_result {
             Ok(future_result) => {
                 println!("API call completed within timeout");
-                match future_result.await {
+                match future_result {
                     Ok(response) => {
                         println!("Solver response received successfully");
                         println!("Solution length: {}", response.solution.len());
