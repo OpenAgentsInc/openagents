@@ -40,10 +40,12 @@ impl OpenRouterService {
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("HTTP-Referer", "https://openagents.com")
+            .header("X-Title", "OpenAgents")
+            .header("Content-Type", "application/json")
             .json(&serde_json::json!({
-                "model": "anthropic/claude-2",
+                "model": "openai/gpt-3.5-turbo",
                 "messages": [{
-                    "role": "user",
+                    "role": "user", 
                     "content": prompt
                 }]
             }))

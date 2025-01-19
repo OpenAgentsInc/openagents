@@ -43,14 +43,17 @@ async fn mock_inference_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     // Verify request payload
-    assert_eq!(payload["model"], "anthropic/claude-2");
+    assert_eq!(payload["model"], "openai/gpt-3.5-turbo");
     assert!(payload["messages"].as_array().unwrap().len() > 0);
 
-    // Check auth header for error case
+    // Verify required headers
     let auth_header = headers
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
+    
+    assert!(headers.contains_key("HTTP-Referer"));
+    assert!(headers.contains_key("Content-Type"));
 
     if auth_header.contains("invalid_key") {
         return (
