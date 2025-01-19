@@ -10,7 +10,7 @@
     <link href="/assets/fonts.css" rel="stylesheet" />
     <title>OpenAgents - {{title}}</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-    <script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
     <script>
       document.addEventListener("htmx:afterSettle", function (evt) {
         const newTitle = evt.detail.xhr.getResponseHeader("HX-Title");
@@ -35,28 +35,15 @@
       document.addEventListener("DOMContentLoaded", updateActiveDot);
       // Run after HTMX content updates
       document.addEventListener("htmx:afterSettle", updateActiveDot);
-
-      // Configure WebSocket URL based on current protocol
-      document.addEventListener("DOMContentLoaded", function() {
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = wsProtocol + '//' + window.location.host + '/ws';
-        document.body.setAttribute('ws-connect', wsUrl);
-      });
     </script>
   </head>
   <body
     class="min-h-screen w-screen bg-black text-white font-mono overflow-x-hidden"
-    hx-ext="ws"
   >
     <div class="flex justify-center mx-2 md:mx-6">
       <div class="w-[60rem] max-w-full my-6 px-4 py-6 border border-white">
         {% include "header.html" %} {% include "layouts/content.html" %}
       </div>
     </div>
-
-    <!-- Hidden elements for solver status -->
-    <div id="solver-progress" class="hidden"></div>
-    <div id="solver-status" class="hidden"></div>
-    <div id="solver-result" class="hidden"></div>
   </body>
 </html>
