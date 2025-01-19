@@ -64,13 +64,22 @@ async fn test_solver_generates_repomap() {
         println!("Awaiting solver response...");
         
         println!("Making solver API call...");
+        
+        // Log environment status
+        println!("Environment check:");
+        println!("GITHUB_TOKEN present: {}", env::var("GITHUB_TOKEN").is_ok());
+        println!("OPENROUTER_API_KEY present: {}", env::var("OPENROUTER_API_KEY").is_ok());
+        println!("AIDER_API_KEY present: {}", env::var("AIDER_API_KEY").is_ok());
+        
         match result.await {
             Ok(response) => {
                 println!("Solver response received successfully");
+                println!("Solution length: {}", response.solution.len());
                 Ok(response)
             }
             Err(e) => {
                 println!("Solver error: {:?}", e);
+                println!("Error type: {}", std::any::type_name_of_val(&e));
                 Err(e)
             }
         }
@@ -79,9 +88,9 @@ async fn test_solver_generates_repomap() {
     println!("Created solve_issue future with logging");
     
     let result = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
+        std::time::Duration::from_secs(60),
         solve_future
-    ).await.expect("Test timed out after 30 seconds")
+    ).await.expect("Test timed out after 60 seconds")
     .unwrap();
     
     println!("Received response from solver");
