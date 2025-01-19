@@ -44,12 +44,18 @@ async fn test_solver_generates_repomap() {
     
     // Test with timeout
     let url = "https://github.com/OpenAgentsInc/openagents/issues/1";
+    println!("Starting solver test with URL: {}", url);
+    
+    let solve_future = solver_service.solve_issue(url.to_string());
+    println!("Created solve_issue future");
     
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(30),
-        solver_service.solve_issue(url.to_string())
+        solve_future
     ).await.expect("Test timed out after 30 seconds")
     .unwrap();
+    
+    println!("Received response from solver");
     
     println!("Response content for {}: {}", url, result.solution);
     assert!(result.solution.contains("Relevant files:"));
