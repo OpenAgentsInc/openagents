@@ -99,9 +99,9 @@ impl SolverService {
                                     solution: format!(
                                         "<div class='space-y-4'>\
                                         <div class='text-sm text-gray-400'>Relevant files:</div>\
-                                        <pre><code>{}</code></pre>\
+                                        <pre class='text-xs whitespace-pre-wrap'><code>{}</code></pre>\
                                         <div class='text-sm text-gray-400'>Proposed solution:</div>\
-                                        <pre><code>{}</code></pre>\
+                                        <pre class='text-xs whitespace-pre-wrap'><code>{}</code></pre>\
                                         </div>",
                                         files.join("\n"),
                                         inference_response.output
