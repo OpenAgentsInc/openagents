@@ -52,8 +52,8 @@ impl SolverService {
                 // First, ask for relevant files
                 let files_prompt = format!(
                     "Given this GitHub repository map:\n\n{}\n\nAnd this issue URL: {}\n\n\
-                    Based on the repository structure, return ONLY an array of file paths that would be most relevant to review for solving this issue.\n\
-                    Return ONLY the JSON array, no other text.",
+                    Based on the repository structure, return a list of file paths that would be most relevant to review for solving this issue.\n\
+                    Format your response as a markdown list with one file per line, starting each line with a hyphen (-).",
                     repomap_response.repo_map,
                     issue_url
                 );
