@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use crate::server::services::{RepomapService, OpenRouterService};
+use crate::server::services::{RepomapService, OpenRouterService, GitHubService};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]

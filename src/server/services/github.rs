@@ -52,7 +52,7 @@ impl GitHubService {
             ));
         }
 
-        response.json().map_err(|e| anyhow::anyhow!(e))
+        response.json::<GitHubIssue>().await.map_err(|e| anyhow::anyhow!(e))
     }
 
     pub fn parse_issue_url(url: &str) -> Result<(String, String, i32)> {
