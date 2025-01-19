@@ -102,23 +102,6 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct SolverRequest {
-    issue_url: String,
-}
-
-async fn handle_solver(
-    State(service): State<Arc<SolverService>>,
-    Form(req): Form<SolverRequest>,
-) -> impl IntoResponse {
-    match service.solve_issue(req.issue_url).await {
-        Ok(response) => Html(response.solution).into_response(),
-        Err(e) => {
-            eprintln!("Error solving issue: {}", e);
-            Html(format!("Error: {}", e)).into_response()
-        }
-    }
-}
 
 async fn health_check() -> Json<serde_json::Value> {
     Json(json!({ "status": "healthy" }))
