@@ -39,10 +39,11 @@ async fn test_solver_endpoint() {
 async fn test_solver_generates_repomap() {
     // Get required tokens from environment
     let github_token = env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set for tests");
+    let openrouter_token = env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set for tests");
     
     // Set up test environment with required API keys
     env::set_var("AIDER_API_KEY", "test_key"); // Mock API key ok for aider test
-    env::set_var("OPENROUTER_API_KEY", "test_key"); // Mock API key ok for openrouter test
+    env::set_var("OPENROUTER_API_KEY", &openrouter_token); // Use real OpenRouter token
     env::set_var("GITHUB_TOKEN", &github_token); // Use real GitHub token
     
     let solver_service = SolverService::new();
