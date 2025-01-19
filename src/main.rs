@@ -5,7 +5,13 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use openagents::{handle_solver, server::services::SolverService};
+use openagents::{
+    handle_solver,
+    server::{
+        app_router,
+        services::SolverService,
+    },
+};
 use serde_json::json;
 use std::{env, path::PathBuf, sync::Arc};
 use tokio::sync::broadcast;
@@ -64,7 +70,7 @@ async fn main() {
     let solver_router = Router::new()
         .route("/", get(solver_page))
         .route("/", post(handle_solver))
-        .with_state(solver_service);
+        .with_state(solver_service.clone());
 
     let main_router = Router::new()
         .route("/", get(home))
@@ -82,7 +88,9 @@ async fn main() {
         .with_state(repomap_service);
 
     // Merge routers
-    let app = main_router.nest("/nostr", nostr_router);
+    let app = main_router
+        .nest("/nostr", nostr_router)
+        .merge(app_router()); // Mount the WebSocket router
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
