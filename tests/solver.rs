@@ -49,14 +49,29 @@ async fn test_solver_generates_repomap() {
     // Create a future with detailed logging
     let solve_future = async {
         println!("Starting solve_issue call...");
+        
+        // Extract owner/repo/issue from URL
+        let parts: Vec<&str> = url.split('/').collect();
+        let (owner, repo) = (parts[3], parts[4]);
+        let issue_number: i32 = parts[6].parse().unwrap();
+        println!("Parsed URL - owner: {}, repo: {}, issue: {}", owner, repo, issue_number);
+        
+        // Start the API call
+        println!("Initiating solve_issue call to service...");
         let result = solver_service.solve_issue(url.to_string());
         println!("Created solve_issue future");
         
-        println!("Awaiting GitHub API response...");
-        let result = result.await;
-        println!("GitHub API response received: {:?}", result.is_ok());
-        
-        result
+        println!("Awaiting solver response...");
+        match result.await {
+            Ok(response) => {
+                println!("Solver response received successfully");
+                Ok(response)
+            }
+            Err(e) => {
+                println!("Solver error: {:?}", e);
+                Err(e)
+            }
+        }
     };
     
     println!("Created solve_issue future with logging");
