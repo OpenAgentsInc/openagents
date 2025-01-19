@@ -56,6 +56,9 @@ impl SolverService {
 
         info!("Extracted repo URL: {}", repo_url);
 
+        // TODO: Add progress update mechanism
+        // let (progress_tx, _) = broadcast::channel(100);
+        
         // Generate repomap
         match self
             .repomap_service
@@ -110,17 +113,21 @@ impl SolverService {
                         // Get solution from OpenRouter
                         match self.openrouter_service.inference(solution_prompt).await {
                             Ok(inference_response) => {
+                                // TODO: Create pull request with solution
+                                // TODO: Add solution preview with diff
+                                // TODO: Add confirmation step before PR creation
                                 Ok(SolverResponse {
                                     solution: format!(
                                         "<div class='space-y-4'>\
-                                        <div class='text-sm text-gray-400'>Relevant files:</div>\
+                                        <div class='text-sm text-gray-400'>Initial Analysis</div>\
+                                        <div class='max-w-4xl overflow-x-auto'>\
+                                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>Relevant files:\n{}</code></pre>\
+                                        </div>\
+                                        <div class='text-sm text-gray-400'>Proposed Solution (Preview)</div>\
                                         <div class='max-w-4xl overflow-x-auto'>\
                                         <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
                                         </div>\
-                                        <div class='text-sm text-gray-400'>Proposed solution:</div>\
-                                        <div class='max-w-4xl overflow-x-auto'>\
-                                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
-                                        </div>\
+                                        <div class='text-sm text-gray-400 mt-4'>Note: PR creation and progress updates coming soon</div>\
                                         </div>",
                                         html_escape::encode_text(&files.join("\n")),
                                         html_escape::encode_text(&inference_response.output)
