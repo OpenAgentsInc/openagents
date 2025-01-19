@@ -71,7 +71,11 @@ async fn test_solver_generates_repomap() {
         println!("OPENROUTER_API_KEY present: {}", env::var("OPENROUTER_API_KEY").is_ok());
         println!("AIDER_API_KEY present: {}", env::var("AIDER_API_KEY").is_ok());
         
-        match result.await {
+        println!("Starting API call chain...");
+        let result = result.await;
+        println!("API call chain completed");
+        
+        match result {
             Ok(response) => {
                 println!("Solver response received successfully");
                 println!("Solution length: {}", response.solution.len());
