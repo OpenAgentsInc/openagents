@@ -1,9 +1,4 @@
-use axum::{
-    routing::get,
-    Router,
-    Json,
-    http::StatusCode,
-};
+use axum::{http::StatusCode, routing::get, Json, Router};
 use openagents::server::services::GitHubService;
 use serde_json::json;
 use tokio::net::TcpListener;
@@ -12,21 +7,20 @@ use tokio::net::TcpListener;
 async fn test_github_api() {
     // Start mock server
     let app = Router::new().route(
-        "/repos/test-owner/test-repo/issues/1", 
-        get(mock_github_handler)
+        "/repos/test-owner/test-repo/issues/1",
+        get(mock_github_handler),
     );
-    
+
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    
+
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
 
     // Test URL parsing
-    let (owner, repo, number) = GitHubService::parse_issue_url(
-        "https://github.com/test-owner/test-repo/issues/1"
-    ).unwrap();
+    let (owner, repo, number) =
+        GitHubService::parse_issue_url("https://github.com/test-owner/test-repo/issues/1").unwrap();
     assert_eq!(owner, "test-owner");
     assert_eq!(repo, "test-repo");
     assert_eq!(number, 1);
@@ -35,15 +29,22 @@ async fn test_github_api() {
     assert!(GitHubService::parse_issue_url("https://github.com/invalid").is_err());
 
     // Create service with base URL pointing to mock server
-    let service = GitHubService::new_with_base_url(
-        "mock_token".to_string(),
-        format!("http://{}", addr)
-    );
-    
+    let service =
+        GitHubService::new_with_base_url("mock_token".to_string(), format!("http://{}", addr));
+
     // Test getting issue
-    let issue = service.get_issue("test-owner", "test-repo", 1).await.unwrap();
-    assert_eq!(issue.title, "Test Issue &lt;script&gt;alert('xss')&lt;/script&gt;");
-    assert_eq!(issue.body, "Test description with &lt;b&gt;HTML&lt;/b&gt; that needs escaping");
+    let issue = service
+        .get_issue("test-owner", "test-repo", 1)
+        .await
+        .unwrap();
+    assert_eq!(
+        issue.title,
+        "Test Issue &lt;script&gt;alert('xss')&lt;/script&gt;"
+    );
+    assert_eq!(
+        issue.body,
+        "Test description with &lt;b&gt;HTML&lt;/b&gt; that needs escaping"
+    );
     assert_eq!(issue.number, 1);
     assert_eq!(issue.state, "open");
 }
@@ -56,6 +57,6 @@ async fn mock_github_handler() -> (StatusCode, Json<serde_json::Value>) {
             "title": "Test Issue <script>alert('xss')</script>",
             "body": "Test description with <b>HTML</b> that needs escaping",
             "state": "open"
-        }))
+        })),
     )
 }

@@ -5,8 +5,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde_json::json;
 use openagents::{handle_solver, server::services::SolverService};
+use serde_json::json;
 use std::{env, path::PathBuf, sync::Arc};
 use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
@@ -15,14 +15,13 @@ use tracing::info;
 use openagents::{
     configuration::get_configuration,
     generate_repomap,
-    solver_page,
     nostr::{
         axum_relay::{ws_handler, RelayState},
         db::Database,
     },
     repomap,
     server::services::RepomapService,
-    ContentTemplate, PageTemplate,
+    solver_page, ContentTemplate, PageTemplate,
 };
 
 #[tokio::main]
@@ -99,7 +98,6 @@ async fn main() {
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
-
 
 async fn health_check() -> Json<serde_json::Value> {
     Json(json!({ "status": "healthy" }))
@@ -218,4 +216,3 @@ async fn coming_soon(headers: HeaderMap) -> Response {
         Html(template.render().unwrap()).into_response()
     }
 }
-

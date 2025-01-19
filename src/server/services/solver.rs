@@ -1,8 +1,8 @@
+use crate::server::services::{GitHubService, OpenRouterService, RepomapService};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use tracing::info;
-use crate::server::services::{RepomapService, OpenRouterService, GitHubService};
 use std::sync::Arc;
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct SolverService {
@@ -19,9 +19,10 @@ pub struct SolverResponse {
 impl SolverService {
     pub fn new() -> Self {
         let aider_api_key = std::env::var("AIDER_API_KEY").expect("AIDER_API_KEY must be set");
-        let openrouter_api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
+        let openrouter_api_key =
+            std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
         let github_token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set");
-        
+
         Self {
             repomap_service: Arc::new(RepomapService::new(aider_api_key)),
             openrouter_service: Arc::new(OpenRouterService::new(openrouter_api_key)),
@@ -31,7 +32,7 @@ impl SolverService {
 
     pub async fn solve_issue(&self, issue_url: String) -> Result<SolverResponse> {
         info!("Processing issue: {}", issue_url);
-        
+
         // Extract repo URL from issue URL
         // Example: https://github.com/username/repo/issues/1 -> https://github.com/username/repo
         let repo_url = if issue_url.contains("/issues/") {
@@ -48,13 +49,20 @@ impl SolverService {
         };
 
         info!("Extracted repo URL: {}", repo_url);
-        
+
         // Generate repomap
-        match self.repomap_service.generate_repomap(repo_url.clone()).await {
+        match self
+            .repomap_service
+            .generate_repomap(repo_url.clone())
+            .await
+        {
             Ok(repomap_response) => {
                 // Get issue details from GitHub
                 let (owner, repo, issue_number) = GitHubService::parse_issue_url(&issue_url)?;
-                let issue = self.github_service.get_issue(&owner, &repo, issue_number).await?;
+                let issue = self
+                    .github_service
+                    .get_issue(&owner, &repo, issue_number)
+                    .await?;
 
                 // First, ask for relevant files
                 let files_prompt = format!(
@@ -70,9 +78,10 @@ impl SolverService {
                 match self.openrouter_service.inference(files_prompt).await {
                     Ok(files_response) => {
                         info!("Files response: {}", files_response.output);
-                        
+
                         // Parse the response as a markdown list
-                        let files: Vec<String> = files_response.output
+                        let files: Vec<String> = files_response
+                            .output
                             .lines()
                             .filter(|line| line.trim().starts_with("- "))
                             .map(|line| line.trim().trim_start_matches("- ").trim().to_string())
@@ -122,23 +131,18 @@ impl SolverService {
                             }
                         }
                     }
-                    Err(e) => {
-                        Ok(SolverResponse {
-                            solution: format!(
-                                "<div class='text-red-500'>Error identifying relevant files: {}</div>",
-                                e
-                            ),
-                        })
-                    }
+                    Err(e) => Ok(SolverResponse {
+                        solution: format!(
+                            "<div class='text-red-500'>Error identifying relevant files: {}</div>",
+                            e
+                        ),
+                    }),
                 }
             }
             Err(e) => {
                 // Return a more user-friendly error message
                 Ok(SolverResponse {
-                    solution: format!(
-                        "<div class='text-red-500'>Error: {}</div>", 
-                        e
-                    ),
+                    solution: format!("<div class='text-red-500'>Error: {}</div>", e),
                 })
             }
         }

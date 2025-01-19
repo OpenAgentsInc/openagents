@@ -35,7 +35,12 @@ impl GitHubService {
         }
     }
 
-    pub async fn get_issue(&self, owner: &str, repo: &str, issue_number: i32) -> Result<GitHubIssue> {
+    pub async fn get_issue(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue_number: i32,
+    ) -> Result<GitHubIssue> {
         info!("Fetching GitHub issue: {}/{}/{}", owner, repo, issue_number);
 
         let url = format!(
@@ -56,18 +61,18 @@ impl GitHubService {
         if !status.is_success() {
             let error_text = response.text().await?;
             return Err(anyhow::anyhow!(
-                "GitHub API error ({}): {}", 
+                "GitHub API error ({}): {}",
                 status,
                 error_text
             ));
         }
 
         let mut issue: GitHubIssue = response.json().await?;
-        
+
         // Escape HTML in title and body
         issue.title = html_escape::encode_text(&issue.title).into_owned();
         issue.body = html_escape::encode_text(&issue.body).into_owned();
-        
+
         Ok(issue)
     }
 
@@ -77,7 +82,7 @@ impl GitHubService {
             Ok((
                 parts[parts.len() - 4].to_string(),
                 parts[parts.len() - 3].to_string(),
-                parts[parts.len() - 1].parse()?
+                parts[parts.len() - 1].parse()?,
             ))
         } else {
             Err(anyhow::anyhow!("Invalid GitHub issue URL format"))

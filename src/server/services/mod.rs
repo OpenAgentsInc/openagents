@@ -5,15 +5,15 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod github;
+pub mod openrouter;
 pub mod repomap;
 pub mod solver;
-pub mod openrouter;
-pub mod github;
 
+pub use github::GitHubService;
+pub use openrouter::OpenRouterService;
 pub use repomap::RepomapService;
 pub use solver::SolverService;
-pub use openrouter::OpenRouterService;
-pub use github::GitHubService;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SolverRequest {

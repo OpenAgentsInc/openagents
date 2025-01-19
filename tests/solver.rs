@@ -3,14 +3,14 @@ use axum::{
     http::{Request, StatusCode},
 };
 use openagents::{handle_solver, server::services::SolverService};
-use std::{sync::Arc, env};
+use std::{env, sync::Arc};
 use tower::ServiceExt;
 
 #[tokio::test]
 async fn test_solver_endpoint() {
     // Only set mock key for aider, other keys should be in environment
     env::set_var("AIDER_API_KEY", "test_key");
-    
+
     // Create app with solver service
     let solver_service = Arc::new(SolverService::new());
     let app = axum::Router::new()
@@ -22,7 +22,9 @@ async fn test_solver_endpoint() {
         .method("POST")
         .uri("/")
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(Body::from("issue_url=https://github.com/test/repo/issues/1"))
+        .body(Body::from(
+            "issue_url=https://github.com/test/repo/issues/1",
+        ))
         .unwrap();
 
     // Send request and get response

@@ -40,12 +40,15 @@ impl OpenRouterService {
         let request_body = serde_json::json!({
             "model": "deepseek/deepseek-chat",
             "messages": [{
-                "role": "user", 
+                "role": "user",
                 "content": prompt
             }]
         });
 
-        info!("Request body: {}", serde_json::to_string_pretty(&request_body)?);
+        info!(
+            "Request body: {}",
+            serde_json::to_string_pretty(&request_body)?
+        );
 
         let response = self
             .client
@@ -60,13 +63,13 @@ impl OpenRouterService {
 
         let status = response.status();
         let response_text = response.text().await?;
-        
+
         info!("OpenRouter response status: {}", status);
         info!("OpenRouter response body: {}", response_text);
 
         if !status.is_success() {
             return Err(anyhow::anyhow!(
-                "OpenRouter API error ({}): {}", 
+                "OpenRouter API error ({}): {}",
                 status,
                 response_text
             ));

@@ -1,9 +1,4 @@
-use axum::{
-    routing::post,
-    Router,
-    Json,
-    http::StatusCode,
-};
+use axum::{http::StatusCode, routing::post, Json, Router};
 use openagents::server::services::OpenRouterService;
 use serde_json::json;
 use tokio::net::TcpListener;
@@ -14,27 +9,26 @@ async fn test_inference() {
     let app = Router::new().route("/chat/completions", post(mock_inference_handler));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    
+
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
 
     // Create OpenRouter service with mock server URL
-    let service = OpenRouterService::with_base_url(
-        "test_key".to_string(),
-        format!("http://{}", addr)
-    );
+    let service =
+        OpenRouterService::with_base_url("test_key".to_string(), format!("http://{}", addr));
 
     // Test successful inference
     let result = service.inference("Test prompt".to_string()).await.unwrap();
     assert_eq!(result.output, "Mock response");
 
     // Test authentication error
-    let service = OpenRouterService::with_base_url(
-        "invalid_key".to_string(),
-        format!("http://{}", addr)
-    );
-    let error = service.inference("Test prompt".to_string()).await.unwrap_err();
+    let service =
+        OpenRouterService::with_base_url("invalid_key".to_string(), format!("http://{}", addr));
+    let error = service
+        .inference("Test prompt".to_string())
+        .await
+        .unwrap_err();
     assert!(error.to_string().contains("Authentication failed"));
 }
 
@@ -51,7 +45,7 @@ async fn mock_inference_handler(
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
-    
+
     assert!(headers.contains_key("HTTP-Referer"));
     assert!(headers.contains_key("Content-Type"));
 
@@ -60,7 +54,7 @@ async fn mock_inference_handler(
             StatusCode::UNAUTHORIZED,
             Json(json!({
                 "error": "Authentication failed"
-            }))
+            })),
         );
     }
 
@@ -73,6 +67,6 @@ async fn mock_inference_handler(
                     "content": "Mock response"
                 }
             }]
-        }))
+        })),
     )
 }
