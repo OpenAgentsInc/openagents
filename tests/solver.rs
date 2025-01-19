@@ -3,11 +3,14 @@ use axum::{
     http::{Request, StatusCode},
 };
 use openagents::{handle_solver, server::services::SolverService};
-use std::sync::Arc;
+use std::{sync::Arc, env};
 use tower::ServiceExt;
 
 #[tokio::test]
 async fn test_solver_endpoint() {
+    // Ensure AIDER_API_KEY is set for test
+    env::set_var("AIDER_API_KEY", "test_key");
+    
     // Create app with solver service
     let solver_service = Arc::new(SolverService::new());
     let app = axum::Router::new()
