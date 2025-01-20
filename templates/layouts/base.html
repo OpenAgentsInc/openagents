@@ -10,6 +10,7 @@
     <link href="/assets/fonts.css" rel="stylesheet" />
     <title>OpenAgents - {{title}}</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
     <script>
       document.addEventListener("htmx:afterSettle", function (evt) {
         const newTitle = evt.detail.xhr.getResponseHeader("HX-Title");

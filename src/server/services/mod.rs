@@ -9,6 +9,7 @@ pub mod github;
 pub mod openrouter;
 pub mod repomap;
 pub mod solver;
+pub mod solver_ws;
 
 pub use github::GitHubService;
 pub use openrouter::OpenRouterService;
