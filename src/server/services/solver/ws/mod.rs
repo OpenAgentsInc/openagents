@@ -1,8 +1,5 @@
 use super::SolverResponse;
-use crate::server::services::{
-    solver::ws::types::{SolverStage, SolverUpdate},
-    GitHubService,
-};
+use crate::server::services::GitHubService;
 use crate::server::services::github_types::Issue;
 use anyhow::Result;
 use tokio::sync::broadcast;
@@ -14,6 +11,7 @@ pub mod url_parsing;
 pub mod html_formatting;
 pub mod types;
 
+// Re-export the types
 pub use types::{SolverStage, SolverUpdate};
 
 pub(crate) use url_parsing::*;
