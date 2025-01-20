@@ -13,6 +13,27 @@ use std::{
 };
 use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info};
+use serde_json::Value;
+
+fn format_stream_chunk(chunk: &str) -> Result<String, serde_json::Error> {
+    let v: Value = serde_json::from_str(chunk)?;
+    
+    if let Some(choices) = v.get("choices").and_then(Value::as_array) {
+        if let Some(first) = choices.first() {
+            if let Some(delta) = first.get("delta") {
+                if let Some(content) = delta.get("content").and_then(Value::as_str) {
+                    return Ok(format!(
+                        r#"<div id="solver-result" hx-swap-oob="true" hx-swap="beforeend">
+                            {}</div>"#,
+                        content
+                    ));
+                }
+            }
+        }
+    }
+    
+    Ok(String::new()) // Return empty string for non-content chunks
+}
 
 use super::solver::SolverService;
 
@@ -236,9 +257,26 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                         if let Some(issue_url) = data.get("issue_url") {
                             if let Some(url) = issue_url.as_str() {
                                 info!("Starting solver for issue: {}", url);
+                                
+                                // Create a new channel for streaming updates
+                                let (stream_tx, mut stream_rx) = mpsc::channel(32);
+                                
+                                // Spawn streaming task
+                                let tx_for_stream = tx_clone.clone();
+                                tokio::spawn(async move {
+                                    while let Some(chunk) = stream_rx.recv().await {
+                                        if let Ok(html) = format_stream_chunk(&chunk) {
+                                            if tx_for_stream.send(Message::Text(html)).await.is_err() {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                });
+
                                 state_clone.solver_service.solve_issue_with_ws(
                                     url.to_string(),
                                     state_clone.update_tx.clone(),
+                                    stream_tx,
                                 ).await.ok();
                             }
                         }
