@@ -6,7 +6,7 @@ use tracing::info;
 use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
 };
-use crate::server::services::github_types::Issue;
+use crate::server::services::github::types::Issue;
 
 impl super::super::SolverService {
     pub async fn analyze_files(
@@ -37,10 +37,9 @@ impl super::super::SolverService {
 
         // Stream the files analysis
         self.deepseek_service
-            .chat_stream(files_prompt, true, move |content, reasoning| async move {
+            .chat_stream(files_prompt, true, |content, reasoning| {
                 let state = files_state_clone.clone();
                 let tx = update_tx_clone.clone();
-                let fut = async move {
                     let mut guard = state.lock().await;
                     if let Some(c) = content {
                         guard.0.push_str(c);

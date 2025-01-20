@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
 };
-use crate::server::services::github_types::Issue;
+use crate::server::services::github::types::Issue;
 
 impl super::super::SolverService {
     pub(crate) async fn generate_solution(
@@ -37,10 +37,9 @@ impl super::super::SolverService {
 
         // Stream the solution generation
         self.deepseek_service
-            .chat_stream(solution_prompt, true, move |content, reasoning| async move {
+            .chat_stream(solution_prompt, true, |content, reasoning| {
                 let state = solution_state_clone.clone();
                 let tx = update_tx_clone.clone();
-                let fut = async move {
                     let mut guard = state.lock().await;
                     if let Some(c) = content {
                         guard.0.push_str(c);

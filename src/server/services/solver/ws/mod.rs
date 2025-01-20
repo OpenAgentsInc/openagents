@@ -3,7 +3,7 @@ use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
     GitHubService,
 };
-use crate::server::services::github_types::Issue;
+use crate::server::services::github::types::Issue;
 use anyhow::Result;
 use tokio::sync::broadcast;
 use tracing::info;
@@ -14,11 +14,8 @@ mod url_parsing;
 mod html_formatting;
 mod types;
 
-pub(crate) use files_analysis::*;
-pub(crate) use solution_generation::*;
 pub(crate) use url_parsing::*;
 pub(crate) use html_formatting::*;
-pub use types::*;
 
 impl super::SolverService {
     pub(crate) async fn solve_issue_with_ws(
@@ -89,12 +86,12 @@ impl super::SolverService {
         });
 
         // Analyze files
-        let (files, files_reasoning) = self
+        let (files, files_reasoning): (Vec<String>, String) = self
             .analyze_files(&repomap_response.repo_map, &issue, update_tx.clone())
             .await?;
 
         // Generate solution
-        let (solution_text, solution_reasoning) = self
+        let (solution_text, solution_reasoning): (String, String) = self
             .generate_solution(&repomap_response.repo_map, &files, &issue, update_tx.clone())
             .await?;
 
