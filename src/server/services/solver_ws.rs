@@ -26,7 +26,7 @@ pub struct SolverWsState {
     update_tx: broadcast::Sender<SolverUpdate>,
 }
 
-use super::solver::ws::types::{SolverStage, SolverUpdate};
+use super::solver::ws::{SolverStage, SolverUpdate};
 
 impl SolverWsState {
     pub fn new(solver_service: Arc<SolverService>) -> Self {

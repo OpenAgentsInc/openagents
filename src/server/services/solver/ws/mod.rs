@@ -14,6 +14,8 @@ pub mod url_parsing;
 pub mod html_formatting;
 pub mod types;
 
+pub use types::{SolverStage, SolverUpdate};
+
 pub(crate) use url_parsing::*;
 pub(crate) use html_formatting::*;
 
