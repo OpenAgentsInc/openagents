@@ -37,10 +37,10 @@ impl super::super::SolverService {
 
         // Stream the files analysis
         self.deepseek_service
-            .chat_stream(files_prompt, true, move |content, reasoning| -> Result<_> {
+            .chat_stream(files_prompt, true, move |content, reasoning| {
                 let state = files_state_clone.clone();
                 let tx = update_tx_clone.clone();
-                Ok(async move {
+                async move {
                     let mut guard = state.lock().await;
                 if let Some(c) = content {
                     guard.0.push_str(c);
@@ -65,7 +65,7 @@ impl super::super::SolverService {
                     });
                 }
                     Ok(())
-                })
+                }
             })
             .await?;
 
