@@ -4,7 +4,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{pin::Pin, time::Duration};
 use tokio::sync::mpsc;
-use tokio_stream::StreamExt;
 use tracing::{error, info};
 
 #[derive(Debug, Clone)]
@@ -104,8 +103,9 @@ impl OpenRouterService {
                             
                             // Process complete messages
                             while let Some(pos) = buffer.find('\n') {
-                                let line = buffer[..pos].trim();
-                                buffer = buffer[pos + 1..].to_string();
+                                let line = buffer[..pos].trim().to_string();
+                                let remaining = buffer[pos + 1..].to_string();
+                                buffer = remaining;
 
                                 if line.starts_with("data: ") {
                                     let data = &line["data: ".len()..];

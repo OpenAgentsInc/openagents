@@ -187,7 +187,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                 Ok(update) = update_rx.recv() => {
                     // Convert update to HTML and send
                     let html = match update {
-                        SolverUpdate::Progress { stage, message, data } => {
+                        SolverUpdate::Progress { stage, message, data: _ } => {
                             format!(
                                 r#"<div id="solver-progress" hx-swap-oob="true">
                                     <div class="progress-bar" style="width: {}%">
@@ -259,7 +259,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                 info!("Starting solver for issue: {}", url);
                                 
                                 // Create a new channel for streaming updates
-                                let (stream_tx, mut stream_rx) = mpsc::channel::<String>(32);
+                                let (_stream_tx, mut stream_rx) = mpsc::channel::<String>(32);
                                 
                                 // Spawn streaming task
                                 let tx_for_stream = tx_clone.clone();
