@@ -95,9 +95,11 @@ impl super::SolverService {
                 );
 
                 match self.deepseek_service.chat(files_prompt, true).await {
-                    Ok((files_list, Some(files_reasoning))) => {
+                    Ok((files_list, files_reasoning)) => {
                         info!("Files response: {}", files_list);
-                        info!("Files reasoning: {}", files_reasoning);
+                        if let Some(reasoning) = &files_reasoning {
+                            info!("Files reasoning: {}", reasoning);
+                        }
 
                         // Parse the response as a markdown list
                         let files: Vec<String> = files_list
@@ -114,7 +116,7 @@ impl super::SolverService {
                             message: "Analyzing solution approach".into(),
                             data: Some(serde_json::json!({
                                 "files": files,
-                                "reasoning": files_reasoning
+                                "reasoning": files_reasoning.unwrap_or_else(|| "No reasoning provided".into())
                             })),
                         });
 
@@ -137,14 +139,14 @@ impl super::SolverService {
 
                         // Get solution from DeepSeek with reasoning
                         match self.deepseek_service.chat(solution_prompt, true).await {
-                            Ok((solution_text, Some(solution_reasoning))) => {
+                            Ok((solution_text, solution_reasoning)) => {
                                 // Send PR progress update with reasoning
                                 let _ = update_tx.send(SolverUpdate::Progress {
                                     stage: SolverStage::PR,
                                     message: "Preparing solution".into(),
                                     data: Some(serde_json::json!({
                                         "solution": solution_text,
-                                        "reasoning": solution_reasoning
+                                        "reasoning": solution_reasoning.unwrap_or_else(|| "No reasoning provided".into())
                                     })),
                                 });
 
@@ -167,9 +169,9 @@ impl super::SolverService {
                                         <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>
                                     </div>
                                     </div>"#,
-                                    html_escape::encode_text(&files_reasoning),
+                                    html_escape::encode_text(&files_reasoning.unwrap_or_else(|| "No reasoning provided".into())),
                                     html_escape::encode_text(&files.join("\n")),
-                                    html_escape::encode_text(&solution_reasoning),
+                                    html_escape::encode_text(&solution_reasoning.unwrap_or_else(|| "No reasoning provided".into())),
                                     html_escape::encode_text(&solution_text)
                                 );
 
@@ -179,8 +181,8 @@ impl super::SolverService {
                                         "solution": solution,
                                         "files": files,
                                         "analysis": solution_text,
-                                        "files_reasoning": files_reasoning,
-                                        "solution_reasoning": solution_reasoning
+                                        "files_reasoning": files_reasoning.unwrap_or_else(|| "No reasoning provided".into()),
+                                        "solution_reasoning": solution_reasoning.unwrap_or_else(|| "No reasoning provided".into())
                                     }),
                                 });
 
