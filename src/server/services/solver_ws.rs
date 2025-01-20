@@ -275,8 +275,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
 
                                 state_clone.solver_service.solve_issue_with_ws(
                                     url.to_string(),
-                                    state_clone.update_tx.clone(),
-                                    stream_tx,
+                                    state_clone.update_tx.clone()
                                 ).await.ok();
                             }
                         }

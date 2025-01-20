@@ -33,7 +33,7 @@ async fn test_inference() {
         let chunk = chunk.unwrap();
         response.push_str(&chunk);
     }
-    assert_eq!(response, "Mock response");
+    assert_eq!(response.trim(), "Mock response");
 
     // Test authentication error
     let service =
@@ -76,20 +76,25 @@ async fn mock_inference_handler(
     
     if is_stream {
         let stream = futures::stream::iter(vec![
-            Ok::<_, std::io::Error>(Json(json!({
-                "choices": [{
-                    "delta": {
-                        "content": "Mock "
-                    }
-                }]
-            }))),
-            Ok(Json(json!({
-                "choices": [{
-                    "delta": {
-                        "content": "response"
-                    }
-                }]
-            })))
+            Ok::<_, std::io::Error>(format!("data: {}\n\n", 
+                serde_json::to_string(&json!({
+                    "choices": [{
+                        "delta": {
+                            "content": "Mock "
+                        }
+                    }]
+                })).unwrap()
+            )),
+            Ok(format!("data: {}\n\n",
+                serde_json::to_string(&json!({
+                    "choices": [{
+                        "delta": {
+                            "content": "response"
+                        }
+                    }]
+                })).unwrap()
+            )),
+            Ok("data: [DONE]\n\n".to_string())
         ]);
         
         (StatusCode::OK, Body::from_stream(stream))

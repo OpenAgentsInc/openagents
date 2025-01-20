@@ -136,7 +136,6 @@ impl OpenRouterService {
         // Convert receiver into a Stream
         Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)))
     }
-}
     pub async fn inference(&self, prompt: String) -> Result<InferenceResponse> {
         info!("Making non-streaming inference request to OpenRouter");
         
