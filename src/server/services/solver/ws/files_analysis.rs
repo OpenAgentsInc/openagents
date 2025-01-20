@@ -4,14 +4,16 @@ use std::sync::Arc;
 use tracing::info;
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
-    GitHubService,
+    github_types::Issue,
 };
+use futures::future::Future;
+use std::pin::Pin;
 
 impl super::super::SolverService {
     pub(crate) async fn analyze_files(
         &self,
         repomap: &str,
-        issue: &GitHubService::Issue,
+        issue: &Issue,
         update_tx: broadcast::Sender<SolverUpdate>,
     ) -> Result<(Vec<String>, String)> {
         let files_prompt = format!(
@@ -38,11 +40,12 @@ impl super::super::SolverService {
         self.deepseek_service
             .chat_stream(files_prompt, true, move |content, reasoning| {
                 let state = files_state_clone.clone();
-                Box::pin(async move {
+                let tx = update_tx_clone.clone();
+                Ok(Box::pin(async move {
                     let mut guard = state.lock().await;
                     if let Some(c) = content {
                         guard.0.push_str(c);
-                        let _ = update_tx_clone.send(SolverUpdate::Progress {
+                        let _ = tx.send(SolverUpdate::Progress {
                             stage: SolverStage::Analysis,
                             message: "Analyzing files...".into(),
                             data: Some(serde_json::json!({
@@ -53,7 +56,7 @@ impl super::super::SolverService {
                     }
                     if let Some(r) = reasoning {
                         guard.1.push_str(r);
-                        let _ = update_tx_clone.send(SolverUpdate::Progress {
+                        let _ = tx.send(SolverUpdate::Progress {
                             stage: SolverStage::Analysis,
                             message: "Analyzing files...".into(),
                             data: Some(serde_json::json!({
@@ -63,7 +66,7 @@ impl super::super::SolverService {
                         });
                     }
                     Ok(())
-                })
+                }) as Pin<Box<dyn Future<Output = Result<()>> + Send>>)
             })
             .await?;
 
