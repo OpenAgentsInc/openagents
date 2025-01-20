@@ -76,7 +76,7 @@ async fn mock_inference_handler(
     let is_stream = payload["stream"].as_bool().unwrap_or(false);
     
     if is_stream {
-        let _stream = futures::stream::iter(vec![
+        let body = axum::body::Body::from_stream(futures::stream::iter(vec![
             Ok::<_, std::io::Error>(format!("data: {}\n\n", 
                 serde_json::to_string(&json!({
                     "choices": [{
@@ -96,15 +96,9 @@ async fn mock_inference_handler(
                 })).unwrap()
             )),
             Ok("data: [DONE]\n\n".to_string())
-        ]);
+        ]));
         
-        (StatusCode::OK, Json(json!({
-            "choices": [{
-                "delta": {
-                    "content": "Mock response"
-                }
-            }]
-        })))
+        (StatusCode::OK, body.into_response())
     } else {
         // Return non-streaming mock response
         (
