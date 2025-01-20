@@ -78,24 +78,29 @@ impl super::SolverService {
                     })),
                 });
 
-                // First, ask for relevant files
+                // First, ask for relevant files using reasoning
                 let files_prompt = format!(
                     "Given this GitHub repository map:\n\n{}\n\n\
                     And this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
-                    Based on the repository structure and issue description, return a list of file paths that would be most relevant to review for solving this issue.\n\
-                    Format your response as a markdown list with one file per line, starting each line with a hyphen (-).",
+                    Based on the repository structure and issue description, analyze which files would be most relevant to review for solving this issue.\n\
+                    Consider:\n\
+                    1. Files that would need to be modified\n\
+                    2. Related files for context\n\
+                    3. Test files that would need updating\n\
+                    4. Configuration files if relevant\n\n\
+                    Format your final answer as a markdown list with one file per line, starting each line with a hyphen (-).",
                     repomap_response.repo_map,
                     issue.title,
                     issue.body
                 );
 
-                match self.openrouter_service.inference(files_prompt).await {
-                    Ok(files_response) => {
-                        info!("Files response: {}", files_response.output);
+                match self.deepseek_service.chat(files_prompt, true).await {
+                    Ok((files_list, Some(files_reasoning))) => {
+                        info!("Files response: {}", files_list);
+                        info!("Files reasoning: {}", files_reasoning);
 
                         // Parse the response as a markdown list
-                        let files: Vec<String> = files_response
-                            .output
+                        let files: Vec<String> = files_list
                             .lines()
                             .filter(|line| line.trim().starts_with("- "))
                             .map(|line| line.trim().trim_start_matches("- ").trim().to_string())
@@ -103,12 +108,13 @@ impl super::SolverService {
 
                         info!("Parsed files: {:?}", files);
 
-                        // Send solution progress update
+                        // Send solution progress update with reasoning
                         let _ = update_tx.send(SolverUpdate::Progress {
                             stage: SolverStage::Solution,
-                            message: "Generating solution".into(),
+                            message: "Analyzing solution approach".into(),
                             data: Some(serde_json::json!({
-                                "files": files
+                                "files": files,
+                                "reasoning": files_reasoning
                             })),
                         });
 
@@ -117,10 +123,11 @@ impl super::SolverService {
                             "Given this GitHub repository map:\n\n{}\n\n\
                              And these relevant files:\n{}\n\n\
                              For this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
-                             Provide a detailed solution including:\n\
+                             Analyze and provide a detailed solution including:\n\
                              1. Specific code changes needed (with file paths)\n\
                              2. Any new files that need to be created\n\
                              3. Step-by-step implementation instructions\n\
+                             4. Potential risks or considerations\n\
                              Format the response in markdown with code blocks for any code changes.",
                             repomap_response.repo_map,
                             files.join("\n"),
@@ -128,31 +135,42 @@ impl super::SolverService {
                             issue.body
                         );
 
-                        // Get solution from OpenRouter
-                        match self.openrouter_service.inference(solution_prompt).await {
-                            Ok(inference_response) => {
-                                // Send PR progress update
+                        // Get solution from DeepSeek with reasoning
+                        match self.deepseek_service.chat(solution_prompt, true).await {
+                            Ok((solution_text, Some(solution_reasoning))) => {
+                                // Send PR progress update with reasoning
                                 let _ = update_tx.send(SolverUpdate::Progress {
                                     stage: SolverStage::PR,
                                     message: "Preparing solution".into(),
                                     data: Some(serde_json::json!({
-                                        "solution": inference_response.output
+                                        "solution": solution_text,
+                                        "reasoning": solution_reasoning
                                     })),
                                 });
 
                                 let solution = format!(
-                                    "<div class='space-y-4'>\
-                                     <div class='text-sm text-gray-400'>Relevant files:</div>\
-                                     <div class='max-w-4xl overflow-x-auto'>\
-                                     <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
-                                     </div>\
-                                     <div class='text-sm text-gray-400'>Proposed solution:</div>\
-                                     <div class='max-w-4xl overflow-x-auto'>\
-                                     <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>\
-                                     </div>\
-                                     </div>",
+                                    r#"<div class='space-y-4'>
+                                    <div class='bg-gray-800 rounded-lg p-4 mb-4'>
+                                        <div class='text-sm text-yellow-400 mb-2'>File Selection Reasoning:</div>
+                                        <div class='text-xs text-gray-300 whitespace-pre-wrap'>{}</div>
+                                    </div>
+                                    <div class='text-sm text-gray-400'>Relevant files:</div>
+                                    <div class='max-w-4xl overflow-x-auto'>
+                                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>
+                                    </div>
+                                    <div class='bg-gray-800 rounded-lg p-4 mb-4'>
+                                        <div class='text-sm text-yellow-400 mb-2'>Solution Reasoning:</div>
+                                        <div class='text-xs text-gray-300 whitespace-pre-wrap'>{}</div>
+                                    </div>
+                                    <div class='text-sm text-gray-400'>Proposed solution:</div>
+                                    <div class='max-w-4xl overflow-x-auto'>
+                                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>
+                                    </div>
+                                    </div>"#,
+                                    html_escape::encode_text(&files_reasoning),
                                     html_escape::encode_text(&files.join("\n")),
-                                    html_escape::encode_text(&inference_response.output)
+                                    html_escape::encode_text(&solution_reasoning),
+                                    html_escape::encode_text(&solution_text)
                                 );
 
                                 // Send complete update
@@ -160,17 +178,19 @@ impl super::SolverService {
                                     result: serde_json::json!({
                                         "solution": solution,
                                         "files": files,
-                                        "analysis": inference_response.output
+                                        "analysis": solution_text,
+                                        "files_reasoning": files_reasoning,
+                                        "solution_reasoning": solution_reasoning
                                     }),
                                 });
 
                                 Ok(SolverResponse { solution })
                             }
                             Err(e) => {
-                                error!("OpenRouter inference error: {}", e);
+                                error!("DeepSeek inference error: {}", e);
                                 let _ = update_tx.send(SolverUpdate::Error {
                                     message: "Error getting solution".into(),
-                                    details: Some(format!("OpenRouter error: {}. This could be due to a timeout or service issue. Please try again.", e)),
+                                    details: Some(format!("DeepSeek error: {}. This could be due to a timeout or service issue. Please try again.", e)),
                                 });
 
                                 Ok(SolverResponse {
