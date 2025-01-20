@@ -15,25 +15,6 @@ use std::{
 use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info};
 
-fn format_stream_chunk(chunk: &str) -> Result<String, serde_json::Error> {
-    let v: Value = serde_json::from_str(chunk)?;
-
-    if let Some(choices) = v.get("choices").and_then(Value::as_array) {
-        if let Some(first) = choices.first() {
-            if let Some(delta) = first.get("delta") {
-                if let Some(content) = delta.get("content").and_then(Value::as_str) {
-                    return Ok(format!(
-                        r#"<div id="solver-result" hx-swap-oob="true" hx-swap="beforeend">
-                            {}</div>"#,
-                        content
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(String::new()) // Return empty string for non-content chunks
-}
 
 use super::solver::SolverService;
 

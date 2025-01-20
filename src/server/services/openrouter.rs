@@ -102,8 +102,7 @@ impl OpenRouterService {
                                 let remaining = buffer[pos + 1..].to_string();
                                 buffer = remaining;
 
-                                if line.starts_with("data: ") {
-                                    let data = &line["data: ".len()..];
+                                if let Some(data) = line.strip_prefix("data: ") {
                                     if data == "[DONE]" {
                                         break;
                                     }

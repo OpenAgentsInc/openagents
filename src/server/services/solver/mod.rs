@@ -1,14 +1,12 @@
 mod ws;
 
 use crate::server::services::{
-    solver_ws::{SolverStage, SolverUpdate},
     GitHubService, OpenRouterService, RepomapService,
 };
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct SolverService {
