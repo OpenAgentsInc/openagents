@@ -286,8 +286,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                             }
                                         }
 
-                                        // Send a close message
-                                        let _ = tx_clone.send(Message::Close(None)).await;
+                                        // Wait a bit before closing to ensure all messages are sent
+                                        tokio::time::sleep(Duration::from_secs(1)).await;
                                     }
                                     Err(e) => {
                                         error!("Solver error: {}", e);
