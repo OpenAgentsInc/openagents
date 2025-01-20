@@ -37,35 +37,33 @@ impl super::super::SolverService {
 
         // Stream the files analysis
         self.deepseek_service
-            .chat_stream(files_prompt, true, |content, reasoning| {
+            .chat_stream(files_prompt, true, move |content, reasoning| async move {
                 let state = files_state_clone.clone();
                 let tx = update_tx_clone.clone();
-                    let mut guard = state.lock().await;
-                    if let Some(c) = content {
-                        guard.0.push_str(c);
-                        let _ = tx.send(SolverUpdate::Progress {
-                            stage: SolverStage::Analysis,
-                            message: "Analyzing files...".into(),
-                            data: Some(serde_json::json!({
-                                "files_list": guard.0,
-                                "files_reasoning": guard.1
-                            })),
-                        });
-                    }
-                    if let Some(r) = reasoning {
-                        guard.1.push_str(r);
-                        let _ = tx.send(SolverUpdate::Progress {
-                            stage: SolverStage::Analysis,
-                            message: "Analyzing files...".into(),
-                            data: Some(serde_json::json!({
-                                "files_list": guard.0,
-                                "files_reasoning": guard.1
-                            })),
-                        });
-                    }
-                    Ok(())
-                };
-                fut.await
+                let mut guard = state.lock().await;
+                if let Some(c) = content {
+                    guard.0.push_str(c);
+                    let _ = tx.send(SolverUpdate::Progress {
+                        stage: SolverStage::Analysis,
+                        message: "Analyzing files...".into(),
+                        data: Some(serde_json::json!({
+                            "files_list": guard.0,
+                            "files_reasoning": guard.1
+                        })),
+                    });
+                }
+                if let Some(r) = reasoning {
+                    guard.1.push_str(r);
+                    let _ = tx.send(SolverUpdate::Progress {
+                        stage: SolverStage::Analysis,
+                        message: "Analyzing files...".into(),
+                        data: Some(serde_json::json!({
+                            "files_list": guard.0,
+                            "files_reasoning": guard.1
+                        })),
+                    });
+                }
+                Ok(())
             })
             .await?;
 
