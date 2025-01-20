@@ -10,6 +10,10 @@ path = "src/lib.rs"
 path = "src/main.rs"
 name = "openagents"
 
+[[bin]]
+path = "src/bin/deepseek-cli.rs"
+name = "deepseek-cli"
+
 [dependencies]
 env_logger = "0.10"
 dotenvy = "0.15"
@@ -47,6 +51,7 @@ hyper = { version = "1.2", features = ["full"] }
 http-body-util = "0.1"
 http = "1.0"
 tokio-stream = "0.1.17"
+clap = { version = "4.4", features = ["derive"] }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }
@@ -54,3 +59,4 @@ serde_json = "1.0"
 lazy_static = "1.4"
 wiremock = "0.6.2"
 axum-test = "17.1"
+mockito = "1.2"
