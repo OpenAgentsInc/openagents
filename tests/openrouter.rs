@@ -38,11 +38,11 @@ async fn test_inference() {
     // Test authentication error
     let service =
         OpenRouterService::with_base_url("invalid_key".to_string(), format!("http://{}", addr));
-    let error = service
+    let result = service
         .inference_stream("Test prompt".to_string())
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("Authentication failed"));
+        .await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Authentication failed"));
 }
 
 async fn mock_inference_handler(
@@ -97,12 +97,18 @@ async fn mock_inference_handler(
             Ok("data: [DONE]\n\n".to_string())
         ]);
         
-        (StatusCode::OK, Body::from_stream(stream))
+        (StatusCode::OK, Json(json!({
+            "choices": [{
+                "delta": {
+                    "content": "Mock response"
+                }
+            }]
+        })))
     } else {
         // Return non-streaming mock response
         (
             StatusCode::OK,
-            Body::from_json(&json!({
+            Json(json!({
                 "choices": [{
                     "message": {
                         "content": "Mock response"
