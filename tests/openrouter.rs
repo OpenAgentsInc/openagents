@@ -45,7 +45,7 @@ async fn test_inference() {
 async fn mock_inference_handler(
     headers: axum::http::HeaderMap,
     Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
+) -> Response<Body> {
     // Verify request payload
     assert_eq!(payload["model"], "deepseek/deepseek-chat");
     assert!(payload["messages"].as_array().unwrap().len() > 0);
@@ -60,12 +60,16 @@ async fn mock_inference_handler(
     assert!(headers.contains_key("Content-Type"));
 
     if auth_header.contains("invalid_key") {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({
-                "error": "Authentication failed"
-            })),
-        );
+        return Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .header("Content-Type", "application/json")
+            .body(Body::from(
+                serde_json::to_string(&json!({
+                    "error": "Authentication failed"
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
     }
 
     // Check if streaming is requested
@@ -106,15 +110,19 @@ async fn mock_inference_handler(
             .unwrap()
     } else {
         // Return non-streaming mock response
-        (
-            StatusCode::OK,
-            Json(json!({
-                "choices": [{
-                    "message": {
-                        "content": "Mock response"
-                    }
-                }]
-            })),
-        )
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Body::from(
+                serde_json::to_string(&json!({
+                    "choices": [{
+                        "message": {
+                            "content": "Mock response"
+                        }
+                    }]
+                }))
+                .unwrap(),
+            ))
+            .unwrap()
     }
 }
