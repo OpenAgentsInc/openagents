@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-20 12:22:26
+Generated on: 2025-01-20 14:19:40
 
 ### Structure
 
@@ -41,6 +41,7 @@ Generated on: 2025-01-20 12:22:26
 |   |-- prompt.md
 |   |-- repomap.md
 |   |-- rust-setup.md
+|   |-- solver.md
 |   `-- templates.md
 |-- migrations/
 |   |-- 20250110000000_initial.sql
@@ -55,6 +56,8 @@ Generated on: 2025-01-20 12:22:26
 |   |   |-- agent.rs
 |   |   |-- manager.rs
 |   |   `-- mod.rs
+|   |-- bin/
+|   |   `-- deepseek-cli.rs
 |   |-- nostr/
 |   |   |-- axum_relay.rs
 |   |   |-- db.rs
@@ -68,8 +71,14 @@ Generated on: 2025-01-20 12:22:26
 |   |   |   `-- routes.rs
 |   |   |-- services/
 |   |   |   |-- solver/
-|   |   |   |   |-- mod.rs
-|   |   |   |   `-- ws.rs
+|   |   |   |   |-- ws/
+|   |   |   |   |   |-- files_analysis.rs
+|   |   |   |   |   |-- html_formatting.rs
+|   |   |   |   |   |-- mod.rs
+|   |   |   |   |   |-- solution_generation.rs
+|   |   |   |   |   `-- url_parsing.rs
+|   |   |   |   `-- mod.rs
+|   |   |   |-- deepseek.rs
 |   |   |   |-- github.rs
 |   |   |   |-- mod.rs
 |   |   |   |-- openrouter.rs
@@ -131,6 +140,7 @@ Generated on: 2025-01-20 12:22:26
 |   |-- admin_middleware.rs
 |   |-- admin_routes.rs
 |   |-- agent.rs
+|   |-- deepseek.rs
 |   |-- emailoptin.rs
 |   |-- github.rs
 |   |-- health_check.rs
@@ -148,5 +158,5 @@ Generated on: 2025-01-20 12:22:26
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-27 directories, 115 files
+29 directories, 123 files
 ```
