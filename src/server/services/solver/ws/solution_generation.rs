@@ -40,32 +40,33 @@ impl super::super::SolverService {
             .chat_stream(solution_prompt, true, move |content, reasoning| {
                 let state = solution_state_clone.clone();
                 let tx = update_tx_clone.clone();
-                futures::future::ready(Ok(async move {
+                
+                tokio::spawn(async move {
                     let mut guard = state.lock().await;
-                if let Some(c) = content {
-                    guard.0.push_str(c);
-                    let _ = tx.send(SolverUpdate::Progress {
-                        stage: SolverStage::Solution,
-                        message: "Generating solution...".into(),
-                        data: Some(serde_json::json!({
-                            "solution": guard.0,
-                            "reasoning": guard.1
-                        })),
-                    });
-                }
-                if let Some(r) = reasoning {
-                    guard.1.push_str(r);
-                    let _ = tx.send(SolverUpdate::Progress {
-                        stage: SolverStage::Solution,
-                        message: "Generating solution...".into(),
-                        data: Some(serde_json::json!({
-                            "solution": guard.0,
-                            "reasoning": guard.1
-                        })),
-                    });
-                }
-                    Ok(())
-                }.await))
+                    if let Some(c) = content {
+                        guard.0.push_str(c);
+                        let _ = tx.send(SolverUpdate::Progress {
+                            stage: SolverStage::Solution,
+                            message: "Generating solution...".into(),
+                            data: Some(serde_json::json!({
+                                "solution": guard.0,
+                                "reasoning": guard.1
+                            })),
+                        });
+                    }
+                    if let Some(r) = reasoning {
+                        guard.1.push_str(r);
+                        let _ = tx.send(SolverUpdate::Progress {
+                            stage: SolverStage::Solution,
+                            message: "Generating solution...".into(),
+                            data: Some(serde_json::json!({
+                                "solution": guard.0,
+                                "reasoning": guard.1
+                            })),
+                        });
+                    }
+                });
+                Ok(())
             })
             .await?;
 
