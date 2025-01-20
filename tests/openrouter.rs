@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     http::StatusCode,
-    response::Response,
+    response::{IntoResponse, Response},
     routing::post,
     Json, Router,
 };
