@@ -3,7 +3,7 @@ use tokio::sync::{broadcast, Mutex};
 use std::sync::Arc;
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
-    github::Issue,
+    github_types::Issue,
 };
 
 impl super::super::SolverService {
@@ -13,7 +13,7 @@ impl super::super::SolverService {
         files: &[String],
         issue: &Issue,
         update_tx: broadcast::Sender<SolverUpdate>,
-    ) -> Result<(String, String)> {
+    ) -> Result<(String, String), anyhow::Error> {
         let solution_prompt = format!(
             "Given this GitHub repository map:\n\n{}\n\n\
              And these relevant files:\n{}\n\n\
@@ -37,7 +37,7 @@ impl super::super::SolverService {
 
         // Stream the solution generation
         self.deepseek_service
-            .chat_stream(solution_prompt, true, move |content, reasoning| async move {
+            .chat_stream(solution_prompt, true, move |content, reasoning| {
                 let state = solution_state_clone.clone();
                 let tx = update_tx_clone.clone();
                 let fut = async move {
