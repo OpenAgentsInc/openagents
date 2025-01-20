@@ -37,10 +37,11 @@ impl super::super::SolverService {
 
         // Stream the solution generation
         self.deepseek_service
-            .chat_stream(solution_prompt, true, move |content, reasoning| async move {
+            .chat_stream(solution_prompt, true, move |content, reasoning| {
                 let state = solution_state_clone.clone();
                 let tx = update_tx_clone.clone();
-                let mut guard = state.lock().await;
+                Box::pin(async move {
+                    let mut guard = state.lock().await;
                 if let Some(c) = content {
                     guard.0.push_str(c);
                     let _ = tx.send(SolverUpdate::Progress {
@@ -63,7 +64,8 @@ impl super::super::SolverService {
                         })),
                     });
                 }
-                Ok(())
+                    Ok(())
+                })
             })
             .await?;
 
