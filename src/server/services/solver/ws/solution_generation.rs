@@ -1,13 +1,15 @@
 use anyhow::Result;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 use std::sync::Arc;
+use tokio::sync::Mutex;
+use tracing::info;
 use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
+    github_types::Issue,
 };
-use crate::server::services::github_types::Issue;
 
 impl super::super::SolverService {
-    pub(crate) async fn generate_solution(
+    pub async fn generate_solution(
         &self,
         repomap: &str,
         files: &[String],
@@ -16,18 +18,18 @@ impl super::super::SolverService {
     ) -> Result<(String, String)> {
         let solution_prompt = format!(
             "Given this GitHub repository map:\n\n{}\n\n\
-             And these relevant files:\n{}\n\n\
-             For this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
-             Analyze and provide a detailed solution including:\n\
-             1. Specific code changes needed (with file paths)\n\
-             2. Any new files that need to be created\n\
-             3. Step-by-step implementation instructions\n\
-             4. Potential risks or considerations\n\
-             Format the response in markdown with code blocks for any code changes.",
+            And this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
+            For these relevant files:\n{}\n\n\
+            Generate a detailed solution for this issue. Consider:\n\
+            1. Required code changes\n\
+            2. Test updates needed\n\
+            3. Configuration changes\n\
+            4. Migration steps if needed\n\n\
+            Format your solution in markdown with clear sections and code blocks.",
             repomap,
-            files.join("\n"),
             issue.title,
-            issue.body
+            issue.body,
+            files.join("\n")
         );
 
         // Create shared state using tokio::sync::Mutex
@@ -49,8 +51,8 @@ impl super::super::SolverService {
                             stage: SolverStage::Solution,
                             message: "Generating solution...".into(),
                             data: Some(serde_json::json!({
-                                "solution": guard.0,
-                                "reasoning": guard.1
+                                "solution_text": guard.0,
+                                "solution_reasoning": guard.1
                             })),
                         });
                     }
@@ -60,8 +62,8 @@ impl super::super::SolverService {
                             stage: SolverStage::Solution,
                             message: "Generating solution...".into(),
                             data: Some(serde_json::json!({
-                                "solution": guard.0,
-                                "reasoning": guard.1
+                                "solution_text": guard.0,
+                                "solution_reasoning": guard.1
                             })),
                         });
                     }
@@ -76,10 +78,13 @@ impl super::super::SolverService {
         let solution_reasoning = state.1.clone();
         drop(state);
 
-        // Send PR progress update with reasoning
+        info!("Solution text: {}", solution_text);
+        info!("Solution reasoning: {}", solution_reasoning);
+
+        // Send PR stage update
         let _ = update_tx.send(SolverUpdate::Progress {
             stage: SolverStage::PR,
-            message: "Preparing solution".into(),
+            message: "Preparing pull request".into(),
             data: Some(serde_json::json!({
                 "solution": solution_text.clone(),
                 "reasoning": solution_reasoning.clone()
