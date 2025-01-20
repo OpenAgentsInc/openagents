@@ -116,7 +116,7 @@ impl super::SolverService {
                             message: "Analyzing solution approach".into(),
                             data: Some(serde_json::json!({
                                 "files": files,
-                                "reasoning": files_reasoning.unwrap_or_else(|| "No reasoning provided".into())
+                                "reasoning": files_reasoning.clone().unwrap_or_else(|| "No reasoning provided".into())
                             })),
                         });
 
@@ -146,7 +146,7 @@ impl super::SolverService {
                                     message: "Preparing solution".into(),
                                     data: Some(serde_json::json!({
                                         "solution": solution_text,
-                                        "reasoning": solution_reasoning.unwrap_or_else(|| "No reasoning provided".into())
+                                        "reasoning": solution_reasoning.clone().unwrap_or_else(|| "No reasoning provided".into())
                                     })),
                                 });
 
@@ -169,9 +169,9 @@ impl super::SolverService {
                                         <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>
                                     </div>
                                     </div>"#,
-                                    html_escape::encode_text(&files_reasoning.unwrap_or_else(|| "No reasoning provided".into())),
+                                    html_escape::encode_text(&files_reasoning.clone().unwrap_or_else(|| "No reasoning provided".into())),
                                     html_escape::encode_text(&files.join("\n")),
-                                    html_escape::encode_text(&solution_reasoning.unwrap_or_else(|| "No reasoning provided".into())),
+                                    html_escape::encode_text(&solution_reasoning.clone().unwrap_or_else(|| "No reasoning provided".into())),
                                     html_escape::encode_text(&solution_text)
                                 );
 
