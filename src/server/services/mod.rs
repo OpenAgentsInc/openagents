@@ -5,12 +5,14 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod deepseek;
 pub mod github;
 pub mod openrouter;
 pub mod repomap;
 pub mod solver;
 pub mod solver_ws;
 
+pub use deepseek::DeepSeekService;
 pub use github::GitHubService;
 pub use openrouter::OpenRouterService;
 pub use repomap::RepomapService;
