@@ -1,4 +1,4 @@
-mod ws;
+pub mod ws;
 
 use crate::server::services::{DeepSeekService, GitHubService, RepomapService};
 use anyhow::Result;
