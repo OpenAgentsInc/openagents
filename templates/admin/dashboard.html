@@ -12,6 +12,7 @@
       rel="stylesheet"
     />
     <script src="/js/htmx.min.js"></script>
+    <script src="/js/htmx-ws.js"></script>
     <style>
       .admin-container {
         max-width: 1200px;
@@ -49,9 +50,35 @@
         padding-bottom: 15px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       }
+      .progress-bar {
+        height: 20px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .progress-bar > div {
+        height: 100%;
+        background: #4caf50;
+        transition: width 0.3s ease;
+      }
+      .solver-status {
+        margin-top: 10px;
+        font-size: 14px;
+        opacity: 0.7;
+      }
+      .solver-result {
+        margin-top: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 15px;
+        border-radius: 4px;
+        white-space: pre-wrap;
+      }
+      .error {
+        color: #ff6b6b;
+      }
     </style>
   </head>
-  <body>
+  <body hx-ext="ws" ws-connect="/admin/ws">
     <canvas id="bg"></canvas>
     <div class="admin-container">
       <div class="stats-panel">
@@ -92,6 +119,19 @@
           >
             Create Demo Event
           </button>
+        </div>
+      </div>
+
+      <div class="stats-panel">
+        <h2>Solver Status</h2>
+        <div style="margin-top: 15px">
+          <div id="solver-progress">
+            <div class="progress-bar">
+              <div style="width: 0%"></div>
+            </div>
+          </div>
+          <div id="solver-status" class="solver-status">Ready</div>
+          <div id="solver-result" class="solver-result">No active solution</div>
         </div>
       </div>
     </div>

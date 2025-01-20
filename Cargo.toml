@@ -37,7 +37,7 @@ axum-extra = { version = "0.9.2", features = ["cookie"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["fs", "trace", "cors"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", features = ["json", "stream"] }
 pulldown-cmark = "0.9"
 askama_escape = "0.1"
 bytes = "1.5"
@@ -46,6 +46,7 @@ tokio-tungstenite = "0.21"
 hyper = { version = "1.2", features = ["full"] }
 http-body-util = "0.1"
 http = "1.0"
+tokio-stream = "0.1.17"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }

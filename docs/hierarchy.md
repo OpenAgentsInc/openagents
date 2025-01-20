@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-18 20:32:07
+Generated on: 2025-01-19 12:09:44
 
 ### Structure
 
@@ -67,8 +67,11 @@ Generated on: 2025-01-18 20:32:07
 |   |   |   |-- mod.rs
 |   |   |   `-- routes.rs
 |   |   |-- services/
+|   |   |   |-- github.rs
 |   |   |   |-- mod.rs
-|   |   |   `-- repomap.rs
+|   |   |   |-- openrouter.rs
+|   |   |   |-- repomap.rs
+|   |   |   `-- solver.rs
 |   |   |-- config.rs
 |   |   `-- mod.rs
 |   |-- configuration.rs
@@ -103,6 +106,7 @@ Generated on: 2025-01-18 20:32:07
 |   |   |-- onyx.html
 |   |   |-- repomap.html
 |   |   |-- services.html
+|   |   |-- solver.html
 |   |   `-- video-series.html
 |   `-- header.html
 |-- tests/
@@ -122,8 +126,11 @@ Generated on: 2025-01-18 20:32:07
 |   |-- admin_routes.rs
 |   |-- agent.rs
 |   |-- emailoptin.rs
+|   |-- github.rs
 |   |-- health_check.rs
-|   `-- repomap.rs
+|   |-- openrouter.rs
+|   |-- repomap.rs
+|   `-- solver.rs
 |-- Cargo.lock
 |-- Cargo.toml
 |-- DEVELOPMENT.md
@@ -135,5 +142,5 @@ Generated on: 2025-01-18 20:32:07
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-25 directories, 104 files
+25 directories, 111 files
 ```
