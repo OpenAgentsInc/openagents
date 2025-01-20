@@ -215,7 +215,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                     Solution complete
                                 </div>
                                 <div id="solver-result" hx-swap-oob="true">
-                                    {}</div>"#,
+                                    <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #f5f5f5; border-radius: 4px;">
+                                        {}
+                                    </pre>
+                                </div>"#,
                                 result["solution"]
                             )
                         }
