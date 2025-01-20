@@ -37,14 +37,18 @@ impl super::super::SolverService {
 
         // Stream the files analysis
         self.deepseek_service
-            .chat_stream(files_prompt, true, move |content: Option<&str>, reasoning: Option<&str>| {
+            .chat_stream(files_prompt, true, move |content, reasoning| {
                 let state = files_state_clone.clone();
                 let tx = update_tx_clone.clone();
                 
+                // Clone the content and reasoning before moving into the async block
+                let content_owned = content.map(String::from);
+                let reasoning_owned = reasoning.map(String::from);
+                
                 tokio::spawn(async move {
                     let mut guard = state.lock().await;
-                    if let Some(c) = content {
-                        guard.0.push_str(&c.to_string());
+                    if let Some(c) = content_owned {
+                        guard.0.push_str(&c);
                         let _ = tx.send(SolverUpdate::Progress {
                             stage: SolverStage::Analysis,
                             message: "Analyzing files...".into(),
@@ -54,8 +58,8 @@ impl super::super::SolverService {
                             })),
                         });
                     }
-                    if let Some(r) = reasoning {
-                        guard.1.push_str(&r.to_string());
+                    if let Some(r) = reasoning_owned {
+                        guard.1.push_str(&r);
                         let _ = tx.send(SolverUpdate::Progress {
                             stage: SolverStage::Analysis,
                             message: "Analyzing files...".into(),
