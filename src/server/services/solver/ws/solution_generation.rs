@@ -40,7 +40,7 @@ impl super::super::SolverService {
             .chat_stream(solution_prompt, true, move |content, reasoning| {
                 let state = solution_state_clone.clone();
                 let tx = update_tx_clone.clone();
-                async move {
+                futures::future::ready(Ok(async move {
                     let mut guard = state.lock().await;
                 if let Some(c) = content {
                     guard.0.push_str(c);
@@ -65,7 +65,7 @@ impl super::super::SolverService {
                     });
                 }
                     Ok(())
-                }
+                }.await))
             })
             .await?;
 
