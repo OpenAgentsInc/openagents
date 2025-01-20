@@ -94,38 +94,45 @@ impl super::SolverService {
                     issue.body
                 );
 
-                let mut files_list = String::new();
-                let mut files_reasoning = String::new();
+                // Create shared state for the closure
+                let files_state = std::sync::Arc::new(std::sync::Mutex::new((String::new(), String::new())));
+                let files_state_clone = files_state.clone();
                 let update_tx_clone = update_tx.clone();
 
                 // Stream the files analysis
                 self.deepseek_service
                     .chat_stream(files_prompt, true, move |content, reasoning| {
+                        let mut state = files_state_clone.lock().unwrap();
                         if let Some(c) = content {
-                            files_list.push_str(c);
+                            state.0.push_str(c);
                             let _ = update_tx_clone.send(SolverUpdate::Progress {
                                 stage: SolverStage::Analysis,
                                 message: "Analyzing files...".into(),
                                 data: Some(serde_json::json!({
-                                    "files_list": files_list,
-                                    "files_reasoning": files_reasoning
+                                    "files_list": state.0,
+                                    "files_reasoning": state.1
                                 })),
                             });
                         }
                         if let Some(r) = reasoning {
-                            files_reasoning.push_str(r);
+                            state.1.push_str(r);
                             let _ = update_tx_clone.send(SolverUpdate::Progress {
                                 stage: SolverStage::Analysis,
                                 message: "Analyzing files...".into(),
                                 data: Some(serde_json::json!({
-                                    "files_list": files_list,
-                                    "files_reasoning": files_reasoning
+                                    "files_list": state.0,
+                                    "files_reasoning": state.1
                                 })),
                             });
                         }
                         Ok(())
                     })
                     .await?;
+
+                // Extract results from shared state
+                let files_state = files_state.lock().unwrap();
+                let files_list = files_state.0.clone();
+                let files_reasoning = files_state.1.clone();
 
                 info!("Files response: {}", files_list);
                 info!("Files reasoning: {}", files_reasoning);
@@ -166,38 +173,45 @@ impl super::SolverService {
                     issue.body
                 );
 
-                let mut solution_text = String::new();
-                let mut solution_reasoning = String::new();
+                // Create shared state for solution generation
+                let solution_state = std::sync::Arc::new(std::sync::Mutex::new((String::new(), String::new())));
+                let solution_state_clone = solution_state.clone();
                 let update_tx_clone = update_tx.clone();
 
                 // Stream the solution generation
                 self.deepseek_service
                     .chat_stream(solution_prompt, true, move |content, reasoning| {
+                        let mut state = solution_state_clone.lock().unwrap();
                         if let Some(c) = content {
-                            solution_text.push_str(c);
+                            state.0.push_str(c);
                             let _ = update_tx_clone.send(SolverUpdate::Progress {
                                 stage: SolverStage::Solution,
                                 message: "Generating solution...".into(),
                                 data: Some(serde_json::json!({
-                                    "solution": solution_text,
-                                    "reasoning": solution_reasoning
+                                    "solution": state.0,
+                                    "reasoning": state.1
                                 })),
                             });
                         }
                         if let Some(r) = reasoning {
-                            solution_reasoning.push_str(r);
+                            state.1.push_str(r);
                             let _ = update_tx_clone.send(SolverUpdate::Progress {
                                 stage: SolverStage::Solution,
                                 message: "Generating solution...".into(),
                                 data: Some(serde_json::json!({
-                                    "solution": solution_text,
-                                    "reasoning": solution_reasoning
+                                    "solution": state.0,
+                                    "reasoning": state.1
                                 })),
                             });
                         }
                         Ok(())
                     })
                     .await?;
+
+                // Extract results from shared state
+                let solution_state = solution_state.lock().unwrap();
+                let solution_text = solution_state.0.clone();
+                let solution_reasoning = solution_state.1.clone();
 
                 // Send PR progress update with reasoning
                 let _ = update_tx.send(SolverUpdate::Progress {
