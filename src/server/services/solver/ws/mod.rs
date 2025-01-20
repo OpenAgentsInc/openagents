@@ -86,23 +86,23 @@ impl super::SolverService {
         });
 
         // Analyze files
-        let (files_list, files_reasoning) = self
+        let (files, files_reasoning) = self
             .analyze_files(&repomap_response.repo_map, &issue, update_tx.clone())
             .await?;
 
         // Generate solution
         let (solution_text, solution_reasoning) = self
-            .generate_solution(&repomap_response.repo_map, &files_list, &issue, update_tx.clone())
+            .generate_solution(&repomap_response.repo_map, &files, &issue, update_tx.clone())
             .await?;
 
         // Format final HTML
-        let solution = format_solution_html(&files_reasoning, &files_list, &solution_reasoning, &solution_text);
+        let solution = format_solution_html(&files_reasoning, &files, &solution_reasoning, &solution_text);
 
         // Send complete update
         let _ = update_tx.send(SolverUpdate::Complete {
             result: serde_json::json!({
                 "solution": solution,
-                "files": files_list,
+                "files": files,
                 "analysis": solution_text,
                 "files_reasoning": files_reasoning,
                 "solution_reasoning": solution_reasoning
