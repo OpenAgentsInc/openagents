@@ -14,7 +14,6 @@ use std::{
 use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info};
 
-
 use super::solver::SolverService;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);

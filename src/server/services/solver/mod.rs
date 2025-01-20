@@ -1,8 +1,6 @@
 mod ws;
 
-use crate::server::services::{
-    GitHubService, OpenRouterService, RepomapService,
-};
+use crate::server::services::{GitHubService, OpenRouterService, RepomapService};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
