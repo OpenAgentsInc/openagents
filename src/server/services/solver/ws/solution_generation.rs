@@ -39,14 +39,14 @@ impl super::super::SolverService {
 
         // Stream the solution generation
         self.deepseek_service
-            .chat_stream(solution_prompt, true, move |content, reasoning| {
+            .chat_stream(solution_prompt, true, move |content: Option<&str>, reasoning: Option<&str>| {
                 let state = solution_state_clone.clone();
                 let tx = update_tx_clone.clone();
                 
                 tokio::spawn(async move {
                     let mut guard = state.lock().await;
                     if let Some(c) = content {
-                        guard.0.push_str(c);
+                        guard.0.push_str(&c.to_string());
                         let _ = tx.send(SolverUpdate::Progress {
                             stage: SolverStage::Solution,
                             message: "Generating solution...".into(),
@@ -57,7 +57,7 @@ impl super::super::SolverService {
                         });
                     }
                     if let Some(r) = reasoning {
-                        guard.1.push_str(r);
+                        guard.1.push_str(&r.to_string());
                         let _ = tx.send(SolverUpdate::Progress {
                             stage: SolverStage::Solution,
                             message: "Generating solution...".into(),
