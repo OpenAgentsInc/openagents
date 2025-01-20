@@ -1912,6 +1912,7 @@ dependencies = [
  "serde-aux",
  "serde_json",
  "sqlx",
+ "termcolor",
  "time",
  "tokio",
  "tokio-stream",
