@@ -6,6 +6,7 @@ use axum::{
 use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -13,11 +14,10 @@ use std::{
 };
 use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info};
-use serde_json::Value;
 
 fn format_stream_chunk(chunk: &str) -> Result<String, serde_json::Error> {
     let v: Value = serde_json::from_str(chunk)?;
-    
+
     if let Some(choices) = v.get("choices").and_then(Value::as_array) {
         if let Some(first) = choices.first() {
             if let Some(delta) = first.get("delta") {
@@ -31,7 +31,7 @@ fn format_stream_chunk(chunk: &str) -> Result<String, serde_json::Error> {
             }
         }
     }
-    
+
     Ok(String::new()) // Return empty string for non-content chunks
 }
 
@@ -86,7 +86,11 @@ impl SolverWsState {
     pub async fn broadcast_update(&self, update: SolverUpdate) {
         // Convert update to HTML fragment with hx-swap-oob
         let html = match &update {
-            SolverUpdate::Progress { stage, message, data: _ } => {
+            SolverUpdate::Progress {
+                stage,
+                message,
+                data: _,
+            } => {
                 format!(
                     r#"<div id="solver-progress" hx-swap-oob="true">
                         <div class="progress-bar" style="width: {}%">
@@ -106,7 +110,7 @@ impl SolverWsState {
                     message,
                     match stage {
                         SolverStage::Init => "1/5",
-                        SolverStage::Repomap => "2/5", 
+                        SolverStage::Repomap => "2/5",
                         SolverStage::Analysis => "3/5",
                         SolverStage::Solution => "4/5",
                         SolverStage::PR => "5/5",
@@ -136,7 +140,10 @@ impl SolverWsState {
                             Error: {message}
                             {}</div>
                     </div>"#,
-                    details.as_ref().map(|d| format!("<pre>{d}</pre>")).unwrap_or_default()
+                    details
+                        .as_ref()
+                        .map(|d| format!("<pre>{d}</pre>"))
+                        .unwrap_or_default()
                 )
             }
         };
@@ -260,12 +267,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                         if let Some(issue_url) = data.get("issue_url") {
                             if let Some(url) = issue_url.as_str() {
                                 info!("Starting solver for issue: {}", url);
-                                
 
-                                let solve_result = state_clone.solver_service.solve_issue_with_ws(
-                                    url.to_string(),
-                                    state_clone.update_tx.clone()
-                                ).await;
+                                let solve_result = state_clone
+                                    .solver_service
+                                    .solve_issue_with_ws(
+                                        url.to_string(),
+                                        state_clone.update_tx.clone(),
+                                    )
+                                    .await;
 
                                 match solve_result {
                                     Ok(response) => {
@@ -277,21 +286,27 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                             </div>"#,
                                             response.solution
                                         );
-                                        
+
                                         // Try multiple times to send the final message
                                         for _ in 0..3 {
-                                            match tx_clone.send(Message::Text(html.clone().into())).await {
+                                            match tx_clone
+                                                .send(Message::Text(html.clone().into()))
+                                                .await
+                                            {
                                                 Ok(_) => {
                                                     info!("Successfully sent final solution");
                                                     break;
                                                 }
                                                 Err(e) => {
                                                     error!("Failed to send final solution: {}", e);
-                                                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                                    tokio::time::sleep(
+                                                        tokio::time::Duration::from_millis(100),
+                                                    )
+                                                    .await;
                                                 }
                                             }
                                         }
-                                        
+
                                         // Send a close message
                                         let _ = tx_clone.send(Message::Close(None)).await;
                                     }
@@ -303,7 +318,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                             </div>"#,
                                             e
                                         );
-                                        let _ = tx_clone.send(Message::Text(error_html.into())).await;
+                                        let _ =
+                                            tx_clone.send(Message::Text(error_html.into())).await;
                                     }
                                 }
                             }
@@ -321,7 +337,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
 
     // Wait for both tasks to complete
     let (send_result, recv_result) = tokio::join!(send_task, recv_task);
-    
+
     info!("Send task completed: {:?}", send_result);
     info!("Receive task completed: {:?}", recv_result);
 

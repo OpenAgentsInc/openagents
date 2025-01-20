@@ -6,10 +6,7 @@
 </div>
 
 <div hx-ext="ws" ws-connect="/ws">
-  <form
-    ws-send
-    class="space-y-4"
-  >
+  <form ws-send class="space-y-4">
     <div>
       <label for="issue_url" class="block text-sm font-medium">
         GitHub Issue URL
@@ -50,10 +47,11 @@
           <div style="width: 0%"></div>
         </div>
       </div>
-      <div id="solver-status" class="text-sm text-gray-400">
-        Ready
-      </div>
-      <div id="solver-result" class="mt-4 p-4 bg-black/50 border border-white/10 rounded">
+      <div id="solver-status" class="text-sm text-gray-400">Ready</div>
+      <div
+        id="solver-result"
+        class="mt-4 p-4 bg-black/50 border border-white/10 rounded"
+      >
         No active solution
       </div>
     </div>
@@ -61,57 +59,57 @@
 </div>
 
 <style>
-.progress-bar {
-  height: 20px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  overflow: hidden;
-}
-.progress-bar > div {
-  height: 100%;
-  background: #4CAF50;
-  transition: width 0.3s ease;
-}
+  .progress-bar {
+    height: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .progress-bar > div {
+    height: 100%;
+    background: #4caf50;
+    transition: width 0.3s ease;
+  }
 </style>
 
 <script>
-  document.addEventListener('htmx:wsConnecting', function(evt) {
-    console.log('Connecting to WebSocket...');
+  document.addEventListener("htmx:wsConnecting", function (evt) {
+    console.log("Connecting to WebSocket...");
   });
 
-  document.addEventListener('htmx:wsOpen', function(evt) {
-    console.log('Connected to WebSocket');
+  document.addEventListener("htmx:wsOpen", function (evt) {
+    console.log("Connected to WebSocket");
   });
 
-  document.addEventListener('htmx:wsClose', function(evt) {
-    console.log('WebSocket connection closed');
+  document.addEventListener("htmx:wsClose", function (evt) {
+    console.log("WebSocket connection closed");
   });
 
-  document.addEventListener('htmx:wsError', function(evt) {
-    console.error('WebSocket error:', evt.detail.error);
+  document.addEventListener("htmx:wsError", function (evt) {
+    console.error("WebSocket error:", evt.detail.error);
   });
 
-  document.addEventListener('htmx:wsBeforeMessage', function(evt) {
-    console.log('Sending message:', evt.detail.message);
+  document.addEventListener("htmx:wsBeforeMessage", function (evt) {
+    console.log("Sending message:", evt.detail.message);
   });
 
-  document.addEventListener('htmx:wsAfterMessage', function(evt) {
-    console.log('Received message:', evt.detail.message);
+  document.addEventListener("htmx:wsAfterMessage", function (evt) {
+    console.log("Received message:", evt.detail.message);
   });
 
   const submitButton = document.getElementById("submit-button");
   const form = document.querySelector("form");
 
   // Convert form submission to WebSocket message
-  form.addEventListener("submit", function(e) {
+  form.addEventListener("submit", function (e) {
     e.preventDefault();
     const formData = new FormData(form);
     const data = {
-      issue_url: formData.get("issue_url")
+      issue_url: formData.get("issue_url"),
     };
     // Send via WebSocket
     const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
-      detail: { messageBody: JSON.stringify(data) }
+      detail: { messageBody: JSON.stringify(data) },
     });
     document.body.dispatchEvent(wsEvent);
 
@@ -122,9 +120,9 @@
   });
 
   // Handle WebSocket events
-  document.body.addEventListener("htmx:wsAfterMessage", function(evt) {
+  document.body.addEventListener("htmx:wsAfterMessage", function (evt) {
     const msg = evt.detail.message;
-    
+
     // Check if it's a completion message
     if (msg.includes('"type":"complete"')) {
       submitButton.disabled = false;

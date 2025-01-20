@@ -1,5 +1,8 @@
 use crate::nostr::event::Event;
-use crate::server::services::{solver::SolverService, solver_ws::{SolverWsState, ws_handler}};
+use crate::server::services::{
+    solver::SolverService,
+    solver_ws::{ws_handler, SolverWsState},
+};
 use crate::{configuration, database};
 use axum::{
     extract::Form,

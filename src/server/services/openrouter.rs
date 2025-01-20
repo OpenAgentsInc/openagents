@@ -23,7 +23,7 @@ pub type StreamingOutput = Pin<Box<dyn Stream<Item = Result<String>> + Send>>;
 impl OpenRouterService {
     pub fn new(api_key: String) -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(120))  // 2 minute timeout
+            .timeout(Duration::from_secs(120)) // 2 minute timeout
             .build()
             .expect("Failed to create HTTP client");
 
@@ -36,7 +36,7 @@ impl OpenRouterService {
 
     pub fn with_base_url(api_key: String, base_url: String) -> Self {
         let client = Client::builder()
-            .timeout(Duration::from_secs(120))  // 2 minute timeout
+            .timeout(Duration::from_secs(120)) // 2 minute timeout
             .build()
             .expect("Failed to create HTTP client");
 
@@ -59,7 +59,6 @@ impl OpenRouterService {
             }],
             "stream": true
         });
-
 
         let response = self
             .client
@@ -96,7 +95,7 @@ impl OpenRouterService {
                     Ok(chunk) => {
                         if let Ok(text) = String::from_utf8(chunk.to_vec()) {
                             buffer.push_str(&text);
-                            
+
                             // Process complete messages
                             while let Some(pos) = buffer.find('\n') {
                                 let line = buffer[..pos].trim().to_string();
@@ -108,9 +107,11 @@ impl OpenRouterService {
                                     if data == "[DONE]" {
                                         break;
                                     }
-                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                                        if let Some(content) = json["choices"][0]["delta"]["content"]
-                                            .as_str()
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(data)
+                                    {
+                                        if let Some(content) =
+                                            json["choices"][0]["delta"]["content"].as_str()
                                         {
                                             if tx.send(Ok(content.to_string())).await.is_err() {
                                                 break;
@@ -134,14 +135,14 @@ impl OpenRouterService {
     }
     pub async fn inference(&self, prompt: String) -> Result<InferenceResponse> {
         info!("Making non-streaming inference request to OpenRouter");
-        
+
         let mut stream = self.inference_stream(prompt).await?;
         let mut output = String::new();
-        
+
         while let Some(chunk) = stream.next().await {
             output.push_str(&chunk?);
         }
-        
+
         Ok(InferenceResponse { output })
     }
 }

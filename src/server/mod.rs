@@ -3,7 +3,10 @@ pub mod config;
 pub mod services;
 
 use axum::{routing::get, Router};
-use services::{solver::SolverService, solver_ws::{SolverWsState, ws_handler}};
+use services::{
+    solver::SolverService,
+    solver_ws::{ws_handler, SolverWsState},
+};
 use std::sync::Arc;
 
 pub fn app_router() -> Router {

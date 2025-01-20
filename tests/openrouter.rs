@@ -1,9 +1,4 @@
-use axum::{
-    http::StatusCode,
-    response::IntoResponse,
-    routing::post,
-    Json, Router,
-};
+use axum::{http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use futures::StreamExt;
 use openagents::server::services::OpenRouterService;
 use serde_json::json;
@@ -25,8 +20,11 @@ async fn test_inference() {
         OpenRouterService::with_base_url("test_key".to_string(), format!("http://{}", addr));
 
     // Test successful streaming inference
-    let mut stream = service.inference_stream("Test prompt".to_string()).await.unwrap();
-    
+    let mut stream = service
+        .inference_stream("Test prompt".to_string())
+        .await
+        .unwrap();
+
     let mut response = String::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.unwrap();
@@ -37,9 +35,7 @@ async fn test_inference() {
     // Test authentication error
     let service =
         OpenRouterService::with_base_url("invalid_key".to_string(), format!("http://{}", addr));
-    let result = service
-        .inference_stream("Test prompt".to_string())
-        .await;
+    let result = service.inference_stream("Test prompt".to_string()).await;
     match result {
         Ok(_) => panic!("Expected authentication error"),
         Err(e) => assert!(e.to_string().contains("Authentication failed")),
@@ -74,30 +70,34 @@ async fn mock_inference_handler(
 
     // Check if streaming is requested
     let is_stream = payload["stream"].as_bool().unwrap_or(false);
-    
+
     if is_stream {
         let stream_response = futures::stream::iter(vec![
-            Ok::<_, std::io::Error>(format!("data: {}\n\n", 
+            Ok::<_, std::io::Error>(format!(
+                "data: {}\n\n",
                 serde_json::to_string(&json!({
                     "choices": [{
                         "delta": {
                             "content": "Mock "
                         }
                     }]
-                })).unwrap()
+                }))
+                .unwrap()
             )),
-            Ok(format!("data: {}\n\n",
+            Ok(format!(
+                "data: {}\n\n",
                 serde_json::to_string(&json!({
                     "choices": [{
                         "delta": {
                             "content": "response"
                         }
                     }]
-                })).unwrap()
+                }))
+                .unwrap()
             )),
-            Ok("data: [DONE]\n\n".to_string())
+            Ok("data: [DONE]\n\n".to_string()),
         ]);
-        
+
         let body = axum::body::Body::from_stream(stream_response);
         axum::response::Response::builder()
             .status(StatusCode::OK)
@@ -114,7 +114,7 @@ async fn mock_inference_handler(
                         "content": "Mock response"
                     }
                 }]
-            }))
+            })),
         )
     }
 }
