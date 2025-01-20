@@ -26,31 +26,7 @@ pub struct SolverWsState {
     update_tx: broadcast::Sender<SolverUpdate>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type")]
-pub enum SolverUpdate {
-    Progress {
-        stage: SolverStage,
-        message: String,
-        data: Option<serde_json::Value>,
-    },
-    Complete {
-        result: serde_json::Value,
-    },
-    Error {
-        message: String,
-        details: Option<String>,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum SolverStage {
-    Init,
-    Repomap,
-    Analysis,
-    Solution,
-    PR,
-}
+use crate::server::services::solver::ws::types::{SolverStage, SolverUpdate};
 
 impl SolverWsState {
     pub fn new(solver_service: Arc<SolverService>) -> Self {

@@ -3,7 +3,7 @@ use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
     GitHubService,
 };
-use crate::server::services::github::types::Issue;
+use crate::server::services::github_types::Issue;
 use anyhow::Result;
 use tokio::sync::broadcast;
 use tracing::info;
