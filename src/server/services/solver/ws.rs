@@ -94,130 +94,158 @@ impl super::SolverService {
                     issue.body
                 );
 
-                match self.deepseek_service.chat(files_prompt, true).await {
-                    Ok((files_list, files_reasoning)) => {
-                        info!("Files response: {}", files_list);
-                        if let Some(reasoning) = &files_reasoning {
-                            info!("Files reasoning: {}", reasoning);
+                let mut files_list = String::new();
+                let mut files_reasoning = String::new();
+                let update_tx_clone = update_tx.clone();
+
+                // Stream the files analysis
+                self.deepseek_service
+                    .chat_stream(files_prompt, true, move |content, reasoning| {
+                        if let Some(c) = content {
+                            files_list.push_str(c);
+                            let _ = update_tx_clone.send(SolverUpdate::Progress {
+                                stage: SolverStage::Analysis,
+                                message: "Analyzing files...".into(),
+                                data: Some(serde_json::json!({
+                                    "files_list": files_list,
+                                    "files_reasoning": files_reasoning
+                                })),
+                            });
                         }
-
-                        // Parse the response as a markdown list
-                        let files: Vec<String> = files_list
-                            .lines()
-                            .filter(|line| line.trim().starts_with("- "))
-                            .map(|line| line.trim().trim_start_matches("- ").trim().to_string())
-                            .collect();
-
-                        info!("Parsed files: {:?}", files);
-
-                        // Send solution progress update with reasoning
-                        let _ = update_tx.send(SolverUpdate::Progress {
-                            stage: SolverStage::Solution,
-                            message: "Analyzing solution approach".into(),
-                            data: Some(serde_json::json!({
-                                "files": files,
-                                "reasoning": files_reasoning.clone().unwrap_or_else(|| "No reasoning provided".into())
-                            })),
-                        });
-
-                        // Create solution prompt with files list
-                        let solution_prompt = format!(
-                            "Given this GitHub repository map:\n\n{}\n\n\
-                             And these relevant files:\n{}\n\n\
-                             For this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
-                             Analyze and provide a detailed solution including:\n\
-                             1. Specific code changes needed (with file paths)\n\
-                             2. Any new files that need to be created\n\
-                             3. Step-by-step implementation instructions\n\
-                             4. Potential risks or considerations\n\
-                             Format the response in markdown with code blocks for any code changes.",
-                            repomap_response.repo_map,
-                            files.join("\n"),
-                            issue.title,
-                            issue.body
-                        );
-
-                        // Get solution from DeepSeek with reasoning
-                        match self.deepseek_service.chat(solution_prompt, true).await {
-                            Ok((solution_text, solution_reasoning)) => {
-                                // Send PR progress update with reasoning
-                                let _ = update_tx.send(SolverUpdate::Progress {
-                                    stage: SolverStage::PR,
-                                    message: "Preparing solution".into(),
-                                    data: Some(serde_json::json!({
-                                        "solution": solution_text,
-                                        "reasoning": solution_reasoning.clone().unwrap_or_else(|| "No reasoning provided".into())
-                                    })),
-                                });
-
-                                let solution = format!(
-                                    r#"<div class='space-y-4'>
-                                    <div class='bg-gray-800 rounded-lg p-4 mb-4'>
-                                        <div class='text-sm text-yellow-400 mb-2'>File Selection Reasoning:</div>
-                                        <div class='text-xs text-gray-300 whitespace-pre-wrap'>{}</div>
-                                    </div>
-                                    <div class='text-sm text-gray-400'>Relevant files:</div>
-                                    <div class='max-w-4xl overflow-x-auto'>
-                                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>
-                                    </div>
-                                    <div class='bg-gray-800 rounded-lg p-4 mb-4'>
-                                        <div class='text-sm text-yellow-400 mb-2'>Solution Reasoning:</div>
-                                        <div class='text-xs text-gray-300 whitespace-pre-wrap'>{}</div>
-                                    </div>
-                                    <div class='text-sm text-gray-400'>Proposed solution:</div>
-                                    <div class='max-w-4xl overflow-x-auto'>
-                                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>
-                                    </div>
-                                    </div>"#,
-                                    html_escape::encode_text(&files_reasoning.clone().unwrap_or_else(|| "No reasoning provided".into())),
-                                    html_escape::encode_text(&files.join("\n")),
-                                    html_escape::encode_text(&solution_reasoning.clone().unwrap_or_else(|| "No reasoning provided".into())),
-                                    html_escape::encode_text(&solution_text)
-                                );
-
-                                // Send complete update
-                                let _ = update_tx.send(SolverUpdate::Complete {
-                                    result: serde_json::json!({
-                                        "solution": solution,
-                                        "files": files,
-                                        "analysis": solution_text,
-                                        "files_reasoning": files_reasoning.unwrap_or_else(|| "No reasoning provided".into()),
-                                        "solution_reasoning": solution_reasoning.unwrap_or_else(|| "No reasoning provided".into())
-                                    }),
-                                });
-
-                                Ok(SolverResponse { solution })
-                            }
-                            Err(e) => {
-                                error!("DeepSeek inference error: {}", e);
-                                let _ = update_tx.send(SolverUpdate::Error {
-                                    message: "Error getting solution".into(),
-                                    details: Some(format!("DeepSeek error: {}. This could be due to a timeout or service issue. Please try again.", e)),
-                                });
-
-                                Ok(SolverResponse {
-                                    solution: format!(
-                                        "<div class='text-red-500'>Error getting solution: {}. Please try again.</div>",
-                                        e
-                                    ),
-                                })
-                            }
+                        if let Some(r) = reasoning {
+                            files_reasoning.push_str(r);
+                            let _ = update_tx_clone.send(SolverUpdate::Progress {
+                                stage: SolverStage::Analysis,
+                                message: "Analyzing files...".into(),
+                                data: Some(serde_json::json!({
+                                    "files_list": files_list,
+                                    "files_reasoning": files_reasoning
+                                })),
+                            });
                         }
-                    }
-                    Err(e) => {
-                        let _ = update_tx.send(SolverUpdate::Error {
-                            message: "Error identifying relevant files".into(),
-                            details: Some(e.to_string()),
-                        });
+                        Ok(())
+                    })
+                    .await?;
 
-                        Ok(SolverResponse {
-                            solution: format!(
-                                "<div class='text-red-500'>Error identifying relevant files: {}</div>",
-                                e
-                            ),
-                        })
-                    }
-                }
+                info!("Files response: {}", files_list);
+                info!("Files reasoning: {}", files_reasoning);
+
+                // Parse the response as a markdown list
+                let files: Vec<String> = files_list
+                    .lines()
+                    .filter(|line| line.trim().starts_with("- "))
+                    .map(|line| line.trim().trim_start_matches("- ").trim().to_string())
+                    .collect();
+
+                info!("Parsed files: {:?}", files);
+
+                // Send solution progress update with reasoning
+                let _ = update_tx.send(SolverUpdate::Progress {
+                    stage: SolverStage::Solution,
+                    message: "Analyzing solution approach".into(),
+                    data: Some(serde_json::json!({
+                        "files": files,
+                        "reasoning": files_reasoning
+                    })),
+                });
+
+                // Create solution prompt with files list
+                let solution_prompt = format!(
+                    "Given this GitHub repository map:\n\n{}\n\n\
+                     And these relevant files:\n{}\n\n\
+                     For this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
+                     Analyze and provide a detailed solution including:\n\
+                     1. Specific code changes needed (with file paths)\n\
+                     2. Any new files that need to be created\n\
+                     3. Step-by-step implementation instructions\n\
+                     4. Potential risks or considerations\n\
+                     Format the response in markdown with code blocks for any code changes.",
+                    repomap_response.repo_map,
+                    files.join("\n"),
+                    issue.title,
+                    issue.body
+                );
+
+                let mut solution_text = String::new();
+                let mut solution_reasoning = String::new();
+                let update_tx_clone = update_tx.clone();
+
+                // Stream the solution generation
+                self.deepseek_service
+                    .chat_stream(solution_prompt, true, move |content, reasoning| {
+                        if let Some(c) = content {
+                            solution_text.push_str(c);
+                            let _ = update_tx_clone.send(SolverUpdate::Progress {
+                                stage: SolverStage::Solution,
+                                message: "Generating solution...".into(),
+                                data: Some(serde_json::json!({
+                                    "solution": solution_text,
+                                    "reasoning": solution_reasoning
+                                })),
+                            });
+                        }
+                        if let Some(r) = reasoning {
+                            solution_reasoning.push_str(r);
+                            let _ = update_tx_clone.send(SolverUpdate::Progress {
+                                stage: SolverStage::Solution,
+                                message: "Generating solution...".into(),
+                                data: Some(serde_json::json!({
+                                    "solution": solution_text,
+                                    "reasoning": solution_reasoning
+                                })),
+                            });
+                        }
+                        Ok(())
+                    })
+                    .await?;
+
+                // Send PR progress update with reasoning
+                let _ = update_tx.send(SolverUpdate::Progress {
+                    stage: SolverStage::PR,
+                    message: "Preparing solution".into(),
+                    data: Some(serde_json::json!({
+                        "solution": solution_text,
+                        "reasoning": solution_reasoning
+                    })),
+                });
+
+                let solution = format!(
+                    r#"<div class='space-y-4'>
+                    <div class='bg-gray-800 rounded-lg p-4 mb-4'>
+                        <div class='text-sm text-yellow-400 mb-2'>File Selection Reasoning:</div>
+                        <div class='text-xs text-gray-300 whitespace-pre-wrap'>{}</div>
+                    </div>
+                    <div class='text-sm text-gray-400'>Relevant files:</div>
+                    <div class='max-w-4xl overflow-x-auto'>
+                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>
+                    </div>
+                    <div class='bg-gray-800 rounded-lg p-4 mb-4'>
+                        <div class='text-sm text-yellow-400 mb-2'>Solution Reasoning:</div>
+                        <div class='text-xs text-gray-300 whitespace-pre-wrap'>{}</div>
+                    </div>
+                    <div class='text-sm text-gray-400'>Proposed solution:</div>
+                    <div class='max-w-4xl overflow-x-auto'>
+                        <pre class='text-xs whitespace-pre-wrap break-words overflow-hidden'><code>{}</code></pre>
+                    </div>
+                    </div>"#,
+                    html_escape::encode_text(&files_reasoning),
+                    html_escape::encode_text(&files.join("\n")),
+                    html_escape::encode_text(&solution_reasoning),
+                    html_escape::encode_text(&solution_text)
+                );
+
+                // Send complete update
+                let _ = update_tx.send(SolverUpdate::Complete {
+                    result: serde_json::json!({
+                        "solution": solution,
+                        "files": files,
+                        "analysis": solution_text,
+                        "files_reasoning": files_reasoning,
+                        "solution_reasoning": solution_reasoning
+                    }),
+                });
+
+                Ok(SolverResponse { solution })
             }
             Err(e) => {
                 let _ = update_tx.send(SolverUpdate::Error {
