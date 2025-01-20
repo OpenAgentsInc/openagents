@@ -8,11 +8,11 @@ use anyhow::Result;
 use tokio::sync::broadcast;
 use tracing::info;
 
-mod files_analysis;
-mod solution_generation;
-mod url_parsing;
-mod html_formatting;
-mod types;
+pub mod files_analysis;
+pub mod solution_generation;
+pub mod url_parsing;
+pub mod html_formatting;
+pub mod types;
 
 pub(crate) use url_parsing::*;
 pub(crate) use html_formatting::*;
