@@ -5,8 +5,8 @@ use tokio::sync::Mutex;
 use tracing::info;
 use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
+    github_types::Issue,
 };
-use crate::server::services::github_types::Issue;
 
 impl super::super::SolverService {
     pub async fn analyze_files(
