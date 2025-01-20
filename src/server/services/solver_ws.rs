@@ -86,7 +86,7 @@ impl SolverWsState {
     pub async fn broadcast_update(&self, update: SolverUpdate) {
         // Convert update to HTML fragment with hx-swap-oob
         let html = match &update {
-            SolverUpdate::Progress { stage, message, data } => {
+            SolverUpdate::Progress { stage, message, data: _ } => {
                 format!(
                     r#"<div id="solver-progress" hx-swap-oob="true">
                         <div class="progress-bar" style="width: {}%">
@@ -259,14 +259,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                 info!("Starting solver for issue: {}", url);
                                 
                                 // Create a new channel for streaming updates
-                                let (stream_tx, mut stream_rx) = mpsc::channel(32);
+                                let (stream_tx, mut stream_rx) = mpsc::channel::<String>(32);
                                 
                                 // Spawn streaming task
                                 let tx_for_stream = tx_clone.clone();
                                 tokio::spawn(async move {
                                     while let Some(chunk) = stream_rx.recv().await {
                                         if let Ok(html) = format_stream_chunk(&chunk) {
-                                            if tx_for_stream.send(Message::Text(html)).await.is_err() {
+                                            if tx_for_stream.send(Message::Text(html.into())).await.is_err() {
                                                 break;
                                             }
                                         }

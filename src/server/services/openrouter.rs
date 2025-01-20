@@ -1,5 +1,5 @@
 use anyhow::Result;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{pin::Pin, time::Duration};
