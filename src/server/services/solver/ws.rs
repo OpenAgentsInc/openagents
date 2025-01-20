@@ -1,11 +1,14 @@
 use super::SolverResponse;
-use crate::server::services::solver_ws::{SolverStage, SolverUpdate};
+use crate::server::services::{
+    solver_ws::{SolverStage, SolverUpdate},
+    GitHubService,
+};
 use anyhow::Result;
 use tokio::sync::broadcast;
 use tracing::{error, info};
 
 impl super::SolverService {
-    pub async fn solve_issue_with_ws(
+    pub(crate) async fn solve_issue_with_ws(
         &self,
         issue_url: String,
         update_tx: broadcast::Sender<SolverUpdate>,
@@ -60,7 +63,7 @@ impl super::SolverService {
         {
             Ok(repomap_response) => {
                 // Get issue details from GitHub
-                let (owner, repo, issue_number) = crate::server::services::GitHubService::parse_issue_url(&issue_url)?;
+                let (owner, repo, issue_number) = GitHubService::parse_issue_url(&issue_url)?;
                 let issue = self
                     .github_service
                     .get_issue(&owner, &repo, issue_number)
