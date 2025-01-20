@@ -49,7 +49,7 @@ impl OpenRouterService {
 
     pub async fn inference_stream(&self, prompt: String) -> Result<StreamingOutput> {
         info!("Making streaming inference request to OpenRouter");
-        info!("Sending prompt to OpenRouter: {}", prompt);
+        // info!("Sending prompt to OpenRouter: {}", prompt);
 
         let request_body = serde_json::json!({
             "model": "deepseek/deepseek-chat",
