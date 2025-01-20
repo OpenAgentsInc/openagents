@@ -148,3 +148,4 @@ impl OpenRouterService {
         
         Ok(InferenceResponse { output })
     }
+}
