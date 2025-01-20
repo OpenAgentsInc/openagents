@@ -66,7 +66,7 @@ impl super::super::SolverService {
                     }
                     Ok(())
                 };
-                Ok(())
+                Box::pin(fut)
             })
             .await?;
 

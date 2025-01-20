@@ -1,6 +1,7 @@
 use anyhow::Result;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::info;
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
@@ -65,7 +66,7 @@ impl super::super::SolverService {
                     }
                     Ok(())
                 };
-                Ok(())
+                Box::pin(fut)
             })
             .await?;
 
