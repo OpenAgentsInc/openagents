@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 use tracing::info;
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
-    github::types::Issue,
+    github_types::Issue,
 };
 
 impl super::super::SolverService {
@@ -14,7 +14,7 @@ impl super::super::SolverService {
         repomap: &str, 
         issue: &Issue,
         update_tx: broadcast::Sender<SolverUpdate>,
-    ) -> Result<(Vec<String>, String)> {
+    ) -> Result<(Vec<String>, String), anyhow::Error> {
         let files_prompt = format!(
             "Given this GitHub repository map:\n\n{}\n\n\
             And this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
@@ -66,7 +66,7 @@ impl super::super::SolverService {
                     }
                     Ok(())
                 };
-                Box::pin(fut)
+                fut.await
             })
             .await?;
 
