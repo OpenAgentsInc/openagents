@@ -215,7 +215,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                     Solution complete
                                 </div>
                                 <div id="solver-result" hx-swap-oob="true">
-                                    <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #f5f5f5; border-radius: 4px;">
+                                    <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #1a1a1a; border-radius: 4px;">
                                         {}
                                     </pre>
                                 </div>"#,
@@ -268,7 +268,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                 ).await {
                                     let html = format!(
                                         r#"<div id="solver-result" hx-swap-oob="true">
-                                            <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #f5f5f5; border-radius: 4px;">
+                                            <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #1a1a1a; border-radius: 4px;">
                                                 {}
                                             </pre>
                                         </div>"#,
