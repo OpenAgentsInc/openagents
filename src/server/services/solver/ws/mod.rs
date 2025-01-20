@@ -1,9 +1,9 @@
 use super::SolverResponse;
 use crate::server::services::{
-    solver::ws::{SolverStage, SolverUpdate},
+    solver::ws::types::{SolverStage, SolverUpdate},
     GitHubService,
-    github_types::Issue,
 };
+use crate::server::services::github_types::Issue;
 use anyhow::Result;
 use tokio::sync::broadcast;
 use tracing::info;
