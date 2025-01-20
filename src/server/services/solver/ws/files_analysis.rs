@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 use tracing::info;
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
-    github_types::Issue,
+    github::Issue,
 };
 
 impl super::super::SolverService {
@@ -14,7 +14,7 @@ impl super::super::SolverService {
         repomap: &str, 
         issue: &Issue,
         update_tx: broadcast::Sender<SolverUpdate>,
-    ) -> Result<(Vec<String>, String), anyhow::Error> {
+    ) -> Result<(Vec<String>, String)> {
         let files_prompt = format!(
             "Given this GitHub repository map:\n\n{}\n\n\
             And this GitHub issue:\nTitle: {}\nDescription: {}\n\n\
@@ -37,7 +37,7 @@ impl super::super::SolverService {
 
         // Stream the files analysis
         self.deepseek_service
-            .chat_stream(files_prompt, true, move |content, reasoning| {
+            .chat_stream(files_prompt, true, move |content, reasoning| async move {
                 let state = files_state_clone.clone();
                 let tx = update_tx_clone.clone();
                 let fut = async move {

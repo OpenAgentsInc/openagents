@@ -2,7 +2,7 @@ use super::SolverResponse;
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
     GitHubService,
-    github::types::Issue,
+    github::Issue,
 };
 use anyhow::Result;
 use tokio::sync::broadcast;
