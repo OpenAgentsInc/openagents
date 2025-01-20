@@ -189,7 +189,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                     <div class="progress-bar" style="width: 100%">
                                         Complete
                                     </div>
-                                </div>"#
+                                </div>
+                                <div id="solver-status" hx-swap-oob="true">
+                                    Solution complete
+                                </div>
+                                <div id="solver-result" hx-swap-oob="true">
+                                    {}</div>"#,
+                                result["solution"]
                             )
                         }
                         SolverUpdate::Error { message, details } => {
@@ -250,10 +256,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
     // Wait for either task to finish
     tokio::select! {
         _ = send_task => {
-            error!("Send task completed");
+            info!("Send task completed");
         }
         _ = recv_task => {
-            error!("Receive task completed");
+            info!("Receive task completed");
         }
     }
 
