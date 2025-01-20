@@ -310,11 +310,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
     info!("Send task completed: {:?}", send_result);
     info!("Receive task completed: {:?}", recv_result);
 
-    // Ensure final messages are flushed
-    if let Ok(mut sender) = sender.reunite(receiver) {
-        let _ = sender.close().await;
-    }
-
     // Remove connection from state
     let mut conns = state.connections.write().await;
     conns.remove(&conn_id);
