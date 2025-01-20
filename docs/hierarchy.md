@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-19 12:09:44
+Generated on: 2025-01-20 12:22:26
 
 ### Structure
 
@@ -67,11 +67,14 @@ Generated on: 2025-01-19 12:09:44
 |   |   |   |-- mod.rs
 |   |   |   `-- routes.rs
 |   |   |-- services/
+|   |   |   |-- solver/
+|   |   |   |   |-- mod.rs
+|   |   |   |   `-- ws.rs
 |   |   |   |-- github.rs
 |   |   |   |-- mod.rs
 |   |   |   |-- openrouter.rs
 |   |   |   |-- repomap.rs
-|   |   |   `-- solver.rs
+|   |   |   `-- solver_ws.rs
 |   |   |-- config.rs
 |   |   `-- mod.rs
 |   |-- configuration.rs
@@ -122,6 +125,9 @@ Generated on: 2025-01-19 12:09:44
 |   |   |-- event.rs
 |   |   |-- mod.rs
 |   |   `-- subscription.rs
+|   |-- solver/
+|   |   |-- mod.rs
+|   |   `-- ws.rs
 |   |-- admin_middleware.rs
 |   |-- admin_routes.rs
 |   |-- agent.rs
@@ -142,5 +148,5 @@ Generated on: 2025-01-19 12:09:44
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-25 directories, 111 files
+27 directories, 115 files
 ```
