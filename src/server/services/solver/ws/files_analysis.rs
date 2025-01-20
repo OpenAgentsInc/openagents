@@ -4,12 +4,8 @@ use std::sync::Arc;
 use tracing::info;
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
-    github_types::Issue,
+    github::types::Issue,
 };
-use futures::future::Future;
-use std::pin::Pin;
-
-type AsyncCallback = Box<dyn Future<Output = Result<()>> + Send>;
 
 impl super::super::SolverService {
     pub async fn analyze_files(

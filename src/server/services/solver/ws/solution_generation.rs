@@ -3,12 +3,8 @@ use tokio::sync::{broadcast, Mutex};
 use std::sync::Arc;
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
-    github_types::Issue,
+    github::types::Issue,
 };
-use futures::future::Future;
-use std::pin::Pin;
-
-type AsyncCallback = Box<dyn Future<Output = Result<()>> + Send>;
 
 impl super::super::SolverService {
     pub(crate) async fn generate_solution(
