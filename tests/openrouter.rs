@@ -40,9 +40,10 @@ async fn test_inference() {
     let result = service
         .inference_stream("Test prompt".to_string())
         .await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("Authentication failed"));
+    match result {
+        Ok(_) => panic!("Expected authentication error"),
+        Err(e) => assert!(e.to_string().contains("Authentication failed")),
+    }
 }
 
 async fn mock_inference_handler(
