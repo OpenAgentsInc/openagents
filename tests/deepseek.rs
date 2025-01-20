@@ -1,19 +1,16 @@
-use anyhow::Result;
-use mockito::mock;
+use mockito::Server;
 use openagents::server::services::deepseek::DeepSeekService;
 use serde_json::json;
 
 #[tokio::test]
 async fn test_chat_basic() {
-    let mut server = mockito::Server::new();
+    let mut server = Server::new();
     let mock_response = json!({
         "choices": [{
             "message": {
-                "role": "assistant",
                 "content": "Hello! How can I help you?",
                 "reasoning_content": null
-            },
-            "finish_reason": "stop"
+            }
         }]
     });
 
@@ -35,15 +32,13 @@ async fn test_chat_basic() {
 
 #[tokio::test]
 async fn test_chat_with_reasoning() {
-    let mut server = mockito::Server::new();
+    let mut server = Server::new();
     let mock_response = json!({
         "choices": [{
             "message": {
-                "role": "assistant",
                 "content": "9.11 is greater than 9.8",
                 "reasoning_content": "Let's compare these numbers:\n9.11 vs 9.8\n9.11 = 9 + 0.11\n9.8 = 9 + 0.8\n0.8 is greater than 0.11\nTherefore, 9.8 is greater than 9.11"
-            },
-            "finish_reason": "stop"
+            }
         }]
     });
 
