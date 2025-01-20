@@ -84,7 +84,7 @@ impl OpenRouterService {
         }
 
         let stream = response.bytes_stream();
-        let (tx, rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(100); // Increase buffer size
 
         // Spawn a task to process the stream
         tokio::spawn(async move {

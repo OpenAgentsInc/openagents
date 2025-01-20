@@ -157,7 +157,7 @@ pub async fn ws_handler(
 }
 
 async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
-    let (tx, mut rx) = mpsc::channel(32);
+    let (tx, mut rx) = mpsc::channel(100); // Increase buffer size
     let (mut sender, mut receiver) = socket.split();
     let state_clone = state.clone();
     let tx_clone = tx.clone();
@@ -262,10 +262,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                 info!("Starting solver for issue: {}", url);
                                 
 
-                                match state_clone.solver_service.solve_issue_with_ws(
+                                let solve_result = state_clone.solver_service.solve_issue_with_ws(
                                     url.to_string(),
                                     state_clone.update_tx.clone()
-                                ).await {
+                                ).await;
+
+                                match solve_result {
                                     Ok(response) => {
                                         let html = format!(
                                             r#"<div id="solver-result" hx-swap-oob="true">
@@ -275,10 +277,23 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                             </div>"#,
                                             response.solution
                                         );
-                                        // Ensure message is sent or log error
-                                        if let Err(e) = tx_clone.send(Message::Text(html.into())).await {
-                                            error!("Failed to send final solution: {}", e);
+                                        
+                                        // Try multiple times to send the final message
+                                        for _ in 0..3 {
+                                            match tx_clone.send(Message::Text(html.clone().into())).await {
+                                                Ok(_) => {
+                                                    info!("Successfully sent final solution");
+                                                    break;
+                                                }
+                                                Err(e) => {
+                                                    error!("Failed to send final solution: {}", e);
+                                                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                                }
+                                            }
                                         }
+                                        
+                                        // Send a close message
+                                        let _ = tx_clone.send(Message::Close(None)).await;
                                     }
                                     Err(e) => {
                                         error!("Solver error: {}", e);
