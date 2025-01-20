@@ -12,9 +12,9 @@ use std::pin::Pin;
 type AsyncCallback = Box<dyn Future<Output = Result<()>> + Send>;
 
 impl super::super::SolverService {
-    pub(crate) async fn analyze_files(
+    pub async fn analyze_files(
         &self,
-        repomap: &str,
+        repomap: &str, 
         issue: &Issue,
         update_tx: broadcast::Sender<SolverUpdate>,
     ) -> Result<(Vec<String>, String)> {
@@ -69,7 +69,7 @@ impl super::super::SolverService {
                     }
                     Ok(())
                 };
-                Ok(Box::pin(fut) as AsyncCallback)
+                Ok(())
             })
             .await?;
 
