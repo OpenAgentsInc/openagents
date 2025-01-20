@@ -74,7 +74,15 @@ impl super::SolverService {
 
         // Get issue details
         let (owner, repo, issue_number) = GitHubService::parse_issue_url(issue_url)?;
-        let issue = self.github_service.get_issue(&owner, &repo, issue_number).await?;
+        let github_issue = self.github_service.get_issue(&owner, &repo, issue_number).await?;
+        
+        // Convert GitHubIssue to Issue
+        let issue = Issue {
+            title: github_issue.title,
+            body: github_issue.body,
+            number: github_issue.number,
+            state: github_issue.state,
+        };
 
         // Send analysis progress update
         let _ = update_tx.send(SolverUpdate::Progress {
