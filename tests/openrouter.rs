@@ -1,4 +1,10 @@
-use axum::{http::StatusCode, response::IntoResponse, routing::post, Json, Router};
+use axum::{
+    body::Body,
+    http::StatusCode,
+    response::Response,
+    routing::post,
+    Json, Router,
+};
 use futures::StreamExt;
 use openagents::server::services::OpenRouterService;
 use serde_json::json;
@@ -45,7 +51,7 @@ async fn test_inference() {
 async fn mock_inference_handler(
     headers: axum::http::HeaderMap,
     Json(payload): Json<serde_json::Value>,
-) -> Response<Body> {
+) -> impl IntoResponse {
     // Verify request payload
     assert_eq!(payload["model"], "deepseek/deepseek-chat");
     assert!(payload["messages"].as_array().unwrap().len() > 0);
@@ -60,7 +66,7 @@ async fn mock_inference_handler(
     assert!(headers.contains_key("Content-Type"));
 
     if auth_header.contains("invalid_key") {
-        return Response::builder()
+        return axum::response::Response::builder()
             .status(StatusCode::UNAUTHORIZED)
             .header("Content-Type", "application/json")
             .body(Body::from(
@@ -110,7 +116,7 @@ async fn mock_inference_handler(
             .unwrap()
     } else {
         // Return non-streaming mock response
-        Response::builder()
+        axum::response::Response::builder()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
             .body(Body::from(
