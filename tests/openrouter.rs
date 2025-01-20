@@ -1,10 +1,4 @@
-use axum::{
-    body::Body,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::post,
-    Json, Router,
-};
+use axum::{body::Body, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use futures::StreamExt;
 use openagents::server::services::OpenRouterService;
 use serde_json::json;
