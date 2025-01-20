@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-20 14:19:40
+Generated on: 2025-01-20 14:44:28
 
 ### Structure
 
@@ -76,10 +76,12 @@ Generated on: 2025-01-20 14:19:40
 |   |   |   |   |   |-- html_formatting.rs
 |   |   |   |   |   |-- mod.rs
 |   |   |   |   |   |-- solution_generation.rs
+|   |   |   |   |   |-- types.rs
 |   |   |   |   |   `-- url_parsing.rs
 |   |   |   |   `-- mod.rs
 |   |   |   |-- deepseek.rs
 |   |   |   |-- github.rs
+|   |   |   |-- github_types.rs
 |   |   |   |-- mod.rs
 |   |   |   |-- openrouter.rs
 |   |   |   |-- repomap.rs
@@ -158,5 +160,5 @@ Generated on: 2025-01-20 14:19:40
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-29 directories, 123 files
+29 directories, 125 files
 ```
