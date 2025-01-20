@@ -8,6 +8,8 @@ use crate::server::services::{
 use futures::future::Future;
 use std::pin::Pin;
 
+type AsyncCallback = Box<dyn Future<Output = Result<()>> + Send>;
+
 impl super::super::SolverService {
     pub(crate) async fn generate_solution(
         &self,
@@ -42,7 +44,7 @@ impl super::super::SolverService {
             .chat_stream(solution_prompt, true, move |content, reasoning| {
                 let state = solution_state_clone.clone();
                 let tx = update_tx_clone.clone();
-                Ok(Box::pin(async move {
+                let fut = async move {
                     let mut guard = state.lock().await;
                     if let Some(c) = content {
                         guard.0.push_str(c);
@@ -67,7 +69,8 @@ impl super::super::SolverService {
                         });
                     }
                     Ok(())
-                }) as Pin<Box<dyn Future<Output = Result<()>> + Send>>)
+                };
+                Ok(Box::pin(fut) as AsyncCallback)
             })
             .await?;
 
