@@ -1,6 +1,6 @@
 use super::SolverResponse;
 use crate::server::services::{
-    solver_ws::{SolverStage, SolverUpdate},
+    solver::ws::{SolverStage, SolverUpdate},
     GitHubService,
     github_types::Issue,
 };
@@ -12,11 +12,13 @@ mod files_analysis;
 mod solution_generation;
 mod url_parsing;
 mod html_formatting;
+mod types;
 
 pub(crate) use files_analysis::*;
 pub(crate) use solution_generation::*;
 pub(crate) use url_parsing::*;
 pub(crate) use html_formatting::*;
+pub use types::*;
 
 impl super::SolverService {
     pub(crate) async fn solve_issue_with_ws(

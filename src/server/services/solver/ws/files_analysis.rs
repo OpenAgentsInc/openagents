@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
 use crate::server::services::{
-    solver_ws::{SolverStage, SolverUpdate},
+    solver::ws::{SolverStage, SolverUpdate},
     github_types::Issue,
 };
 

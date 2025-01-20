@@ -2,7 +2,7 @@ use anyhow::Result;
 use tokio::sync::{broadcast, Mutex};
 use std::sync::Arc;
 use crate::server::services::{
-    solver_ws::{SolverStage, SolverUpdate},
+    solver::ws::{SolverStage, SolverUpdate},
     github_types::Issue,
 };
 
