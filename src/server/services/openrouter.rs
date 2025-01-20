@@ -1,7 +1,8 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use std::time::Duration;
+use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct OpenRouterService {
@@ -17,16 +18,26 @@ pub struct InferenceResponse {
 
 impl OpenRouterService {
     pub fn new(api_key: String) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(120))  // 2 minute timeout
+            .build()
+            .expect("Failed to create HTTP client");
+
         Self {
-            client: Client::new(),
+            client,
             api_key,
             base_url: "https://openrouter.ai/api/v1".to_string(),
         }
     }
 
     pub fn with_base_url(api_key: String, base_url: String) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(120))  // 2 minute timeout
+            .build()
+            .expect("Failed to create HTTP client");
+
         Self {
-            client: Client::new(),
+            client,
             api_key,
             base_url,
         }
@@ -34,7 +45,6 @@ impl OpenRouterService {
 
     pub async fn inference(&self, prompt: String) -> Result<InferenceResponse> {
         info!("Making inference request to OpenRouter");
-
         info!("Sending prompt to OpenRouter: {}", prompt);
 
         let request_body = serde_json::json!({
@@ -68,6 +78,7 @@ impl OpenRouterService {
         info!("OpenRouter response body: {}", response_text);
 
         if !status.is_success() {
+            error!("OpenRouter API error ({}): {}", status, response_text);
             return Err(anyhow::anyhow!(
                 "OpenRouter API error ({}): {}",
                 status,
