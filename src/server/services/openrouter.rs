@@ -60,10 +60,6 @@ impl OpenRouterService {
             "stream": true
         });
 
-        info!(
-            "Request body: {}",
-            serde_json::to_string_pretty(&request_body)?
-        );
 
         let response = self
             .client

@@ -261,25 +261,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                             if let Some(url) = issue_url.as_str() {
                                 info!("Starting solver for issue: {}", url);
                                 
-                                // Create a new channel for streaming updates
-                                let (_stream_tx, mut stream_rx) = mpsc::channel::<String>(32);
-                                
-                                // Spawn streaming task
-                                let tx_for_stream = tx_clone.clone();
-                                tokio::spawn(async move {
-                                    while let Some(chunk) = stream_rx.recv().await {
-                                        if let Ok(html) = format_stream_chunk(&chunk) {
-                                            if tx_for_stream.send(Message::Text(html.into())).await.is_err() {
-                                                break;
-                                            }
-                                        }
-                                    }
-                                });
 
-                                state_clone.solver_service.solve_issue_with_ws(
+                                if let Ok(response) = state_clone.solver_service.solve_issue_with_ws(
                                     url.to_string(),
                                     state_clone.update_tx.clone()
-                                ).await.ok();
+                                ).await {
+                                    let html = format!(
+                                        r#"<div id="solver-result" hx-swap-oob="true">
+                                            <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #f5f5f5; border-radius: 4px;">
+                                                {}
+                                            </pre>
+                                        </div>"#,
+                                        response.solution
+                                    );
+                                    let _ = tx_clone.send(Message::Text(html.into())).await;
+                                }
                             }
                         }
                     }
