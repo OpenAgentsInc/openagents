@@ -1,3 +1,5 @@
+mod ws;
+
 use crate::server::services::{
     solver_ws::{SolverStage, SolverUpdate},
     GitHubService, OpenRouterService, RepomapService,
