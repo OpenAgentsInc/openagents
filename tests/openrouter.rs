@@ -98,12 +98,16 @@ async fn mock_inference_handler(
             Ok("data: [DONE]\n\n".to_string())
         ]);
         
-        let body = axum::body::Body::from_stream(stream_response);
-        axum::response::Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "text/event-stream")
-            .body(body)
-            .unwrap()
+        (
+            StatusCode::OK,
+            Json(json!({
+                "choices": [{
+                    "delta": {
+                        "content": "Mock response"
+                    }
+                }]
+            }))
+        )
     } else {
         // Return non-streaming mock response
         (
