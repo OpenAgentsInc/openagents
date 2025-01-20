@@ -262,19 +262,34 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                 info!("Starting solver for issue: {}", url);
                                 
 
-                                if let Ok(response) = state_clone.solver_service.solve_issue_with_ws(
+                                match state_clone.solver_service.solve_issue_with_ws(
                                     url.to_string(),
                                     state_clone.update_tx.clone()
                                 ).await {
-                                    let html = format!(
-                                        r#"<div id="solver-result" hx-swap-oob="true">
-                                            <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #1a1a1a; border-radius: 4px;">
-                                                {}
-                                            </pre>
-                                        </div>"#,
-                                        response.solution
-                                    );
-                                    let _ = tx_clone.send(Message::Text(html.into())).await;
+                                    Ok(response) => {
+                                        let html = format!(
+                                            r#"<div id="solver-result" hx-swap-oob="true">
+                                                <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #1a1a1a; border-radius: 4px;">
+                                                    {}
+                                                </pre>
+                                            </div>"#,
+                                            response.solution
+                                        );
+                                        // Ensure message is sent or log error
+                                        if let Err(e) = tx_clone.send(Message::Text(html.into())).await {
+                                            error!("Failed to send final solution: {}", e);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!("Solver error: {}", e);
+                                        let error_html = format!(
+                                            r#"<div id="solver-error" hx-swap-oob="true">
+                                                <div class="error">Error: {}</div>
+                                            </div>"#,
+                                            e
+                                        );
+                                        let _ = tx_clone.send(Message::Text(error_html.into())).await;
+                                    }
                                 }
                             }
                         }
@@ -289,14 +304,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
         }
     });
 
-    // Wait for either task to finish
-    tokio::select! {
-        _ = send_task => {
-            info!("Send task completed");
-        }
-        _ = recv_task => {
-            info!("Receive task completed");
-        }
+    // Wait for both tasks to complete
+    let (send_result, recv_result) = tokio::join!(send_task, recv_task);
+    
+    info!("Send task completed: {:?}", send_result);
+    info!("Receive task completed: {:?}", recv_result);
+
+    // Ensure final messages are flushed
+    if let Ok(mut sender) = sender.reunite(receiver) {
+        let _ = sender.close().await;
     }
 
     // Remove connection from state
