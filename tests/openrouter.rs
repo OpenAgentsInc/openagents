@@ -1,5 +1,4 @@
 use axum::{
-    body::Body,
     http::StatusCode,
     response::IntoResponse,
     routing::post,
@@ -42,7 +41,8 @@ async fn test_inference() {
         .inference_stream("Test prompt".to_string())
         .await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Authentication failed"));
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("Authentication failed"));
 }
 
 async fn mock_inference_handler(
@@ -75,7 +75,7 @@ async fn mock_inference_handler(
     let is_stream = payload["stream"].as_bool().unwrap_or(false);
     
     if is_stream {
-        let stream = futures::stream::iter(vec![
+        let _stream = futures::stream::iter(vec![
             Ok::<_, std::io::Error>(format!("data: {}\n\n", 
                 serde_json::to_string(&json!({
                     "choices": [{
