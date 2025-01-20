@@ -1,10 +1,14 @@
-use mockito::Server;
 use openagents::server::services::deepseek::DeepSeekService;
 use serde_json::json;
+use wiremock::{
+    matchers::{header, method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn test_chat_basic() {
-    let mut server = Server::new();
+    let mock_server = MockServer::start().await;
+
     let mock_response = json!({
         "choices": [{
             "message": {
@@ -14,15 +18,16 @@ async fn test_chat_basic() {
         }]
     });
 
-    let _m = server.mock("POST", "/chat/completions")
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(mock_response.to_string())
-        .create();
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(header("content-type", "application/json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&mock_response))
+        .mount(&mock_server)
+        .await;
 
     let service = DeepSeekService::with_base_url(
         "test_key".to_string(),
-        server.url(),
+        mock_server.uri(),
     );
 
     let (response, reasoning) = service.chat("Hello".to_string(), false).await.unwrap();
@@ -30,9 +35,10 @@ async fn test_chat_basic() {
     assert_eq!(reasoning, None);
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn test_chat_with_reasoning() {
-    let mut server = Server::new();
+    let mock_server = MockServer::start().await;
+
     let mock_response = json!({
         "choices": [{
             "message": {
@@ -42,15 +48,16 @@ async fn test_chat_with_reasoning() {
         }]
     });
 
-    let _m = server.mock("POST", "/chat/completions")
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(mock_response.to_string())
-        .create();
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(header("content-type", "application/json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&mock_response))
+        .mount(&mock_server)
+        .await;
 
     let service = DeepSeekService::with_base_url(
         "test_key".to_string(),
-        server.url(),
+        mock_server.uri(),
     );
 
     let (response, reasoning) = service.chat("Compare 9.11 and 9.8".to_string(), true).await.unwrap();
