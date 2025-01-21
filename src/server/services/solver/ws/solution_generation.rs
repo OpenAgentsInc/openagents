@@ -39,9 +39,39 @@ impl super::super::SolverService {
         let solution_state_clone = solution_state.clone();
 
         // Stream the solution generation
-        let mut stream = self.deepseek_service.chat_stream(solution_prompt, true).await;
+        let mut stream = self.deepseek_service.chat_stream(solution_prompt, true, |content, reasoning| {
+            let state = solution_state_clone.clone();
+            let tx = update_tx_clone.clone();
+            
+            tokio::spawn(async move {
+                let mut guard = state.lock().await;
+                if let Some(c) = content {
+                    guard.0.push_str(c);
+                    let _ = tx.send(SolverUpdate::Progress {
+                        stage: SolverStage::Solution,
+                        message: "Generating solution...".into(),
+                        data: Some(serde_json::json!({
+                            "solution_text": guard.0,
+                            "solution_reasoning": guard.1
+                        })),
+                    });
+                }
+                if let Some(r) = reasoning {
+                    guard.1.push_str(r);
+                    let _ = tx.send(SolverUpdate::Progress {
+                        stage: SolverStage::Solution,
+                        message: "Generating solution...".into(),
+                        data: Some(serde_json::json!({
+                            "solution_text": guard.0,
+                            "solution_reasoning": guard.1
+                        })),
+                    });
+                }
+            });
+            Ok(())
+        }).await;
 
-        while let Some(update) = stream.recv().await {
+        while let Some(_) = stream.recv().await {
             match update {
                 StreamUpdate::Content(content) => {
                     let mut guard = solution_state_clone.lock().await;

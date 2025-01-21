@@ -37,9 +37,39 @@ impl super::super::SolverService {
         let files_state_clone = files_state.clone();
 
         // Stream the files analysis
-        let mut stream = self.deepseek_service.chat_stream(files_prompt, true).await;
+        let mut stream = self.deepseek_service.chat_stream(files_prompt, true, |content, reasoning| {
+            let state = files_state_clone.clone();
+            let tx = update_tx_clone.clone();
+            
+            tokio::spawn(async move {
+                let mut guard = state.lock().await;
+                if let Some(c) = content {
+                    guard.0.push_str(c);
+                    let _ = tx.send(SolverUpdate::Progress {
+                        stage: SolverStage::Analysis,
+                        message: "Analyzing files...".into(),
+                        data: Some(serde_json::json!({
+                            "files_list": guard.0,
+                            "files_reasoning": guard.1
+                        })),
+                    });
+                }
+                if let Some(r) = reasoning {
+                    guard.1.push_str(r);
+                    let _ = tx.send(SolverUpdate::Progress {
+                        stage: SolverStage::Analysis,
+                        message: "Analyzing files...".into(),
+                        data: Some(serde_json::json!({
+                            "files_list": guard.0,
+                            "files_reasoning": guard.1
+                        })),
+                    });
+                }
+            });
+            Ok(())
+        }).await;
 
-        while let Some(update) = stream.recv().await {
+        while let Some(_) = stream.recv().await {
             match update {
                 StreamUpdate::Content(content) => {
                     let mut guard = files_state_clone.lock().await;
