@@ -55,7 +55,7 @@ impl SolverWsState {
                             super::html_formatting::render_files_list(files_list)
                         );
                         for tx in conns.values() {
-                            let _ = tx.send(Message::Text(content_html.clone().into())).await;
+                            let _ = tx.send(Message::Text(content_html.into())).await;
                         }
                     }
 
@@ -66,7 +66,7 @@ impl SolverWsState {
                             super::html_formatting::render_files_reasoning(files_reasoning)
                         );
                         for tx in conns.values() {
-                            let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
+                            let _ = tx.send(Message::Text(reasoning_html.into())).await;
                         }
                     }
 
@@ -77,7 +77,7 @@ impl SolverWsState {
                             super::html_formatting::render_solution(solution_text)
                         );
                         for tx in conns.values() {
-                            let _ = tx.send(Message::Text(solution_html.clone().into())).await;
+                            let _ = tx.send(Message::Text(solution_html.into())).await;
                         }
                     }
 
@@ -88,14 +88,14 @@ impl SolverWsState {
                             super::html_formatting::render_solution_reasoning(solution_reasoning)
                         );
                         for tx in conns.values() {
-                            let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
+                            let _ = tx.send(Message::Text(reasoning_html.into())).await;
                         }
                     }
                 }
 
                 // Send progress bar update
                 for tx in conns.values() {
-                    let _ = tx.send(Message::Text(progress_html.clone().into())).await;
+                    let _ = tx.send(Message::Text(progress_html.into())).await;
                 }
             }
             SolverUpdate::Complete { result } => {
@@ -113,8 +113,8 @@ impl SolverWsState {
                 }).to_string();
 
                 for tx in conns.values() {
-                    let _ = tx.send(Message::Text(complete_html.clone().into())).await;
-                    let _ = tx.send(Message::Text(complete_msg.clone())).await;
+                    let _ = tx.send(Message::Text(complete_html.into())).await;
+                    let _ = tx.send(Message::Text(complete_msg.into())).await;
                 }
             }
             SolverUpdate::Error { message, details } => {
@@ -135,8 +135,8 @@ impl SolverWsState {
                 }).to_string();
 
                 for tx in conns.values() {
-                    let _ = tx.send(Message::Text(error_html.clone().into())).await;
-                    let _ = tx.send(Message::Text(error_msg.clone())).await;
+                    let _ = tx.send(Message::Text(error_html.into())).await;
+                    let _ = tx.send(Message::Text(error_msg.into())).await;
                 }
             }
         }
@@ -228,7 +228,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                     Ok(response) => {
                                         // Final solution is handled by broadcast_update
                                         let complete_update = SolverUpdate::Complete {
-                                            result: response.solution,
+                                            result: serde_json::json!({
+                                                "solution": response.solution
+                                            }),
                                         };
                                         state_clone.broadcast_update(complete_update).await;
                                     }
