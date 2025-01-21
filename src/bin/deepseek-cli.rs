@@ -40,10 +40,10 @@ fn print_colored(text: &str, color: Color) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     let api_key = std::env::var("DEEPSEEK_API_KEY")
         .expect("DEEPSEEK_API_KEY environment variable must be set");
-    
+
     let service = DeepSeekService::new(api_key);
 
     match cli.command {

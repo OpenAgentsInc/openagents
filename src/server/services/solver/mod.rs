@@ -27,7 +27,8 @@ pub struct SolverResponse {
 impl SolverService {
     pub fn new() -> Self {
         let aider_api_key = std::env::var("AIDER_API_KEY").expect("AIDER_API_KEY must be set");
-        let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
+        let deepseek_api_key =
+            std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
         let github_token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set");
 
         Self {

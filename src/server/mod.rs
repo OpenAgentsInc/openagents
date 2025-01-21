@@ -4,8 +4,8 @@ pub mod services;
 
 use axum::{routing::get, Router};
 use services::{
-    solver::SolverService,
     solver::ws::{ws_handler, SolverWsState},
+    solver::SolverService,
 };
 use std::sync::Arc;
 

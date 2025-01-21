@@ -1,20 +1,20 @@
 use super::SolverResponse;
-use crate::server::services::GitHubService;
 use crate::server::services::github_types::Issue;
+use crate::server::services::GitHubService;
 use anyhow::Result;
 use tokio::sync::broadcast;
 use tracing::info;
 
 pub mod files_analysis;
-pub mod solution_generation;
-pub mod url_parsing;
 pub mod html_formatting;
-pub mod types;
+pub mod solution_generation;
 pub mod transport;
+pub mod types;
+pub mod url_parsing;
 
 // Re-export the types
-pub use types::{SolverStage, SolverUpdate};
 pub use transport::{ws_handler, SolverWsState};
+pub use types::{SolverStage, SolverUpdate};
 
 pub(crate) use url_parsing::*;
 
@@ -40,7 +40,10 @@ impl super::SolverService {
         info!("Extracted repo URL: {}", repo_url);
 
         // Generate repomap and process
-        match self.process_repomap(&repo_url, &issue_url, update_tx.clone()).await {
+        match self
+            .process_repomap(&repo_url, &issue_url, update_tx.clone())
+            .await
+        {
             Ok(solution) => Ok(SolverResponse { solution }),
             Err(e) => {
                 let _ = update_tx.send(SolverUpdate::Error {
@@ -71,12 +74,18 @@ impl super::SolverService {
         });
 
         // Generate repomap
-        let repomap_response = self.repomap_service.generate_repomap(repo_url.to_string()).await?;
+        let repomap_response = self
+            .repomap_service
+            .generate_repomap(repo_url.to_string())
+            .await?;
 
         // Get issue details
         let (owner, repo, issue_number) = GitHubService::parse_issue_url(issue_url)?;
-        let github_issue = self.github_service.get_issue(&owner, &repo, issue_number).await?;
-        
+        let github_issue = self
+            .github_service
+            .get_issue(&owner, &repo, issue_number)
+            .await?;
+
         // Convert GitHubIssue to Issue
         let issue = Issue {
             title: github_issue.title,
@@ -101,7 +110,12 @@ impl super::SolverService {
 
         // Generate solution
         let (solution_text, solution_reasoning): (String, String) = self
-            .generate_solution(&repomap_response.repo_map, &files, &issue, update_tx.clone())
+            .generate_solution(
+                &repomap_response.repo_map,
+                &files,
+                &issue,
+                update_tx.clone(),
+            )
             .await?;
 
         // Send updates for each component

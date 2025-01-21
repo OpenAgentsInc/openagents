@@ -1,17 +1,17 @@
-use std::{sync::Arc, time::Duration};
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::State,
     response::IntoResponse,
 };
-use futures::{sink::SinkExt, stream::StreamExt};
-use tokio::sync::{broadcast, mpsc, RwLock};
-use std::collections::HashMap;
 use bytes::Bytes;
+use futures::{sink::SinkExt, stream::StreamExt};
+use std::collections::HashMap;
+use std::{sync::Arc, time::Duration};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{error, info};
 
-use crate::server::services::solver::SolverService;
 use super::types::SolverUpdate;
+use crate::server::services::solver::SolverService;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -35,9 +35,13 @@ impl SolverWsState {
 
     pub async fn broadcast_update(&self, update: SolverUpdate) {
         let conns = self.connections.read().await;
-        
+
         match &update {
-            SolverUpdate::Progress { stage, message, data } => {
+            SolverUpdate::Progress {
+                stage,
+                message,
+                data,
+            } => {
                 // First send progress bar update
                 let progress_html = format!(
                     "<div id='progress-bar' hx-swap-oob='true'>{}</div>
@@ -123,7 +127,8 @@ impl SolverWsState {
                 let complete_msg = serde_json::json!({
                     "type": "complete",
                     "message": "Solution complete"
-                }).to_string();
+                })
+                .to_string();
 
                 for tx in conns.values() {
                     let _ = tx.send(Message::Text(complete_msg.clone().into())).await;
@@ -155,7 +160,8 @@ impl SolverWsState {
                     "type": "error",
                     "message": message,
                     "details": details
-                }).to_string();
+                })
+                .to_string();
 
                 for tx in conns.values() {
                     let _ = tx.send(Message::Text(error_html.clone().into())).await;
@@ -291,4 +297,3 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
     let mut conns = state.connections.write().await;
     conns.remove(&conn_id);
 }
-

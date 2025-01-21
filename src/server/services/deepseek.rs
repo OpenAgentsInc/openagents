@@ -2,8 +2,8 @@ use anyhow::Result;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 use tokio::sync::mpsc;
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct DeepSeekService {
@@ -85,11 +85,19 @@ impl DeepSeekService {
         }
     }
 
-    pub async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
+    pub async fn chat(
+        &self,
+        prompt: String,
+        use_reasoner: bool,
+    ) -> Result<(String, Option<String>)> {
         self.chat_internal(prompt, use_reasoner, false).await
     }
 
-    pub async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
+    pub async fn chat_stream(
+        &self,
+        prompt: String,
+        use_reasoner: bool,
+    ) -> mpsc::Receiver<StreamUpdate> {
         let (tx, rx) = mpsc::channel(100);
         let client = self.client.clone();
         let api_key = self.api_key.clone();
@@ -134,7 +142,7 @@ impl DeepSeekService {
                             Ok(chunk) => {
                                 let chunk_str = String::from_utf8_lossy(&chunk);
                                 buffer.push_str(&chunk_str);
-                                
+
                                 // Process complete SSE messages
                                 while let Some(pos) = buffer.find('\n') {
                                     // Extract the line and update buffer without borrowing issues
@@ -147,13 +155,25 @@ impl DeepSeekService {
                                             break;
                                         }
 
-                                        if let Ok(response) = serde_json::from_str::<StreamResponse>(data) {
+                                        if let Ok(response) =
+                                            serde_json::from_str::<StreamResponse>(data)
+                                        {
                                             if let Some(choice) = response.choices.first() {
                                                 if let Some(ref content) = choice.delta.content {
-                                                    let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
+                                                    let _ = tx
+                                                        .send(StreamUpdate::Content(
+                                                            content.to_string(),
+                                                        ))
+                                                        .await;
                                                 }
-                                                if let Some(ref reasoning) = choice.delta.reasoning_content {
-                                                    let _ = tx.send(StreamUpdate::Reasoning(reasoning.to_string())).await;
+                                                if let Some(ref reasoning) =
+                                                    choice.delta.reasoning_content
+                                                {
+                                                    let _ = tx
+                                                        .send(StreamUpdate::Reasoning(
+                                                            reasoning.to_string(),
+                                                        ))
+                                                        .await;
                                                 }
                                                 if choice.finish_reason.is_some() {
                                                     let _ = tx.send(StreamUpdate::Done).await;
@@ -180,9 +200,14 @@ impl DeepSeekService {
         rx
     }
 
-    async fn chat_internal(&self, prompt: String, use_reasoner: bool, stream: bool) -> Result<(String, Option<String>)> {
+    async fn chat_internal(
+        &self,
+        prompt: String,
+        use_reasoner: bool,
+        stream: bool,
+    ) -> Result<(String, Option<String>)> {
         info!("Making chat request to DeepSeek API");
-        
+
         let model = if use_reasoner {
             "deepseek-reasoner"
         } else {
@@ -213,7 +238,7 @@ impl DeepSeekService {
             .await?;
 
         let chat_response: ChatResponse = response.json().await?;
-        
+
         if let Some(choice) = chat_response.choices.first() {
             Ok((
                 choice.message.content.clone(),

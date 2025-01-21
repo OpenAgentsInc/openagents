@@ -20,30 +20,35 @@ src/server/services/solver/
 ### Module Responsibilities
 
 1. **mod.rs (Main Service)**
+
    - Service initialization
    - Configuration management
    - Service coordination
    - Error handling
 
 2. **ws/mod.rs (WebSocket Coordinator)**
+
    - WebSocket connection management
    - Progress updates
    - Flow coordination
    - State management
 
 3. **ws/url_parsing.rs**
+
    - GitHub URL validation
    - Repository URL extraction
    - Issue number parsing
    - Error reporting
 
 4. **ws/files_analysis.rs**
+
    - Repository structure analysis
    - Relevant file identification
    - DeepSeek integration for file analysis
    - Real-time analysis updates
 
 5. **ws/solution_generation.rs**
+
    - Solution planning
    - Code change generation
    - Implementation steps
@@ -94,16 +99,19 @@ SolverUpdate::Progress {
 ## Process Flow
 
 1. **Initialization**
+
    - Parse GitHub issue URL
    - Validate repository access
    - Initialize WebSocket connection
 
 2. **Repository Analysis**
+
    - Generate repository map
    - Identify relevant files
    - Stream analysis progress
 
 3. **Solution Generation**
+
    - Analyze issue requirements
    - Generate code changes
    - Create implementation plan
@@ -121,31 +129,35 @@ The service provides real-time updates through several stages:
 
 ```typescript
 type SolverUpdate = {
-    type: 'progress' | 'complete' | 'error'
-    stage?: 'init' | 'repomap' | 'analysis' | 'solution' | 'pr'
-    message: string
-    data?: any
-}
+  type: "progress" | "complete" | "error";
+  stage?: "init" | "repomap" | "analysis" | "solution" | "pr";
+  message: string;
+  data?: any;
+};
 ```
 
 ### Update Stages
 
 1. **Init**
+
    - Connection established
    - URL validation
    - Initial setup
 
 2. **Repomap**
+
    - Repository structure analysis
    - File hierarchy generation
    - Access verification
 
 3. **Analysis**
+
    - File relevance analysis
    - Context gathering
    - Dependency mapping
 
 4. **Solution**
+
    - Code change generation
    - Implementation planning
    - Risk assessment
@@ -160,6 +172,7 @@ type SolverUpdate = {
 The service implements comprehensive error handling:
 
 1. **URL Validation**
+
    ```rust
    if !issue_url.contains("/issues/") {
        return Err(anyhow::anyhow!("Invalid GitHub URL format"));
@@ -167,6 +180,7 @@ The service implements comprehensive error handling:
    ```
 
 2. **State Management**
+
    ```rust
    let guard = state.lock().await;
    if let Err(e) = process_update() {
@@ -184,6 +198,7 @@ The service implements comprehensive error handling:
 The modular structure enables focused testing:
 
 1. **Unit Tests**
+
    - Individual module testing
    - Mock API responses
    - State management tests
@@ -196,11 +211,13 @@ The modular structure enables focused testing:
 ## Future Improvements
 
 1. **Performance**
+
    - Implement response caching
    - Optimize state management
    - Add request batching
 
 2. **Features**
+
    - Add solution templates
    - Implement retry mechanisms
    - Add progress persistence
@@ -234,6 +251,7 @@ match result {
 ## Configuration
 
 Required environment variables:
+
 - `DEEPSEEK_API_KEY`: DeepSeek API authentication
 - `GITHUB_TOKEN`: GitHub API access token
 - `AIDER_API_KEY`: Aider service API key

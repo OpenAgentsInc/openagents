@@ -1,6 +1,6 @@
+use crate::server::services::solver::ws::types::SolverUpdate;
 use anyhow::Result;
 use tokio::sync::broadcast;
-use crate::server::services::solver::ws::types::SolverUpdate;
 
 pub(crate) fn parse_repo_url(
     issue_url: &str,

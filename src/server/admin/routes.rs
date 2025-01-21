@@ -1,7 +1,7 @@
 use crate::nostr::event::Event;
 use crate::server::services::{
-    solver::SolverService,
     solver::ws::{ws_handler, SolverWsState},
+    solver::SolverService,
 };
 use crate::{configuration, database};
 use axum::{

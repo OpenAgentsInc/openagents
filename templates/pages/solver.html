@@ -51,18 +51,30 @@
       </div>
 
       <!-- File analysis section -->
-      <div id="files-section" class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4">
+      <div
+        id="files-section"
+        class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4"
+      >
         <div id="files-list" class="text-sm">
           <!-- Files list updates here -->
         </div>
-        <div id="files-reasoning" class="text-sm text-gray-300 whitespace-pre-wrap font-mono">
+        <div
+          id="files-reasoning"
+          class="text-sm text-gray-300 whitespace-pre-wrap font-mono"
+        >
           <!-- Files reasoning updates here -->
         </div>
       </div>
 
       <!-- Solution section -->
-      <div id="solution-section" class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4">
-        <div id="solution-reasoning" class="text-sm text-gray-300 whitespace-pre-wrap font-mono">
+      <div
+        id="solution-section"
+        class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4"
+      >
+        <div
+          id="solution-reasoning"
+          class="text-sm text-gray-300 whitespace-pre-wrap font-mono"
+        >
           <!-- Solution reasoning updates here -->
         </div>
         <div id="solution-code" class="text-sm">
@@ -71,7 +83,10 @@
       </div>
 
       <!-- Error section -->
-      <div id="error-section" class="mt-4 p-4 bg-red-900/20 border border-red-500/20 rounded hidden">
+      <div
+        id="error-section"
+        class="mt-4 p-4 bg-red-900/20 border border-red-500/20 rounded hidden"
+      >
         <div id="error-message" class="text-sm text-red-400"></div>
       </div>
     </div>
@@ -90,9 +105,11 @@
     background: #4caf50;
     transition: width 0.3s ease;
   }
-  
-  #files-reasoning, #solution-reasoning {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  #files-reasoning,
+  #solution-reasoning {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", "Courier New", monospace;
   }
 </style>
 
@@ -129,12 +146,11 @@
       if (data.type === "complete" || data.type === "error") {
         return; // Let the other handlers deal with these
       }
-      
+
       // If we have an HTML update, let HTMX handle it
-      if (evt.detail.message.includes('hx-swap-oob')) {
+      if (evt.detail.message.includes("hx-swap-oob")) {
         return;
       }
-
     } catch (e) {
       // Not JSON, might be HTML update
       console.log("Non-JSON message received");
@@ -151,7 +167,8 @@
     document.getElementById("files-reasoning").innerHTML = "";
     document.getElementById("solution-reasoning").innerHTML = "";
     document.getElementById("solution-code").innerHTML = "";
-    document.getElementById("progress-bar").innerHTML = '<div style="width: 0%"></div>';
+    document.getElementById("progress-bar").innerHTML =
+      '<div style="width: 0%"></div>';
     document.getElementById("solver-status").textContent = "Ready";
     errorSection.classList.add("hidden");
   }
@@ -160,12 +177,12 @@
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     resetUI();
-    
+
     const formData = new FormData(form);
     const data = {
       issue_url: formData.get("issue_url"),
     };
-    
+
     // Send via WebSocket
     const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
       detail: { messageBody: JSON.stringify(data) },
@@ -188,7 +205,7 @@
       submitButton.innerText = "Submit";
       document.getElementById("loading").style.display = "none";
     }
-    
+
     // Handle errors
     if (msg.includes('"type":"error"')) {
       errorSection.classList.remove("hidden");

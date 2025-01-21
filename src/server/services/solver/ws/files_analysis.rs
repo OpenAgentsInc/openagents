@@ -1,18 +1,18 @@
-use anyhow::Result;
-use tokio::sync::broadcast;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tracing::info;
 use crate::server::services::{
-    solver::ws::types::{SolverStage, SolverUpdate},
     github_types::Issue,
+    solver::ws::types::{SolverStage, SolverUpdate},
     StreamUpdate,
 };
+use anyhow::Result;
+use std::sync::Arc;
+use tokio::sync::broadcast;
+use tokio::sync::Mutex;
+use tracing::info;
 
 impl super::super::SolverService {
     pub async fn analyze_files(
         &self,
-        repomap: &str, 
+        repomap: &str,
         issue: &Issue,
         update_tx: broadcast::Sender<SolverUpdate>,
     ) -> Result<(Vec<String>, String)> {

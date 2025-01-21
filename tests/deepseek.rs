@@ -25,10 +25,7 @@ async fn test_chat_basic() {
         .mount(&mock_server)
         .await;
 
-    let service = DeepSeekService::with_base_url(
-        "test_key".to_string(),
-        mock_server.uri(),
-    );
+    let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
 
     let (response, reasoning) = service.chat("Hello".to_string(), false).await.unwrap();
     assert_eq!(response, "Hello! How can I help you?");
@@ -55,12 +52,12 @@ async fn test_chat_with_reasoning() {
         .mount(&mock_server)
         .await;
 
-    let service = DeepSeekService::with_base_url(
-        "test_key".to_string(),
-        mock_server.uri(),
-    );
+    let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
 
-    let (response, reasoning) = service.chat("Compare 9.11 and 9.8".to_string(), true).await.unwrap();
+    let (response, reasoning) = service
+        .chat("Compare 9.11 and 9.8".to_string(), true)
+        .await
+        .unwrap();
     assert_eq!(response, "9.11 is greater than 9.8");
     assert!(reasoning.is_some());
     assert!(reasoning.unwrap().contains("Let's compare these numbers"));

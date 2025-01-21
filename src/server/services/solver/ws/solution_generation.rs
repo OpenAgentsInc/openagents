@@ -1,13 +1,13 @@
-use anyhow::Result;
-use tokio::sync::broadcast;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tracing::info;
 use crate::server::services::{
-    solver::ws::types::{SolverStage, SolverUpdate},
     github_types::Issue,
+    solver::ws::types::{SolverStage, SolverUpdate},
     StreamUpdate,
 };
+use anyhow::Result;
+use std::sync::Arc;
+use tokio::sync::broadcast;
+use tokio::sync::Mutex;
+use tracing::info;
 
 impl super::super::SolverService {
     pub async fn generate_solution(
@@ -39,7 +39,10 @@ impl super::super::SolverService {
         let solution_state_clone = solution_state.clone();
 
         // Stream the solution generation
-        let mut stream = self.deepseek_service.chat_stream(solution_prompt, true).await;
+        let mut stream = self
+            .deepseek_service
+            .chat_stream(solution_prompt, true)
+            .await;
 
         while let Some(update) = stream.recv().await {
             match update {

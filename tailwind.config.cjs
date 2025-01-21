@@ -38,26 +38,26 @@ module.exports = {
     "md:py-1",
     "md:py-2",
     "md:py-3",
-    
+
     // Text wrapping and overflow classes
     "break-all",
     "break-words",
     "whitespace-pre-wrap",
     "overflow-x-auto",
     "max-w-full",
-    
+
     // Background and spacing classes
     "bg-black/30",
     "p-2",
     "rounded",
     "space-y-1",
     "space-y-4",
-    
+
     // Font classes
     "font-mono",
     "text-xs",
     "text-sm",
-    
+
     // Colors
     "text-gray-300",
     "text-gray-400",
@@ -65,28 +65,28 @@ module.exports = {
     "text-green-400",
     "text-red-400",
     "text-red-300",
-    
+
     // Background colors
     "bg-gray-800",
     "bg-red-900/20",
     "bg-black/50",
-    
+
     // Border colors
     "border-red-500/20",
     "border-white/10",
-    
+
     // Margins and padding
     "mb-2",
     "mt-2",
     "mt-4",
     "p-4",
-    
+
     // Display and visibility
     "hidden",
-    
+
     // Transitions
     "transition-all",
     "duration-300",
-    "ease-in-out"
+    "ease-in-out",
   ],
 };

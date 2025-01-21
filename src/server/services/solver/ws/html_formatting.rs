@@ -16,8 +16,7 @@ pub(crate) fn render_progress_bar(stage: &SolverStage) -> String {
                 <span class="text-xs text-white/75">{}</span>
             </div>
         </div>"#,
-        percent,
-        stage_text
+        percent, stage_text
     )
 }
 
