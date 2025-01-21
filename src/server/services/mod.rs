@@ -11,7 +11,6 @@ pub mod github_types;
 pub mod openrouter;
 pub mod repomap;
 pub mod solver;
-pub mod solver_ws;
 
 pub use deepseek::DeepSeekService;
 pub use github::GitHubService;
