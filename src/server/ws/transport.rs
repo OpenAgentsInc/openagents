@@ -7,7 +7,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::types::WebSocketMessage;
-use super::handlers::{chat::ChatHandler, solver::SolverHandler};
+use super::handlers::{MessageHandler, chat::ChatHandler, solver::SolverHandler};
 
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
@@ -62,7 +62,7 @@ impl WebSocketState {
                             "type": "error",
                             "message": e.to_string()
                         });
-                        let _ = tx.send(Message::Text(error_msg.to_string()));
+                        let _ = tx.send(Message::Text(error_msg.to_string().into()));
                     }
                 }
             }
@@ -98,14 +98,14 @@ impl WebSocketState {
     pub async fn broadcast(&self, msg: &str) -> Result<(), Box<dyn std::error::Error>> {
         let conns = self.connections.read().await;
         for tx in conns.values() {
-            tx.send(Message::Text(msg.to_string()))?;
+            tx.send(Message::Text(msg.to_string().into()))?;
         }
         Ok(())
     }
 
     pub async fn send_to(&self, conn_id: &str, msg: &str) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(tx) = self.connections.read().await.get(conn_id) {
-            tx.send(Message::Text(msg.to_string()))?;
+            tx.send(Message::Text(msg.to_string().into()))?;
         }
         Ok(())
     }
