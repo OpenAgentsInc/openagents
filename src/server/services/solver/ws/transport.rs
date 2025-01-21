@@ -291,3 +291,4 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
     let mut conns = state.connections.write().await;
     conns.remove(&conn_id);
 }
+
