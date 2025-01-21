@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-20 19:54:18
+Generated on: 2025-01-20 20:42:20
 
 ### Structure
 
@@ -76,6 +76,7 @@ Generated on: 2025-01-20 19:54:18
 |   |   |   |   |   |-- html_formatting.rs
 |   |   |   |   |   |-- mod.rs
 |   |   |   |   |   |-- solution_generation.rs
+|   |   |   |   |   |-- transport.rs
 |   |   |   |   |   |-- types.rs
 |   |   |   |   |   `-- url_parsing.rs
 |   |   |   |   `-- mod.rs
@@ -84,8 +85,7 @@ Generated on: 2025-01-20 19:54:18
 |   |   |   |-- github_types.rs
 |   |   |   |-- mod.rs
 |   |   |   |-- openrouter.rs
-|   |   |   |-- repomap.rs
-|   |   |   `-- solver_ws.rs
+|   |   |   `-- repomap.rs
 |   |   |-- config.rs
 |   |   `-- mod.rs
 |   |-- configuration.rs
