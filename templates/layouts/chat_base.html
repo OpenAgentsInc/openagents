@@ -61,7 +61,7 @@
 
         <!-- Input area -->
         <div class="border-t border-white">
-          <form class="flex">
+          <form class="flex" ws-send>
             <input
               id="input"
               name="message"
@@ -83,6 +83,14 @@
           <!-- Right sidebar content will go here -->
         </div>
       </div>
+    </div>
+
+    <!-- Error section -->
+    <div
+      id="error-section"
+      class="fixed bottom-4 right-4 p-4 bg-red-900/20 border border-red-500/20 rounded hidden"
+    >
+      <div id="error-message" class="text-sm text-red-400"></div>
     </div>
   </body>
 <script>
@@ -137,34 +145,21 @@
   // Reset UI state
   function resetUI() {
     submitButton.innerText = "Send"
-    // input.value = ""; 
+    submitButton.disabled = false;
   }
 
-  // Convert form submission to WebSocket message
+  // Handle form submission
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    resetUI();
-
-    const formData = new FormData(form);
-    const data = {
-      message: formData.get("message"),
-    };
-
-    // Send via WebSocket
-    const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
-      detail: { messageBody: JSON.stringify(data) },
-    });
-    document.body.dispatchEvent(wsEvent);
-
-    console.log("Dispatched:", wsEvent)
-
+    
     // Update UI
     submitButton.disabled = true;
     submitButton.innerText = "...";
-    input.value = "";
-    // document.getElementById("loading").style.display = "flex";
-
-    setTimeout(() => resetUI(), 1000) 
+    
+    // Let HTMX handle the WebSocket send
+    // The form will automatically send because of ws-send attribute
+    
+    setTimeout(() => resetUI(), 1000);
   });
 
   // Handle WebSocket events
@@ -174,8 +169,7 @@
     // Check if it's a completion message
     if (msg.includes('"type":"complete"')) {
       submitButton.disabled = false;
-      submitButton.innerText = "Submit";
-      document.getElementById("loading").style.display = "none";
+      submitButton.innerText = "Send";
     }
 
     // Handle errors
@@ -184,7 +178,6 @@
       const errorData = JSON.parse(msg);
       document.getElementById("error-message").textContent = errorData.message;
     }
-
-    })
-  </script>
+  });
+</script>
 </html>
