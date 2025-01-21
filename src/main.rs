@@ -24,7 +24,7 @@ use openagents::{
     },
     repomap,
     server::services::RepomapService,
-    solver_page, ContentTemplate, PageTemplate,
+    solver_page, ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
 };
 
 #[tokio::main]
@@ -132,7 +132,7 @@ async fn chat(headers: HeaderMap) -> Response {
     let path = "/chat";
 
     if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
+        let content = ChatContentTemplate.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
@@ -140,7 +140,7 @@ async fn chat(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = PageTemplate { title, path };
+        let template = ChatPageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
     }
 }
