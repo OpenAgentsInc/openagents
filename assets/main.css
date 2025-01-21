@@ -970,6 +970,10 @@ video {
   border-top-width: 1px;
 }
 
+.border-l {
+  border-left-width: 1px;
+}
+
 .border-red-500\/20 {
   border-color: rgb(239 68 68 / 0.2);
 }
