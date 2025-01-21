@@ -22,6 +22,7 @@
   </head>
   <body
     class="min-h-screen w-screen bg-black text-white font-mono overflow-hidden"
+    hx-ext="ws" ws-connect="/ws"
   >
     <!-- Header navbar -->
     <div class="w-full border-b border-white">
@@ -60,17 +61,17 @@
 
         <!-- Input area -->
         <div class="border-t border-white">
-          <div class="flex">
+          <form class="flex">
             <input
               type="text"
               class="flex-grow bg-black p-4 focus:outline-none"
               placeholder="Type your message..."
               autofocus="true"
             />
-            <button class="px-4 border-l border-white hover:bg-white hover:text-black transition-colors">
+            <button id="submit-button" class="w-[80px] px-4 border-l border-white hover:bg-white hover:text-black transition-colors">
               Send
             </button>
-          </div>
+          </form>
         </div>
       </div>
 
@@ -82,4 +83,101 @@
       </div>
     </div>
   </body>
+<script>
+  document.addEventListener("htmx:wsConnecting", function (evt) {
+    console.log("Connecting to WebSocket...");
+  });
+
+  document.addEventListener("htmx:wsOpen", function (evt) {
+    console.log("Connected to WebSocket");
+  });
+
+  document.addEventListener("htmx:wsClose", function (evt) {
+    console.log("WebSocket connection closed");
+  });
+
+  document.addEventListener("htmx:wsError", function (evt) {
+    console.error("WebSocket error:", evt.detail.error);
+    const errorSection = document.getElementById("error-section");
+    const errorMessage = document.getElementById("error-message");
+    errorSection.classList.remove("hidden");
+    errorMessage.textContent = "Connection error: " + evt.detail.error;
+  });
+
+  document.addEventListener("htmx:wsBeforeMessage", function (evt) {
+    console.log("Sending message:", evt.detail.message);
+  });
+
+  document.addEventListener("htmx:wsAfterMessage", function (evt) {
+    console.log("Received message:", evt.detail.message);
+    try {
+      // Try to parse the message as JSON
+      const data = JSON.parse(evt.detail.message);
+      if (data.type === "complete" || data.type === "error") {
+        return; // Let the other handlers deal with these
+      }
+
+      // If we have an HTML update, let HTMX handle it
+      if (evt.detail.message.includes("hx-swap-oob")) {
+        return;
+      }
+    } catch (e) {
+      // Not JSON, might be HTML update
+      console.log("Non-JSON message received");
+    }
+  });
+
+  const submitButton = document.getElementById("submit-button");
+  const form = document.querySelector("form");
+  const errorSection = document.getElementById("error-section");
+
+  // Reset UI state
+  function resetUI() {
+    submitButton.innerText = "Send"
+  }
+
+  // Convert form submission to WebSocket message
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    resetUI();
+
+    const formData = new FormData(form);
+    const data = {
+      message: formData.get("message"),
+    };
+
+    // Send via WebSocket
+    const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
+      detail: { messageBody: JSON.stringify(data) },
+    });
+    document.body.dispatchEvent(wsEvent);
+
+    // Update UI
+    submitButton.disabled = true;
+    submitButton.innerText = "...";
+    // document.getElementById("loading").style.display = "flex";
+
+    setTimeout(() => resetUI(), 1000) 
+  });
+
+  // Handle WebSocket events
+  document.body.addEventListener("htmx:wsAfterMessage", function (evt) {
+    const msg = evt.detail.message;
+
+    // Check if it's a completion message
+    if (msg.includes('"type":"complete"')) {
+      submitButton.disabled = false;
+      submitButton.innerText = "Submit";
+      document.getElementById("loading").style.display = "none";
+    }
+
+    // Handle errors
+    if (msg.includes('"type":"error"')) {
+      errorSection.classList.remove("hidden");
+      const errorData = JSON.parse(msg);
+      document.getElementById("error-message").textContent = errorData.message;
+    }
+
+    })
+  </script>
 </html>
