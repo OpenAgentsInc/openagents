@@ -3,10 +3,10 @@ pub mod config;
 pub mod services;
 pub mod ws;
 
-use axum::{routing::get, Router};
+use axum::Router;
 use services::solver::SolverService;
 use std::sync::Arc;
-use ws::{ws_handler, init_websocket_state};
+use ws::{init_websocket_state, ws_routes};
 
 pub fn app_router() -> Router {
     // Create shared services
@@ -15,7 +15,8 @@ pub fn app_router() -> Router {
     // Initialize WebSocket state with all handlers
     let ws_state = init_websocket_state();
 
+    // Create base router
     Router::new()
-        .route("/ws", get(ws_handler))
+        .merge(ws_routes())
         .with_state(ws_state)
 }
