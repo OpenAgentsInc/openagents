@@ -7,6 +7,8 @@ use axum::{
     extract::ws::WebSocket,
     response::IntoResponse,
     extract::WebSocketUpgrade,
+    routing::get,
+    Router,
 };
 
 use self::{
@@ -33,4 +35,9 @@ pub fn init_websocket_state() -> Arc<WebSocketState> {
     let solver_handler = Arc::new(SolverHandler::new());
     
     Arc::new(WebSocketState::new(chat_handler, solver_handler))
+}
+
+pub fn ws_routes() -> Router<Arc<WebSocketState>> {
+    Router::new()
+        .route("/ws", get(ws_handler))
 }
