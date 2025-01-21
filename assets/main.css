@@ -716,6 +716,14 @@ video {
   height: 100vh;
 }
 
+.h-\[57px\] {
+  height: 57px;
+}
+
+.h-\[calc\(100vh-57px\)\] {
+  height: calc(100vh - 57px);
+}
+
 .min-h-screen {
   min-height: 100vh;
 }
