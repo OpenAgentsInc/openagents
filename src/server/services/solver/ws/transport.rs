@@ -11,7 +11,7 @@ use bytes::Bytes;
 use tracing::{error, info};
 
 use crate::server::services::solver::SolverService;
-use super::types::{SolverStage, SolverUpdate};
+use super::types::SolverUpdate;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
