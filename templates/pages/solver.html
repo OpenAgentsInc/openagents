@@ -44,7 +44,7 @@
     <div id="solver-container" class="space-y-4">
       <!-- Progress section -->
       <div id="progress-section">
-        <div id="progress-bar" class="progress-bar" hx-swap="innerHTML">
+        <div id="progress-bar" class="progress-bar">
           <div style="width: 0%"></div>
         </div>
         <div id="solver-status" class="text-sm text-gray-400">Ready</div>
@@ -52,20 +52,20 @@
 
       <!-- File analysis section -->
       <div id="files-section" class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4">
-        <div id="files-list" class="text-sm" hx-swap="innerHTML">
+        <div id="files-list" class="text-sm">
           <!-- Files list updates here -->
         </div>
-        <div id="files-reasoning" class="text-sm text-gray-300" hx-swap="beforeend">
-          <!-- Streaming reasoning about files -->
+        <div id="files-reasoning" class="text-sm text-gray-300">
+          <!-- Files reasoning updates here -->
         </div>
       </div>
 
       <!-- Solution section -->
       <div id="solution-section" class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4">
-        <div id="solution-reasoning" class="text-sm text-gray-300" hx-swap="beforeend">
-          <!-- Streaming solution reasoning -->
+        <div id="solution-reasoning" class="text-sm text-gray-300">
+          <!-- Solution reasoning updates here -->
         </div>
-        <div id="solution-code" class="text-sm" hx-swap="innerHTML">
+        <div id="solution-code" class="text-sm">
           <!-- Final code solution -->
         </div>
       </div>
@@ -92,17 +92,7 @@
   }
   
   #files-reasoning, #solution-reasoning {
-    white-space: pre-wrap;
-    font-family: monospace;
-  }
-  
-  .reasoning-chunk {
-    animation: fadeIn 0.3s ease-in;
-  }
-  
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   }
 </style>
 
