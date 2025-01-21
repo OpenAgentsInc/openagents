@@ -59,10 +59,10 @@ impl SolverWsState {
                         }
                     }
 
-                    // Files reasoning (append)
+                    // Files reasoning (replace)
                     if let Some(files_reasoning) = data.get("files_reasoning") {
                         let reasoning_html = format!(
-                            "<div id='files-reasoning' hx-swap-oob='beforeend'>{}</div>",
+                            "<div id='files-reasoning' hx-swap-oob='true'>{}</div>",
                             super::html_formatting::render_files_reasoning(files_reasoning)
                         );
                         for tx in conns.values() {
@@ -81,10 +81,10 @@ impl SolverWsState {
                         }
                     }
 
-                    // Solution reasoning (append)
+                    // Solution reasoning (replace)
                     if let Some(solution_reasoning) = data.get("solution_reasoning") {
                         let reasoning_html = format!(
-                            "<div id='solution-reasoning' hx-swap-oob='beforeend'>{}</div>",
+                            "<div id='solution-reasoning' hx-swap-oob='true'>{}</div>",
                             super::html_formatting::render_solution_reasoning(solution_reasoning)
                         );
                         for tx in conns.values() {
