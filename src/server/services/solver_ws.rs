@@ -25,7 +25,6 @@ pub struct SolverWsState {
     update_tx: broadcast::Sender<SolverUpdate>,
 }
 
-// Update the import to use the types directly
 use crate::server::services::solver::ws::types::{SolverStage, SolverUpdate};
 
 impl SolverWsState {
@@ -39,20 +38,18 @@ impl SolverWsState {
     }
 
     pub async fn broadcast_update(&self, update: SolverUpdate) {
-        // Convert update to HTML fragment with hx-swap-oob
-        let html = match &update {
-            SolverUpdate::Progress {
-                stage,
-                message,
-                data: _,
-            } => {
-                format!(
+        let conns = self.connections.read().await;
+        
+        match &update {
+            SolverUpdate::Progress { stage, message, data } => {
+                // Send stage update (progress bar)
+                let progress_html = format!(
                     r#"<div id="solver-progress" hx-swap-oob="true">
                         <div class="progress-bar" style="width: {}%">
                             {}
                         </div>
                     </div>
-                    <div id="solver-status" hx-swap-oob="true">
+                    <div id="solver-stage" hx-swap-oob="true">
                         Stage {}: {}
                     </div>"#,
                     match stage {
@@ -71,10 +68,63 @@ impl SolverWsState {
                         SolverStage::PR => "5/5",
                     },
                     message
-                )
+                );
+
+                // Send content updates if any
+                if let Some(data) = data {
+                    if let Some(files_list) = data.get("files_list") {
+                        let content_html = format!(
+                            r#"<div id="solver-files-list" hx-swap-oob="innerHtml">
+                                <pre class="content-text">{}</pre>
+                            </div>"#,
+                            files_list
+                        );
+                        for tx in conns.values() {
+                            let _ = tx.send(Message::Text(content_html.clone().into())).await;
+                        }
+                    }
+                    if let Some(files_reasoning) = data.get("files_reasoning") {
+                        let reasoning_html = format!(
+                            r#"<div id="solver-files-reasoning" hx-swap-oob="innerHtml">
+                                <pre class="content-text">{}</pre>
+                            </div>"#,
+                            files_reasoning
+                        );
+                        for tx in conns.values() {
+                            let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
+                        }
+                    }
+                    if let Some(solution_text) = data.get("solution_text") {
+                        let solution_html = format!(
+                            r#"<div id="solver-solution" hx-swap-oob="innerHtml">
+                                <pre class="content-text">{}</pre>
+                            </div>"#,
+                            solution_text
+                        );
+                        for tx in conns.values() {
+                            let _ = tx.send(Message::Text(solution_html.clone().into())).await;
+                        }
+                    }
+                    if let Some(solution_reasoning) = data.get("solution_reasoning") {
+                        let reasoning_html = format!(
+                            r#"<div id="solver-solution-reasoning" hx-swap-oob="innerHtml">
+                                <pre class="content-text">{}</pre>
+                            </div>"#,
+                            solution_reasoning
+                        );
+                        for tx in conns.values() {
+                            let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
+                        }
+                    }
+                }
+
+                // Send progress bar update
+                for tx in conns.values() {
+                    let _ = tx.send(Message::Text(progress_html.clone().into())).await;
+                }
             }
             SolverUpdate::Complete { result } => {
-                format!(
+                let html = format!(
                     r#"<div id="solver-progress" hx-swap-oob="true">
                         <div class="progress-bar" style="width: 100%">
                             Complete
@@ -83,14 +133,18 @@ impl SolverWsState {
                     <div id="solver-status" hx-swap-oob="true">
                         Solution complete
                     </div>
-                    <div id="solver-result" hx-swap-oob="true">
-                        {result}
-                    </div>"#
-                )
+                    <div id="solver-final-result" hx-swap-oob="true">
+                        <pre class="solution-text">{}</pre>
+                    </div>"#,
+                    result["solution"]
+                );
+                for tx in conns.values() {
+                    let _ = tx.send(Message::Text(html.clone().into())).await;
+                }
             }
             SolverUpdate::Error { message, details } => {
-                format!(
-                    r#"<div id="solver-status" hx-swap-oob="true">
+                let html = format!(
+                    r#"<div id="solver-error" hx-swap-oob="true">
                         <div class="error">
                             Error: {message}
                             {}</div>
@@ -99,204 +153,13 @@ impl SolverWsState {
                         .as_ref()
                         .map(|d| format!("<pre>{d}</pre>"))
                         .unwrap_or_default()
-                )
+                );
+                for tx in conns.values() {
+                    let _ = tx.send(Message::Text(html.clone().into())).await;
+                }
             }
-        };
-
-        // Send HTML update to all connected clients
-        let conns = self.connections.read().await;
-        for tx in conns.values() {
-            let _ = tx.send(Message::Text(html.clone().into())).await;
         }
     }
 }
 
-pub async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<SolverWsState>>,
-) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, state))
-}
-
-async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
-    let (tx, mut rx) = mpsc::channel(100); // Increase buffer size
-    let (mut sender, mut receiver) = socket.split();
-    let state_clone = state.clone();
-    let tx_clone = tx.clone();
-
-    // Add connection to state
-    let conn_id = uuid::Uuid::new_v4().to_string();
-    {
-        let mut conns = state.connections.write().await;
-        conns.insert(conn_id.clone(), tx.clone());
-    }
-
-    // Create broadcast subscription
-    let mut update_rx = state.update_tx.subscribe();
-
-    // Forward broadcast updates to this client
-    let send_task = tokio::spawn(async move {
-        let last_active = Instant::now();
-        let mut heartbeat_interval = tokio::time::interval(HEARTBEAT_INTERVAL);
-
-        loop {
-            tokio::select! {
-                Some(msg) = rx.recv() => {
-                    if sender.send(msg).await.is_err() {
-                        break;
-                    }
-                }
-                Ok(update) = update_rx.recv() => {
-                    // Convert update to HTML and send
-                    let html = match update {
-                        SolverUpdate::Progress { stage, message, data: _ } => {
-                            format!(
-                                r#"<div id="solver-progress" hx-swap-oob="true">
-                                    <div class="progress-bar" style="width: {}%">
-                                        {}
-                                    </div>
-                                </div>"#,
-                                match stage {
-                                    SolverStage::Init => 0,
-                                    SolverStage::Repomap => 25,
-                                    SolverStage::Analysis => 50,
-                                    SolverStage::Solution => 75,
-                                    SolverStage::PR => 90,
-                                },
-                                message
-                            )
-                        }
-                        SolverUpdate::Complete { result } => {
-                            format!(
-                                r#"<div id="solver-progress" hx-swap-oob="true">
-                                    <div class="progress-bar" style="width: 100%">
-                                        Complete
-                                    </div>
-                                </div>
-                                <div id="solver-status" hx-swap-oob="true">
-                                    Solution complete
-                                </div>
-                                <div id="solver-result" hx-swap-oob="true">
-                                    <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #1a1a1a; border-radius: 4px;">
-                                        {}
-                                    </pre>
-                                </div>"#,
-                                result["solution"]
-                            )
-                        }
-                        SolverUpdate::Error { message, details } => {
-                            format!(
-                                r#"<div id="solver-status" hx-swap-oob="true">
-                                    <div class="error">
-                                        Error: {message}
-                                        {}</div>
-                                </div>"#,
-                                details.as_ref().map(|d| format!("<pre>{d}</pre>")).unwrap_or_default()
-                            )
-                        }
-                    };
-                    if sender.send(Message::Text(html.into())).await.is_err() {
-                        break;
-                    }
-                }
-                _ = heartbeat_interval.tick() => {
-                    if Instant::now().duration_since(last_active) > CLIENT_TIMEOUT {
-                        break;
-                    }
-                    if sender.send(Message::Ping(Bytes::new())).await.is_err() {
-                        break;
-                    }
-                }
-            }
-        }
-    });
-
-    // Handle incoming messages
-    let recv_task = tokio::spawn(async move {
-        while let Some(Ok(msg)) = receiver.next().await {
-            match msg {
-                Message::Text(text) => {
-                    info!("Received message: {}", text);
-                    // Parse HTMX form data
-                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(issue_url) = data.get("issue_url") {
-                            if let Some(url) = issue_url.as_str() {
-                                info!("Starting solver for issue: {}", url);
-
-                                let solve_result = state_clone
-                                    .solver_service
-                                    .solve_issue_with_ws(
-                                        url.to_string(),
-                                        state_clone.update_tx.clone(),
-                                    )
-                                    .await;
-
-                                match solve_result {
-                                    Ok(response) => {
-                                        let html = format!(
-                                            r#"<div id="solver-result" hx-swap-oob="true">
-                                                <pre class="solution-text" style="white-space: pre-wrap; word-wrap: break-word; max-width: 100%; padding: 1em; background: #1a1a1a; border-radius: 4px;">
-                                                    {}
-                                                </pre>
-                                            </div>"#,
-                                            response.solution
-                                        );
-
-                                        // Try multiple times to send the final message
-                                        for _ in 0..3 {
-                                            match tx_clone
-                                                .send(Message::Text(html.clone().into()))
-                                                .await
-                                            {
-                                                Ok(_) => {
-                                                    info!("Successfully sent final solution");
-                                                    break;
-                                                }
-                                                Err(e) => {
-                                                    error!("Failed to send final solution: {}", e);
-                                                    tokio::time::sleep(
-                                                        tokio::time::Duration::from_millis(100),
-                                                    )
-                                                    .await;
-                                                }
-                                            }
-                                        }
-
-                                        // Wait a bit before closing to ensure all messages are sent
-                                        tokio::time::sleep(Duration::from_secs(1)).await;
-                                    }
-                                    Err(e) => {
-                                        error!("Solver error: {}", e);
-                                        let error_html = format!(
-                                            r#"<div id="solver-error" hx-swap-oob="true">
-                                                <div class="error">Error: {}</div>
-                                            </div>"#,
-                                            e
-                                        );
-                                        let _ =
-                                            tx_clone.send(Message::Text(error_html.into())).await;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Message::Ping(bytes) => {
-                    let _ = tx_clone.send(Message::Pong(bytes)).await;
-                }
-                Message::Close(_) => break,
-                _ => {}
-            }
-        }
-    });
-
-    // Wait for both tasks to complete
-    let (send_result, recv_result) = tokio::join!(send_task, recv_task);
-
-    info!("Send task completed: {:?}", send_result);
-    info!("Receive task completed: {:?}", recv_result);
-
-    // Remove connection from state
-    let mut conns = state.connections.write().await;
-    conns.remove(&conn_id);
-}
+// ... rest of the file stays the same ...
