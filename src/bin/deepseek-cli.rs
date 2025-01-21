@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use openagents::server::services::deepseek::DeepSeekService;
+use openagents::server::services::{deepseek::DeepSeekService, StreamUpdate};
 use std::io::{stdout, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
@@ -52,13 +52,17 @@ async fn main() -> Result<()> {
                 let (response, _) = service.chat(message, false).await?;
                 println!("{}", response);
             } else {
-                service.chat_stream(message, false, |content, _| {
-                    if let Some(text) = content {
-                        print!("{}", text);
-                        stdout().flush()?;
+                let mut stream = service.chat_stream(message, false).await;
+                while let Some(update) = stream.recv().await {
+                    match update {
+                        StreamUpdate::Content(text) => {
+                            print!("{}", text);
+                            stdout().flush()?;
+                        }
+                        StreamUpdate::Done => break,
+                        _ => {}
                     }
-                    Ok(())
-                }).await?;
+                }
                 println!();
             }
         }
@@ -74,21 +78,24 @@ async fn main() -> Result<()> {
             } else {
                 print_colored("Reasoning:\n", Color::Yellow)?;
                 let mut in_reasoning = true;
-                service.chat_stream(message, true, |content, reasoning| {
-                    if let Some(r) = reasoning {
-                        print_colored(r, Color::Yellow)?;
-                    }
-                    if let Some(c) = content {
-                        if in_reasoning {
-                            println!();
-                            print_colored("Response: ", Color::Green)?;
-                            in_reasoning = false;
+                let mut stream = service.chat_stream(message, true).await;
+                while let Some(update) = stream.recv().await {
+                    match update {
+                        StreamUpdate::Reasoning(r) => {
+                            print_colored(&r, Color::Yellow)?;
                         }
-                        print!("{}", c);
+                        StreamUpdate::Content(c) => {
+                            if in_reasoning {
+                                println!();
+                                print_colored("Response: ", Color::Green)?;
+                                in_reasoning = false;
+                            }
+                            print!("{}", c);
+                            stdout().flush()?;
+                        }
+                        StreamUpdate::Done => break,
                     }
-                    stdout().flush()?;
-                    Ok(())
-                }).await?;
+                }
                 println!();
             }
         }
