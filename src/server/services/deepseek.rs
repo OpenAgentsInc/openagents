@@ -141,8 +141,7 @@ impl DeepSeekService {
                                     let line = buffer[..pos].trim().to_string();
                                     buffer = buffer[pos + 1..].to_string();
 
-                                    if line.starts_with("data: ") {
-                                        let data = &line["data: ".len()..];
+                                    if let Some(data) = line.strip_prefix("data: ") {
                                         if data == "[DONE]" {
                                             let _ = tx.send(StreamUpdate::Done).await;
                                             break;
