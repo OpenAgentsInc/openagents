@@ -12,7 +12,7 @@ pub mod openrouter;
 pub mod repomap;
 pub mod solver;
 
-pub use deepseek::DeepSeekService;
+pub use deepseek::{DeepSeekService, StreamUpdate};
 pub use github::GitHubService;
 pub use openrouter::OpenRouterService;
 pub use repomap::RepomapService;
