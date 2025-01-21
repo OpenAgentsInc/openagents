@@ -71,6 +71,7 @@ async fn main() {
 
     let main_router = Router::new()
         .route("/", get(home))
+        .route("/chat", get(chat))
         .route("/onyx", get(mobile_app))
         .route("/video-series", get(video_series))
         .route("/services", get(business))
@@ -110,6 +111,25 @@ async fn home(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Home";
     let path = "/";
+
+    if is_htmx {
+        let content = ContentTemplate { path }.render().unwrap();
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
+        response
+    } else {
+        let template = PageTemplate { title, path };
+        Html(template.render().unwrap()).into_response()
+    }
+}
+
+async fn chat(headers: HeaderMap) -> Response {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Chat";
+    let path = "/chat";
 
     if is_htmx {
         let content = ContentTemplate { path }.render().unwrap();
