@@ -48,7 +48,7 @@ pub(crate) fn render_files_reasoning(reasoning: &Value) -> String {
     };
 
     format!(
-        r#"<div class="reasoning-chunk bg-gray-800/50 rounded p-2 mb-2 text-xs text-gray-300 whitespace-pre-wrap">{}</div>"#,
+        r#"<pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono">{}</pre>"#,
         html_escape::encode_text(&text)
     )
 }
@@ -62,7 +62,7 @@ pub(crate) fn render_solution(solution: &Value) -> String {
     format!(
         r#"<div class="bg-gray-800 rounded-lg p-4">
             <div class="text-sm text-yellow-400 mb-2">Proposed Solution:</div>
-            <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">{}</pre>
+            <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto font-mono">{}</pre>
         </div>"#,
         html_escape::encode_text(&text)
     )
@@ -75,7 +75,7 @@ pub(crate) fn render_solution_reasoning(reasoning: &Value) -> String {
     };
 
     format!(
-        r#"<div class="reasoning-chunk bg-gray-800/50 rounded p-2 mb-2 text-xs text-gray-300 whitespace-pre-wrap">{}</div>"#,
+        r#"<pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono">{}</pre>"#,
         html_escape::encode_text(&text)
     )
 }
@@ -90,7 +90,7 @@ pub(crate) fn render_complete(result: &Value) -> String {
     format!(
         r#"<div class="bg-gray-800 rounded-lg p-4">
             <div class="text-sm text-green-400 mb-2">Solution Complete</div>
-            <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">{}</pre>
+            <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto font-mono">{}</pre>
         </div>"#,
         html_escape::encode_text(solution)
     )
@@ -105,7 +105,7 @@ pub(crate) fn render_error(message: &str, details: &Option<String>) -> String {
         details
             .as_ref()
             .map(|d| format!(
-                r#"<pre class="mt-2 text-xs text-red-300 whitespace-pre-wrap">{}</pre>"#,
+                r#"<pre class="mt-2 text-xs text-red-300 whitespace-pre-wrap font-mono">{}</pre>"#,
                 html_escape::encode_text(d)
             ))
             .unwrap_or_default()
@@ -119,23 +119,4 @@ fn format_code_block(code: &str, language: Option<&str>) -> String {
         language.unwrap_or("plaintext"),
         html_escape::encode_text(code)
     )
-}
-
-// Helper function to format markdown-style text
-fn format_markdown(text: &str) -> String {
-    // Basic markdown formatting - expand as needed
-    text.lines()
-        .map(|line| {
-            if line.starts_with("# ") {
-                format!("<h1 class=\"text-lg font-bold\">{}</h1>", &line[2..])
-            } else if line.starts_with("## ") {
-                format!("<h2 class=\"text-md font-bold\">{}</h2>", &line[3..])
-            } else if line.starts_with("- ") {
-                format!("<li class=\"ml-4\">{}</li>", &line[2..])
-            } else {
-                format!("<p>{}</p>", line)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
