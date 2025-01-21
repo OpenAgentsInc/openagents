@@ -96,6 +96,7 @@ pub(crate) fn render_complete(result: &Value) -> String {
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn render_error(message: &str, details: &Option<String>) -> String {
     format!(
         r#"<div class="bg-red-900/20 border border-red-500/20 rounded p-4">
@@ -113,6 +114,7 @@ pub(crate) fn render_error(message: &str, details: &Option<String>) -> String {
 }
 
 // Helper function to format code blocks
+#[allow(dead_code)]
 fn format_code_block(code: &str, language: Option<&str>) -> String {
     format!(
         r#"<pre class="bg-black/50 rounded p-2 text-xs overflow-x-auto max-w-full break-words"><code class="language-{}">{}</code></pre>"#,
