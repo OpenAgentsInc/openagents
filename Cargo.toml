@@ -2,6 +2,7 @@
 name = "openagents"
 version = "0.1.0"
 edition = "2021"
+default-run = "openagents"
 
 [lib]
 path = "src/lib.rs"
@@ -9,6 +10,10 @@ path = "src/lib.rs"
 [[bin]]
 path = "src/main.rs"
 name = "openagents"
+
+[[bin]]
+path = "src/bin/deepseek-cli.rs"
+name = "deepseek-cli"
 
 [dependencies]
 env_logger = "0.10"
@@ -47,6 +52,8 @@ hyper = { version = "1.2", features = ["full"] }
 http-body-util = "0.1"
 http = "1.0"
 tokio-stream = "0.1.17"
+clap = { version = "4.4", features = ["derive"] }
+termcolor = "1.4"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }
