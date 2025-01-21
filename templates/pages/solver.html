@@ -41,18 +41,38 @@
       <span class="ml-2 text-gray-300">Solving...</span>
     </div>
 
-    <div class="space-y-4">
-      <div id="solver-progress">
-        <div class="progress-bar">
+    <div id="solver-container" class="space-y-4">
+      <!-- Progress section -->
+      <div id="progress-section">
+        <div id="progress-bar" class="progress-bar" hx-swap="innerHTML">
           <div style="width: 0%"></div>
         </div>
+        <div id="solver-status" class="text-sm text-gray-400">Ready</div>
       </div>
-      <div id="solver-status" class="text-sm text-gray-400">Ready</div>
-      <div
-        id="solver-result"
-        class="mt-4 p-4 bg-black/50 border border-white/10 rounded"
-      >
-        No active solution
+
+      <!-- File analysis section -->
+      <div id="files-section" class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4">
+        <div id="files-list" class="text-sm" hx-swap="innerHTML">
+          <!-- Files list updates here -->
+        </div>
+        <div id="files-reasoning" class="text-sm text-gray-300" hx-swap="beforeend">
+          <!-- Streaming reasoning about files -->
+        </div>
+      </div>
+
+      <!-- Solution section -->
+      <div id="solution-section" class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4">
+        <div id="solution-reasoning" class="text-sm text-gray-300" hx-swap="beforeend">
+          <!-- Streaming solution reasoning -->
+        </div>
+        <div id="solution-code" class="text-sm" hx-swap="innerHTML">
+          <!-- Final code solution -->
+        </div>
+      </div>
+
+      <!-- Error section -->
+      <div id="error-section" class="mt-4 p-4 bg-red-900/20 border border-red-500/20 rounded hidden">
+        <div id="error-message" class="text-sm text-red-400"></div>
       </div>
     </div>
   </form>
@@ -69,6 +89,20 @@
     height: 100%;
     background: #4caf50;
     transition: width 0.3s ease;
+  }
+  
+  #files-reasoning, #solution-reasoning {
+    white-space: pre-wrap;
+    font-family: monospace;
+  }
+  
+  .reasoning-chunk {
+    animation: fadeIn 0.3s ease-in;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>
 
@@ -87,6 +121,10 @@
 
   document.addEventListener("htmx:wsError", function (evt) {
     console.error("WebSocket error:", evt.detail.error);
+    const errorSection = document.getElementById("error-section");
+    const errorMessage = document.getElementById("error-message");
+    errorSection.classList.remove("hidden");
+    errorMessage.textContent = "Connection error: " + evt.detail.error;
   });
 
   document.addEventListener("htmx:wsBeforeMessage", function (evt) {
@@ -99,14 +137,29 @@
 
   const submitButton = document.getElementById("submit-button");
   const form = document.querySelector("form");
+  const errorSection = document.getElementById("error-section");
+
+  // Reset UI state
+  function resetUI() {
+    document.getElementById("files-list").innerHTML = "";
+    document.getElementById("files-reasoning").innerHTML = "";
+    document.getElementById("solution-reasoning").innerHTML = "";
+    document.getElementById("solution-code").innerHTML = "";
+    document.getElementById("progress-bar").innerHTML = '<div style="width: 0%"></div>';
+    document.getElementById("solver-status").textContent = "Ready";
+    errorSection.classList.add("hidden");
+  }
 
   // Convert form submission to WebSocket message
   form.addEventListener("submit", function (e) {
     e.preventDefault();
+    resetUI();
+    
     const formData = new FormData(form);
     const data = {
       issue_url: formData.get("issue_url"),
     };
+    
     // Send via WebSocket
     const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
       detail: { messageBody: JSON.stringify(data) },
@@ -128,6 +181,13 @@
       submitButton.disabled = false;
       submitButton.innerText = "Submit";
       document.getElementById("loading").style.display = "none";
+    }
+    
+    // Handle errors
+    if (msg.includes('"type":"error"')) {
+      errorSection.classList.remove("hidden");
+      const errorData = JSON.parse(msg);
+      document.getElementById("error-message").textContent = errorData.message;
     }
   });
 </script>
