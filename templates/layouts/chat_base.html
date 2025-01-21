@@ -63,9 +63,11 @@
         <div class="border-t border-white">
           <form class="flex">
             <input
+              id="input"
+              name="message"
               type="text"
               class="flex-grow bg-black p-4 focus:outline-none"
-              placeholder="Type your message..."
+              placeholder="Message"
               autofocus="true"
             />
             <button id="submit-button" class="w-[80px] px-4 border-l border-white hover:bg-white hover:text-black transition-colors">
@@ -128,12 +130,14 @@
   });
 
   const submitButton = document.getElementById("submit-button");
+  const input = document.getElementById("input");
   const form = document.querySelector("form");
   const errorSection = document.getElementById("error-section");
 
   // Reset UI state
   function resetUI() {
     submitButton.innerText = "Send"
+    // input.value = ""; 
   }
 
   // Convert form submission to WebSocket message
@@ -152,9 +156,12 @@
     });
     document.body.dispatchEvent(wsEvent);
 
+    console.log("Dispatched:", wsEvent)
+
     // Update UI
     submitButton.disabled = true;
     submitButton.innerText = "...";
+    input.value = "";
     // document.getElementById("loading").style.display = "flex";
 
     setTimeout(() => resetUI(), 1000) 
