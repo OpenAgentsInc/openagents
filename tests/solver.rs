@@ -3,13 +3,13 @@ use axum::{
     http::{Request, StatusCode},
 };
 use openagents::{handle_solver, server::services::SolverService};
-use std::{env, sync::Arc};
+use std::sync::Arc;
 use tower::ServiceExt;
 
 #[tokio::test]
 async fn test_solver_endpoint() {
-    // Only set mock key for aider, other keys should be in environment
-    env::set_var("AIDER_API_KEY", "test_key");
+    // Load environment variables from .env file
+    dotenvy::dotenv().ok();
 
     // Create app with solver service
     let solver_service = Arc::new(SolverService::new());
