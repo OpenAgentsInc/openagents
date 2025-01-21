@@ -17,7 +17,6 @@ pub use types::{SolverStage, SolverUpdate};
 pub use transport::{ws_handler, SolverWsState};
 
 pub(crate) use url_parsing::*;
-pub(crate) use html_formatting::*;
 
 impl super::SolverService {
     pub(crate) async fn solve_issue_with_ws(
@@ -105,20 +104,28 @@ impl super::SolverService {
             .generate_solution(&repomap_response.repo_map, &files, &issue, update_tx.clone())
             .await?;
 
-        // Format final HTML
-        let solution = format_solution_html(&files_reasoning, &files, &solution_reasoning, &solution_text);
+        // Send updates for each component
+        let _ = update_tx.send(SolverUpdate::Progress {
+            stage: SolverStage::Solution,
+            message: "Generating solution".into(),
+            data: Some(serde_json::json!({
+                "files_list": files,
+                "files_reasoning": files_reasoning,
+                "solution_text": solution_text,
+                "solution_reasoning": solution_reasoning
+            })),
+        });
 
         // Send complete update
         let _ = update_tx.send(SolverUpdate::Complete {
             result: serde_json::json!({
-                "solution": solution,
+                "solution": solution_text,
                 "files": files,
-                "analysis": solution_text,
                 "files_reasoning": files_reasoning,
                 "solution_reasoning": solution_reasoning
             }),
         });
 
-        Ok(solution)
+        Ok(solution_text)
     }
 }
