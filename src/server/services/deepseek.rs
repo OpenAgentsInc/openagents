@@ -61,7 +61,7 @@ struct StreamResponse {
     choices: Vec<StreamChoice>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StreamUpdate {
     Content(String),
     Reasoning(String),
@@ -132,12 +132,16 @@ impl DeepSeekService {
                     while let Some(chunk) = stream.next().await {
                         match chunk {
                             Ok(chunk) => {
-                                buffer.push_str(&String::from_utf8_lossy(&chunk));
+                                let chunk_str = String::from_utf8_lossy(&chunk);
+                                buffer.push_str(&chunk_str);
                                 
                                 // Process complete SSE messages
                                 while let Some(pos) = buffer.find('\n') {
-                                    let line = buffer[..pos].trim();
-                                    buffer = buffer[pos + 1..].to_string();
+                                    let line = {
+                                        let (line, rest) = buffer.split_at(pos);
+                                        buffer = rest[1..].to_string();
+                                        line.trim().to_string()
+                                    };
 
                                     if line.starts_with("data: ") {
                                         let data = &line["data: ".len()..];
