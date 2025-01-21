@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SolverStage {
     Init,
     Repomap,
@@ -7,7 +7,7 @@ pub enum SolverStage {
     PR,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SolverUpdate {
     Progress {
         stage: SolverStage,
