@@ -137,11 +137,9 @@ impl DeepSeekService {
                                 
                                 // Process complete SSE messages
                                 while let Some(pos) = buffer.find('\n') {
-                                    let line = {
-                                        let (line, rest) = buffer.split_at(pos);
-                                        buffer = rest[1..].to_string();
-                                        line.trim().to_string()
-                                    };
+                                    // Extract the line and update buffer without borrowing issues
+                                    let line = buffer[..pos].trim().to_string();
+                                    buffer = buffer[pos + 1..].to_string();
 
                                     if line.starts_with("data: ") {
                                         let data = &line["data: ".len()..];
