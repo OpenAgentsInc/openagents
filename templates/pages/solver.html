@@ -55,14 +55,14 @@
         <div id="files-list" class="text-sm">
           <!-- Files list updates here -->
         </div>
-        <div id="files-reasoning" class="text-sm text-gray-300">
+        <div id="files-reasoning" class="text-sm text-gray-300 whitespace-pre-wrap font-mono">
           <!-- Files reasoning updates here -->
         </div>
       </div>
 
       <!-- Solution section -->
       <div id="solution-section" class="mt-4 p-4 bg-black/50 border border-white/10 rounded space-y-4">
-        <div id="solution-reasoning" class="text-sm text-gray-300">
+        <div id="solution-reasoning" class="text-sm text-gray-300 whitespace-pre-wrap font-mono">
           <!-- Solution reasoning updates here -->
         </div>
         <div id="solution-code" class="text-sm">
@@ -123,6 +123,22 @@
 
   document.addEventListener("htmx:wsAfterMessage", function (evt) {
     console.log("Received message:", evt.detail.message);
+    try {
+      // Try to parse the message as JSON
+      const data = JSON.parse(evt.detail.message);
+      if (data.type === "complete" || data.type === "error") {
+        return; // Let the other handlers deal with these
+      }
+      
+      // If we have an HTML update, let HTMX handle it
+      if (evt.detail.message.includes('hx-swap-oob')) {
+        return;
+      }
+
+    } catch (e) {
+      // Not JSON, might be HTML update
+      console.log("Non-JSON message received");
+    }
   });
 
   const submitButton = document.getElementById("submit-button");
