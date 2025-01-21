@@ -6,6 +6,7 @@ use tracing::info;
 use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
     github_types::Issue,
+    DeepSeekService,
 };
 
 impl super::super::SolverService {
@@ -36,43 +37,37 @@ impl super::super::SolverService {
         let files_state_clone = files_state.clone();
 
         // Stream the files analysis
-        self.deepseek_service
-            .chat_stream(files_prompt, true, move |content, reasoning| {
-                let state = files_state_clone.clone();
-                let tx = update_tx_clone.clone();
-                
-                // Clone the content and reasoning before moving into the async block
-                let content_owned = content.map(String::from);
-                let reasoning_owned = reasoning.map(String::from);
-                
-                tokio::spawn(async move {
-                    let mut guard = state.lock().await;
-                    if let Some(c) = content_owned {
-                        guard.0.push_str(&c);
-                        let _ = tx.send(SolverUpdate::Progress {
-                            stage: SolverStage::Analysis,
-                            message: "Analyzing files...".into(),
-                            data: Some(serde_json::json!({
-                                "files_list": guard.0,
-                                "files_reasoning": guard.1
-                            })),
-                        });
-                    }
-                    if let Some(r) = reasoning_owned {
-                        guard.1.push_str(&r);
-                        let _ = tx.send(SolverUpdate::Progress {
-                            stage: SolverStage::Analysis,
-                            message: "Analyzing files...".into(),
-                            data: Some(serde_json::json!({
-                                "files_list": guard.0,
-                                "files_reasoning": guard.1
-                            })),
-                        });
-                    }
-                });
-                Ok(())
-            })
-            .await?;
+        let mut stream = self.deepseek_service.chat_stream(files_prompt, true);
+
+        while let Some(update) = stream.recv().await {
+            match update {
+                DeepSeekService::StreamUpdate::Content(content) => {
+                    let mut guard = files_state_clone.lock().await;
+                    guard.0.push_str(&content);
+                    let _ = update_tx_clone.send(SolverUpdate::Progress {
+                        stage: SolverStage::Analysis,
+                        message: "Analyzing files...".into(),
+                        data: Some(serde_json::json!({
+                            "files_list": guard.0,
+                            "files_reasoning": guard.1
+                        })),
+                    });
+                }
+                DeepSeekService::StreamUpdate::Reasoning(reasoning) => {
+                    let mut guard = files_state_clone.lock().await;
+                    guard.1.push_str(&reasoning);
+                    let _ = update_tx_clone.send(SolverUpdate::Progress {
+                        stage: SolverStage::Analysis,
+                        message: "Analyzing files...".into(),
+                        data: Some(serde_json::json!({
+                            "files_list": guard.0,
+                            "files_reasoning": guard.1
+                        })),
+                    });
+                }
+                DeepSeekService::StreamUpdate::Done => break,
+            }
+        }
 
         // Get final results
         let state = files_state.lock().await;
