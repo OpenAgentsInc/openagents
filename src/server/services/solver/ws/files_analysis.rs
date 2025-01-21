@@ -6,7 +6,7 @@ use tracing::info;
 use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
     github_types::Issue,
-    DeepSeekService,
+    StreamUpdate,
 };
 
 impl super::super::SolverService {
@@ -37,11 +37,11 @@ impl super::super::SolverService {
         let files_state_clone = files_state.clone();
 
         // Stream the files analysis
-        let mut stream = self.deepseek_service.chat_stream(files_prompt, true);
+        let mut stream = self.deepseek_service.chat_stream(files_prompt, true).await;
 
         while let Some(update) = stream.recv().await {
             match update {
-                DeepSeekService::StreamUpdate::Content(content) => {
+                StreamUpdate::Content(content) => {
                     let mut guard = files_state_clone.lock().await;
                     guard.0.push_str(&content);
                     let _ = update_tx_clone.send(SolverUpdate::Progress {
@@ -53,7 +53,7 @@ impl super::super::SolverService {
                         })),
                     });
                 }
-                DeepSeekService::StreamUpdate::Reasoning(reasoning) => {
+                StreamUpdate::Reasoning(reasoning) => {
                     let mut guard = files_state_clone.lock().await;
                     guard.1.push_str(&reasoning);
                     let _ = update_tx_clone.send(SolverUpdate::Progress {
@@ -65,7 +65,7 @@ impl super::super::SolverService {
                         })),
                     });
                 }
-                DeepSeekService::StreamUpdate::Done => break,
+                StreamUpdate::Done => break,
             }
         }
 
