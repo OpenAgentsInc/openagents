@@ -27,14 +27,11 @@
       <!-- Sidebar -->
       <div class="w-64 border-r border-white p-4">
         <div class="h-full flex flex-col">
-          <h2 class="text-xl mb-4">Chats</h2>
+          <button class="w-full border border-white p-2 hover:bg-white hover:text-black transition-colors mb-4">
+            New Chat
+          </button>
           <div class="flex-grow overflow-y-auto">
             <!-- Chat list will go here -->
-          </div>
-          <div class="mt-4">
-            <button class="w-full border border-white p-2 hover:bg-white hover:text-black transition-colors">
-              New Chat
-            </button>
           </div>
         </div>
       </div>
@@ -42,19 +39,19 @@
       <!-- Main chat area -->
       <div class="flex-1 flex flex-col">
         <!-- Chat messages area -->
-        <div class="flex-grow overflow-y-auto p-4 border-b border-white">
+        <div class="flex-grow overflow-y-auto p-4">
           {% include "layouts/chat_content.html" %}
         </div>
 
         <!-- Input area -->
-        <div class="p-4 border-t border-white">
-          <div class="flex gap-2">
+        <div class="border-t border-white">
+          <div class="flex">
             <input
               type="text"
-              class="flex-grow bg-black border border-white p-2 focus:outline-none focus:border-gray-400"
+              class="flex-grow bg-black p-4 focus:outline-none"
               placeholder="Type your message..."
             />
-            <button class="border border-white px-4 py-2 hover:bg-white hover:text-black transition-colors">
+            <button class="px-4 border-l border-white hover:bg-white hover:text-black transition-colors">
               Send
             </button>
           </div>
