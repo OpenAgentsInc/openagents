@@ -38,7 +38,7 @@ impl SolverWsState {
         
         match &update {
             SolverUpdate::Progress { stage, message, data } => {
-                // Send stage update (progress bar)
+                // First send progress bar update
                 let progress_html = format!(
                     "<div id='progress-bar' hx-swap-oob='true'>{}</div>
                      <div id='solver-status' hx-swap-oob='true'>{}</div>",
@@ -46,9 +46,13 @@ impl SolverWsState {
                     message
                 );
 
-                // Send content updates if any
+                for tx in conns.values() {
+                    let _ = tx.send(Message::Text(progress_html.clone().into())).await;
+                }
+
+                // Then send content updates in sequence
                 if let Some(data) = data {
-                    // Files list (replace)
+                    // 1. Files list (if present)
                     if let Some(files_list) = data.get("files_list") {
                         let content_html = format!(
                             "<div id='files-list' hx-swap-oob='true'>{}</div>",
@@ -57,9 +61,11 @@ impl SolverWsState {
                         for tx in conns.values() {
                             let _ = tx.send(Message::Text(content_html.clone().into())).await;
                         }
+                        // Small delay to ensure order
+                        tokio::time::sleep(Duration::from_millis(10)).await;
                     }
 
-                    // Files reasoning (replace)
+                    // 2. Files reasoning (if present)
                     if let Some(files_reasoning) = data.get("files_reasoning") {
                         let reasoning_html = format!(
                             "<div id='files-reasoning' hx-swap-oob='true'>{}</div>",
@@ -68,9 +74,22 @@ impl SolverWsState {
                         for tx in conns.values() {
                             let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
                         }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
                     }
 
-                    // Solution code (replace)
+                    // 3. Solution reasoning (if present)
+                    if let Some(solution_reasoning) = data.get("solution_reasoning") {
+                        let reasoning_html = format!(
+                            "<div id='solution-reasoning' hx-swap-oob='true'>{}</div>",
+                            super::html_formatting::render_solution_reasoning(solution_reasoning)
+                        );
+                        for tx in conns.values() {
+                            let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
+                        }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+
+                    // 4. Solution code (if present)
                     if let Some(solution_text) = data.get("solution_text") {
                         let solution_html = format!(
                             "<div id='solution-code' hx-swap-oob='true'>{}</div>",
@@ -80,45 +99,50 @@ impl SolverWsState {
                             let _ = tx.send(Message::Text(solution_html.clone().into())).await;
                         }
                     }
-
-                    // Solution reasoning (replace)
-                    if let Some(solution_reasoning) = data.get("solution_reasoning") {
-                        let reasoning_html = format!(
-                            "<div id='solution-reasoning' hx-swap-oob='true'>{}</div>",
-                            super::html_formatting::render_solution_reasoning(solution_reasoning)
-                        );
-                        for tx in conns.values() {
-                            let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
-                        }
-                    }
-                }
-
-                // Send progress bar update
-                for tx in conns.values() {
-                    let _ = tx.send(Message::Text(progress_html.clone().into())).await;
                 }
             }
             SolverUpdate::Complete { result } => {
-                // Send completion message
-                let complete_html = format!(
-                    "<div id='solver-status' hx-swap-oob='true'>Complete</div>
-                     <div id='solution-code' hx-swap-oob='true'>{}</div>",
+                // First send completion status
+                let status_html = "<div id='solver-status' hx-swap-oob='true'>Complete</div>";
+                for tx in conns.values() {
+                    let _ = tx.send(Message::Text(status_html.into())).await;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+
+                // Then send solution
+                let solution_html = format!(
+                    "<div id='solution-code' hx-swap-oob='true'>{}</div>",
                     super::html_formatting::render_complete(result)
                 );
-                
-                // Send completion message
+                for tx in conns.values() {
+                    let _ = tx.send(Message::Text(solution_html.clone().into())).await;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+
+                // Finally send completion message
                 let complete_msg = serde_json::json!({
                     "type": "complete",
                     "message": "Solution complete"
                 }).to_string();
 
                 for tx in conns.values() {
-                    let _ = tx.send(Message::Text(complete_html.clone().into())).await;
                     let _ = tx.send(Message::Text(complete_msg.clone().into())).await;
                 }
             }
             SolverUpdate::Error { message, details } => {
-                // Show error in error section
+                // First clear any existing content
+                let clear_html = r#"
+                    <div id="files-list" hx-swap-oob="true"></div>
+                    <div id="files-reasoning" hx-swap-oob="true"></div>
+                    <div id="solution-reasoning" hx-swap-oob="true"></div>
+                    <div id="solution-code" hx-swap-oob="true"></div>
+                "#;
+                for tx in conns.values() {
+                    let _ = tx.send(Message::Text(clear_html.into())).await;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+
+                // Then show error
                 let error_html = format!(
                     "<div id='error-section' hx-swap-oob='true' class='mt-4 p-4 bg-red-900/20 border border-red-500/20 rounded'>
                         <div id='error-message' class='text-sm text-red-400'>{}: {}</div>
@@ -127,7 +151,6 @@ impl SolverWsState {
                     details.as_deref().unwrap_or("")
                 );
 
-                // Send error message
                 let error_msg = serde_json::json!({
                     "type": "error",
                     "message": message,
@@ -216,6 +239,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                                     <div id="error-section" hx-swap-oob="true" class="hidden"></div>
                                 "#;
                                 let _ = tx_clone.send(Message::Text(reset_html.into())).await;
+                                tokio::time::sleep(Duration::from_millis(10)).await;
 
                                 let solve_result = state_clone2
                                     .solver_service
