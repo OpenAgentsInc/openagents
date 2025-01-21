@@ -6,6 +6,7 @@ use tracing::info;
 use crate::server::services::{
     solver::ws::types::{SolverStage, SolverUpdate},
     github_types::Issue,
+    DeepSeekService,
 };
 
 impl super::super::SolverService {
@@ -38,43 +39,37 @@ impl super::super::SolverService {
         let solution_state_clone = solution_state.clone();
 
         // Stream the solution generation
-        self.deepseek_service
-            .chat_stream(solution_prompt, true, move |content, reasoning| {
-                let state = solution_state_clone.clone();
-                let tx = update_tx_clone.clone();
-                
-                // Clone the content and reasoning before moving into the async block
-                let content_owned = content.map(String::from);
-                let reasoning_owned = reasoning.map(String::from);
-                
-                tokio::spawn(async move {
-                    let mut guard = state.lock().await;
-                    if let Some(c) = content_owned {
-                        guard.0.push_str(&c);
-                        let _ = tx.send(SolverUpdate::Progress {
-                            stage: SolverStage::Solution,
-                            message: "Generating solution...".into(),
-                            data: Some(serde_json::json!({
-                                "solution_text": guard.0,
-                                "solution_reasoning": guard.1
-                            })),
-                        });
-                    }
-                    if let Some(r) = reasoning_owned {
-                        guard.1.push_str(&r);
-                        let _ = tx.send(SolverUpdate::Progress {
-                            stage: SolverStage::Solution,
-                            message: "Generating solution...".into(),
-                            data: Some(serde_json::json!({
-                                "solution_text": guard.0,
-                                "solution_reasoning": guard.1
-                            })),
-                        });
-                    }
-                });
-                Ok(())
-            })
-            .await?;
+        let mut stream = self.deepseek_service.chat_stream(solution_prompt, true);
+
+        while let Some(update) = stream.recv().await {
+            match update {
+                DeepSeekService::StreamUpdate::Content(content) => {
+                    let mut guard = solution_state_clone.lock().await;
+                    guard.0.push_str(&content);
+                    let _ = update_tx_clone.send(SolverUpdate::Progress {
+                        stage: SolverStage::Solution,
+                        message: "Generating solution...".into(),
+                        data: Some(serde_json::json!({
+                            "solution_text": guard.0,
+                            "solution_reasoning": guard.1
+                        })),
+                    });
+                }
+                DeepSeekService::StreamUpdate::Reasoning(reasoning) => {
+                    let mut guard = solution_state_clone.lock().await;
+                    guard.1.push_str(&reasoning);
+                    let _ = update_tx_clone.send(SolverUpdate::Progress {
+                        stage: SolverStage::Solution,
+                        message: "Generating solution...".into(),
+                        data: Some(serde_json::json!({
+                            "solution_text": guard.0,
+                            "solution_reasoning": guard.1
+                        })),
+                    });
+                }
+                DeepSeekService::StreamUpdate::Done => break,
+            }
+        }
 
         // Get final results
         let state = solution_state.lock().await;
