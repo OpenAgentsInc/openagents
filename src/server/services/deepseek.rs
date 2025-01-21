@@ -3,6 +3,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::info;
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone)]
 pub struct DeepSeekService {
@@ -22,6 +23,8 @@ struct ChatRequest {
     model: String,
     messages: Vec<ChatMessage>,
     stream: bool,
+    temperature: f32,
+    max_tokens: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +47,7 @@ struct ChatResponse {
 #[derive(Debug, Deserialize)]
 struct StreamChoice {
     delta: StreamDelta,
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,6 +59,13 @@ struct StreamDelta {
 #[derive(Debug, Deserialize)]
 struct StreamResponse {
     choices: Vec<StreamChoice>,
+}
+
+#[derive(Debug)]
+pub enum StreamUpdate {
+    Content(String),
+    Reasoning(String),
+    Done,
 }
 
 impl DeepSeekService {
@@ -78,68 +89,94 @@ impl DeepSeekService {
         self.chat_internal(prompt, use_reasoner, false).await
     }
 
-    pub async fn chat_stream<F>(&self, prompt: String, use_reasoner: bool, mut callback: F) -> Result<()>
-    where
-        F: FnMut(Option<&str>, Option<&str>) -> Result<()>,
-    {
-        let model = if use_reasoner {
-            "deepseek-reasoner"
-        } else {
-            "deepseek-chat"
-        };
+    pub async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
+        let (tx, rx) = mpsc::channel(100);
+        let client = self.client.clone();
+        let api_key = self.api_key.clone();
+        let base_url = self.base_url.clone();
 
-        let messages = vec![ChatMessage {
-            role: "user".to_string(),
-            content: prompt,
-        }];
+        tokio::spawn(async move {
+            let model = if use_reasoner {
+                "deepseek-reasoner"
+            } else {
+                "deepseek-chat"
+            };
 
-        let request = ChatRequest {
-            model: model.to_string(),
-            messages,
-            stream: true,
-        };
+            let messages = vec![ChatMessage {
+                role: "user".to_string(),
+                content: prompt,
+            }];
 
-        let url = format!("{}/chat/completions", self.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&request)
-            .send()
-            .await?;
+            let request = ChatRequest {
+                model: model.to_string(),
+                messages,
+                stream: true,
+                temperature: 0.7,
+                max_tokens: None,
+            };
 
-        let mut stream = response.bytes_stream();
-        let mut content = String::new();
-        let mut reasoning = String::new();
+            let url = format!("{}/chat/completions", base_url);
+            let response = client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&request)
+                .send()
+                .await;
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            let text = String::from_utf8_lossy(&chunk);
-            
-            // Split by "data: " and process each SSE message
-            for line in text.split("data: ") {
-                let line = line.trim();
-                if line.is_empty() || line == "[DONE]" {
-                    continue;
-                }
+            match response {
+                Ok(response) => {
+                    let mut stream = response.bytes_stream();
+                    let mut buffer = String::new();
 
-                if let Ok(response) = serde_json::from_str::<StreamResponse>(line) {
-                    if let Some(choice) = response.choices.first() {
-                        if let Some(ref c) = choice.delta.content {
-                            content.push_str(c);
-                            callback(Some(c), None)?;
-                        }
-                        if let Some(ref r) = choice.delta.reasoning_content {
-                            reasoning.push_str(r);
-                            callback(None, Some(r))?;
+                    while let Some(chunk) = stream.next().await {
+                        match chunk {
+                            Ok(chunk) => {
+                                buffer.push_str(&String::from_utf8_lossy(&chunk));
+                                
+                                // Process complete SSE messages
+                                while let Some(pos) = buffer.find('\n') {
+                                    let line = buffer[..pos].trim();
+                                    buffer = buffer[pos + 1..].to_string();
+
+                                    if line.starts_with("data: ") {
+                                        let data = &line["data: ".len()..];
+                                        if data == "[DONE]" {
+                                            let _ = tx.send(StreamUpdate::Done).await;
+                                            break;
+                                        }
+
+                                        if let Ok(response) = serde_json::from_str::<StreamResponse>(data) {
+                                            if let Some(choice) = response.choices.first() {
+                                                if let Some(ref content) = choice.delta.content {
+                                                    let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
+                                                }
+                                                if let Some(ref reasoning) = choice.delta.reasoning_content {
+                                                    let _ = tx.send(StreamUpdate::Reasoning(reasoning.to_string())).await;
+                                                }
+                                                if choice.finish_reason.is_some() {
+                                                    let _ = tx.send(StreamUpdate::Done).await;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                info!("Stream error: {}", e);
+                                break;
+                            }
                         }
                     }
                 }
+                Err(e) => {
+                    info!("Request error: {}", e);
+                }
             }
-        }
+        });
 
-        Ok(())
+        rx
     }
 
     async fn chat_internal(&self, prompt: String, use_reasoner: bool, stream: bool) -> Result<(String, Option<String>)> {
@@ -160,6 +197,8 @@ impl DeepSeekService {
             model: model.to_string(),
             messages,
             stream,
+            temperature: 0.7,
+            max_tokens: None,
         };
 
         let url = format!("{}/chat/completions", self.base_url);
