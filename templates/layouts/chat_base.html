@@ -22,7 +22,8 @@
   </head>
   <body
     class="min-h-screen w-screen bg-black text-white font-mono overflow-hidden"
-    hx-ext="ws" ws-connect="/ws"
+    hx-ext="ws" 
+    ws-connect="/ws"
   >
     <!-- Header navbar -->
     <div class="w-full border-b border-white">
@@ -55,7 +56,7 @@
       <!-- Main chat area -->
       <div class="flex-1 flex flex-col">
         <!-- Chat messages area -->
-        <div class="flex-grow overflow-y-auto p-4">
+        <div class="flex-grow overflow-y-auto p-4" id="chat-messages">
           {% include "layouts/chat_content.html" %}
         </div>
 
@@ -92,6 +93,20 @@
     >
       <div id="error-message" class="text-sm text-red-400"></div>
     </div>
+
+    <!-- Message template -->
+    <template id="message-template">
+      <div class="message flex gap-4 mb-4">
+        <div class="flex-shrink-0">
+          <div class="w-8 h-8 border border-white flex items-center justify-center">
+            <span class="sender">AI</span>
+          </div>
+        </div>
+        <div class="flex-grow">
+          <p class="content"></p>
+        </div>
+      </div>
+    </template>
   </body>
 <script>
   document.addEventListener("htmx:wsConnecting", function (evt) {
@@ -121,21 +136,43 @@
   document.addEventListener("htmx:wsAfterMessage", function (evt) {
     console.log("Received message:", evt.detail.message);
     try {
-      // Try to parse the message as JSON
       const data = JSON.parse(evt.detail.message);
-      if (data.type === "complete" || data.type === "error") {
-        return; // Let the other handlers deal with these
-      }
-
-      // If we have an HTML update, let HTMX handle it
-      if (evt.detail.message.includes("hx-swap-oob")) {
-        return;
+      
+      // Handle different message types
+      if (data.type === "chat") {
+        handleChatMessage(data);
+      } else if (data.type === "error") {
+        handleErrorMessage(data);
       }
     } catch (e) {
-      // Not JSON, might be HTML update
       console.log("Non-JSON message received");
     }
   });
+
+  function handleChatMessage(data) {
+    const messagesDiv = document.getElementById("chat-messages");
+    const template = document.getElementById("message-template");
+    
+    // Clone the template
+    const messageEl = template.content.cloneNode(true);
+    
+    // Set the content
+    messageEl.querySelector(".content").textContent = data.content;
+    messageEl.querySelector(".sender").textContent = data.sender === "user" ? "You" : "AI";
+    
+    // Add to messages
+    messagesDiv.appendChild(messageEl);
+    
+    // Scroll to bottom
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  function handleErrorMessage(data) {
+    const errorSection = document.getElementById("error-section");
+    const errorMessage = document.getElementById("error-message");
+    errorSection.classList.remove("hidden");
+    errorMessage.textContent = data.message;
+  }
 
   const submitButton = document.getElementById("submit-button");
   const input = document.getElementById("input");
@@ -152,32 +189,39 @@
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     
+    // Get the message
+    const message = input.value.trim();
+    if (!message) return;
+    
+    // Create the message object with type
+    const data = {
+      type: "chat",
+      message: {
+        type: "user_message",
+        content: message
+      }
+    };
+    
+    // Update form
+    const formData = new FormData();
+    formData.append("message", JSON.stringify(data));
+    
     // Update UI
     submitButton.disabled = true;
     submitButton.innerText = "...";
+    input.value = "";
+    
+    // Add user message to chat
+    handleChatMessage({
+      type: "chat",
+      content: message,
+      sender: "user"
+    });
     
     // Let HTMX handle the WebSocket send
     // The form will automatically send because of ws-send attribute
     
     setTimeout(() => resetUI(), 1000);
-  });
-
-  // Handle WebSocket events
-  document.body.addEventListener("htmx:wsAfterMessage", function (evt) {
-    const msg = evt.detail.message;
-
-    // Check if it's a completion message
-    if (msg.includes('"type":"complete"')) {
-      submitButton.disabled = false;
-      submitButton.innerText = "Send";
-    }
-
-    // Handle errors
-    if (msg.includes('"type":"error"')) {
-      errorSection.classList.remove("hidden");
-      const errorData = JSON.parse(msg);
-      document.getElementById("error-message").textContent = errorData.message;
-    }
   });
 </script>
 </html>
