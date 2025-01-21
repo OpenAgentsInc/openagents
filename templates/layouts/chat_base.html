@@ -21,11 +21,44 @@
     </script>
   </head>
   <body
-    class="min-h-screen w-screen bg-black text-white font-mono overflow-x-hidden"
+    class="min-h-screen w-screen bg-black text-white font-mono overflow-hidden"
   >
-    <div class="flex justify-center mx-2 md:mx-6">
-      <div class="w-[60rem] max-w-full my-6 px-4 py-6 border border-white">
-        {% include "layouts/chat_content.html" %}
+    <div class="flex h-screen">
+      <!-- Sidebar -->
+      <div class="w-64 border-r border-white p-4">
+        <div class="h-full flex flex-col">
+          <h2 class="text-xl mb-4">Chats</h2>
+          <div class="flex-grow overflow-y-auto">
+            <!-- Chat list will go here -->
+          </div>
+          <div class="mt-4">
+            <button class="w-full border border-white p-2 hover:bg-white hover:text-black transition-colors">
+              New Chat
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main chat area -->
+      <div class="flex-1 flex flex-col">
+        <!-- Chat messages area -->
+        <div class="flex-grow overflow-y-auto p-4 border-b border-white">
+          {% include "layouts/chat_content.html" %}
+        </div>
+
+        <!-- Input area -->
+        <div class="p-4 border-t border-white">
+          <div class="flex gap-2">
+            <input
+              type="text"
+              class="flex-grow bg-black border border-white p-2 focus:outline-none focus:border-gray-400"
+              placeholder="Type your message..."
+            />
+            <button class="border border-white px-4 py-2 hover:bg-white hover:text-black transition-colors">
+              Send
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </body>
