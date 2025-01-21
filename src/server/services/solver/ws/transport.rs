@@ -39,30 +39,54 @@ impl SolverWsState {
         match &update {
             SolverUpdate::Progress { stage, message, data } => {
                 // Send stage update (progress bar)
-                let progress_html = super::html_formatting::render_progress_bar(stage, message);
+                let progress_html = format!(
+                    "<div id='progress-bar' hx-swap-oob='true'>{}</div>
+                     <div id='solver-status' hx-swap-oob='true'>{}</div>",
+                    super::html_formatting::render_progress_bar(stage),
+                    message
+                );
 
                 // Send content updates if any
                 if let Some(data) = data {
+                    // Files list (replace)
                     if let Some(files_list) = data.get("files_list") {
-                        let content_html = super::html_formatting::render_files_list(files_list);
+                        let content_html = format!(
+                            "<div id='files-list' hx-swap-oob='true'>{}</div>",
+                            super::html_formatting::render_files_list(files_list)
+                        );
                         for tx in conns.values() {
                             let _ = tx.send(Message::Text(content_html.clone().into())).await;
                         }
                     }
+
+                    // Files reasoning (append)
                     if let Some(files_reasoning) = data.get("files_reasoning") {
-                        let reasoning_html = super::html_formatting::render_files_reasoning(files_reasoning);
+                        let reasoning_html = format!(
+                            "<div id='files-reasoning' hx-swap-oob='beforeend'>{}</div>",
+                            super::html_formatting::render_files_reasoning(files_reasoning)
+                        );
                         for tx in conns.values() {
                             let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
                         }
                     }
+
+                    // Solution code (replace)
                     if let Some(solution_text) = data.get("solution_text") {
-                        let solution_html = super::html_formatting::render_solution(solution_text);
+                        let solution_html = format!(
+                            "<div id='solution-code' hx-swap-oob='true'>{}</div>",
+                            super::html_formatting::render_solution(solution_text)
+                        );
                         for tx in conns.values() {
                             let _ = tx.send(Message::Text(solution_html.clone().into())).await;
                         }
                     }
+
+                    // Solution reasoning (append)
                     if let Some(solution_reasoning) = data.get("solution_reasoning") {
-                        let reasoning_html = super::html_formatting::render_solution_reasoning(solution_reasoning);
+                        let reasoning_html = format!(
+                            "<div id='solution-reasoning' hx-swap-oob='beforeend'>{}</div>",
+                            super::html_formatting::render_solution_reasoning(solution_reasoning)
+                        );
                         for tx in conns.values() {
                             let _ = tx.send(Message::Text(reasoning_html.clone().into())).await;
                         }
@@ -75,15 +99,44 @@ impl SolverWsState {
                 }
             }
             SolverUpdate::Complete { result } => {
-                let html = super::html_formatting::render_complete(result);
+                // Send completion message
+                let complete_html = format!(
+                    "<div id='solver-status' hx-swap-oob='true'>Complete</div>
+                     <div id='solution-code' hx-swap-oob='true'>{}</div>",
+                    super::html_formatting::render_complete(result)
+                );
+                
+                // Send completion message
+                let complete_msg = serde_json::json!({
+                    "type": "complete",
+                    "message": "Solution complete"
+                }).to_string();
+
                 for tx in conns.values() {
-                    let _ = tx.send(Message::Text(html.clone().into())).await;
+                    let _ = tx.send(Message::Text(complete_html.clone().into())).await;
+                    let _ = tx.send(Message::Text(complete_msg.clone())).await;
                 }
             }
             SolverUpdate::Error { message, details } => {
-                let html = super::html_formatting::render_error(message, details);
+                // Show error in error section
+                let error_html = format!(
+                    "<div id='error-section' hx-swap-oob='true' class='mt-4 p-4 bg-red-900/20 border border-red-500/20 rounded'>
+                        <div id='error-message' class='text-sm text-red-400'>{}: {}</div>
+                    </div>",
+                    message,
+                    details.as_deref().unwrap_or("")
+                );
+
+                // Send error message
+                let error_msg = serde_json::json!({
+                    "type": "error",
+                    "message": message,
+                    "details": details
+                }).to_string();
+
                 for tx in conns.values() {
-                    let _ = tx.send(Message::Text(html.clone().into())).await;
+                    let _ = tx.send(Message::Text(error_html.clone().into())).await;
+                    let _ = tx.send(Message::Text(error_msg.clone())).await;
                 }
             }
         }
@@ -126,21 +179,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                     }
                 }
                 Ok(update) = update_rx.recv() => {
-                    // Convert update to HTML and send
-                    let html = match update {
-                        SolverUpdate::Progress { stage, message, data: _ } => {
-                            super::html_formatting::render_progress_bar(&stage, &message)
-                        }
-                        SolverUpdate::Complete { result } => {
-                            super::html_formatting::render_complete(&result)
-                        }
-                        SolverUpdate::Error { message, details } => {
-                            super::html_formatting::render_error(&message, &details)
-                        }
-                    };
-                    if sender.send(Message::Text(html.into())).await.is_err() {
-                        break;
-                    }
+                    // Let broadcast_update handle the HTML formatting
+                    state_clone.broadcast_update(update).await;
                 }
                 _ = heartbeat_interval.tick() => {
                     if std::time::Instant::now().duration_since(last_active) > CLIENT_TIMEOUT {
@@ -166,6 +206,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
                             if let Some(url) = issue_url.as_str() {
                                 info!("Starting solver for issue: {}", url);
 
+                                // Reset UI state
+                                let reset_html = r#"
+                                    <div id="files-list" hx-swap-oob="true"></div>
+                                    <div id="files-reasoning" hx-swap-oob="true"></div>
+                                    <div id="solution-reasoning" hx-swap-oob="true"></div>
+                                    <div id="solution-code" hx-swap-oob="true"></div>
+                                    <div id="error-section" hx-swap-oob="true" class="hidden"></div>
+                                "#;
+                                let _ = tx_clone.send(Message::Text(reset_html.into())).await;
+
                                 let solve_result = state_clone
                                     .solver_service
                                     .solve_issue_with_ws(
@@ -176,35 +226,19 @@ async fn handle_socket(socket: WebSocket, state: Arc<SolverWsState>) {
 
                                 match solve_result {
                                     Ok(response) => {
-                                        let html = super::html_formatting::render_final_solution(&response.solution);
-
-                                        // Try multiple times to send the final message
-                                        for _ in 0..3 {
-                                            match tx_clone
-                                                .send(Message::Text(html.clone().into()))
-                                                .await
-                                            {
-                                                Ok(_) => {
-                                                    info!("Successfully sent final solution");
-                                                    break;
-                                                }
-                                                Err(e) => {
-                                                    error!("Failed to send final solution: {}", e);
-                                                    tokio::time::sleep(
-                                                        Duration::from_millis(100),
-                                                    )
-                                                    .await;
-                                                }
-                                            }
-                                        }
-
-                                        // Wait a bit before closing to ensure all messages are sent
-                                        tokio::time::sleep(Duration::from_secs(1)).await;
+                                        // Final solution is handled by broadcast_update
+                                        let complete_update = SolverUpdate::Complete {
+                                            result: response.solution,
+                                        };
+                                        state_clone.broadcast_update(complete_update).await;
                                     }
                                     Err(e) => {
                                         error!("Solver error: {}", e);
-                                        let error_html = super::html_formatting::render_error("Solver error", &Some(e.to_string()));
-                                        let _ = tx_clone.send(Message::Text(error_html.into())).await;
+                                        let error_update = SolverUpdate::Error {
+                                            message: "Solver error".into(),
+                                            details: Some(e.to_string()),
+                                        };
+                                        state_clone.broadcast_update(error_update).await;
                                     }
                                 }
                             }
