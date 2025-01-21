@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use crate::server::ws::types::SolverMessage;
 use super::MessageHandler;
@@ -32,7 +31,7 @@ impl MessageHandler for SolverHandler {
         Ok(())
     }
 
-    async fn broadcast(&self, msg: Self::Message) -> Result<(), Box<dyn std::error::Error>> {
+    async fn broadcast(&self, _msg: Self::Message) -> Result<(), Box<dyn std::error::Error>> {
         // Implement if needed
         Ok(())
     }
