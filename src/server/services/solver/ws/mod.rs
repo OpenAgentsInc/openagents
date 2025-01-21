@@ -10,9 +10,11 @@ pub mod solution_generation;
 pub mod url_parsing;
 pub mod html_formatting;
 pub mod types;
+pub mod transport;
 
 // Re-export the types
 pub use types::{SolverStage, SolverUpdate};
+pub use transport::{ws_handler, SolverWsState};
 
 pub(crate) use url_parsing::*;
 pub(crate) use html_formatting::*;
