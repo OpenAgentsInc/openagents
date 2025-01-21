@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use crate::server::ws::types::SolverMessage;
 use super::MessageHandler;
+use std::error::Error;
 
 pub struct SolverHandler {
     // Move existing solver dependencies here
@@ -18,7 +19,7 @@ impl SolverHandler {
 impl MessageHandler for SolverHandler {
     type Message = SolverMessage;
 
-    async fn handle_message(&self, msg: Self::Message, _conn_id: String) -> Result<(), Box<dyn std::error::Error>> {
+    async fn handle_message(&self, msg: Self::Message, _conn_id: String) -> Result<(), Box<dyn Error + Send + Sync>> {
         match msg {
             SolverMessage::Progress { stage, message } => {
                 // Handle progress update
@@ -31,7 +32,7 @@ impl MessageHandler for SolverHandler {
         Ok(())
     }
 
-    async fn broadcast(&self, _msg: Self::Message) -> Result<(), Box<dyn std::error::Error>> {
+    async fn broadcast(&self, _msg: Self::Message) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Implement if needed
         Ok(())
     }
