@@ -35,7 +35,7 @@ pub(crate) fn render_files_list(files_list: &Value) -> String {
     format!(
         r#"<div class="text-sm space-y-1">
             <div class="text-gray-400 font-medium">Relevant Files:</div>
-            <pre class="text-xs text-gray-300 whitespace-pre-wrap">{}</pre>
+            <pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono bg-black/30 p-2 rounded overflow-x-auto max-w-full break-all">{}</pre>
         </div>"#,
         html_escape::encode_text(&files)
     )
@@ -48,7 +48,7 @@ pub(crate) fn render_files_reasoning(reasoning: &Value) -> String {
     };
 
     format!(
-        r#"<pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono">{}</pre>"#,
+        r#"<pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono bg-black/30 p-2 rounded overflow-x-auto max-w-full break-words">{}</pre>"#,
         html_escape::encode_text(&text)
     )
 }
@@ -62,7 +62,7 @@ pub(crate) fn render_solution(solution: &Value) -> String {
     format!(
         r#"<div class="bg-gray-800 rounded-lg p-4">
             <div class="text-sm text-yellow-400 mb-2">Proposed Solution:</div>
-            <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto font-mono">{}</pre>
+            <pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono overflow-x-auto max-w-full break-words">{}</pre>
         </div>"#,
         html_escape::encode_text(&text)
     )
@@ -75,7 +75,7 @@ pub(crate) fn render_solution_reasoning(reasoning: &Value) -> String {
     };
 
     format!(
-        r#"<pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono">{}</pre>"#,
+        r#"<pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono bg-black/30 p-2 rounded overflow-x-auto max-w-full break-words">{}</pre>"#,
         html_escape::encode_text(&text)
     )
 }
@@ -90,7 +90,7 @@ pub(crate) fn render_complete(result: &Value) -> String {
     format!(
         r#"<div class="bg-gray-800 rounded-lg p-4">
             <div class="text-sm text-green-400 mb-2">Solution Complete</div>
-            <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto font-mono">{}</pre>
+            <pre class="text-xs text-gray-300 whitespace-pre-wrap font-mono overflow-x-auto max-w-full break-words">{}</pre>
         </div>"#,
         html_escape::encode_text(solution)
     )
@@ -105,7 +105,7 @@ pub(crate) fn render_error(message: &str, details: &Option<String>) -> String {
         details
             .as_ref()
             .map(|d| format!(
-                r#"<pre class="mt-2 text-xs text-red-300 whitespace-pre-wrap font-mono">{}</pre>"#,
+                r#"<pre class="mt-2 text-xs text-red-300 whitespace-pre-wrap font-mono overflow-x-auto max-w-full break-words">{}</pre>"#,
                 html_escape::encode_text(d)
             ))
             .unwrap_or_default()
@@ -115,7 +115,7 @@ pub(crate) fn render_error(message: &str, details: &Option<String>) -> String {
 // Helper function to format code blocks
 fn format_code_block(code: &str, language: Option<&str>) -> String {
     format!(
-        r#"<pre class="bg-black/50 rounded p-2 text-xs overflow-x-auto"><code class="language-{}">{}</code></pre>"#,
+        r#"<pre class="bg-black/50 rounded p-2 text-xs overflow-x-auto max-w-full break-words"><code class="language-{}">{}</code></pre>"#,
         language.unwrap_or("plaintext"),
         html_escape::encode_text(code)
     )
