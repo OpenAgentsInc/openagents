@@ -28,8 +28,8 @@ impl WebSocketTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::test_utils::*;
-    use crate::tools::ToolError;
+    use crate::test_utils::*;
+    use crate::server::tools::ToolError;
 
     #[tokio::test]
     async fn test_handle_connection() {
