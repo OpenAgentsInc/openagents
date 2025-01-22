@@ -1,0 +1,8 @@
+<script>
+  document.addEventListener("htmx:afterSettle", function (evt) {
+    const newTitle = evt.detail.xhr.getResponseHeader("HX-Title");
+    if (newTitle) {
+      document.title = newTitle;
+    }
+  });
+</script>
