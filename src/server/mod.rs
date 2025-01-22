@@ -7,7 +7,6 @@ use axum::{
     Router,
     routing::get,
 };
-use std::sync::Arc;
 
 pub fn app_router() -> Router {
     // Create base router
