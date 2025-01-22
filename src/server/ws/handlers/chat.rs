@@ -28,7 +28,7 @@ impl ChatHandler {
         info!("Processing message: {}", content);
 
         // Get streaming response from DeepSeek
-        let mut stream = self.deepseek_service.chat_stream(content, false).await;
+        let mut stream = self.deepseek_service.chat_stream(content, true).await;
 
         // Send "typing" indicator
         let typing_json = json!({
@@ -59,9 +59,17 @@ impl ChatHandler {
                         .send_to(conn_id, &response_json.to_string())
                         .await?;
                 }
-                crate::server::services::deepseek::StreamUpdate::Reasoning(_) => {
-                    // Currently not handling reasoning content in chat
-                    continue;
+                crate::server::services::deepseek::StreamUpdate::Reasoning(reasoning) => {
+                    // Send reasoning update
+                    let reasoning_json = json!({
+                        "type": "chat",
+                        "content": &reasoning,
+                        "sender": "ai",
+                        "status": "thinking"
+                    });
+                    self.ws_state
+                        .send_to(conn_id, &reasoning_json.to_string())
+                        .await?;
                 }
                 crate::server::services::deepseek::StreamUpdate::Done => {
                     // Send final complete message
