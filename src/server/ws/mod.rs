@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use axum::{
     extract::WebSocketUpgrade,
     response::IntoResponse,
@@ -8,10 +7,6 @@ pub mod handlers;
 pub mod transport;
 pub mod types;
 
-use handlers::{
-    chat::ChatHandler,
-    solver::SolverHandler
-};
 use transport::WebSocketState;
 
 pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
