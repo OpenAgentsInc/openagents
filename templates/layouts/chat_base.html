@@ -147,7 +147,9 @@
     // Replace the message content with our structured message
     evt.detail.messageBody = JSON.stringify(message);
 
-    console.log("Sending message:", evt.detail.messageBody);
+    // Debug logging
+    console.log("Sending structured message:", evt.detail.messageBody);
+    console.log("Message parsed back:", JSON.parse(evt.detail.messageBody));
   });
 
   document.addEventListener("htmx:wsAfterMessage", function (evt) {
