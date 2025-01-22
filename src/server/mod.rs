@@ -4,7 +4,6 @@ pub mod services;
 pub mod ws;
 
 use axum::Router;
-use std::sync::Arc;
 use ws::{init_websocket_state, ws_routes};
 
 pub fn app_router() -> Router {
