@@ -6,6 +6,7 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use serde_json::json;
 use uuid::Uuid;
 use std::error::Error;
+use tracing::info;
 
 use super::types::WebSocketMessage;
 use super::handlers::{MessageHandler, chat::ChatHandler, solver::SolverHandler};
@@ -82,6 +83,9 @@ impl WebSocketState {
             Message::Text(text) => text,
             _ => return Ok(()),
         };
+
+        // Print the raw message for debugging
+        info!("Raw WebSocket message received: {}", msg);
 
         let msg: WebSocketMessage = serde_json::from_str(msg)?;
 
