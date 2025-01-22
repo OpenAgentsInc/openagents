@@ -24,16 +24,17 @@ Three-column design with consistent widths:
 
 #### Main Chat Area (`flex-1`)
 
-- Scrollable messages area
+- Scrollable messages area with user and AI messages
 - Fixed-height input bar at bottom
 - Input spans full width without border
 - Send button with left border only
+- WebSocket connection status indicator
 
 #### Right Sidebar (`w-64`)
 
 - Same width as left sidebar
 - White left border
-- Available for additional content
+- Available for additional content (model settings, etc)
 
 ### Input Area
 
@@ -42,6 +43,7 @@ Three-column design with consistent widths:
 - Borderless input field
 - Send button with left border only
 - Hover effects on interactive elements
+- Disabled state during message processing
 
 ## Template Files
 
@@ -50,6 +52,8 @@ Three-column design with consistent widths:
 - Provides the basic HTML structure
 - Includes core CSS and JavaScript dependencies
 - Implements the three-column layout
+- Sets up WebSocket connection
+- Handles message sending and receiving
 - Maintains consistent styling across all sections
 
 ### Content Layout (`templates/layouts/chat_content.html`)
@@ -57,6 +61,7 @@ Three-column design with consistent widths:
 - Simplified content wrapper for chat messages
 - Directly includes the chat page content
 - Handles message display and formatting
+- Supports streaming message updates
 
 ## Template Structs
 
@@ -75,27 +80,41 @@ pub struct ChatPageTemplate<'a> {
 pub struct ChatContentTemplate;
 ```
 
-## Route Handler
+## WebSocket Integration
 
-The chat route uses these templates in its handler:
+The chat interface maintains a WebSocket connection for real-time messaging:
 
-```rust
-async fn chat(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Chat";
-    let path = "/chat";
+- Connection established on page load
+- Automatic reconnection on disconnection
+- Message type handling for chat and system messages
+- Support for streaming responses
+- Connection status indicators
 
-    if is_htmx {
-        let content = ChatContentTemplate.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = ChatPageTemplate { title, path };
-        Html(template.render().unwrap()).into_response()
+## Message Format
+
+Messages follow a structured format:
+
+```javascript
+// User message
+{
+    "content": "Hello, how can you help me?"
+}
+
+// Or with explicit type
+{
+    "type": "chat",
+    "message": {
+        "type": "user_message",
+        "content": "Hello"
+    }
+}
+
+// AI response
+{
+    "type": "chat",
+    "message": {
+        "type": "agent_response",
+        "content": "I can help you with..."
     }
 }
 ```
@@ -107,6 +126,7 @@ The chat templates maintain HTMX compatibility:
 - Full page loads use `ChatPageTemplate`
 - HTMX partial updates use `ChatContentTemplate`
 - Title updates are handled via HX-Title header
+- WebSocket connections persist across HTMX updates
 
 ## Styling
 
@@ -117,13 +137,17 @@ The chat interface maintains visual consistency through:
 - Consistent heights for header and input areas
 - Clean, minimal design with subtle hover effects
 - Proper spacing and padding in all sections
+- Visual feedback for connection status
+- Message status indicators
 
 ## Purpose
 
 This specialized template structure provides:
 
 - A focused chat experience
+- Real-time message updates via WebSocket
 - Clear visual hierarchy
 - Consistent spacing and alignment
 - Support for both full page loads and HTMX partial updates
 - Flexibility for additional features in sidebars
+- Proper handling of streaming responses
