@@ -2,6 +2,7 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::sync::mpsc;
 use mockall::automock;
+use mockall::predicate::*;
 use crate::tools::{Tool, ToolError};
 use crate::server::ws::types::{WebSocketState, Message, StreamUpdate};
 
@@ -16,15 +17,27 @@ pub trait ToolExecutorFactory {
     fn list_tools(&self) -> Vec<String>;
 }
 
+#[automock]
+pub trait WebSocketStateService {
+    async fn broadcast(&self, msg: Message);
+}
+
+#[automock]
+pub trait ChatHandlerService {
+    async fn enable_tool(&self, tool: &str) -> Result<(), ToolError>;
+    async fn disable_tool(&self, tool: &str) -> Result<(), ToolError>;
+    async fn handle_message(&self, msg: Message) -> Result<(), ToolError>;
+}
+
 pub struct ChatHandler {
-    ws_state: Arc<WebSocketState>,
+    ws_state: Arc<dyn WebSocketStateService>,
     deepseek_service: Arc<dyn DeepSeekService>,
     tool_factory: Arc<dyn ToolExecutorFactory>,
 }
 
 impl ChatHandler {
     pub fn new(
-        ws_state: Arc<WebSocketState>,
+        ws_state: Arc<dyn WebSocketStateService>,
         deepseek_service: Arc<dyn DeepSeekService>,
         tool_factory: Arc<dyn ToolExecutorFactory>,
     ) -> Self {
@@ -34,8 +47,20 @@ impl ChatHandler {
             tool_factory,
         }
     }
+}
 
-    pub async fn handle_message(&self, msg: Message) -> Result<(), ToolError> {
+impl ChatHandlerService for ChatHandler {
+    async fn enable_tool(&self, tool: &str) -> Result<(), ToolError> {
+        // Implementation will be added later
+        Ok(())
+    }
+
+    async fn disable_tool(&self, tool: &str) -> Result<(), ToolError> {
+        // Implementation will be added later
+        Ok(())
+    }
+
+    async fn handle_message(&self, msg: Message) -> Result<(), ToolError> {
         match msg {
             Message::Chat { content } => {
                 self.handle_chat(content).await?;
@@ -46,7 +71,9 @@ impl ChatHandler {
         }
         Ok(())
     }
+}
 
+impl ChatHandler {
     async fn handle_chat(&self, content: String) -> Result<(), ToolError> {
         let tools = self.tool_factory.list_tools()
             .into_iter()
@@ -99,7 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_chat() {
-        let mock_ws = Arc::new(MockWebSocketState::new());
+        let mock_ws = Arc::new(MockWebSocketStateService::new());
         let mut mock_deepseek = MockDeepSeekService::new();
         let mock_factory = Arc::new(MockToolExecutorFactory::new());
 
@@ -127,7 +154,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_tool_call() {
-        let mock_ws = Arc::new(MockWebSocketState::new());
+        let mock_ws = Arc::new(MockWebSocketStateService::new());
         let mock_deepseek = Arc::new(MockDeepSeekService::new());
         let mut mock_factory = MockToolExecutorFactory::new();
 
@@ -159,7 +186,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_unknown_tool() {
-        let mock_ws = Arc::new(MockWebSocketState::new());
+        let mock_ws = Arc::new(MockWebSocketStateService::new());
         let mock_deepseek = Arc::new(MockDeepSeekService::new());
         let mut mock_factory = MockToolExecutorFactory::new();
 
