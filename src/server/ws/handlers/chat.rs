@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tracing::{error, info};
 
 pub struct ChatHandler {
@@ -24,12 +23,12 @@ impl ChatHandler {
     async fn process_message(
         &self,
         content: String,
-        conn_id: String,
+        conn_id: &str,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Processing message: {}", content);
 
         // Get streaming response from DeepSeek
-        let mut stream = self.deepseek_service.chat_stream(content, false);
+        let stream = self.deepseek_service.chat_stream(content, false).await;
 
         // Send "typing" indicator
         let typing_json = json!({
@@ -39,7 +38,7 @@ impl ChatHandler {
             "status": "typing"
         });
         self.ws_state
-            .send_to(&conn_id, &typing_json.to_string())
+            .send_to(conn_id, &typing_json.to_string())
             .await?;
 
         // Accumulate the full response while sending stream updates
@@ -57,7 +56,7 @@ impl ChatHandler {
                         "status": "streaming"
                     });
                     self.ws_state
-                        .send_to(&conn_id, &response_json.to_string())
+                        .send_to(conn_id, &response_json.to_string())
                         .await?;
                 }
                 crate::server::services::deepseek::StreamUpdate::Reasoning(_) => {
@@ -73,7 +72,7 @@ impl ChatHandler {
                         "status": "complete"
                     });
                     self.ws_state
-                        .send_to(&conn_id, &response_json.to_string())
+                        .send_to(conn_id, &response_json.to_string())
                         .await?;
                     break;
                 }
@@ -96,7 +95,7 @@ impl MessageHandler for ChatHandler {
         info!("Handling chat message: {:?}", msg);
         match msg {
             ChatMessage::UserMessage { content } => {
-                match self.process_message(content, conn_id).await {
+                match self.process_message(content, &conn_id).await {
                     Ok(_) => Ok(()),
                     Err(e) => {
                         error!("Error processing message: {}", e);
