@@ -28,7 +28,7 @@ impl ChatHandler {
         info!("Processing message: {}", content);
 
         // Get streaming response from DeepSeek
-        let stream = self.deepseek_service.chat_stream(content, false).await;
+        let mut stream = self.deepseek_service.chat_stream(content, false).await;
 
         // Send "typing" indicator
         let typing_json = json!({
