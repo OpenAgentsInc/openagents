@@ -74,6 +74,7 @@
 
   let currentAiMessage = null;
   let currentThinkingMessage = null;
+  let thinkingContent = "";
 
   function handleChatMessage(data) {
     const messagesDiv = document.getElementById("chat-messages");
@@ -100,6 +101,8 @@
           statusEl,
           fullContent: ""
         };
+        // Reset thinking content for new message
+        thinkingContent = "";
       }
 
       // Set avatar
@@ -115,9 +118,11 @@
     }
     // For thinking messages
     else if (data.sender === "ai" && data.status === "thinking") {
+      thinkingContent += data.content;
+      
       // If we already have a thinking message, update it
       if (currentThinkingMessage) {
-        currentThinkingMessage.contentEl.textContent = data.content;
+        currentThinkingMessage.contentEl.textContent = thinkingContent;
       } else {
         // Create new thinking message
         const messageEl = template.content.cloneNode(true);
@@ -126,7 +131,7 @@
 
         // Style thinking message
         contentEl.classList.add("text-gray-500", "text-sm", "italic");
-        contentEl.textContent = data.content;
+        contentEl.textContent = thinkingContent;
 
         // Set avatar
         const avatarContainer = messageEl.querySelector(".flex-shrink-0 > div");
@@ -157,6 +162,7 @@
       if (currentThinkingMessage) {
         currentThinkingMessage.contentEl.parentElement.parentElement.remove();
         currentThinkingMessage = null;
+        thinkingContent = "";
       }
     }
 
