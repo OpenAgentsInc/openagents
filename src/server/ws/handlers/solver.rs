@@ -17,7 +17,7 @@ impl SolverHandler {
 impl MessageHandler for SolverHandler {
     type Message = SolverMessage;
 
-    async fn handle_message(&self, msg: Self::Message, _conn_id: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn handle_message(&self, _msg: Self::Message, _conn_id: String) -> Result<(), Box<dyn Error + Send + Sync>> {
         // TODO: Implement solver message handling
         Ok(())
     }
