@@ -159,6 +159,7 @@ impl MockAgentManager {
             // Finally update the instance status to Running
             if let Some(instance) = self.instances.iter_mut().find(|i| i.id == instance_id) {
                 instance.status = InstanceStatus::Running;
+                instance.ended_at = None; // Clear error state
             }
             return true;
         }
