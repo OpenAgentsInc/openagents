@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use axum::{
-    extract::ws::WebSocket,
+    extract::WebSocketUpgrade,
     response::IntoResponse,
 };
 
@@ -14,12 +14,11 @@ use handlers::{
 };
 use transport::WebSocketState;
 
-pub async fn ws_handler(ws: WebSocket) -> impl IntoResponse {
-    handle_socket(ws).await;
-    axum::response::Response::new(axum::body::Body::empty())
+pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(handle_socket)
 }
 
-async fn handle_socket(socket: WebSocket) {
+async fn handle_socket(socket: axum::extract::ws::WebSocket) {
     // Create WebSocketState first
     let ws_state = WebSocketState::new();
     
