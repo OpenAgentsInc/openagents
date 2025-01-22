@@ -10,6 +10,8 @@ pub enum ToolError {
     NetworkError(String),
 }
 
+impl std::error::Error for ToolError {}
+
 impl fmt::Display for ToolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
