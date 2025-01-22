@@ -13,20 +13,27 @@ use super::handlers::{MessageHandler, chat::ChatHandler, solver::SolverHandler};
 
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
-    chat_handler: Arc<ChatHandler>,
-    solver_handler: Arc<SolverHandler>,
 }
 
 impl WebSocketState {
-    pub fn new(chat_handler: Arc<ChatHandler>, solver_handler: Arc<SolverHandler>) -> Self {
-        Self {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
-            chat_handler,
-            solver_handler,
-        }
+        })
     }
 
-    pub async fn handle_socket(self: Arc<Self>, socket: WebSocket) {
+    pub fn create_handlers(ws_state: Arc<WebSocketState>) -> (Arc<ChatHandler>, Arc<SolverHandler>) {
+        let chat_handler = Arc::new(ChatHandler::new(ws_state.clone()));
+        let solver_handler = Arc::new(SolverHandler::new());
+        (chat_handler, solver_handler)
+    }
+
+    pub async fn handle_socket(
+        self: Arc<Self>,
+        socket: WebSocket,
+        chat_handler: Arc<ChatHandler>,
+        solver_handler: Arc<SolverHandler>
+    ) {
         let (mut sender, mut receiver) = socket.split();
         let (tx, mut rx) = mpsc::unbounded_channel();
 
@@ -54,7 +61,6 @@ impl WebSocketState {
         });
 
         // Handle incoming messages
-        let ws_state = self.clone();
         let receive_task = tokio::spawn(async move {
             while let Some(Ok(message)) = receiver.next().await {
                 match message {
@@ -68,7 +74,7 @@ impl WebSocketState {
                                     Some("chat") => {
                                         if let Some(message) = data.get("message") {
                                             if let Ok(chat_msg) = serde_json::from_value(message.clone()) {
-                                                if let Err(e) = ws_state.chat_handler.handle_message(chat_msg, conn_id.to_string()).await {
+                                                if let Err(e) = chat_handler.handle_message(chat_msg, conn_id.to_string()).await {
                                                     eprintln!("Error handling chat message: {}", e);
                                                 }
                                             }
@@ -77,7 +83,7 @@ impl WebSocketState {
                                     Some("solver") => {
                                         if let Some(message) = data.get("message") {
                                             if let Ok(solver_msg) = serde_json::from_value(message.clone()) {
-                                                if let Err(e) = ws_state.solver_handler.handle_message(solver_msg, conn_id.to_string()).await {
+                                                if let Err(e) = solver_handler.handle_message(solver_msg, conn_id.to_string()).await {
                                                     eprintln!("Error handling solver message: {}", e);
                                                 }
                                             }
