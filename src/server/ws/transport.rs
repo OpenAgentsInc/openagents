@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use crate::server::ws::handlers::chat::{ChatHandler, ChatHandlerService};
+use crate::server::ws::handlers::chat::ChatHandlerService;
 use crate::server::ws::types::{Message, WebSocketState};
 
 pub struct WebSocketTransport {
@@ -28,7 +28,7 @@ impl WebSocketTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mockall::predicate::*;
+    use crate::server::test_utils::*;
     use crate::tools::ToolError;
 
     #[tokio::test]
