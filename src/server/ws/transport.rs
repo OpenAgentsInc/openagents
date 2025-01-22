@@ -6,9 +6,9 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use serde_json::json;
 use uuid::Uuid;
 use std::error::Error;
-use tracing::info;
+use tracing::{info, error};
 
-use super::types::WebSocketMessage;
+use super::types::{WebSocketMessage, ChatMessage};
 use super::handlers::{MessageHandler, chat::ChatHandler, solver::SolverHandler};
 
 pub struct WebSocketState {
@@ -39,11 +39,13 @@ impl WebSocketState {
 
         // Generate unique connection ID
         let conn_id = Arc::new(Uuid::new_v4().to_string());
+        info!("New WebSocket connection established: {}", conn_id);
 
         // Store connection
         {
             let mut conns = self.connections.write().await;
             conns.insert(conn_id.to_string(), tx.clone());
+            info!("Connection stored: {}", conn_id);
         }
 
         // Handle outgoing messages
@@ -51,13 +53,16 @@ impl WebSocketState {
         let conn_id_clone = conn_id.clone();
         let send_task = tokio::spawn(async move {
             while let Some(message) = rx.recv().await {
+                info!("Sending message to client {}: {:?}", conn_id_clone, message);
                 if sender.send(message).await.is_err() {
+                    error!("Failed to send message to client {}", conn_id_clone);
                     break;
                 }
             }
             // Connection closed, remove from state
             let mut conns = ws_state.connections.write().await;
             conns.remove(&conn_id_clone.to_string());
+            info!("Connection removed: {}", conn_id_clone);
         });
 
         // Handle incoming messages
@@ -69,28 +74,46 @@ impl WebSocketState {
                         
                         // Parse the message
                         if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if let Some(message_type) = data.get("type") {
+                            info!("Parsed message: {:?}", data);
+                            
+                            // Try to extract content directly if message type is missing
+                            if let Some(content) = data.get("content") {
+                                info!("Found direct content: {:?}", content);
+                                if let Some(content_str) = content.as_str() {
+                                    // Create a chat message manually
+                                    let chat_msg = ChatMessage::UserMessage {
+                                        content: content_str.to_string()
+                                    };
+                                    info!("Created chat message: {:?}", chat_msg);
+                                    if let Err(e) = chat_handler.handle_message(chat_msg, conn_id.to_string()).await {
+                                        error!("Error handling chat message: {}", e);
+                                    }
+                                }
+                            } else if let Some(message_type) = data.get("type") {
                                 match message_type.as_str() {
                                     Some("chat") => {
+                                        info!("Processing chat message");
                                         if let Some(message) = data.get("message") {
                                             if let Ok(chat_msg) = serde_json::from_value(message.clone()) {
+                                                info!("Parsed chat message: {:?}", chat_msg);
                                                 if let Err(e) = chat_handler.handle_message(chat_msg, conn_id.to_string()).await {
-                                                    eprintln!("Error handling chat message: {}", e);
+                                                    error!("Error handling chat message: {}", e);
                                                 }
                                             }
                                         }
                                     }
                                     Some("solver") => {
+                                        info!("Processing solver message");
                                         if let Some(message) = data.get("message") {
                                             if let Ok(solver_msg) = serde_json::from_value(message.clone()) {
                                                 if let Err(e) = solver_handler.handle_message(solver_msg, conn_id.to_string()).await {
-                                                    eprintln!("Error handling solver message: {}", e);
+                                                    error!("Error handling solver message: {}", e);
                                                 }
                                             }
                                         }
                                     }
                                     _ => {
-                                        eprintln!("Unknown message type");
+                                        error!("Unknown message type");
                                     }
                                 }
                             }
@@ -103,12 +126,17 @@ impl WebSocketState {
 
         // Wait for either task to finish
         tokio::select! {
-            _ = send_task => {},
-            _ = receive_task => {},
+            _ = send_task => {
+                info!("Send task completed for {}", conn_id);
+            },
+            _ = receive_task => {
+                info!("Receive task completed for {}", conn_id);
+            },
         }
     }
 
     pub async fn broadcast(&self, msg: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+        info!("Broadcasting message: {}", msg);
         let conns = self.connections.read().await;
         for tx in conns.values() {
             tx.send(Message::Text(msg.to_string().into()))?;
@@ -117,8 +145,12 @@ impl WebSocketState {
     }
 
     pub async fn send_to(&self, conn_id: &str, msg: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+        info!("Sending message to {}: {}", conn_id, msg);
         if let Some(tx) = self.connections.read().await.get(conn_id) {
             tx.send(Message::Text(msg.to_string().into()))?;
+            info!("Message sent successfully");
+        } else {
+            error!("Connection {} not found", conn_id);
         }
         Ok(())
     }
