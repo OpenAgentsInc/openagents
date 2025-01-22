@@ -210,19 +210,6 @@
     const message = input.value.trim();
     if (!message) return;
     
-    // Create the message object with type
-    const data = {
-      type: "chat",
-      message: {
-        type: "user_message",
-        content: message
-      }
-    };
-    
-    // Update form data with typed message
-    const formData = new FormData();
-    formData.append("message", JSON.stringify(data));
-    
     // Update UI
     submitButton.disabled = true;
     submitButton.innerText = "...";
@@ -234,6 +221,15 @@
       content: message,
       sender: "user"
     });
+    
+    // Create the message object with type
+    const data = {
+      type: "chat",
+      message: {
+        type: "user_message",
+        content: message
+      }
+    };
     
     // Send the message via WebSocket
     const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
