@@ -23,6 +23,7 @@ pub trait WebSocketStateService {
 }
 
 #[automock]
+#[cfg_attr(test, automock)]
 pub trait ChatHandlerService {
     async fn enable_tool(&self, tool: &str) -> Result<(), ToolError>;
     async fn disable_tool(&self, tool: &str) -> Result<(), ToolError>;

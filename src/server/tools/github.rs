@@ -4,8 +4,14 @@ use mockall::automock;
 use crate::tools::{Tool, ToolError};
 
 #[automock]
+#[cfg_attr(test, automock)]
+#[async_trait::async_trait]
 pub trait GitHubService {
     async fn get_issue(&self, owner: &str, repo: &str, issue_number: i32) -> Result<String, ToolError>;
+    async fn create_pull_request(&self, owner: &str, repo: &str, title: &str, 
+        description: &str, head: &str, base: &str) -> Result<serde_json::Value, ToolError>;
+    async fn get_file_contents(&self, owner: &str, repo: &str, 
+        path: &str, branch: &str) -> Result<String, ToolError>;
     async fn create_pull_request(&self, owner: &str, repo: &str, title: &str, description: &str, head: &str, base: &str) -> Result<String, ToolError>;
     async fn get_file_contents(&self, owner: &str, repo: &str, path: &str, branch: &str) -> Result<String, ToolError>;
     async fn get_directory_contents(&self, owner: &str, repo: &str, path: &str, branch: &str) -> Result<String, ToolError>;
