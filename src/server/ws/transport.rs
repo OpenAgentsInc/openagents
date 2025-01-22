@@ -38,34 +38,35 @@ impl WebSocketState {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         // Generate unique connection ID
-        let conn_id = Arc::new(Uuid::new_v4().to_string());
+        let conn_id = Uuid::new_v4().to_string();
         info!("New WebSocket connection established: {}", conn_id);
 
         // Store connection
         {
             let mut conns = self.connections.write().await;
-            conns.insert(conn_id.to_string(), tx.clone());
+            conns.insert(conn_id.clone(), tx.clone());
             info!("Connection stored: {}", conn_id);
         }
 
         // Handle outgoing messages
         let ws_state = self.clone();
-        let conn_id_clone = conn_id.clone();
+        let send_conn_id = conn_id.clone();
         let send_task = tokio::spawn(async move {
             while let Some(message) = rx.recv().await {
-                info!("Sending message to client {}: {:?}", conn_id_clone, message);
+                info!("Sending message to client {}: {:?}", send_conn_id, message);
                 if sender.send(message).await.is_err() {
-                    error!("Failed to send message to client {}", conn_id_clone);
+                    error!("Failed to send message to client {}", send_conn_id);
                     break;
                 }
             }
             // Connection closed, remove from state
             let mut conns = ws_state.connections.write().await;
-            conns.remove(&conn_id_clone.to_string());
-            info!("Connection removed: {}", conn_id_clone);
+            conns.remove(&send_conn_id);
+            info!("Connection removed: {}", send_conn_id);
         });
 
         // Handle incoming messages
+        let receive_conn_id = conn_id.clone();
         let receive_task = tokio::spawn(async move {
             while let Some(Ok(message)) = receiver.next().await {
                 match message {
@@ -85,7 +86,7 @@ impl WebSocketState {
                                         content: content_str.to_string()
                                     };
                                     info!("Created chat message: {:?}", chat_msg);
-                                    if let Err(e) = chat_handler.handle_message(chat_msg, conn_id.to_string()).await {
+                                    if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
                                         error!("Error handling chat message: {}", e);
                                     }
                                 }
@@ -96,7 +97,7 @@ impl WebSocketState {
                                         if let Some(message) = data.get("message") {
                                             if let Ok(chat_msg) = serde_json::from_value(message.clone()) {
                                                 info!("Parsed chat message: {:?}", chat_msg);
-                                                if let Err(e) = chat_handler.handle_message(chat_msg, conn_id.to_string()).await {
+                                                if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
                                                     error!("Error handling chat message: {}", e);
                                                 }
                                             }
@@ -106,7 +107,7 @@ impl WebSocketState {
                                         info!("Processing solver message");
                                         if let Some(message) = data.get("message") {
                                             if let Ok(solver_msg) = serde_json::from_value(message.clone()) {
-                                                if let Err(e) = solver_handler.handle_message(solver_msg, conn_id.to_string()).await {
+                                                if let Err(e) = solver_handler.handle_message(solver_msg, receive_conn_id.clone()).await {
                                                     error!("Error handling solver message: {}", e);
                                                 }
                                             }
@@ -125,12 +126,13 @@ impl WebSocketState {
         });
 
         // Wait for either task to finish
+        let final_conn_id = conn_id.clone();
         tokio::select! {
             _ = send_task => {
-                info!("Send task completed for {}", conn_id);
+                info!("Send task completed for {}", final_conn_id);
             },
             _ = receive_task => {
-                info!("Receive task completed for {}", conn_id);
+                info!("Receive task completed for {}", final_conn_id);
             },
         }
     }
