@@ -6,11 +6,10 @@ use axum::{
     Form, Router,
 };
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::server::ws::handlers::chat::ChatHandler;
+use crate::server::ws::handlers::chat::ChatHandlerService;
 
 pub fn chat_routes() -> Router {
     Router::new()
@@ -30,17 +29,18 @@ async fn chat_session(Path(_id): Path<Uuid>) -> Response {
 }
 
 async fn toggle_tool(
-    State(handler): State<Arc<ChatHandler>>,
+    State(handler): State<Arc<dyn ChatHandlerService>>,
     Form(form): Form<ToolToggle>,
 ) -> impl IntoResponse {
-    if form.enabled {
+    let result = if form.enabled {
         handler.enable_tool(&form.tool).await
-            .map(|_| (StatusCode::OK, "Tool enabled".to_string()))
-            .unwrap_or_else(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
     } else {
         handler.disable_tool(&form.tool).await
-            .map(|_| (StatusCode::OK, "Tool disabled".to_string()))
-            .unwrap_or_else(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+    };
+
+    match result {
+        Ok(_) => (StatusCode::OK, "Tool status updated".to_string()),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
 }
 
@@ -51,6 +51,7 @@ mod tests {
     use axum::body::Body;
     use tower::ServiceExt;
     use mockall::predicate::*;
+    use crate::tools::ToolError;
 
     #[tokio::test]
     async fn test_chat_session() {
@@ -70,7 +71,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_toggle_tool() {
-        let mut mock_handler = MockChatHandler::new();
+        let mut mock_handler = MockChatHandlerService::new();
         mock_handler
             .expect_enable_tool()
             .with(eq("test_tool"))
@@ -79,7 +80,7 @@ mod tests {
 
         let app = Router::new()
             .route("/tools/toggle", post(toggle_tool))
-            .with_state(Arc::new(mock_handler));
+            .with_state(Arc::new(mock_handler) as Arc<dyn ChatHandlerService>);
 
         let response = app
             .oneshot(
@@ -94,5 +95,33 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_toggle_tool_error() {
+        let mut mock_handler = MockChatHandlerService::new();
+        mock_handler
+            .expect_enable_tool()
+            .with(eq("test_tool"))
+            .times(1)
+            .returning(|_| Err(ToolError::InvalidArguments("test error".to_string())));
+
+        let app = Router::new()
+            .route("/tools/toggle", post(toggle_tool))
+            .with_state(Arc::new(mock_handler) as Arc<dyn ChatHandlerService>);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/tools/toggle")
+                    .method("POST")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("tool=test_tool&enabled=true"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }
