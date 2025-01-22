@@ -3,12 +3,11 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use axum::extract::ws::{Message, WebSocket};
 use futures::{sink::SinkExt, stream::StreamExt};
-use serde_json::json;
 use uuid::Uuid;
 use std::error::Error;
 use tracing::{info, error};
 
-use super::types::{WebSocketMessage, ChatMessage};
+use super::types::ChatMessage;
 use super::handlers::{MessageHandler, chat::ChatHandler, solver::SolverHandler};
 
 pub struct WebSocketState {
