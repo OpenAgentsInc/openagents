@@ -10,6 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::server::ws::handlers::chat::ChatHandlerService;
+use crate::server::tools::ToolError;
 
 pub fn chat_routes() -> Router {
     Router::new()
@@ -50,8 +51,7 @@ mod tests {
     use axum::http::Request;
     use axum::body::Body;
     use tower::ServiceExt;
-    use crate::server::test_utils::*;
-    use crate::tools::ToolError;
+    use crate::test_utils::*;
 
     #[tokio::test]
     async fn test_chat_session() {
