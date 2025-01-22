@@ -36,7 +36,7 @@ impl WebSocketState {
         // Store connection
         {
             let mut conns = self.connections.write().await;
-            conns.insert(conn_id.to_string(), tx);
+            conns.insert(conn_id.to_string(), tx.clone());
         }
 
         // Handle outgoing messages
@@ -57,16 +57,40 @@ impl WebSocketState {
         let ws_state = self.clone();
         let receive_task = tokio::spawn(async move {
             while let Some(Ok(message)) = receiver.next().await {
-                if let Err(e) = ws_state.handle_message(&message, &conn_id).await {
-                    eprintln!("Error handling message: {}", e);
-                    // Send error message back to client
-                    if let Some(tx) = ws_state.connections.read().await.get(&conn_id.to_string()) {
-                        let error_msg = json!({
-                            "type": "error",
-                            "message": e.to_string()
-                        });
-                        let _ = tx.send(Message::Text(error_msg.to_string().into()));
+                match message {
+                    Message::Text(text) => {
+                        info!("Raw WebSocket message received: {}", text);
+                        
+                        // Parse the message
+                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Some(message_type) = data.get("type") {
+                                match message_type.as_str() {
+                                    Some("chat") => {
+                                        if let Some(message) = data.get("message") {
+                                            if let Ok(chat_msg) = serde_json::from_value(message.clone()) {
+                                                if let Err(e) = ws_state.chat_handler.handle_message(chat_msg, conn_id.to_string()).await {
+                                                    eprintln!("Error handling chat message: {}", e);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Some("solver") => {
+                                        if let Some(message) = data.get("message") {
+                                            if let Ok(solver_msg) = serde_json::from_value(message.clone()) {
+                                                if let Err(e) = ws_state.solver_handler.handle_message(solver_msg, conn_id.to_string()).await {
+                                                    eprintln!("Error handling solver message: {}", e);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        eprintln!("Unknown message type");
+                                    }
+                                }
+                            }
+                        }
                     }
+                    _ => {}
                 }
             }
         });
@@ -76,29 +100,6 @@ impl WebSocketState {
             _ = send_task => {},
             _ = receive_task => {},
         }
-    }
-
-    async fn handle_message(&self, msg: &Message, conn_id: &Arc<String>) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let msg = match msg {
-            Message::Text(text) => text,
-            _ => return Ok(()),
-        };
-
-        // Print the raw message for debugging
-        info!("Raw WebSocket message received: {}", msg);
-
-        let msg: WebSocketMessage = serde_json::from_str(msg)?;
-
-        match msg {
-            WebSocketMessage::Chat(chat_msg) => {
-                self.chat_handler.handle_message(chat_msg, conn_id.to_string()).await?;
-            }
-            WebSocketMessage::Solver(solver_msg) => {
-                self.solver_handler.handle_message(solver_msg, conn_id.to_string()).await?;
-            }
-        }
-
-        Ok(())
     }
 
     pub async fn broadcast(&self, msg: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
