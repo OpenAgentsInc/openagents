@@ -1,4 +1,4 @@
 pub mod server;
 
 #[cfg(test)]
-mod test_utils;
+pub mod test_utils;
