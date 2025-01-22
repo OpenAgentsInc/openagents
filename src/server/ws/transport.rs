@@ -68,58 +68,55 @@ impl WebSocketState {
         let receive_conn_id = conn_id.clone();
         let receive_task = tokio::spawn(async move {
             while let Some(Ok(message)) = receiver.next().await {
-                match message {
-                    Message::Text(text) => {
-                        info!("Raw WebSocket message received: {}", text);
+                if let Message::Text(text) = message {
+                    info!("Raw WebSocket message received: {}", text);
+                    
+                    // Parse the message
+                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
+                        info!("Parsed message: {:?}", data);
                         
-                        // Parse the message
-                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-                            info!("Parsed message: {:?}", data);
-                            
-                            // Try to extract content directly if message type is missing
-                            if let Some(content) = data.get("content") {
-                                info!("Found direct content: {:?}", content);
-                                if let Some(content_str) = content.as_str() {
-                                    // Create a chat message manually
-                                    let chat_msg = ChatMessage::UserMessage {
-                                        content: content_str.to_string()
-                                    };
-                                    info!("Created chat message: {:?}", chat_msg);
-                                    if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
-                                        error!("Error handling chat message: {}", e);
+                        // Try to extract content directly if message type is missing
+                        if let Some(content) = data.get("content") {
+                            info!("Found direct content: {:?}", content);
+                            if let Some(content_str) = content.as_str() {
+                                // Create a chat message manually
+                                let chat_msg = ChatMessage::UserMessage {
+                                    content: content_str.to_string()
+                                };
+                                info!("Created chat message: {:?}", chat_msg);
+                                if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
+                                    error!("Error handling chat message: {}", e);
+                                }
+                            }
+                        } else if let Some(message_type) = data.get("type") {
+                            match message_type.as_str() {
+                                Some("chat") => {
+                                    info!("Processing chat message");
+                                    if let Some(message) = data.get("message") {
+                                        if let Ok(chat_msg) = serde_json::from_value(message.clone()) {
+                                            info!("Parsed chat message: {:?}", chat_msg);
+                                            if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
+                                                error!("Error handling chat message: {}", e);
+                                            }
+                                        }
                                     }
                                 }
-                            } else if let Some(message_type) = data.get("type") {
-                                match message_type.as_str() {
-                                    Some("chat") => {
-                                        info!("Processing chat message");
-                                        if let Some(message) = data.get("message") {
-                                            if let Ok(chat_msg) = serde_json::from_value(message.clone()) {
-                                                info!("Parsed chat message: {:?}", chat_msg);
-                                                if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
-                                                    error!("Error handling chat message: {}", e);
-                                                }
+                                Some("solver") => {
+                                    info!("Processing solver message");
+                                    if let Some(message) = data.get("message") {
+                                        if let Ok(solver_msg) = serde_json::from_value(message.clone()) {
+                                            if let Err(e) = solver_handler.handle_message(solver_msg, receive_conn_id.clone()).await {
+                                                error!("Error handling solver message: {}", e);
                                             }
                                         }
                                     }
-                                    Some("solver") => {
-                                        info!("Processing solver message");
-                                        if let Some(message) = data.get("message") {
-                                            if let Ok(solver_msg) = serde_json::from_value(message.clone()) {
-                                                if let Err(e) = solver_handler.handle_message(solver_msg, receive_conn_id.clone()).await {
-                                                    error!("Error handling solver message: {}", e);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        error!("Unknown message type");
-                                    }
+                                }
+                                _ => {
+                                    error!("Unknown message type");
                                 }
                             }
                         }
                     }
-                    _ => {}
                 }
             }
         });
