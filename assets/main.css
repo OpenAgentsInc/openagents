@@ -736,6 +736,10 @@ video {
   height: calc(100vh - 57px);
 }
 
+.h-4 {
+  height: 1rem;
+}
+
 .min-h-screen {
   min-height: 100vh;
 }
@@ -782,6 +786,10 @@ video {
 
 .w-\[80px\] {
   width: 80px;
+}
+
+.w-4 {
+  width: 1rem;
 }
 
 .max-w-2xl {
