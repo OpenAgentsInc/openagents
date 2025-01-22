@@ -64,8 +64,18 @@
         <div class="border-t border-white">
           <form class="flex" ws-send>
             <input
+              type="hidden"
+              name="type"
+              value="chat"
+            />
+            <input
+              type="hidden"
+              name="message_type"
+              value="user_message"
+            />
+            <input
               id="input"
-              name="message"
+              name="content"
               type="text"
               class="flex-grow bg-black p-4 focus:outline-none"
               placeholder="Message"
@@ -129,7 +139,7 @@
     errorMessage.textContent = "Connection error: " + evt.detail.error;
   });
 
-  document.addEventListener("htmx:wsBeforeMessage", function (evt) {
+  document.addEventListener("htmx:wsBeforeSend", function (evt) {
     console.log("Sending message:", evt.detail.message);
   });
 
@@ -193,23 +203,9 @@
     const message = input.value.trim();
     if (!message) return;
     
-    // Create the message object with type
-    const data = {
-      type: "chat",
-      message: {
-        type: "user_message",
-        content: message
-      }
-    };
-    
-    // Update form
-    const formData = new FormData();
-    formData.append("message", JSON.stringify(data));
-    
     // Update UI
     submitButton.disabled = true;
     submitButton.innerText = "...";
-    input.value = "";
     
     // Add user message to chat
     handleChatMessage({
