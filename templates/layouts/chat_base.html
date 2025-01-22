@@ -129,8 +129,25 @@
     errorMessage.textContent = "Connection error: " + evt.detail.error;
   });
 
-  document.addEventListener("htmx:wsBeforeMessage", function (evt) {
-    console.log("Sending message:", evt.detail.message);
+  document.addEventListener("htmx:wsBeforeSend", function (evt) {
+    // Get the form data
+    const form = document.querySelector('form');
+    const formData = new FormData(form);
+    const content = formData.get('content');
+
+    // Create the properly structured message
+    const message = {
+      type: "chat",
+      message: {
+        type: "user_message",
+        content: content
+      }
+    };
+
+    // Set the message body directly
+    evt.detail.messageBody = JSON.stringify(message);
+
+    console.log("Sending message:", evt.detail.messageBody);
   });
 
   document.addEventListener("htmx:wsAfterMessage", function (evt) {
@@ -192,19 +209,6 @@
     // Get the message
     const message = input.value.trim();
     if (!message) return;
-    
-    // Create the message object with type
-    const data = {
-      type: "chat",
-      message: {
-        type: "user_message",
-        content: message
-      }
-    };
-    
-    // Update form data with typed message
-    const formData = new FormData(form);
-    formData.set("message", JSON.stringify(data));
     
     // Update UI
     submitButton.disabled = true;
