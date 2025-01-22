@@ -62,7 +62,7 @@
 
         <!-- Input area -->
         <div class="border-t border-white">
-          <form class="flex" ws-send>
+          <form class="flex" id="chat-form">
             <input
               id="input"
               name="content"
@@ -129,27 +129,6 @@
     errorMessage.textContent = "Connection error: " + evt.detail.error;
   });
 
-  document.addEventListener("htmx:wsBeforeSend", function (evt) {
-    // Get the form data
-    const form = document.querySelector('form');
-    const formData = new FormData(form);
-    const content = formData.get('content');
-
-    // Create the properly structured message
-    const message = {
-      type: "chat",
-      message: {
-        type: "user_message",
-        content: content
-      }
-    };
-
-    // Set the message body directly
-    evt.detail.messageBody = JSON.stringify(message);
-
-    console.log("Sending message:", evt.detail.messageBody);
-  });
-
   document.addEventListener("htmx:wsAfterMessage", function (evt) {
     console.log("Received message:", evt.detail.message);
     try {
@@ -193,7 +172,7 @@
 
   const submitButton = document.getElementById("submit-button");
   const input = document.getElementById("input");
-  const form = document.querySelector("form");
+  const form = document.getElementById("chat-form");
   const errorSection = document.getElementById("error-section");
 
   // Reset UI state
@@ -222,7 +201,7 @@
       sender: "user"
     });
     
-    // Create the message object with type
+    // Create the properly structured message
     const data = {
       type: "chat",
       message: {
@@ -231,7 +210,7 @@
       }
     };
     
-    // Send the message via WebSocket
+    // Send via WebSocket
     const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
       detail: { messageBody: JSON.stringify(data) }
     });
