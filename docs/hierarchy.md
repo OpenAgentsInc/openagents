@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-20 20:42:20
+Generated on: 2025-01-21 16:05:12
 
 ### Structure
 
@@ -34,6 +34,7 @@ Generated on: 2025-01-20 20:42:20
 |   |   |-- 138.md
 |   |   |-- 139.md
 |   |   `-- 140.md
+|   |-- chat_template.md
 |   |-- configuration.md
 |   |-- hierarchy.md
 |   |-- htmx-nostr-chat.md
@@ -41,6 +42,7 @@ Generated on: 2025-01-20 20:42:20
 |   |-- prompt.md
 |   |-- repomap.md
 |   |-- rust-setup.md
+|   |-- solver-streaming.md
 |   |-- solver.md
 |   `-- templates.md
 |-- migrations/
@@ -106,6 +108,8 @@ Generated on: 2025-01-20 20:42:20
 |   |   `-- hero.html
 |   |-- layouts/
 |   |   |-- base.html
+|   |   |-- chat_base.html
+|   |   |-- chat_content.html
 |   |   `-- content.html
 |   |-- macros/
 |   |   |-- blog.html
@@ -114,6 +118,7 @@ Generated on: 2025-01-20 20:42:20
 |   |   `-- video.html
 |   |-- pages/
 |   |   |-- 404.html
+|   |   |-- chat.html
 |   |   |-- coming-soon.html
 |   |   |-- company.html
 |   |   |-- home.html
@@ -160,5 +165,5 @@ Generated on: 2025-01-20 20:42:20
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-29 directories, 125 files
+29 directories, 130 files
 ```

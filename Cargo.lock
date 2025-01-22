@@ -1887,6 +1887,7 @@ dependencies = [
  "anyhow",
  "askama",
  "askama_escape 0.1.0",
+ "async-trait",
  "axum 0.8.1",
  "axum-extra",
  "axum-test",

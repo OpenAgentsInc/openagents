@@ -1,0 +1,257 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <link href="/assets/main.css" rel="stylesheet" />
+    <link href="/assets/fonts.css" rel="stylesheet" />
+    <title>OpenAgents - {{title}}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
+    <script>
+      document.addEventListener("htmx:afterSettle", function (evt) {
+        const newTitle = evt.detail.xhr.getResponseHeader("HX-Title");
+        if (newTitle) {
+          document.title = newTitle;
+        }
+      });
+    </script>
+  </head>
+  <body
+    class="min-h-screen w-screen bg-black text-white font-mono overflow-hidden"
+    hx-ext="ws"
+    ws-connect="/ws"
+  >
+    <!-- Header navbar -->
+    <div class="w-full border-b border-white">
+      <div class="flex h-[57px]">
+        <div class="w-64 flex items-center justify-center">
+          <a href="/" class="hover:text-gray-300 transition-colors"
+            >OpenAgents</a
+          >
+        </div>
+        <div class="flex-1">
+          <!-- Center header content will go here -->
+        </div>
+        <div class="w-64">
+          <!-- Right header content will go here -->
+        </div>
+      </div>
+    </div>
+
+    <div class="flex h-[calc(100vh-57px)]">
+      <!-- Left Sidebar -->
+      <div class="w-64 border-r border-white p-4">
+        <div class="h-full flex flex-col">
+          <button
+            class="w-full border border-white p-2 hover:bg-white hover:text-black transition-colors mb-4"
+          >
+            New Chat
+          </button>
+          <div class="flex-grow overflow-y-auto">
+            <!-- Chat list will go here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Main chat area -->
+      <div class="flex-1 flex flex-col">
+        <!-- Chat messages area -->
+        <div class="flex-grow overflow-y-auto p-4" id="chat-messages">
+          {% include "layouts/chat_content.html" %}
+        </div>
+
+        <!-- Input area -->
+        <div class="border-t border-white">
+          <form class="flex" ws-send>
+            <input
+              id="input"
+              name="content"
+              type="text"
+              class="flex-grow bg-black p-4 focus:outline-none"
+              placeholder="Message"
+              autofocus="true"
+            />
+            <button
+              id="submit-button"
+              class="w-[80px] px-4 border-l border-white hover:bg-white hover:text-black transition-colors"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Right Sidebar -->
+      <div class="w-64 border-l border-white p-4">
+        <div class="h-full">
+          <!-- Right sidebar content will go here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Error section -->
+    <div
+      id="error-section"
+      class="fixed bottom-4 right-4 p-4 bg-red-900/20 border border-red-500/20 rounded hidden"
+    >
+      <div id="error-message" class="text-sm text-red-400"></div>
+    </div>
+
+    <!-- Message template -->
+    <template id="message-template">
+      <div class="message flex gap-4 mb-4">
+        <div class="flex-shrink-0">
+          <div class="w-6 h-6 flex items-center justify-center"></div>
+        </div>
+        <div class="flex-grow">
+          <p class="content"></p>
+        </div>
+      </div>
+    </template>
+
+    <!-- AI Icon template -->
+    <template id="ai-icon-template">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 1200 1200"
+        class="w-4 h-4"
+      >
+        <g fill="currentColor">
+          <path
+            d="m320.34 288.77c21.258-19.156 30.844-48.102 25.219-76.16-5.625-28.059-25.621-51.07-52.621-60.555s-57-4.0312-78.934 14.348c-90.793 78.797-155.29 183.5-184.84 300.03-29.543 116.53-22.715 239.31 19.57 351.84 42.281 112.54 117.99 209.44 216.96 277.68 98.969 68.246 216.45 104.57 336.67 104.08 120.21-0.48437 237.41-37.75 335.82-106.79 98.418-69.039 173.35-166.54 214.72-279.42 41.375-112.87 47.215-235.7 16.734-351.99-30.48-116.29-95.824-220.46-187.25-298.53-22.023-18.82-52.41-24.461-79.719-14.797-27.309 9.6602-47.391 33.156-52.676 61.641-5.2891 28.48 5.0195 57.617 27.043 76.438 46.949 40.051 84.645 89.812 110.48 145.86 25.844 56.039 39.211 117.02 39.188 178.73 0 235.29-191.44 426.73-426.73 426.73s-426.73-191.51-426.73-426.8c0-61.125 13.133-121.54 38.504-177.15 25.375-55.609 62.398-105.12 108.57-145.18z"
+          ></path>
+          <path
+            d="m681.07 649.22v-568.15c0-28.969-15.453-55.734-40.543-70.219-25.086-14.484-55.992-14.484-81.082 0-25.086 14.484-40.539 41.25-40.539 70.219v568.15c0 28.969 15.453 55.734 40.539 70.219 25.09 14.484 55.996 14.484 81.086 0 25.086-14.484 40.539-41.25 40.539-70.219z"
+          ></path>
+        </g>
+      </svg>
+    </template>
+
+    <!-- User Icon template -->
+    <template id="user-icon-template">
+      <svg
+        viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg"
+        class="w-4 h-4"
+      >
+        <circle cx="12" cy="8" fill="currentColor" r="4" />
+        <path
+          d="M20,19v1a1,1,0,0,1-1,1H5a1,1,0,0,1-1-1V19a6,6,0,0,1,6-6h4A6,6,0,0,1,20,19Z"
+          fill="currentColor"
+        />
+      </svg>
+    </template>
+  </body>
+  <script>
+    document.addEventListener("htmx:wsConnecting", function (evt) {
+      console.log("Connecting to WebSocket...");
+    });
+
+    document.addEventListener("htmx:wsOpen", function (evt) {
+      console.log("Connected to WebSocket");
+    });
+
+    document.addEventListener("htmx:wsClose", function (evt) {
+      console.log("WebSocket connection closed");
+    });
+
+    document.addEventListener("htmx:wsError", function (evt) {
+      console.error("WebSocket error:", evt.detail.error);
+      const errorSection = document.getElementById("error-section");
+      const errorMessage = document.getElementById("error-message");
+      errorSection.classList.remove("hidden");
+      errorMessage.textContent = "Connection error: " + evt.detail.error;
+    });
+
+    document.addEventListener("htmx:wsBeforeSend", function (evt) {
+      // Get the form data
+      const form = document.querySelector("form");
+      const formData = new FormData(form);
+      const content = formData.get("content");
+
+      // Don't send empty messages
+      if (!content.trim()) {
+        evt.preventDefault();
+        return;
+      }
+
+      // Create the properly structured message
+      const message = {
+        type: "chat",
+        message: {
+          type: "user_message",
+          content: content,
+        },
+      };
+
+      // Set the message body directly
+      evt.detail.messageBody = JSON.stringify(message);
+
+      console.log("Sending message:", evt.detail.messageBody);
+
+      // Add user message to chat immediately
+      handleChatMessage({
+        type: "chat",
+        content: content,
+        sender: "user",
+      });
+
+      // Reset form immediately
+      form.reset();
+    });
+
+    document.addEventListener("htmx:wsAfterMessage", function (evt) {
+      console.log("Received message:", evt.detail.message);
+      try {
+        const data = JSON.parse(evt.detail.message);
+
+        // Handle different message types
+        if (data.type === "chat") {
+          handleChatMessage(data);
+        } else if (data.type === "error") {
+          handleErrorMessage(data);
+        }
+      } catch (e) {
+        console.log("Non-JSON message received");
+      }
+    });
+
+    function handleChatMessage(data) {
+      const messagesDiv = document.getElementById("chat-messages");
+      const template = document.getElementById("message-template");
+      const aiIconTemplate = document.getElementById("ai-icon-template");
+      const userIconTemplate = document.getElementById("user-icon-template");
+
+      // Clone the template
+      const messageEl = template.content.cloneNode(true);
+
+      // Set the content
+      messageEl.querySelector(".content").textContent = data.content;
+
+      // Update avatar based on sender
+      const avatarContainer = messageEl.querySelector(".flex-shrink-0 > div");
+      if (data.sender === "user") {
+        avatarContainer.appendChild(userIconTemplate.content.cloneNode(true));
+      } else {
+        avatarContainer.appendChild(aiIconTemplate.content.cloneNode(true));
+      }
+
+      // Add to messages
+      messagesDiv.appendChild(messageEl);
+
+      // Scroll to bottom
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function handleErrorMessage(data) {
+      const errorSection = document.getElementById("error-section");
+      const errorMessage = document.getElementById("error-message");
+      errorSection.classList.remove("hidden");
+      errorMessage.textContent = data.message;
+    }
+  </script>
+</html>
