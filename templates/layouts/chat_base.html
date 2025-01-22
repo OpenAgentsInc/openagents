@@ -62,7 +62,7 @@
 
         <!-- Input area -->
         <div class="border-t border-white">
-          <form class="flex" id="chat-form">
+          <form class="flex" ws-send>
             <input
               id="input"
               name="content"
@@ -129,6 +129,46 @@
     errorMessage.textContent = "Connection error: " + evt.detail.error;
   });
 
+  document.addEventListener("htmx:wsBeforeSend", function (evt) {
+    // Get the form data
+    const form = document.querySelector('form');
+    const formData = new FormData(form);
+    const content = formData.get('content');
+
+    // Create the properly structured message
+    const message = {
+      type: "chat",
+      message: {
+        type: "user_message",
+        content: content
+      }
+    };
+
+    // Set the message body directly
+    evt.detail.messageBody = JSON.stringify(message);
+
+    console.log("Sending message:", evt.detail.messageBody);
+
+    // Update UI
+    const submitButton = document.getElementById("submit-button");
+    submitButton.disabled = true;
+    submitButton.innerText = "...";
+
+    // Add user message to chat
+    handleChatMessage({
+      type: "chat",
+      content: content,
+      sender: "user"
+    });
+
+    // Reset form
+    form.reset();
+    setTimeout(() => {
+      submitButton.disabled = false;
+      submitButton.innerText = "Send";
+    }, 1000);
+  });
+
   document.addEventListener("htmx:wsAfterMessage", function (evt) {
     console.log("Received message:", evt.detail.message);
     try {
@@ -169,54 +209,5 @@
     errorSection.classList.remove("hidden");
     errorMessage.textContent = data.message;
   }
-
-  const submitButton = document.getElementById("submit-button");
-  const input = document.getElementById("input");
-  const form = document.getElementById("chat-form");
-  const errorSection = document.getElementById("error-section");
-
-  // Reset UI state
-  function resetUI() {
-    submitButton.innerText = "Send"
-    submitButton.disabled = false;
-  }
-
-  // Handle form submission
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    
-    // Get the message
-    const message = input.value.trim();
-    if (!message) return;
-    
-    // Update UI
-    submitButton.disabled = true;
-    submitButton.innerText = "...";
-    input.value = "";
-    
-    // Add user message to chat
-    handleChatMessage({
-      type: "chat",
-      content: message,
-      sender: "user"
-    });
-    
-    // Create the properly structured message
-    const data = {
-      type: "chat",
-      message: {
-        type: "user_message",
-        content: message
-      }
-    };
-    
-    // Send via WebSocket
-    const wsEvent = new CustomEvent("htmx:wsBeforeSend", {
-      detail: { messageBody: JSON.stringify(data) }
-    });
-    document.body.dispatchEvent(wsEvent);
-    
-    setTimeout(() => resetUI(), 1000);
-  });
 </script>
 </html>
