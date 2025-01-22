@@ -98,9 +98,8 @@
     <template id="message-template">
       <div class="message flex gap-4 mb-4">
         <div class="flex-shrink-0">
-          <div class="w-8 h-8 border border-white flex items-center justify-center">
-            <span class="sender">AI</span>
-          </div>
+          {% from "macros/ui.html" import message_avatar %}
+          {{ message_avatar() }}
         </div>
         <div class="flex-grow">
           <p class="content"></p>
@@ -191,7 +190,12 @@
     
     // Set the content
     messageEl.querySelector(".content").textContent = data.content;
-    messageEl.querySelector(".sender").textContent = data.sender === "user" ? "You" : "AI";
+    
+    // Update avatar based on sender
+    const avatar = messageEl.querySelector(".flex-shrink-0 > div");
+    if (data.sender === "user") {
+      avatar.innerHTML = "<span>You</span>";
+    }
     
     // Add to messages
     messagesDiv.appendChild(messageEl);
