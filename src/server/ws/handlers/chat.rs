@@ -2,8 +2,9 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::sync::mpsc;
 use mockall::automock;
-use crate::tools::{Tool, ToolError};
-use crate::server::ws::types::{Message, StreamUpdate};
+use crate::server::tools::{Tool, ToolError};
+use crate::server::services::StreamUpdate;
+use crate::server::ws::types::Message;
 
 #[automock]
 pub trait DeepSeekService {
@@ -120,7 +121,7 @@ impl ChatHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::test_utils::*;
+    use crate::test_utils::*;
     use serde_json::json;
 
     #[tokio::test]
