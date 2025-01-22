@@ -38,10 +38,21 @@ pub struct PageTemplate<'a> {
 }
 
 #[derive(Template)]
+#[template(path = "layouts/chat_base.html", escape = "none")]
+pub struct ChatPageTemplate<'a> {
+    pub title: &'a str,
+    pub path: &'a str,
+}
+
+#[derive(Template)]
 #[template(path = "layouts/content.html", escape = "none")]
 pub struct ContentTemplate<'a> {
     pub path: &'a str,
 }
+
+#[derive(Template)]
+#[template(path = "layouts/chat_content.html", escape = "none")]
+pub struct ChatContentTemplate;
 
 #[derive(Debug, Deserialize)]
 pub struct RepomapRequest {
