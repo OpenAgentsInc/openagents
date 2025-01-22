@@ -135,6 +135,12 @@
     const formData = new FormData(form);
     const content = formData.get('content');
 
+    // Don't send empty messages
+    if (!content.trim()) {
+      evt.preventDefault();
+      return;
+    }
+
     // Create the properly structured message
     const message = {
       type: "chat",
@@ -149,24 +155,15 @@
 
     console.log("Sending message:", evt.detail.messageBody);
 
-    // Update UI
-    const submitButton = document.getElementById("submit-button");
-    submitButton.disabled = true;
-    submitButton.innerText = "...";
-
-    // Add user message to chat
+    // Add user message to chat immediately
     handleChatMessage({
       type: "chat",
       content: content,
       sender: "user"
     });
 
-    // Reset form
+    // Reset form immediately
     form.reset();
-    setTimeout(() => {
-      submitButton.disabled = false;
-      submitButton.innerText = "Send";
-    }, 1000);
   });
 
   document.addEventListener("htmx:wsAfterMessage", function (evt) {
