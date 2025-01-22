@@ -9,22 +9,28 @@ use uuid::Uuid;
 
 use super::handlers::{chat::ChatHandler, solver::SolverHandler, MessageHandler};
 use super::types::ChatMessage;
+use crate::server::services::DeepSeekService;
 
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
+    deepseek_service: Arc<DeepSeekService>,
 }
 
 impl WebSocketState {
-    pub fn new() -> Arc<Self> {
+    pub fn new(deepseek_service: Arc<DeepSeekService>) -> Arc<Self> {
         Arc::new(Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
+            deepseek_service,
         })
     }
 
     pub fn create_handlers(
         ws_state: Arc<WebSocketState>,
     ) -> (Arc<ChatHandler>, Arc<SolverHandler>) {
-        let chat_handler = Arc::new(ChatHandler::new(ws_state.clone()));
+        let chat_handler = Arc::new(ChatHandler::new(
+            ws_state.clone(),
+            ws_state.deepseek_service.clone(),
+        ));
         let solver_handler = Arc::new(SolverHandler::new());
         (chat_handler, solver_handler)
     }

@@ -1,0 +1,190 @@
+<script>
+  document.addEventListener("htmx:wsConnecting", function (evt) {
+    console.log("Connecting to WebSocket...");
+  });
+
+  document.addEventListener("htmx:wsOpen", function (evt) {
+    console.log("Connected to WebSocket");
+  });
+
+  document.addEventListener("htmx:wsClose", function (evt) {
+    console.log("WebSocket connection closed");
+  });
+
+  document.addEventListener("htmx:wsError", function (evt) {
+    console.error("WebSocket error:", evt.detail.error);
+    const errorSection = document.getElementById("error-section");
+    const errorMessage = document.getElementById("error-message");
+    errorSection.classList.remove("hidden");
+    errorMessage.textContent = "Connection error: " + evt.detail.error;
+  });
+
+  document.addEventListener("htmx:wsBeforeSend", function (evt) {
+    // Get the form data
+    const form = document.querySelector("form");
+    const formData = new FormData(form);
+    const content = formData.get("content");
+
+    // Don't send empty messages
+    if (!content.trim()) {
+      evt.preventDefault();
+      return;
+    }
+
+    // Create the properly structured message
+    const message = {
+      type: "chat",
+      message: {
+        type: "user_message",
+        content: content,
+      },
+    };
+
+    // Set the message body directly
+    evt.detail.messageBody = JSON.stringify(message);
+
+    console.log("Sending message:", evt.detail.messageBody);
+
+    // Add user message to chat immediately
+    handleChatMessage({
+      type: "chat",
+      content: content,
+      sender: "user",
+    });
+
+    // Reset form immediately
+    form.reset();
+  });
+
+  document.addEventListener("htmx:wsAfterMessage", function (evt) {
+    console.log("Received message:", evt.detail.message);
+    try {
+      const data = JSON.parse(evt.detail.message);
+
+      // Handle different message types
+      if (data.type === "chat") {
+        handleChatMessage(data);
+      } else if (data.type === "error") {
+        handleErrorMessage(data);
+      }
+    } catch (e) {
+      console.log("Non-JSON message received");
+    }
+  });
+
+  let currentAiMessage = null;
+  let currentThinkingMessage = null;
+  let thinkingContent = "";
+
+  function handleChatMessage(data) {
+    const messagesDiv = document.getElementById("chat-messages");
+    const template = document.getElementById("message-template");
+    const aiIconTemplate = document.getElementById("ai-icon-template");
+    const userIconTemplate = document.getElementById("user-icon-template");
+
+    // For user messages or new AI messages (status: typing)
+    if (
+      data.sender === "user" ||
+      (data.sender === "ai" && data.status === "typing")
+    ) {
+      // Create new message element
+      const messageEl = template.content.cloneNode(true);
+      const contentEl = messageEl.querySelector(".content");
+      const statusEl = messageEl.querySelector(".status");
+
+      // Set initial content
+      contentEl.textContent = data.sender === "user" ? data.content : "...";
+
+      // Show status for AI messages
+      if (data.sender === "ai") {
+        statusEl.classList.remove("hidden");
+        statusEl.textContent = "Thinking...";
+        currentAiMessage = {
+          contentEl,
+          statusEl,
+          fullContent: "",
+        };
+        // Reset thinking content for new message
+        thinkingContent = "";
+      }
+
+      // Set avatar
+      const avatarContainer = messageEl.querySelector(".flex-shrink-0 > div");
+      if (data.sender === "user") {
+        avatarContainer.appendChild(userIconTemplate.content.cloneNode(true));
+      } else {
+        avatarContainer.appendChild(aiIconTemplate.content.cloneNode(true));
+      }
+
+      // Add to messages
+      messagesDiv.appendChild(messageEl);
+    }
+    // For thinking messages
+    else if (data.sender === "ai" && data.status === "thinking") {
+      thinkingContent += data.content;
+
+      // If we already have a thinking message, update it
+      if (currentThinkingMessage) {
+        currentThinkingMessage.contentEl.textContent = thinkingContent;
+      } else {
+        // Create new thinking message
+        const messageEl = template.content.cloneNode(true);
+        const contentEl = messageEl.querySelector(".content");
+        const statusEl = messageEl.querySelector(".status");
+
+        // Style thinking message
+        contentEl.classList.add("text-gray-500", "text-sm", "italic");
+        contentEl.textContent = thinkingContent;
+
+        // Set avatar
+        const avatarContainer = messageEl.querySelector(".flex-shrink-0 > div");
+        avatarContainer.appendChild(aiIconTemplate.content.cloneNode(true));
+
+        // Add to messages
+        messagesDiv.appendChild(messageEl);
+
+        currentThinkingMessage = {
+          contentEl,
+          statusEl,
+        };
+      }
+    }
+    // For streaming AI responses
+    else if (
+      data.sender === "ai" &&
+      data.status === "streaming" &&
+      currentAiMessage
+    ) {
+      currentAiMessage.fullContent += data.content;
+      currentAiMessage.contentEl.textContent = currentAiMessage.fullContent;
+      currentAiMessage.statusEl.textContent = "Typing...";
+    }
+    // For completed AI responses
+    else if (
+      data.sender === "ai" &&
+      data.status === "complete" &&
+      currentAiMessage
+    ) {
+      currentAiMessage.contentEl.textContent = data.content;
+      currentAiMessage.statusEl.classList.add("hidden");
+      currentAiMessage = null;
+
+      // Clear thinking message if it exists
+      if (currentThinkingMessage) {
+        currentThinkingMessage.contentEl.parentElement.parentElement.remove();
+        currentThinkingMessage = null;
+        thinkingContent = "";
+      }
+    }
+
+    // Scroll to bottom
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  function handleErrorMessage(data) {
+    const errorSection = document.getElementById("error-section");
+    const errorMessage = document.getElementById("error-message");
+    errorSection.classList.remove("hidden");
+    errorMessage.textContent = data.message;
+  }
+</script>
