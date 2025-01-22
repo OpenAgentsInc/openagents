@@ -1,21 +1,31 @@
 use async_trait::async_trait;
-use crate::server::ws::types::ChatMessage;
+use serde_json::json;
+use std::sync::Arc;
+use tokio::time::sleep;
+use std::time::Duration;
+use crate::server::ws::{
+    types::ChatMessage,
+    transport::WebSocketState
+};
 use super::MessageHandler;
 use std::error::Error;
 
 pub struct ChatHandler {
-    // Add fields for chat dependencies (e.g., agent service)
+    ws_state: Arc<WebSocketState>,
 }
 
 impl ChatHandler {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ws_state: Arc<WebSocketState>) -> Self {
+        Self { ws_state }
     }
 
     async fn process_message(&self, content: String) -> Result<String, Box<dyn Error + Send + Sync>> {
+        // Simulate processing delay
+        sleep(Duration::from_secs(1)).await;
+        
         // TODO: Implement actual chat processing
         // This should integrate with your agent/AI service
-        Ok(format!("Echo: {}", content))
+        Ok(format!("You said: {}", content))
     }
 }
 
@@ -23,12 +33,20 @@ impl ChatHandler {
 impl MessageHandler for ChatHandler {
     type Message = ChatMessage;
 
-    async fn handle_message(&self, msg: Self::Message, _conn_id: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn handle_message(&self, msg: Self::Message, conn_id: String) -> Result<(), Box<dyn Error + Send + Sync>> {
         match msg {
             ChatMessage::UserMessage { content } => {
                 let response = self.process_message(content).await?;
-                // TODO: Send response back through WebSocket
-                println!("Would send: {}", response);
+                
+                // Format response as expected by the client
+                let response_json = json!({
+                    "type": "chat",
+                    "content": response,
+                    "sender": "ai"
+                });
+
+                // Send response back through WebSocket
+                self.ws_state.send_to(&conn_id, &response_json.to_string()).await?;
             }
             _ => {
                 // Handle other message types
