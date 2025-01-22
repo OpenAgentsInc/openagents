@@ -13,6 +13,12 @@ impl SolverHandler {
     }
 }
 
+impl Default for SolverHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl MessageHandler for SolverHandler {
     type Message = SolverMessage;
