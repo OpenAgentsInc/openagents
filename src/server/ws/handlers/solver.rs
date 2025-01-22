@@ -1,6 +1,6 @@
-use async_trait::async_trait;
-use crate::server::ws::types::SolverMessage;
 use super::MessageHandler;
+use crate::server::ws::types::SolverMessage;
+use async_trait::async_trait;
 use std::error::Error;
 
 pub struct SolverHandler {
@@ -23,7 +23,11 @@ impl Default for SolverHandler {
 impl MessageHandler for SolverHandler {
     type Message = SolverMessage;
 
-    async fn handle_message(&self, _msg: Self::Message, _conn_id: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+    async fn handle_message(
+        &self,
+        _msg: Self::Message,
+        _conn_id: String,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
         // TODO: Implement solver message handling
         Ok(())
     }

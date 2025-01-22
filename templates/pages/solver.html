@@ -142,7 +142,7 @@
     console.log("Received message:", evt.detail.message);
     try {
       const data = JSON.parse(evt.detail.message);
-      
+
       // Handle solver messages
       if (data.type === "solver") {
         handleSolverMessage(data.message);
@@ -229,8 +229,8 @@
       type: "solver",
       message: {
         type: "issue_url",
-        url: formData.get("issue_url")
-      }
+        url: formData.get("issue_url"),
+      },
     };
 
     // Update form data with typed message
