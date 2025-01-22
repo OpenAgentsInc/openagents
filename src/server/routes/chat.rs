@@ -50,7 +50,7 @@ mod tests {
     use axum::http::Request;
     use axum::body::Body;
     use tower::ServiceExt;
-    use mockall::predicate::*;
+    use crate::server::test_utils::*;
     use crate::tools::ToolError;
 
     #[tokio::test]
