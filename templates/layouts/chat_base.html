@@ -116,6 +116,14 @@
         </g>
       </svg>
     </template>
+
+    <!-- User Icon template -->
+    <template id="user-icon-template">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4">
+        <circle cx="12" cy="8" fill="currentColor" r="4"/>
+        <path d="M20,19v1a1,1,0,0,1-1,1H5a1,1,0,0,1-1-1V19a6,6,0,0,1,6-6h4A6,6,0,0,1,20,19Z" fill="currentColor"/>
+      </svg>
+    </template>
   </body>
 <script>
   document.addEventListener("htmx:wsConnecting", function (evt) {
@@ -195,6 +203,7 @@
     const messagesDiv = document.getElementById("chat-messages");
     const template = document.getElementById("message-template");
     const aiIconTemplate = document.getElementById("ai-icon-template");
+    const userIconTemplate = document.getElementById("user-icon-template");
     
     // Clone the template
     const messageEl = template.content.cloneNode(true);
@@ -205,7 +214,7 @@
     // Update avatar based on sender
     const avatarContainer = messageEl.querySelector(".flex-shrink-0 > div");
     if (data.sender === "user") {
-      avatarContainer.innerHTML = "<span>You</span>";
+      avatarContainer.appendChild(userIconTemplate.content.cloneNode(true));
     } else {
       avatarContainer.appendChild(aiIconTemplate.content.cloneNode(true));
     }
