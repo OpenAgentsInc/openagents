@@ -83,7 +83,10 @@
     const userIconTemplate = document.getElementById("user-icon-template");
 
     // For user messages or new AI messages (status: typing)
-    if (data.sender === "user" || (data.sender === "ai" && data.status === "typing")) {
+    if (
+      data.sender === "user" ||
+      (data.sender === "ai" && data.status === "typing")
+    ) {
       // Create new message element
       const messageEl = template.content.cloneNode(true);
       const contentEl = messageEl.querySelector(".content");
@@ -99,7 +102,7 @@
         currentAiMessage = {
           contentEl,
           statusEl,
-          fullContent: ""
+          fullContent: "",
         };
         // Reset thinking content for new message
         thinkingContent = "";
@@ -119,7 +122,7 @@
     // For thinking messages
     else if (data.sender === "ai" && data.status === "thinking") {
       thinkingContent += data.content;
-      
+
       // If we already have a thinking message, update it
       if (currentThinkingMessage) {
         currentThinkingMessage.contentEl.textContent = thinkingContent;
@@ -142,22 +145,30 @@
 
         currentThinkingMessage = {
           contentEl,
-          statusEl
+          statusEl,
         };
       }
     }
     // For streaming AI responses
-    else if (data.sender === "ai" && data.status === "streaming" && currentAiMessage) {
+    else if (
+      data.sender === "ai" &&
+      data.status === "streaming" &&
+      currentAiMessage
+    ) {
       currentAiMessage.fullContent += data.content;
       currentAiMessage.contentEl.textContent = currentAiMessage.fullContent;
       currentAiMessage.statusEl.textContent = "Typing...";
     }
     // For completed AI responses
-    else if (data.sender === "ai" && data.status === "complete" && currentAiMessage) {
+    else if (
+      data.sender === "ai" &&
+      data.status === "complete" &&
+      currentAiMessage
+    ) {
       currentAiMessage.contentEl.textContent = data.content;
       currentAiMessage.statusEl.classList.add("hidden");
       currentAiMessage = null;
-      
+
       // Clear thinking message if it exists
       if (currentThinkingMessage) {
         currentThinkingMessage.contentEl.parentElement.parentElement.remove();

@@ -14,8 +14,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
 
 async fn handle_socket(socket: axum::extract::ws::WebSocket) {
     // Initialize DeepSeek service
-    let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY")
-        .expect("DEEPSEEK_API_KEY must be set");
+    let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
     let deepseek_service = Arc::new(DeepSeekService::new(deepseek_api_key));
 
     // Create WebSocketState with DeepSeek service

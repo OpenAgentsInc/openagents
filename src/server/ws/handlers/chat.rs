@@ -47,7 +47,7 @@ impl ChatHandler {
             match update {
                 crate::server::services::deepseek::StreamUpdate::Content(content) => {
                     full_response.push_str(&content);
-                    
+
                     // Send partial response
                     let response_json = json!({
                         "type": "chat",

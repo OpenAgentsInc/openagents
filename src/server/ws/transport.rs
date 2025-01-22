@@ -7,9 +7,9 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::server::services::DeepSeekService;
 use super::handlers::{chat::ChatHandler, solver::SolverHandler, MessageHandler};
 use super::types::ChatMessage;
+use crate::server::services::DeepSeekService;
 
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
