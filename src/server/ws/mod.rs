@@ -4,9 +4,8 @@ pub mod types;
 
 use std::sync::Arc;
 use axum::{
-    extract::ws::WebSocket,
+    extract::{ws::WebSocket, State, WebSocketUpgrade},
     response::IntoResponse,
-    extract::WebSocketUpgrade,
     routing::get,
     Router,
 };
@@ -19,9 +18,9 @@ use self::{
     },
 };
 
-pub async fn ws_handler(
+async fn ws_handler(
     ws: WebSocketUpgrade,
-    state: Arc<WebSocketState>,
+    State(state): State<Arc<WebSocketState>>,
 ) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
