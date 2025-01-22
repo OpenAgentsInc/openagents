@@ -1,15 +1,19 @@
-pub mod admin;
-pub mod config;
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use std::sync::Arc;
+use tower_http::cors::CorsLayer;
+
 pub mod routes;
 pub mod services;
 pub mod tools;
 pub mod ws;
 
-use axum::{routing::get, Router};
+pub fn app() -> Router {
+    let cors = CorsLayer::permissive();
 
-pub fn app_router() -> Router {
-    // Create base router
     Router::new()
-        .route("/ws", get(ws::ws_handler))
         .merge(routes::routes())
+        .layer(cors)
 }
