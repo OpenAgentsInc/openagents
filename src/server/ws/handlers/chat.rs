@@ -3,6 +3,7 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::time::sleep;
 use std::time::Duration;
+use tracing::{info, error};
 use crate::server::ws::{
     types::ChatMessage,
     transport::WebSocketState
@@ -20,12 +21,16 @@ impl ChatHandler {
     }
 
     async fn process_message(&self, content: String) -> Result<String, Box<dyn Error + Send + Sync>> {
+        info!("Processing message: {}", content);
+        
         // Simulate processing delay
         sleep(Duration::from_secs(1)).await;
         
         // TODO: Implement actual chat processing
         // This should integrate with your agent/AI service
-        Ok(format!("You said: {}", content))
+        let response = format!("You said: {}", content);
+        info!("Generated response: {}", response);
+        Ok(response)
     }
 }
 
@@ -34,6 +39,7 @@ impl MessageHandler for ChatHandler {
     type Message = ChatMessage;
 
     async fn handle_message(&self, msg: Self::Message, conn_id: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+        info!("Handling chat message: {:?}", msg);
         match msg {
             ChatMessage::UserMessage { content } => {
                 let response = self.process_message(content).await?;
@@ -45,11 +51,12 @@ impl MessageHandler for ChatHandler {
                     "sender": "ai"
                 });
 
+                info!("Sending response: {}", response_json);
                 // Send response back through WebSocket
                 self.ws_state.send_to(&conn_id, &response_json.to_string()).await?;
             }
             _ => {
-                // Handle other message types
+                error!("Unhandled message type: {:?}", msg);
             }
         }
         Ok(())
