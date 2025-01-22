@@ -17,14 +17,14 @@ mock! {
 // Create mock for WebSocketStateService trait
 mock! {
     pub WebSocketStateService {
-        fn broadcast(&self, msg: crate::server::ws::types::Message);
+        async fn broadcast(&self, msg: crate::server::ws::types::Message);
     }
 }
 
 // Create mock for DeepSeekService trait
 mock! {
     pub DeepSeekService {
-        fn chat_stream(&self, content: String, tools: Vec<serde_json::Value>) -> tokio::sync::mpsc::Receiver<crate::server::ws::types::StreamUpdate>;
+        async fn chat_stream(&self, content: String, tools: Vec<serde_json::Value>) -> tokio::sync::mpsc::Receiver<crate::server::ws::types::StreamUpdate>;
     }
 }
 
@@ -39,8 +39,8 @@ mock! {
 // Create mock for ChatHandlerService trait
 mock! {
     pub ChatHandlerService {
-        fn enable_tool(&self, tool: &str) -> Result<(), crate::tools::ToolError>;
-        fn disable_tool(&self, tool: &str) -> Result<(), crate::tools::ToolError>;
-        fn handle_message(&self, msg: crate::server::ws::types::Message) -> Result<(), crate::tools::ToolError>;
+        async fn enable_tool(&self, tool: &str) -> Result<(), crate::tools::ToolError>;
+        async fn disable_tool(&self, tool: &str) -> Result<(), crate::tools::ToolError>;
+        async fn handle_message(&self, msg: crate::server::ws::types::Message) -> Result<(), crate::tools::ToolError>;
     }
 }
