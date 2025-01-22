@@ -8,7 +8,7 @@
 {% endmacro %}
 
 {% macro message_avatar(sender="ai") %}
-<div class="w-8 h-8 border border-white flex items-center justify-center">
+<div class="w-8 h-8 flex items-center justify-center">
   {% if sender == "ai" %}
     {{ ai_icon("w-4 h-4") }}
   {% else %}
