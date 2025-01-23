@@ -1,4 +1,4 @@
-use crate::server::services::deepseek::types::{Tool, FunctionDefinition};
+use crate::server::services::deepseek::types::{FunctionDefinition, Tool};
 
 pub fn create_tool(
     name: String,

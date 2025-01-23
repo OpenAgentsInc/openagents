@@ -1,18 +1,15 @@
 use super::MessageHandler;
-use crate::server::services::github_issue::GitHubService;
 use crate::server::services::deepseek::{
-    ChatMessage as DeepSeekMessage,
-    StreamUpdate,
-    DeepSeekService,
-    create_tool,
+    create_tool, ChatMessage as DeepSeekMessage, DeepSeekService, StreamUpdate,
 };
+use crate::server::services::github_issue::GitHubService;
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
 use serde_json::json;
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
 use tracing::{error, info};
 
 pub struct ChatHandler {
@@ -39,7 +36,8 @@ impl ChatHandler {
     // Add message to history
     async fn add_to_history(&self, conn_id: &str, message: DeepSeekMessage) {
         let mut history = self.message_history.write().await;
-        history.entry(conn_id.to_string())
+        history
+            .entry(conn_id.to_string())
             .or_insert_with(Vec::new)
             .push(message);
     }
@@ -47,9 +45,7 @@ impl ChatHandler {
     // Get message history
     async fn get_history(&self, conn_id: &str) -> Vec<DeepSeekMessage> {
         let history = self.message_history.read().await;
-        history.get(conn_id)
-            .cloned()
-            .unwrap_or_default()
+        history.get(conn_id).cloned().unwrap_or_default()
     }
 
     // Clean up history for a connection
@@ -182,7 +178,8 @@ impl ChatHandler {
                         };
 
                         // Add messages to history
-                        self.add_to_history(conn_id, assistant_message.clone()).await;
+                        self.add_to_history(conn_id, assistant_message.clone())
+                            .await;
                         self.add_to_history(conn_id, issue_message.clone()).await;
 
                         // Get final response with tool results
@@ -246,7 +243,10 @@ impl ChatHandler {
             let messages = self.get_history(conn_id).await;
 
             // Use regular chat_stream for non-GitHub related queries
-            let mut stream = self.deepseek_service.chat_stream_with_history(messages, content, true).await;
+            let mut stream = self
+                .deepseek_service
+                .chat_stream_with_history(messages, content, true)
+                .await;
             let mut full_response = String::new();
 
             while let Some(update) = stream.recv().await {

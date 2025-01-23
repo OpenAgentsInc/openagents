@@ -1,13 +1,9 @@
 use crate::server::services::deepseek::{
-    ChatMessage as DeepSeekMessage,
-    StreamUpdate,
-    DeepSeekService,
+    ChatMessage as DeepSeekMessage, DeepSeekService, StreamUpdate,
 };
 use crate::server::services::github_issue::GitHubService;
 use crate::server::ws::{
-    handlers::chat::ChatHandler,
-    transport::WebSocketState,
-    types::ChatMessage,
+    handlers::chat::ChatHandler, transport::WebSocketState, types::ChatMessage,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -153,7 +149,10 @@ async fn test_history_persistence() {
     assert_eq!(history[2].role, "user");
     assert_eq!(history[2].content, "What's the weather?");
     assert_eq!(history[3].role, "assistant");
-    assert_eq!(history[3].content, "I don't have access to weather information.");
+    assert_eq!(
+        history[3].content,
+        "I don't have access to weather information."
+    );
 
     // Test cleanup
     handler.cleanup_history(conn_id).await;

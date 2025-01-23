@@ -1,9 +1,9 @@
-use anyhow::Result;
-use tracing::info;
 use crate::server::services::deepseek::types::{
-    ChatMessage, ChatRequest, ChatResponse, Tool, ToolCallResponse, ToolChoice
+    ChatMessage, ChatRequest, ChatResponse, Tool, ToolCallResponse, ToolChoice,
 };
 use crate::server::services::deepseek::DeepSeekService;
+use anyhow::Result;
+use tracing::info;
 
 impl DeepSeekService {
     pub async fn chat(

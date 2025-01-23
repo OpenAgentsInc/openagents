@@ -1,5 +1,5 @@
 use crate::server::services::deepseek::types::{
-    ChatMessage, ChatRequest, StreamResponse, StreamUpdate
+    ChatMessage, ChatRequest, StreamResponse, StreamUpdate,
 };
 use futures::StreamExt;
 use tokio::sync::mpsc;
@@ -75,16 +75,32 @@ pub async fn chat_stream_with_history(
                                         break;
                                     }
 
-                                    if let Ok(response) = serde_json::from_str::<StreamResponse>(data) {
+                                    if let Ok(response) =
+                                        serde_json::from_str::<StreamResponse>(data)
+                                    {
                                         if let Some(choice) = response.choices.first() {
                                             if let Some(ref content) = choice.delta.content {
-                                                let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
+                                                let _ = tx
+                                                    .send(StreamUpdate::Content(
+                                                        content.to_string(),
+                                                    ))
+                                                    .await;
                                             }
-                                            if let Some(ref reasoning) = choice.delta.reasoning_content {
-                                                let _ = tx.send(StreamUpdate::Reasoning(reasoning.to_string())).await;
+                                            if let Some(ref reasoning) =
+                                                choice.delta.reasoning_content
+                                            {
+                                                let _ = tx
+                                                    .send(StreamUpdate::Reasoning(
+                                                        reasoning.to_string(),
+                                                    ))
+                                                    .await;
                                             }
                                             if let Some(tool_calls) = &choice.delta.tool_calls {
-                                                let _ = tx.send(StreamUpdate::ToolCalls(tool_calls.clone())).await;
+                                                let _ = tx
+                                                    .send(StreamUpdate::ToolCalls(
+                                                        tool_calls.clone(),
+                                                    ))
+                                                    .await;
                                             }
                                             if choice.finish_reason.is_some() {
                                                 let _ = tx.send(StreamUpdate::Done).await;

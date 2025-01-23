@@ -6,7 +6,10 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use openagents::server::{
     admin::routes::admin_routes,
-    services::{solver::SolverService, solver_ws::{SolverStage, SolverUpdate}},
+    services::{
+        solver::SolverService,
+        solver_ws::{SolverStage, SolverUpdate},
+    },
 };
 use std::{env, sync::Arc};
 use tower::ServiceExt;
@@ -34,7 +37,10 @@ async fn test_solver_ws_endpoint() {
 
     // Send request and get response
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), axum::http::StatusCode::SWITCHING_PROTOCOLS);
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::SWITCHING_PROTOCOLS
+    );
 }
 
 #[tokio::test]
@@ -60,7 +66,10 @@ async fn test_solver_ws_error_handling() {
 
     // Send request and get response
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), axum::http::StatusCode::SWITCHING_PROTOCOLS);
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::SWITCHING_PROTOCOLS
+    );
 }
 
 #[tokio::test]
@@ -97,6 +106,12 @@ async fn test_solver_ws_connection_handling() {
     let response1 = app.clone().oneshot(request1).await.unwrap();
     let response2 = app.oneshot(request2).await.unwrap();
 
-    assert_eq!(response1.status(), axum::http::StatusCode::SWITCHING_PROTOCOLS);
-    assert_eq!(response2.status(), axum::http::StatusCode::SWITCHING_PROTOCOLS);
+    assert_eq!(
+        response1.status(),
+        axum::http::StatusCode::SWITCHING_PROTOCOLS
+    );
+    assert_eq!(
+        response2.status(),
+        axum::http::StatusCode::SWITCHING_PROTOCOLS
+    );
 }
