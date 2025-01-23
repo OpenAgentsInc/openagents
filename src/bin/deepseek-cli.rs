@@ -160,6 +160,15 @@ async fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&get_weather_tool)?);
             }
 
+            // Initial user message
+            let user_message = ChatMessage {
+                role: "user".to_string(),
+                content: format!("What's the weather in {}?", location),
+                tool_call_id: None,
+                tool_calls: None,
+            };
+
+            // Get initial response with tool call
             let (content, _, tool_calls) = service
                 .chat_with_tools(
                     format!("What's the weather in {}?", location),
@@ -178,14 +187,6 @@ async fn main() -> Result<()> {
                     if tool_call.function.name == "get_weather" {
                         print_colored("\nTool called: get_weather\n", Color::Yellow)?;
                         println!("Arguments: {}", tool_call.function.arguments);
-
-                        // Initial user message
-                        let user_message = ChatMessage {
-                            role: "user".to_string(),
-                            content: format!("What's the weather in {}?", location),
-                            tool_call_id: None,
-                            tool_calls: None,
-                        };
 
                         // Assistant message with tool call
                         let assistant_message = AssistantMessage {
