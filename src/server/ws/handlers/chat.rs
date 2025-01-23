@@ -1,17 +1,21 @@
 use super::MessageHandler;
 use crate::server::services::github_issue::GitHubService;
+use crate::server::services::deepseek::{self, ChatMessage as DeepSeekMessage};
 use crate::server::services::DeepSeekService;
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
 use serde_json::json;
 use std::error::Error;
 use std::sync::Arc;
+use tokio::sync::RwLock;
+use std::collections::HashMap;
 use tracing::{error, info};
 
 pub struct ChatHandler {
     ws_state: Arc<WebSocketState>,
     deepseek_service: Arc<DeepSeekService>,
     github_service: Arc<GitHubService>,
+    message_history: Arc<RwLock<HashMap<String, Vec<DeepSeekMessage>>>>,
 }
 
 impl ChatHandler {
@@ -24,7 +28,30 @@ impl ChatHandler {
             ws_state,
             deepseek_service,
             github_service,
+            message_history: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    // Add message to history
+    async fn add_to_history(&self, conn_id: &str, message: DeepSeekMessage) {
+        let mut history = self.message_history.write().await;
+        history.entry(conn_id.to_string())
+            .or_insert_with(Vec::new)
+            .push(message);
+    }
+
+    // Get message history
+    async fn get_history(&self, conn_id: &str) -> Vec<DeepSeekMessage> {
+        let history = self.message_history.read().await;
+        history.get(conn_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    // Clean up history for a connection
+    pub async fn cleanup_history(&self, conn_id: &str) {
+        let mut history = self.message_history.write().await;
+        history.remove(conn_id);
     }
 
     async fn process_message(
@@ -44,6 +71,15 @@ impl ChatHandler {
         self.ws_state
             .send_to(conn_id, &typing_json.to_string())
             .await?;
+
+        // Add user message to history
+        let user_message = DeepSeekMessage {
+            role: "user".to_string(),
+            content: content.clone(),
+            tool_call_id: None,
+            tool_calls: None,
+        };
+        self.add_to_history(conn_id, user_message.clone()).await;
 
         // Check if message might be about GitHub issues
         let is_github_related = content.to_lowercase().contains("issue")
@@ -75,10 +111,13 @@ impl ChatHandler {
                 }),
             );
 
+            // Get message history
+            let messages = self.get_history(conn_id).await;
+
             // Get initial response with potential tool calls
             let (initial_content, _, tool_calls) = self
                 .deepseek_service
-                .chat_with_tools(content.clone(), vec![get_issue_tool.clone()], None, false) // Note: using false for use_reasoner
+                .chat_with_tools(content.clone(), vec![get_issue_tool.clone()], None, false)
                 .await?;
 
             // Send initial content
@@ -120,37 +159,30 @@ impl ChatHandler {
                             .get_issue(owner, repo, issue_number)
                             .await?;
 
-                        // Create messages for tool response
-                        let user_message = crate::server::services::deepseek::ChatMessage {
-                            role: "user".to_string(),
-                            content: content.clone(),
+                        let assistant_message = DeepSeekMessage {
+                            role: "assistant".to_string(),
+                            content: format!(
+                                "Let me fetch GitHub issue #{} for you.",
+                                issue_number
+                            ),
                             tool_call_id: None,
-                            tool_calls: None,
+                            tool_calls: Some(vec![tool_call.clone()]),
                         };
 
-                        let assistant_message =
-                            crate::server::services::deepseek::AssistantMessage {
-                                role: "assistant".to_string(),
-                                content: format!(
-                                    "Let me fetch GitHub issue #{} for you.",
-                                    issue_number
-                                ),
-                                tool_call_id: None,
-                                tool_calls: Some(vec![tool_call.clone()]),
-                            };
-
-                        let issue_message = crate::server::services::deepseek::ChatMessage {
+                        let issue_message = DeepSeekMessage {
                             role: "tool".to_string(),
                             content: serde_json::to_string(&issue)?,
                             tool_call_id: Some(tool_call.id),
                             tool_calls: None,
                         };
 
+                        // Add messages to history
+                        self.add_to_history(conn_id, assistant_message.clone()).await;
+                        self.add_to_history(conn_id, issue_message.clone()).await;
+
                         // Get final response with tool results
-                        let messages = vec![
-                            user_message,
-                            crate::server::services::deepseek::ChatMessage::from(assistant_message),
-                        ];
+                        let mut messages = self.get_history(conn_id).await;
+                        messages.push(issue_message);
 
                         let (final_content, _, _) = self
                             .deepseek_service
@@ -158,9 +190,18 @@ impl ChatHandler {
                                 messages,
                                 issue_message,
                                 vec![get_issue_tool.clone()],
-                                false, // Note: using false for use_reasoner
+                                false,
                             )
                             .await?;
+
+                        // Add final response to history
+                        let final_message = DeepSeekMessage {
+                            role: "assistant".to_string(),
+                            content: final_content.clone(),
+                            tool_call_id: None,
+                            tool_calls: None,
+                        };
+                        self.add_to_history(conn_id, final_message).await;
 
                         // Send final response
                         let final_json = json!({
@@ -185,15 +226,27 @@ impl ChatHandler {
                 self.ws_state
                     .send_to(conn_id, &complete_json.to_string())
                     .await?;
+
+                // Add assistant response to history
+                let assistant_message = DeepSeekMessage {
+                    role: "assistant".to_string(),
+                    content: initial_content,
+                    tool_call_id: None,
+                    tool_calls: None,
+                };
+                self.add_to_history(conn_id, assistant_message).await;
             }
         } else {
+            // Get message history
+            let messages = self.get_history(conn_id).await;
+
             // Use regular chat_stream for non-GitHub related queries
-            let mut stream = self.deepseek_service.chat_stream(content, true).await;
+            let mut stream = self.deepseek_service.chat_stream_with_history(messages, content, true).await;
             let mut full_response = String::new();
 
             while let Some(update) = stream.recv().await {
                 match update {
-                    crate::server::services::deepseek::StreamUpdate::Content(content) => {
+                    deepseek::StreamUpdate::Content(content) => {
                         full_response.push_str(&content);
                         let response_json = json!({
                             "type": "chat",
@@ -205,7 +258,7 @@ impl ChatHandler {
                             .send_to(conn_id, &response_json.to_string())
                             .await?;
                     }
-                    crate::server::services::deepseek::StreamUpdate::Reasoning(reasoning) => {
+                    deepseek::StreamUpdate::Reasoning(reasoning) => {
                         let reasoning_json = json!({
                             "type": "chat",
                             "content": &reasoning,
@@ -216,7 +269,7 @@ impl ChatHandler {
                             .send_to(conn_id, &reasoning_json.to_string())
                             .await?;
                     }
-                    crate::server::services::deepseek::StreamUpdate::Done => {
+                    deepseek::StreamUpdate::Done => {
                         let response_json = json!({
                             "type": "chat",
                             "content": full_response,
@@ -226,6 +279,15 @@ impl ChatHandler {
                         self.ws_state
                             .send_to(conn_id, &response_json.to_string())
                             .await?;
+
+                        // Add assistant response to history
+                        let assistant_message = DeepSeekMessage {
+                            role: "assistant".to_string(),
+                            content: full_response.clone(),
+                            tool_call_id: None,
+                            tool_calls: None,
+                        };
+                        self.add_to_history(conn_id, assistant_message).await;
                         break;
                     }
                     _ => {}
