@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-23 11:57:51
+Generated on: 2025-01-23 13:23:16
 
 ### Structure
 
@@ -34,6 +34,7 @@ Generated on: 2025-01-23 11:57:51
 |   |   |-- 138.md
 |   |   |-- 139.md
 |   |   `-- 140.md
+|   |-- adding-tools.md
 |   |-- chat_template.md
 |   |-- configuration.md
 |   |-- hierarchy.md
@@ -84,6 +85,7 @@ Generated on: 2025-01-23 11:57:51
 |   |   |   |   `-- mod.rs
 |   |   |   |-- deepseek.rs
 |   |   |   |-- github.rs
+|   |   |   |-- github_issue.rs
 |   |   |   |-- github_types.rs
 |   |   |   |-- mod.rs
 |   |   |   |-- openrouter.rs
@@ -183,5 +185,5 @@ Generated on: 2025-01-23 11:57:51
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-32 directories, 145 files
+32 directories, 147 files
 ```
