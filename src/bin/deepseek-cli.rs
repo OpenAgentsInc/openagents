@@ -188,7 +188,7 @@ async fn main() -> Result<()> {
                         };
 
                         // Assistant message with tool call
-                        let assistant_message = AssistantMessage {
+                        let assistant_message = ChatMessage {
                             role: "assistant".to_string(),
                             content: content.clone(),
                             tool_call_id: None,
@@ -215,10 +215,7 @@ async fn main() -> Result<()> {
                             println!("3. Tool response:");
                             println!("   Role: {}", weather_message.role);
                             println!("   Content: {}", weather_message.content);
-                            println!(
-                                "   Tool call ID: {}",
-                                weather_message.tool_call_id.as_ref().unwrap()
-                            );
+                            println!("   Tool call ID: {}", weather_message.tool_call_id.as_ref().unwrap());
                         }
 
                         // Get final response
@@ -226,7 +223,7 @@ async fn main() -> Result<()> {
 
                         let messages = vec![
                             user_message,
-                            ChatMessage::from(assistant_message),
+                            assistant_message,
                             weather_message.clone(),
                         ];
 
