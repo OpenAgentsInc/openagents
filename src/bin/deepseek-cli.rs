@@ -207,11 +207,14 @@ async fn main() -> Result<()> {
                             println!("2. Assistant message:");
                             println!("   Role: {}", assistant_message.role);
                             println!("   Content: {}", assistant_message.content);
-                            println!("   Tool calls: {:?}", tool_calls);  // Now we can use tool_calls
+                            println!("   Tool calls: {:?}", tool_calls); // Now we can use tool_calls
                             println!("3. Tool response:");
                             println!("   Role: {}", weather_message.role);
                             println!("   Content: {}", weather_message.content);
-                            println!("   Tool call ID: {}", weather_message.tool_call_id.as_ref().unwrap());
+                            println!(
+                                "   Tool call ID: {}",
+                                weather_message.tool_call_id.as_ref().unwrap()
+                            );
                         }
 
                         // Get final response

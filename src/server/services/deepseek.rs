@@ -17,7 +17,7 @@ pub struct ChatMessage {
     pub role: String,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>, 
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -51,6 +51,7 @@ pub struct ChatResponseMessage {
     content: String,
     reasoning_content: Option<String>,
     tool_calls: Option<Vec<ToolCallResponse>>,
+    role: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +70,8 @@ struct StreamChoice {
 struct StreamDelta {
     content: Option<String>,
     reasoning_content: Option<String>,
+    tool_calls: Option<Vec<ToolCallResponse>>,
+    role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,6 +83,7 @@ struct StreamResponse {
 pub enum StreamUpdate {
     Content(String),
     Reasoning(String),
+    ToolCalls(Vec<ToolCallResponse>),
     Done,
 }
 
@@ -372,6 +376,11 @@ impl DeepSeekService {
                                                         .send(StreamUpdate::Reasoning(
                                                             reasoning.to_string(),
                                                         ))
+                                                        .await;
+                                                }
+                                                if let Some(tool_calls) = choice.delta.tool_calls {
+                                                    let _ = tx
+                                                        .send(StreamUpdate::ToolCalls(tool_calls))
                                                         .await;
                                                 }
                                                 if choice.finish_reason.is_some() {
