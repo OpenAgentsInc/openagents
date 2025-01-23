@@ -156,6 +156,57 @@ impl DeepSeekService {
         self.chat_internal(prompt, use_reasoner, false).await
     }
 
+    pub async fn chat_with_tools(
+        &self,
+        prompt: String,
+        tools: Vec<Tool>,
+        tool_choice: Option<ToolChoice>,
+        use_reasoner: bool,
+    ) -> Result<(String, Option<String>, Option<Vec<ToolCallResponse>>)> {
+        let model = if use_reasoner {
+            "deepseek-reasoner"
+        } else {
+            "deepseek-chat"
+        };
+
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: prompt,
+        }];
+
+        let request = ChatRequest {
+            model: model.to_string(),
+            messages,
+            stream: false,
+            temperature: 0.7,
+            max_tokens: None,
+            tools: Some(tools),
+            tool_choice,
+        };
+
+        let url = format!("{}/chat/completions", self.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await?;
+
+        let chat_response: ChatResponse = response.json().await?;
+
+        if let Some(choice) = chat_response.choices.first() {
+            Ok((
+                choice.message.content.clone(),
+                choice.message.reasoning_content.clone(),
+                choice.message.tool_calls.clone(),
+            ))
+        } else {
+            Err(anyhow::anyhow!("No response from model"))
+        }
+    }
+
     pub async fn chat_stream(
         &self,
         prompt: String,
