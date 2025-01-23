@@ -35,10 +35,6 @@ impl AgentManager {
         description: &str,
         config: serde_json::Value,
     ) -> Result<Agent> {
-        // Validate pubkey
-        if pubkey.len() != 64 {
-            return Err(anyhow!("Invalid pubkey length"));
-        }
 
         // Validate and normalize config
         let config = self.validate_agent_config(config)?;
@@ -47,7 +43,6 @@ impl AgentManager {
             id: Uuid::new_v4(),
             name: name.to_string(),
             description: description.to_string(),
-            pubkey: pubkey.to_string(),
             enabled: true,
             config: config.clone(),
             created_at: Utc::now().timestamp(),
