@@ -1,14 +1,40 @@
+use axum::{
+    extract::{Form, State},
+    response::{Html, IntoResponse},
+};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+pub mod deepseek;
 pub mod github;
 pub mod github_issue;
 pub mod github_types;
 pub mod openrouter;
 pub mod repomap;
 pub mod solver;
-pub mod deepseek;
 
+pub use deepseek::DeepSeekService;
+pub use deepseek::{ChatMessage, StreamUpdate};
 pub use github::GitHubService;
 pub use github_issue::GitHubService as GitHubIssueService;
 pub use openrouter::OpenRouterService;
 pub use repomap::RepomapService;
-pub use deepseek::DeepSeekService;
-pub use deepseek::types::StreamUpdate;
+pub use solver::SolverService;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SolverRequest {
+    pub issue_url: String,
+}
+
+pub async fn handle_solver(
+    State(service): State<Arc<SolverService>>,
+    Form(req): Form<SolverRequest>,
+) -> impl IntoResponse {
+    match service.solve_issue(req.issue_url).await {
+        Ok(response) => Html(response.solution).into_response(),
+        Err(e) => {
+            eprintln!("Error solving issue: {}", e);
+            Html(format!("Error: {}", e)).into_response()
+        }
+    }
+}
