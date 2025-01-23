@@ -35,7 +35,7 @@ async fn main() {
     let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
 
     // Load configuration
-    let configuration = get_configuration().expect("Failed to read configuration");
+    let _configuration = get_configuration().expect("Failed to read configuration");
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
