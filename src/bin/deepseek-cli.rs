@@ -228,14 +228,13 @@ async fn main() -> Result<()> {
                         // Create a new sequence of messages - include all messages
                         let messages = vec![
                             user_message.clone(),
-                            ChatMessage::from(assistant_message.clone()),
-                            weather_message.clone(),
+                            ChatMessage::from(assistant_message), // Add the assistant message first
                         ];
 
                         let result = service
                             .chat_with_tool_response(
                                 messages,
-                                weather_message, // This will be properly added as the tool response
+                                weather_message, // This is the tool response
                                 vec![get_weather_tool.clone()],
                                 false,
                             )
