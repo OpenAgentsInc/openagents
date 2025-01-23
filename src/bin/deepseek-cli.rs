@@ -185,11 +185,10 @@ async fn main() -> Result<()> {
                         };
 
                         // Assistant message with tool call
-                        let assistant_message = AssistantMessage {
+                        let assistant_message = ChatMessage {
                             role: "assistant".to_string(),
                             content: content.clone(),
                             tool_call_id: None,
-                            tool_calls: Some(tool_calls.clone()),
                         };
 
                         // Tool response message
@@ -207,7 +206,7 @@ async fn main() -> Result<()> {
                             println!("2. Assistant message:");
                             println!("   Role: {}", assistant_message.role);
                             println!("   Content: {}", assistant_message.content);
-                            println!("   Tool calls: {:?}", assistant_message.tool_calls);
+                            println!("   Tool calls: {:?}", tool_calls);  // Show tool calls separately
                             println!("3. Tool response:");
                             println!("   Role: {}", weather_message.role);
                             println!("   Content: {}", weather_message.content);
