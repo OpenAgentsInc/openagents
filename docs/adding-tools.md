@@ -5,6 +5,7 @@ This guide explains how to add new tools to the OpenAgents system and create CLI
 ## Overview
 
 The process involves:
+
 1. Creating a service module for the tool
 2. Adding the service to the module system
 3. Extending the CLI to demonstrate the tool
@@ -87,11 +88,12 @@ pub use github_issue::GitHubService as GitHubIssueService;
 Add a new command to `src/bin/deepseek-cli.rs`:
 
 1. Add the command to the Commands enum:
+
 ```rust
 #[derive(Subcommand)]
 enum Commands {
     // ... existing commands ...
-    
+
     /// GitHub issue tool example
     Issue {
         /// The issue number to fetch
@@ -110,6 +112,7 @@ enum Commands {
 ```
 
 2. Create the tool definition:
+
 ```rust
 let get_issue_tool = DeepSeekService::create_tool(
     "get_github_issue".to_string(),
@@ -136,6 +139,7 @@ let get_issue_tool = DeepSeekService::create_tool(
 ```
 
 3. Implement the command handler:
+
 ```rust
 Commands::Issue {
     issue_number,
@@ -177,11 +181,13 @@ Commands::Issue {
 ### 4. Testing the Implementation
 
 1. Build and run:
+
 ```bash
 cargo run --bin deepseek-cli issue 584 --debug
 ```
 
 2. Required environment variables:
+
 ```bash
 export DEEPSEEK_API_KEY="your-api-key"
 export GITHUB_TOKEN="your-github-token"  # Optional
@@ -192,15 +198,18 @@ export GITHUB_TOKEN="your-github-token"  # Optional
 The general pattern for implementing tools is:
 
 1. **Service Layer**
+
    - Create a service struct with required dependencies
    - Implement core functionality (API calls, data processing, etc.)
    - Define data structures for input/output
 
 2. **Module Integration**
+
    - Add module to services/mod.rs
    - Export necessary types and functions
 
 3. **CLI Demo**
+
    - Add new command to Commands enum
    - Create tool definition with JSON schema
    - Implement command handler with:
@@ -217,16 +226,19 @@ The general pattern for implementing tools is:
 ## Best Practices
 
 1. **Error Handling**
+
    - Use anyhow::Result for error propagation
    - Provide clear error messages
    - Handle API errors gracefully
 
 2. **Configuration**
+
    - Use environment variables for sensitive data
    - Provide sensible defaults where appropriate
    - Document all configuration options
 
 3. **Documentation**
+
    - Document the service API
    - Include usage examples
    - List all dependencies and requirements

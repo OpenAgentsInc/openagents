@@ -1,6 +1,6 @@
 use super::MessageHandler;
-use crate::server::services::DeepSeekService;
 use crate::server::services::github_issue::GitHubService;
+use crate::server::services::DeepSeekService;
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
 use serde_json::json;
@@ -46,7 +46,7 @@ impl ChatHandler {
             .await?;
 
         // Check if message might be about GitHub issues
-        let is_github_related = content.to_lowercase().contains("issue") 
+        let is_github_related = content.to_lowercase().contains("issue")
             || content.to_lowercase().contains("github")
             || content.to_lowercase().contains("#");
 
@@ -97,7 +97,8 @@ impl ChatHandler {
                 for tool_call in tool_calls {
                     if tool_call.function.name == "get_github_issue" {
                         // Parse tool call arguments
-                        let args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments)?;
+                        let args: serde_json::Value =
+                            serde_json::from_str(&tool_call.function.arguments)?;
                         let owner = args["owner"].as_str().unwrap_or("OpenAgentsInc");
                         let repo = args["repo"].as_str().unwrap_or("openagents");
                         let issue_number = args["issue_number"].as_i64().unwrap_or(0) as i32;
@@ -114,7 +115,10 @@ impl ChatHandler {
                             .await?;
 
                         // Fetch the issue
-                        let issue = self.github_service.get_issue(owner, repo, issue_number).await?;
+                        let issue = self
+                            .github_service
+                            .get_issue(owner, repo, issue_number)
+                            .await?;
 
                         // Create messages for tool response
                         let user_message = crate::server::services::deepseek::ChatMessage {
@@ -124,12 +128,16 @@ impl ChatHandler {
                             tool_calls: None,
                         };
 
-                        let assistant_message = crate::server::services::deepseek::AssistantMessage {
-                            role: "assistant".to_string(),
-                            content: format!("Let me fetch GitHub issue #{} for you.", issue_number),
-                            tool_call_id: None,
-                            tool_calls: Some(vec![tool_call.clone()]),
-                        };
+                        let assistant_message =
+                            crate::server::services::deepseek::AssistantMessage {
+                                role: "assistant".to_string(),
+                                content: format!(
+                                    "Let me fetch GitHub issue #{} for you.",
+                                    issue_number
+                                ),
+                                tool_call_id: None,
+                                tool_calls: Some(vec![tool_call.clone()]),
+                            };
 
                         let issue_message = crate::server::services::deepseek::ChatMessage {
                             role: "tool".to_string(),
