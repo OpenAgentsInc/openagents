@@ -114,8 +114,8 @@ impl ChatHandler {
                 }),
             );
 
-            // Get message history
-            let messages = self.get_history(conn_id).await;
+            // Get message history and use it for the initial request
+            let history = self.get_history(conn_id).await;
 
             // Get initial response with potential tool calls
             let (initial_content, _, tool_calls) = self
@@ -175,7 +175,7 @@ impl ChatHandler {
                         let issue_message = DeepSeekMessage {
                             role: "tool".to_string(),
                             content: serde_json::to_string(&issue)?,
-                            tool_call_id: Some(tool_call.id),
+                            tool_call_id: Some(tool_call.id.clone()),
                             tool_calls: None,
                         };
 
@@ -185,7 +185,7 @@ impl ChatHandler {
 
                         // Get final response with tool results
                         let mut messages = self.get_history(conn_id).await;
-                        messages.push(issue_message);
+                        messages.push(issue_message.clone());
 
                         let (final_content, _, _) = self
                             .deepseek_service
