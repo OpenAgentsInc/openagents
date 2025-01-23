@@ -267,8 +267,21 @@ impl DeepSeekService {
             return Err(anyhow::anyhow!("Tool response must have tool_call_id"));
         }
 
+        // Create a new sequence of messages with the tool response
         let mut all_messages = messages;
         all_messages.push(tool_response);
+
+        // Debug print the messages
+        info!("Sending messages to API:");
+        for (i, msg) in all_messages.iter().enumerate() {
+            info!("Message {}: role={}, content={}", i, msg.role, msg.content);
+            if let Some(tool_calls) = &msg.tool_calls {
+                info!("  Tool calls: {:?}", tool_calls);
+            }
+            if let Some(tool_call_id) = &msg.tool_call_id {
+                info!("  Tool call ID: {}", tool_call_id);
+            }
+        }
 
         let request = ChatRequest {
             model: model.to_string(),
@@ -301,7 +314,7 @@ impl DeepSeekService {
             ));
         }
 
-        // Try to get response text for debugging
+        // Get response text for debugging
         let text = response.text().await?;
         if text.is_empty() {
             return Err(anyhow::anyhow!("Empty response from API"));
