@@ -114,7 +114,7 @@ pub struct FunctionCall {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ToolCallResponse {
     pub id: String,
     #[serde(rename = "type")]
@@ -122,7 +122,7 @@ pub struct ToolCallResponse {
     pub function: FunctionCallResponse,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FunctionCallResponse {
     pub name: String,
     pub arguments: String,
