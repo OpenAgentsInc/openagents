@@ -24,11 +24,11 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket) {
     // Create WebSocketState with both services
     let ws_state = WebSocketState::new(deepseek_service, github_service);
 
-    // Create handlers using the state
-    let (chat_handler, solver_handler) = WebSocketState::create_handlers(ws_state.clone());
+    // Create handler(s) using the state
+    let chat_handler = WebSocketState::create_handlers(ws_state.clone());
 
     // Handle the socket with all components
     ws_state
-        .handle_socket(socket, chat_handler, solver_handler)
+        .handle_socket(socket, chat_handler)
         .await;
 }
