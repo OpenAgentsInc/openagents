@@ -12,8 +12,8 @@ pub struct DeepSeekService {
     base_url: String,
 }
 
-#[derive(Debug, Serialize)]
-struct ChatMessage {
+#[derive(Debug, Serialize, Clone)]
+pub struct ChatMessage {
     role: String,
     content: String,
 }
@@ -35,7 +35,7 @@ struct ChatChoice {
 }
 
 #[derive(Debug, Deserialize)]
-struct ChatResponseMessage {
+pub struct ChatResponseMessage {
     content: String,
     reasoning_content: Option<String>,
     tool_calls: Option<Vec<ToolCallResponse>>,
@@ -72,15 +72,15 @@ pub enum StreamUpdate {
 }
 
 // Tool/Function calling types
-#[derive(Debug, Serialize)]
-struct Tool {
+#[derive(Debug, Serialize, Clone)]
+pub struct Tool {
     #[serde(rename = "type")]
     tool_type: String,
     function: FunctionDefinition,
 }
 
-#[derive(Debug, Serialize)]
-struct FunctionDefinition {
+#[derive(Debug, Serialize, Clone)]
+pub struct FunctionDefinition {
     name: String,
     description: Option<String>,
     parameters: serde_json::Value, // Using Value for flexible JSON Schema
@@ -103,17 +103,17 @@ struct FunctionCall {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct ToolCallResponse {
-    id: String,
+pub struct ToolCallResponse {
+    pub id: String,
     #[serde(rename = "type")]
-    tool_type: String,
-    function: FunctionCallResponse,
+    pub tool_type: String,
+    pub function: FunctionCallResponse,
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct FunctionCallResponse {
-    name: String,
-    arguments: String,
+pub struct FunctionCallResponse {
+    pub name: String,
+    pub arguments: String,
 }
 
 impl DeepSeekService {
