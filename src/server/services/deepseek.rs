@@ -98,8 +98,8 @@ pub enum ToolChoice {
 }
 
 #[derive(Debug, Serialize)]
-struct FunctionCall {
-    name: String,
+pub struct FunctionCall {
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
