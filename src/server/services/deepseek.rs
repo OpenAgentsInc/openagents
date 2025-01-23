@@ -25,8 +25,8 @@ struct ChatRequest {
     stream: bool,
     temperature: f32,
     max_tokens: Option<i32>,
-    tools: Option<Vec<Tool>>,         // Add this
-    tool_choice: Option<ToolChoice>,  // Add this
+    tools: Option<Vec<Tool>>,        // Add this
+    tool_choice: Option<ToolChoice>, // Add this
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,7 +89,7 @@ struct FunctionDefinition {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 enum ToolChoice {
-    Auto(String),      // "auto", "none", or "required"
+    Auto(String), // "auto", "none", or "required"
     Function {
         #[serde(rename = "type")]
         tool_type: String,
@@ -102,7 +102,7 @@ struct FunctionCall {
     name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct ToolCallResponse {
     id: String,
     #[serde(rename = "type")]
@@ -110,7 +110,7 @@ struct ToolCallResponse {
     function: FunctionCallResponse,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct FunctionCallResponse {
     name: String,
     arguments: String,
