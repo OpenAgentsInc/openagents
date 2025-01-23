@@ -1,0 +1,23 @@
+mod admin_middleware;
+mod admin_routes;
+mod agent;
+mod deepseek;
+mod emailoptin;
+mod github;
+mod health_check;
+mod openrouter;
+mod repomap;
+mod solver;
+mod chat;
+
+pub use admin_middleware::*;
+pub use admin_routes::*;
+pub use agent::*;
+pub use deepseek::*;
+pub use emailoptin::*;
+pub use github::*;
+pub use health_check::*;
+pub use openrouter::*;
+pub use repomap::*;
+pub use solver::*;
+pub use chat::*;
