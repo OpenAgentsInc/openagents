@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use openagents::server::services::{
-    deepseek::{AssistantMessage, ChatMessage, DeepSeekService},
+    deepseek::{ChatMessage, DeepSeekService},
     StreamUpdate,
 };
 use serde_json::json;
@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Chat {
             message,
-            debug,
+            _debug,
             no_stream,
         } => {
             if no_stream {
@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
         }
         Commands::Reason {
             message,
-            debug,
+            _debug,
             no_stream,
         } => {
             if no_stream {
@@ -133,7 +133,7 @@ async fn main() -> Result<()> {
         Commands::Weather {
             location,
             debug,
-            no_stream,
+            _no_stream,
         } => {
             // Create weather tool
             let get_weather_tool = DeepSeekService::create_tool(
@@ -172,7 +172,8 @@ async fn main() -> Result<()> {
 
             // If there's a tool call, handle it
             if let Some(tool_calls) = tool_calls {
-                for tool_call in tool_calls {
+                let tool_calls = tool_calls.clone(); // Clone here to avoid move
+                for tool_call in &tool_calls {
                     if tool_call.function.name == "get_weather" {
                         print_colored("\nTool called: get_weather\n", Color::Yellow)?;
                         println!("Arguments: {}", tool_call.function.arguments);
@@ -206,7 +207,7 @@ async fn main() -> Result<()> {
                             println!("2. Assistant message:");
                             println!("   Role: {}", assistant_message.role);
                             println!("   Content: {}", assistant_message.content);
-                            println!("   Tool calls: {:?}", tool_calls);  // Show tool calls separately
+                            println!("   Tool calls: {:?}", tool_calls);  // Now we can use tool_calls
                             println!("3. Tool response:");
                             println!("   Role: {}", weather_message.role);
                             println!("   Content: {}", weather_message.content);
@@ -219,7 +220,7 @@ async fn main() -> Result<()> {
                         let messages = vec![
                             user_message,
                             assistant_message,
-                            weather_message,
+                            weather_message.clone(), // Clone here
                         ];
 
                         let result = service
