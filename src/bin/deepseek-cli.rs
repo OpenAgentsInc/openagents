@@ -177,7 +177,21 @@ async fn main() -> Result<()> {
                         print_colored("\nTool called: get_weather\n", Color::Yellow)?;
                         println!("Arguments: {}", tool_call.function.arguments);
 
-                        // Simulate weather service response
+                        // Initial user message
+                        let user_message = ChatMessage {
+                            role: "user".to_string(),
+                            content: format!("What's the weather in {}?", location),
+                            tool_call_id: None,
+                        };
+
+                        // Assistant message with tool call
+                        let assistant_message = ChatMessage {
+                            role: "assistant".to_string(),
+                            content: content.clone(),
+                            tool_call_id: None,
+                        };
+
+                        // Tool response message
                         let weather_message = ChatMessage {
                             role: "tool".to_string(),
                             content: "20°C and cloudy".to_string(),
@@ -185,31 +199,27 @@ async fn main() -> Result<()> {
                         };
 
                         if debug {
-                            println!("\nSending tool response:");
-                            println!("Role: {}", weather_message.role);
-                            println!("Content: {}", weather_message.content);
-                            println!("Tool call ID: {}", weather_message.tool_call_id.as_ref().unwrap());
+                            println!("\nSending messages:");
+                            println!("1. User message:");
+                            println!("   Role: {}", user_message.role);
+                            println!("   Content: {}", user_message.content);
+                            println!("2. Assistant message:");
+                            println!("   Role: {}", assistant_message.role);
+                            println!("   Content: {}", assistant_message.content);
+                            println!("3. Tool response:");
+                            println!("   Role: {}", weather_message.role);
+                            println!("   Content: {}", weather_message.content);
+                            println!("   Tool call ID: {}", weather_message.tool_call_id.as_ref().unwrap());
                         }
 
                         // Get final response
                         print_colored("\nGetting final response...\n", Color::Blue)?;
 
-                        let messages = vec![ChatMessage {
-                            role: "user".to_string(),
-                            content: format!("What's the weather in {}?", location),
-                            tool_call_id: None,
-                        }];
-
-                        if debug {
-                            println!("\nSending messages:");
-                            for msg in &messages {
-                                println!("Role: {}", msg.role);
-                                println!("Content: {}", msg.content);
-                                if let Some(id) = &msg.tool_call_id {
-                                    println!("Tool call ID: {}", id);
-                                }
-                            }
-                        }
+                        let messages = vec![
+                            user_message,
+                            assistant_message,
+                            weather_message,
+                        ];
 
                         let result = service
                             .chat_with_tool_response(
