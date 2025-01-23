@@ -160,7 +160,7 @@ async fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&get_weather_tool)?);
             }
 
-            // Initial user message - create a clone that we can use later
+            // Initial user message
             let user_message = ChatMessage {
                 role: "user".to_string(),
                 content: format!("What's the weather in {}?", location),
@@ -222,17 +222,16 @@ async fn main() -> Result<()> {
                         // Get final response
                         print_colored("\nGetting final response...\n", Color::Blue)?;
 
-                        // Create a new sequence of messages
+                        // Create a new sequence of messages - only include user and assistant messages
                         let messages = vec![
-                            user_message.clone(), // Clone here since we're in a loop
+                            user_message.clone(),
                             ChatMessage::from(assistant_message.clone()),
-                            weather_message.clone(),
                         ];
 
                         let result = service
                             .chat_with_tool_response(
                                 messages,
-                                weather_message,
+                                weather_message,  // This will be properly added as the tool response
                                 vec![get_weather_tool.clone()],
                                 false,
                             )
