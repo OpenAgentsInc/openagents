@@ -9,6 +9,7 @@ mod openrouter;
 mod repomap;
 mod solver;
 mod chat;
+mod nostr;
 
 pub use admin_middleware::*;
 pub use admin_routes::*;
@@ -21,3 +22,4 @@ pub use openrouter::*;
 pub use repomap::*;
 pub use solver::*;
 pub use chat::*;
+pub use nostr::*;
