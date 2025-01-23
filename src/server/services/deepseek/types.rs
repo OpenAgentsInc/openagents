@@ -32,7 +32,7 @@ impl From<AssistantMessage> for ChatMessage {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct ChatRequest {
+pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<ChatMessage>,
     pub stream: bool,
@@ -43,7 +43,7 @@ pub(crate) struct ChatRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct ChatChoice {
+pub struct ChatChoice {
     pub message: ChatResponseMessage,
 }
 
@@ -56,20 +56,20 @@ pub struct ChatResponseMessage {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct ChatResponse {
+pub struct ChatResponse {
     pub choices: Vec<ChatChoice>,
 }
 
 // Streaming response types
 #[derive(Debug, Deserialize)]
-pub(crate) struct StreamChoice {
+pub struct StreamChoice {
     pub delta: StreamDelta,
     pub finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
-pub(crate) struct StreamDelta {
+pub struct StreamDelta {
     pub content: Option<String>,
     pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCallResponse>>,
@@ -77,7 +77,7 @@ pub(crate) struct StreamDelta {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct StreamResponse {
+pub struct StreamResponse {
     pub choices: Vec<StreamChoice>,
 }
 
