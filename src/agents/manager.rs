@@ -55,14 +55,14 @@ impl AgentManager {
 
         sqlx::query!(
             r#"
-            INSERT INTO agents (id, name, description, pubkey, enabled, config, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            INSERT INTO agents (id, name, description, enabled, config, created_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
             "#,
             agent.id,
             agent.name,
             agent.description,
             agent.enabled,
-            config
+            config,
         )
         .execute(&self.pool)
         .await?;
