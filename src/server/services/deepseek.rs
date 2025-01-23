@@ -25,6 +25,8 @@ struct ChatRequest {
     stream: bool,
     temperature: f32,
     max_tokens: Option<i32>,
+    tools: Option<Vec<Tool>>,         // Add this
+    tool_choice: Option<ToolChoice>,  // Add this
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +38,7 @@ struct ChatChoice {
 struct ChatResponseMessage {
     content: String,
     reasoning_content: Option<String>,
+    tool_calls: Option<Vec<ToolCallResponse>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +69,51 @@ pub enum StreamUpdate {
     Content(String),
     Reasoning(String),
     Done,
+}
+
+// Tool/Function calling types
+#[derive(Debug, Serialize)]
+struct Tool {
+    #[serde(rename = "type")]
+    tool_type: String,
+    function: FunctionDefinition,
+}
+
+#[derive(Debug, Serialize)]
+struct FunctionDefinition {
+    name: String,
+    description: Option<String>,
+    parameters: serde_json::Value, // Using Value for flexible JSON Schema
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum ToolChoice {
+    Auto(String),      // "auto", "none", or "required"
+    Function {
+        #[serde(rename = "type")]
+        tool_type: String,
+        function: FunctionCall,
+    },
+}
+
+#[derive(Debug, Serialize)]
+struct FunctionCall {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolCallResponse {
+    id: String,
+    #[serde(rename = "type")]
+    tool_type: String,
+    function: FunctionCallResponse,
+}
+
+#[derive(Debug, Deserialize)]
+struct FunctionCallResponse {
+    name: String,
+    arguments: String,
 }
 
 impl DeepSeekService {
