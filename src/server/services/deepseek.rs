@@ -380,7 +380,7 @@ impl DeepSeekService {
                                                 }
                                                 if let Some(tool_calls) = choice.delta.tool_calls {
                                                     let _ = tx
-                                                        .send(StreamUpdate::ToolCalls(tool_calls))
+                                                        .send(StreamUpdate::ToolCalls(tool_calls.clone()))
                                                         .await;
                                                 }
                                                 if choice.finish_reason.is_some() {
