@@ -251,6 +251,22 @@ impl DeepSeekService {
             "deepseek-chat"
         };
 
+        // Find the assistant message with tool calls
+        let has_assistant_with_tools = messages
+            .iter()
+            .any(|msg| msg.role == "assistant" && msg.tool_calls.is_some());
+
+        if !has_assistant_with_tools {
+            return Err(anyhow::anyhow!(
+                "No assistant message with tool calls found"
+            ));
+        }
+
+        // Make sure tool response has tool_call_id
+        if tool_response.tool_call_id.is_none() {
+            return Err(anyhow::anyhow!("Tool response must have tool_call_id"));
+        }
+
         let mut all_messages = messages;
         all_messages.push(tool_response);
 

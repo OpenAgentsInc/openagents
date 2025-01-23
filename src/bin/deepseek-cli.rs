@@ -215,17 +215,17 @@ async fn main() -> Result<()> {
                             println!("3. Tool response:");
                             println!("   Role: {}", weather_message.role);
                             println!("   Content: {}", weather_message.content);
-                            println!("   Tool call ID: {}", weather_message.tool_call_id.as_ref().unwrap());
+                            println!(
+                                "   Tool call ID: {}",
+                                weather_message.tool_call_id.as_ref().unwrap()
+                            );
                         }
 
                         // Get final response
                         print_colored("\nGetting final response...\n", Color::Blue)?;
 
-                        let messages = vec![
-                            user_message,
-                            assistant_message,
-                            weather_message.clone(),
-                        ];
+                        let messages =
+                            vec![user_message, assistant_message, weather_message.clone()];
 
                         let result = service
                             .chat_with_tool_response(
