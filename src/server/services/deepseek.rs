@@ -36,7 +36,7 @@ struct ChatChoice {
     message: ChatResponseMessage,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ChatResponseMessage {
     content: String,
     reasoning_content: Option<String>,
