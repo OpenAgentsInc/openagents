@@ -18,10 +18,6 @@ use tracing::info;
 use openagents::{
     configuration::get_configuration,
     generate_repomap,
-    nostr::{
-        axum_relay::{ws_handler, RelayState},
-        db::Database,
-    },
     repomap,
     server::services::RepomapService,
     solver_page, ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
@@ -47,9 +43,6 @@ async fn main() {
     let repomap_service = Arc::new(RepomapService::new(aider_api_key.clone()));
     let solver_service = Arc::new(SolverService::new());
 
-    // Initialize Nostr components
-    let (event_tx, _) = broadcast::channel(1024);
-
     // Create database connection using configuration
     let db = Arc::new(
         Database::new_with_options(configuration.database.connect_options())
@@ -57,12 +50,7 @@ async fn main() {
             .expect("Failed to connect to database"),
     );
 
-    let relay_state = Arc::new(RelayState::new(event_tx, db));
-
     // Create separate routers for different state types
-    let nostr_router = Router::new()
-        .route("/ws", get(ws_handler))
-        .with_state(relay_state);
 
     let solver_router = Router::new()
         .route("/", get(solver_page))
@@ -86,7 +74,7 @@ async fn main() {
         .with_state(repomap_service);
 
     // Merge routers
-    let app = main_router.nest("/nostr", nostr_router).merge(app_router()); // Mount the WebSocket router
+    let app = main_router.merge(app_router());
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
