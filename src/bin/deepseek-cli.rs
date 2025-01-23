@@ -1,6 +1,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use openagents::server::services::{deepseek::DeepSeekService, StreamUpdate};
+use openagents::server::services::{
+    deepseek::{AssistantMessage, ChatMessage, DeepSeekService},
+    github_issue::GitHubService,
+    StreamUpdate,
+};
+use serde_json::json;
 use std::io::{stdout, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
@@ -9,10 +14,6 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-
-    /// Disable streaming output
-    #[arg(long)]
-    no_stream: bool,
 }
 
 #[derive(Subcommand)]
@@ -21,11 +22,48 @@ enum Commands {
     Chat {
         /// The message to send
         message: String,
+        /// Enable debug output
+        #[arg(long)]
+        debug: bool,
+        /// Disable streaming output
+        #[arg(long)]
+        no_stream: bool,
     },
     /// Reasoning mode with Chain of Thought
     Reason {
         /// The message to reason about
         message: String,
+        /// Enable debug output
+        #[arg(long)]
+        debug: bool,
+        /// Disable streaming output
+        #[arg(long)]
+        no_stream: bool,
+    },
+    /// Weather tool example
+    Weather {
+        /// The location to check weather for
+        location: String,
+        /// Enable debug output
+        #[arg(long)]
+        debug: bool,
+        /// Disable streaming output
+        #[arg(long)]
+        no_stream: bool,
+    },
+    /// GitHub issue tool example
+    Issue {
+        /// The issue number to fetch
+        issue_number: i32,
+        /// The repository owner
+        #[arg(long, default_value = "OpenAgentsInc")]
+        owner: String,
+        /// The repository name
+        #[arg(long, default_value = "openagents")]
+        repo: String,
+        /// Enable debug output
+        #[arg(long)]
+        debug: bool,
     },
 }
 
@@ -47,8 +85,12 @@ async fn main() -> Result<()> {
     let service = DeepSeekService::new(api_key);
 
     match cli.command {
-        Commands::Chat { message } => {
-            if cli.no_stream {
+        Commands::Chat {
+            message,
+            debug: _,
+            no_stream,
+        } => {
+            if no_stream {
                 let (response, _) = service.chat(message, false).await?;
                 println!("{}", response);
             } else {
@@ -66,8 +108,12 @@ async fn main() -> Result<()> {
                 println!();
             }
         }
-        Commands::Reason { message } => {
-            if cli.no_stream {
+        Commands::Reason {
+            message,
+            debug: _,
+            no_stream,
+        } => {
+            if no_stream {
                 let (response, reasoning) = service.chat(message, true).await?;
                 if let Some(reasoning) = reasoning {
                     print_colored("Reasoning:\n", Color::Yellow)?;
@@ -94,9 +140,297 @@ async fn main() -> Result<()> {
                             stdout().flush()?;
                         }
                         StreamUpdate::Done => break,
+                        _ => {}
                     }
                 }
                 println!();
+            }
+        }
+        Commands::Issue {
+            issue_number,
+            owner,
+            repo,
+            debug,
+        } => {
+            // Create GitHub issue tool
+            let get_issue_tool = DeepSeekService::create_tool(
+                "get_github_issue".to_string(),
+                Some("Get a GitHub issue by number".to_string()),
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "owner": {
+                            "type": "string",
+                            "description": "The owner of the repository"
+                        },
+                        "repo": {
+                            "type": "string",
+                            "description": "The name of the repository"
+                        },
+                        "issue_number": {
+                            "type": "integer",
+                            "description": "The issue number"
+                        }
+                    },
+                    "required": ["owner", "repo", "issue_number"]
+                }),
+            );
+
+            // Make initial request with tool
+            print_colored("Fetching GitHub issue...\n", Color::Blue)?;
+
+            if debug {
+                println!("\nSending initial request with tool definition:");
+                println!("{}", serde_json::to_string_pretty(&get_issue_tool)?);
+            }
+
+            // Initial user message
+            let user_message = ChatMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "What's in GitHub issue #{} in {}/{}?",
+                    issue_number, owner, repo
+                ),
+                tool_call_id: None,
+                tool_calls: None,
+            };
+
+            // Get initial response with tool call
+            let (content, _, tool_calls) = service
+                .chat_with_tools(
+                    format!(
+                        "What's in GitHub issue #{} in {}/{}?",
+                        issue_number, owner, repo
+                    ),
+                    vec![get_issue_tool.clone()],
+                    None,
+                    false,
+                )
+                .await?;
+
+            println!("Initial response: {}", content);
+
+            // If there's a tool call, handle it
+            if let Some(tool_calls) = tool_calls {
+                let tool_calls = tool_calls.clone();
+                for tool_call in &tool_calls {
+                    if tool_call.function.name == "get_github_issue" {
+                        print_colored("\nTool called: get_github_issue\n", Color::Yellow)?;
+                        println!("Arguments: {}", tool_call.function.arguments);
+
+                        // Create GitHub service and fetch issue
+                        let github_token = std::env::var("GITHUB_TOKEN").ok();
+                        let github_service = GitHubService::new(github_token);
+                        let issue = github_service
+                            .get_issue(&owner, &repo, issue_number)
+                            .await?;
+
+                        // Assistant message with tool call
+                        let assistant_message = AssistantMessage {
+                            role: "assistant".to_string(),
+                            content: format!(
+                                "Let me fetch GitHub issue #{} for you.",
+                                issue_number
+                            ),
+                            tool_call_id: None,
+                            tool_calls: Some(tool_calls.clone()),
+                        };
+
+                        // Tool response message
+                        let issue_message = ChatMessage {
+                            role: "tool".to_string(),
+                            content: serde_json::to_string(&issue)?,
+                            tool_call_id: Some(tool_call.id.clone()),
+                            tool_calls: None,
+                        };
+
+                        if debug {
+                            println!("\nSending messages:");
+                            println!("1. User message:");
+                            println!("   Role: {}", user_message.role);
+                            println!("   Content: {}", user_message.content);
+                            println!("2. Assistant message:");
+                            println!("   Role: {}", assistant_message.role);
+                            println!("   Content: {}", assistant_message.content);
+                            println!("   Tool calls: {:?}", tool_calls);
+                            println!("3. Tool response:");
+                            println!("   Role: {}", issue_message.role);
+                            println!("   Content: {}", issue_message.content);
+                            println!(
+                                "   Tool call ID: {}",
+                                issue_message.tool_call_id.as_ref().unwrap()
+                            );
+                        }
+
+                        // Get final response
+                        print_colored("\nGetting final response...\n", Color::Blue)?;
+
+                        // Create a new sequence of messages
+                        let messages =
+                            vec![user_message.clone(), ChatMessage::from(assistant_message)];
+
+                        let result = service
+                            .chat_with_tool_response(
+                                messages,
+                                issue_message,
+                                vec![get_issue_tool.clone()],
+                                false,
+                            )
+                            .await;
+
+                        match result {
+                            Ok((final_content, _, _)) => {
+                                print_colored("Final response: ", Color::Green)?;
+                                println!("{}", final_content);
+                            }
+                            Err(e) => {
+                                print_colored("Error getting final response: ", Color::Red)?;
+                                println!("{}", e);
+                                if debug {
+                                    println!("\nError details: {:#?}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                println!("No tool calls received");
+            }
+        }
+        Commands::Weather {
+            location,
+            debug,
+            no_stream: _,
+        } => {
+            // Create weather tool
+            let get_weather_tool = DeepSeekService::create_tool(
+                "get_weather".to_string(),
+                Some("Get weather for a location".to_string()),
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "The city name"
+                        }
+                    },
+                    "required": ["location"]
+                }),
+            );
+
+            // Make initial request with tool
+            print_colored("Asking about weather...\n", Color::Blue)?;
+
+            if debug {
+                println!("\nSending initial request with tool definition:");
+                println!("{}", serde_json::to_string_pretty(&get_weather_tool)?);
+            }
+
+            // Initial user message
+            let user_message = ChatMessage {
+                role: "user".to_string(),
+                content: format!("What's the weather in {}?", location),
+                tool_call_id: None,
+                tool_calls: None,
+            };
+
+            // Get initial response with tool call
+            let (content, _, tool_calls) = service
+                .chat_with_tools(
+                    format!("What's the weather in {}?", location),
+                    vec![get_weather_tool.clone()],
+                    None,
+                    false,
+                )
+                .await?;
+
+            println!("Initial response: {}", content);
+
+            // If there's a tool call, handle it
+            if let Some(tool_calls) = tool_calls {
+                let tool_calls = tool_calls.clone(); // Clone here to avoid move
+                for tool_call in &tool_calls {
+                    if tool_call.function.name == "get_weather" {
+                        print_colored("\nTool called: get_weather\n", Color::Yellow)?;
+                        println!("Arguments: {}", tool_call.function.arguments);
+
+                        // Assistant message with tool call
+                        let assistant_message = AssistantMessage {
+                            role: "assistant".to_string(),
+                            content: format!("Let me check the weather in {}.", location),
+                            tool_call_id: None,
+                            tool_calls: Some(tool_calls.clone()),
+                        };
+
+                        // Tool response message
+                        let weather_message = ChatMessage {
+                            role: "tool".to_string(),
+                            content: "20°C and cloudy".to_string(),
+                            tool_call_id: Some(tool_call.id.clone()),
+                            tool_calls: None,
+                        };
+
+                        if debug {
+                            println!("\nSending messages:");
+                            println!("1. User message:");
+                            println!("   Role: {}", user_message.role);
+                            println!("   Content: {}", user_message.content);
+                            println!("2. Assistant message:");
+                            println!("   Role: {}", assistant_message.role);
+                            println!("   Content: {}", assistant_message.content);
+                            println!("   Tool calls: {:?}", tool_calls);
+                            println!("3. Tool response:");
+                            println!("   Role: {}", weather_message.role);
+                            println!("   Content: {}", weather_message.content);
+                            println!(
+                                "   Tool call ID: {}",
+                                weather_message.tool_call_id.as_ref().unwrap()
+                            );
+                        }
+
+                        // Get final response
+                        print_colored("\nGetting final response...\n", Color::Blue)?;
+
+                        // Create a new sequence of messages - include all messages
+                        let messages = vec![
+                            user_message.clone(),
+                            ChatMessage::from(assistant_message), // Add the assistant message first
+                        ];
+
+                        let result = service
+                            .chat_with_tool_response(
+                                messages,
+                                weather_message, // This is the tool response
+                                vec![get_weather_tool.clone()],
+                                false,
+                            )
+                            .await;
+
+                        match result {
+                            Ok((final_content, _, _)) => {
+                                if final_content.trim().is_empty() {
+                                    print_colored("Final response: ", Color::Green)?;
+                                    println!(
+                                        "Based on the weather data, it is currently 20°C and cloudy in {}.",
+                                        location
+                                    );
+                                } else {
+                                    print_colored("Final response: ", Color::Green)?;
+                                    println!("{}", final_content);
+                                }
+                            }
+                            Err(e) => {
+                                print_colored("Error getting final response: ", Color::Red)?;
+                                println!("{}", e);
+                                if debug {
+                                    println!("\nError details: {:#?}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                println!("No tool calls received");
             }
         }
     }
