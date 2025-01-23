@@ -184,6 +184,7 @@ async fn main() -> Result<()> {
                             role: "user".to_string(),
                             content: format!("What's the weather in {}?", location),
                             tool_call_id: None,
+                            tool_calls: None,
                         };
 
                         // Assistant message with tool call
@@ -199,6 +200,7 @@ async fn main() -> Result<()> {
                             role: "tool".to_string(),
                             content: "20°C and cloudy".to_string(),
                             tool_call_id: Some(tool_call.id.clone()),
+                            tool_calls: None,
                         };
 
                         if debug {
