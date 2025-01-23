@@ -8,16 +8,16 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[command(subcommand)]
-    command: Commands,
+    /// Enable debug output
+    #[arg(long)]
+    debug: bool,
 
     /// Disable streaming output
     #[arg(long)]
     no_stream: bool,
 
-    /// Enable debug output
-    #[arg(long)]
-    debug: bool,
+    #[command(subcommand)]
+    command: Commands,
 }
 
 #[derive(Subcommand)]
