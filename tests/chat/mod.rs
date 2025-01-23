@@ -1,6 +1,6 @@
 use crate::server::services::deepseek::{
-    self,
-    types::{ChatMessage as DeepSeekMessage, StreamUpdate},
+    ChatMessage as DeepSeekMessage,
+    StreamUpdate,
     DeepSeekService,
 };
 use crate::server::services::github_issue::GitHubService;
@@ -109,6 +109,58 @@ async fn test_multiple_connections() {
     assert_eq!(remaining_history[0].content, "Hello from conn2");
 }
 
+#[tokio::test]
+async fn test_history_persistence() {
+    // Create test services
+    let ws_state = Arc::new(WebSocketState::new());
+    let deepseek_service = Arc::new(DeepSeekService::new("test_key".to_string()));
+    let github_service = Arc::new(GitHubService::new("test_token".to_string()));
+
+    // Create chat handler
+    let handler = ChatHandler::new(ws_state, deepseek_service, github_service);
+
+    // Test connection ID
+    let conn_id = "test_conn";
+
+    // Simulate a conversation
+    let messages = vec![
+        ("user", "Hello"),
+        ("assistant", "Hi! How can I help you?"),
+        ("user", "What's the weather?"),
+        ("assistant", "I don't have access to weather information."),
+    ];
+
+    // Add messages to history
+    for (role, content) in messages {
+        let message = DeepSeekMessage {
+            role: role.to_string(),
+            content: content.to_string(),
+            tool_call_id: None,
+            tool_calls: None,
+        };
+        handler.add_to_history(conn_id, message).await;
+    }
+
+    // Verify history
+    let history = handler.get_history(conn_id).await;
+    assert_eq!(history.len(), 4);
+
+    // Verify message order and content
+    assert_eq!(history[0].role, "user");
+    assert_eq!(history[0].content, "Hello");
+    assert_eq!(history[1].role, "assistant");
+    assert_eq!(history[1].content, "Hi! How can I help you?");
+    assert_eq!(history[2].role, "user");
+    assert_eq!(history[2].content, "What's the weather?");
+    assert_eq!(history[3].role, "assistant");
+    assert_eq!(history[3].content, "I don't have access to weather information.");
+
+    // Test cleanup
+    handler.cleanup_history(conn_id).await;
+    let empty_history = handler.get_history(conn_id).await;
+    assert_eq!(empty_history.len(), 0);
+}
+
 // Mock DeepSeekService for testing chat interactions
 struct MockDeepSeekService {
     history: Vec<DeepSeekMessage>,
@@ -198,4 +250,43 @@ async fn test_chat_interaction() {
     assert_eq!(history[2].role, "user");
     assert_eq!(history[2].content, "How are you?");
     assert_eq!(history[3].role, "assistant");
+}
+
+#[tokio::test]
+async fn test_history_cleanup() {
+    // Create test services
+    let ws_state = Arc::new(WebSocketState::new());
+    let deepseek_service = Arc::new(DeepSeekService::new("test_key".to_string()));
+    let github_service = Arc::new(GitHubService::new("test_token".to_string()));
+
+    // Create chat handler
+    let handler = ChatHandler::new(ws_state, deepseek_service, github_service);
+
+    // Create multiple connections
+    let connections = vec!["conn1", "conn2", "conn3"];
+
+    // Add messages to each connection
+    for conn_id in &connections {
+        let message = DeepSeekMessage {
+            role: "user".to_string(),
+            content: format!("Message from {}", conn_id),
+            tool_call_id: None,
+            tool_calls: None,
+        };
+        handler.add_to_history(conn_id, message).await;
+    }
+
+    // Verify each connection has history
+    for conn_id in &connections {
+        let history = handler.get_history(conn_id).await;
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].content, format!("Message from {}", conn_id));
+    }
+
+    // Clean up each connection
+    for conn_id in &connections {
+        handler.cleanup_history(conn_id).await;
+        let history = handler.get_history(conn_id).await;
+        assert_eq!(history.len(), 0, "History should be empty after cleanup");
+    }
 }
