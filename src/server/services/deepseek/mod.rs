@@ -4,9 +4,9 @@ mod tools;
 mod streaming;
 
 pub use types::*;
-pub use chat::*;
-pub use tools::*;
-pub use streaming::*;
+pub use chat::ChatRequest;
+pub use tools::create_tool;
+pub use streaming::chat_stream_with_history;
 
 use reqwest::Client;
 
