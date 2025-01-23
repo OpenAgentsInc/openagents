@@ -8,8 +8,6 @@ use axum::{
     http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse},
 };
-use bitcoin_hashes::{sha256, Hash};
-use secp256k1::{rand, KeyPair, Message, Secp256k1};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;

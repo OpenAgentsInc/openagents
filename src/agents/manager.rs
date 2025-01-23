@@ -73,7 +73,7 @@ impl AgentManager {
     pub async fn get_agent(&self, id: Uuid) -> Result<Agent> {
         let record = sqlx::query!(
             r#"
-            SELECT id, name, description, pubkey, enabled, config, 
+            SELECT id, name, description, enabled, config, 
                    EXTRACT(EPOCH FROM created_at)::BIGINT as created_at
             FROM agents WHERE id = $1
             "#,
