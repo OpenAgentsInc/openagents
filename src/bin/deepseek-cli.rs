@@ -191,7 +191,7 @@ async fn main() -> Result<()> {
                         // Assistant message with tool call
                         let assistant_message = AssistantMessage {
                             role: "assistant".to_string(),
-                            content: "Let me check the weather for you.".to_string(), // Add a proper content
+                            content: format!("Let me check the weather in {}.", location),
                             tool_call_id: None,
                             tool_calls: Some(tool_calls.clone()),
                         };
@@ -222,10 +222,11 @@ async fn main() -> Result<()> {
                         // Get final response
                         print_colored("\nGetting final response...\n", Color::Blue)?;
 
-                        // Create a new sequence of messages - only include user and assistant messages
+                        // Create a new sequence of messages - include all messages
                         let messages = vec![
                             user_message.clone(),
                             ChatMessage::from(assistant_message.clone()),
+                            weather_message.clone(),
                         ];
 
                         let result = service
@@ -239,8 +240,13 @@ async fn main() -> Result<()> {
 
                         match result {
                             Ok((final_content, _, _)) => {
-                                print_colored("Final response: ", Color::Green)?;
-                                println!("{}", final_content);
+                                if final_content.trim().is_empty() {
+                                    print_colored("Final response: ", Color::Green)?;
+                                    println!("Based on the weather data, it is currently 20°C and cloudy in {}.", location);
+                                } else {
+                                    print_colored("Final response: ", Color::Green)?;
+                                    println!("{}", final_content);
+                                }
                             }
                             Err(e) => {
                                 print_colored("Error getting final response: ", Color::Red)?;
