@@ -14,6 +14,10 @@ struct Cli {
     /// Disable streaming output
     #[arg(long)]
     no_stream: bool,
+
+    /// Enable debug output
+    #[arg(long)]
+    debug: bool,
 }
 
 #[derive(Subcommand)]
@@ -124,6 +128,12 @@ async fn main() -> Result<()> {
 
             // Make initial request with tool
             print_colored("Asking about weather...\n", Color::Blue)?;
+            
+            if cli.debug {
+                println!("\nSending initial request with tool definition:");
+                println!("{}", serde_json::to_string_pretty(&get_weather_tool)?);
+            }
+
             let (content, _, tool_calls) = service
                 .chat_with_tools(
                     format!("What's the weather in {}?", location),
@@ -148,24 +158,54 @@ async fn main() -> Result<()> {
                             content: "20°C and cloudy".to_string(),
                         };
 
+                        if cli.debug {
+                            println!("\nSending tool response:");
+                            println!("Role: {}", weather_message.role);
+                            println!("Content: {}", weather_message.content);
+                        }
+
                         // Get final response
                         print_colored("\nGetting final response...\n", Color::Blue)?;
-                        let (final_content, _, _) = service
+                        
+                        let messages = vec![ChatMessage {
+                            role: "user".to_string(),
+                            content: format!("What's the weather in {}?", location),
+                        }];
+
+                        if cli.debug {
+                            println!("\nSending messages:");
+                            for msg in &messages {
+                                println!("Role: {}", msg.role);
+                                println!("Content: {}", msg.content);
+                            }
+                        }
+
+                        let result = service
                             .chat_with_tool_response(
-                                vec![ChatMessage {
-                                    role: "user".to_string(),
-                                    content: format!("What's the weather in {}?", location),
-                                }],
+                                messages,
                                 weather_message,
                                 vec![get_weather_tool.clone()],
                                 false,
                             )
-                            .await?;
+                            .await;
 
-                        print_colored("Final response: ", Color::Green)?;
-                        println!("{}", final_content);
+                        match result {
+                            Ok((final_content, _, _)) => {
+                                print_colored("Final response: ", Color::Green)?;
+                                println!("{}", final_content);
+                            }
+                            Err(e) => {
+                                print_colored("Error getting final response: ", Color::Red)?;
+                                println!("{}", e);
+                                if cli.debug {
+                                    println!("\nError details: {:#?}", e);
+                                }
+                            }
+                        }
                     }
                 }
+            } else {
+                println!("No tool calls received");
             }
         }
     }
