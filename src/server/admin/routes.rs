@@ -165,7 +165,6 @@ pub async fn admin_login_post(Form(form): Form<LoginForm>) -> impl IntoResponse 
     }
 }
 
-
 pub fn admin_routes() -> axum::Router {
     // Create shared solver service and WebSocket state
     let solver_service = Arc::new(SolverService::new());

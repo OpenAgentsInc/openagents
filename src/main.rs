@@ -15,10 +15,7 @@ use tower_http::services::ServeDir;
 use tracing::info;
 
 use openagents::{
-    configuration::get_configuration,
-    generate_repomap,
-    repomap,
-    server::services::RepomapService,
+    configuration::get_configuration, generate_repomap, repomap, server::services::RepomapService,
     solver_page, ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
 };
 

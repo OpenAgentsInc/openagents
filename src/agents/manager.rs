@@ -35,7 +35,6 @@ impl AgentManager {
         description: &str,
         config: serde_json::Value,
     ) -> Result<Agent> {
-
         // Validate and normalize config
         let config = self.validate_agent_config(config)?;
 
