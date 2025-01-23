@@ -378,7 +378,7 @@ impl DeepSeekService {
                                                         ))
                                                         .await;
                                                 }
-                                                if let Some(tool_calls) = choice.delta.tool_calls {
+                                                if let Some(tool_calls) = &choice.delta.tool_calls {
                                                     let _ = tx
                                                         .send(StreamUpdate::ToolCalls(tool_calls.clone()))
                                                         .await;
