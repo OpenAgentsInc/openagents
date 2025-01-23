@@ -174,6 +174,7 @@ impl DeepSeekService {
         let messages = vec![ChatMessage {
             role: "user".to_string(),
             content: prompt,
+            tool_call_id: None,
         }];
 
         let request = ChatRequest {
@@ -298,6 +299,7 @@ impl DeepSeekService {
             let messages = vec![ChatMessage {
                 role: "user".to_string(),
                 content: prompt,
+                tool_call_id: None,
             }];
 
             let request = ChatRequest {
@@ -404,6 +406,7 @@ impl DeepSeekService {
         let messages = vec![ChatMessage {
             role: "user".to_string(),
             content: prompt,
+            tool_call_id: None,
         }];
 
         let request = ChatRequest {
