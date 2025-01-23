@@ -11,7 +11,6 @@ use openagents::{
 };
 use serde_json::json;
 use std::{env, path::PathBuf, sync::Arc};
-use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
 use tracing::info;
 
@@ -42,13 +41,6 @@ async fn main() {
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
     let repomap_service = Arc::new(RepomapService::new(aider_api_key.clone()));
     let solver_service = Arc::new(SolverService::new());
-
-    // Create database connection using configuration
-    let db = Arc::new(
-        Database::new_with_options(configuration.database.connect_options())
-            .await
-            .expect("Failed to connect to database"),
-    );
 
     // Create separate routers for different state types
 
