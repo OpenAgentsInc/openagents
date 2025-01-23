@@ -58,7 +58,7 @@ CREATE TABLE tasks (
     ended_at TIMESTAMP,
     error TEXT,
     CONSTRAINT valid_status CHECK (status IN ('Pending', 'Scheduled', 'Running', 'Completed', 'Failed', 'Cancelled')),
-    CONSTRAINT valid_priority CHECK (priority BETWEEN 1 AND 100)
+    CONSTRAINT valid_priority CHECK (priority BETWEEN 0 AND 255)
 );
 
 -- Metrics table for resource monitoring
