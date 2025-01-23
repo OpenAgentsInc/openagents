@@ -20,6 +20,16 @@ pub struct ChatMessage {
     pub tool_call_id: Option<String>, 
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct AssistantMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCallResponse>>,
+}
+
 #[derive(Debug, Serialize)]
 struct ChatRequest {
     model: String,
