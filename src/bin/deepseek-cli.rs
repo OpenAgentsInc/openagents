@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Chat {
             message,
-            _debug,
+            debug: _,
             no_stream,
         } => {
             if no_stream {
@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
         }
         Commands::Reason {
             message,
-            _debug,
+            debug: _,
             no_stream,
         } => {
             if no_stream {
@@ -125,6 +125,7 @@ async fn main() -> Result<()> {
                             stdout().flush()?;
                         }
                         StreamUpdate::Done => break,
+                        _ => {}
                     }
                 }
                 println!();
@@ -133,7 +134,7 @@ async fn main() -> Result<()> {
         Commands::Weather {
             location,
             debug,
-            _no_stream,
+            no_stream: _,
         } => {
             // Create weather tool
             let get_weather_tool = DeepSeekService::create_tool(
@@ -207,14 +208,11 @@ async fn main() -> Result<()> {
                             println!("2. Assistant message:");
                             println!("   Role: {}", assistant_message.role);
                             println!("   Content: {}", assistant_message.content);
-                            println!("   Tool calls: {:?}", tool_calls); // Now we can use tool_calls
+                            println!("   Tool calls: {:?}", tool_calls);  // Now we can use tool_calls
                             println!("3. Tool response:");
                             println!("   Role: {}", weather_message.role);
                             println!("   Content: {}", weather_message.content);
-                            println!(
-                                "   Tool call ID: {}",
-                                weather_message.tool_call_id.as_ref().unwrap()
-                            );
+                            println!("   Tool call ID: {}", weather_message.tool_call_id.as_ref().unwrap());
                         }
 
                         // Get final response
