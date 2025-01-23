@@ -18,6 +18,8 @@ pub struct ChatMessage {
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCallResponse>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -36,6 +38,7 @@ impl From<AssistantMessage> for ChatMessage {
             role: msg.role,
             content: msg.content,
             tool_call_id: msg.tool_call_id,
+            tool_calls: msg.tool_calls,
         }
     }
 }
@@ -199,6 +202,7 @@ impl DeepSeekService {
             role: "user".to_string(),
             content: prompt,
             tool_call_id: None,
+            tool_calls: None,
         }];
 
         let request = ChatRequest {
@@ -324,6 +328,7 @@ impl DeepSeekService {
                 role: "user".to_string(),
                 content: prompt,
                 tool_call_id: None,
+                tool_calls: None,
             }];
 
             let request = ChatRequest {
@@ -438,6 +443,7 @@ impl DeepSeekService {
             role: "user".to_string(),
             content: prompt,
             tool_call_id: None,
+            tool_calls: None,
         }];
 
         let request = ChatRequest {
