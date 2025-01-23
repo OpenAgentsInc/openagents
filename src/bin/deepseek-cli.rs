@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use openagents::server::services::{
-    deepseek::{ChatMessage, DeepSeekService},
+    deepseek::{AssistantMessage, ChatMessage, DeepSeekService},
     StreamUpdate,
 };
 use serde_json::json;
@@ -188,7 +188,7 @@ async fn main() -> Result<()> {
                         };
 
                         // Assistant message with tool call
-                        let assistant_message = ChatMessage {
+                        let assistant_message = AssistantMessage {
                             role: "assistant".to_string(),
                             content: content.clone(),
                             tool_call_id: None,
@@ -224,7 +224,7 @@ async fn main() -> Result<()> {
                         // Create a new sequence of messages
                         let messages = vec![
                             user_message,
-                            assistant_message,
+                            ChatMessage::from(assistant_message.clone()),
                             weather_message.clone(),
                         ];
 
