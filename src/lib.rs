@@ -5,7 +5,7 @@ pub mod emailoptin;
 pub mod nostr;
 pub mod server;
 
-pub use server::services::handle_solver;
+pub use server::services::solver::handle_solver;
 
 use askama::Template;
 use axum::{
