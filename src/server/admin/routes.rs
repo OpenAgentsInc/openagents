@@ -1,4 +1,3 @@
-use crate::nostr::event::Event;
 use crate::server::services::{
     solver::ws::{ws_handler, SolverWsState},
     solver::SolverService,
