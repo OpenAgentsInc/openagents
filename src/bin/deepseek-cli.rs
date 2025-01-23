@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use openagents::server::services::{deepseek::DeepSeekService, StreamUpdate};
+use serde_json::json;
 use std::io::{stdout, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
@@ -26,6 +27,11 @@ enum Commands {
     Reason {
         /// The message to reason about
         message: String,
+    },
+    /// Weather tool example
+    Weather {
+        /// The location to check weather for
+        location: String,
     },
 }
 
@@ -97,6 +103,69 @@ async fn main() -> Result<()> {
                     }
                 }
                 println!();
+            }
+        }
+        Commands::Weather { location } => {
+            // Create weather tool
+            let get_weather_tool = DeepSeekService::create_tool(
+                "get_weather".to_string(),
+                Some("Get weather for a location".to_string()),
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "The city name"
+                        }
+                    },
+                    "required": ["location"]
+                }),
+            );
+
+            // Make initial request with tool
+            print_colored("Asking about weather...\n", Color::Blue)?;
+            let (content, _, tool_calls) = service
+                .chat_with_tools(
+                    format!("What's the weather in {}?", location),
+                    vec![get_weather_tool.clone()],
+                    None,
+                    false,
+                )
+                .await?;
+
+            println!("Initial response: {}", content);
+
+            // If there's a tool call, handle it
+            if let Some(tool_calls) = tool_calls {
+                for tool_call in tool_calls {
+                    if tool_call.function.name == "get_weather" {
+                        print_colored("\nTool called: get_weather\n", Color::Yellow)?;
+                        println!("Arguments: {}", tool_call.function.arguments);
+
+                        // Simulate weather service response
+                        let weather_message = ChatMessage {
+                            role: "tool".to_string(),
+                            content: "20°C and cloudy".to_string(),
+                        };
+
+                        // Get final response
+                        print_colored("\nGetting final response...\n", Color::Blue)?;
+                        let (final_content, _, _) = service
+                            .chat_with_tool_response(
+                                vec![ChatMessage {
+                                    role: "user".to_string(),
+                                    content: format!("What's the weather in {}?", location),
+                                }],
+                                weather_message,
+                                vec![get_weather_tool.clone()],
+                                false,
+                            )
+                            .await?;
+
+                        print_colored("Final response: ", Color::Green)?;
+                        println!("{}", final_content);
+                    }
+                }
             }
         }
     }
