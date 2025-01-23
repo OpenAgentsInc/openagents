@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use openagents::server::services::{deepseek::DeepSeekService, StreamUpdate};
+use openagents::server::services::{deepseek::{DeepSeekService, ChatMessage}, StreamUpdate};
 use serde_json::json;
 use std::io::{stdout, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
