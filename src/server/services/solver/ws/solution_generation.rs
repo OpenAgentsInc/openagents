@@ -71,6 +71,9 @@ impl super::super::SolverService {
                     });
                 }
                 StreamUpdate::Done => break,
+                StreamUpdate::ToolCalls(_) => {
+                    // Ignore tool calls in solution generation
+                }
             }
         }
 

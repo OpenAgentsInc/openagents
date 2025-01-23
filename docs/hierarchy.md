@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-21 16:05:12
+Generated on: 2025-01-23 11:57:51
 
 ### Structure
 
@@ -88,6 +88,14 @@ Generated on: 2025-01-21 16:05:12
 |   |   |   |-- mod.rs
 |   |   |   |-- openrouter.rs
 |   |   |   `-- repomap.rs
+|   |   |-- ws/
+|   |   |   |-- handlers/
+|   |   |   |   |-- chat.rs
+|   |   |   |   |-- mod.rs
+|   |   |   |   `-- solver.rs
+|   |   |   |-- mod.rs
+|   |   |   |-- transport.rs
+|   |   |   `-- types.rs
 |   |   |-- config.rs
 |   |   `-- mod.rs
 |   |-- configuration.rs
@@ -104,6 +112,15 @@ Generated on: 2025-01-21 16:05:12
 |   |   |-- dashboard.html
 |   |   `-- login.html
 |   |-- components/
+|   |   |-- chat/
+|   |   |   |-- error_section.html
+|   |   |   |-- head_scripts.html
+|   |   |   |-- header.html
+|   |   |   |-- main_chat.html
+|   |   |   |-- sidebar_left.html
+|   |   |   |-- sidebar_right.html
+|   |   |   |-- templates.html
+|   |   |   `-- websocket_scripts.html
 |   |   |-- features.html
 |   |   `-- hero.html
 |   |-- layouts/
@@ -115,6 +132,7 @@ Generated on: 2025-01-21 16:05:12
 |   |   |-- blog.html
 |   |   |-- blog_post.html
 |   |   |-- nav.html
+|   |   |-- ui.html
 |   |   `-- video.html
 |   |-- pages/
 |   |   |-- 404.html
@@ -165,5 +183,5 @@ Generated on: 2025-01-21 16:05:12
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-29 directories, 130 files
+32 directories, 145 files
 ```
