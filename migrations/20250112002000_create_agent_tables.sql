@@ -5,11 +5,9 @@ CREATE TABLE agents (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
-    pubkey TEXT NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT true,
     config JSONB NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    CONSTRAINT valid_pubkey CHECK (length(pubkey) = 64)
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- Agent instances table for running instances

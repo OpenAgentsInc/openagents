@@ -9,8 +9,6 @@ pub struct Agent {
     pub name: String,
     // Detailed description of the agent's purpose and capabilities
     pub description: String,
-    // Nostr public key for agent identification and messaging
-    pub pubkey: String,
     // Whether this agent definition is enabled for creating new instances
     pub enabled: bool,
     // JSON configuration settings
