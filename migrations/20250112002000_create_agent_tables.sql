@@ -5,11 +5,9 @@ CREATE TABLE agents (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
-    pubkey TEXT NOT NULL,
     enabled BOOLEAN NOT NULL DEFAULT true,
     config JSONB NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    CONSTRAINT valid_pubkey CHECK (length(pubkey) = 64)
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- Agent instances table for running instances
@@ -60,7 +58,7 @@ CREATE TABLE tasks (
     ended_at TIMESTAMP,
     error TEXT,
     CONSTRAINT valid_status CHECK (status IN ('Pending', 'Scheduled', 'Running', 'Completed', 'Failed', 'Cancelled')),
-    CONSTRAINT valid_priority CHECK (priority BETWEEN 1 AND 100)
+    CONSTRAINT valid_priority CHECK (priority BETWEEN 0 AND 255)
 );
 
 -- Metrics table for resource monitoring
@@ -76,7 +74,6 @@ CREATE TABLE agent_metrics (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_agents_pubkey ON agents(pubkey);
 CREATE INDEX idx_agent_instances_agent_id ON agent_instances(agent_id);
 CREATE INDEX idx_agent_instances_status ON agent_instances(status);
 CREATE INDEX idx_agent_states_instance_id ON agent_states(instance_id);
