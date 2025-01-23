@@ -313,7 +313,7 @@ impl DeepSeekService {
             temperature: 0.7,
             max_tokens: None,
             tools: Some(tools),
-            tool_choice: None,
+            tool_choice: Some(ToolChoice::Auto("none".to_string())),
         };
 
         let url = format!("{}/chat/completions", self.base_url);
