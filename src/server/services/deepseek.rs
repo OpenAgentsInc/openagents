@@ -14,8 +14,8 @@ pub struct DeepSeekService {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ChatMessage {
-    role: String,
-    content: String,
+    pub role: String,
+    pub content: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -88,7 +88,7 @@ pub struct FunctionDefinition {
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
-enum ToolChoice {
+pub enum ToolChoice {
     Auto(String), // "auto", "none", or "required"
     Function {
         #[serde(rename = "type")]
