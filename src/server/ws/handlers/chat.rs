@@ -1,79 +1,146 @@
-use crate::server::{
-    services::{deepseek::StreamUpdate, ChatService},
-    ws::types::{ChatRequest, ChatResponse},
-};
-use futures::StreamExt;
+use super::MessageHandler;
+use crate::server::services::DeepSeekService;
+use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
+use async_trait::async_trait;
+use serde_json::json;
+use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
-use tokio_tungstenite::tungstenite::Message;
-use tracing::error;
+use tracing::{error, info};
 
-pub async fn handle_chat(service: Arc<ChatService>, tx: Sender<Message>, request: ChatRequest) {
-    let mut stream = service.chat(request.message).await;
+pub struct ChatHandler {
+    ws_state: Arc<WebSocketState>,
+    deepseek_service: Arc<DeepSeekService>,
+}
 
-    let mut current_content = String::new();
-    let mut current_reasoning = String::new();
+impl ChatHandler {
+    pub fn new(ws_state: Arc<WebSocketState>, deepseek_service: Arc<DeepSeekService>) -> Self {
+        Self {
+            ws_state,
+            deepseek_service,
+        }
+    }
 
-    while let Some(update) = stream.recv().await {
-        match update {
-            StreamUpdate::Content(text) => {
-                current_content.push_str(&text);
-                if let Err(e) = tx
-                    .send(Message::Text(
-                        serde_json::to_string(&ChatResponse {
-                            kind: "content".to_string(),
-                            content: current_content.clone(),
-                        })
-                        .unwrap_or_default(),
-                    ))
-                    .await
-                {
-                    error!("Failed to send content: {}", e);
+    async fn process_message(
+        &self,
+        content: String,
+        conn_id: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        info!("Processing message: {}", content);
+
+        // Get streaming response from DeepSeek
+        let mut stream = self.deepseek_service.chat_stream(content, true).await;
+
+        // Send "typing" indicator
+        let typing_json = json!({
+            "type": "chat",
+            "content": "...",
+            "sender": "ai",
+            "status": "typing"
+        });
+        self.ws_state
+            .send_to(conn_id, &typing_json.to_string())
+            .await?;
+
+        // Accumulate the full response while sending stream updates
+        let mut full_response = String::new();
+        while let Some(update) = stream.recv().await {
+            match update {
+                crate::server::services::deepseek::StreamUpdate::Content(content) => {
+                    full_response.push_str(&content);
+
+                    // Send partial response
+                    let response_json = json!({
+                        "type": "chat",
+                        "content": &content,
+                        "sender": "ai",
+                        "status": "streaming"
+                    });
+                    self.ws_state
+                        .send_to(conn_id, &response_json.to_string())
+                        .await?;
                 }
-            }
-            StreamUpdate::Reasoning(text) => {
-                current_reasoning.push_str(&text);
-                if let Err(e) = tx
-                    .send(Message::Text(
-                        serde_json::to_string(&ChatResponse {
-                            kind: "reasoning".to_string(),
-                            content: current_reasoning.clone(),
-                        })
-                        .unwrap_or_default(),
-                    ))
-                    .await
-                {
-                    error!("Failed to send reasoning: {}", e);
+                crate::server::services::deepseek::StreamUpdate::Reasoning(reasoning) => {
+                    // Send reasoning update
+                    let reasoning_json = json!({
+                        "type": "chat",
+                        "content": &reasoning,
+                        "sender": "ai",
+                        "status": "thinking"
+                    });
+                    self.ws_state
+                        .send_to(conn_id, &reasoning_json.to_string())
+                        .await?;
                 }
-            }
-            StreamUpdate::Done => {
-                if let Err(e) = tx
-                    .send(Message::Text(
-                        serde_json::to_string(&ChatResponse {
-                            kind: "done".to_string(),
-                            content: String::new(),
-                        })
-                        .unwrap_or_default(),
-                    ))
-                    .await
-                {
-                    error!("Failed to send done message: {}", e);
+                crate::server::services::deepseek::StreamUpdate::Done => {
+                    // Send final complete message
+                    let response_json = json!({
+                        "type": "chat",
+                        "content": full_response,
+                        "sender": "ai",
+                        "status": "complete"
+                    });
+                    self.ws_state
+                        .send_to(conn_id, &response_json.to_string())
+                        .await?;
+                    break;
                 }
-            }
-            StreamUpdate::ToolCalls(tool_calls) => {
-                if let Err(e) = tx
-                    .send(Message::Text(
-                        serde_json::to_string(&ChatResponse {
-                            kind: "tool_calls".to_string(),
-                            content: serde_json::to_string(&tool_calls).unwrap_or_default(),
-                        })
-                        .unwrap_or_default(),
-                    ))
-                    .await
-                {
-                    error!("Failed to send tool calls: {}", e);
+                crate::server::services::deepseek::StreamUpdate::ToolCalls(tool_calls) => {
+                    // Send tool calls update
+                    let tool_calls_json = json!({
+                        "type": "chat",
+                        "content": serde_json::to_string(&tool_calls).unwrap_or_default(),
+                        "sender": "ai",
+                        "status": "tool_calls"
+                    });
+                    self.ws_state
+                        .send_to(conn_id, &tool_calls_json.to_string())
+                        .await?;
                 }
             }
         }
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl MessageHandler for ChatHandler {
+    type Message = ChatMessage;
+
+    async fn handle_message(
+        &self,
+        msg: Self::Message,
+        conn_id: String,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        info!("Handling chat message: {:?}", msg);
+        match msg {
+            ChatMessage::UserMessage { content } => {
+                match self.process_message(content, &conn_id).await {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        error!("Error processing message: {}", e);
+                        let error_json = json!({
+                            "type": "chat",
+                            "content": format!("Error: {}", e),
+                            "sender": "system",
+                            "status": "error"
+                        });
+                        self.ws_state
+                            .send_to(&conn_id, &error_json.to_string())
+                            .await?;
+                        Ok(())
+                    }
+                }
+            }
+            _ => {
+                error!("Unhandled message type: {:?}", msg);
+                Ok(())
+            }
+        }
+    }
+
+    async fn broadcast(&self, _msg: Self::Message) -> Result<(), Box<dyn Error + Send + Sync>> {
+        // Implement if needed
+        Ok(())
     }
 }
