@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::handlers::{chat::ChatHandler, solver::SolverHandler, MessageHandler};
 use super::types::ChatMessage;
-use crate::server::services::{DeepSeekService, github_issue::GitHubService};
+use crate::server::services::{github_issue::GitHubService, DeepSeekService};
 
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
@@ -18,7 +18,10 @@ pub struct WebSocketState {
 }
 
 impl WebSocketState {
-    pub fn new(deepseek_service: Arc<DeepSeekService>, github_service: Arc<GitHubService>) -> Arc<Self> {
+    pub fn new(
+        deepseek_service: Arc<DeepSeekService>,
+        github_service: Arc<GitHubService>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             deepseek_service,

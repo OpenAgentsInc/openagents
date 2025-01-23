@@ -5,7 +5,7 @@ pub mod handlers;
 pub mod transport;
 pub mod types;
 
-use crate::server::services::{DeepSeekService, github_issue::GitHubService};
+use crate::server::services::{github_issue::GitHubService, DeepSeekService};
 use transport::WebSocketState;
 
 pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {

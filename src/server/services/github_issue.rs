@@ -25,7 +25,12 @@ impl GitHubService {
         }
     }
 
-    pub async fn get_issue(&self, owner: &str, repo: &str, issue_number: i32) -> Result<GitHubIssue> {
+    pub async fn get_issue(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue_number: i32,
+    ) -> Result<GitHubIssue> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/issues/{}",
             owner, repo, issue_number

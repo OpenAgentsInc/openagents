@@ -187,7 +187,10 @@ async fn main() -> Result<()> {
             // Initial user message
             let user_message = ChatMessage {
                 role: "user".to_string(),
-                content: format!("What's in GitHub issue #{} in {}/{}?", issue_number, owner, repo),
+                content: format!(
+                    "What's in GitHub issue #{} in {}/{}?",
+                    issue_number, owner, repo
+                ),
                 tool_call_id: None,
                 tool_calls: None,
             };
@@ -195,7 +198,10 @@ async fn main() -> Result<()> {
             // Get initial response with tool call
             let (content, _, tool_calls) = service
                 .chat_with_tools(
-                    format!("What's in GitHub issue #{} in {}/{}?", issue_number, owner, repo),
+                    format!(
+                        "What's in GitHub issue #{} in {}/{}?",
+                        issue_number, owner, repo
+                    ),
                     vec![get_issue_tool.clone()],
                     None,
                     false,
@@ -215,12 +221,17 @@ async fn main() -> Result<()> {
                         // Create GitHub service and fetch issue
                         let github_token = std::env::var("GITHUB_TOKEN").ok();
                         let github_service = GitHubService::new(github_token);
-                        let issue = github_service.get_issue(&owner, &repo, issue_number).await?;
+                        let issue = github_service
+                            .get_issue(&owner, &repo, issue_number)
+                            .await?;
 
                         // Assistant message with tool call
                         let assistant_message = AssistantMessage {
                             role: "assistant".to_string(),
-                            content: format!("Let me fetch GitHub issue #{} for you.", issue_number),
+                            content: format!(
+                                "Let me fetch GitHub issue #{} for you.",
+                                issue_number
+                            ),
                             tool_call_id: None,
                             tool_calls: Some(tool_calls.clone()),
                         };
@@ -255,10 +266,8 @@ async fn main() -> Result<()> {
                         print_colored("\nGetting final response...\n", Color::Blue)?;
 
                         // Create a new sequence of messages
-                        let messages = vec![
-                            user_message.clone(),
-                            ChatMessage::from(assistant_message),
-                        ];
+                        let messages =
+                            vec![user_message.clone(), ChatMessage::from(assistant_message)];
 
                         let result = service
                             .chat_with_tool_response(
