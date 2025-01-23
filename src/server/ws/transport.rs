@@ -7,7 +7,7 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info};
 use uuid::Uuid;
 
-use super::handlers::{chat::ChatHandler, solver::SolverHandler, MessageHandler};
+use super::handlers::{chat::ChatHandler, MessageHandler};
 use super::types::ChatMessage;
 use crate::server::services::{github_issue::GitHubService, DeepSeekService};
 
@@ -29,24 +29,15 @@ impl WebSocketState {
         })
     }
 
-    pub fn create_handlers(
-        ws_state: Arc<WebSocketState>,
-    ) -> (Arc<ChatHandler>, Arc<SolverHandler>) {
-        let chat_handler = Arc::new(ChatHandler::new(
+    pub fn create_handlers(ws_state: Arc<WebSocketState>) -> Arc<ChatHandler> {
+        Arc::new(ChatHandler::new(
             ws_state.clone(),
             ws_state.deepseek_service.clone(),
             ws_state.github_service.clone(),
-        ));
-        let solver_handler = Arc::new(SolverHandler::new());
-        (chat_handler, solver_handler)
+        ))
     }
 
-    pub async fn handle_socket(
-        self: Arc<Self>,
-        socket: WebSocket,
-        chat_handler: Arc<ChatHandler>,
-        solver_handler: Arc<SolverHandler>,
-    ) {
+    pub async fn handle_socket(self: Arc<Self>, socket: WebSocket, chat_handler: Arc<ChatHandler>) {
         let (mut sender, mut receiver) = socket.split();
         let (tx, mut rx) = mpsc::unbounded_channel();
 
@@ -119,21 +110,6 @@ impl WebSocketState {
                                                 .await
                                             {
                                                 error!("Error handling chat message: {}", e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Some("solver") => {
-                                    info!("Processing solver message");
-                                    if let Some(message) = data.get("message") {
-                                        if let Ok(solver_msg) =
-                                            serde_json::from_value(message.clone())
-                                        {
-                                            if let Err(e) = solver_handler
-                                                .handle_message(solver_msg, receive_conn_id.clone())
-                                                .await
-                                            {
-                                                error!("Error handling solver message: {}", e);
                                             }
                                         }
                                     }

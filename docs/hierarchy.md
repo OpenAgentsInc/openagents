@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-23 11:57:51
+Generated on: 2025-01-23 16:45:05
 
 ### Structure
 
@@ -24,26 +24,10 @@ Generated on: 2025-01-23 11:57:51
 |   |-- local.yaml
 |   `-- production.yaml
 |-- docs/
-|   |-- ai-slop/
-|   |   |-- genesis.md
-|   |   |-- old-README.md
-|   |   `-- protocols.md
-|   |-- episode-transcriptions/
-|   |   |-- 001.md
-|   |   |-- 095.md
-|   |   |-- 138.md
-|   |   |-- 139.md
-|   |   `-- 140.md
+|   |-- adding-tools.md
 |   |-- chat_template.md
 |   |-- configuration.md
 |   |-- hierarchy.md
-|   |-- htmx-nostr-chat.md
-|   |-- newsletter.md
-|   |-- prompt.md
-|   |-- repomap.md
-|   |-- rust-setup.md
-|   |-- solver-streaming.md
-|   |-- solver.md
 |   `-- templates.md
 |-- migrations/
 |   |-- 20250110000000_initial.sql
@@ -54,39 +38,15 @@ Generated on: 2025-01-23 11:57:51
 |   |-- init_db.sh*
 |   `-- init_redis.sh*
 |-- src/
-|   |-- agents/
-|   |   |-- agent.rs
-|   |   |-- manager.rs
-|   |   `-- mod.rs
 |   |-- bin/
 |   |   `-- deepseek-cli.rs
-|   |-- nostr/
-|   |   |-- axum_relay.rs
-|   |   |-- db.rs
-|   |   |-- event.rs
-|   |   |-- mod.rs
-|   |   `-- subscription.rs
 |   |-- server/
-|   |   |-- admin/
-|   |   |   |-- middleware.rs
-|   |   |   |-- mod.rs
-|   |   |   `-- routes.rs
 |   |   |-- services/
-|   |   |   |-- solver/
-|   |   |   |   |-- ws/
-|   |   |   |   |   |-- files_analysis.rs
-|   |   |   |   |   |-- html_formatting.rs
-|   |   |   |   |   |-- mod.rs
-|   |   |   |   |   |-- solution_generation.rs
-|   |   |   |   |   |-- transport.rs
-|   |   |   |   |   |-- types.rs
-|   |   |   |   |   `-- url_parsing.rs
-|   |   |   |   `-- mod.rs
 |   |   |   |-- deepseek.rs
 |   |   |   |-- github.rs
+|   |   |   |-- github_issue.rs
 |   |   |   |-- github_types.rs
 |   |   |   |-- mod.rs
-|   |   |   |-- openrouter.rs
 |   |   |   `-- repomap.rs
 |   |   |-- ws/
 |   |   |   |-- handlers/
@@ -147,31 +107,11 @@ Generated on: 2025-01-23 11:57:51
 |   |   `-- video-series.html
 |   `-- header.html
 |-- tests/
-|   |-- agent/
-|   |   |-- core.rs
-|   |   |-- manager.rs
-|   |   |-- manager_comprehensive.rs
-|   |   |-- manager_impl.rs
-|   |   |-- mod.rs
-|   |   `-- nostr.rs
-|   |-- nostr/
-|   |   |-- database.rs
-|   |   |-- event.rs
-|   |   |-- mod.rs
-|   |   `-- subscription.rs
-|   |-- solver/
-|   |   |-- mod.rs
-|   |   `-- ws.rs
-|   |-- admin_middleware.rs
-|   |-- admin_routes.rs
-|   |-- agent.rs
 |   |-- deepseek.rs
 |   |-- emailoptin.rs
 |   |-- github.rs
 |   |-- health_check.rs
-|   |-- openrouter.rs
-|   |-- repomap.rs
-|   `-- solver.rs
+|   `-- repomap.rs
 |-- Cargo.lock
 |-- Cargo.toml
 |-- DEVELOPMENT.md
@@ -183,5 +123,5 @@ Generated on: 2025-01-23 11:57:51
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-32 directories, 145 files
+22 directories, 95 files
 ```
