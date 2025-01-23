@@ -1,13 +1,9 @@
 use openagents::server::services::deepseek::{
-    ChatMessage as DeepSeekMessage,
-    StreamUpdate,
-    DeepSeekService,
+    ChatMessage as DeepSeekMessage, DeepSeekService, StreamUpdate,
 };
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::ws::{
-    handlers::chat::ChatHandler,
-    transport::WebSocketState,
-    types::ChatMessage,
+    handlers::chat::ChatHandler, transport::WebSocketState, types::ChatMessage,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;

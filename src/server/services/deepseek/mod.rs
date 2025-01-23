@@ -1,10 +1,10 @@
-mod types;
 mod chat;
-mod tools;
 mod streaming;
+mod tools;
+mod types;
 
-pub use types::*;
 pub use tools::create_tool;
+pub use types::*;
 
 use reqwest::Client;
 use tokio::sync::mpsc;
@@ -46,7 +46,8 @@ impl DeepSeekService {
         prompt: String,
         use_reasoner: bool,
     ) -> mpsc::Receiver<StreamUpdate> {
-        self.chat_stream_with_history(Vec::new(), prompt, use_reasoner).await
+        self.chat_stream_with_history(Vec::new(), prompt, use_reasoner)
+            .await
     }
 
     pub async fn chat_stream_with_history(

@@ -1,8 +1,4 @@
-use axum::{
-    extract::ws::WebSocketUpgrade,
-    routing::get,
-    Router,
-};
+use axum::{extract::ws::WebSocketUpgrade, routing::get, Router};
 use openagents::server::services::{
     solver::ws::{SolverStage, SolverUpdate},
     SolverService,
