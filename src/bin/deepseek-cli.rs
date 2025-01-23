@@ -181,12 +181,14 @@ async fn main() -> Result<()> {
                         let weather_message = ChatMessage {
                             role: "tool".to_string(),
                             content: "20°C and cloudy".to_string(),
+                            tool_call_id: Some(tool_call.id.clone()),
                         };
 
                         if debug {
                             println!("\nSending tool response:");
                             println!("Role: {}", weather_message.role);
                             println!("Content: {}", weather_message.content);
+                            println!("Tool call ID: {}", weather_message.tool_call_id.as_ref().unwrap());
                         }
 
                         // Get final response
@@ -195,6 +197,7 @@ async fn main() -> Result<()> {
                         let messages = vec![ChatMessage {
                             role: "user".to_string(),
                             content: format!("What's the weather in {}?", location),
+                            tool_call_id: None,
                         }];
 
                         if debug {
@@ -202,6 +205,9 @@ async fn main() -> Result<()> {
                             for msg in &messages {
                                 println!("Role: {}", msg.role);
                                 println!("Content: {}", msg.content);
+                                if let Some(id) = &msg.tool_call_id {
+                                    println!("Tool call ID: {}", id);
+                                }
                             }
                         }
 
