@@ -187,10 +187,11 @@ async fn main() -> Result<()> {
                         };
 
                         // Assistant message with tool call
-                        let assistant_message = ChatMessage {
+                        let assistant_message = AssistantMessage {
                             role: "assistant".to_string(),
                             content: content.clone(),
                             tool_call_id: None,
+                            tool_calls: Some(tool_calls.clone()),
                         };
 
                         // Tool response message
@@ -220,11 +221,7 @@ async fn main() -> Result<()> {
 
                         let messages = vec![
                             user_message,
-                            ChatMessage {
-                                role: "assistant".to_string(),
-                                content: content.clone(),
-                                tool_call_id: None,
-                            },
+                            ChatMessage::from(assistant_message),
                             weather_message.clone(),
                         ];
 
