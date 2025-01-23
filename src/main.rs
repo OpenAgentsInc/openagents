@@ -5,10 +5,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use openagents::{
-    handle_solver,
-    server::{app_router, services::SolverService},
-};
 use serde_json::json;
 use std::{env, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
@@ -16,7 +12,7 @@ use tracing::info;
 
 use openagents::{
     configuration::get_configuration, generate_repomap, repomap, server::services::RepomapService,
-    solver_page, ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
+    ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
 };
 
 #[tokio::main]
@@ -37,16 +33,8 @@ async fn main() {
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
     let repomap_service = Arc::new(RepomapService::new(aider_api_key.clone()));
-    let solver_service = Arc::new(SolverService::new());
 
-    // Create separate routers for different state types
-
-    let solver_router = Router::new()
-        .route("/", get(solver_page))
-        .route("/", post(handle_solver))
-        .with_state(solver_service.clone());
-
-    let main_router = Router::new()
+    let app = Router::new()
         .route("/", get(home))
         .route("/chat", get(chat))
         .route("/onyx", get(mobile_app))
@@ -57,13 +45,9 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
-        .nest("/solver", solver_router)
         .nest_service("/assets", ServeDir::new(&assets_path))
         .fallback_service(ServeDir::new(assets_path.clone()))
         .with_state(repomap_service);
-
-    // Merge routers
-    let app = main_router.merge(app_router());
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")

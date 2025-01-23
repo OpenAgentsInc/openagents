@@ -1,7 +1,6 @@
+use super::services::RepomapService;
 use std::env;
 use tower_http::services::ServeDir;
-
-use super::{admin::middleware::admin_auth, services::RepomapService};
 
 pub fn configure_app() -> axum::Router {
     // Initialize repomap service
@@ -11,11 +10,6 @@ pub fn configure_app() -> axum::Router {
     // Create the main router with state
     axum::Router::new()
         .route("/", axum::routing::get(|| async { "Hello, World!" }))
-        // Admin routes with authentication
-        .nest(
-            "/admin",
-            super::admin::routes::admin_routes().layer(axum::middleware::from_fn(admin_auth)),
-        )
         // Static files
         .nest_service("/static", ServeDir::new("./static").precompressed_gzip())
         // Template files
