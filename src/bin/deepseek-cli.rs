@@ -1,6 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use openagents::server::services::{deepseek::{DeepSeekService, ChatMessage}, StreamUpdate};
+use openagents::server::services::{
+    deepseek::{ChatMessage, DeepSeekService},
+    StreamUpdate,
+};
 use serde_json::json;
 use std::io::{stdout, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
@@ -67,7 +70,11 @@ async fn main() -> Result<()> {
     let service = DeepSeekService::new(api_key);
 
     match cli.command {
-        Commands::Chat { message, debug, no_stream } => {
+        Commands::Chat {
+            message,
+            debug,
+            no_stream,
+        } => {
             if no_stream {
                 let (response, _) = service.chat(message, false).await?;
                 println!("{}", response);
@@ -86,7 +93,11 @@ async fn main() -> Result<()> {
                 println!();
             }
         }
-        Commands::Reason { message, debug, no_stream } => {
+        Commands::Reason {
+            message,
+            debug,
+            no_stream,
+        } => {
             if no_stream {
                 let (response, reasoning) = service.chat(message, true).await?;
                 if let Some(reasoning) = reasoning {
@@ -119,7 +130,11 @@ async fn main() -> Result<()> {
                 println!();
             }
         }
-        Commands::Weather { location, debug, no_stream } => {
+        Commands::Weather {
+            location,
+            debug,
+            no_stream,
+        } => {
             // Create weather tool
             let get_weather_tool = DeepSeekService::create_tool(
                 "get_weather".to_string(),
@@ -138,7 +153,7 @@ async fn main() -> Result<()> {
 
             // Make initial request with tool
             print_colored("Asking about weather...\n", Color::Blue)?;
-            
+
             if debug {
                 println!("\nSending initial request with tool definition:");
                 println!("{}", serde_json::to_string_pretty(&get_weather_tool)?);
@@ -176,7 +191,7 @@ async fn main() -> Result<()> {
 
                         // Get final response
                         print_colored("\nGetting final response...\n", Color::Blue)?;
-                        
+
                         let messages = vec![ChatMessage {
                             role: "user".to_string(),
                             content: format!("What's the weather in {}?", location),

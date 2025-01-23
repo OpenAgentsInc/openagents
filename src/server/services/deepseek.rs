@@ -243,7 +243,27 @@ impl DeepSeekService {
             .send()
             .await?;
 
-        let chat_response: ChatResponse = response.json().await?;
+        // Add status code check
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await?;
+            return Err(anyhow::anyhow!(
+                "API request failed with status {}: {}",
+                status,
+                text
+            ));
+        }
+
+        // Try to get response text for debugging
+        let text = response.text().await?;
+        if text.is_empty() {
+            return Err(anyhow::anyhow!("Empty response from API"));
+        }
+
+        // Parse the response
+        let chat_response: ChatResponse = serde_json::from_str(&text).map_err(|e| {
+            anyhow::anyhow!("Failed to parse response: {}\nResponse text: {}", e, text)
+        })?;
 
         if let Some(choice) = chat_response.choices.first() {
             Ok((
