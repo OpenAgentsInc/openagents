@@ -2,6 +2,10 @@ pub mod ws;
 
 use crate::server::services::{DeepSeekService, GitHubService, RepomapService};
 use anyhow::Result;
+use axum::{
+    extract::{Form, State},
+    response::{Html, IntoResponse},
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -17,6 +21,11 @@ impl Default for SolverService {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SolverRequest {
+    pub issue_url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,5 +51,18 @@ impl SolverService {
         // Create a temporary broadcast channel for this request
         let (tx, _) = broadcast::channel(100);
         self.solve_issue_with_ws(issue_url, tx).await
+    }
+}
+
+pub async fn handle_solver(
+    State(service): State<Arc<SolverService>>,
+    Form(req): Form<SolverRequest>,
+) -> impl IntoResponse {
+    match service.solve_issue(req.issue_url).await {
+        Ok(response) => Html(response.solution).into_response(),
+        Err(e) => {
+            eprintln!("Error solving issue: {}", e);
+            Html(format!("Error: {}", e)).into_response()
+        }
     }
 }
