@@ -169,6 +169,8 @@ impl DeepSeekService {
                 stream: true,
                 temperature: 0.7,
                 max_tokens: None,
+                tools: None,
+                tool_choice: None,
             };
 
             let url = format!("{}/chat/completions", base_url);
@@ -273,6 +275,8 @@ impl DeepSeekService {
             stream,
             temperature: 0.7,
             max_tokens: None,
+            tools: None,
+            tool_choice: None,
         };
 
         let url = format!("{}/chat/completions", self.base_url);
