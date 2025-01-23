@@ -167,7 +167,6 @@ async fn main() -> Result<()> {
                 tool_call_id: None,
                 tool_calls: None,
             };
-            let user_message_for_debug = user_message.clone(); // Clone for debug printing
 
             // Get initial response with tool call
             let (content, _, tool_calls) = service
@@ -204,13 +203,12 @@ async fn main() -> Result<()> {
                             tool_call_id: Some(tool_call.id.clone()),
                             tool_calls: None,
                         };
-                        let weather_message_for_response = weather_message.clone(); // Clone for the response
 
                         if debug {
                             println!("\nSending messages:");
                             println!("1. User message:");
-                            println!("   Role: {}", user_message_for_debug.role);
-                            println!("   Content: {}", user_message_for_debug.content);
+                            println!("   Role: {}", user_message.role);
+                            println!("   Content: {}", user_message.content);
                             println!("2. Assistant message:");
                             println!("   Role: {}", assistant_message.role);
                             println!("   Content: {}", assistant_message.content);
@@ -226,15 +224,15 @@ async fn main() -> Result<()> {
 
                         // Create a new sequence of messages
                         let messages = vec![
-                            user_message,
+                            user_message.clone(), // Clone here since we're in a loop
                             ChatMessage::from(assistant_message.clone()),
-                            weather_message,
+                            weather_message.clone(),
                         ];
 
                         let result = service
                             .chat_with_tool_response(
                                 messages,
-                                weather_message_for_response,
+                                weather_message,
                                 vec![get_weather_tool.clone()],
                                 false,
                             )
