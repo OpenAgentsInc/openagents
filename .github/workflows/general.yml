@@ -96,9 +96,6 @@ jobs:
             require_ssl: false
           environment: production" > configuration/local.yaml
 
-      - name: Show test file
-        run: cat tests/admin_middleware.rs
-
       - name: Run SQLx migrations
         run: |
           cargo sqlx database create
