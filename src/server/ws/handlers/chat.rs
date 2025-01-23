@@ -1,7 +1,10 @@
 use super::MessageHandler;
 use crate::server::services::github_issue::GitHubService;
-use crate::server::services::deepseek::{self, ChatMessage as DeepSeekMessage};
-use crate::server::services::DeepSeekService;
+use crate::server::services::deepseek::{
+    self,
+    types::{ChatMessage as DeepSeekMessage, StreamUpdate},
+    DeepSeekService,
+};
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
 use serde_json::json;
@@ -246,7 +249,7 @@ impl ChatHandler {
 
             while let Some(update) = stream.recv().await {
                 match update {
-                    deepseek::StreamUpdate::Content(content) => {
+                    StreamUpdate::Content(content) => {
                         full_response.push_str(&content);
                         let response_json = json!({
                             "type": "chat",
@@ -258,7 +261,7 @@ impl ChatHandler {
                             .send_to(conn_id, &response_json.to_string())
                             .await?;
                     }
-                    deepseek::StreamUpdate::Reasoning(reasoning) => {
+                    StreamUpdate::Reasoning(reasoning) => {
                         let reasoning_json = json!({
                             "type": "chat",
                             "content": &reasoning,
@@ -269,7 +272,7 @@ impl ChatHandler {
                             .send_to(conn_id, &reasoning_json.to_string())
                             .await?;
                     }
-                    deepseek::StreamUpdate::Done => {
+                    StreamUpdate::Done => {
                         let response_json = json!({
                             "type": "chat",
                             "content": full_response,
