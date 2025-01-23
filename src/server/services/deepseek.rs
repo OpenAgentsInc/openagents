@@ -291,7 +291,7 @@ impl DeepSeekService {
             temperature: 0.7,
             max_tokens: None,
             tools: Some(tools),
-            tool_choice: None, // Let model decide if it needs to call more tools
+            tool_choice: None,
         };
 
         let url = format!("{}/chat/completions", self.base_url);
@@ -317,6 +317,8 @@ impl DeepSeekService {
 
         // Get response text for debugging
         let text = response.text().await?;
+        info!("API Response: {}", text);
+
         if text.is_empty() {
             return Err(anyhow::anyhow!("Empty response from API"));
         }
@@ -327,6 +329,7 @@ impl DeepSeekService {
         })?;
 
         if let Some(choice) = chat_response.choices.first() {
+            info!("Response content: {}", choice.message.content);
             Ok((
                 choice.message.content.clone(),
                 choice.message.reasoning_content.clone(),
