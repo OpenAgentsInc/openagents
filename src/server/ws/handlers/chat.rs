@@ -4,6 +4,7 @@ use crate::server::services::deepseek::{
     ChatMessage as DeepSeekMessage,
     StreamUpdate,
     DeepSeekService,
+    create_tool,
 };
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
@@ -91,7 +92,7 @@ impl ChatHandler {
 
         if is_github_related {
             // Create GitHub issue tool
-            let get_issue_tool = DeepSeekService::create_tool(
+            let get_issue_tool = create_tool(
                 "get_github_issue".to_string(),
                 Some("Get a GitHub issue by number".to_string()),
                 json!({
@@ -115,7 +116,8 @@ impl ChatHandler {
             );
 
             // Get message history and use it for the initial request
-            let history = self.get_history(conn_id).await;
+            let mut messages = self.get_history(conn_id).await;
+            messages.push(user_message);
 
             // Get initial response with potential tool calls
             let (initial_content, _, tool_calls) = self
@@ -240,7 +242,7 @@ impl ChatHandler {
                 self.add_to_history(conn_id, assistant_message).await;
             }
         } else {
-            // Get message history
+            // Get message history and use it for the request
             let messages = self.get_history(conn_id).await;
 
             // Use regular chat_stream for non-GitHub related queries
