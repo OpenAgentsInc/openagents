@@ -1,25 +1,15 @@
 mod admin_middleware;
 mod admin_routes;
 mod agent;
-mod chat;
 mod deepseek;
 mod emailoptin;
 mod github;
 mod health_check;
-mod nostr;
 mod openrouter;
 mod repomap;
 mod solver;
+mod chat;
+mod nostr;
 
-pub use admin_middleware::*;
-pub use admin_routes::*;
+// Only re-export what's actually needed
 pub use agent::*;
-pub use chat::*;
-pub use deepseek::*;
-pub use emailoptin::*;
-pub use github::*;
-pub use health_check::*;
-pub use nostr::*;
-pub use openrouter::*;
-pub use repomap::*;
-pub use solver::*;
