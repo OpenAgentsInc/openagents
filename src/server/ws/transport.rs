@@ -29,22 +29,15 @@ impl WebSocketState {
         })
     }
 
-    pub fn create_handlers(
-        ws_state: Arc<WebSocketState>,
-    ) -> Arc<ChatHandler> {
-        let chat_handler = Arc::new(ChatHandler::new(
+    pub fn create_handlers(ws_state: Arc<WebSocketState>) -> Arc<ChatHandler> {
+        Arc::new(ChatHandler::new(
             ws_state.clone(),
             ws_state.deepseek_service.clone(),
             ws_state.github_service.clone(),
-        ));
-        chat_handler
+        ))
     }
 
-    pub async fn handle_socket(
-        self: Arc<Self>,
-        socket: WebSocket,
-        chat_handler: Arc<ChatHandler>,
-    ) {
+    pub async fn handle_socket(self: Arc<Self>, socket: WebSocket, chat_handler: Arc<ChatHandler>) {
         let (mut sender, mut receiver) = socket.split();
         let (tx, mut rx) = mpsc::unbounded_channel();
 

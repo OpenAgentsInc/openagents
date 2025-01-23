@@ -28,7 +28,5 @@ async fn handle_socket(socket: axum::extract::ws::WebSocket) {
     let chat_handler = WebSocketState::create_handlers(ws_state.clone());
 
     // Handle the socket with all components
-    ws_state
-        .handle_socket(socket, chat_handler)
-        .await;
+    ws_state.handle_socket(socket, chat_handler).await;
 }
