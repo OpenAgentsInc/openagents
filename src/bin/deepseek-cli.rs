@@ -221,15 +221,10 @@ async fn main() -> Result<()> {
                         // Get final response
                         print_colored("\nGetting final response...\n", Color::Blue)?;
 
-                        // Create a new assistant message that includes the tool calls
+                        // Create a new sequence of messages
                         let messages = vec![
                             user_message,
-                            ChatMessage {
-                                role: "assistant".to_string(),
-                                content: content.clone(),
-                                tool_call_id: None,
-                                tool_calls: Some(tool_calls.clone()),
-                            },
+                            assistant_message,
                             weather_message.clone(),
                         ];
 
