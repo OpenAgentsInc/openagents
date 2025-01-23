@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use openagents::server::services::{
-    deepseek::{AssistantMessage, ChatMessage, DeepSeekService},
+    deepseek::{ChatMessage, DeepSeekService},
     StreamUpdate,
 };
 use serde_json::json;
