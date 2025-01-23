@@ -8,14 +8,6 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Enable debug output
-    #[arg(long)]
-    debug: bool,
-
-    /// Disable streaming output
-    #[arg(long)]
-    no_stream: bool,
-
     #[command(subcommand)]
     command: Commands,
 }
@@ -26,16 +18,34 @@ enum Commands {
     Chat {
         /// The message to send
         message: String,
+        /// Enable debug output
+        #[arg(long)]
+        debug: bool,
+        /// Disable streaming output
+        #[arg(long)]
+        no_stream: bool,
     },
     /// Reasoning mode with Chain of Thought
     Reason {
         /// The message to reason about
         message: String,
+        /// Enable debug output
+        #[arg(long)]
+        debug: bool,
+        /// Disable streaming output
+        #[arg(long)]
+        no_stream: bool,
     },
     /// Weather tool example
     Weather {
         /// The location to check weather for
         location: String,
+        /// Enable debug output
+        #[arg(long)]
+        debug: bool,
+        /// Disable streaming output
+        #[arg(long)]
+        no_stream: bool,
     },
 }
 
@@ -57,8 +67,8 @@ async fn main() -> Result<()> {
     let service = DeepSeekService::new(api_key);
 
     match cli.command {
-        Commands::Chat { message } => {
-            if cli.no_stream {
+        Commands::Chat { message, debug, no_stream } => {
+            if no_stream {
                 let (response, _) = service.chat(message, false).await?;
                 println!("{}", response);
             } else {
@@ -76,8 +86,8 @@ async fn main() -> Result<()> {
                 println!();
             }
         }
-        Commands::Reason { message } => {
-            if cli.no_stream {
+        Commands::Reason { message, debug, no_stream } => {
+            if no_stream {
                 let (response, reasoning) = service.chat(message, true).await?;
                 if let Some(reasoning) = reasoning {
                     print_colored("Reasoning:\n", Color::Yellow)?;
@@ -109,7 +119,7 @@ async fn main() -> Result<()> {
                 println!();
             }
         }
-        Commands::Weather { location } => {
+        Commands::Weather { location, debug, no_stream } => {
             // Create weather tool
             let get_weather_tool = DeepSeekService::create_tool(
                 "get_weather".to_string(),
@@ -129,7 +139,7 @@ async fn main() -> Result<()> {
             // Make initial request with tool
             print_colored("Asking about weather...\n", Color::Blue)?;
             
-            if cli.debug {
+            if debug {
                 println!("\nSending initial request with tool definition:");
                 println!("{}", serde_json::to_string_pretty(&get_weather_tool)?);
             }
@@ -158,7 +168,7 @@ async fn main() -> Result<()> {
                             content: "20°C and cloudy".to_string(),
                         };
 
-                        if cli.debug {
+                        if debug {
                             println!("\nSending tool response:");
                             println!("Role: {}", weather_message.role);
                             println!("Content: {}", weather_message.content);
@@ -172,7 +182,7 @@ async fn main() -> Result<()> {
                             content: format!("What's the weather in {}?", location),
                         }];
 
-                        if cli.debug {
+                        if debug {
                             println!("\nSending messages:");
                             for msg in &messages {
                                 println!("Role: {}", msg.role);
@@ -197,7 +207,7 @@ async fn main() -> Result<()> {
                             Err(e) => {
                                 print_colored("Error getting final response: ", Color::Red)?;
                                 println!("{}", e);
-                                if cli.debug {
+                                if debug {
                                     println!("\nError details: {:#?}", e);
                                 }
                             }
