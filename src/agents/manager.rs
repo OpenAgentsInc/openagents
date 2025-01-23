@@ -33,7 +33,6 @@ impl AgentManager {
         &self,
         name: &str,
         description: &str,
-        pubkey: &str,
         config: serde_json::Value,
     ) -> Result<Agent> {
         // Validate pubkey
@@ -62,7 +61,6 @@ impl AgentManager {
             agent.id,
             agent.name,
             agent.description,
-            agent.pubkey,
             agent.enabled,
             config
         )
@@ -88,7 +86,6 @@ impl AgentManager {
             id: record.id,
             name: record.name,
             description: record.description,
-            pubkey: record.pubkey,
             enabled: record.enabled,
             config: record.config,
             created_at: record.created_at.unwrap_or(0),
