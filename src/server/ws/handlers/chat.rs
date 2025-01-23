@@ -172,18 +172,6 @@ impl ChatHandler {
                         .send_to(conn_id, &final_json.to_string())
                         .await?;
                 }
-                crate::server::services::deepseek::StreamUpdate::ToolCalls(tool_calls) => {
-                    // Send tool calls update
-                    let tool_calls_json = json!({
-                        "type": "chat",
-                        "content": serde_json::to_string(&tool_calls).unwrap_or_default(),
-                        "sender": "ai",
-                        "status": "tool_calls"
-                    });
-                    self.ws_state
-                        .send_to(conn_id, &tool_calls_json.to_string())
-                        .await?;
-                }
             }
         } else {
             // If no tool calls, send complete status
