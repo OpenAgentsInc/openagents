@@ -80,6 +80,7 @@ struct StreamChoice {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct StreamDelta {
     content: Option<String>,
     reasoning_content: Option<String>,
