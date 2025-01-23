@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use openagents::server::services::{
     deepseek::{AssistantMessage, ChatMessage, DeepSeekService},
+    github_issue::GitHubService,
     StreamUpdate,
 };
 use serde_json::json;
@@ -49,6 +50,20 @@ enum Commands {
         /// Disable streaming output
         #[arg(long)]
         no_stream: bool,
+    },
+    /// GitHub issue tool example
+    Issue {
+        /// The issue number to fetch
+        issue_number: i32,
+        /// The repository owner
+        #[arg(long, default_value = "OpenAgentsInc")]
+        owner: String,
+        /// The repository name
+        #[arg(long, default_value = "openagents")]
+        repo: String,
+        /// Enable debug output
+        #[arg(long)]
+        debug: bool,
     },
 }
 
@@ -129,6 +144,148 @@ async fn main() -> Result<()> {
                     }
                 }
                 println!();
+            }
+        }
+        Commands::Issue {
+            issue_number,
+            owner,
+            repo,
+            debug,
+        } => {
+            // Create GitHub issue tool
+            let get_issue_tool = DeepSeekService::create_tool(
+                "get_github_issue".to_string(),
+                Some("Get a GitHub issue by number".to_string()),
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "owner": {
+                            "type": "string",
+                            "description": "The owner of the repository"
+                        },
+                        "repo": {
+                            "type": "string",
+                            "description": "The name of the repository"
+                        },
+                        "issue_number": {
+                            "type": "integer",
+                            "description": "The issue number"
+                        }
+                    },
+                    "required": ["owner", "repo", "issue_number"]
+                }),
+            );
+
+            // Make initial request with tool
+            print_colored("Fetching GitHub issue...\n", Color::Blue)?;
+
+            if debug {
+                println!("\nSending initial request with tool definition:");
+                println!("{}", serde_json::to_string_pretty(&get_issue_tool)?);
+            }
+
+            // Initial user message
+            let user_message = ChatMessage {
+                role: "user".to_string(),
+                content: format!("What's in GitHub issue #{} in {}/{}?", issue_number, owner, repo),
+                tool_call_id: None,
+                tool_calls: None,
+            };
+
+            // Get initial response with tool call
+            let (content, _, tool_calls) = service
+                .chat_with_tools(
+                    format!("What's in GitHub issue #{} in {}/{}?", issue_number, owner, repo),
+                    vec![get_issue_tool.clone()],
+                    None,
+                    false,
+                )
+                .await?;
+
+            println!("Initial response: {}", content);
+
+            // If there's a tool call, handle it
+            if let Some(tool_calls) = tool_calls {
+                let tool_calls = tool_calls.clone();
+                for tool_call in &tool_calls {
+                    if tool_call.function.name == "get_github_issue" {
+                        print_colored("\nTool called: get_github_issue\n", Color::Yellow)?;
+                        println!("Arguments: {}", tool_call.function.arguments);
+
+                        // Create GitHub service and fetch issue
+                        let github_token = std::env::var("GITHUB_TOKEN").ok();
+                        let github_service = GitHubService::new(github_token);
+                        let issue = github_service.get_issue(&owner, &repo, issue_number).await?;
+
+                        // Assistant message with tool call
+                        let assistant_message = AssistantMessage {
+                            role: "assistant".to_string(),
+                            content: format!("Let me fetch GitHub issue #{} for you.", issue_number),
+                            tool_call_id: None,
+                            tool_calls: Some(tool_calls.clone()),
+                        };
+
+                        // Tool response message
+                        let issue_message = ChatMessage {
+                            role: "tool".to_string(),
+                            content: serde_json::to_string(&issue)?,
+                            tool_call_id: Some(tool_call.id.clone()),
+                            tool_calls: None,
+                        };
+
+                        if debug {
+                            println!("\nSending messages:");
+                            println!("1. User message:");
+                            println!("   Role: {}", user_message.role);
+                            println!("   Content: {}", user_message.content);
+                            println!("2. Assistant message:");
+                            println!("   Role: {}", assistant_message.role);
+                            println!("   Content: {}", assistant_message.content);
+                            println!("   Tool calls: {:?}", tool_calls);
+                            println!("3. Tool response:");
+                            println!("   Role: {}", issue_message.role);
+                            println!("   Content: {}", issue_message.content);
+                            println!(
+                                "   Tool call ID: {}",
+                                issue_message.tool_call_id.as_ref().unwrap()
+                            );
+                        }
+
+                        // Get final response
+                        print_colored("\nGetting final response...\n", Color::Blue)?;
+
+                        // Create a new sequence of messages
+                        let messages = vec![
+                            user_message.clone(),
+                            ChatMessage::from(assistant_message),
+                        ];
+
+                        let result = service
+                            .chat_with_tool_response(
+                                messages,
+                                issue_message,
+                                vec![get_issue_tool.clone()],
+                                false,
+                            )
+                            .await;
+
+                        match result {
+                            Ok((final_content, _, _)) => {
+                                print_colored("Final response: ", Color::Green)?;
+                                println!("{}", final_content);
+                            }
+                            Err(e) => {
+                                print_colored("Error getting final response: ", Color::Red)?;
+                                println!("{}", e);
+                                if debug {
+                                    println!("\nError details: {:#?}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                println!("No tool calls received");
             }
         }
         Commands::Weather {
@@ -244,7 +401,10 @@ async fn main() -> Result<()> {
                             Ok((final_content, _, _)) => {
                                 if final_content.trim().is_empty() {
                                     print_colored("Final response: ", Color::Green)?;
-                                    println!("Based on the weather data, it is currently 20°C and cloudy in {}.", location);
+                                    println!(
+                                        "Based on the weather data, it is currently 20°C and cloudy in {}.",
+                                        location
+                                    );
                                 } else {
                                     print_colored("Final response: ", Color::Green)?;
                                     println!("{}", final_content);
