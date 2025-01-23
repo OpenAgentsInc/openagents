@@ -74,7 +74,6 @@ CREATE TABLE agent_metrics (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_agents_pubkey ON agents(pubkey);
 CREATE INDEX idx_agent_instances_agent_id ON agent_instances(agent_id);
 CREATE INDEX idx_agent_instances_status ON agent_instances(status);
 CREATE INDEX idx_agent_states_instance_id ON agent_states(instance_id);
