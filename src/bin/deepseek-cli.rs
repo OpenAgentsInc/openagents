@@ -215,7 +215,10 @@ async fn main() -> Result<()> {
                             println!("3. Tool response:");
                             println!("   Role: {}", weather_message.role);
                             println!("   Content: {}", weather_message.content);
-                            println!("   Tool call ID: {}", weather_message.tool_call_id.as_ref().unwrap());
+                            println!(
+                                "   Tool call ID: {}",
+                                weather_message.tool_call_id.as_ref().unwrap()
+                            );
                         }
 
                         // Get final response

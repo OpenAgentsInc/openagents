@@ -30,6 +30,16 @@ pub struct AssistantMessage {
     pub tool_calls: Option<Vec<ToolCallResponse>>,
 }
 
+impl From<AssistantMessage> for ChatMessage {
+    fn from(msg: AssistantMessage) -> Self {
+        ChatMessage {
+            role: msg.role,
+            content: msg.content,
+            tool_call_id: msg.tool_call_id,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct ChatRequest {
     model: String,
@@ -380,7 +390,9 @@ impl DeepSeekService {
                                                 }
                                                 if let Some(tool_calls) = &choice.delta.tool_calls {
                                                     let _ = tx
-                                                        .send(StreamUpdate::ToolCalls(tool_calls.clone()))
+                                                        .send(StreamUpdate::ToolCalls(
+                                                            tool_calls.clone(),
+                                                        ))
                                                         .await;
                                                 }
                                                 if choice.finish_reason.is_some() {
