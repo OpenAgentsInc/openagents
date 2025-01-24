@@ -14,19 +14,19 @@ pub struct RoutingDecision {
 
 pub struct ModelRouter {
     tool_model: Arc<DeepSeekService>,
-    reasoning_model: Arc<DeepSeekService>,
+    chat_model: Arc<DeepSeekService>,
     available_tools: Vec<Tool>,
 }
 
 impl ModelRouter {
     pub fn new(
         tool_model: Arc<DeepSeekService>,
-        reasoning_model: Arc<DeepSeekService>,
+        chat_model: Arc<DeepSeekService>,
         available_tools: Vec<Tool>,
     ) -> Self {
         Self {
             tool_model,
-            reasoning_model,
+            chat_model,
             available_tools,
         }
     }
@@ -175,10 +175,11 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
             tool_calls: None,
         };
 
+        // Use chat_with_tools but with no tools and no tool choice
         let (response, reasoning, _) = self
-            .reasoning_model
-            .chat_with_tools_messages(
-                vec![system_message, user_message],
+            .chat_model
+            .chat_with_tools(
+                message,
                 vec![], // No tools for chat
                 None,  // No tool choice needed
                 use_reasoning,
