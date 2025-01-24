@@ -85,7 +85,7 @@ async fn test_tool_selection() {
         }
 
         // Create messages with system context
-        let messages = vec![
+        let _messages = vec![
             ChatMessage {
                 role: "system".to_string(),
                 content: "You are a helpful assistant that reads GitHub issues. When referring to the repository, always use 'OpenAgentsInc' as the owner and 'openagents' (lowercase) as the repository name.".to_string(),
