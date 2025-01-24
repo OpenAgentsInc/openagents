@@ -43,3 +43,4 @@ pub fn configure_app() -> Router {
             ServeDir::new("./templates").precompressed_gzip(),
         )
         .with_state(())
+}
