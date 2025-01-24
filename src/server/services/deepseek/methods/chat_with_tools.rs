@@ -39,7 +39,8 @@ impl DeepSeekService {
         };
 
         // Only include tools if we have them and we're not using the reasoner
-        let tools = if !tools.is_empty() && !use_reasoner {
+        let should_use_tools = !tools.is_empty() && !use_reasoner;
+        let tools = if should_use_tools {
             Some(tools)
         } else {
             None
@@ -52,7 +53,7 @@ impl DeepSeekService {
             temperature: 0.7,
             max_tokens: None,
             tools,
-            tool_choice: if tools.is_some() { tool_choice } else { None },
+            tool_choice: if should_use_tools { tool_choice } else { None },
         };
 
         let url = format!("{}/chat/completions", self.base_url);
