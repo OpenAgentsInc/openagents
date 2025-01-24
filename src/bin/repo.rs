@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
         print_colored("\nTest Implementation Reasoning:\n", Color::Yellow)?;
         let mut test_code = String::new();
         let mut in_reasoning = true;
-        let mut stream = service.chat_stream(&test_prompt, true).await;
+        let mut stream = service.chat_stream(test_prompt, true).await;
         
         while let Some(update) = stream.recv().await {
             match update {
