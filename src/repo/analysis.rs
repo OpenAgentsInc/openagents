@@ -22,7 +22,7 @@ pub async fn analyze_repository(
 ) -> Result<String> {
     // First analysis prompt to get file list
     let file_request_prompt = format!(
-        "Based on this repository map, select up to 10 most relevant files that you'd like to examine in detail to help solve this issue. Return ONLY a raw JSON object with no markdown formatting, no code blocks, and no other text. The response should be exactly in this format (just replace the example paths with your selection):\n{\"paths\": [\"path1\", \"path2\"]}\n\nRepository Map:\n{}\n\nIssue #{} - {}:\n{}\n\nTest Results:\n{}",
+        "Based on this repository map, select up to 10 most relevant files that you'd like to examine in detail to help solve this issue. Return ONLY a raw JSON object with no markdown formatting, no code blocks, and no other text. The response should be exactly in this format (just replace the example paths with your selection):\n{{\"paths\": [\"path1\", \"path2\"]}}\n\nRepository Map:\n{}\n\nIssue #{} - {}:\n{}\n\nTest Results:\n{}",
         map,
         issue.number,
         issue.title,
