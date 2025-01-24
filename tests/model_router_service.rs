@@ -84,7 +84,7 @@ async fn test_model_router_service() {
             "Can you check issue #595?",
             true,
             Some("read_github_issue".to_string()),
-            "requesting to view a GitHub issue",
+            "requesting to view a github issue",
         ),
         (
             "What is 2 + 2?",
@@ -124,7 +124,7 @@ async fn test_model_router_service() {
             decision.reasoning.to_lowercase().contains(expected_reasoning),
             "reasoning should contain '{}', got: {}",
             expected_reasoning,
-            decision.reasoning
+            decision.reasoning.to_lowercase()
         );
 
         // Verify tool suggestion
