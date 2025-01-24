@@ -13,6 +13,7 @@ use tracing::info;
 use openagents::{
     configuration::get_configuration, generate_repomap, repomap, server::services::RepomapService,
     ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
+    server::ws
 };
 
 #[tokio::main]
@@ -36,6 +37,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(home))
+        .route("/ws", get(ws::ws_handler))
         .route("/chat", get(chat))
         .route("/onyx", get(mobile_app))
         .route("/video-series", get(video_series))
