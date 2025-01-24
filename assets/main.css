@@ -630,6 +630,10 @@ code:not(pre code) {
   }
 }
 
+.pointer-events-none {
+  pointer-events: none;
+}
+
 .fixed {
   position: fixed;
 }
@@ -654,12 +658,32 @@ code:not(pre code) {
   left: 0.25rem;
 }
 
+.right-2 {
+  right: 0.5rem;
+}
+
 .right-4 {
   right: 1rem;
 }
 
 .top-1 {
   top: 0.25rem;
+}
+
+.top-2 {
+  top: 0.5rem;
+}
+
+.right-\[10px\] {
+  right: 10px;
+}
+
+.right-\[50px\] {
+  right: 50px;
+}
+
+.top-\[12px\] {
+  top: 12px;
 }
 
 .mx-2 {
@@ -1125,6 +1149,14 @@ code:not(pre code) {
   background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));
 }
 
+.bg-white\/5 {
+  background-color: rgb(255 255 255 / 0.05);
+}
+
+.p-1 {
+  padding: 0.25rem;
+}
+
 .p-2 {
   padding: 0.5rem;
 }
@@ -1135,6 +1167,10 @@ code:not(pre code) {
 
 .p-6 {
   padding: 1.5rem;
+}
+
+.p-1\.5 {
+  padding: 0.375rem;
 }
 
 .px-3 {
@@ -1202,6 +1238,10 @@ code:not(pre code) {
 
 .pl-9 {
   padding-left: 2.25rem;
+}
+
+.pt-10 {
+  padding-top: 2.5rem;
 }
 
 .text-center {
@@ -1448,6 +1488,10 @@ code:not(pre code) {
 .hover\:bg-zinc-900:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(24 24 27 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-white\/10:hover {
+  background-color: rgb(255 255 255 / 0.1);
 }
 
 .hover\:text-black:hover {
