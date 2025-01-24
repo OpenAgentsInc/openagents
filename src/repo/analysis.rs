@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::server::services::deepseek::DeepSeekService;
+use anyhow::Result;
 
 #[derive(serde::Deserialize)]
 struct FileRequest {
@@ -70,6 +70,8 @@ pub async fn post_analysis(
         analysis
     );
 
-    github_service.post_comment(owner, repo, issue_number, &comment).await?;
+    github_service
+        .post_comment(owner, repo, issue_number, &comment)
+        .await?;
     Ok(())
 }

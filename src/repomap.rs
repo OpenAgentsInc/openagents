@@ -1,7 +1,7 @@
+use lazy_static::lazy_static;
 use std::fs;
 use std::path::Path;
 use tree_sitter::{Parser, Query, QueryCursor};
-use lazy_static::lazy_static;
 
 lazy_static! {
     static ref RUST_LANGUAGE: tree_sitter::Language = tree_sitter_rust::language();
@@ -9,7 +9,9 @@ lazy_static! {
 
 pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut parser = Parser::new();
-    parser.set_language(*RUST_LANGUAGE).expect("Error loading Rust grammar");
+    parser
+        .set_language(*RUST_LANGUAGE)
+        .expect("Error loading Rust grammar");
 
     let mut repo_map = String::new();
     let query = Query::new(
@@ -23,13 +25,14 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
         (trait_item
             name: (type_identifier) @trait.name)
         "#,
-    ).expect("Error creating query");
+    )
+    .expect("Error creating query");
 
     let mut cursor = QueryCursor::new();
 
     walk_dir(repo_path, &mut |path| {
         let ext = path.extension().and_then(|e| e.to_str());
-        
+
         match ext {
             Some("rs") => {
                 if let Ok(source_code) = fs::read_to_string(path) {
@@ -37,8 +40,9 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                     let matches = cursor.matches(&query, tree.root_node(), source_code.as_bytes());
 
                     let mut file_map = String::new();
-                    
-                    let relative_path = path.strip_prefix(repo_path)
+
+                    let relative_path = path
+                        .strip_prefix(repo_path)
                         .unwrap_or(path)
                         .to_string_lossy();
                     file_map.push_str(&format!("{}:\n", relative_path));
@@ -48,7 +52,9 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                             let text = &source_code[capture.node.byte_range()];
                             match capture.index {
                                 0 => file_map.push_str(&format!("│fn {}\n", text)),
-                                1 | 2 => file_map.push_str(&format!("│impl {} for {}\n", text, text)),
+                                1 | 2 => {
+                                    file_map.push_str(&format!("│impl {} for {}\n", text, text))
+                                }
                                 3 => file_map.push_str(&format!("│trait {}\n", text)),
                                 _ => {}
                             }
@@ -60,14 +66,15 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                         repo_map.push('\n');
                     }
                 }
-            },
+            }
             Some("html") | Some("htm") => {
                 if let Ok(content) = fs::read_to_string(path) {
-                    let relative_path = path.strip_prefix(repo_path)
+                    let relative_path = path
+                        .strip_prefix(repo_path)
                         .unwrap_or(path)
                         .to_string_lossy();
                     let mut file_map = format!("{}:\n", relative_path);
-                    
+
                     // Basic HTML structure detection
                     if content.contains("<body") {
                         file_map.push_str("│<body>\n");
@@ -83,18 +90,19 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                             }
                         }
                     }
-                    
+
                     repo_map.push_str(&file_map);
                     repo_map.push('\n');
                 }
-            },
+            }
             Some("css") => {
                 if let Ok(content) = fs::read_to_string(path) {
-                    let relative_path = path.strip_prefix(repo_path)
+                    let relative_path = path
+                        .strip_prefix(repo_path)
                         .unwrap_or(path)
                         .to_string_lossy();
                     let mut file_map = format!("{}:\n", relative_path);
-                    
+
                     // Extract CSS selectors
                     for line in content.lines() {
                         if line.contains("{") {
@@ -104,18 +112,19 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                             }
                         }
                     }
-                    
+
                     repo_map.push_str(&file_map);
                     repo_map.push('\n');
                 }
-            },
+            }
             Some("js") | Some("jsx") | Some("ts") | Some("tsx") => {
                 if let Ok(content) = fs::read_to_string(path) {
-                    let relative_path = path.strip_prefix(repo_path)
+                    let relative_path = path
+                        .strip_prefix(repo_path)
                         .unwrap_or(path)
                         .to_string_lossy();
                     let mut file_map = format!("{}:\n", relative_path);
-                    
+
                     // Basic JS function and class detection
                     for line in content.lines() {
                         if line.contains("function ") {
@@ -134,11 +143,11 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                             }
                         }
                     }
-                    
+
                     repo_map.push_str(&file_map);
                     repo_map.push('\n');
                 }
-            },
+            }
             _ => {}
         }
     });

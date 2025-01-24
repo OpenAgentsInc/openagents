@@ -1,8 +1,8 @@
 use axum::{
+    body::Body,
+    http::{Request, StatusCode},
     routing::post,
     Router,
-    http::{Request, StatusCode},
-    body::Body,
 };
 use openagents::server::services::RepomapService;
 use tower::ServiceExt;
@@ -10,8 +10,7 @@ use tower::ServiceExt;
 #[tokio::test]
 async fn test_repomap_endpoint() {
     // Create a new router with the repomap endpoint
-    let app = Router::new()
-        .route("/repomap", post(handle_repomap));
+    let app = Router::new().route("/repomap", post(handle_repomap));
 
     // Create test request
     let request = Request::builder()
@@ -22,15 +21,13 @@ async fn test_repomap_endpoint() {
             serde_json::json!({
                 "repo": "test/repo",
                 "path": "src/main.rs"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
     // Send request and get response
-    let response = app
-        .oneshot(request)
-        .await
-        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
 
     // Assert the response
     assert_eq!(response.status(), StatusCode::OK);

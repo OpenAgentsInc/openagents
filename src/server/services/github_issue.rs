@@ -74,15 +74,17 @@ impl GitHubService {
             owner, repo, issue_number
         );
 
-        let token = self.token.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("GitHub token is required for posting comments")
-        })?;
+        let token = self
+            .token
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("GitHub token is required for posting comments"))?;
 
         let payload = CommentPayload {
             body: comment.to_string(),
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", token))
             .header("User-Agent", "OpenAgents")
@@ -110,5 +112,7 @@ pub async fn post_github_comment(
     token: &str,
 ) -> Result<()> {
     let service = GitHubService::new(Some(token.to_string()));
-    service.post_comment(owner, repo, issue_number, comment).await
+    service
+        .post_comment(owner, repo, issue_number, comment)
+        .await
 }

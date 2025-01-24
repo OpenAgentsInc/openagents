@@ -1,21 +1,12 @@
-use std::env;
-use anyhow::{Result, bail};
-use dotenvy::dotenv;
+use anyhow::{bail, Result};
 use clap::Parser;
+use dotenvy::dotenv;
 use openagents::{
+    repo::{cleanup_temp_dir, clone_repository, run_cargo_tests, RepoContext},
     repomap::generate_repo_map,
-    server::services::{
-        deepseek::DeepSeekService,
-        github_issue::GitHubService,
-        StreamUpdate,
-    },
-    repo::{
-        RepoContext,
-        cleanup_temp_dir,
-        clone_repository,
-        run_cargo_tests,
-    },
+    server::services::{deepseek::DeepSeekService, github_issue::GitHubService, StreamUpdate},
 };
+use std::env;
 use std::io::{stdout, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
@@ -69,7 +60,7 @@ async fn main() -> Result<()> {
 
     // Generate and store the repository map
     let map = generate_repo_map(&ctx.temp_dir);
-    
+
     // Run cargo test
     let test_output = run_cargo_tests(&ctx.temp_dir).await?;
 
@@ -78,7 +69,7 @@ async fn main() -> Result<()> {
 
     if cli.test {
         println!("\nAnalyzing test coverage and generating test suggestions...");
-        
+
         // First, analyze the test output to find uncovered modules/functions
         let coverage_prompt = format!(
             "You are a Rust testing expert. Analyze this test output and repository map to identify \
@@ -93,12 +84,12 @@ async fn main() -> Result<()> {
         let mut coverage_analysis = String::new();
         let mut in_reasoning = true;
         let mut stream = service.chat_stream(coverage_prompt, true).await;
-        
+
         while let Some(update) = stream.recv().await {
             match update {
                 StreamUpdate::Reasoning(r) => {
                     print_colored(&r, Color::Yellow)?;
-                },
+                }
                 StreamUpdate::Content(c) => {
                     if in_reasoning {
                         println!();
@@ -108,7 +99,7 @@ async fn main() -> Result<()> {
                     print!("{}", c);
                     coverage_analysis.push_str(&c);
                     stdout().flush()?;
-                },
+                }
                 StreamUpdate::Done => break,
                 _ => {}
             }
@@ -130,12 +121,12 @@ async fn main() -> Result<()> {
         let mut test_code = String::new();
         let mut in_reasoning = true;
         let mut stream = service.chat_stream(test_prompt, true).await;
-        
+
         while let Some(update) = stream.recv().await {
             match update {
                 StreamUpdate::Reasoning(r) => {
                     print_colored(&r, Color::Yellow)?;
-                },
+                }
                 StreamUpdate::Content(c) => {
                     if in_reasoning {
                         println!();
@@ -145,7 +136,7 @@ async fn main() -> Result<()> {
                     print!("{}", c);
                     test_code.push_str(&c);
                     stdout().flush()?;
-                },
+                }
                 StreamUpdate::Done => break,
                 _ => {}
             }
@@ -156,7 +147,7 @@ async fn main() -> Result<()> {
         if let Some(token) = github_token {
             println!("\nPosting test suggestions to GitHub...");
             let github_service = GitHubService::new(Some(token));
-            
+
             let comment = format!(
                 "# Test Coverage Analysis\n\n\
                 The following analysis identifies areas needing test coverage:\n\n\
@@ -168,12 +159,9 @@ async fn main() -> Result<()> {
                 coverage_analysis, test_code
             );
 
-            github_service.post_comment(
-                "OpenAgentsInc",
-                "openagents",
-                592,
-                &comment
-            ).await?;
+            github_service
+                .post_comment("OpenAgentsInc", "openagents", 592, &comment)
+                .await?;
             println!("Test suggestions posted to GitHub issue #592");
         } else {
             println!("\nSkipping GitHub comment - GITHUB_TOKEN not found");

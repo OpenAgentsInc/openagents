@@ -1,13 +1,13 @@
-use std::path::Path;
-use std::process::Command;
 use anyhow::Result;
 use std::io::{BufRead, BufReader};
+use std::path::Path;
+use std::process::Command;
 
 pub async fn run_cargo_tests(repo_path: &Path) -> Result<String> {
     println!("\nRunning cargo test...");
-    
+
     let mut output = String::new();
-    
+
     // Run cargo test and capture stdout
     let mut cmd = Command::new("cargo")
         .arg("test")
@@ -38,7 +38,7 @@ pub async fn run_cargo_tests(repo_path: &Path) -> Result<String> {
 
     // Wait for the command to complete
     let status = cmd.wait()?;
-    
+
     if !status.success() {
         println!("\nNote: Some tests failed, but continuing with analysis...");
     }

@@ -10,10 +10,7 @@ use std::{env, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 
-use openagents::server::{
-    services::RepomapService,
-    ws,
-};
+use openagents::server::{services::RepomapService, ws};
 
 #[derive(Template)]
 #[template(path = "layouts/base.html")]
