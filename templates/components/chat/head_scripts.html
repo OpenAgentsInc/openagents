@@ -1,10 +1,5 @@
 <script>
-  document.addEventListener("htmx:afterSettle", function (evt) {
-    const newTitle = evt.detail.xhr.getResponseHeader("HX-Title");
-    if (newTitle) {
-      document.title = newTitle;
-    }
-  });
+  console.log('SCRIPT LOADING MOTHERFUCKER');
 </script>
 
 <!-- Highlight.js -->
@@ -20,79 +15,107 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/markdown.min.js"></script>
 
 <script>
+  console.log('STARTING THE REAL SHIT NOW');
+
   // Initialize highlight.js
   hljs.configure({ ignoreUnescapedHTML: true });
+  console.log('HLJS CONFIGURED');
 
-  // Keep track of messages being processed
-  const messageStates = new Map();
+  // Function to highlight code blocks
+  function highlightAllTheThings() {
+    console.log('TRYING TO HIGHLIGHT ALL THE THINGS');
+    
+    const messages = document.querySelectorAll('.message');
+    console.log('FOUND MESSAGES:', messages.length);
 
-  // Function to wrap and highlight code blocks
-  function processCodeBlocks(element) {
-    const messageId = element.dataset.messageId;
-    console.log('Processing message:', messageId);
-
-    // Get the text content
-    let content = element.innerHTML;
-
-    // Find all code blocks with triple backticks
-    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    let match;
-    let lastIndex = 0;
-    let newContent = '';
-
-    while ((match = codeBlockRegex.exec(content)) !== null) {
-      // Add text before the code block
-      newContent += content.slice(lastIndex, match.index);
+    messages.forEach((msg, i) => {
+      console.log(`PROCESSING MESSAGE ${i}:`, msg.innerHTML.slice(0, 100));
       
-      // Add the wrapped and highlighted code block
-      const language = match[1] || 'plaintext';
-      const code = match[2];
-      
-      // Create temporary element to hold the code
-      const tempElement = document.createElement('div');
-      tempElement.innerHTML = `<pre><code class="language-${language}">${code}</code></pre>`;
-      
-      // Highlight the code
-      const codeElement = tempElement.querySelector('code');
-      hljs.highlightElement(codeElement);
-      
-      // Add the highlighted code
-      newContent += tempElement.innerHTML;
-      
-      lastIndex = match.index + match[0].length;
-    }
+      // Get the content
+      let content = msg.innerHTML;
+      console.log('CONTENT LENGTH:', content.length);
 
-    // Add any remaining text
-    newContent += content.slice(lastIndex);
+      // Find code blocks
+      const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+      let matches = content.match(codeBlockRegex);
+      console.log('FOUND CODE BLOCKS:', matches ? matches.length : 0);
 
-    // Only update if content changed
-    if (newContent !== content) {
-      element.innerHTML = newContent;
-    }
+      if (matches) {
+        matches.forEach((match, j) => {
+          console.log(`PROCESSING BLOCK ${j} IN MESSAGE ${i}`);
+          try {
+            // Extract language and code
+            const [_, lang, code] = /```(\w+)?\n([\s\S]*?)```/.exec(match);
+            console.log('LANGUAGE:', lang || 'plaintext');
+            console.log('CODE PREVIEW:', code.slice(0, 50));
+
+            // Create highlighted HTML
+            const highlighted = `<pre><code class="language-${lang || 'plaintext'}">${code}</code></pre>`;
+            console.log('CREATED HIGHLIGHT WRAPPER');
+
+            // Replace in content
+            content = content.replace(match, highlighted);
+            console.log('REPLACED CODE BLOCK IN CONTENT');
+          } catch (err) {
+            console.error('SHIT BROKE WHILE PROCESSING BLOCK:', err);
+          }
+        });
+
+        // Update the message
+        msg.innerHTML = content;
+        console.log(`UPDATED MESSAGE ${i} CONTENT`);
+
+        // Now highlight all code blocks in this message
+        const codeElements = msg.querySelectorAll('pre code');
+        console.log(`FOUND ${codeElements.length} CODE ELEMENTS TO HIGHLIGHT`);
+        
+        codeElements.forEach((el, k) => {
+          console.log(`HIGHLIGHTING ELEMENT ${k} IN MESSAGE ${i}`);
+          try {
+            hljs.highlightElement(el);
+            console.log('HIGHLIGHTED SUCCESSFULLY');
+          } catch (err) {
+            console.error('FAILED TO HIGHLIGHT:', err);
+          }
+        });
+      }
+    });
   }
 
-  // Process messages when streaming is complete
+  // Watch for WebSocket messages
   document.addEventListener('ws:message', (event) => {
+    console.log('WS MESSAGE RECEIVED:', event.detail);
     try {
       const data = JSON.parse(event.detail.message);
-      console.log('Message received:', data);
+      console.log('PARSED MESSAGE:', data);
 
       if (data.status === 'complete') {
-        console.log('Message complete, processing code blocks');
-        // Wait a bit for the final content to render
+        console.log('MESSAGE IS COMPLETE, WAITING TO HIGHLIGHT...');
         setTimeout(() => {
-          const messages = document.querySelectorAll('.message');
-          messages.forEach(processCodeBlocks);
+          console.log('TIMEOUT DONE, HIGHLIGHTING NOW');
+          highlightAllTheThings();
         }, 100);
       }
-    } catch (error) {
-      console.error('Error processing message:', error);
+    } catch (err) {
+      console.error('SHIT BROKE IN WS HANDLER:', err);
     }
   });
 
-  // Initial processing for any existing messages
+  // Initial load
   document.addEventListener('DOMContentLoaded', () => {
-    const messages = document.querySelectorAll('.message');
-    messages.forEach(processCodeBlocks);
+    console.log('DOM LOADED, DOING INITIAL HIGHLIGHT');
+    highlightAllTheThings();
+  });
+
+  // Extra insurance
+  setTimeout(() => {
+    console.log('BACKUP TIMEOUT FIRING');
+    highlightAllTheThings();
+  }, 1000);
+
+  // Even more insurance
+  document.addEventListener('htmx:afterSettle', () => {
+    console.log('HTMX SETTLED, HIGHLIGHTING AGAIN');
+    highlightAllTheThings();
   });
 </script>
