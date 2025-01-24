@@ -5,7 +5,7 @@
 @layer base {
   /* Code block styles */
   pre {
-    @apply my-4 p-4 rounded-lg bg-[#1a1a1a] overflow-x-auto;
+    @apply my-4 border border-white bg-[#1a1a1a] overflow-x-auto;
   }
 
   pre code {
