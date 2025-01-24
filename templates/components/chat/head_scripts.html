@@ -1,5 +1,10 @@
 <script>
-  console.log('SCRIPT LOADING MOTHERFUCKER');
+  document.addEventListener("htmx:afterSettle", function (evt) {
+    const newTitle = evt.detail.xhr.getResponseHeader("HX-Title");
+    if (newTitle) {
+      document.title = newTitle;
+    }
+  });
 </script>
 
 <!-- Highlight.js -->
@@ -15,105 +20,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/markdown.min.js"></script>
 
 <script>
-  console.log('STARTING THE REAL SHIT NOW');
-
   // Initialize highlight.js
   hljs.configure({ ignoreUnescapedHTML: true });
-  console.log('HLJS CONFIGURED');
-
-  // Function to highlight code blocks
-  function highlightAllTheThings() {
-    console.log('TRYING TO HIGHLIGHT ALL THE THINGS');
-    
-    const messages = document.querySelectorAll('.message');
-    console.log('FOUND MESSAGES:', messages.length);
-
-    messages.forEach((msg, i) => {
-      console.log(`PROCESSING MESSAGE ${i}:`, msg.innerHTML.slice(0, 100));
-      
-      // Get the content
-      let content = msg.innerHTML;
-      console.log('CONTENT LENGTH:', content.length);
-
-      // Find code blocks
-      const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-      let matches = content.match(codeBlockRegex);
-      console.log('FOUND CODE BLOCKS:', matches ? matches.length : 0);
-
-      if (matches) {
-        matches.forEach((match, j) => {
-          console.log(`PROCESSING BLOCK ${j} IN MESSAGE ${i}`);
-          try {
-            // Extract language and code
-            const [_, lang, code] = /```(\w+)?\n([\s\S]*?)```/.exec(match);
-            console.log('LANGUAGE:', lang || 'plaintext');
-            console.log('CODE PREVIEW:', code.slice(0, 50));
-
-            // Create highlighted HTML
-            const highlighted = `<pre><code class="language-${lang || 'plaintext'}">${code}</code></pre>`;
-            console.log('CREATED HIGHLIGHT WRAPPER');
-
-            // Replace in content
-            content = content.replace(match, highlighted);
-            console.log('REPLACED CODE BLOCK IN CONTENT');
-          } catch (err) {
-            console.error('SHIT BROKE WHILE PROCESSING BLOCK:', err);
-          }
-        });
-
-        // Update the message
-        msg.innerHTML = content;
-        console.log(`UPDATED MESSAGE ${i} CONTENT`);
-
-        // Now highlight all code blocks in this message
-        const codeElements = msg.querySelectorAll('pre code');
-        console.log(`FOUND ${codeElements.length} CODE ELEMENTS TO HIGHLIGHT`);
-        
-        codeElements.forEach((el, k) => {
-          console.log(`HIGHLIGHTING ELEMENT ${k} IN MESSAGE ${i}`);
-          try {
-            hljs.highlightElement(el);
-            console.log('HIGHLIGHTED SUCCESSFULLY');
-          } catch (err) {
-            console.error('FAILED TO HIGHLIGHT:', err);
-          }
-        });
-      }
-    });
-  }
-
-  // Add this to your existing websocket message handler
-  const existingHandler = window.handleWebSocketMessage;
-  window.handleWebSocketMessage = function(event) {
-    console.log('INTERCEPTED WS MESSAGE:', event);
-    
-    // Call the original handler first
-    if (existingHandler) {
-      existingHandler(event);
-    }
-
-    // Now do our highlighting
-    try {
-      const data = JSON.parse(event.data);
-      console.log('PARSED MESSAGE:', data);
-
-      if (data.type === 'chat' && data.status === 'complete') {
-        console.log('COMPLETE MESSAGE RECEIVED, HIGHLIGHTING...');
-        setTimeout(highlightAllTheThings, 50);
-      }
-    } catch (err) {
-      console.error('FAILED TO PROCESS WS MESSAGE:', err);
-    }
-  };
-
-  // Backup handlers just in case
-  document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM LOADED, DOING INITIAL HIGHLIGHT');
-    highlightAllTheThings();
-  });
-
-  setTimeout(() => {
-    console.log('BACKUP TIMEOUT FIRING');
-    highlightAllTheThings();
-  }, 1000);
 </script>
