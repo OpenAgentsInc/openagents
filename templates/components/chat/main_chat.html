@@ -7,16 +7,16 @@
   <!-- Input area -->
   <div class="border-t border-white">
     <form class="flex" ws-send>
-      <input
+      <textarea
         id="input"
         name="content"
-        type="text"
-        class="text-sm flex-grow bg-black p-4 focus:outline-none"
+        rows="1"
+        class="text-sm flex-grow bg-black p-4 focus:outline-none resize-none overflow-hidden min-h-[60px]"
         placeholder="Message"
         autofocus="true"
         autocomplete="false"
         spellcheck="false"
-      />
+      ></textarea>
       <button
         id="submit-button"
         class="w-[80px] px-4 border-l border-white hover:bg-white hover:text-black transition-colors"
@@ -26,3 +26,25 @@
     </form>
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const textarea = document.getElementById('input');
+  
+  function adjustHeight() {
+    textarea.style.height = 'auto';
+    const newHeight = Math.min(textarea.scrollHeight, 250); // 250px is approx 10 lines
+    textarea.style.height = newHeight + 'px';
+  }
+
+  textarea.addEventListener('input', adjustHeight);
+  
+  // Handle Enter key to submit, Shift+Enter for new line
+  textarea.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      document.querySelector('form[ws-send]').dispatchEvent(new Event('submit'));
+    }
+  });
+});
+</script>
