@@ -8,21 +8,16 @@ use std::{env, sync::Arc};
 use tracing::{info, Level};
 use tracing_subscriber;
 
-#[tokio::test]
-async fn test_model_router_service() {
-    // Initialize logging
-    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+// Helper function to initialize logging once
+fn init_logging() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(Level::INFO)
+        .try_init();
+}
 
-    // Load environment variables from .env file
-    dotenv().ok();
-
-    // Create DeepSeek services
-    let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
-    let tool_model = Arc::new(DeepSeekService::new(api_key.clone()));
-    let reasoning_model = Arc::new(DeepSeekService::new(api_key));
-
-    // Create available tools
-    let tools = vec![
+// Helper function to create test tools
+fn create_test_tools() -> Vec<Tool> {
+    vec![
         // GitHub issue tool
         DeepSeekService::create_tool(
             "read_github_issue".to_string(),
@@ -61,7 +56,24 @@ async fn test_model_router_service() {
                 "required": ["expression"]
             }),
         ),
-    ];
+    ]
+}
+
+#[tokio::test]
+async fn test_model_router_service() {
+    // Initialize logging
+    init_logging();
+
+    // Load environment variables from .env file
+    dotenv().ok();
+
+    // Create DeepSeek services
+    let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
+    let tool_model = Arc::new(DeepSeekService::new(api_key.clone()));
+    let reasoning_model = Arc::new(DeepSeekService::new(api_key));
+
+    // Create available tools
+    let tools = create_test_tools();
 
     // Create model router
     let router = ModelRouter::new(tool_model, reasoning_model, tools);
@@ -141,7 +153,7 @@ async fn test_model_router_service() {
 #[tokio::test]
 async fn test_model_router_chat() {
     // Initialize logging
-    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+    init_logging();
 
     // Load environment variables from .env file
     dotenv().ok();
@@ -152,7 +164,7 @@ async fn test_model_router_chat() {
     let reasoning_model = Arc::new(DeepSeekService::new(api_key));
 
     // Create model router with empty tools
-    let router = ModelRouter::new(tool_model, reasoning_model, vec![]);
+    let router = ModelRouter::new(tool_model, reasoning_model, create_test_tools());
 
     // Test general chat
     let (response, reasoning) = router
@@ -180,7 +192,7 @@ async fn test_model_router_chat() {
 #[tokio::test]
 async fn test_model_router_tool_execution() {
     // Initialize logging
-    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+    init_logging();
 
     // Load environment variables from .env file
     dotenv().ok();
