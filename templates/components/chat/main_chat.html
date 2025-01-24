@@ -33,6 +33,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   const textarea = document.getElementById('input');
+  const form = document.querySelector('form[ws-send]');
   
   function adjustHeight() {
     textarea.style.height = 'auto';
@@ -42,12 +43,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
   textarea.addEventListener('input', adjustHeight);
   
+  // Reset height on form submit
+  form.addEventListener('submit', function() {
+    textarea.style.height = '60px'; // Reset to min-height
+    textarea.value = ''; // Clear the input
+  });
+  
   // Handle Enter key to submit, Shift+Enter for new line
   textarea.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      document.querySelector('form[ws-send]').dispatchEvent(new Event('submit'));
+      form.dispatchEvent(new Event('submit'));
     }
   });
 });
-</script>
