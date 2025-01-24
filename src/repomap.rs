@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::Path;
 use tree_sitter::{Parser, Query, QueryCursor};
-use std::collections::HashMap;
 
 pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut parser = Parser::new();
