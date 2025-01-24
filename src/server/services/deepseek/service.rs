@@ -4,9 +4,9 @@ use super::types::{Tool, FunctionDefinition};
 
 #[derive(Debug, Clone)]
 pub struct DeepSeekService {
-    client: Client,
-    api_key: String,
-    base_url: String,
+    pub(crate) client: Client,
+    pub(crate) api_key: String,
+    pub(crate) base_url: String,
 }
 
 impl DeepSeekService {
