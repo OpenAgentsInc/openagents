@@ -116,8 +116,7 @@ async fn main() -> Result<()> {
         println!();
 
         // Then, generate a specific test implementation for the most important uncovered functionality
-        let test_prompt = format!(
-            "Based on the coverage analysis above, write a complete Rust test implementation for the \
+        let test_prompt = "Based on the coverage analysis above, write a complete Rust test implementation for the \
             most critical uncovered function/module. Include:\n\
             1. All necessary imports\n\
             2. Test module setup with #[cfg(test)]\n\
@@ -125,13 +124,12 @@ async fn main() -> Result<()> {
             4. Multiple test cases covering different scenarios\n\
             5. Comments explaining the test strategy\n\n\
             Write the complete test code that could be directly added to the appropriate test file. \
-            Make sure to handle edge cases and error conditions.",
-        );
+            Make sure to handle edge cases and error conditions.".to_string();
 
         print_colored("\nTest Implementation Reasoning:\n", Color::Yellow)?;
         let mut test_code = String::new();
         let mut in_reasoning = true;
-        let mut stream = service.chat_stream(test_prompt, true).await;
+        let mut stream = service.chat_stream(&test_prompt, true).await;
         
         while let Some(update) = stream.recv().await {
             match update {
