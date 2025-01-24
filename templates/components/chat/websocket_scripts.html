@@ -76,6 +76,51 @@
   let currentThinkingMessage = null;
   let thinkingContent = "";
 
+  // Function to convert markdown code blocks to highlighted HTML
+  function processCodeBlocks(content) {
+    console.log('PROCESSING CODE BLOCKS IN:', content.slice(0, 100));
+    
+    // Find code blocks
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    let matches = content.match(codeBlockRegex);
+    console.log('FOUND CODE BLOCKS:', matches ? matches.length : 0);
+
+    if (!matches) return content;
+
+    matches.forEach((match) => {
+      try {
+        // Extract language and code
+        const [_, lang, code] = /```(\w+)?\n([\s\S]*?)```/.exec(match);
+        console.log('PROCESSING BLOCK, LANGUAGE:', lang || 'plaintext');
+
+        // Create highlighted HTML
+        const highlighted = `<pre><code class="language-${lang || 'plaintext'}">${code}</code></pre>`;
+        
+        // Replace in content
+        content = content.replace(match, highlighted);
+        console.log('REPLACED CODE BLOCK');
+      } catch (err) {
+        console.error('ERROR PROCESSING BLOCK:', err);
+      }
+    });
+
+    return content;
+  }
+
+  // Function to apply syntax highlighting
+  function highlightCode(element) {
+    console.log('HIGHLIGHTING CODE IN ELEMENT');
+    const codeBlocks = element.querySelectorAll('pre code');
+    console.log('FOUND CODE BLOCKS:', codeBlocks.length);
+    
+    codeBlocks.forEach((block) => {
+      if (!block.classList.contains('hljs')) {
+        console.log('HIGHLIGHTING BLOCK');
+        hljs.highlightElement(block);
+      }
+    });
+  }
+
   function handleChatMessage(data) {
     const messagesDiv = document.getElementById("chat-messages");
     const template = document.getElementById("message-template");
@@ -156,8 +201,9 @@
       currentAiMessage
     ) {
       currentAiMessage.fullContent += data.content;
-      currentAiMessage.contentEl.textContent = currentAiMessage.fullContent;
+      currentAiMessage.contentEl.innerHTML = processCodeBlocks(currentAiMessage.fullContent);
       currentAiMessage.statusEl.textContent = "Typing...";
+      highlightCode(currentAiMessage.contentEl);
     }
     // For completed AI responses
     else if (
@@ -165,7 +211,9 @@
       data.status === "complete" &&
       currentAiMessage
     ) {
-      currentAiMessage.contentEl.textContent = data.content;
+      const processedContent = processCodeBlocks(data.content);
+      currentAiMessage.contentEl.innerHTML = processedContent;
+      highlightCode(currentAiMessage.contentEl);
       currentAiMessage.statusEl.classList.add("hidden");
       currentAiMessage = null;
 
