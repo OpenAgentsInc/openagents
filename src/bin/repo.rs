@@ -1,6 +1,7 @@
 use std::fs;
 use std::env;
-use std::process::Command;
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
 use git2::Repository;
 use openagents::repomap::generate_repo_map;
 
@@ -29,22 +30,52 @@ fn main() {
     let map = generate_repo_map(&temp_dir);
     println!("Repository Map:\n{}", map);
 
-    // Run cargo test in the cloned repository
+    // Run cargo test in the cloned repository with streaming output
     println!("Running cargo test in the cloned repository...");
-    let test_output = Command::new("cargo")
+    let mut child = Command::new("cargo")
         .current_dir(&temp_dir)
         .arg("test")
-        .output()
-        .expect("Failed to execute cargo test");
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to start cargo test");
 
-    // Print test results
-    if test_output.status.success() {
-        println!("Tests passed successfully!");
-        println!("Test output:\n{}", String::from_utf8_lossy(&test_output.stdout));
+    // Stream stdout in real-time
+    let stdout = child.stdout.take().expect("Failed to capture stdout");
+    let stderr = child.stderr.take().expect("Failed to capture stderr");
+    
+    // Spawn a thread to handle stdout
+    let stdout_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                println!("{}", line);
+            }
+        }
+    });
+
+    // Spawn a thread to handle stderr
+    let stderr_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                eprintln!("{}", line);
+            }
+        }
+    });
+
+    // Wait for the command to complete
+    let status = child.wait().expect("Failed to wait for cargo test");
+
+    // Wait for output threads to finish
+    stdout_thread.join().expect("Failed to join stdout thread");
+    stderr_thread.join().expect("Failed to join stderr thread");
+
+    // Print final status
+    if status.success() {
+        println!("\nTests completed successfully!");
     } else {
-        println!("Tests failed!");
-        println!("Test output:\n{}", String::from_utf8_lossy(&test_output.stdout));
-        println!("Test errors:\n{}", String::from_utf8_lossy(&test_output.stderr));
+        println!("\nTests failed!");
     }
 
     // Cleanup: Remove the temporary directory
