@@ -4,7 +4,7 @@ use tree_sitter::{Parser, Query, QueryCursor};
 
 pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut parser = Parser::new();
-    let language = unsafe { (tree_sitter_rust::LANGUAGE)() };
+    let language = tree_sitter_rust::language();  // Using the language() function directly
     parser.set_language(&language).expect("Error loading Rust grammar");
 
     let mut repo_map = String::new();
