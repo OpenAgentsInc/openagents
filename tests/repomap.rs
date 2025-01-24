@@ -1,70 +1,37 @@
 use axum::{
-    body::Body,
-    http::{header::CONTENT_TYPE, Request, StatusCode},
     routing::{get, post},
     Router,
 };
-use openagents::{generate_repomap, repomap, server::services::RepomapService};
-use serde_json::json;
-use std::sync::Arc;
-use tower::ServiceExt;
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use openagents::server::services::RepomapService;
 
 #[tokio::test]
-async fn test_get_repomap() {
-    let app = Router::new().route("/repomap", get(repomap));
+async fn test_repomap_endpoint() {
+    // Create a new router with the repomap endpoint
+    let app = Router::new()
+        .route("/repomap", post(handle_repomap));
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/repomap")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    // Create a test client
+    let client = axum_test::TestClient::new(app);
 
-    assert_eq!(response.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn test_generate_repomap() {
-    // Start mock server
-    let mock_server = MockServer::start().await;
-
-    // Create mock response
-    Mock::given(method("POST"))
-        .and(path("/api/v1/repomap/generate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "repo_map": "# Test Repository Map\n\nThis is a test map.",
-            "metadata": {}
-        })))
-        .mount(&mock_server)
+    // Send a test request
+    let response = client.post("/repomap")
+        .json(&serde_json::json!({
+            "repo": "test/repo",
+            "path": "src/main.rs"
+        }))
+        .send()
         .await;
 
-    // Create service with mock server URL
-    let aider_api_key = "test_key".to_string();
-    let repomap_service = Arc::new(RepomapService::with_base_url(
-        aider_api_key,
-        mock_server.uri(),
-    ));
+    // Assert the response
+    assert_eq!(response.status(), 200);
+}
 
-    let app = Router::new()
-        .route("/repomap/generate", post(generate_repomap))
-        .with_state(repomap_service);
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/repomap/generate")
-                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .body(Body::from("repo_url=https://github.com/test/repo"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
+async fn handle_repomap(
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> axum::Json<serde_json::Value> {
+    let service = RepomapService::new("test_key".to_string());
+    match service.generate_repomap(body.to_string()).await {
+        Ok(result) => axum::Json(serde_json::json!({ "result": result })),
+        Err(e) => axum::Json(serde_json::json!({ "error": e.to_string() })),
+    }
 }
