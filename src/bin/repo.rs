@@ -60,6 +60,7 @@ async fn main() -> Result<()> {
 
     // Generate and store the repository map
     let map = generate_repo_map(&ctx.temp_dir);
+    println!("{}", map);
 
     // Run cargo test
     let test_output = run_cargo_tests(&ctx.temp_dir).await?;
