@@ -1,6 +1,6 @@
 use std::fs;
 use std::env;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use git2::Repository;
 use openagents::repomap::generate_repo_map;
@@ -134,14 +134,14 @@ async fn main() -> Result<()> {
         
         use openagents::server::services::StreamUpdate;
         let mut in_reasoning = true;
+        let mut stdout = std::io::stdout();
 
+        println!("\nReasoning Process:");
         while let Some(update) = stream.recv().await {
             match update {
                 StreamUpdate::Reasoning(r) => {
-                    if in_reasoning {
-                        println!("\nReasoning Process:");
-                    }
                     print!("{}", r);
+                    stdout.flush().ok();
                 }
                 StreamUpdate::Content(c) => {
                     if in_reasoning {
@@ -149,6 +149,7 @@ async fn main() -> Result<()> {
                         in_reasoning = false;
                     }
                     print!("{}", c);
+                    stdout.flush().ok();
                 }
                 StreamUpdate::Done => break,
                 _ => {}
