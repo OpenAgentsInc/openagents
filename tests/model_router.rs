@@ -1,5 +1,5 @@
 use dotenvy::dotenv;
-use openagents::server::services::deepseek::DeepSeekService;
+use openagents::server::services::deepseek::{ChatMessage, DeepSeekService, ToolChoice};
 use serde_json::json;
 use std::env;
 use tracing::{info, Level};
@@ -17,14 +17,49 @@ async fn test_routing_decision() {
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
     let service = DeepSeekService::new(api_key);
 
+    // Create a dummy tool for routing tests
+    let dummy_tool = DeepSeekService::create_tool(
+        "dummy_tool".to_string(),
+        Some("A dummy tool for testing routing decisions".to_string()),
+        json!({
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "A test message"
+                }
+            }
+        }),
+    );
+
     // System prompt for routing decisions
-    let system_prompt = r#"You are a routing assistant that determines whether a user message requires tool usage.
+    let messages = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: r#"You are a routing assistant that determines whether a user message requires tool usage.
 Analyze the user's message and respond with a JSON object containing:
 1. "needs_tool": boolean - whether any tools are needed
 2. "reasoning": string - brief explanation of your decision
 3. "suggested_tool": string | null - name of suggested tool if applicable
 
-Always respond with valid JSON matching this format."#;
+Always respond with valid JSON matching this format.
+
+Example responses:
+{
+    "needs_tool": true,
+    "reasoning": "User is requesting to view a GitHub issue",
+    "suggested_tool": "read_github_issue"
+}
+
+{
+    "needs_tool": false,
+    "reasoning": "General chat message that doesn't require tools",
+    "suggested_tool": null
+}"#.to_string(),
+            tool_call_id: None,
+            tool_calls: None,
+        }
+    ];
 
     // Test cases for routing decisions
     let test_cases = vec![
@@ -50,11 +85,20 @@ Always respond with valid JSON matching this format."#;
         info!("\n\nTesting routing for input: {}", input);
         info!("Expected decision: {}", expected_decision);
 
+        // Add user message to context
+        let mut test_messages = messages.clone();
+        test_messages.push(ChatMessage {
+            role: "user".to_string(),
+            content: input.to_string(),
+            tool_call_id: None,
+            tool_calls: None,
+        });
+
         let (response, _, _) = service
             .chat_with_tools(
                 input.to_string(),
-                vec![], // No tools needed for routing decision
-                None,
+                vec![dummy_tool.clone()],
+                Some(ToolChoice::None), // Explicitly tell model not to use tools
                 false,
             )
             .await
