@@ -1,5 +1,4 @@
 use std::env;
-use std::path::PathBuf;
 use anyhow::{Result, bail};
 use dotenvy::dotenv;
 use openagents::{
@@ -67,10 +66,10 @@ async fn main() -> Result<()> {
         let service = DeepSeekService::new(ctx.api_key);
 
         // Run the analysis
-        let analysis_result = analyze_repository(&service, &map, &test_output, &issue).await?;
+        let analysis_result = analyze_repository(&service, &map, &test_output, &issue, &ctx.temp_dir).await?;
 
         // Post the analysis as a comment on the GitHub issue
-        if let Some(token) = github_token {
+        if let Some(_) = github_token {
             post_analysis(
                 &github_service,
                 &analysis_result,
