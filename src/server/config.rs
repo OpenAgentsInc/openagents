@@ -24,11 +24,10 @@ pub fn configure_app() -> Router {
         deepseek_service.clone(),
         github_service.clone(),
     );
-    let ws_state = Arc::new(ws_state);
 
     // Create chat handler
     let chat_handler = ChatHandler::new(
-        ws_state,
+        ws_state.clone(),
         deepseek_service.clone(),
         github_service.clone(),
     );
