@@ -7,6 +7,7 @@ use openagents::{
     server::services::{
         deepseek::DeepSeekService,
         github_issue::GitHubService,
+        StreamUpdate,
     },
     repo::{
         RepoContext,
@@ -15,6 +16,8 @@ use openagents::{
         run_cargo_tests,
     },
 };
+use std::io::{stdout, Write};
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -22,6 +25,14 @@ struct Cli {
     /// Generate test suggestions for uncovered functionality
     #[arg(long)]
     test: bool,
+}
+
+fn print_colored(text: &str, color: Color) -> Result<()> {
+    let mut stdout = StandardStream::stdout(ColorChoice::Always);
+    stdout.set_color(ColorSpec::new().set_fg(Some(color)))?;
+    write!(stdout, "{}", text)?;
+    stdout.reset()?;
+    Ok(())
 }
 
 #[tokio::main]
@@ -77,9 +88,32 @@ async fn main() -> Result<()> {
             For each one, explain why it needs testing and what scenarios should be tested.",
             test_output, map
         );
+
+        print_colored("\nTest Coverage Analysis Reasoning:\n", Color::Yellow)?;
+        let mut coverage_analysis = String::new();
+        let mut in_reasoning = true;
+        let mut stream = service.chat_stream(coverage_prompt, true).await;
         
-        let (coverage_analysis, _) = service.chat(coverage_prompt, false).await?;
-        println!("\nTest Coverage Analysis:\n{}", coverage_analysis);
+        while let Some(update) = stream.recv().await {
+            match update {
+                StreamUpdate::Reasoning(r) => {
+                    print_colored(&r, Color::Yellow)?;
+                },
+                StreamUpdate::Content(c) => {
+                    if in_reasoning {
+                        println!();
+                        print_colored("\nTest Coverage Analysis:\n", Color::Green)?;
+                        in_reasoning = false;
+                    }
+                    print!("{}", c);
+                    coverage_analysis.push_str(&c);
+                    stdout().flush()?;
+                },
+                StreamUpdate::Done => break,
+                _ => {}
+            }
+        }
+        println!();
 
         // Then, generate a specific test implementation for the most important uncovered functionality
         let test_prompt = format!(
@@ -93,9 +127,32 @@ async fn main() -> Result<()> {
             Write the complete test code that could be directly added to the appropriate test file. \
             Make sure to handle edge cases and error conditions.",
         );
+
+        print_colored("\nTest Implementation Reasoning:\n", Color::Yellow)?;
+        let mut test_code = String::new();
+        let mut in_reasoning = true;
+        let mut stream = service.chat_stream(test_prompt, true).await;
         
-        let (test_code, _) = service.chat(test_prompt, false).await?;
-        println!("\nSuggested Test Implementation:\n{}", test_code);
+        while let Some(update) = stream.recv().await {
+            match update {
+                StreamUpdate::Reasoning(r) => {
+                    print_colored(&r, Color::Yellow)?;
+                },
+                StreamUpdate::Content(c) => {
+                    if in_reasoning {
+                        println!();
+                        print_colored("\nSuggested Test Implementation:\n", Color::Green)?;
+                        in_reasoning = false;
+                    }
+                    print!("{}", c);
+                    test_code.push_str(&c);
+                    stdout().flush()?;
+                },
+                StreamUpdate::Done => break,
+                _ => {}
+            }
+        }
+        println!();
 
         // Post the suggestions as a GitHub comment if token is available
         if let Some(token) = github_token {
@@ -116,7 +173,7 @@ async fn main() -> Result<()> {
             github_service.post_comment(
                 "OpenAgentsInc",
                 "openagents",
-                592, // Using issue #592 as it's related to the environment implementation
+                592,
                 &comment
             ).await?;
             println!("Test suggestions posted to GitHub issue #592");
