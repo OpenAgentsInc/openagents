@@ -1,10 +1,17 @@
+use dotenvy::dotenv;
 use openagents::server::services::deepseek::{DeepSeekService, ToolChoice};
 use serde_json::json;
+use std::env;
 
 #[tokio::test]
 async fn test_tool_selection() {
+    // Load environment variables from .env file
+    dotenv().ok();
+    
     // Create a real DeepSeek service instance
-    let service = DeepSeekService::new(std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set"));
+    let api_key = env::var("DEEPSEEK_API_KEY")
+        .expect("DEEPSEEK_API_KEY must be set in .env file");
+    let service = DeepSeekService::new(api_key);
 
     // Create a tool for reading GitHub issues
     let read_issue_tool = DeepSeekService::create_tool(
