@@ -76,14 +76,21 @@
   let currentThinkingMessage = null;
   let thinkingContent = "";
 
+  // Function to escape HTML
+  function escapeHtml(unsafe) {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   // Function to convert markdown code blocks to highlighted HTML
   function processCodeBlocks(content) {
-    console.log('PROCESSING CODE BLOCKS IN:', content.slice(0, 100));
-    
     // Find code blocks
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
     let matches = content.match(codeBlockRegex);
-    console.log('FOUND CODE BLOCKS:', matches ? matches.length : 0);
 
     if (!matches) return content;
 
@@ -91,16 +98,14 @@
       try {
         // Extract language and code
         const [_, lang, code] = /```(\w+)?\n([\s\S]*?)```/.exec(match);
-        console.log('PROCESSING BLOCK, LANGUAGE:', lang || 'plaintext');
-
-        // Create highlighted HTML
-        const highlighted = `<pre><code class="language-${lang || 'plaintext'}">${code}</code></pre>`;
+        
+        // Create highlighted HTML with escaped code
+        const highlighted = `<pre><code class="language-${lang || 'plaintext'}">${escapeHtml(code)}</code></pre>`;
         
         // Replace in content
         content = content.replace(match, highlighted);
-        console.log('REPLACED CODE BLOCK');
       } catch (err) {
-        console.error('ERROR PROCESSING BLOCK:', err);
+        console.error('Error processing code block:', err);
       }
     });
 
@@ -109,13 +114,9 @@
 
   // Function to apply syntax highlighting
   function highlightCode(element) {
-    console.log('HIGHLIGHTING CODE IN ELEMENT');
     const codeBlocks = element.querySelectorAll('pre code');
-    console.log('FOUND CODE BLOCKS:', codeBlocks.length);
-    
     codeBlocks.forEach((block) => {
       if (!block.classList.contains('hljs')) {
-        console.log('HIGHLIGHTING BLOCK');
         hljs.highlightElement(block);
       }
     });
