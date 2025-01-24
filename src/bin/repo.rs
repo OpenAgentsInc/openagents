@@ -1,6 +1,7 @@
 use std::env;
 use anyhow::{Result, bail};
 use dotenvy::dotenv;
+use clap::Parser;
 use openagents::{
     repomap::generate_repo_map,
     server::services::{
@@ -17,8 +18,18 @@ use openagents::{
     },
 };
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Generate test suggestions for uncovered functionality
+    #[arg(long)]
+    test: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
     // Load .env file first
     if let Err(e) = dotenv() {
         bail!("Failed to load .env file: {}", e);
@@ -65,6 +76,21 @@ async fn main() -> Result<()> {
 
     // Run the analysis
     let analysis_result = analyze_repository(&service, &map, &test_output, &issue, &ctx.temp_dir).await?;
+
+    // If test flag is enabled, request test suggestions
+    if cli.test {
+        println!("\nGenerating test suggestions...");
+        let test_prompt = format!(
+            "Based on the repository map and test output, suggest a new test for uncovered functionality. \
+            Focus on important functions or modules that lack test coverage. \
+            Repository map:\n{}\n\nTest output:\n{}\n\n\
+            Please write a complete test implementation in Rust that would improve test coverage. \
+            Include necessary imports and test setup.",
+            map, test_output
+        );
+        let (test_suggestion, _) = service.chat(test_prompt, false).await?;
+        println!("\nTest Suggestion:\n{}", test_suggestion);
+    }
 
     // Post the analysis as a comment on the GitHub issue
     if let Some(_) = github_token {
