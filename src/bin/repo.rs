@@ -43,50 +43,44 @@ async fn main() -> Result<()> {
     // Create context
     let ctx = RepoContext::new(temp_dir.clone(), api_key, github_token.clone());
 
-    // Use a closure to handle the main logic and ensure cleanup
-    let result = (|| async {
-        // Clone the repository
-        let repo_url = "https://github.com/OpenAgentsInc/openagents";
-        let _repo = clone_repository(repo_url, &ctx.temp_dir)?;
+    // Clone the repository
+    let repo_url = "https://github.com/OpenAgentsInc/openagents";
+    let _repo = clone_repository(repo_url, &ctx.temp_dir)?;
 
-        // Generate and store the repository map
-        let map = generate_repo_map(&ctx.temp_dir);
-        println!("Repository Map:\n{}", map);
+    // Generate and store the repository map
+    let map = generate_repo_map(&ctx.temp_dir);
+    println!("Repository Map:\n{}", map);
 
-        // Run cargo test
-        let test_output = run_cargo_tests(&ctx.temp_dir).await?;
+    // Run cargo test
+    let test_output = run_cargo_tests(&ctx.temp_dir).await?;
 
-        // Fetch GitHub issue details
-        println!("\nFetching GitHub issue #592...");
-        let github_service = GitHubService::new(github_token.clone());
-        let issue = github_service.get_issue("OpenAgentsInc", "openagents", 592).await?;
-        println!("Issue fetched: {}", issue.title);
+    // Fetch GitHub issue details
+    println!("\nFetching GitHub issue #592...");
+    let github_service = GitHubService::new(github_token.clone());
+    let issue = github_service.get_issue("OpenAgentsInc", "openagents", 592).await?;
+    println!("Issue fetched: {}", issue.title);
 
-        // Initialize DeepSeek service
-        let service = DeepSeekService::new(ctx.api_key);
+    // Initialize DeepSeek service
+    let service = DeepSeekService::new(ctx.api_key);
 
-        // Run the analysis
-        let analysis_result = analyze_repository(&service, &map, &test_output, &issue, &ctx.temp_dir).await?;
+    // Run the analysis
+    let analysis_result = analyze_repository(&service, &map, &test_output, &issue, &ctx.temp_dir).await?;
 
-        // Post the analysis as a comment on the GitHub issue
-        if let Some(_) = github_token {
-            post_analysis(
-                &github_service,
-                &analysis_result,
-                592,
-                "OpenAgentsInc",
-                "openagents"
-            ).await?;
-        } else {
-            println!("\nSkipping GitHub comment posting - GITHUB_TOKEN not found");
-        }
+    // Post the analysis as a comment on the GitHub issue
+    if let Some(_) = github_token {
+        post_analysis(
+            &github_service,
+            &analysis_result,
+            592,
+            "OpenAgentsInc",
+            "openagents"
+        ).await?;
+    } else {
+        println!("\nSkipping GitHub comment posting - GITHUB_TOKEN not found");
+    }
 
-        Ok(())
-    })().await;
-
-    // Always clean up, regardless of success or failure
+    // Clean up at the end
     cleanup_temp_dir(&temp_dir);
 
-    // Return the result
-    result
+    Ok(())
 }
