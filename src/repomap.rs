@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tree_sitter::{Parser, Query, QueryCursor};
 use lazy_static::lazy_static;
 
