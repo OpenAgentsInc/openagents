@@ -1,11 +1,12 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use crate::server::services::{
-    deepseek::{DeepSeekService, ChatMessage},
+    deepseek::DeepSeekService,
     github_issue::GitHubService,
     StreamUpdate,
 };
-use std::io::Write;
+use std::{io::Write, fs};
+use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FileRequest {
@@ -17,6 +18,7 @@ pub async fn analyze_repository(
     map: &str,
     test_output: &str,
     issue: &crate::server::services::github_issue::GitHubIssue,
+    repo_path: &Path,
 ) -> Result<String> {
     // First analysis prompt to get file list
     let file_request_prompt = format!(
@@ -40,13 +42,19 @@ pub async fn analyze_repository(
         println!("- {}", path);
     }
 
-    // TODO: Read contents of selected files
-    // This part would need to be implemented to actually read the files
+    // Read contents of selected files
     let mut file_contents = String::new();
     for path in &file_request.paths {
-        file_contents.push_str(&format!("\n=== {} ===\n", path));
-        // Here you would add the actual file contents
-        // file_contents.push_str(&fs::read_to_string(path)?);
+        let full_path = repo_path.join(path);
+        if full_path.exists() {
+            file_contents.push_str(&format!("\n=== {} ===\n", path));
+            match fs::read_to_string(&full_path) {
+                Ok(content) => file_contents.push_str(&content),
+                Err(e) => println!("Warning: Could not read {}: {}", path, e),
+            }
+        } else {
+            println!("Warning: File not found: {}", path);
+        }
     }
 
     // Create final analysis prompt
@@ -62,7 +70,7 @@ pub async fn analyze_repository(
         with code blocks using triple backticks and clear section headings.",
         issue.number,
         issue.title,
-        issue.body.unwrap_or_default(),
+        issue.body.as_deref().unwrap_or_default(),
         map,
         file_contents,
         test_output
