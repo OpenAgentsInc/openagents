@@ -38,14 +38,21 @@ impl DeepSeekService {
             "deepseek-chat"
         };
 
+        // Only include tools if we have them and we're not using the reasoner
+        let tools = if !tools.is_empty() && !use_reasoner {
+            Some(tools)
+        } else {
+            None
+        };
+
         let request = ChatRequest {
             model: model.to_string(),
             messages,
             stream: false,
             temperature: 0.7,
             max_tokens: None,
-            tools: Some(tools),
-            tool_choice,
+            tools,
+            tool_choice: if tools.is_some() { tool_choice } else { None },
         };
 
         let url = format!("{}/chat/completions", self.base_url);
