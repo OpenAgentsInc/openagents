@@ -141,14 +141,10 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         message: String,
         use_reasoning: bool,
     ) -> Result<(String, Option<String>)> {
+        // For chat, we don't need tools, so use empty vec
         let (response, reasoning, _) = self
             .reasoning_model
-            .chat_with_tools(
-                message,
-                self.available_tools.clone(), // Need to provide tools for API validation
-                None,
-                use_reasoning,
-            )
+            .chat_with_tools(message, vec![], None, use_reasoning)
             .await?;
         Ok((response, reasoning))
     }
