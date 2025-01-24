@@ -86,6 +86,30 @@
       .replace(/'/g, "&#039;");
   }
 
+  // Function to create copy button
+  function createCopyButton(codeText) {
+    const button = document.createElement('button');
+    button.className = 'absolute top-2 right-2 p-1 text-white/50 hover:text-white transition-colors';
+    button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    
+    button.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(codeText);
+        const originalHTML = button.innerHTML;
+        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        button.classList.add('text-green-400');
+        setTimeout(() => {
+          button.innerHTML = originalHTML;
+          button.classList.remove('text-green-400');
+        }, 1000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    };
+    
+    return button;
+  }
+
   // Function to convert markdown code blocks to highlighted HTML
   function processCodeBlocks(content) {
     // Find code blocks
@@ -99,11 +123,25 @@
         // Extract language and code
         const [_, lang, code] = /```(\w+)?\n([\s\S]*?)```/.exec(match);
         
-        // Create highlighted HTML with escaped code
-        const highlighted = `<pre><code class="language-${lang || 'plaintext'}">${escapeHtml(code)}</code></pre>`;
+        // Create wrapper div for relative positioning
+        const wrapperDiv = document.createElement('div');
+        wrapperDiv.className = 'relative';
+        
+        // Create the pre and code elements
+        const pre = document.createElement('pre');
+        const codeEl = document.createElement('code');
+        codeEl.className = `language-${lang || 'plaintext'}`;
+        codeEl.textContent = code; // Use textContent to preserve whitespace
+        
+        pre.appendChild(codeEl);
+        wrapperDiv.appendChild(pre);
+        
+        // Add copy button
+        const copyButton = createCopyButton(code);
+        wrapperDiv.appendChild(copyButton);
         
         // Replace in content
-        content = content.replace(match, highlighted);
+        content = content.replace(match, wrapperDiv.outerHTML);
       } catch (err) {
         console.error('Error processing code block:', err);
       }
