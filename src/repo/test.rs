@@ -19,7 +19,7 @@ pub async fn run_cargo_tests(repo_path: &Path) -> Result<String> {
     // Handle stdout
     if let Some(stdout) = cmd.stdout.take() {
         let reader = BufReader::new(stdout);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             println!("{}", line);
             output.push_str(&line);
             output.push('\n');
@@ -29,7 +29,7 @@ pub async fn run_cargo_tests(repo_path: &Path) -> Result<String> {
     // Handle stderr
     if let Some(stderr) = cmd.stderr.take() {
         let reader = BufReader::new(stderr);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             eprintln!("{}", line);
             output.push_str(&line);
             output.push('\n');
