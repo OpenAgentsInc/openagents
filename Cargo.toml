@@ -59,6 +59,7 @@ async-trait = "0.1"
 git2 = "0.20.0"
 tree-sitter = "0.24.7"
 tree-sitter-rust = "0.23.2"
+cc = "1.2.10"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }

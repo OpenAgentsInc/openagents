@@ -4,11 +4,12 @@ use tree_sitter::{Parser, Query, QueryCursor};
 
 pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut parser = Parser::new();
-    parser.set_language(tree_sitter_rust::LANGUAGE).expect("Error loading Rust grammar");
+    let language = tree_sitter_rust::LANGUAGE();
+    parser.set_language(&language).expect("Error loading Rust grammar");
 
     let mut repo_map = String::new();
     let query = Query::new(
-        tree_sitter_rust::LANGUAGE,
+        &language,
         r#"
         (function_item
             name: (identifier) @function.name)
@@ -21,16 +22,16 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
     ).expect("Error creating query");
 
     let mut cursor = QueryCursor::new();
-    
+
     walk_dir(repo_path, &mut |path| {
         if path.extension().map_or(false, |ext| ext == "rs") {
             if let Ok(source_code) = fs::read_to_string(path) {
                 let tree = parser.parse(&source_code, None).unwrap();
                 let matches = cursor.matches(&query, tree.root_node(), source_code.as_bytes());
-                
+
                 let mut file_map = String::new();
                 file_map.push_str(&format!("{}:\n", path.display()));
-                
+
                 while let Some(m) = streaming_iterator::StreamingIterator::next(&mut matches) {
                     for capture in m.captures {
                         let text = &source_code[capture.node.byte_range()];
@@ -42,7 +43,7 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                         }
                     }
                 }
-                
+
                 if !file_map.is_empty() {
                     repo_map.push_str(&file_map);
                     repo_map.push('\n');
