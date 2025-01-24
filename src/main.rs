@@ -20,27 +20,27 @@ use openagents::{
 };
 
 #[derive(Template)]
-#[template(path = "page.html")]
+#[template(path = "layouts/base.html")]
 struct PageTemplate<'a> {
     title: &'a str,
     path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "content.html")]
+#[template(path = "layouts/content.html")]
 struct ContentTemplate<'a> {
     path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "chat-page.html")]
+#[template(path = "layouts/chat_base.html")]
 struct ChatPageTemplate<'a> {
     title: &'a str,
     path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "chat-content.html")]
+#[template(path = "layouts/chat_content.html")]
 struct ChatContentTemplate;
 
 #[tokio::main]
