@@ -600,6 +600,11 @@ video {
   position: relative;
 }
 
+.inset-y-0 {
+  top: 0px;
+  bottom: 0px;
+}
+
 .left-1 {
   left: 0.25rem;
 }
@@ -614,6 +619,22 @@ video {
 
 .right-4 {
   right: 1rem;
+}
+
+.bottom-0 {
+  bottom: 0px;
+}
+
+.right-\[80px\] {
+  right: 80px;
+}
+
+.left-1\/2 {
+  left: 50%;
+}
+
+.bottom-\[60px\] {
+  bottom: 60px;
 }
 
 .mx-2 {
@@ -744,8 +765,16 @@ video {
   height: 1.5rem;
 }
 
+.h-\[60px\] {
+  height: 60px;
+}
+
 .min-h-screen {
   min-height: 100vh;
+}
+
+.min-h-\[60px\] {
+  min-height: 60px;
 }
 
 .w-1\.5 {
@@ -854,6 +883,14 @@ video {
   -webkit-user-select: none;
      -moz-user-select: none;
           user-select: none;
+}
+
+.resize-none {
+  resize: none;
+}
+
+.resize {
+  resize: both;
 }
 
 .list-inside {
