@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::info;
 
 use super::deepseek::{ChatMessage, DeepSeekService, Tool, ToolChoice, ToolCallResponse};
