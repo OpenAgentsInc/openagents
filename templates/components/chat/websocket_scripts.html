@@ -76,6 +76,88 @@
   let currentThinkingMessage = null;
   let thinkingContent = "";
 
+  // Function to escape HTML
+  function escapeHtml(unsafe) {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  // Function to create copy button
+  function createCopyButton(codeText) {
+    const button = document.createElement('button');
+    button.className = 'absolute top-[12px] right-[50px] p-1.5 bg-white/5 rounded hover:bg-white/10 transition-colors';
+    button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/50 hover:text-white"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    
+    button.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(codeText);
+        const originalHTML = button.innerHTML;
+        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-400"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        setTimeout(() => {
+          button.innerHTML = originalHTML;
+        }, 1000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    };
+    
+    return button;
+  }
+
+  // Function to convert markdown code blocks to highlighted HTML
+  function processCodeBlocks(content) {
+    // Find code blocks
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    let matches = content.match(codeBlockRegex);
+
+    if (!matches) return content;
+
+    matches.forEach((match) => {
+      try {
+        // Extract language and code
+        const [_, lang, code] = /```(\w+)?\n([\s\S]*?)```/.exec(match);
+        
+        // Create wrapper div for relative positioning
+        const wrapperDiv = document.createElement('div');
+        wrapperDiv.className = 'relative';
+        
+        // Create the pre and code elements
+        const pre = document.createElement('pre');
+        const codeEl = document.createElement('code');
+        codeEl.className = `language-${lang || 'plaintext'}`;
+        codeEl.textContent = code.trim();
+        
+        pre.appendChild(codeEl);
+        wrapperDiv.appendChild(pre);
+        
+        // Add copy button to wrapper (not pre)
+        const copyButton = createCopyButton(code);
+        wrapperDiv.appendChild(copyButton);
+        
+        // Replace in content
+        content = content.replace(match, wrapperDiv.outerHTML);
+      } catch (err) {
+        console.error('Error processing code block:', err);
+      }
+    });
+
+    return content;
+  }
+
+  // Function to apply syntax highlighting
+  function highlightCode(element) {
+    const codeBlocks = element.querySelectorAll('pre code');
+    codeBlocks.forEach((block) => {
+      if (!block.classList.contains('hljs')) {
+        hljs.highlightElement(block);
+      }
+    });
+  }
+
   function handleChatMessage(data) {
     const messagesDiv = document.getElementById("chat-messages");
     const template = document.getElementById("message-template");
@@ -156,8 +238,9 @@
       currentAiMessage
     ) {
       currentAiMessage.fullContent += data.content;
-      currentAiMessage.contentEl.textContent = currentAiMessage.fullContent;
+      currentAiMessage.contentEl.innerHTML = processCodeBlocks(currentAiMessage.fullContent);
       currentAiMessage.statusEl.textContent = "Typing...";
+      highlightCode(currentAiMessage.contentEl);
     }
     // For completed AI responses
     else if (
@@ -165,7 +248,9 @@
       data.status === "complete" &&
       currentAiMessage
     ) {
-      currentAiMessage.contentEl.textContent = data.content;
+      const processedContent = processCodeBlocks(data.content);
+      currentAiMessage.contentEl.innerHTML = processedContent;
+      highlightCode(currentAiMessage.contentEl);
       currentAiMessage.statusEl.classList.add("hidden");
       currentAiMessage = null;
 
