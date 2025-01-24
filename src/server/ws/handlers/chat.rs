@@ -1,8 +1,5 @@
 use super::MessageHandler;
-use crate::server::services::{
-    github_issue::GitHubService,
-    model_router::ModelRouter,
-};
+use crate::server::services::github_issue::GitHubService;
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
 use serde_json::json;
