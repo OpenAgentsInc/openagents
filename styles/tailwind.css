@@ -1,3 +1,19 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /* Code block styles */
+  pre {
+    @apply my-4 p-4 rounded-lg bg-[#1a1a1a] overflow-x-auto;
+  }
+
+  pre code {
+    @apply font-mono text-sm leading-relaxed text-gray-200;
+  }
+
+  /* Inline code */
+  code:not(pre code) {
+    @apply px-2 py-1 mx-1 rounded bg-[#1a1a1a] text-gray-200 font-mono text-sm;
+  }
+}
