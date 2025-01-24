@@ -9,7 +9,7 @@
   }
 
   pre code {
-    @apply font-mono text-sm leading-relaxed text-gray-200;
+    @apply font-mono text-xs leading-relaxed text-gray-200;
   }
 
   /* Inline code */
