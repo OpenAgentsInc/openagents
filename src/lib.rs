@@ -1,6 +1,5 @@
 pub mod configuration;
 pub mod database;
-pub mod emailoptin;
 pub mod server;
 
 use askama::Template;
