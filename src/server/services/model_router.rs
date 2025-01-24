@@ -140,7 +140,7 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
 
         let user_message = ChatMessage {
             role: "user".to_string(),
-            content: message,
+            content: message.clone(),
             tool_call_id: None,
             tool_calls: None,
         };
@@ -160,22 +160,7 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         message: String,
         use_reasoning: bool,
     ) -> Result<(String, Option<String>)> {
-        // Create a system message for chat
-        let system_message = ChatMessage {
-            role: "system".to_string(),
-            content: "You are a helpful assistant. Respond naturally to the user's message.".to_string(),
-            tool_call_id: None,
-            tool_calls: None,
-        };
-
-        let user_message = ChatMessage {
-            role: "user".to_string(),
-            content: message,
-            tool_call_id: None,
-            tool_calls: None,
-        };
-
-        // Use chat_with_tools but with no tools and no tool choice
+        // Use basic chat without tools
         let (response, reasoning, _) = self
             .chat_model
             .chat_with_tools(
