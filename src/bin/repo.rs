@@ -6,15 +6,12 @@ use openagents::{
     repomap::generate_repo_map,
     server::services::{
         deepseek::DeepSeekService,
-        github_issue::GitHubService,
     },
     repo::{
         RepoContext,
         cleanup_temp_dir,
         clone_repository,
         run_cargo_tests,
-        analyze_repository,
-        post_analysis,
     },
 };
 
@@ -52,7 +49,7 @@ async fn main() -> Result<()> {
     println!("Temporary directory created at: {:?}", temp_dir);
 
     // Create context
-    let ctx = RepoContext::new(temp_dir.clone(), api_key, github_token.clone());
+    let ctx = RepoContext::new(temp_dir.clone(), api_key, github_token);
 
     // Clone the repository
     let repo_url = "https://github.com/OpenAgentsInc/openagents";
@@ -75,7 +72,8 @@ async fn main() -> Result<()> {
             "You are a Rust testing expert. Analyze this test output and repository map to identify \
             specific functions or modules that lack test coverage. Focus only on test coverage analysis.\n\n\
             Test output:\n{}\n\nRepository map:\n{}\n\n\
-            List the specific functions/modules that need test coverage, in order of importance.",
+            List the specific functions/modules that need test coverage, in order of importance. \
+            For each one, explain why it needs testing and what scenarios should be tested.",
             test_output, map
         );
         
@@ -84,34 +82,21 @@ async fn main() -> Result<()> {
 
         // Then, generate a specific test implementation for the most important uncovered functionality
         let test_prompt = format!(
-            "Based on the coverage analysis above, write a complete Rust test implementation for one of the \
-            uncovered functions/modules. Include:\n\
+            "Based on the coverage analysis above, write a complete Rust test implementation for the \
+            most critical uncovered function/module. Include:\n\
             1. All necessary imports\n\
             2. Test module setup with #[cfg(test)]\n\
             3. Required test fixtures and mocks\n\
             4. Multiple test cases covering different scenarios\n\
             5. Comments explaining the test strategy\n\n\
-            Write the complete test code that could be directly added to the appropriate test file.",
+            Write the complete test code that could be directly added to the appropriate test file. \
+            Make sure to handle edge cases and error conditions.",
         );
         
         let (test_code, _) = service.chat(test_prompt, false).await?;
         println!("\nSuggested Test Implementation:\n{}", test_code);
     } else {
-        // Run the regular analysis
-        let analysis_result = analyze_repository(&service, &map, &test_output, &issue, &ctx.temp_dir).await?;
-
-        // Post the analysis as a comment on the GitHub issue
-        if let Some(_) = github_token {
-            post_analysis(
-                &github_service,
-                &analysis_result,
-                592,
-                "OpenAgentsInc",
-                "openagents"
-            ).await?;
-        } else {
-            println!("\nSkipping GitHub comment posting - GITHUB_TOKEN not found");
-        }
+        println!("\nRun with --test flag to generate test suggestions");
     }
 
     // Clean up at the end
