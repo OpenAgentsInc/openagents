@@ -1,6 +1,9 @@
 use super::MessageHandler;
-use crate::server::services::github_issue::GitHubService;
-use crate::server::services::DeepSeekService;
+use crate::server::services::{
+    github_issue::GitHubService,
+    model_router::ModelRouter,
+    DeepSeekService,
+};
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
 use serde_json::json;
@@ -10,19 +13,19 @@ use tracing::{error, info};
 
 pub struct ChatHandler {
     ws_state: Arc<WebSocketState>,
-    deepseek_service: Arc<DeepSeekService>,
+    model_router: Arc<ModelRouter>,
     github_service: Arc<GitHubService>,
 }
 
 impl ChatHandler {
     pub fn new(
         ws_state: Arc<WebSocketState>,
-        deepseek_service: Arc<DeepSeekService>,
+        model_router: Arc<ModelRouter>,
         github_service: Arc<GitHubService>,
     ) -> Self {
         Self {
             ws_state,
-            deepseek_service,
+            model_router,
             github_service,
         }
     }
@@ -45,57 +48,25 @@ impl ChatHandler {
             .send_to(conn_id, &typing_json.to_string())
             .await?;
 
-        // Check if message might be about GitHub issues
-        let is_github_related = content.to_lowercase().contains("issue")
-            || content.to_lowercase().contains("github")
-            || content.to_lowercase().contains("#");
+        // Get routing decision
+        let (decision, tool_calls) = self.model_router.route_message(content.clone()).await?;
 
-        if is_github_related {
-            // Create GitHub issue tool
-            let get_issue_tool = DeepSeekService::create_tool(
-                "get_github_issue".to_string(),
-                Some("Get a GitHub issue by number".to_string()),
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "owner": {
-                            "type": "string",
-                            "description": "The owner of the repository"
-                        },
-                        "repo": {
-                            "type": "string",
-                            "description": "The name of the repository"
-                        },
-                        "issue_number": {
-                            "type": "integer",
-                            "description": "The issue number"
-                        }
-                    },
-                    "required": ["owner", "repo", "issue_number"]
-                }),
-            );
+        // Send routing status
+        let routing_json = json!({
+            "type": "chat",
+            "content": decision.reasoning,
+            "sender": "ai",
+            "status": "thinking"
+        });
+        self.ws_state
+            .send_to(conn_id, &routing_json.to_string())
+            .await?;
 
-            // Get initial response with potential tool calls
-            let (initial_content, _, tool_calls) = self
-                .deepseek_service
-                .chat_with_tools(content.clone(), vec![get_issue_tool.clone()], None, false) // Note: using false for use_reasoner
-                .await?;
-
-            // Send initial content
-            let response_json = json!({
-                "type": "chat",
-                "content": initial_content,
-                "sender": "ai",
-                "status": "streaming"
-            });
-            self.ws_state
-                .send_to(conn_id, &response_json.to_string())
-                .await?;
-
-            // Handle tool calls if present
+        if decision.needs_tool {
+            // Handle tool execution
             if let Some(tool_calls) = tool_calls {
                 for tool_call in tool_calls {
-                    if tool_call.function.name == "get_github_issue" {
+                    if tool_call.function.name == "read_github_issue" {
                         // Parse tool call arguments
                         let args: serde_json::Value =
                             serde_json::from_str(&tool_call.function.arguments)?;
@@ -153,13 +124,8 @@ impl ChatHandler {
                         ];
 
                         let (final_content, _, _) = self
-                            .deepseek_service
-                            .chat_with_tool_response(
-                                messages,
-                                issue_message,
-                                vec![get_issue_tool.clone()],
-                                false, // Note: using false for use_reasoner
-                            )
+                            .model_router
+                            .handle_tool_response(messages, issue_message)
                             .await?;
 
                         // Send final response
@@ -175,20 +141,20 @@ impl ChatHandler {
                     }
                 }
             } else {
-                // If no tool calls, send complete status
-                let complete_json = json!({
+                // If no tool calls but tool was needed, send error
+                let error_json = json!({
                     "type": "chat",
-                    "content": initial_content,
-                    "sender": "ai",
-                    "status": "complete"
+                    "content": "I determined a tool was needed but couldn't execute it properly.",
+                    "sender": "system",
+                    "status": "error"
                 });
                 self.ws_state
-                    .send_to(conn_id, &complete_json.to_string())
+                    .send_to(conn_id, &error_json.to_string())
                     .await?;
             }
         } else {
-            // Use regular chat_stream for non-GitHub related queries
-            let mut stream = self.deepseek_service.chat_stream(content, true).await;
+            // Use regular chat stream for non-tool messages
+            let mut stream = self.model_router.chat_stream(content).await;
             let mut full_response = String::new();
 
             while let Some(update) = stream.recv().await {
