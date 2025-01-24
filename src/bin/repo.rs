@@ -1,23 +1,22 @@
-use std::fs;
 use std::env;
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
-use git2::Repository;
-use openagents::repomap::generate_repo_map;
-use openagents::server::services::deepseek::{DeepSeekService, ChatMessage};
-use openagents::server::services::github_issue::GitHubService;
+use std::path::PathBuf;
 use anyhow::{Result, bail};
 use dotenvy::dotenv;
-
-fn cleanup_temp_dir(temp_dir: &std::path::PathBuf) {
-    if temp_dir.exists() {
-        if let Err(e) = fs::remove_dir_all(temp_dir) {
-            eprintln!("Warning: Failed to clean up temporary directory: {}", e);
-        } else {
-            println!("Temporary directory removed.");
-        }
-    }
-}
+use openagents::{
+    repomap::generate_repo_map,
+    server::services::{
+        deepseek::DeepSeekService,
+        github_issue::GitHubService,
+    },
+    repo::{
+        RepoContext,
+        cleanup_temp_dir,
+        clone_repository,
+        run_cargo_tests,
+        analyze_repository,
+        post_analysis,
+    },
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -38,86 +37,25 @@ async fn main() -> Result<()> {
     cleanup_temp_dir(&temp_dir);
 
     // Create the temporary directory
-    fs::create_dir_all(&temp_dir)
+    std::fs::create_dir_all(&temp_dir)
         .map_err(|e| anyhow::anyhow!("Failed to create temporary directory: {}", e))?;
     println!("Temporary directory created at: {:?}", temp_dir);
 
+    // Create context
+    let ctx = RepoContext::new(temp_dir.clone(), api_key, github_token.clone());
+
     // Use a closure to handle the main logic and ensure cleanup
     let result = (|| async {
-        // Clone the OpenAgentsInc/openagents repository into the temporary directory
+        // Clone the repository
         let repo_url = "https://github.com/OpenAgentsInc/openagents";
-        println!("Cloning repository: {}", repo_url);
-        let _repo = Repository::clone(repo_url, &temp_dir)
-            .map_err(|e| anyhow::anyhow!("Failed to clone repository: {}", e))?;
-        println!("Repository cloned successfully into: {:?}", temp_dir);
+        let _repo = clone_repository(repo_url, &ctx.temp_dir)?;
 
         // Generate and store the repository map
-        let map = generate_repo_map(&temp_dir);
+        let map = generate_repo_map(&ctx.temp_dir);
         println!("Repository Map:\n{}", map);
 
-        // Run cargo test in the cloned repository with streaming output and capture results
-        println!("Running cargo test in the cloned repository...");
-        let mut test_output = String::new();
-        let mut child = Command::new("cargo")
-            .current_dir(&temp_dir)
-            .arg("test")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| anyhow::anyhow!("Failed to start cargo test: {}", e))?;
-
-        // Stream stdout in real-time and capture it
-        let stdout = child.stdout.take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?;
-        let stderr = child.stderr.take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?;
-        
-        // Spawn a thread to handle stdout
-        let stdout_thread = std::thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            let mut output = String::new();
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    println!("{}", line);
-                    output.push_str(&line);
-                    output.push('\n');
-                }
-            }
-            output
-        });
-
-        // Spawn a thread to handle stderr
-        let stderr_thread = std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            let mut output = String::new();
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    eprintln!("{}", line);
-                    output.push_str(&line);
-                    output.push('\n');
-                }
-            }
-            output
-        });
-
-        // Wait for the command to complete
-        let status = child.wait()
-            .map_err(|e| anyhow::anyhow!("Failed to wait for cargo test: {}", e))?;
-
-        // Wait for output threads to finish and collect their output
-        let stdout_output = stdout_thread.join()
-            .map_err(|_| anyhow::anyhow!("Failed to join stdout thread"))?;
-        let stderr_output = stderr_thread.join()
-            .map_err(|_| anyhow::anyhow!("Failed to join stderr thread"))?;
-        test_output.push_str(&stdout_output);
-        test_output.push_str(&stderr_output);
-
-        // Print final test status
-        if status.success() {
-            println!("\nTests completed successfully!");
-        } else {
-            println!("\nTests failed!");
-        }
+        // Run cargo test
+        let test_output = run_cargo_tests(&ctx.temp_dir).await?;
 
         // Fetch GitHub issue details
         println!("\nFetching GitHub issue #592...");
@@ -126,73 +64,20 @@ async fn main() -> Result<()> {
         println!("Issue fetched: {}", issue.title);
 
         // Initialize DeepSeek service
-        let service = DeepSeekService::new(api_key);
+        let service = DeepSeekService::new(ctx.api_key);
 
-        // Create analysis prompt
-        let analysis_prompt = format!(
-            "I want you to help solve this GitHub issue. Here's all the context:\n\n\
-            GitHub Issue #{} - {}:\n{}\n\n\
-            Repository Structure:\n{}\n\n\
-            Test Results:\n{}\n\n\
-            Based on this information, analyze the codebase and suggest specific code changes to solve this issue. \
-            Focus on implementing proper environment isolation as described in the issue. \
-            Format your response in a way that would be appropriate for a GitHub issue comment, \
-            with code blocks using triple backticks and clear section headings.",
-            issue.number, issue.title, issue.body.unwrap_or_default(), map, test_output
-        );
-
-        println!("\nRequesting DeepSeek analysis...");
-
-        // Use reasoning mode for better analysis
-        let mut stream = service.chat_stream(analysis_prompt, true).await;
-        
-        use openagents::server::services::StreamUpdate;
-        let mut in_reasoning = true;
-        let mut stdout = std::io::stdout();
-        let mut analysis_result = String::new();
-
-        println!("\nReasoning Process:");
-        while let Some(update) = stream.recv().await {
-            match update {
-                StreamUpdate::Reasoning(r) => {
-                    print!("{}", r);
-                    stdout.flush().ok();
-                }
-                StreamUpdate::Content(c) => {
-                    if in_reasoning {
-                        println!("\n\nAnalysis & Recommendations:");
-                        in_reasoning = false;
-                    }
-                    print!("{}", c);
-                    stdout.flush().ok();
-                    analysis_result.push_str(&c);
-                }
-                StreamUpdate::Done => break,
-                _ => {}
-            }
-        }
-        println!();
+        // Run the analysis
+        let analysis_result = analyze_repository(&service, &map, &test_output, &issue).await?;
 
         // Post the analysis as a comment on the GitHub issue
         if let Some(token) = github_token {
-            println!("\nPosting analysis to GitHub issue #592...");
-            let comment = format!(
-                "🤖 **Automated Analysis Report**\n\n\
-                I've analyzed the codebase and test results to help implement environment isolation. \
-                Here's my suggested implementation:\n\n\
-                {}", 
-                analysis_result
-            );
-
-            use openagents::server::services::github_issue::post_github_comment;
-            post_github_comment(
+            post_analysis(
+                &github_service,
+                &analysis_result,
                 592,
-                &comment,
                 "OpenAgentsInc",
-                "openagents",
-                &token
+                "openagents"
             ).await?;
-            println!("Analysis posted as comment on issue #592");
         } else {
             println!("\nSkipping GitHub comment posting - GITHUB_TOKEN not found");
         }
