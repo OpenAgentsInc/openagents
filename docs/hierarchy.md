@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-24 09:13:50
+Generated on: 2025-01-24 10:54:53
 
 ### Structure
 
@@ -51,7 +51,11 @@ Generated on: 2025-01-24 09:13:50
 |   |   `-- types.rs
 |   |-- server/
 |   |   |-- services/
-|   |   |   |-- deepseek.rs
+|   |   |   |-- deepseek/
+|   |   |   |   |-- mod.rs
+|   |   |   |   |-- service.rs
+|   |   |   |   |-- streaming.rs
+|   |   |   |   `-- types.rs
 |   |   |   |-- github_issue.rs
 |   |   |   |-- github_types.rs
 |   |   |   |-- mod.rs
@@ -115,7 +119,8 @@ Generated on: 2025-01-24 09:13:50
 |-- tests/
 |   |-- deepseek.rs
 |   |-- health_check.rs
-|   `-- repomap.rs
+|   |-- repomap.rs
+|   `-- tool_selection.rs
 |-- Cargo.lock
 |-- Cargo.toml
 |-- DEVELOPMENT.md
@@ -127,5 +132,5 @@ Generated on: 2025-01-24 09:13:50
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-23 directories, 98 files
+24 directories, 102 files
 ```
