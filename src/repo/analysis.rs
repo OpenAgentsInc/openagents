@@ -22,7 +22,7 @@ pub async fn analyze_repository(
 ) -> Result<String> {
     // First analysis prompt to get file list
     let file_request_prompt = format!(
-        "Based on this repository map, select up to 10 most relevant files that you'd like to examine in detail to help solve this issue. Return ONLY a JSON object in this exact format: {{\"paths\": [\"path1\", \"path2\"]}} with no other text.\n\nRepository Map:\n{}\n\nIssue #{} - {}:\n{}\n\nTest Results:\n{}",
+        "Based on this repository map, select up to 10 most relevant files that you'd like to examine in detail to help solve this issue. Return ONLY a raw JSON object with no markdown formatting, no code blocks, and no other text. The response should be exactly in this format (just replace the example paths with your selection): {{\\"paths\\": [\\"path1\\", \\"path2\\"]}}\\n\\nRepository Map:\\n{}\\n\\nIssue #{} - {}:\\n{}\\n\\nTest Results:\\n{}",
         map,
         issue.number,
         issue.title,
@@ -36,7 +36,7 @@ pub async fn analyze_repository(
     println!("\nReceived response: {}", file_response);
     
     // Parse the JSON response to get file paths
-    let file_request: FileRequest = serde_json::from_str(&file_response)
+    let file_request: FileRequest = serde_json::from_str(&file_response.trim())
         .map_err(|e| anyhow::anyhow!("Failed to parse file request JSON: {} - Response was: {}", e, file_response))?;
 
     println!("\nSelected files for detailed analysis:");
