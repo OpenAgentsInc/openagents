@@ -96,13 +96,13 @@ async fn test_model_router_service() {
             "Hello, how are you today?",
             false,
             None,
-            "General chat message",
+            "general chat message",
         ),
         (
             "Tell me a joke",
             false,
             None,
-            "General chat request",
+            "general chat request",
         ),
     ];
 
