@@ -10,10 +10,30 @@ use std::{env, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 
-use openagents::{
-    configuration::get_configuration, generate_repomap, repomap, server::services::RepomapService,
-    server::ws, ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
-};
+use openagents::server::{services::RepomapService, ws};
+
+#[derive(Template)]
+#[template(path = "layouts/base.html")]
+struct PageTemplate<'a> {
+    title: &'a str,
+    path: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "layouts/content.html")]
+struct ContentTemplate<'a> {
+    path: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "layouts/chat_base.html")]
+struct ChatPageTemplate<'a> {
+    title: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "layouts/chat_content.html")]
+struct ChatContentTemplate;
 
 #[tokio::main]
 async fn main() {
@@ -26,9 +46,6 @@ async fn main() {
     info!("🚀 Starting OpenAgents...");
 
     let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
-
-    // Load configuration
-    let _configuration = get_configuration().expect("Failed to read configuration");
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
@@ -91,7 +108,6 @@ async fn home(headers: HeaderMap) -> Response {
 async fn chat(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Chat";
-    let path = "/chat";
 
     if is_htmx {
         let content = ChatContentTemplate.render().unwrap();
@@ -102,7 +118,7 @@ async fn chat(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = ChatPageTemplate { title, path };
+        let template = ChatPageTemplate { title };
         Html(template.render().unwrap()).into_response()
     }
 }
@@ -199,5 +215,22 @@ async fn coming_soon(headers: HeaderMap) -> Response {
     } else {
         let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
+    }
+}
+
+async fn repomap() -> Response {
+    let title = "Repository Map";
+    let path = "/repomap";
+    let template = PageTemplate { title, path };
+    Html(template.render().unwrap()).into_response()
+}
+
+async fn generate_repomap(
+    axum::extract::State(service): axum::extract::State<Arc<RepomapService>>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    match service.generate_repomap(body.to_string()).await {
+        Ok(result) => Json(json!({ "result": result })),
+        Err(e) => Json(json!({ "error": e.to_string() })),
     }
 }
