@@ -9,12 +9,6 @@ use openagents::{
         configuration::get_configuration,
         services::RepomapService,
         ws,
-        templates::{
-            ChatContentTemplate,
-            ChatPageTemplate,
-            ContentTemplate,
-            PageTemplate,
-        },
     },
     repomap::generate_repo_map,
 };
@@ -34,10 +28,6 @@ async fn main() -> Result<()> {
     // Build router
     let app = Router::new()
         .route("/", get(|| async { "OpenAgents" }))
-        .route("/chat", get(ChatPageTemplate::new))
-        .route("/content", get(ContentTemplate::new))
-        .route("/chat-content", get(ChatContentTemplate::new))
-        .route("/page", get(PageTemplate::new))
         .route("/ws", get(ws::ws_handler))
         .route("/repomap", post(move |body| async move {
             repomap_service.generate_repomap(body).await
