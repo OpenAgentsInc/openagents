@@ -1,15 +1,14 @@
 use std::fs;
 use std::path::Path;
-use streaming_iterator::StreamingIterator;
 use tree_sitter::{Parser, Query, QueryCursor};
 
 pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_rust::LANGUAGE()).expect("Error loading Rust grammar");
+    parser.set_language(tree_sitter_rust::LANGUAGE).expect("Error loading Rust grammar");
 
     let mut repo_map = String::new();
     let query = Query::new(
-        &tree_sitter_rust::LANGUAGE(),
+        tree_sitter_rust::LANGUAGE,
         r#"
         (function_item
             name: (identifier) @function.name)
@@ -32,7 +31,7 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                 let mut file_map = String::new();
                 file_map.push_str(&format!("{}:\n", path.display()));
                 
-                while let Some(m) = streaming_iterator::StreamingIterator::next(&mut matches) {
+                while let Some(m) = matches.next() {
                     for capture in m.captures {
                         let text = &source_code[capture.node.byte_range()];
                         match capture.index {
