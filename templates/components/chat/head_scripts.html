@@ -20,36 +20,84 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/markdown.min.js"></script>
 
 <script>
+  console.log('Script loading...');
+
   // Initialize highlight.js
   hljs.configure({ ignoreUnescapedHTML: true });
+  console.log('Highlight.js configured');
 
   // Function to highlight code blocks
   function highlightCode() {
-    document.querySelectorAll('pre code').forEach((el) => {
+    console.log('highlightCode function called');
+    const codeBlocks = document.querySelectorAll('pre code');
+    console.log('Found code blocks:', codeBlocks.length);
+    
+    codeBlocks.forEach((el, index) => {
+      console.log(`Processing block ${index}:`, el.textContent.slice(0, 50) + '...');
       if (!el.classList.contains('hljs')) {
-        hljs.highlightElement(el);
+        console.log(`Highlighting block ${index}`);
+        try {
+          hljs.highlightElement(el);
+          console.log(`Block ${index} highlighted successfully`);
+        } catch (error) {
+          console.error(`Error highlighting block ${index}:`, error);
+        }
+      } else {
+        console.log(`Block ${index} already highlighted`);
       }
     });
   }
 
   // Watch for new content
+  console.log('Setting up MutationObserver');
   const observer = new MutationObserver((mutations) => {
+    console.log('Mutation observed:', mutations.length, 'changes');
     mutations.forEach((mutation) => {
+      console.log('Mutation type:', mutation.type);
+      console.log('Added nodes:', mutation.addedNodes.length);
       if (mutation.addedNodes.length) {
-        highlightCode();
+        // Small delay to ensure content is fully rendered
+        setTimeout(() => {
+          console.log('Triggering highlight after mutation');
+          highlightCode();
+        }, 100);
       }
     });
   });
 
   // Start observing chat messages
   document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM Content Loaded');
     const chatMessages = document.getElementById('chat-messages');
+    console.log('Chat messages element:', chatMessages);
+    
     if (chatMessages) {
       observer.observe(chatMessages, {
         childList: true,
-        subtree: true
+        subtree: true,
+        characterData: true
       });
+      console.log('Observer started');
+      highlightCode(); // Initial highlight
+    } else {
+      console.error('Could not find chat-messages element');
     }
-    highlightCode(); // Initial highlight
+  });
+
+  // Also watch for WebSocket messages
+  document.addEventListener('ws:message', () => {
+    console.log('WebSocket message received');
+    setTimeout(highlightCode, 100);
+  });
+
+  // Additional HTMX event listeners
+  document.addEventListener('htmx:afterSwap', () => {
+    console.log('HTMX swap occurred');
+    setTimeout(highlightCode, 100);
+  });
+
+  document.addEventListener('htmx:afterRequest', () => {
+    console.log('HTMX request completed');
+    setTimeout(highlightCode, 100);
   });
 </script>
