@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
 
         // Fetch GitHub issue details
         println!("\nFetching GitHub issue #592...");
-        let github_service = GitHubService::new(github_token);
+        let github_service = GitHubService::new(github_token.clone());
         let issue = github_service.get_issue("OpenAgentsInc", "openagents", 592).await?;
         println!("Issue fetched: {}", issue.title);
 
@@ -135,7 +135,9 @@ async fn main() -> Result<()> {
             Repository Structure:\n{}\n\n\
             Test Results:\n{}\n\n\
             Based on this information, analyze the codebase and suggest specific code changes to solve this issue. \
-            Focus on implementing proper environment isolation as described in the issue.",
+            Focus on implementing proper environment isolation as described in the issue. \
+            Format your response in a way that would be appropriate for a GitHub issue comment, \
+            with code blocks using triple backticks and clear section headings.",
             issue.number, issue.title, issue.body.unwrap_or_default(), map, test_output
         );
 
@@ -147,6 +149,7 @@ async fn main() -> Result<()> {
         use openagents::server::services::StreamUpdate;
         let mut in_reasoning = true;
         let mut stdout = std::io::stdout();
+        let mut analysis_result = String::new();
 
         println!("\nReasoning Process:");
         while let Some(update) = stream.recv().await {
@@ -162,12 +165,37 @@ async fn main() -> Result<()> {
                     }
                     print!("{}", c);
                     stdout.flush().ok();
+                    analysis_result.push_str(&c);
                 }
                 StreamUpdate::Done => break,
                 _ => {}
             }
         }
         println!();
+
+        // Post the analysis as a comment on the GitHub issue
+        if let Some(token) = github_token {
+            println!("\nPosting analysis to GitHub issue #592...");
+            let comment = format!(
+                "🤖 **Automated Analysis Report**\n\n\
+                I've analyzed the codebase and test results to help implement environment isolation. \
+                Here's my suggested implementation:\n\n\
+                {}", 
+                analysis_result
+            );
+
+            use openagents::server::services::github_issue::post_github_comment;
+            post_github_comment(
+                592,
+                &comment,
+                "OpenAgentsInc",
+                "openagents",
+                &token
+            ).await?;
+            println!("Analysis posted as comment on issue #592");
+        } else {
+            println!("\nSkipping GitHub comment posting - GITHUB_TOKEN not found");
+        }
 
         Ok(())
     })().await;
