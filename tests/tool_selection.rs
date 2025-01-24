@@ -1,5 +1,5 @@
 use dotenvy::dotenv;
-use openagents::server::services::deepseek::{DeepSeekService, ToolChoice};
+use openagents::server::services::deepseek::{DeepSeekService, ToolChoice, ChatMessage};
 use serde_json::json;
 use std::env;
 use tracing::{info, Level};
@@ -23,17 +23,17 @@ async fn test_tool_selection() {
     // Create a tool for reading GitHub issues
     let read_issue_tool = DeepSeekService::create_tool(
         "read_github_issue".to_string(),
-        Some("Read a GitHub issue by number".to_string()),
+        Some("Read a GitHub issue by number. Note: The repository owner is 'OpenAgentsInc' (case-sensitive) and the repository name is 'openagents' (lowercase).".to_string()),
         json!({
             "type": "object",
             "properties": {
                 "owner": {
                     "type": "string",
-                    "description": "The owner of the repository"
+                    "description": "The owner of the repository (must be 'OpenAgentsInc')"
                 },
                 "repo": {
                     "type": "string",
-                    "description": "The name of the repository"
+                    "description": "The name of the repository (must be 'openagents' in lowercase)"
                 },
                 "issue_number": {
                     "type": "integer",
@@ -83,6 +83,22 @@ async fn test_tool_selection() {
             info!("Expected tool: {}", expected_tool);
             info!("Expected args: {}", expected_args);
         }
+
+        // Create messages with system context
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "You are a helpful assistant that reads GitHub issues. When referring to the repository, always use 'OpenAgentsInc' as the owner and 'openagents' (lowercase) as the repository name.".to_string(),
+                tool_call_id: None,
+                tool_calls: None,
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: input.to_string(),
+                tool_call_id: None,
+                tool_calls: None,
+            },
+        ];
 
         let (response, _, tool_calls) = service
             .chat_with_tools(
