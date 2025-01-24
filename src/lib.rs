@@ -1,5 +1,6 @@
 pub mod configuration;
 pub mod database;
+pub mod repomap;
 pub mod server;
 
 use askama::Template;

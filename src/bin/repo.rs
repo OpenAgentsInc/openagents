@@ -1,9 +1,7 @@
 use std::fs;
 use std::env;
 use git2::Repository;
-use std::path::Path;
-
-mod repomap;
+use openagents::repomap::generate_repo_map;
 
 fn main() {
     // Define the temporary directory path
@@ -27,7 +25,7 @@ fn main() {
     println!("Repository cloned successfully into: {:?}", temp_dir);
 
     // Generate and print the repository map
-    let map = repomap::generate_repo_map(&temp_dir);
+    let map = generate_repo_map(&temp_dir);
     println!("Repository Map:\n{}", map);
 
     // Cleanup: Remove the temporary directory
