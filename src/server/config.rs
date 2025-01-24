@@ -20,10 +20,11 @@ pub fn configure_app() -> Router {
     ));
 
     // Create WebSocket state with services
-    let ws_state = Arc::new(WebSocketState::new(
+    let ws_state = WebSocketState::new(
         deepseek_service.clone(),
         github_service.clone(),
-    ));
+    );
+    let ws_state = Arc::new(ws_state);
 
     // Create chat handler
     let chat_handler = ChatHandler::new(
