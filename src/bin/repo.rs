@@ -1,6 +1,9 @@
 use std::fs;
 use std::env;
 use git2::Repository;
+use std::path::Path;
+
+mod repomap;
 
 fn main() {
     // Define the temporary directory path
@@ -23,14 +26,9 @@ fn main() {
     };
     println!("Repository cloned successfully into: {:?}", temp_dir);
 
-    // Read and print the contents of the README.md file
-    let readme_path = temp_dir.join("README.md");
-    if readme_path.exists() {
-        let readme_contents = fs::read_to_string(&readme_path).expect("Failed to read README.md");
-        println!("Contents of README.md:\n{}", readme_contents);
-    } else {
-        println!("README.md not found in the cloned repository.");
-    }
+    // Generate and print the repository map
+    let map = repomap::generate_repo_map(&temp_dir);
+    println!("Repository Map:\n{}", map);
 
     // Cleanup: Remove the temporary directory
     fs::remove_dir_all(&temp_dir).expect("Failed to remove temporary directory");
