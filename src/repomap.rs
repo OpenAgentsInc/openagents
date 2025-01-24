@@ -1,17 +1,19 @@
 use std::fs;
 use std::path::Path;
 use tree_sitter::{Parser, Query, QueryCursor};
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref RUST_LANGUAGE: tree_sitter::Language = tree_sitter_rust::language();
+}
 
 pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut parser = Parser::new();
-    
-    // Get the language using the pre-compiled version
-    let language = unsafe { tree_sitter_rust::language() };
-    parser.set_language(&language).expect("Error loading Rust grammar");
+    parser.set_language(&RUST_LANGUAGE).expect("Error loading Rust grammar");
 
     let mut repo_map = String::new();
     let query = Query::new(
-        &language,
+        &RUST_LANGUAGE,
         r#"
         (function_item
             name: (identifier) @function.name)
