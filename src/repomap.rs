@@ -9,11 +9,11 @@ lazy_static! {
 
 pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut parser = Parser::new();
-    parser.set_language(&RUST_LANGUAGE).expect("Error loading Rust grammar");
+    parser.set_language(*RUST_LANGUAGE).expect("Error loading Rust grammar");
 
     let mut repo_map = String::new();
     let query = Query::new(
-        &RUST_LANGUAGE,
+        *RUST_LANGUAGE,
         r#"
         (function_item
             name: (identifier) @function.name)
@@ -31,13 +31,13 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
         if path.extension().map_or(false, |ext| ext == "rs") {
             if let Ok(source_code) = fs::read_to_string(path) {
                 let tree = parser.parse(&source_code, None).unwrap();
-                let mut matches = cursor.matches(&query, tree.root_node(), source_code.as_bytes());
+                let matches = cursor.matches(&query, tree.root_node(), source_code.as_bytes());
 
                 let mut file_map = String::new();
                 file_map.push_str(&format!("{}:\n", path.display()));
 
-                while let Some(m) = streaming_iterator::StreamingIterator::next(&mut matches) {
-                    for capture in m.captures {
+                for match_result in matches {
+                    for capture in match_result.captures {
                         let text = &source_code[capture.node.byte_range()];
                         match capture.index {
                             0 => file_map.push_str(&format!("│fn {}\n", text)),
