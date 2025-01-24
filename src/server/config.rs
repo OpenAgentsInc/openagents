@@ -3,7 +3,6 @@ use super::services::{
     github_issue::GitHubService,
     RepomapService,
 };
-use super::ws::handlers::chat::ChatHandler;
 use super::ws::transport::WebSocketState;
 use axum::Router;
 use serde_json::json;
@@ -82,12 +81,6 @@ pub fn configure_app() -> Router {
         tools,
     );
 
-    // Create chat handler
-    let _chat_handler = ChatHandler::new(
-        ws_state,
-        github_service.clone(),
-    );
-
     // Create the main router
     Router::new()
         .route("/", axum::routing::get(|| async { "Hello, World!" }))
@@ -98,5 +91,5 @@ pub fn configure_app() -> Router {
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
         )
-        .with_state(())
+        .with_state(ws_state)
 }
