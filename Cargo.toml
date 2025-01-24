@@ -16,6 +16,7 @@ path = "src/bin/deepseek-cli.rs"
 name = "deepseek-cli"
 
 [dependencies]
+streaming-iterator = "0.1.9"
 env_logger = "0.10"
 dotenvy = "0.15"
 futures = "0.3"
