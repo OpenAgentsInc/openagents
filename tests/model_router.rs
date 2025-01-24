@@ -98,7 +98,12 @@ Example responses:
             .chat_with_tools(
                 input.to_string(),
                 vec![dummy_tool.clone()],
-                Some(ToolChoice::None), // Explicitly tell model not to use tools
+                Some(ToolChoice::Function {
+                    tool_type: "function".to_string(),
+                    function: openagents::server::services::deepseek::FunctionCall {
+                        name: "dummy_tool".to_string(),
+                    },
+                }),
                 false,
             )
             .await
