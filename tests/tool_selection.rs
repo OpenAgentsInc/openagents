@@ -1,4 +1,4 @@
-use openagents::server::services::deepseek::DeepSeekService;
+use openagents::server::services::deepseek::{DeepSeekService, ToolChoice};
 use serde_json::json;
 
 #[tokio::test]
