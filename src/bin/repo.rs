@@ -4,8 +4,11 @@ use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use git2::Repository;
 use openagents::repomap::generate_repo_map;
+use openagents::server::services::deepseek::{DeepSeekService, ChatMessage};
+use anyhow::Result;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Define the temporary directory path
     let temp_dir = env::temp_dir().join("rust_app_temp");
 
@@ -26,12 +29,13 @@ fn main() {
     };
     println!("Repository cloned successfully into: {:?}", temp_dir);
 
-    // Generate and print the repository map
+    // Generate and store the repository map
     let map = generate_repo_map(&temp_dir);
     println!("Repository Map:\n{}", map);
 
-    // Run cargo test in the cloned repository with streaming output
+    // Run cargo test in the cloned repository with streaming output and capture results
     println!("Running cargo test in the cloned repository...");
+    let mut test_output = String::new();
     let mut child = Command::new("cargo")
         .current_dir(&temp_dir)
         .arg("test")
@@ -40,45 +44,98 @@ fn main() {
         .spawn()
         .expect("Failed to start cargo test");
 
-    // Stream stdout in real-time
+    // Stream stdout in real-time and capture it
     let stdout = child.stdout.take().expect("Failed to capture stdout");
     let stderr = child.stderr.take().expect("Failed to capture stderr");
     
     // Spawn a thread to handle stdout
     let stdout_thread = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
+        let mut output = String::new();
         for line in reader.lines() {
             if let Ok(line) = line {
                 println!("{}", line);
+                output.push_str(&line);
+                output.push('\n');
             }
         }
+        output
     });
 
     // Spawn a thread to handle stderr
     let stderr_thread = std::thread::spawn(move || {
         let reader = BufReader::new(stderr);
+        let mut output = String::new();
         for line in reader.lines() {
             if let Ok(line) = line {
                 eprintln!("{}", line);
+                output.push_str(&line);
+                output.push('\n');
             }
         }
+        output
     });
 
     // Wait for the command to complete
     let status = child.wait().expect("Failed to wait for cargo test");
 
-    // Wait for output threads to finish
-    stdout_thread.join().expect("Failed to join stdout thread");
-    stderr_thread.join().expect("Failed to join stderr thread");
+    // Wait for output threads to finish and collect their output
+    let stdout_output = stdout_thread.join().expect("Failed to join stdout thread");
+    let stderr_output = stderr_thread.join().expect("Failed to join stderr thread");
+    test_output.push_str(&stdout_output);
+    test_output.push_str(&stderr_output);
 
-    // Print final status
+    // Print final test status
     if status.success() {
         println!("\nTests completed successfully!");
     } else {
         println!("\nTests failed!");
     }
 
+    // Initialize DeepSeek service
+    let api_key = std::env::var("DEEPSEEK_API_KEY")
+        .expect("DEEPSEEK_API_KEY environment variable must be set");
+    let service = DeepSeekService::new(api_key);
+
+    // Create analysis prompt
+    let analysis_prompt = format!(
+        "Analyze this repository structure and test results. Suggest improvements and next steps.\n\n\
+        Repository Structure:\n{}\n\nTest Results:\n{}",
+        map, test_output
+    );
+
+    println!("\nRequesting DeepSeek analysis...");
+
+    // Use reasoning mode for better analysis
+    let mut stream = service.chat_stream(analysis_prompt, true).await;
+    
+    use openagents::server::services::StreamUpdate;
+    let mut in_reasoning = true;
+
+    while let Some(update) = stream.recv().await {
+        match update {
+            StreamUpdate::Reasoning(r) => {
+                if in_reasoning {
+                    println!("\nReasoning Process:");
+                }
+                print!("{}", r);
+            }
+            StreamUpdate::Content(c) => {
+                if in_reasoning {
+                    println!("\n\nAnalysis & Recommendations:");
+                    in_reasoning = false;
+                }
+                print!("{}", c);
+            }
+            StreamUpdate::Done => break,
+            _ => {}
+        }
+    }
+    println!();
+
     // Cleanup: Remove the temporary directory
     fs::remove_dir_all(&temp_dir).expect("Failed to remove temporary directory");
     println!("Temporary directory removed.");
+
+    Ok(())
 }
