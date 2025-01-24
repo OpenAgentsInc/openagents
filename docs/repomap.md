@@ -1,3 +1,6 @@
+tests/tool_selection.rs:
+│fn test_tool_selection
+
 tests/repomap.rs:
 │fn test_repomap_endpoint
 │fn handle_repomap
@@ -122,7 +125,7 @@ templates/header.html:
 postcss.config.js:
 
 assets/main.css:
-│::after
+│*, ::before, ::after
 │::backdrop
 │::after
 │::after
@@ -141,12 +144,12 @@ assets/main.css:
 │table
 │textarea
 │select
-│input:where([type="submit"])
+│input:where([type='submit'])
 │:-moz-focusring
 │:-moz-ui-invalid
 │progress
 │::-webkit-outer-spin-button
-│[type="search"]
+│[type='search']
 │::-webkit-search-decoration
 │::-webkit-file-upload-button
 │summary
@@ -156,7 +159,7 @@ assets/main.css:
 │menu
 │dialog
 │textarea
-│textarea::-moz-placeholder
+│input::-moz-placeholder, textarea::-moz-placeholder
 │textarea::placeholder
 │[role="button"]
 │:disabled
@@ -177,10 +180,15 @@ assets/main.css:
 │.fixed
 │.absolute
 │.relative
+│.inset-y-0
 │.left-1
 │.top-1
 │.bottom-4
 │.right-4
+│.bottom-0
+│.right-\[80px\]
+│.left-1\/2
+│.bottom-\[60px\]
 │.mx-2
 │.mx-auto
 │.my-2
@@ -212,7 +220,9 @@ assets/main.css:
 │.h-\[calc\(100vh-57px\)\]
 │.h-4
 │.h-6
+│.h-\[60px\]
 │.min-h-screen
+│.min-h-\[60px\]
 │.w-1\.5
 │.w-5
 │.w-8
@@ -240,6 +250,9 @@ assets/main.css:
 │.animate-spin
 │.touch-manipulation
 │.select-none
+│.resize-none
+│.resize
+│.list-inside
 │.list-disc
 │.grid-cols-1
 │.grid-cols-3
@@ -258,6 +271,8 @@ assets/main.css:
 │.space-y-4 > :not([hidden]) ~ :not([hidden])
 │.space-y-6 > :not([hidden]) ~ :not([hidden])
 │.space-y-8 > :not([hidden]) ~ :not([hidden])
+│.space-x-2 > :not([hidden]) ~ :not([hidden])
+│.space-x-3 > :not([hidden]) ~ :not([hidden])
 │.overflow-hidden
 │.overflow-x-auto
 │.overflow-y-auto
@@ -283,6 +298,10 @@ assets/main.css:
 │.border-white\/50
 │.border-white\/90
 │.border-red-500
+│.border-gray-200
+│.border-gray-300
+│.border-gray-700
+│.border-gray-800
 │.bg-black
 │.bg-black\/30
 │.bg-black\/50
@@ -290,6 +309,7 @@ assets/main.css:
 │.bg-indigo-600
 │.bg-red-900\/20
 │.bg-white
+│.bg-gray-900
 │.p-2
 │.p-4
 │.p-6
@@ -339,11 +359,15 @@ assets/main.css:
 │.text-yellow-400
 │.text-red-500
 │.text-gray-500
+│.text-blue-500
+│.text-blue-600
+│.text-gray-700
 │.underline
 │.no-underline
 │.placeholder-white\/50::-moz-placeholder
 │.placeholder-white\/50::placeholder
 │.opacity-75
+│.opacity-25
 │.shadow-nav
 │.shadow-sm
 │.shadow-xl
@@ -454,18 +478,35 @@ src/server/services/repomap.rs:
 │fn with_base_url
 │fn generate_repomap
 
-src/server/services/mod.rs:
-
-src/server/services/deepseek.rs:
+src/server/services/deepseek/types.rs:
 │fn from
+
+src/server/services/deepseek/methods/chat_with_tool_response.rs:
+│fn chat_with_tool_response
+
+src/server/services/deepseek/methods/chat_stream.rs:
+│fn chat_stream
+│fn process_chunk
+
+src/server/services/deepseek/methods/mod.rs:
+
+src/server/services/deepseek/methods/chat_with_tools.rs:
+│fn chat_with_tools
+
+src/server/services/deepseek/methods/chat.rs:
+│fn chat
+│fn chat_internal
+
+src/server/services/deepseek/service.rs:
 │fn new
 │fn with_base_url
 │fn create_tool
-│fn chat
-│fn chat_with_tools
-│fn chat_with_tool_response
-│fn chat_stream
-│fn chat_internal
+
+src/server/services/deepseek/mod.rs:
+
+src/server/services/deepseek/streaming.rs:
+
+src/server/services/mod.rs:
 
 src/server/services/github_types.rs:
 
@@ -533,3 +574,4 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
+
