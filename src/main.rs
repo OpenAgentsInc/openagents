@@ -10,13 +10,9 @@ use std::{env, path::PathBuf, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 
-use openagents::{
-    server::{
-        configuration::get_configuration,
-        services::RepomapService,
-        ws,
-    },
-    repomap::generate_repo_map,
+use openagents::server::{
+    services::RepomapService,
+    ws,
 };
 
 #[derive(Template)]
@@ -54,9 +50,6 @@ async fn main() {
     info!("🚀 Starting OpenAgents...");
 
     let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
-
-    // Load configuration
-    let _configuration = get_configuration().expect("Failed to read configuration");
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
