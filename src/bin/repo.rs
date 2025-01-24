@@ -1,5 +1,6 @@
 use std::fs;
 use std::env;
+use std::process::Command;
 use git2::Repository;
 use openagents::repomap::generate_repo_map;
 
@@ -27,6 +28,24 @@ fn main() {
     // Generate and print the repository map
     let map = generate_repo_map(&temp_dir);
     println!("Repository Map:\n{}", map);
+
+    // Run cargo test in the cloned repository
+    println!("Running cargo test in the cloned repository...");
+    let test_output = Command::new("cargo")
+        .current_dir(&temp_dir)
+        .arg("test")
+        .output()
+        .expect("Failed to execute cargo test");
+
+    // Print test results
+    if test_output.status.success() {
+        println!("Tests passed successfully!");
+        println!("Test output:\n{}", String::from_utf8_lossy(&test_output.stdout));
+    } else {
+        println!("Tests failed!");
+        println!("Test output:\n{}", String::from_utf8_lossy(&test_output.stdout));
+        println!("Test errors:\n{}", String::from_utf8_lossy(&test_output.stderr));
+    }
 
     // Cleanup: Remove the temporary directory
     fs::remove_dir_all(&temp_dir).expect("Failed to remove temporary directory");
