@@ -20,118 +20,79 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/markdown.min.js"></script>
 
 <script>
-  console.log('Script loading...');
-
   // Initialize highlight.js
   hljs.configure({ ignoreUnescapedHTML: true });
-  console.log('Highlight.js configured');
 
-  // Function to wrap code blocks in proper HTML
-  function wrapCodeBlock(text, language) {
-    return `<pre><code class="language-${language}">${text}</code></pre>`;
-  }
+  // Keep track of messages being processed
+  const messageStates = new Map();
 
-  // Function to find and convert markdown code blocks
-  function convertMarkdownCodeBlocks(element) {
-    console.log('Converting markdown blocks in:', element);
-    
+  // Function to wrap and highlight code blocks
+  function processCodeBlocks(element) {
+    const messageId = element.dataset.messageId;
+    console.log('Processing message:', messageId);
+
     // Get the text content
     let content = element.innerHTML;
-    console.log('Initial content:', content.slice(0, 100));
 
     // Find all code blocks with triple backticks
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    content = content.replace(codeBlockRegex, (match, language, code) => {
-      console.log('Found code block, language:', language);
-      return wrapCodeBlock(code, language || 'plaintext');
-    });
+    let match;
+    let lastIndex = 0;
+    let newContent = '';
 
-    // Update the content if changes were made
-    if (content !== element.innerHTML) {
-      console.log('Updating content with wrapped code blocks');
-      element.innerHTML = content;
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      // Add text before the code block
+      newContent += content.slice(lastIndex, match.index);
+      
+      // Add the wrapped and highlighted code block
+      const language = match[1] || 'plaintext';
+      const code = match[2];
+      
+      // Create temporary element to hold the code
+      const tempElement = document.createElement('div');
+      tempElement.innerHTML = `<pre><code class="language-${language}">${code}</code></pre>`;
+      
+      // Highlight the code
+      const codeElement = tempElement.querySelector('code');
+      hljs.highlightElement(codeElement);
+      
+      // Add the highlighted code
+      newContent += tempElement.innerHTML;
+      
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add any remaining text
+    newContent += content.slice(lastIndex);
+
+    // Only update if content changed
+    if (newContent !== content) {
+      element.innerHTML = newContent;
     }
   }
 
-  // Function to highlight code blocks
-  function highlightCode() {
-    console.log('highlightCode function called');
-    
-    // First convert markdown blocks
-    document.querySelectorAll('.message').forEach(convertMarkdownCodeBlocks);
-    
-    // Then highlight all code blocks
-    document.querySelectorAll('pre code').forEach((el, index) => {
-      console.log(`Processing block ${index}`);
-      if (!el.classList.contains('hljs')) {
-        console.log(`Highlighting block ${index}`);
-        try {
-          hljs.highlightElement(el);
-          console.log(`Block ${index} highlighted successfully`);
-        } catch (error) {
-          console.error(`Error highlighting block ${index}:`, error);
-        }
-      }
-    });
-  }
+  // Process messages when streaming is complete
+  document.addEventListener('ws:message', (event) => {
+    try {
+      const data = JSON.parse(event.detail.message);
+      console.log('Message received:', data);
 
-  // Watch for new content
-  console.log('Setting up MutationObserver');
-  const observer = new MutationObserver((mutations) => {
-    console.log('Mutation observed:', mutations.length, 'changes');
-    mutations.forEach((mutation) => {
-      if (mutation.addedNodes.length) {
-        // Small delay to ensure content is fully rendered
+      if (data.status === 'complete') {
+        console.log('Message complete, processing code blocks');
+        // Wait a bit for the final content to render
         setTimeout(() => {
-          console.log('Processing new nodes');
-          mutation.addedNodes.forEach(node => {
-            if (node.nodeType === 1) { // Element node
-              convertMarkdownCodeBlocks(node);
-              node.querySelectorAll('pre code').forEach(el => {
-                if (!el.classList.contains('hljs')) {
-                  hljs.highlightElement(el);
-                }
-              });
-            }
-          });
+          const messages = document.querySelectorAll('.message');
+          messages.forEach(processCodeBlocks);
         }, 100);
       }
-    });
-  });
-
-  // Start observing chat messages
-  document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM Content Loaded');
-    const chatMessages = document.getElementById('chat-messages');
-    console.log('Chat messages element:', chatMessages);
-    
-    if (chatMessages) {
-      observer.observe(chatMessages, {
-        childList: true,
-        subtree: true,
-        characterData: true
-      });
-      console.log('Observer started');
-      highlightCode(); // Initial highlight
-    } else {
-      console.error('Could not find chat-messages element');
+    } catch (error) {
+      console.error('Error processing message:', error);
     }
   });
 
-  // Also watch for WebSocket messages
-  document.addEventListener('ws:message', () => {
-    console.log('WebSocket message received');
-    setTimeout(highlightCode, 100);
-  });
-
-  // Additional HTMX event listeners
-  document.addEventListener('htmx:afterSwap', () => {
-    console.log('HTMX swap occurred');
-    setTimeout(highlightCode, 100);
-  });
-
-  document.addEventListener('htmx:afterRequest', () => {
-    console.log('HTMX request completed');
-    setTimeout(highlightCode, 100);
+  // Initial processing for any existing messages
+  document.addEventListener('DOMContentLoaded', () => {
+    const messages = document.querySelectorAll('.message');
+    messages.forEach(processCodeBlocks);
   });
 </script>
