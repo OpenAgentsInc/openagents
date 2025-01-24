@@ -81,8 +81,8 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
             .tool_model
             .chat_with_tools_messages(
                 vec![system_message, user_message],
-                self.available_tools.clone(), // Need to provide tools for API validation
-                Some(ToolChoice::Auto("auto".to_string())),
+                self.available_tools.clone(),
+                None, // Don't allow tool usage during routing
                 false,
             )
             .await?;
@@ -126,9 +126,28 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         message: String,
         tool: Tool,
     ) -> Result<(String, Option<String>, Option<Vec<ToolCallResponse>>)> {
+        // Create a system message to guide tool usage
+        let system_message = ChatMessage {
+            role: "system".to_string(),
+            content: format!(
+                "You have access to the {} tool. Use it to help with: {}",
+                tool.function.name,
+                tool.function.description.as_deref().unwrap_or("no description")
+            ),
+            tool_call_id: None,
+            tool_calls: None,
+        };
+
+        let user_message = ChatMessage {
+            role: "user".to_string(),
+            content: message,
+            tool_call_id: None,
+            tool_calls: None,
+        };
+
         self.tool_model
-            .chat_with_tools(
-                message,
+            .chat_with_tools_messages(
+                vec![system_message, user_message],
                 vec![tool],
                 Some(ToolChoice::Auto("auto".to_string())),
                 false,
@@ -141,11 +160,31 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         message: String,
         use_reasoning: bool,
     ) -> Result<(String, Option<String>)> {
-        // For chat, we don't need tools, so use empty vec
+        // Create a system message for chat
+        let system_message = ChatMessage {
+            role: "system".to_string(),
+            content: "You are a helpful assistant. Respond naturally to the user's message.".to_string(),
+            tool_call_id: None,
+            tool_calls: None,
+        };
+
+        let user_message = ChatMessage {
+            role: "user".to_string(),
+            content: message,
+            tool_call_id: None,
+            tool_calls: None,
+        };
+
         let (response, reasoning, _) = self
             .reasoning_model
-            .chat_with_tools(message, vec![], None, use_reasoning)
+            .chat_with_tools_messages(
+                vec![system_message, user_message],
+                vec![], // No tools for chat
+                None,  // No tool choice needed
+                use_reasoning,
+            )
             .await?;
+
         Ok((response, reasoning))
     }
 }
