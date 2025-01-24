@@ -2,8 +2,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use serde::Deserialize;
 use tracing::info;
+use tokio::sync::mpsc;
 
-use super::deepseek::{ChatMessage, DeepSeekService, Tool, ToolChoice, ToolCallResponse};
+use super::deepseek::{ChatMessage, DeepSeekService, Tool, ToolChoice, ToolCallResponse, StreamUpdate};
 
 #[derive(Debug, Deserialize)]
 pub struct RoutingDecision {
@@ -173,5 +174,22 @@ Here's what I found: [Explain results]""#,
     ) -> Result<(String, Option<String>)> {
         // Use basic chat without any tools or messages
         self.chat_model.chat(message, use_reasoning).await
+    }
+
+    pub async fn chat_stream(&self, message: String) -> mpsc::Receiver<StreamUpdate> {
+        self.chat_model.chat_stream(message, true).await
+    }
+
+    pub async fn handle_tool_response(
+        &self,
+        messages: Vec<ChatMessage>,
+        tool_message: ChatMessage,
+    ) -> Result<(String, Option<String>, Option<Vec<ToolCallResponse>>)> {
+        let mut all_messages = messages;
+        all_messages.push(tool_message);
+
+        self.tool_model
+            .chat_with_tools_messages(all_messages, self.available_tools.clone(), None, false)
+            .await
     }
 }
