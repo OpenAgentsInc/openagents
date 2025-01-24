@@ -2,9 +2,16 @@ use dotenvy::dotenv;
 use openagents::server::services::deepseek::{DeepSeekService, ToolChoice};
 use serde_json::json;
 use std::env;
+use tracing::{info, Level};
+use tracing_subscriber;
 
 #[tokio::test]
 async fn test_tool_selection() {
+    // Initialize logging
+    tracing_subscriber::fmt()
+        .with_max_level(Level::INFO)
+        .init();
+
     // Load environment variables from .env file
     dotenv().ok();
     
@@ -37,6 +44,8 @@ async fn test_tool_selection() {
         }),
     );
 
+    info!("Tool definition: {:?}", read_issue_tool);
+
     // Test cases with expected tool usage
     let test_cases = vec![
         (
@@ -68,6 +77,13 @@ async fn test_tool_selection() {
     ];
 
     for (input, should_use_tool, expected_tool, expected_args) in test_cases {
+        info!("\n\nTesting input: {}", input);
+        info!("Expected tool usage: {}", should_use_tool);
+        if should_use_tool {
+            info!("Expected tool: {}", expected_tool);
+            info!("Expected args: {}", expected_args);
+        }
+
         let (response, _, tool_calls) = service
             .chat_with_tools(
                 input.to_string(),
@@ -78,15 +94,40 @@ async fn test_tool_selection() {
             .await
             .unwrap();
 
+        info!("Response: {}", response);
+        
+        if let Some(ref calls) = tool_calls {
+            info!("Tool calls received: {:#?}", calls);
+            for call in calls {
+                info!("Tool call:");
+                info!("  Name: {}", call.function.name);
+                info!("  Arguments: {}", call.function.arguments);
+                if should_use_tool {
+                    let args: serde_json::Value = serde_json::from_str(&call.function.arguments).unwrap();
+                    info!("  Parsed arguments: {:#?}", args);
+                    info!("  Expected arguments: {:#?}", expected_args);
+                }
+            }
+        } else {
+            info!("No tool calls received");
+        }
+
         if should_use_tool {
             assert!(tool_calls.is_some(), "Expected tool call for input: {}", input);
             let tool_calls = tool_calls.unwrap();
-            assert_eq!(tool_calls.len(), 1);
-            assert_eq!(tool_calls[0].function.name, expected_tool);
+            assert_eq!(tool_calls.len(), 1, "Expected exactly one tool call");
+            assert_eq!(tool_calls[0].function.name, expected_tool, "Tool name mismatch");
             
             // Parse the arguments JSON and compare
             let args: serde_json::Value = serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
-            assert_eq!(args, expected_args, "Tool arguments don't match for input: {}", input);
+            assert_eq!(
+                args, 
+                expected_args, 
+                "Tool arguments don't match for input: {}\nReceived: {:#?}\nExpected: {:#?}", 
+                input, 
+                args, 
+                expected_args
+            );
         } else {
             assert!(tool_calls.is_none(), "Did not expect tool call for input: {}", input);
             assert!(!response.is_empty(), "Expected non-empty response for input: {}", input);
