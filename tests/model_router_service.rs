@@ -70,13 +70,13 @@ async fn test_model_router_service() {
     // Create DeepSeek services
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
     let tool_model = Arc::new(DeepSeekService::new(api_key.clone()));
-    let reasoning_model = Arc::new(DeepSeekService::new(api_key));
+    let chat_model = Arc::new(DeepSeekService::new(api_key));
 
     // Create available tools
     let tools = create_test_tools();
 
     // Create model router
-    let router = ModelRouter::new(tool_model, reasoning_model, tools);
+    let router = ModelRouter::new(tool_model, chat_model, tools);
 
     // Test cases
     let test_cases = vec![
@@ -161,10 +161,10 @@ async fn test_model_router_chat() {
     // Create DeepSeek services
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
     let tool_model = Arc::new(DeepSeekService::new(api_key.clone()));
-    let reasoning_model = Arc::new(DeepSeekService::new(api_key));
+    let chat_model = Arc::new(DeepSeekService::new(api_key));
 
     // Create model router with empty tools
-    let router = ModelRouter::new(tool_model, reasoning_model, vec![]);
+    let router = ModelRouter::new(tool_model, chat_model, vec![]);
 
     // Test general chat
     let (response, reasoning) = router
@@ -200,7 +200,7 @@ async fn test_model_router_tool_execution() {
     // Create DeepSeek services
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
     let tool_model = Arc::new(DeepSeekService::new(api_key.clone()));
-    let reasoning_model = Arc::new(DeepSeekService::new(api_key));
+    let chat_model = Arc::new(DeepSeekService::new(api_key));
 
     // Create test tool
     let test_tool = DeepSeekService::create_tool(
@@ -219,7 +219,7 @@ async fn test_model_router_tool_execution() {
     );
 
     // Create model router
-    let router = ModelRouter::new(tool_model, reasoning_model, vec![test_tool.clone()]);
+    let router = ModelRouter::new(tool_model, chat_model, vec![test_tool.clone()]);
 
     // Test tool execution
     let (response, _, tool_calls) = router
