@@ -2,7 +2,6 @@ use super::MessageHandler;
 use crate::server::services::{
     github_issue::GitHubService,
     model_router::ModelRouter,
-    DeepSeekService,
 };
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
@@ -13,19 +12,16 @@ use tracing::{error, info};
 
 pub struct ChatHandler {
     ws_state: Arc<WebSocketState>,
-    model_router: Arc<ModelRouter>,
     github_service: Arc<GitHubService>,
 }
 
 impl ChatHandler {
     pub fn new(
         ws_state: Arc<WebSocketState>,
-        model_router: Arc<ModelRouter>,
         github_service: Arc<GitHubService>,
     ) -> Self {
         Self {
             ws_state,
-            model_router,
             github_service,
         }
     }
@@ -49,7 +45,7 @@ impl ChatHandler {
             .await?;
 
         // Get routing decision
-        let (decision, tool_calls) = self.model_router.route_message(content.clone()).await?;
+        let (decision, tool_calls) = self.ws_state.model_router.route_message(content.clone()).await?;
 
         // Send routing status
         let routing_json = json!({
@@ -124,6 +120,7 @@ impl ChatHandler {
                         ];
 
                         let (final_content, _, _) = self
+                            .ws_state
                             .model_router
                             .handle_tool_response(messages, issue_message)
                             .await?;
@@ -154,7 +151,7 @@ impl ChatHandler {
             }
         } else {
             // Use regular chat stream for non-tool messages
-            let mut stream = self.model_router.chat_stream(content).await;
+            let mut stream = self.ws_state.model_router.chat_stream(content).await;
             let mut full_response = String::new();
 
             while let Some(update) = stream.recv().await {
