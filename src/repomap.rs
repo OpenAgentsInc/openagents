@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tree_sitter::{Parser, Query, QueryCursor};
 use lazy_static::lazy_static;
 
@@ -34,7 +34,12 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
                 let matches = cursor.matches(&query, tree.root_node(), source_code.as_bytes());
 
                 let mut file_map = String::new();
-                file_map.push_str(&format!("{}:\n", path.display()));
+                
+                // Get relative path by stripping the repo_path prefix
+                let relative_path = path.strip_prefix(repo_path)
+                    .unwrap_or(path)
+                    .to_string_lossy();
+                file_map.push_str(&format!("{}:\n", relative_path));
 
                 for match_result in matches {
                     for capture in match_result.captures {
