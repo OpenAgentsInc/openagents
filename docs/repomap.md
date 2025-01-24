@@ -125,7 +125,7 @@ templates/header.html:
 postcss.config.js:
 
 assets/main.css:
-│*, ::before, ::after
+│\*, ::before, ::after
 │::backdrop
 │::after
 │::after
@@ -574,4 +574,3 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
-
