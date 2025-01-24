@@ -241,7 +241,7 @@ async fn generate_repomap(
     axum::extract::State(service): axum::extract::State<Arc<RepomapService>>,
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
-    match service.generate_repomap(body).await {
+    match service.generate_repomap(body.to_string()).await {
         Ok(result) => Json(json!({ "result": result })),
         Err(e) => Json(json!({ "error": e.to_string() })),
     }
