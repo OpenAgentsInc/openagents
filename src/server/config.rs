@@ -15,7 +15,7 @@ pub fn configure_app() -> Router {
         env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
     )));
 
-    let repomap_service = Arc::new(RepomapService::new(
+    let _repomap_service = Arc::new(RepomapService::new(
         env::var("FIRECRAWL_API_KEY").expect("FIRECRAWL_API_KEY must be set"),
     ));
 
@@ -26,8 +26,8 @@ pub fn configure_app() -> Router {
     );
 
     // Create chat handler
-    let chat_handler = ChatHandler::new(
-        ws_state.clone(),
+    let _chat_handler = ChatHandler::new(
+        ws_state,
         deepseek_service.clone(),
         github_service.clone(),
     );
