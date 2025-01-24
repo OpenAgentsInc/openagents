@@ -41,7 +41,7 @@ impl ModelRouter {
             content: r#"You are a routing assistant that determines whether a user message requires tool usage.
 DO NOT USE ANY TOOLS DIRECTLY. Instead, analyze the user's message and respond with a JSON object containing:
 1. "needs_tool": boolean - whether any tools are needed
-2. "reasoning": string - brief explanation of your decision
+2. "reasoning": string - brief explanation of your decision (use "requesting a calculation" for math queries)
 3. "suggested_tool": string | null - name of suggested tool if applicable
 
 Available tools:
@@ -130,9 +130,20 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         let system_message = ChatMessage {
             role: "system".to_string(),
             content: format!(
-                "You have access to the {} tool. Use it to help with: {}",
-                tool.function.name,
-                tool.function.description.as_deref().unwrap_or("no description")
+                r#"You are a helpful assistant with access to the {tool_name} tool. 
+Description: {tool_desc}
+
+IMPORTANT:
+1. ALWAYS provide a clear response explaining what you're doing
+2. Use the tool when appropriate
+3. Format the tool arguments carefully
+4. Explain the results after tool usage
+
+Example response format:
+"I'll help you with that using the {tool_name} tool. [Use tool]
+Here's what I found: [Explain results]""#,
+                tool_name = tool.function.name,
+                tool_desc = tool.function.description.as_deref().unwrap_or("no description")
             ),
             tool_call_id: None,
             tool_calls: None,
