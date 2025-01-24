@@ -57,9 +57,8 @@ clap = { version = "4.4", features = ["derive"] }
 termcolor = "1.4"
 async-trait = "0.1"
 git2 = "0.20.0"
-tree-sitter = "0.24.7"
-tree-sitter-rust = "0.23.2"
-cc = "1.2.10"
+tree-sitter = "0.20.10"
+tree-sitter-rust = { version = "0.20.3", features = ["precompiled"] }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }
