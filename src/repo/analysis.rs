@@ -22,7 +22,7 @@ pub async fn analyze_repository(
 ) -> Result<String> {
     // First analysis prompt to get file list
     let file_request_prompt = format!(
-        "Based on this repository map, select up to 10 most relevant files that you'd like to examine in detail to help solve this issue. Return only a JSON object with a 'paths' array containing the file paths.\n\nRepository Map:\n{}\n\nIssue #{} - {}:\n{}\n\nTest Results:\n{}",
+        "Based on this repository map, select up to 10 most relevant files that you'd like to examine in detail to help solve this issue. Return ONLY a JSON object in this exact format: {{\"paths\": [\"path1\", \"path2\"]}} with no other text.\n\nRepository Map:\n{}\n\nIssue #{} - {}:\n{}\n\nTest Results:\n{}",
         map,
         issue.number,
         issue.title,
@@ -33,9 +33,11 @@ pub async fn analyze_repository(
     println!("\nRequesting file selection from DeepSeek...");
     let (file_response, _) = service.chat(file_request_prompt, false).await?;
     
+    println!("\nReceived response: {}", file_response);
+    
     // Parse the JSON response to get file paths
     let file_request: FileRequest = serde_json::from_str(&file_response)
-        .map_err(|e| anyhow::anyhow!("Failed to parse file request JSON: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to parse file request JSON: {} - Response was: {}", e, file_response))?;
 
     println!("\nSelected files for detailed analysis:");
     for path in &file_request.paths {
