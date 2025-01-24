@@ -26,14 +26,43 @@
   hljs.configure({ ignoreUnescapedHTML: true });
   console.log('Highlight.js configured');
 
+  // Function to wrap code blocks in proper HTML
+  function wrapCodeBlock(text, language) {
+    return `<pre><code class="language-${language}">${text}</code></pre>`;
+  }
+
+  // Function to find and convert markdown code blocks
+  function convertMarkdownCodeBlocks(element) {
+    console.log('Converting markdown blocks in:', element);
+    
+    // Get the text content
+    let content = element.innerHTML;
+    console.log('Initial content:', content.slice(0, 100));
+
+    // Find all code blocks with triple backticks
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    content = content.replace(codeBlockRegex, (match, language, code) => {
+      console.log('Found code block, language:', language);
+      return wrapCodeBlock(code, language || 'plaintext');
+    });
+
+    // Update the content if changes were made
+    if (content !== element.innerHTML) {
+      console.log('Updating content with wrapped code blocks');
+      element.innerHTML = content;
+    }
+  }
+
   // Function to highlight code blocks
   function highlightCode() {
     console.log('highlightCode function called');
-    const codeBlocks = document.querySelectorAll('pre code');
-    console.log('Found code blocks:', codeBlocks.length);
     
-    codeBlocks.forEach((el, index) => {
-      console.log(`Processing block ${index}:`, el.textContent.slice(0, 50) + '...');
+    // First convert markdown blocks
+    document.querySelectorAll('.message').forEach(convertMarkdownCodeBlocks);
+    
+    // Then highlight all code blocks
+    document.querySelectorAll('pre code').forEach((el, index) => {
+      console.log(`Processing block ${index}`);
       if (!el.classList.contains('hljs')) {
         console.log(`Highlighting block ${index}`);
         try {
@@ -42,8 +71,6 @@
         } catch (error) {
           console.error(`Error highlighting block ${index}:`, error);
         }
-      } else {
-        console.log(`Block ${index} already highlighted`);
       }
     });
   }
@@ -53,13 +80,20 @@
   const observer = new MutationObserver((mutations) => {
     console.log('Mutation observed:', mutations.length, 'changes');
     mutations.forEach((mutation) => {
-      console.log('Mutation type:', mutation.type);
-      console.log('Added nodes:', mutation.addedNodes.length);
       if (mutation.addedNodes.length) {
         // Small delay to ensure content is fully rendered
         setTimeout(() => {
-          console.log('Triggering highlight after mutation');
-          highlightCode();
+          console.log('Processing new nodes');
+          mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1) { // Element node
+              convertMarkdownCodeBlocks(node);
+              node.querySelectorAll('pre code').forEach(el => {
+                if (!el.classList.contains('hljs')) {
+                  hljs.highlightElement(el);
+                }
+              });
+            }
+          });
         }, 100);
       }
     });
