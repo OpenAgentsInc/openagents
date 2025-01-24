@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-23 16:45:05
+Generated on: 2025-01-24 10:54:53
 
 ### Structure
 
@@ -28,6 +28,8 @@ Generated on: 2025-01-23 16:45:05
 |   |-- chat_template.md
 |   |-- configuration.md
 |   |-- hierarchy.md
+|   |-- local-repos.md
+|   |-- repomap.md
 |   `-- templates.md
 |-- migrations/
 |   |-- 20250110000000_initial.sql
@@ -39,11 +41,21 @@ Generated on: 2025-01-23 16:45:05
 |   `-- init_redis.sh*
 |-- src/
 |   |-- bin/
-|   |   `-- deepseek-cli.rs
+|   |   |-- deepseek-cli.rs
+|   |   `-- repo.rs
+|   |-- repo/
+|   |   |-- analysis.rs
+|   |   |-- git.rs
+|   |   |-- mod.rs
+|   |   |-- test.rs
+|   |   `-- types.rs
 |   |-- server/
 |   |   |-- services/
-|   |   |   |-- deepseek.rs
-|   |   |   |-- github.rs
+|   |   |   |-- deepseek/
+|   |   |   |   |-- mod.rs
+|   |   |   |   |-- service.rs
+|   |   |   |   |-- streaming.rs
+|   |   |   |   `-- types.rs
 |   |   |   |-- github_issue.rs
 |   |   |   |-- github_types.rs
 |   |   |   |-- mod.rs
@@ -51,8 +63,7 @@ Generated on: 2025-01-23 16:45:05
 |   |   |-- ws/
 |   |   |   |-- handlers/
 |   |   |   |   |-- chat.rs
-|   |   |   |   |-- mod.rs
-|   |   |   |   `-- solver.rs
+|   |   |   |   `-- mod.rs
 |   |   |   |-- mod.rs
 |   |   |   |-- transport.rs
 |   |   |   `-- types.rs
@@ -60,11 +71,10 @@ Generated on: 2025-01-23 16:45:05
 |   |   `-- mod.rs
 |   |-- configuration.rs
 |   |-- database.rs
-|   |-- emailoptin.rs
 |   |-- filters.rs
 |   |-- lib.rs
 |   |-- main.rs
-|   `-- template_filters.rs
+|   `-- repomap.rs
 |-- styles/
 |   `-- tailwind.css
 |-- templates/
@@ -108,10 +118,9 @@ Generated on: 2025-01-23 16:45:05
 |   `-- header.html
 |-- tests/
 |   |-- deepseek.rs
-|   |-- emailoptin.rs
-|   |-- github.rs
 |   |-- health_check.rs
-|   `-- repomap.rs
+|   |-- repomap.rs
+|   `-- tool_selection.rs
 |-- Cargo.lock
 |-- Cargo.toml
 |-- DEVELOPMENT.md
@@ -123,5 +132,5 @@ Generated on: 2025-01-23 16:45:05
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-22 directories, 95 files
+24 directories, 102 files
 ```
