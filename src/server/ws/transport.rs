@@ -17,7 +17,7 @@ use crate::server::services::{
 
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
-    model_router: Arc<ModelRouter>,
+    pub model_router: Arc<ModelRouter>,
     github_service: Arc<GitHubService>,
 }
 
@@ -39,7 +39,6 @@ impl WebSocketState {
     pub fn create_handlers(ws_state: Arc<WebSocketState>) -> Arc<ChatHandler> {
         Arc::new(ChatHandler::new(
             ws_state.clone(),
-            ws_state.model_router.clone(),
             ws_state.github_service.clone(),
         ))
     }
