@@ -1,16 +1,10 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use crate::server::services::{
-    deepseek::DeepSeekService,
-    github_issue::GitHubService,
-    StreamUpdate,
-};
-use std::{io::Write, fs};
-use std::path::Path;
+use serde_json::json;
+use crate::server::services::deepseek::DeepSeekService;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FileRequest {
-    pub paths: Vec<String>,
+#[derive(serde::Deserialize)]
+struct FileRequest {
+    path: String,
 }
 
 pub async fn analyze_repository(
@@ -18,117 +12,65 @@ pub async fn analyze_repository(
     map: &str,
     test_output: &str,
     issue: &crate::server::services::github_issue::GitHubIssue,
-    repo_path: &Path,
+    repo_path: &std::path::Path,
 ) -> Result<String> {
-    // First analysis prompt to get file list
-    let file_request_prompt = format!(
-        "Based on this repository map, select up to 10 most relevant files that you'd like to examine in detail to help solve this issue. Return ONLY a raw JSON object with no markdown formatting, no code blocks, and no other text. The response should be exactly in this format (just replace the example paths with your selection):\n{{\"paths\": [\"path1\", \"path2\"]}}\n\nRepository Map:\n{}\n\nIssue #{} - {}:\n{}\n\nTest Results:\n{}",
+    // First, get the AI to identify which files we should look at
+    let prompt = format!(
+        "You are analyzing a Rust repository. Based on this repository map and GitHub issue, \
+        identify which files we should analyze in detail to help implement the requested changes.\n\n\
+        Repository Map:\n{}\n\nGitHub Issue:\nTitle: {}\nBody:\n{}\n\n\
+        Respond with a JSON object containing a 'path' field with the most relevant file path to analyze.",
         map,
-        issue.number,
         issue.title,
-        issue.body.as_deref().unwrap_or_default(),
-        test_output
+        issue.body.as_deref().unwrap_or("No description provided")
     );
 
-    println!("\nRequesting file selection from DeepSeek...");
-    let (file_response, _) = service.chat(file_request_prompt, false).await?;
-    
-    println!("\nReceived response: {}", file_response);
-    
-    // Parse the JSON response to get file paths
-    let file_request: FileRequest = serde_json::from_str(&file_response.trim())
-        .map_err(|e| anyhow::anyhow!("Failed to parse file request JSON: {} - Response was: {}", e, file_response))?;
+    let (file_response, _) = service.chat(prompt, false).await?;
+    let file_request: FileRequest = serde_json::from_str(file_response.trim())?;
 
-    println!("\nSelected files for detailed analysis:");
-    for path in &file_request.paths {
-        println!("- {}", path);
-    }
+    // Read the identified file
+    let file_content = std::fs::read_to_string(repo_path.join(&file_request.path))?;
 
-    // Read contents of selected files
-    let mut file_contents = String::new();
-    for path in &file_request.paths {
-        let full_path = repo_path.join(path);
-        if full_path.exists() {
-            file_contents.push_str(&format!("\n=== {} ===\n", path));
-            match fs::read_to_string(&full_path) {
-                Ok(content) => file_contents.push_str(&content),
-                Err(e) => println!("Warning: Could not read {}: {}", path, e),
-            }
-        } else {
-            println!("Warning: File not found: {}", path);
-        }
-    }
-
-    // Create final analysis prompt
+    // Now analyze the file content
     let analysis_prompt = format!(
-        "I want you to help solve this GitHub issue. Here's all the context:\n\n\
-        GitHub Issue #{} - {}:\n{}\n\n\
-        Repository Structure:\n{}\n\n\
-        Selected File Contents:\n{}\n\n\
-        Test Results:\n{}\n\n\
-        Based on this information, analyze the codebase and suggest specific code changes to solve this issue. \
-        Focus on implementing proper environment isolation as described in the issue. \
-        Format your response in a way that would be appropriate for a GitHub issue comment, \
-        with code blocks using triple backticks and clear section headings.",
-        issue.number,
+        "You are analyzing a Rust repository to implement changes requested in a GitHub issue.\n\n\
+        Issue:\nTitle: {}\nBody:\n{}\n\n\
+        File content ({}):\n{}\n\n\
+        Test output:\n{}\n\n\
+        Analyze this code and suggest specific changes to implement the requested functionality. \
+        Consider:\n\
+        1. Required modifications to existing functions\n\
+        2. New functions or structs needed\n\
+        3. Test coverage implications\n\
+        4. Potential edge cases to handle\n\
+        5. Error handling requirements\n\
+        Be specific and provide code examples where appropriate.",
         issue.title,
-        issue.body.as_deref().unwrap_or_default(),
-        map,
-        file_contents,
+        issue.body.as_deref().unwrap_or("No description provided"),
+        file_request.path,
+        file_content,
         test_output
     );
 
-    println!("\nRequesting DeepSeek analysis...");
-
-    // Use reasoning mode for better analysis
-    let mut stream = service.chat_stream(analysis_prompt, true).await;
-    
-    let mut in_reasoning = true;
-    let mut stdout = std::io::stdout();
-    let mut analysis_result = String::new();
-
-    println!("\nReasoning Process:");
-    while let Some(update) = stream.recv().await {
-        match update {
-            StreamUpdate::Reasoning(r) => {
-                print!("{}", r);
-                stdout.flush().ok();
-            }
-            StreamUpdate::Content(c) => {
-                if in_reasoning {
-                    println!("\n\nAnalysis & Recommendations:");
-                    in_reasoning = false;
-                }
-                print!("{}", c);
-                stdout.flush().ok();
-                analysis_result.push_str(&c);
-            }
-            StreamUpdate::Done => break,
-            _ => {}
-        }
-    }
-    println!();
-
-    Ok(analysis_result)
+    let (analysis, _) = service.chat(analysis_prompt, false).await?;
+    Ok(analysis)
 }
 
 pub async fn post_analysis(
-    github_service: &GitHubService,
+    github_service: &crate::server::services::github_issue::GitHubService,
     analysis: &str,
     issue_number: i32,
     owner: &str,
     repo: &str,
 ) -> Result<()> {
-    println!("\nPosting analysis to GitHub issue #{}...", issue_number);
     let comment = format!(
-        "🤖 **Automated Analysis Report**\n\n\
-        I've analyzed the codebase and test results to help implement environment isolation. \
-        Here's my suggested implementation:\n\n\
-        {}", 
+        "🤖 **Analysis Results**\n\n\
+        Based on the repository analysis, here are the suggested changes:\n\n\
+        {}\n\n\
+        Please review these suggestions and let me know if you need any clarification.",
         analysis
     );
 
     github_service.post_comment(owner, repo, issue_number, &comment).await?;
-    println!("Analysis posted as comment on issue #{}", issue_number);
     Ok(())
 }
