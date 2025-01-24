@@ -2,13 +2,11 @@ use std::fs;
 use std::path::Path;
 use tree_sitter::{Parser, Query, QueryCursor};
 
-extern "C" {
-    fn tree_sitter_rust() -> tree_sitter::Language;
-}
-
 pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut parser = Parser::new();
-    let language = unsafe { tree_sitter_rust() };
+    
+    // Get the language using the pre-compiled version
+    let language = unsafe { tree_sitter_rust::language() };
     parser.set_language(&language).expect("Error loading Rust grammar");
 
     let mut repo_map = String::new();
