@@ -1,7 +1,7 @@
+use bytes::Bytes;
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tracing::info;
-use bytes::Bytes;
 
 use crate::server::services::deepseek::streaming::{StreamResponse, StreamUpdate};
 use crate::server::services::deepseek::types::{ChatMessage, ChatRequest};
@@ -97,25 +97,15 @@ async fn process_chunk(chunk: Bytes, buffer: &mut String, tx: &mpsc::Sender<Stre
             if let Ok(response) = serde_json::from_str::<StreamResponse>(data) {
                 if let Some(choice) = response.choices.first() {
                     if let Some(ref content) = choice.delta.content {
-                        let _ = tx
-                            .send(StreamUpdate::Content(
-                                content.to_string(),
-                            ))
-                            .await;
+                        let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
                     }
                     if let Some(ref reasoning) = choice.delta.reasoning_content {
                         let _ = tx
-                            .send(StreamUpdate::Reasoning(
-                                reasoning.to_string(),
-                            ))
+                            .send(StreamUpdate::Reasoning(reasoning.to_string()))
                             .await;
                     }
                     if let Some(tool_calls) = &choice.delta.tool_calls {
-                        let _ = tx
-                            .send(StreamUpdate::ToolCalls(
-                                tool_calls.clone(),
-                            ))
-                            .await;
+                        let _ = tx.send(StreamUpdate::ToolCalls(tool_calls.clone())).await;
                     }
                     if choice.finish_reason.is_some() {
                         let _ = tx.send(StreamUpdate::Done).await;

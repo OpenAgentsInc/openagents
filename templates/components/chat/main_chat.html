@@ -11,7 +11,7 @@
         id="input"
         name="content"
         rows="1"
-        style="resize: none;"
+        style="resize: none"
         class="text-sm flex-grow bg-black p-4 focus:outline-none overflow-hidden min-h-[60px]"
         placeholder="Message"
         autofocus="true"
@@ -31,30 +31,30 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  const textarea = document.getElementById('input');
-  const form = document.querySelector('form[ws-send]');
-  
-  function adjustHeight() {
-    textarea.style.height = 'auto';
-    const newHeight = Math.min(textarea.scrollHeight, 250); // 250px is approx 10 lines
-    textarea.style.height = newHeight + 'px';
-  }
+  document.addEventListener("DOMContentLoaded", function () {
+    const textarea = document.getElementById("input");
+    const form = document.querySelector("form[ws-send]");
 
-  textarea.addEventListener('input', adjustHeight);
-  
-  // Reset height on form submit
-  form.addEventListener('submit', function() {
-    textarea.style.height = '60px'; // Reset to min-height
-    textarea.value = ''; // Clear the input
-  });
-  
-  // Handle Enter key to submit, Shift+Enter for new line
-  textarea.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      form.dispatchEvent(new Event('submit'));
+    function adjustHeight() {
+      textarea.style.height = "auto";
+      const newHeight = Math.min(textarea.scrollHeight, 250); // 250px is approx 10 lines
+      textarea.style.height = newHeight + "px";
     }
+
+    textarea.addEventListener("input", adjustHeight);
+
+    // Reset height on form submit
+    form.addEventListener("submit", function () {
+      textarea.style.height = "60px"; // Reset to min-height
+      textarea.value = ""; // Clear the input
+    });
+
+    // Handle Enter key to submit, Shift+Enter for new line
+    textarea.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        form.dispatchEvent(new Event("submit"));
+      }
+    });
   });
-});
 </script>

@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use crate::server::services::deepseek::types::ToolCallResponse;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct StreamChoice {

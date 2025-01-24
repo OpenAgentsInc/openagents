@@ -1,6 +1,6 @@
 use reqwest::Client;
 
-use super::types::{Tool, FunctionDefinition};
+use super::types::{FunctionDefinition, Tool};
 
 #[derive(Debug, Clone)]
 pub struct DeepSeekService {
