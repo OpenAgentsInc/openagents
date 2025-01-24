@@ -6,6 +6,7 @@ use openagents::{
     repomap::generate_repo_map,
     server::services::{
         deepseek::DeepSeekService,
+        github_issue::GitHubService,
     },
     repo::{
         RepoContext,
@@ -49,7 +50,7 @@ async fn main() -> Result<()> {
     println!("Temporary directory created at: {:?}", temp_dir);
 
     // Create context
-    let ctx = RepoContext::new(temp_dir.clone(), api_key, github_token);
+    let ctx = RepoContext::new(temp_dir.clone(), api_key, github_token.clone());
 
     // Clone the repository
     let repo_url = "https://github.com/OpenAgentsInc/openagents";
@@ -95,6 +96,33 @@ async fn main() -> Result<()> {
         
         let (test_code, _) = service.chat(test_prompt, false).await?;
         println!("\nSuggested Test Implementation:\n{}", test_code);
+
+        // Post the suggestions as a GitHub comment if token is available
+        if let Some(token) = github_token {
+            println!("\nPosting test suggestions to GitHub...");
+            let github_service = GitHubService::new(Some(token));
+            
+            let comment = format!(
+                "# Test Coverage Analysis\n\n\
+                The following analysis identifies areas needing test coverage:\n\n\
+                {}\n\n\
+                # Suggested Test Implementation\n\n\
+                Here's a proposed test implementation for the most critical area:\n\n\
+                ```rust\n{}\n```\n\n\
+                Please review and consider implementing these test cases to improve coverage.",
+                coverage_analysis, test_code
+            );
+
+            github_service.post_comment(
+                "OpenAgentsInc",
+                "openagents",
+                592, // Using issue #592 as it's related to the environment implementation
+                &comment
+            ).await?;
+            println!("Test suggestions posted to GitHub issue #592");
+        } else {
+            println!("\nSkipping GitHub comment - GITHUB_TOKEN not found");
+        }
     } else {
         println!("\nRun with --test flag to generate test suggestions");
     }
