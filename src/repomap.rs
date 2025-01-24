@@ -31,7 +31,7 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
         if path.extension().map_or(false, |ext| ext == "rs") {
             if let Ok(source_code) = fs::read_to_string(path) {
                 let tree = parser.parse(&source_code, None).unwrap();
-                let matches = cursor.matches(&query, tree.root_node(), source_code.as_bytes());
+                let mut matches = cursor.matches(&query, tree.root_node(), source_code.as_bytes());
 
                 let mut file_map = String::new();
                 file_map.push_str(&format!("{}:\n", path.display()));
