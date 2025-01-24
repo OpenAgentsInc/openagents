@@ -12,8 +12,7 @@ use tracing::info;
 
 use openagents::{
     configuration::get_configuration, generate_repomap, repomap, server::services::RepomapService,
-    ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
-    server::ws
+    server::ws, ChatContentTemplate, ChatPageTemplate, ContentTemplate, PageTemplate,
 };
 
 #[tokio::main]
