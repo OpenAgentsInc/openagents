@@ -60,49 +60,58 @@ async fn main() -> Result<()> {
 
     // Generate and store the repository map
     let map = generate_repo_map(&ctx.temp_dir);
-    println!("Repository Map:\n{}", map);
-
+    
     // Run cargo test
     let test_output = run_cargo_tests(&ctx.temp_dir).await?;
-
-    // Fetch GitHub issue details
-    println!("\nFetching GitHub issue #592...");
-    let github_service = GitHubService::new(github_token.clone());
-    let issue = github_service.get_issue("OpenAgentsInc", "openagents", 592).await?;
-    println!("Issue fetched: {}", issue.title);
 
     // Initialize DeepSeek service
     let service = DeepSeekService::new(ctx.api_key);
 
-    // Run the analysis
-    let analysis_result = analyze_repository(&service, &map, &test_output, &issue, &ctx.temp_dir).await?;
-
-    // If test flag is enabled, request test suggestions
     if cli.test {
-        println!("\nGenerating test suggestions...");
-        let test_prompt = format!(
-            "Based on the repository map and test output, suggest a new test for uncovered functionality. \
-            Focus on important functions or modules that lack test coverage. \
-            Repository map:\n{}\n\nTest output:\n{}\n\n\
-            Please write a complete test implementation in Rust that would improve test coverage. \
-            Include necessary imports and test setup.",
-            map, test_output
+        println!("\nAnalyzing test coverage and generating test suggestions...");
+        
+        // First, analyze the test output to find uncovered modules/functions
+        let coverage_prompt = format!(
+            "You are a Rust testing expert. Analyze this test output and repository map to identify \
+            specific functions or modules that lack test coverage. Focus only on test coverage analysis.\n\n\
+            Test output:\n{}\n\nRepository map:\n{}\n\n\
+            List the specific functions/modules that need test coverage, in order of importance.",
+            test_output, map
         );
-        let (test_suggestion, _) = service.chat(test_prompt, false).await?;
-        println!("\nTest Suggestion:\n{}", test_suggestion);
-    }
+        
+        let (coverage_analysis, _) = service.chat(coverage_prompt, false).await?;
+        println!("\nTest Coverage Analysis:\n{}", coverage_analysis);
 
-    // Post the analysis as a comment on the GitHub issue
-    if let Some(_) = github_token {
-        post_analysis(
-            &github_service,
-            &analysis_result,
-            592,
-            "OpenAgentsInc",
-            "openagents"
-        ).await?;
+        // Then, generate a specific test implementation for the most important uncovered functionality
+        let test_prompt = format!(
+            "Based on the coverage analysis above, write a complete Rust test implementation for one of the \
+            uncovered functions/modules. Include:\n\
+            1. All necessary imports\n\
+            2. Test module setup with #[cfg(test)]\n\
+            3. Required test fixtures and mocks\n\
+            4. Multiple test cases covering different scenarios\n\
+            5. Comments explaining the test strategy\n\n\
+            Write the complete test code that could be directly added to the appropriate test file.",
+        );
+        
+        let (test_code, _) = service.chat(test_prompt, false).await?;
+        println!("\nSuggested Test Implementation:\n{}", test_code);
     } else {
-        println!("\nSkipping GitHub comment posting - GITHUB_TOKEN not found");
+        // Run the regular analysis
+        let analysis_result = analyze_repository(&service, &map, &test_output, &issue, &ctx.temp_dir).await?;
+
+        // Post the analysis as a comment on the GitHub issue
+        if let Some(_) = github_token {
+            post_analysis(
+                &github_service,
+                &analysis_result,
+                592,
+                "OpenAgentsInc",
+                "openagents"
+            ).await?;
+        } else {
+            println!("\nSkipping GitHub comment posting - GITHUB_TOKEN not found");
+        }
     }
 
     // Clean up at the end
