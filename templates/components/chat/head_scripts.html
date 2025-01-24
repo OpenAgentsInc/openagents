@@ -4,10 +4,6 @@
     if (newTitle) {
       document.title = newTitle;
     }
-    // Initialize highlight.js on any new code blocks
-    document.querySelectorAll('pre code').forEach((el) => {
-      hljs.highlightElement(el);
-    });
   });
 </script>
 
@@ -25,9 +21,35 @@
 
 <script>
   // Initialize highlight.js
-  document.addEventListener('DOMContentLoaded', (event) => {
+  hljs.configure({ ignoreUnescapedHTML: true });
+
+  // Function to highlight code blocks
+  function highlightCode() {
     document.querySelectorAll('pre code').forEach((el) => {
-      hljs.highlightElement(el);
+      if (!el.classList.contains('hljs')) {
+        hljs.highlightElement(el);
+      }
     });
+  }
+
+  // Watch for new content
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.addedNodes.length) {
+        highlightCode();
+      }
+    });
+  });
+
+  // Start observing chat messages
+  document.addEventListener('DOMContentLoaded', () => {
+    const chatMessages = document.getElementById('chat-messages');
+    if (chatMessages) {
+      observer.observe(chatMessages, {
+        childList: true,
+        subtree: true
+      });
+    }
+    highlightCode(); // Initial highlight
   });
 </script>
