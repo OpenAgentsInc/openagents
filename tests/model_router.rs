@@ -33,10 +33,9 @@ async fn test_routing_decision() {
     );
 
     // System prompt for routing decisions
-    let messages = vec![
-        ChatMessage {
-            role: "system".to_string(),
-            content: r#"You are a routing assistant that determines whether a user message requires tool usage.
+    let system_message = ChatMessage {
+        role: "system".to_string(),
+        content: r#"You are a routing assistant that determines whether a user message requires tool usage.
 DO NOT USE ANY TOOLS DIRECTLY. Instead, analyze the user's message and respond with a JSON object containing:
 1. "needs_tool": boolean - whether any tools are needed
 2. "reasoning": string - brief explanation of your decision
@@ -58,10 +57,9 @@ Example responses:
 }
 
 Remember: Only respond with a JSON object, do not use any tools, and do not add any additional text."#.to_string(),
-            tool_call_id: None,
-            tool_calls: None,
-        }
-    ];
+        tool_call_id: None,
+        tool_calls: None,
+    };
 
     // Test cases for routing decisions
     let test_cases = vec![
@@ -87,18 +85,20 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         info!("\n\nTesting routing for input: {}", input);
         info!("Expected decision: {}", expected_decision);
 
-        // Add user message to context
-        let mut test_messages = messages.clone();
-        test_messages.push(ChatMessage {
-            role: "user".to_string(),
-            content: input.to_string(),
-            tool_call_id: None,
-            tool_calls: None,
-        });
+        // Create messages with system context and user input
+        let messages = vec![
+            system_message.clone(),
+            ChatMessage {
+                role: "user".to_string(),
+                content: input.to_string(),
+                tool_call_id: None,
+                tool_calls: None,
+            },
+        ];
 
         let (response, _, _) = service
-            .chat_with_tools(
-                input.to_string(),
+            .chat_with_tools_messages(
+                messages,
                 vec![dummy_tool.clone()],
                 Some(ToolChoice::Auto("auto".to_string())),
                 false,
