@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 use git2::Repository;
 use openagents::repomap::generate_repo_map;
 use openagents::server::services::deepseek::{DeepSeekService, ChatMessage};
+use openagents::server::services::github_issue::GitHubService;
 use anyhow::{Result, bail};
 use dotenvy::dotenv;
 
@@ -25,9 +26,10 @@ async fn main() -> Result<()> {
         bail!("Failed to load .env file: {}", e);
     }
 
-    // Get API key immediately and fail if not present
+    // Get API keys immediately and fail if not present
     let api_key = env::var("DEEPSEEK_API_KEY")
         .map_err(|_| anyhow::anyhow!("DEEPSEEK_API_KEY not found in environment or .env file"))?;
+    let github_token = env::var("GITHUB_TOKEN").ok();
 
     // Define the temporary directory path
     let temp_dir = env::temp_dir().join("rust_app_temp");
@@ -117,14 +119,24 @@ async fn main() -> Result<()> {
             println!("\nTests failed!");
         }
 
+        // Fetch GitHub issue details
+        println!("\nFetching GitHub issue #592...");
+        let github_service = GitHubService::new(github_token);
+        let issue = github_service.get_issue("OpenAgentsInc", "openagents", 592).await?;
+        println!("Issue fetched: {}", issue.title);
+
         // Initialize DeepSeek service
         let service = DeepSeekService::new(api_key);
 
         // Create analysis prompt
         let analysis_prompt = format!(
-            "Analyze this repository structure and test results. Suggest improvements and next steps.\n\n\
-            Repository Structure:\n{}\n\nTest Results:\n{}",
-            map, test_output
+            "I want you to help solve this GitHub issue. Here's all the context:\n\n\
+            GitHub Issue #{} - {}:\n{}\n\n\
+            Repository Structure:\n{}\n\n\
+            Test Results:\n{}\n\n\
+            Based on this information, analyze the codebase and suggest specific code changes to solve this issue. \
+            Focus on implementing proper environment isolation as described in the issue.",
+            issue.number, issue.title, issue.body.unwrap_or_default(), map, test_output
         );
 
         println!("\nRequesting DeepSeek analysis...");
