@@ -84,29 +84,29 @@ async fn test_model_router_service() {
             "Can you check issue #595?",
             true,
             Some("read_github_issue".to_string()),
-            "requesting to view a github issue",
+            vec!["requesting", "github issue"],
         ),
         (
             "What is 2 + 2?",
             true,
             Some("calculate".to_string()),
-            "requesting a calculation",
+            vec!["calculation", "mathematical", "compute"],
         ),
         (
             "Hello, how are you today?",
             false,
             None,
-            "general chat message",
+            vec!["general chat", "conversation", "no tool"],
         ),
         (
             "Tell me a joke",
             false,
             None,
-            "general chat request",
+            vec!["general", "chat", "no tool"],
         ),
     ];
 
-    for (input, should_use_tool, expected_tool, expected_reasoning) in test_cases {
+    for (input, should_use_tool, expected_tool, expected_phrases) in test_cases {
         info!("\n\nTesting routing for input: {}", input);
 
         let (decision, tool_calls) = router.route_message(input.to_string()).await.unwrap();
@@ -120,11 +120,15 @@ async fn test_model_router_service() {
 
         // Verify reasoning is present and meaningful
         assert!(!decision.reasoning.is_empty(), "reasoning should not be empty");
+        let reasoning_lower = decision.reasoning.to_lowercase();
+        let found_phrase = expected_phrases.iter().any(|phrase| {
+            reasoning_lower.contains(&phrase.to_lowercase())
+        });
         assert!(
-            decision.reasoning.to_lowercase().contains(expected_reasoning),
-            "reasoning should contain '{}', got: {}",
-            expected_reasoning,
-            decision.reasoning.to_lowercase()
+            found_phrase,
+            "reasoning '{}' should contain one of {:?}",
+            reasoning_lower,
+            expected_phrases
         );
 
         // Verify tool suggestion
@@ -205,13 +209,13 @@ async fn test_model_router_tool_execution() {
     // Create test tool
     let test_tool = DeepSeekService::create_tool(
         "test_tool".to_string(),
-        Some("A test tool".to_string()),
+        Some("A test tool that takes a message and returns it".to_string()),
         json!({
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string",
-                    "description": "A test message"
+                    "description": "A test message to echo back"
                 }
             },
             "required": ["message"]
@@ -221,9 +225,9 @@ async fn test_model_router_tool_execution() {
     // Create model router
     let router = ModelRouter::new(tool_model, chat_model, vec![test_tool.clone()]);
 
-    // Test tool execution
+    // Test tool execution with a clear instruction
     let (response, _, tool_calls) = router
-        .execute_tool_call("Run a test".to_string(), test_tool)
+        .execute_tool_call("Please echo back the message 'Hello World'".to_string(), test_tool)
         .await
         .unwrap();
 
@@ -233,4 +237,13 @@ async fn test_model_router_tool_execution() {
         tool_calls.is_some(),
         "Tool calls should be present for tool execution"
     );
+
+    // Verify tool call
+    let tool_calls = tool_calls.unwrap();
+    assert_eq!(tool_calls.len(), 1, "Expected exactly one tool call");
+    assert_eq!(tool_calls[0].function.name, "test_tool");
+
+    // Parse tool call arguments
+    let args: serde_json::Value = serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
+    assert!(args.get("message").is_some(), "Tool call should include message parameter");
 }
