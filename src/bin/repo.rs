@@ -5,10 +5,20 @@ use std::process::{Command, Stdio};
 use git2::Repository;
 use openagents::repomap::generate_repo_map;
 use openagents::server::services::deepseek::{DeepSeekService, ChatMessage};
-use anyhow::Result;
+use anyhow::{Result, bail};
+use dotenvy::dotenv;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file first
+    if let Err(e) = dotenv() {
+        bail!("Failed to load .env file: {}", e);
+    }
+
+    // Get API key immediately and fail if not present
+    let api_key = env::var("DEEPSEEK_API_KEY")
+        .map_err(|_| anyhow::anyhow!("DEEPSEEK_API_KEY not found in environment or .env file"))?;
+
     // Define the temporary directory path
     let temp_dir = env::temp_dir().join("rust_app_temp");
 
@@ -25,7 +35,7 @@ async fn main() -> Result<()> {
     println!("Cloning repository: {}", repo_url);
     let _repo = match Repository::clone(repo_url, &temp_dir) {
         Ok(repo) => repo,
-        Err(e) => panic!("Failed to clone repository: {}", e),
+        Err(e) => bail!("Failed to clone repository: {}", e),
     };
     println!("Repository cloned successfully into: {:?}", temp_dir);
 
@@ -42,11 +52,13 @@ async fn main() -> Result<()> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("Failed to start cargo test");
+        .map_err(|e| anyhow::anyhow!("Failed to start cargo test: {}", e))?;
 
     // Stream stdout in real-time and capture it
-    let stdout = child.stdout.take().expect("Failed to capture stdout");
-    let stderr = child.stderr.take().expect("Failed to capture stderr");
+    let stdout = child.stdout.take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?;
+    let stderr = child.stderr.take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?;
     
     // Spawn a thread to handle stdout
     let stdout_thread = std::thread::spawn(move || {
@@ -77,11 +89,14 @@ async fn main() -> Result<()> {
     });
 
     // Wait for the command to complete
-    let status = child.wait().expect("Failed to wait for cargo test");
+    let status = child.wait()
+        .map_err(|e| anyhow::anyhow!("Failed to wait for cargo test: {}", e))?;
 
     // Wait for output threads to finish and collect their output
-    let stdout_output = stdout_thread.join().expect("Failed to join stdout thread");
-    let stderr_output = stderr_thread.join().expect("Failed to join stderr thread");
+    let stdout_output = stdout_thread.join()
+        .map_err(|_| anyhow::anyhow!("Failed to join stdout thread"))?;
+    let stderr_output = stderr_thread.join()
+        .map_err(|_| anyhow::anyhow!("Failed to join stderr thread"))?;
     test_output.push_str(&stdout_output);
     test_output.push_str(&stderr_output);
 
@@ -93,8 +108,6 @@ async fn main() -> Result<()> {
     }
 
     // Initialize DeepSeek service
-    let api_key = std::env::var("DEEPSEEK_API_KEY")
-        .expect("DEEPSEEK_API_KEY environment variable must be set");
     let service = DeepSeekService::new(api_key);
 
     // Create analysis prompt
@@ -134,7 +147,8 @@ async fn main() -> Result<()> {
     println!();
 
     // Cleanup: Remove the temporary directory
-    fs::remove_dir_all(&temp_dir).expect("Failed to remove temporary directory");
+    fs::remove_dir_all(&temp_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to remove temporary directory: {}", e))?;
     println!("Temporary directory removed.");
 
     Ok(())
