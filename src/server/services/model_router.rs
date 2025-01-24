@@ -44,6 +44,10 @@ DO NOT USE ANY TOOLS DIRECTLY. Instead, analyze the user's message and respond w
 2. "reasoning": string - brief explanation of your decision
 3. "suggested_tool": string | null - name of suggested tool if applicable
 
+Available tools:
+- read_github_issue: Read GitHub issues by number
+- calculate: Perform mathematical calculations
+
 IMPORTANT: Your response must be a valid JSON object and nothing else.
 
 Example responses:
@@ -77,7 +81,7 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
             .tool_model
             .chat_with_tools_messages(
                 vec![system_message, user_message],
-                vec![], // No tools needed for routing decision
+                self.available_tools.clone(), // Need to provide tools for API validation
                 Some(ToolChoice::Auto("auto".to_string())),
                 false,
             )
@@ -139,7 +143,12 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
     ) -> Result<(String, Option<String>)> {
         let (response, reasoning, _) = self
             .reasoning_model
-            .chat_with_tools(message, vec![], None, use_reasoning)
+            .chat_with_tools(
+                message,
+                self.available_tools.clone(), // Need to provide tools for API validation
+                None,
+                use_reasoning,
+            )
             .await?;
         Ok((response, reasoning))
     }
