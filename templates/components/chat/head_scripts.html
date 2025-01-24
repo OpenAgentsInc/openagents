@@ -82,40 +82,38 @@
     });
   }
 
-  // Watch for WebSocket messages
-  document.addEventListener('ws:message', (event) => {
-    console.log('WS MESSAGE RECEIVED:', event.detail);
+  // Add this to your existing websocket message handler
+  const existingHandler = window.handleWebSocketMessage;
+  window.handleWebSocketMessage = function(event) {
+    console.log('INTERCEPTED WS MESSAGE:', event);
+    
+    // Call the original handler first
+    if (existingHandler) {
+      existingHandler(event);
+    }
+
+    // Now do our highlighting
     try {
-      const data = JSON.parse(event.detail.message);
+      const data = JSON.parse(event.data);
       console.log('PARSED MESSAGE:', data);
 
-      if (data.status === 'complete') {
-        console.log('MESSAGE IS COMPLETE, WAITING TO HIGHLIGHT...');
-        setTimeout(() => {
-          console.log('TIMEOUT DONE, HIGHLIGHTING NOW');
-          highlightAllTheThings();
-        }, 100);
+      if (data.type === 'chat' && data.status === 'complete') {
+        console.log('COMPLETE MESSAGE RECEIVED, HIGHLIGHTING...');
+        setTimeout(highlightAllTheThings, 50);
       }
     } catch (err) {
-      console.error('SHIT BROKE IN WS HANDLER:', err);
+      console.error('FAILED TO PROCESS WS MESSAGE:', err);
     }
-  });
+  };
 
-  // Initial load
+  // Backup handlers just in case
   document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM LOADED, DOING INITIAL HIGHLIGHT');
     highlightAllTheThings();
   });
 
-  // Extra insurance
   setTimeout(() => {
     console.log('BACKUP TIMEOUT FIRING');
     highlightAllTheThings();
   }, 1000);
-
-  // Even more insurance
-  document.addEventListener('htmx:afterSettle', () => {
-    console.log('HTMX SETTLED, HIGHLIGHTING AGAIN');
-    highlightAllTheThings();
-  });
 </script>
