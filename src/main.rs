@@ -32,7 +32,6 @@ struct ContentTemplate<'a> {
 #[template(path = "layouts/chat_base.html")]
 struct ChatPageTemplate<'a> {
     title: &'a str,
-    path: &'a str,
 }
 
 #[derive(Template)]
@@ -112,7 +111,6 @@ async fn home(headers: HeaderMap) -> Response {
 async fn chat(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
     let title = "Chat";
-    let path = "/chat";
 
     if is_htmx {
         let content = ChatContentTemplate.render().unwrap();
@@ -123,7 +121,7 @@ async fn chat(headers: HeaderMap) -> Response {
         );
         response
     } else {
-        let template = ChatPageTemplate { title, path };
+        let template = ChatPageTemplate { title };
         Html(template.render().unwrap()).into_response()
     }
 }
