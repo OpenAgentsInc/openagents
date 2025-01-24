@@ -67,7 +67,7 @@ async fn test_model_router_service() {
     // Load environment variables from .env file
     dotenv().ok();
 
-    // Create DeepSeek services
+    // Create DeepSeek services - both using chat model
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
     let tool_model = Arc::new(DeepSeekService::new(api_key.clone()));
     let chat_model = Arc::new(DeepSeekService::new(api_key));
@@ -158,7 +158,7 @@ async fn test_model_router_chat() {
     // Load environment variables from .env file
     dotenv().ok();
 
-    // Create DeepSeek services
+    // Create DeepSeek services - both using chat model
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
     let tool_model = Arc::new(DeepSeekService::new(api_key.clone()));
     let chat_model = Arc::new(DeepSeekService::new(api_key));
@@ -168,25 +168,25 @@ async fn test_model_router_chat() {
 
     // Test general chat
     let (response, reasoning) = router
-        .chat("Tell me about the weather".to_string(), true)
+        .chat("Tell me about the weather".to_string(), false)
         .await
         .unwrap();
 
     // Verify response
     assert!(!response.is_empty(), "Response should not be empty");
     assert!(
-        reasoning.is_some(),
-        "Reasoning should be present when requested"
+        reasoning.is_none(),
+        "Reasoning should not be present when not requested"
     );
 
-    // Test without reasoning
+    // Test with reasoning
     let (response, reasoning) = router
-        .chat("How are you?".to_string(), false)
+        .chat("How are you?".to_string(), true)
         .await
         .unwrap();
 
     assert!(!response.is_empty(), "Response should not be empty");
-    assert!(reasoning.is_none(), "Reasoning should not be present when not requested");
+    assert!(reasoning.is_some(), "Reasoning should be present when requested");
 }
 
 #[tokio::test]
@@ -197,7 +197,7 @@ async fn test_model_router_tool_execution() {
     // Load environment variables from .env file
     dotenv().ok();
 
-    // Create DeepSeek services
+    // Create DeepSeek services - both using chat model
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
     let tool_model = Arc::new(DeepSeekService::new(api_key.clone()));
     let chat_model = Arc::new(DeepSeekService::new(api_key));
