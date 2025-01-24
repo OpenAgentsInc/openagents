@@ -37,12 +37,12 @@ async fn test_routing_decision() {
         ChatMessage {
             role: "system".to_string(),
             content: r#"You are a routing assistant that determines whether a user message requires tool usage.
-Analyze the user's message and respond with a JSON object containing:
+DO NOT USE ANY TOOLS DIRECTLY. Instead, analyze the user's message and respond with a JSON object containing:
 1. "needs_tool": boolean - whether any tools are needed
 2. "reasoning": string - brief explanation of your decision
 3. "suggested_tool": string | null - name of suggested tool if applicable
 
-Always respond with valid JSON matching this format.
+IMPORTANT: Your response must be a valid JSON object and nothing else.
 
 Example responses:
 {
@@ -55,7 +55,9 @@ Example responses:
     "needs_tool": false,
     "reasoning": "General chat message that doesn't require tools",
     "suggested_tool": null
-}"#.to_string(),
+}
+
+Remember: Only respond with a JSON object, do not use any tools, and do not add any additional text."#.to_string(),
             tool_call_id: None,
             tool_calls: None,
         }
@@ -98,12 +100,7 @@ Example responses:
             .chat_with_tools(
                 input.to_string(),
                 vec![dummy_tool.clone()],
-                Some(ToolChoice::Function {
-                    tool_type: "function".to_string(),
-                    function: openagents::server::services::deepseek::FunctionCall {
-                        name: "dummy_tool".to_string(),
-                    },
-                }),
+                Some(ToolChoice::Auto("auto".to_string())),
                 false,
             )
             .await
