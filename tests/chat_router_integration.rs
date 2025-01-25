@@ -7,6 +7,8 @@ use openagents::server::ws::{handlers::chat::ChatHandler, transport::WebSocketSt
 use openagents::server::ws::handlers::MessageHandler;
 use serde_json::json;
 use std::sync::Arc;
+use tokio::sync::mpsc;
+use axum::extract::ws::Message;
 use tracing::Level;
 use tracing_subscriber;
 use wiremock::{
@@ -140,6 +142,13 @@ async fn test_chat_router_integration() {
     // Create WebSocket state
     let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
 
+    // Create a mock WebSocket connection
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    {
+        let mut conns = ws_state.connections.write().await;
+        conns.insert("test_conn".to_string(), tx);
+    }
+
     // Create chat handler
     let chat_handler = ChatHandler::new(ws_state.clone(), github_service.clone());
 
@@ -156,6 +165,13 @@ async fn test_chat_router_integration() {
     // Verify success
     assert!(result.is_ok(), "Message handling should succeed");
 
+    // Verify messages sent to WebSocket
+    while let Ok(msg) = rx.try_recv() {
+        if let Message::Text(text) = msg {
+            println!("Received WebSocket message: {}", text);
+        }
+    }
+
     // Test message that should use chat model
     let test_message = openagents::server::ws::types::ChatMessage::UserMessage {
         content: "Hello, how are you?".to_string(),
@@ -168,6 +184,13 @@ async fn test_chat_router_integration() {
 
     // Verify success
     assert!(result.is_ok(), "Message handling should succeed");
+
+    // Verify messages sent to WebSocket
+    while let Ok(msg) = rx.try_recv() {
+        if let Message::Text(text) = msg {
+            println!("Received WebSocket message: {}", text);
+        }
+    }
 }
 
 #[tokio::test]
@@ -216,6 +239,13 @@ async fn test_chat_router_streaming() {
     // Create WebSocket state
     let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
 
+    // Create a mock WebSocket connection
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    {
+        let mut conns = ws_state.connections.write().await;
+        conns.insert("test_conn".to_string(), tx);
+    }
+
     // Create chat handler
     let chat_handler = ChatHandler::new(ws_state.clone(), github_service.clone());
 
@@ -231,4 +261,11 @@ async fn test_chat_router_streaming() {
 
     // Verify success
     assert!(result.is_ok(), "Message handling should succeed");
+
+    // Verify messages sent to WebSocket
+    while let Ok(msg) = rx.try_recv() {
+        if let Message::Text(text) = msg {
+            println!("Received WebSocket message: {}", text);
+        }
+    }
 }
