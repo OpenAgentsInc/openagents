@@ -15,11 +15,6 @@ use crate::server::services::{
     model_router::ModelRouter,
 };
 
-#[cfg(test)]
-pub trait TestConnection {
-    async fn add_test_connection(&self, conn_id: &str) -> mpsc::UnboundedReceiver<Message>;
-}
-
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
     pub model_router: Arc<ModelRouter>,
@@ -170,11 +165,9 @@ impl WebSocketState {
         }
         Ok(())
     }
-}
 
-#[cfg(test)]
-impl TestConnection for Arc<WebSocketState> {
-    async fn add_test_connection(&self, conn_id: &str) -> mpsc::UnboundedReceiver<Message> {
+    // Test helper method - but we'll expose it always since it's useful for testing
+    pub async fn add_test_connection(self: &Arc<Self>, conn_id: &str) -> mpsc::UnboundedReceiver<Message> {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut conns = self.connections.write().await;
         conns.insert(conn_id.to_string(), tx);
