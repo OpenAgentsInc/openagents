@@ -1,9 +1,27 @@
+Cloning repository: https://github.com/OpenAgentsInc/openagents
+Repository cloned successfully into: "/var/folders/mz/1lvnhfd91qlbyc8_5q7n3_bc0000gn/T/rust_app_temp"
 tests/tool_selection.rs:
 │fn test_tool_selection
+
+tests/model_router_service.rs:
+│fn init_logging
+│fn create_test_tools
+│fn test_model_router_service
+│fn test_model_router_chat
+│fn test_model_router_tool_execution
 
 tests/repomap.rs:
 │fn test_repomap_endpoint
 │fn handle_repomap
+
+tests/chat_router_integration.rs:
+│fn init_logging
+│fn create_test_tools
+│fn test_chat_router_integration
+│fn test_chat_router_streaming
+
+tests/model_router.rs:
+│fn test_routing_decision
 
 tests/deepseek.rs:
 │fn test_chat_basic
@@ -455,6 +473,7 @@ src/configuration.rs:
 │fn try_from
 
 src/server/config.rs:
+│fn create_tools
 │fn configure_app
 
 src/server/mod.rs:
@@ -484,6 +503,7 @@ src/server/services/deepseek/methods/mod.rs:
 
 src/server/services/deepseek/methods/chat_with_tools.rs:
 │fn chat_with_tools
+│fn chat_with_tools_messages
 
 src/server/services/deepseek/methods/chat.rs:
 │fn chat
@@ -500,6 +520,14 @@ src/server/services/deepseek/streaming.rs:
 
 src/server/services/mod.rs:
 
+src/server/services/model_router.rs:
+│fn new
+│fn route_message
+│fn execute_tool_call
+│fn chat
+│fn chat_stream
+│fn handle_tool_response
+
 src/server/services/github_types.rs:
 
 src/server/ws/types.rs:
@@ -510,6 +538,7 @@ src/server/ws/transport.rs:
 │fn handle_socket
 │fn broadcast
 │fn send_to
+│fn add_test_connection
 
 src/server/ws/mod.rs:
 │fn ws_handler
@@ -534,12 +563,7 @@ src/repomap.rs:
 │fn extract_class_name
 │fn extract_const_name
 
-src/filters.rs:
-│fn markdown
-│fn safe
-
-src/main.rs:
-│fn main
+src/routes.rs:
 │fn health_check
 │fn home
 │fn chat
@@ -550,6 +574,14 @@ src/main.rs:
 │fn coming_soon
 │fn repomap
 │fn generate_repomap
+
+src/filters.rs:
+│fn markdown
+│fn safe
+
+src/main.rs:
+│fn main
+│fn create_tools
 
 src/repo/test.rs:
 │fn run_cargo_tests

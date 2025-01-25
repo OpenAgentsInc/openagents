@@ -23,11 +23,12 @@ struct CommentPayload {
 }
 
 impl GitHubService {
-    pub fn new(token: String) -> Self {
-        Self {
+    pub fn new(token: Option<String>) -> Result<Self> {
+        let token = token.ok_or_else(|| anyhow::anyhow!("GitHub token is required"))?;
+        Ok(Self {
             client: Client::new(),
             token,
-        }
+        })
     }
 
     pub async fn get_issue(
@@ -104,7 +105,7 @@ pub async fn post_github_comment(
     repo: &str,
     token: &str,
 ) -> Result<()> {
-    let service = GitHubService::new(token.to_string());
+    let service = GitHubService::new(Some(token.to_string()))?;
     service
         .post_comment(owner, repo, issue_number, comment)
         .await
