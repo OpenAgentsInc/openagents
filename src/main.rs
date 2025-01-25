@@ -2,7 +2,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use std::{env, net::SocketAddr, sync::Arc};
+use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -64,7 +64,7 @@ async fn main() {
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
     let repomap_service = Arc::new(RepomapService::new(aider_api_key));
 
-    // Create the router
+    // Create the router with WebSocket state
     let app = Router::new()
         .route("/", get(routes::home))
         .route("/chat", get(routes::chat))
@@ -76,29 +76,32 @@ async fn main() {
         .route("/coming-soon", get(routes::coming_soon))
         .route("/health", get(routes::health_check))
         .route("/repomap", get(routes::repomap))
-        .route("/repomap/generate", post(routes::generate_repomap))
-        // Static files
+        .with_state(ws_state);
+
+    // Add repomap routes with repomap state
+    let app = app.route("/repomap/generate", post(routes::generate_repomap))
+        .with_state(repomap_service);
+
+    // Static files
+    let app = app
         .nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
-        // Template files
         .nest_service(
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
-        )
-        .with_state(ws_state)
-        .with_state(repomap_service);
+        );
 
-    // Run the server
+    // Get port from environment variable or use default
     let port = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(8000);
 
     let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let addr = format!("{}:{}", host, port).parse().unwrap();
+    let address = format!("{}:{}", host, port);
 
+    let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
     info!("✨ Server ready:");
-    info!("  🌎 http://{}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    info!("  🌎 http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
 
