@@ -3,7 +3,7 @@ use openagents::server::services::{
     deepseek::{DeepSeekService, Tool},
     github_issue::GitHubService,
 };
-use openagents::server::ws::{handlers::chat::ChatHandler, transport::{WebSocketState, TestConnection}};
+use openagents::server::ws::{handlers::chat::ChatHandler, transport::WebSocketState};
 use openagents::server::ws::handlers::MessageHandler;
 use serde_json::json;
 use std::sync::Arc;
