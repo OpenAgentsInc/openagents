@@ -1,6 +1,6 @@
 use dotenvy::dotenv;
 use openagents::server::services::{
-    deepseek::{DeepSeekService, Tool, ToolChoice},
+    deepseek::{DeepSeekService, Tool},
     model_router::ModelRouter,
 };
 use serde_json::json;
