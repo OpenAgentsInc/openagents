@@ -1,4 +1,12 @@
 <script>
+  // Test marked.js immediately
+  console.log("Testing marked.js availability:", typeof marked);
+  try {
+    console.log("Test markdown conversion:", marked.parse("**test**"));
+  } catch (e) {
+    console.error("Marked.js error:", e);
+  }
+
   document.addEventListener("htmx:wsConnecting", function (evt) {
     console.log("Connecting to WebSocket...");
   });
@@ -111,33 +119,24 @@
   // Function to process content with markdown and code blocks
   function processContent(content) {
     console.log("Processing content:", content);
-    console.log("Marked object:", marked);
+    
+    // Test marked availability again in this context
+    console.log("Marked available in processContent:", typeof marked);
     
     try {
       // First convert markdown to HTML using marked
-      console.log("Converting markdown to HTML...");
-      let html;
-      if (typeof marked === 'function') {
-        html = marked(content);
-      } else if (marked && marked.parse) {
-        html = marked.parse(content);
-      } else {
-        console.error("marked is not properly initialized");
-        return content;
-      }
-      console.log("Converted HTML:", html);
+      let html = marked.parse(content);
+      console.log("Markdown converted to HTML:", html);
       
       // Find all pre>code blocks
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = html;
-      console.log("Created temp div with HTML");
       
       // Process each code block
       const codeBlocks = tempDiv.querySelectorAll('pre > code');
       console.log("Found code blocks:", codeBlocks.length);
       
       codeBlocks.forEach((codeBlock, index) => {
-        console.log(`Processing code block ${index + 1}`);
         const pre = codeBlock.parentElement;
         const wrapper = document.createElement('div');
         wrapper.className = 'relative';
@@ -145,12 +144,10 @@
         // Get the language class if it exists
         const langClass = Array.from(codeBlock.classList)
           .find(cls => cls.startsWith('language-'));
-        console.log("Language class:", langClass);
         
         if (langClass) {
           const lang = langClass.replace('language-', '');
           if (hljs.getLanguage(lang)) {
-            console.log("Highlighting code with language:", lang);
             codeBlock.innerHTML = hljs.highlight(codeBlock.textContent, {
               language: lang
             }).value;
@@ -166,11 +163,16 @@
         wrapper.appendChild(copyButton);
       });
       
-      console.log("Final processed HTML:", tempDiv.innerHTML);
       return tempDiv.innerHTML;
     } catch (error) {
-      console.error("Error processing content:", error);
-      return content;
+      console.error("Error in processContent:", error);
+      // Fallback to basic markdown parsing
+      try {
+        return marked.parse(content);
+      } catch (e) {
+        console.error("Fallback markdown parsing failed:", e);
+        return content;
+      }
     }
   }
 
