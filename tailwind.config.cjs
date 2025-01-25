@@ -26,32 +26,32 @@ module.exports = {
       typography: {
         DEFAULT: {
           css: {
-            maxWidth: '65ch',
-            fontSize: '0.75rem',
-            lineHeight: '1.5',
+            maxWidth: "65ch",
+            fontSize: "0.75rem",
+            lineHeight: "1.5",
             p: {
-              fontSize: '0.75rem',
-              lineHeight: '1.5',
+              fontSize: "0.75rem",
+              lineHeight: "1.5",
             },
             li: {
-              fontSize: '0.75rem',
-              lineHeight: '1.5',
+              fontSize: "0.75rem",
+              lineHeight: "1.5",
             },
             h1: {
-              fontSize: '1rem',
-              lineHeight: '1.5',
+              fontSize: "1rem",
+              lineHeight: "1.5",
             },
             h2: {
-              fontSize: '0.875rem',
-              lineHeight: '1.5',
+              fontSize: "0.875rem",
+              lineHeight: "1.5",
             },
             h3: {
-              fontSize: '0.75rem',
-              lineHeight: '1.5',
+              fontSize: "0.75rem",
+              lineHeight: "1.5",
             },
             h4: {
-              fontSize: '0.75rem',
-              lineHeight: '1.5',
+              fontSize: "0.75rem",
+              lineHeight: "1.5",
             },
           },
         },
@@ -122,8 +122,5 @@ module.exports = {
     "duration-300",
     "ease-in-out",
   ],
-  plugins: [
-    require('@tailwindcss/forms'),
-    require('@tailwindcss/typography'),
-  ],
+  plugins: [require("@tailwindcss/forms"), require("@tailwindcss/typography")],
 };

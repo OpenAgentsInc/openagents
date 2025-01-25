@@ -119,50 +119,51 @@
   // Function to process content with markdown and code blocks
   function processContent(content) {
     console.log("Processing content:", content);
-    
+
     // Test marked availability again in this context
     console.log("Marked available in processContent:", typeof marked);
-    
+
     try {
       // First convert markdown to HTML using marked
       let html = marked.parse(content);
       console.log("Markdown converted to HTML:", html);
-      
+
       // Find all pre>code blocks
-      const tempDiv = document.createElement('div');
+      const tempDiv = document.createElement("div");
       tempDiv.innerHTML = html;
-      
+
       // Process each code block
-      const codeBlocks = tempDiv.querySelectorAll('pre > code');
+      const codeBlocks = tempDiv.querySelectorAll("pre > code");
       console.log("Found code blocks:", codeBlocks.length);
-      
+
       codeBlocks.forEach((codeBlock, index) => {
         const pre = codeBlock.parentElement;
-        const wrapper = document.createElement('div');
-        wrapper.className = 'relative';
-        
+        const wrapper = document.createElement("div");
+        wrapper.className = "relative";
+
         // Get the language class if it exists
-        const langClass = Array.from(codeBlock.classList)
-          .find(cls => cls.startsWith('language-'));
-        
+        const langClass = Array.from(codeBlock.classList).find((cls) =>
+          cls.startsWith("language-"),
+        );
+
         if (langClass) {
-          const lang = langClass.replace('language-', '');
+          const lang = langClass.replace("language-", "");
           if (hljs.getLanguage(lang)) {
             codeBlock.innerHTML = hljs.highlight(codeBlock.textContent, {
-              language: lang
+              language: lang,
             }).value;
           }
         }
-        
+
         // Move the pre into the wrapper
         pre.parentNode.insertBefore(wrapper, pre);
         wrapper.appendChild(pre);
-        
+
         // Add copy button
         const copyButton = createCopyButton(codeBlock.textContent);
         wrapper.appendChild(copyButton);
       });
-      
+
       return tempDiv.innerHTML;
     } catch (error) {
       console.error("Error in processContent:", error);
@@ -233,7 +234,8 @@
 
       // If we already have a thinking message, update it
       if (currentThinkingMessage) {
-        currentThinkingMessage.contentEl.innerHTML = processContent(thinkingContent);
+        currentThinkingMessage.contentEl.innerHTML =
+          processContent(thinkingContent);
       } else {
         // Create new thinking message
         const messageEl = template.content.cloneNode(true);
