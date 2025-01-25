@@ -147,7 +147,7 @@ async fn main() -> Result<()> {
         // Post the suggestions as a GitHub comment if token is available
         if let Some(token) = github_token {
             println!("\nPosting test suggestions to GitHub...");
-            let github_service = GitHubService::new(Some(token));
+            let github_service = GitHubService::new(Some(token))?;
 
             let comment = format!(
                 "# Test Coverage Analysis\n\n\
