@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct GitHubService {
     client: Client,
-    token: Option<String>,
+    token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -23,7 +23,7 @@ struct CommentPayload {
 }
 
 impl GitHubService {
-    pub fn new(token: Option<String>) -> Self {
+    pub fn new(token: String) -> Self {
         Self {
             client: Client::new(),
             token,
@@ -41,15 +41,13 @@ impl GitHubService {
             owner, repo, issue_number
         );
 
-        let mut request = self.client.get(&url);
-
-        if let Some(token) = &self.token {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        }
-
-        request = request.header("User-Agent", "OpenAgents");
-
-        let response = request.send().await?;
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("User-Agent", "OpenAgents")
+            .send()
+            .await?;
 
         if !response.status().is_success() {
             return Err(anyhow::anyhow!(
@@ -74,11 +72,6 @@ impl GitHubService {
             owner, repo, issue_number
         );
 
-        let token = self
-            .token
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("GitHub token is required for posting comments"))?;
-
         let payload = CommentPayload {
             body: comment.to_string(),
         };
@@ -86,7 +79,7 @@ impl GitHubService {
         let response = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", token))
+            .header("Authorization", format!("Bearer {}", self.token))
             .header("User-Agent", "OpenAgents")
             .header("Accept", "application/vnd.github.v3+json")
             .json(&payload)
@@ -111,7 +104,7 @@ pub async fn post_github_comment(
     repo: &str,
     token: &str,
 ) -> Result<()> {
-    let service = GitHubService::new(Some(token.to_string()));
+    let service = GitHubService::new(token.to_string());
     service
         .post_comment(owner, repo, issue_number, comment)
         .await
