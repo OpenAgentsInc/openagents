@@ -7,6 +7,9 @@
   });
 </script>
 
+<!-- Marked.js for Markdown -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
 <!-- Highlight.js -->
 <link
   rel="stylesheet"
@@ -21,9 +24,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/markdown.min.js"></script>
-
-<!-- Marked.js for Markdown -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <script>
   // Initialize highlight.js
@@ -48,4 +48,7 @@
   // Test marked initialization
   console.log("Marked version:", marked.version);
   console.log("Test markdown conversion:", marked.parse("**bold** and *italic*"));
+
+  // Make marked available globally
+  window.marked = marked;
 </script>
