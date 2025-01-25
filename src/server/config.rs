@@ -63,8 +63,10 @@ pub fn configure_app() -> Router {
     ));
 
     let github_service = Arc::new(
-        GitHubService::new(Some(env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set")))
-            .expect("Failed to create GitHub service"),
+        GitHubService::new(Some(
+            env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
+        ))
+        .expect("Failed to create GitHub service"),
     );
 
     let _repomap_service = Arc::new(RepomapService::new(

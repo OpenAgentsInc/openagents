@@ -106,5 +106,7 @@ pub async fn post_github_comment(
     token: &str,
 ) -> Result<()> {
     let service = GitHubService::new(Some(token.to_string()))?;
-    service.post_comment(owner, repo, issue_number, comment).await
+    service
+        .post_comment(owner, repo, issue_number, comment)
+        .await
 }
