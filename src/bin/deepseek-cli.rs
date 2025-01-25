@@ -1,12 +1,12 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use colored::*;
 use openagents::server::services::{
-    deepseek::{ChatMessage, DeepSeekService, Tool, ToolChoice},
+    deepseek::{ChatMessage, DeepSeekService, ToolChoice},
     github_issue::GitHubService,
 };
 use serde_json::json;
 use std::io::{self, Write};
+use yansi::Paint;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
