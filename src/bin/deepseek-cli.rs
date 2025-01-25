@@ -6,7 +6,7 @@ use openagents::server::services::{
 };
 use serde_json::json;
 use std::io::{self, Write};
-use yansi::Paint;
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -23,13 +23,19 @@ enum Commands {
     },
 }
 
-fn print_colored(role: &str, content: &str) {
-    match role {
-        "user" => println!("{} {}", "User:".blue().bold(), content),
-        "assistant" => println!("{} {}", "Assistant:".green().bold(), content),
-        "system" => println!("{} {}", "System:".yellow().bold(), content),
-        _ => println!("{} {}", format!("{}:", role).red().bold(), content),
-    }
+fn print_colored(role: &str, content: &str) -> Result<()> {
+    let mut stdout = StandardStream::stdout(ColorChoice::Always);
+    let color = match role {
+        "user" => Color::Blue,
+        "assistant" => Color::Green,
+        "system" => Color::Yellow,
+        _ => Color::Red,
+    };
+    stdout.set_color(ColorSpec::new().set_fg(Some(color)).set_bold(true))?;
+    write!(stdout, "{}:", role)?;
+    stdout.reset()?;
+    writeln!(stdout, " {}", content)?;
+    Ok(())
 }
 
 #[tokio::main]
@@ -82,7 +88,7 @@ async fn main() -> Result<()> {
 
             // Process initial message if provided
             if let Some(msg) = message {
-                print_colored("user", msg);
+                print_colored("user", msg)?;
                 messages.push(ChatMessage {
                     role: "user".to_string(),
                     content: msg.to_string(),
@@ -99,7 +105,7 @@ async fn main() -> Result<()> {
                     )
                     .await?;
 
-                print_colored("assistant", &response);
+                print_colored("assistant", &response)?;
 
                 if let Some(tool_calls) = tool_calls {
                     for tool_call in tool_calls {
@@ -116,7 +122,7 @@ async fn main() -> Result<()> {
                                     "Fetching GitHub issue #{} from {}/{}",
                                     issue_number, owner, repo
                                 ),
-                            );
+                            )?;
 
                             let issue = github_service.get_issue(owner, repo, issue_number).await?;
 
@@ -146,7 +152,7 @@ async fn main() -> Result<()> {
                                 )
                                 .await?;
 
-                            print_colored("assistant", &response);
+                            print_colored("assistant", &response)?;
                         }
                     }
                 }
@@ -154,7 +160,11 @@ async fn main() -> Result<()> {
 
             // Interactive chat loop
             loop {
-                print!("{} ", "User:".blue().bold());
+                let mut stdout = StandardStream::stdout(ColorChoice::Always);
+                stdout.set_color(ColorSpec::new().set_fg(Some(Color::Blue)).set_bold(true))?;
+                write!(stdout, "User:")?;
+                stdout.reset()?;
+                write!(stdout, " ")?;
                 io::stdout().flush()?;
 
                 let mut input = String::new();
@@ -181,7 +191,7 @@ async fn main() -> Result<()> {
                     )
                     .await?;
 
-                print_colored("assistant", &response);
+                print_colored("assistant", &response)?;
 
                 if let Some(tool_calls) = tool_calls {
                     for tool_call in tool_calls {
@@ -198,7 +208,7 @@ async fn main() -> Result<()> {
                                     "Fetching GitHub issue #{} from {}/{}",
                                     issue_number, owner, repo
                                 ),
-                            );
+                            )?;
 
                             let issue = github_service.get_issue(owner, repo, issue_number).await?;
 
@@ -228,7 +238,7 @@ async fn main() -> Result<()> {
                                 )
                                 .await?;
 
-                            print_colored("assistant", &response);
+                            print_colored("assistant", &response)?;
                         }
                     }
                 }
