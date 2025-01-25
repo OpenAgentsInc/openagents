@@ -1,10 +1,12 @@
-use std::sync::Arc;
 use anyhow::Result;
 use serde::Deserialize;
-use tracing::info;
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use tracing::info;
 
-use super::deepseek::{ChatMessage, DeepSeekService, Tool, ToolChoice, ToolCallResponse, StreamUpdate};
+use super::deepseek::{
+    ChatMessage, DeepSeekService, StreamUpdate, Tool, ToolCallResponse, ToolChoice,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct RoutingDecision {
@@ -154,7 +156,11 @@ Example response format:
 "I'll help you with that using the {tool_name} tool. [Use tool]
 Here's what I found: [Explain results]""#,
                 tool_name = tool.function.name,
-                tool_desc = tool.function.description.as_deref().unwrap_or("no description")
+                tool_desc = tool
+                    .function
+                    .description
+                    .as_deref()
+                    .unwrap_or("no description")
             ),
             tool_call_id: None,
             tool_calls: None,

@@ -53,12 +53,7 @@ async fn main() {
     let tools = create_tools();
 
     // Create WebSocket state with services
-    let ws_state = WebSocketState::new(
-        tool_model,
-        chat_model,
-        github_service.clone(),
-        tools,
-    );
+    let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
@@ -79,7 +74,8 @@ async fn main() {
         .with_state(ws_state);
 
     // Add repomap routes with repomap state
-    let app = app.route("/repomap/generate", post(routes::generate_repomap))
+    let app = app
+        .route("/repomap/generate", post(routes::generate_repomap))
         .with_state(repomap_service);
 
     // Static files

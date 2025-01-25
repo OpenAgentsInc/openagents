@@ -109,20 +109,38 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         info!("Response: {}", response);
 
         // Parse the response as JSON
-        let decision: serde_json::Value = serde_json::from_str(&response)
-            .expect("Response should be valid JSON");
+        let decision: serde_json::Value =
+            serde_json::from_str(&response).expect("Response should be valid JSON");
 
         // Verify the decision structure
-        assert!(decision.get("needs_tool").is_some(), "Missing needs_tool field");
-        assert!(decision.get("reasoning").is_some(), "Missing reasoning field");
-        assert!(decision.get("suggested_tool").is_some(), "Missing suggested_tool field");
+        assert!(
+            decision.get("needs_tool").is_some(),
+            "Missing needs_tool field"
+        );
+        assert!(
+            decision.get("reasoning").is_some(),
+            "Missing reasoning field"
+        );
+        assert!(
+            decision.get("suggested_tool").is_some(),
+            "Missing suggested_tool field"
+        );
 
         // Verify the needs_tool field is a boolean
-        assert!(decision["needs_tool"].is_boolean(), "needs_tool should be a boolean");
+        assert!(
+            decision["needs_tool"].is_boolean(),
+            "needs_tool should be a boolean"
+        );
 
         // Verify the reasoning field is a non-empty string
-        assert!(decision["reasoning"].is_string(), "reasoning should be a string");
-        assert!(!decision["reasoning"].as_str().unwrap().is_empty(), "reasoning should not be empty");
+        assert!(
+            decision["reasoning"].is_string(),
+            "reasoning should be a string"
+        );
+        assert!(
+            !decision["reasoning"].as_str().unwrap().is_empty(),
+            "reasoning should not be empty"
+        );
 
         // Verify the suggested_tool field is either a string or null
         assert!(
@@ -135,7 +153,7 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
             decision["needs_tool"], expected_decision["needs_tool"],
             "needs_tool mismatch"
         );
-        
+
         if decision["needs_tool"].as_bool().unwrap() {
             assert_eq!(
                 decision["suggested_tool"], expected_decision["suggested_tool"],

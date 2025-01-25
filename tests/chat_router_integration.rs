@@ -1,13 +1,13 @@
+use axum::extract::ws::Message;
 use dotenvy::dotenv;
 use openagents::server::services::{
     deepseek::{DeepSeekService, Tool},
     github_issue::GitHubService,
 };
-use openagents::server::ws::{handlers::chat::ChatHandler, transport::WebSocketState};
 use openagents::server::ws::handlers::MessageHandler;
+use openagents::server::ws::{handlers::chat::ChatHandler, transport::WebSocketState};
 use serde_json::json;
 use std::sync::Arc;
-use axum::extract::ws::Message;
 use tracing::Level;
 use tracing_subscriber;
 use wiremock::{

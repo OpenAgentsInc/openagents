@@ -40,11 +40,7 @@ impl DeepSeekService {
 
         // Only include tools if we have them and we're not using the reasoner
         let should_use_tools = !tools.is_empty() && !use_reasoner;
-        let tools = if should_use_tools {
-            Some(tools)
-        } else {
-            None
-        };
+        let tools = if should_use_tools { Some(tools) } else { None };
 
         let request = ChatRequest {
             model: model.to_string(),

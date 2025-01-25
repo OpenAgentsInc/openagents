@@ -13,10 +13,7 @@ pub struct ChatHandler {
 }
 
 impl ChatHandler {
-    pub fn new(
-        ws_state: Arc<WebSocketState>,
-        github_service: Arc<GitHubService>,
-    ) -> Self {
+    pub fn new(ws_state: Arc<WebSocketState>, github_service: Arc<GitHubService>) -> Self {
         Self {
             ws_state,
             github_service,
@@ -42,7 +39,11 @@ impl ChatHandler {
             .await?;
 
         // Get routing decision
-        let (decision, tool_calls) = self.ws_state.model_router.route_message(content.clone()).await?;
+        let (decision, tool_calls) = self
+            .ws_state
+            .model_router
+            .route_message(content.clone())
+            .await?;
 
         // Send routing status
         let routing_json = json!({

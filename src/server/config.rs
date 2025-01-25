@@ -74,12 +74,7 @@ pub fn configure_app() -> Router {
     let tools = create_tools();
 
     // Create WebSocket state with services
-    let ws_state = WebSocketState::new(
-        tool_model,
-        chat_model,
-        github_service.clone(),
-        tools,
-    );
+    let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
 
     // Create the main router
     Router::new()

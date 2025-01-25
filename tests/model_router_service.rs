@@ -119,16 +119,18 @@ async fn test_model_router_service() {
         );
 
         // Verify reasoning is present and meaningful
-        assert!(!decision.reasoning.is_empty(), "reasoning should not be empty");
+        assert!(
+            !decision.reasoning.is_empty(),
+            "reasoning should not be empty"
+        );
         let reasoning_lower = decision.reasoning.to_lowercase();
-        let found_phrase = expected_phrases.iter().any(|phrase| {
-            reasoning_lower.contains(&phrase.to_lowercase())
-        });
+        let found_phrase = expected_phrases
+            .iter()
+            .any(|phrase| reasoning_lower.contains(&phrase.to_lowercase()));
         assert!(
             found_phrase,
             "reasoning '{}' should contain one of {:?}",
-            reasoning_lower,
-            expected_phrases
+            reasoning_lower, expected_phrases
         );
 
         // Verify tool suggestion
@@ -140,7 +142,11 @@ async fn test_model_router_service() {
 
         // If tools should be used, verify tool calls
         if should_use_tool {
-            assert!(tool_calls.is_some(), "Expected tool calls for input: {}", input);
+            assert!(
+                tool_calls.is_some(),
+                "Expected tool calls for input: {}",
+                input
+            );
             let tool_calls = tool_calls.unwrap();
             assert_eq!(tool_calls.len(), 1, "Expected exactly one tool call");
             assert_eq!(
@@ -149,7 +155,11 @@ async fn test_model_router_service() {
                 "Tool name mismatch"
             );
         } else {
-            assert!(tool_calls.is_none(), "Did not expect tool calls for input: {}", input);
+            assert!(
+                tool_calls.is_none(),
+                "Did not expect tool calls for input: {}",
+                input
+            );
         }
     }
 }
@@ -184,13 +194,13 @@ async fn test_model_router_chat() {
     );
 
     // Test with reasoning
-    let (response, reasoning) = router
-        .chat("How are you?".to_string(), true)
-        .await
-        .unwrap();
+    let (response, reasoning) = router.chat("How are you?".to_string(), true).await.unwrap();
 
     assert!(!response.is_empty(), "Response should not be empty");
-    assert!(reasoning.is_some(), "Reasoning should be present when requested");
+    assert!(
+        reasoning.is_some(),
+        "Reasoning should be present when requested"
+    );
 }
 
 #[tokio::test]
@@ -227,7 +237,10 @@ async fn test_model_router_tool_execution() {
 
     // Test tool execution with a clear instruction
     let (response, _, tool_calls) = router
-        .execute_tool_call("Please echo back the message 'Hello World'".to_string(), test_tool)
+        .execute_tool_call(
+            "Please echo back the message 'Hello World'".to_string(),
+            test_tool,
+        )
         .await
         .unwrap();
 
@@ -245,5 +258,8 @@ async fn test_model_router_tool_execution() {
 
     // Parse tool call arguments
     let args: serde_json::Value = serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
-    assert!(args.get("message").is_some(), "Tool call should include message parameter");
+    assert!(
+        args.get("message").is_some(),
+        "Tool call should include message parameter"
+    );
 }
