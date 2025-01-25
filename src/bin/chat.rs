@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
 
     // Initialize GitHub service
     let github_token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set");
-    let github_service = GitHubService::new(github_token);
+    let github_service = GitHubService::new(Some(github_token))?.into();
 
     // Create GitHub issue tool
     let get_issue_tool = DeepSeekService::create_tool(
