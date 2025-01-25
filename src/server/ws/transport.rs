@@ -165,4 +165,13 @@ impl WebSocketState {
         }
         Ok(())
     }
+
+    // Test helper method
+    #[cfg(test)]
+    pub async fn add_test_connection(&self, conn_id: &str) -> mpsc::UnboundedReceiver<Message> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut conns = self.connections.write().await;
+        conns.insert(conn_id.to_string(), tx);
+        rx
+    }
 }
