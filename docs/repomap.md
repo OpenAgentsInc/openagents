@@ -14,6 +14,10 @@ tests/health_check.rs:
 │fn health_check_works
 
 styles/tailwind.css:
+│@layer base
+│pre
+│pre code
+│code:not(pre code)
 
 templates/admin/login.html:
 │<body>
@@ -125,7 +129,7 @@ templates/header.html:
 postcss.config.js:
 
 assets/main.css:
-│\*, ::before, ::after
+│::after
 │::backdrop
 │::after
 │::after
@@ -144,12 +148,12 @@ assets/main.css:
 │table
 │textarea
 │select
-│input:where([type='submit'])
+│input:where([type="submit"])
 │:-moz-focusring
 │:-moz-ui-invalid
 │progress
 │::-webkit-outer-spin-button
-│[type='search']
+│[type="search"]
 │::-webkit-search-decoration
 │::-webkit-file-upload-button
 │summary
@@ -159,13 +163,16 @@ assets/main.css:
 │menu
 │dialog
 │textarea
-│input::-moz-placeholder, textarea::-moz-placeholder
+│textarea::-moz-placeholder
 │textarea::placeholder
 │[role="button"]
 │:disabled
 │object
 │video
 │[hidden]:where(:not([hidden="until-found"]))
+│pre
+│pre code
+│code:not(pre code)
 │.container
 │@media (min-width: 640px)
 │.container
@@ -180,15 +187,15 @@ assets/main.css:
 │.fixed
 │.absolute
 │.relative
-│.inset-y-0
-│.left-1
-│.top-1
-│.bottom-4
-│.right-4
 │.bottom-0
-│.right-\[80px\]
-│.left-1\/2
-│.bottom-\[60px\]
+│.bottom-4
+│.left-1
+│.right-4
+│.right-\[50px\]
+│.top-1
+│.top-\[12px\]
+│.right-2
+│.top-2
 │.mx-2
 │.mx-auto
 │.my-2
@@ -205,6 +212,7 @@ assets/main.css:
 │.mt-2
 │.mt-4
 │.mt-6
+│.\!block
 │.block
 │.inline
 │.flex
@@ -212,30 +220,28 @@ assets/main.css:
 │.grid
 │.hidden
 │.h-1\.5
-│.h-5
-│.h-8
-│.h-full
-│.h-screen
-│.h-\[57px\]
-│.h-\[calc\(100vh-57px\)\]
 │.h-4
+│.h-5
 │.h-6
+│.h-8
+│.h-\[57px\]
 │.h-\[60px\]
-│.min-h-screen
+│.h-\[calc\(100vh-57px\)\]
+│.h-full
 │.min-h-\[60px\]
+│.min-h-screen
 │.w-1\.5
+│.w-4
 │.w-5
+│.w-6
+│.w-64
 │.w-8
 │.w-\[48rem\]
 │.w-\[600px\]
 │.w-\[60rem\]
-│.w-screen
-│.w-64
-│.w-full
-│.w-48
 │.w-\[80px\]
-│.w-4
-│.w-6
+│.w-full
+│.w-screen
 │.max-w-2xl
 │.max-w-4xl
 │.max-w-7xl
@@ -250,9 +256,7 @@ assets/main.css:
 │.animate-spin
 │.touch-manipulation
 │.select-none
-│.resize-none
 │.resize
-│.list-inside
 │.list-disc
 │.grid-cols-1
 │.grid-cols-3
@@ -271,8 +275,6 @@ assets/main.css:
 │.space-y-4 > :not([hidden]) ~ :not([hidden])
 │.space-y-6 > :not([hidden]) ~ :not([hidden])
 │.space-y-8 > :not([hidden]) ~ :not([hidden])
-│.space-x-2 > :not([hidden]) ~ :not([hidden])
-│.space-x-3 > :not([hidden]) ~ :not([hidden])
 │.overflow-hidden
 │.overflow-x-auto
 │.overflow-y-auto
@@ -288,20 +290,15 @@ assets/main.css:
 │.border
 │.border-b
 │.border-b-2
+│.border-l
 │.border-l-4
 │.border-r
 │.border-t
-│.border-l
 │.border-red-500\/20
 │.border-white
 │.border-white\/10
 │.border-white\/50
 │.border-white\/90
-│.border-red-500
-│.border-gray-200
-│.border-gray-300
-│.border-gray-700
-│.border-gray-800
 │.bg-black
 │.bg-black\/30
 │.bg-black\/50
@@ -309,7 +306,8 @@ assets/main.css:
 │.bg-indigo-600
 │.bg-red-900\/20
 │.bg-white
-│.bg-gray-900
+│.bg-white\/5
+│.p-1\.5
 │.p-2
 │.p-4
 │.p-6
@@ -335,7 +333,6 @@ assets/main.css:
 │.text-lg
 │.text-sm
 │.text-xs
-│.text-xl
 │.font-bold
 │.font-medium
 │.font-semibold
@@ -346,6 +343,7 @@ assets/main.css:
 │.tracking-tight
 │.text-gray-300
 │.text-gray-400
+│.text-gray-500
 │.text-gray-600
 │.text-gray-900
 │.text-green-400
@@ -357,17 +355,11 @@ assets/main.css:
 │.text-white\/70
 │.text-white\/80
 │.text-yellow-400
-│.text-red-500
-│.text-gray-500
-│.text-blue-500
-│.text-blue-600
-│.text-gray-700
 │.underline
 │.no-underline
 │.placeholder-white\/50::-moz-placeholder
 │.placeholder-white\/50::placeholder
 │.opacity-75
-│.opacity-25
 │.shadow-nav
 │.shadow-sm
 │.shadow-xl
@@ -376,22 +368,22 @@ assets/main.css:
 │.ring-gray-400\/10
 │.transition
 │.transition-all
-│.transition-transform
 │.transition-colors
+│.transition-transform
 │.duration-300
 │.duration-nav
 │.ease-in-out
 │.ease-nav
 │.hover\:bg-indigo-500:hover
 │.hover\:bg-white:hover
+│.hover\:bg-white\/10:hover
 │.hover\:bg-zinc-900:hover
 │.hover\:text-black:hover
+│.hover\:text-gray-300:hover
 │.hover\:text-white:hover
 │.hover\:text-white\/80:hover
-│.hover\:text-gray-300:hover
 │.hover\:shadow-nav-hover:hover
 │.focus\:border-white:focus
-│.focus\:border-gray-400:focus
 │.focus\:outline-none:focus
 │.focus\:ring-1:focus
 │.focus\:ring-2:focus

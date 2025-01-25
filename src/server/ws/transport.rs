@@ -9,22 +9,29 @@ use uuid::Uuid;
 
 use super::handlers::{chat::ChatHandler, MessageHandler};
 use super::types::ChatMessage;
-use crate::server::services::{github_issue::GitHubService, DeepSeekService};
+use crate::server::services::{
+    deepseek::{DeepSeekService, Tool},
+    github_issue::GitHubService,
+    model_router::ModelRouter,
+};
 
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
-    deepseek_service: Arc<DeepSeekService>,
+    pub model_router: Arc<ModelRouter>,
     github_service: Arc<GitHubService>,
 }
 
 impl WebSocketState {
     pub fn new(
-        deepseek_service: Arc<DeepSeekService>,
+        tool_model: Arc<DeepSeekService>,
+        chat_model: Arc<DeepSeekService>,
         github_service: Arc<GitHubService>,
+        tools: Vec<Tool>,
     ) -> Arc<Self> {
+        let model_router = Arc::new(ModelRouter::new(tool_model, chat_model, tools));
         Arc::new(Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
-            deepseek_service,
+            model_router,
             github_service,
         })
     }
@@ -32,7 +39,6 @@ impl WebSocketState {
     pub fn create_handlers(ws_state: Arc<WebSocketState>) -> Arc<ChatHandler> {
         Arc::new(ChatHandler::new(
             ws_state.clone(),
-            ws_state.deepseek_service.clone(),
             ws_state.github_service.clone(),
         ))
     }
@@ -158,5 +164,16 @@ impl WebSocketState {
             error!("Connection {} not found", conn_id);
         }
         Ok(())
+    }
+
+    // Test helper method - but we'll expose it always since it's useful for testing
+    pub async fn add_test_connection(
+        self: &Arc<Self>,
+        conn_id: &str,
+    ) -> mpsc::UnboundedReceiver<Message> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let mut conns = self.connections.write().await;
+        conns.insert(conn_id.to_string(), tx);
+        rx
     }
 }

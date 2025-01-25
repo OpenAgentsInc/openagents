@@ -14,12 +14,6 @@ impl DeepSeekService {
         tool_choice: Option<ToolChoice>,
         use_reasoner: bool,
     ) -> Result<(String, Option<String>, Option<Vec<ToolCallResponse>>)> {
-        let model = if use_reasoner {
-            "deepseek-reasoner"
-        } else {
-            "deepseek-chat"
-        };
-
         let messages = vec![ChatMessage {
             role: "user".to_string(),
             content: prompt,
@@ -27,14 +21,35 @@ impl DeepSeekService {
             tool_calls: None,
         }];
 
+        self.chat_with_tools_messages(messages, tools, tool_choice, use_reasoner)
+            .await
+    }
+
+    pub async fn chat_with_tools_messages(
+        &self,
+        messages: Vec<ChatMessage>,
+        tools: Vec<Tool>,
+        tool_choice: Option<ToolChoice>,
+        use_reasoner: bool,
+    ) -> Result<(String, Option<String>, Option<Vec<ToolCallResponse>>)> {
+        let model = if use_reasoner {
+            "deepseek-reasoner"
+        } else {
+            "deepseek-chat"
+        };
+
+        // Only include tools if we have them and we're not using the reasoner
+        let should_use_tools = !tools.is_empty() && !use_reasoner;
+        let tools = if should_use_tools { Some(tools) } else { None };
+
         let request = ChatRequest {
             model: model.to_string(),
             messages,
             stream: false,
             temperature: 0.7,
             max_tokens: None,
-            tools: Some(tools),
-            tool_choice,
+            tools,
+            tool_choice: if should_use_tools { tool_choice } else { None },
         };
 
         let url = format!("{}/chat/completions", self.base_url);
