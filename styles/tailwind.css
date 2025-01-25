@@ -5,7 +5,7 @@
 @layer base {
   /* Code block styles */
   pre {
-    @apply my-4 border border-white bg-[#1a1a1a] overflow-x-auto mr-[2.4rem];
+    @apply my-4 border border-white/10 bg-[#1a1a1a] overflow-x-auto mr-[2.4rem];
   }
 
   pre code {
@@ -15,5 +15,30 @@
   /* Inline code */
   code:not(pre code) {
     @apply px-2 py-1 mx-1 rounded bg-[#1a1a1a] text-gray-200 font-mono text-sm;
+  }
+}
+
+@layer components {
+  /* Dark mode prose customization */
+  .prose-custom-dark {
+    @apply prose-invert 
+           prose-headings:text-white/90
+           prose-p:text-white/70
+           prose-a:text-blue-400
+           prose-strong:text-white/90
+           prose-code:text-white/70
+           prose-pre:bg-[#1a1a1a]
+           prose-pre:border
+           prose-pre:border-white/10
+           prose-blockquote:text-white/70
+           prose-blockquote:border-white/20
+           prose-ul:text-white/70
+           prose-ol:text-white/70
+           prose-li:text-white/70
+           prose-table:text-white/70
+           prose-thead:text-white/90
+           prose-tr:border-white/10
+           prose-th:text-white/90
+           prose-td:text-white/70;
   }
 }
