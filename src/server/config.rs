@@ -62,9 +62,12 @@ pub fn configure_app() -> Router {
         env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set"),
     ));
 
-    let github_service = Arc::new(GitHubService::new(
-        env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
-    ));
+    let github_service = Arc::new(
+        GitHubService::new(Some(
+            env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
+        ))
+        .expect("Failed to create GitHub service"),
+    );
 
     let _repomap_service = Arc::new(RepomapService::new(
         env::var("FIRECRAWL_API_KEY").expect("FIRECRAWL_API_KEY must be set"),
