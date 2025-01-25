@@ -10,7 +10,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use crate::server::services::{
     deepseek::{DeepSeekService, Tool},
     github_issue::GitHubService,
-    model_router::ModelRouter,
 };
 use crate::server::ws::transport::WebSocketState;
 
@@ -49,12 +48,12 @@ async fn main() {
     let tools = create_tools();
 
     // Create WebSocket state with services
-    let ws_state = Arc::new(WebSocketState::new(
+    let ws_state = WebSocketState::new(
         tool_model,
         chat_model,
         github_service.clone(),
         tools,
-    ));
+    );
 
     // Create the router
     let app = Router::new()
