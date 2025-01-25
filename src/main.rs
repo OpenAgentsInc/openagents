@@ -10,6 +10,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use crate::server::services::{
     deepseek::{DeepSeekService, Tool},
     github_issue::GitHubService,
+    RepomapService,
 };
 use crate::server::ws::transport::WebSocketState;
 
@@ -18,6 +19,7 @@ pub mod database;
 pub mod filters;
 pub mod repo;
 pub mod repomap;
+pub mod routes;
 pub mod server;
 
 #[tokio::main]
@@ -58,30 +60,44 @@ async fn main() {
         tools,
     );
 
+    // Initialize repomap service
+    let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
+    let repomap_service = Arc::new(RepomapService::new(aider_api_key));
+
     // Create the router
     let app = Router::new()
-        .route("/", get(home))
-        .route("/chat", get(chat))
+        .route("/", get(routes::home))
+        .route("/chat", get(routes::chat))
         .route("/ws", get(server::ws::ws_handler))
-        .route("/mobile-app", get(mobile_app))
-        .route("/business", get(business))
-        .route("/video-series", get(video_series))
-        .route("/company", get(company))
-        .route("/coming-soon", get(coming_soon))
-        .route("/repomap", get(repomap))
-        .route("/repomap/generate", post(generate_repomap))
+        .route("/onyx", get(routes::mobile_app))
+        .route("/services", get(routes::business))
+        .route("/video-series", get(routes::video_series))
+        .route("/company", get(routes::company))
+        .route("/coming-soon", get(routes::coming_soon))
+        .route("/health", get(routes::health_check))
+        .route("/repomap", get(routes::repomap))
+        .route("/repomap/generate", post(routes::generate_repomap))
         // Static files
-        .nest_service("/static", ServeDir::new("./static").precompressed_gzip())
+        .nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
         // Template files
         .nest_service(
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
         )
-        .with_state(ws_state);
+        .with_state(ws_state)
+        .with_state(repomap_service);
 
     // Run the server
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    info!("Listening on {}", addr);
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(8000);
+
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let addr = format!("{}:{}", host, port).parse().unwrap();
+
+    info!("✨ Server ready:");
+    info!("  🌎 http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
@@ -127,40 +143,4 @@ fn create_tools() -> Vec<Tool> {
             }),
         ),
     ]
-}
-
-async fn home() -> &'static str {
-    "Hello, World!"
-}
-
-async fn chat() -> &'static str {
-    "Chat page"
-}
-
-async fn mobile_app() -> &'static str {
-    "Mobile app page"
-}
-
-async fn business() -> &'static str {
-    "Business page"
-}
-
-async fn video_series() -> &'static str {
-    "Video series page"
-}
-
-async fn company() -> &'static str {
-    "Company page"
-}
-
-async fn coming_soon() -> &'static str {
-    "Coming soon page"
-}
-
-async fn repomap() -> &'static str {
-    "Repomap page"
-}
-
-async fn generate_repomap() -> &'static str {
-    "Generate repomap"
 }
