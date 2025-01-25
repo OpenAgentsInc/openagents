@@ -99,16 +99,6 @@
   let currentThinkingMessage = null;
   let thinkingContent = "";
 
-  // Function to escape HTML
-  function escapeHtml(unsafe) {
-    return unsafe
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
   function createCopyButton(codeText) {
     const button = document.createElement("button");
     button.className =
@@ -117,54 +107,44 @@
     return button;
   }
 
-  // Function to convert markdown code blocks to highlighted HTML
-  function processCodeBlocks(content) {
-    // Find code blocks
-    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    let matches = content.match(codeBlockRegex);
-
-    if (!matches) return content;
-
-    matches.forEach((match) => {
-      try {
-        // Extract language and code
-        const [_, lang, code] = /```(\w+)?\n([\s\S]*?)```/.exec(match);
-
-        // Create wrapper div for relative positioning
-        const wrapperDiv = document.createElement("div");
-        wrapperDiv.className = "relative";
-
-        // Create the pre and code elements
-        const pre = document.createElement("pre");
-        const codeEl = document.createElement("code");
-        codeEl.className = `language-${lang || "plaintext"}`;
-        codeEl.textContent = code.trim();
-
-        pre.appendChild(codeEl);
-        wrapperDiv.appendChild(pre);
-
-        // Add copy button to wrapper (not pre)
-        const copyButton = createCopyButton(code);
-        wrapperDiv.appendChild(copyButton);
-
-        // Replace in content
-        content = content.replace(match, wrapperDiv.outerHTML);
-      } catch (err) {
-        console.error("Error processing code block:", err);
+  // Function to process content with markdown and code blocks
+  function processContent(content) {
+    // First convert markdown to HTML using marked
+    let html = marked(content);
+    
+    // Find all pre>code blocks
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    // Process each code block
+    tempDiv.querySelectorAll('pre > code').forEach(codeBlock => {
+      const pre = codeBlock.parentElement;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'relative';
+      
+      // Get the language class if it exists
+      const langClass = Array.from(codeBlock.classList)
+        .find(cls => cls.startsWith('language-'));
+      
+      if (langClass) {
+        const lang = langClass.replace('language-', '');
+        if (hljs.getLanguage(lang)) {
+          codeBlock.innerHTML = hljs.highlight(codeBlock.textContent, {
+            language: lang
+          }).value;
+        }
       }
+      
+      // Move the pre into the wrapper
+      pre.parentNode.insertBefore(wrapper, pre);
+      wrapper.appendChild(pre);
+      
+      // Add copy button
+      const copyButton = createCopyButton(codeBlock.textContent);
+      wrapper.appendChild(copyButton);
     });
-
-    return content;
-  }
-
-  // Function to apply syntax highlighting
-  function highlightCode(element) {
-    const codeBlocks = element.querySelectorAll("pre code");
-    codeBlocks.forEach((block) => {
-      if (!block.classList.contains("hljs")) {
-        hljs.highlightElement(block);
-      }
-    });
+    
+    return tempDiv.innerHTML;
   }
 
   function handleChatMessage(data) {
@@ -184,7 +164,11 @@
       const statusEl = messageEl.querySelector(".status");
 
       // Set initial content
-      contentEl.textContent = data.sender === "user" ? data.content : "...";
+      if (data.sender === "user") {
+        contentEl.innerHTML = processContent(data.content);
+      } else {
+        contentEl.textContent = "...";
+      }
 
       // Show status for AI messages
       if (data.sender === "ai") {
@@ -216,7 +200,7 @@
 
       // If we already have a thinking message, update it
       if (currentThinkingMessage) {
-        currentThinkingMessage.contentEl.textContent = thinkingContent;
+        currentThinkingMessage.contentEl.innerHTML = processContent(thinkingContent);
       } else {
         // Create new thinking message
         const messageEl = template.content.cloneNode(true);
@@ -225,7 +209,7 @@
 
         // Style thinking message
         contentEl.classList.add("text-white/50", "text-xs", "italic");
-        contentEl.textContent = thinkingContent;
+        contentEl.innerHTML = processContent(thinkingContent);
 
         // Set avatar
         const avatarContainer = messageEl.querySelector(".flex-shrink-0 > div");
@@ -247,11 +231,10 @@
       currentAiMessage
     ) {
       currentAiMessage.fullContent += data.content;
-      currentAiMessage.contentEl.innerHTML = processCodeBlocks(
+      currentAiMessage.contentEl.innerHTML = processContent(
         currentAiMessage.fullContent,
       );
       currentAiMessage.statusEl.textContent = "Typing...";
-      highlightCode(currentAiMessage.contentEl);
     }
     // For completed AI responses
     else if (
@@ -259,9 +242,8 @@
       data.status === "complete" &&
       currentAiMessage
     ) {
-      const processedContent = processCodeBlocks(data.content);
+      const processedContent = processContent(data.content);
       currentAiMessage.contentEl.innerHTML = processedContent;
-      highlightCode(currentAiMessage.contentEl);
       currentAiMessage.statusEl.classList.add("hidden");
       currentAiMessage = null;
 
