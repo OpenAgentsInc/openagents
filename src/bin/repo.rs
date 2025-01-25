@@ -1,40 +1,28 @@
-use anyhow::Result;
-use clap::{Parser, Subcommand};
-use openagents::server::services::{
-    deepseek::{ChatMessage, DeepSeekService, ToolChoice},
-    github_issue::GitHubService,
+use anyhow::{bail, Result};
+use clap::Parser;
+use dotenvy::dotenv;
+use openagents::{
+    repo::{cleanup_temp_dir, clone_repository, run_cargo_tests, RepoContext},
+    repomap::generate_repo_map,
+    server::services::{deepseek::DeepSeekService, github_issue::GitHubService, StreamUpdate},
 };
-use serde_json::json;
-use std::io::{self, Write};
+use std::env;
+use std::io::{stdout, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
+    /// Generate test suggestions for uncovered functionality
+    #[arg(long)]
+    test: bool,
 }
 
-#[derive(Subcommand)]
-enum Commands {
-    Chat {
-        #[arg(short, long)]
-        message: Option<String>,
-    },
-}
-
-fn print_colored(role: &str, content: &str) -> Result<()> {
+fn print_colored(text: &str, color: Color) -> Result<()> {
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
-    let color = match role {
-        "user" => Color::Blue,
-        "assistant" => Color::Green,
-        "system" => Color::Yellow,
-        _ => Color::Red,
-    };
-    stdout.set_color(ColorSpec::new().set_fg(Some(color)).set_bold(true))?;
-    write!(stdout, "{}:", role)?;
+    stdout.set_color(ColorSpec::new().set_fg(Some(color)))?;
+    write!(stdout, "{}", text)?;
     stdout.reset()?;
-    writeln!(stdout, " {}", content)?;
     Ok(())
 }
 
@@ -42,212 +30,149 @@ fn print_colored(role: &str, content: &str) -> Result<()> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize DeepSeek service
-    let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
-    let service = DeepSeekService::new(deepseek_api_key);
-
-    // Initialize GitHub service
-    let github_token = std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set");
-    let github_service = GitHubService::new(github_token);
-
-    // Create GitHub issue tool
-    let get_issue_tool = DeepSeekService::create_tool(
-        "get_github_issue".to_string(),
-        Some("Get a GitHub issue by number".to_string()),
-        json!({
-            "type": "object",
-            "properties": {
-                "owner": {
-                    "type": "string",
-                    "description": "The owner of the repository"
-                },
-                "repo": {
-                    "type": "string",
-                    "description": "The name of the repository"
-                },
-                "issue_number": {
-                    "type": "integer",
-                    "description": "The issue number"
-                }
-            },
-            "required": ["owner", "repo", "issue_number"]
-        }),
-    );
-
-    match &cli.command {
-        Some(Commands::Chat { message }) => {
-            let mut messages = Vec::new();
-
-            // Add system message
-            messages.push(ChatMessage {
-                role: "system".to_string(),
-                content: "You are a helpful assistant. When referring to GitHub issues, use the read_github_issue tool to fetch the details.".to_string(),
-                tool_call_id: None,
-                tool_calls: None,
-            });
-
-            // Process initial message if provided
-            if let Some(msg) = message {
-                print_colored("user", msg)?;
-                messages.push(ChatMessage {
-                    role: "user".to_string(),
-                    content: msg.to_string(),
-                    tool_call_id: None,
-                    tool_calls: None,
-                });
-
-                let (response, _, tool_calls) = service
-                    .chat_with_tools_messages(
-                        messages.clone(),
-                        vec![get_issue_tool.clone()],
-                        Some(ToolChoice::Auto("auto".to_string())),
-                        false,
-                    )
-                    .await?;
-
-                print_colored("assistant", &response)?;
-
-                if let Some(tool_calls) = tool_calls {
-                    for tool_call in tool_calls {
-                        if tool_call.function.name == "get_github_issue" {
-                            let args: serde_json::Value =
-                                serde_json::from_str(&tool_call.function.arguments)?;
-                            let owner = args["owner"].as_str().unwrap_or("OpenAgentsInc");
-                            let repo = args["repo"].as_str().unwrap_or("openagents");
-                            let issue_number = args["issue_number"].as_i64().unwrap_or(0) as i32;
-
-                            print_colored(
-                                "system",
-                                &format!(
-                                    "Fetching GitHub issue #{} from {}/{}",
-                                    issue_number, owner, repo
-                                ),
-                            )?;
-
-                            let issue = github_service.get_issue(owner, repo, issue_number).await?;
-
-                            messages.push(ChatMessage {
-                                role: "assistant".to_string(),
-                                content: format!(
-                                    "Let me fetch GitHub issue #{} for you.",
-                                    issue_number
-                                ),
-                                tool_call_id: None,
-                                tool_calls: Some(vec![tool_call.clone()]),
-                            });
-
-                            messages.push(ChatMessage {
-                                role: "tool".to_string(),
-                                content: serde_json::to_string(&issue)?,
-                                tool_call_id: Some(tool_call.id),
-                                tool_calls: None,
-                            });
-
-                            let (response, _, _) = service
-                                .chat_with_tools_messages(
-                                    messages.clone(),
-                                    vec![get_issue_tool.clone()],
-                                    None,
-                                    false,
-                                )
-                                .await?;
-
-                            print_colored("assistant", &response)?;
-                        }
-                    }
-                }
-            }
-
-            // Interactive chat loop
-            loop {
-                let mut stdout = StandardStream::stdout(ColorChoice::Always);
-                stdout.set_color(ColorSpec::new().set_fg(Some(Color::Blue)).set_bold(true))?;
-                write!(stdout, "User:")?;
-                stdout.reset()?;
-                write!(stdout, " ")?;
-                io::stdout().flush()?;
-
-                let mut input = String::new();
-                io::stdin().read_line(&mut input)?;
-                let input = input.trim();
-
-                if input.is_empty() {
-                    break;
-                }
-
-                messages.push(ChatMessage {
-                    role: "user".to_string(),
-                    content: input.to_string(),
-                    tool_call_id: None,
-                    tool_calls: None,
-                });
-
-                let (response, _, tool_calls) = service
-                    .chat_with_tools_messages(
-                        messages.clone(),
-                        vec![get_issue_tool.clone()],
-                        Some(ToolChoice::Auto("auto".to_string())),
-                        false,
-                    )
-                    .await?;
-
-                print_colored("assistant", &response)?;
-
-                if let Some(tool_calls) = tool_calls {
-                    for tool_call in tool_calls {
-                        if tool_call.function.name == "get_github_issue" {
-                            let args: serde_json::Value =
-                                serde_json::from_str(&tool_call.function.arguments)?;
-                            let owner = args["owner"].as_str().unwrap_or("OpenAgentsInc");
-                            let repo = args["repo"].as_str().unwrap_or("openagents");
-                            let issue_number = args["issue_number"].as_i64().unwrap_or(0) as i32;
-
-                            print_colored(
-                                "system",
-                                &format!(
-                                    "Fetching GitHub issue #{} from {}/{}",
-                                    issue_number, owner, repo
-                                ),
-                            )?;
-
-                            let issue = github_service.get_issue(owner, repo, issue_number).await?;
-
-                            messages.push(ChatMessage {
-                                role: "assistant".to_string(),
-                                content: format!(
-                                    "Let me fetch GitHub issue #{} for you.",
-                                    issue_number
-                                ),
-                                tool_call_id: None,
-                                tool_calls: Some(vec![tool_call.clone()]),
-                            });
-
-                            messages.push(ChatMessage {
-                                role: "tool".to_string(),
-                                content: serde_json::to_string(&issue)?,
-                                tool_call_id: Some(tool_call.id),
-                                tool_calls: None,
-                            });
-
-                            let (response, _, _) = service
-                                .chat_with_tools_messages(
-                                    messages.clone(),
-                                    vec![get_issue_tool.clone()],
-                                    None,
-                                    false,
-                                )
-                                .await?;
-
-                            print_colored("assistant", &response)?;
-                        }
-                    }
-                }
-            }
-        }
-        None => {
-            println!("No command specified. Use --help for usage information.");
-        }
+    // Load .env file first
+    if let Err(e) = dotenv() {
+        bail!("Failed to load .env file: {}", e);
     }
+
+    // Get API keys immediately and fail if not present
+    let api_key = env::var("DEEPSEEK_API_KEY")
+        .map_err(|_| anyhow::anyhow!("DEEPSEEK_API_KEY not found in environment or .env file"))?;
+    let github_token = env::var("GITHUB_TOKEN").ok();
+
+    // Define the temporary directory path
+    let temp_dir = env::temp_dir().join("rust_app_temp");
+
+    // Clean up any existing temp directory first
+    cleanup_temp_dir(&temp_dir);
+
+    // Create the temporary directory
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to create temporary directory: {}", e))?;
+    println!("Temporary directory created at: {:?}", temp_dir);
+
+    // Create context
+    let ctx = RepoContext::new(temp_dir.clone(), api_key, github_token.clone());
+
+    // Clone the repository
+    let repo_url = "https://github.com/OpenAgentsInc/openagents";
+    let _repo = clone_repository(repo_url, &ctx.temp_dir)?;
+
+    // Generate and store the repository map
+    let map = generate_repo_map(&ctx.temp_dir);
+    println!("{}", map);
+
+    // Run cargo test
+    let test_output = run_cargo_tests(&ctx.temp_dir).await?;
+
+    // Initialize DeepSeek service
+    let service = DeepSeekService::new(ctx.api_key);
+
+    if cli.test {
+        println!("\nAnalyzing test coverage and generating test suggestions...");
+
+        // First, analyze the test output to find uncovered modules/functions
+        let coverage_prompt = format!(
+            "You are a Rust testing expert. Analyze this test output and repository map to identify \
+            specific functions or modules that lack test coverage. Focus only on test coverage analysis.\n\n\
+            Test output:\n{}\n\nRepository map:\n{}\n\n\
+            List the specific functions/modules that need test coverage, in order of importance. \
+            For each one, explain why it needs testing and what scenarios should be tested.",
+            test_output, map
+        );
+
+        print_colored("\nTest Coverage Analysis Reasoning:\n", Color::Yellow)?;
+        let mut coverage_analysis = String::new();
+        let mut in_reasoning = true;
+        let mut stream = service.chat_stream(coverage_prompt, true).await;
+
+        while let Some(update) = stream.recv().await {
+            match update {
+                StreamUpdate::Reasoning(r) => {
+                    print_colored(&r, Color::Yellow)?;
+                }
+                StreamUpdate::Content(c) => {
+                    if in_reasoning {
+                        println!();
+                        print_colored("\nTest Coverage Analysis:\n", Color::Green)?;
+                        in_reasoning = false;
+                    }
+                    print!("{}", c);
+                    coverage_analysis.push_str(&c);
+                    stdout().flush()?;
+                }
+                StreamUpdate::Done => break,
+                _ => {}
+            }
+        }
+        println!();
+
+        // Then, generate a specific test implementation for the most important uncovered functionality
+        let test_prompt = "Based on the coverage analysis above, write a complete Rust test implementation for the \
+            most critical uncovered function/module. Include:\n\
+            1. All necessary imports\n\
+            2. Test module setup with #[cfg(test)]\n\
+            3. Required test fixtures and mocks\n\
+            4. Multiple test cases covering different scenarios\n\
+            5. Comments explaining the test strategy\n\n\
+            Write the complete test code that could be directly added to the appropriate test file. \
+            Make sure to handle edge cases and error conditions.".to_string();
+
+        print_colored("\nTest Implementation Reasoning:\n", Color::Yellow)?;
+        let mut test_code = String::new();
+        let mut in_reasoning = true;
+        let mut stream = service.chat_stream(test_prompt, true).await;
+
+        while let Some(update) = stream.recv().await {
+            match update {
+                StreamUpdate::Reasoning(r) => {
+                    print_colored(&r, Color::Yellow)?;
+                }
+                StreamUpdate::Content(c) => {
+                    if in_reasoning {
+                        println!();
+                        print_colored("\nSuggested Test Implementation:\n", Color::Green)?;
+                        in_reasoning = false;
+                    }
+                    print!("{}", c);
+                    test_code.push_str(&c);
+                    stdout().flush()?;
+                }
+                StreamUpdate::Done => break,
+                _ => {}
+            }
+        }
+        println!();
+
+        // Post the suggestions as a GitHub comment if token is available
+        if let Some(token) = github_token {
+            println!("\nPosting test suggestions to GitHub...");
+            let github_service = GitHubService::new(Some(token));
+
+            let comment = format!(
+                "# Test Coverage Analysis\n\n\
+                The following analysis identifies areas needing test coverage:\n\n\
+                {}\n\n\
+                # Suggested Test Implementation\n\n\
+                Here's a proposed test implementation for the most critical area:\n\n\
+                ```rust\n{}\n```\n\n\
+                Please review and consider implementing these test cases to improve coverage.",
+                coverage_analysis, test_code
+            );
+
+            github_service
+                .post_comment("OpenAgentsInc", "openagents", 592, &comment)
+                .await?;
+            println!("Test suggestions posted to GitHub issue #592");
+        } else {
+            println!("\nSkipping GitHub comment - GITHUB_TOKEN not found");
+        }
+    } else {
+        println!("\nRun with --test flag to generate test suggestions");
+    }
+
+    // Clean up at the end
+    cleanup_temp_dir(&temp_dir);
 
     Ok(())
 }
