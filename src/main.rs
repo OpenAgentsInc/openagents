@@ -1,236 +1,169 @@
-use askama::Template;
 use axum::{
-    http::header::{HeaderMap, HeaderValue},
-    response::{Html, IntoResponse, Response},
+    extract::WebSocketUpgrade,
+    response::IntoResponse,
     routing::{get, post},
-    Json, Router,
+    Router,
+};
+use dotenvy::dotenv;
+use openagents::{
+    server::{
+        services::{
+            deepseek::{DeepSeekService, Tool},
+            github_issue::GitHubService,
+            RepomapService,
+        },
+        ws::{transport::WebSocketState, ws_handler},
+    },
+    repomap::generate_repo_map,
 };
 use serde_json::json;
-use std::{env, path::PathBuf, sync::Arc};
+use std::{env, net::SocketAddr, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
+use tracing_subscriber;
 
-use openagents::server::{services::RepomapService, ws};
-
-#[derive(Template)]
-#[template(path = "layouts/base.html")]
-struct PageTemplate<'a> {
-    title: &'a str,
-    path: &'a str,
+fn create_tools() -> Vec<Tool> {
+    vec![
+        // GitHub issue tool
+        DeepSeekService::create_tool(
+            "read_github_issue".to_string(),
+            Some("Read a GitHub issue by number".to_string()),
+            json!({
+                "type": "object",
+                "properties": {
+                    "owner": {
+                        "type": "string",
+                        "description": "The owner of the repository"
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "The name of the repository"
+                    },
+                    "issue_number": {
+                        "type": "integer",
+                        "description": "The issue number"
+                    }
+                },
+                "required": ["owner", "repo", "issue_number"]
+            }),
+        ),
+        // Calculator tool
+        DeepSeekService::create_tool(
+            "calculate".to_string(),
+            Some("Perform a calculation".to_string()),
+            json!({
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "The mathematical expression to evaluate"
+                    }
+                },
+                "required": ["expression"]
+            }),
+        ),
+    ]
 }
-
-#[derive(Template)]
-#[template(path = "layouts/content.html")]
-struct ContentTemplate<'a> {
-    path: &'a str,
-}
-
-#[derive(Template)]
-#[template(path = "layouts/chat_base.html")]
-struct ChatPageTemplate<'a> {
-    title: &'a str,
-}
-
-#[derive(Template)]
-#[template(path = "layouts/chat_content.html")]
-struct ChatContentTemplate;
 
 #[tokio::main]
 async fn main() {
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-    env_logger::init();
-    dotenvy::dotenv().ok();
+    // Initialize logging
+    tracing_subscriber::fmt::init();
 
-    info!("🚀 Starting OpenAgents...");
+    // Load environment variables
+    dotenv().ok();
 
-    let assets_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
+    // Create shared services
+    let tool_model = Arc::new(DeepSeekService::new(
+        env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set"),
+    ));
 
-    // Initialize repomap service
-    let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
-    let repomap_service = Arc::new(RepomapService::new(aider_api_key.clone()));
+    let chat_model = Arc::new(DeepSeekService::new(
+        env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set"),
+    ));
 
+    let github_service = Arc::new(GitHubService::new(
+        env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
+    ));
+
+    let repomap_service = Arc::new(RepomapService::new(
+        env::var("FIRECRAWL_API_KEY").expect("FIRECRAWL_API_KEY must be set"),
+    ));
+
+    // Create available tools
+    let tools = create_tools();
+
+    // Create WebSocket state with services
+    let ws_state = Arc::new(WebSocketState::new(
+        tool_model,
+        chat_model,
+        github_service.clone(),
+        tools,
+    ));
+
+    // Create the router
     let app = Router::new()
         .route("/", get(home))
-        .route("/ws", get(ws::ws_handler))
         .route("/chat", get(chat))
-        .route("/onyx", get(mobile_app))
+        .route("/mobile-app", get(mobile_app))
+        .route("/business", get(business))
         .route("/video-series", get(video_series))
-        .route("/services", get(business))
         .route("/company", get(company))
         .route("/coming-soon", get(coming_soon))
-        .route("/health", get(health_check))
         .route("/repomap", get(repomap))
         .route("/repomap/generate", post(generate_repomap))
-        .nest_service("/assets", ServeDir::new(&assets_path))
-        .fallback_service(ServeDir::new(assets_path.clone()))
-        .with_state(repomap_service);
+        .route("/ws", get(ws_handler))
+        // Static files
+        .nest_service("/static", ServeDir::new("./static").precompressed_gzip())
+        // Template files
+        .nest_service(
+            "/templates",
+            ServeDir::new("./templates").precompressed_gzip(),
+        )
+        .with_state(ws_state);
 
-    // Get port from environment variable or use default
-    let port = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(8000);
-
-    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let address = format!("{}:{}", host, port);
-
-    let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
-    info!("✨ Server ready:");
-    info!("  🌎 http://{}", listener.local_addr().unwrap());
-    axum::serve(listener, app).await.unwrap();
+    // Run the server
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    info!("Listening on {}", addr);
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }
 
-async fn health_check() -> Json<serde_json::Value> {
-    Json(json!({ "status": "healthy" }))
+async fn home() -> impl IntoResponse {
+    "Hello, World!"
 }
 
-async fn home(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Home";
-    let path = "/";
-
-    if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = PageTemplate { title, path };
-        Html(template.render().unwrap()).into_response()
-    }
+async fn chat() -> impl IntoResponse {
+    "Chat page"
 }
 
-async fn chat(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Chat";
-
-    if is_htmx {
-        let content = ChatContentTemplate.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = ChatPageTemplate { title };
-        Html(template.render().unwrap()).into_response()
-    }
+async fn mobile_app() -> impl IntoResponse {
+    "Mobile app page"
 }
 
-async fn mobile_app(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Mobile App";
-    let path = "/onyx";
-
-    if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = PageTemplate { title, path };
-        Html(template.render().unwrap()).into_response()
-    }
+async fn business() -> impl IntoResponse {
+    "Business page"
 }
 
-async fn business(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Services";
-    let path = "/services";
-
-    if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = PageTemplate { title, path };
-        Html(template.render().unwrap()).into_response()
-    }
+async fn video_series() -> impl IntoResponse {
+    "Video series page"
 }
 
-async fn video_series(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Video Series";
-    let path = "/video-series";
-
-    if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = PageTemplate { title, path };
-        Html(template.render().unwrap()).into_response()
-    }
+async fn company() -> impl IntoResponse {
+    "Company page"
 }
 
-async fn company(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Company";
-    let path = "/company";
-
-    if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = PageTemplate { title, path };
-        Html(template.render().unwrap()).into_response()
-    }
+async fn coming_soon() -> impl IntoResponse {
+    "Coming soon page"
 }
 
-async fn coming_soon(headers: HeaderMap) -> Response {
-    let is_htmx = headers.contains_key("hx-request");
-    let title = "Coming Soon";
-    let path = "/coming-soon";
-
-    if is_htmx {
-        let content = ContentTemplate { path }.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
-    } else {
-        let template = PageTemplate { title, path };
-        Html(template.render().unwrap()).into_response()
-    }
+async fn repomap() -> impl IntoResponse {
+    "Repomap page"
 }
 
-async fn repomap() -> Response {
-    let title = "Repository Map";
-    let path = "/repomap";
-    let template = PageTemplate { title, path };
-    Html(template.render().unwrap()).into_response()
-}
-
-async fn generate_repomap(
-    axum::extract::State(service): axum::extract::State<Arc<RepomapService>>,
-    axum::Json(body): axum::Json<serde_json::Value>,
-) -> Json<serde_json::Value> {
-    match service.generate_repomap(body.to_string()).await {
-        Ok(result) => Json(json!({ "result": result })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
-    }
+async fn generate_repomap() -> impl IntoResponse {
+    let map = generate_repo_map(".");
+    map
 }
