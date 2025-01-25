@@ -90,8 +90,18 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
 
         info!("Routing decision: {}", response);
 
-        // Parse routing decision
-        let decision: RoutingDecision = serde_json::from_str(&response)?;
+        // Try to parse routing decision
+        let decision = match serde_json::from_str::<RoutingDecision>(&response) {
+            Ok(d) => d,
+            Err(_) => {
+                // If parsing fails, treat it as a non-tool message
+                RoutingDecision {
+                    needs_tool: false,
+                    reasoning: "General chat message".to_string(),
+                    suggested_tool: None,
+                }
+            }
+        };
 
         // If tools are needed, try to execute the suggested tool
         if decision.needs_tool {
