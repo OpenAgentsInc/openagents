@@ -110,7 +110,7 @@
   // Function to process content with markdown and code blocks
   function processContent(content) {
     // First convert markdown to HTML using marked
-    let html = marked(content);
+    let html = marked.parse(content);
     
     // Find all pre>code blocks
     const tempDiv = document.createElement('div');
@@ -242,8 +242,7 @@
       data.status === "complete" &&
       currentAiMessage
     ) {
-      const processedContent = processContent(data.content);
-      currentAiMessage.contentEl.innerHTML = processedContent;
+      currentAiMessage.contentEl.innerHTML = processContent(data.content);
       currentAiMessage.statusEl.classList.add("hidden");
       currentAiMessage = null;
 
