@@ -1,6 +1,6 @@
 use axum::{
     routing::{get, post},
-    Router, serve,
+    Router,
 };
 use std::{env, net::SocketAddr, sync::Arc};
 use tower_http::services::ServeDir;
@@ -79,9 +79,8 @@ async fn main() {
     // Run the server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     info!("Listening on {}", addr);
-    serve(app.into_make_service(), addr)
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
 fn create_tools() -> Vec<Tool> {
