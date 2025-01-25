@@ -2,6 +2,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use hyper::server::Server;
 use std::{env, net::SocketAddr, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
@@ -79,7 +80,7 @@ async fn main() {
     // Run the server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     info!("Listening on {}", addr);
-    axum::Server::bind(&addr)
+    Server::bind(&addr)
         .serve(app.into_make_service())
         .await
         .unwrap();
