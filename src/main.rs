@@ -45,10 +45,8 @@ async fn main() {
         env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set"),
     ));
 
-    let github_service = Arc::new(
-        GitHubService::new(Some(env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set")))
-            .expect("Failed to create GitHub service"),
-    );
+    let github_service = Arc::new(GitHubService::new(Some(env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set")))
+        .expect("Failed to create GitHub service"));
 
     // Create available tools
     let tools = create_tools();

@@ -133,10 +133,8 @@ async fn test_chat_router_integration() {
         "test_key".to_string(),
         mock_server.uri(),
     ));
-    let github_service = Arc::new(
-        GitHubService::new(Some("test_token".to_string()))
-            .expect("Failed to create GitHub service"),
-    );
+    let github_service = Arc::new(GitHubService::new(Some("test_token".to_string()))
+        .expect("Failed to create GitHub service"));
 
     // Create tools
     let tools = create_test_tools();
@@ -229,10 +227,8 @@ async fn test_chat_router_streaming() {
         "test_key".to_string(),
         mock_server.uri(),
     ));
-    let github_service = Arc::new(
-        GitHubService::new(Some("test_token".to_string()))
-            .expect("Failed to create GitHub service"),
-    );
+    let github_service = Arc::new(GitHubService::new(Some("test_token".to_string()))
+        .expect("Failed to create GitHub service"));
 
     // Create tools
     let tools = create_test_tools();
