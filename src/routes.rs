@@ -10,14 +10,14 @@ use std::sync::Arc;
 use crate::server::services::RepomapService;
 
 #[derive(Template)]
-#[template(path = "layouts/base.html")]
+#[template(path = "layouts/base.html", escape = "none")]
 struct PageTemplate<'a> {
     title: &'a str,
     path: &'a str,
 }
 
 #[derive(Template)]
-#[template(path = "layouts/content.html")]
+#[template(path = "layouts/content.html", escape = "none")]
 struct ContentTemplate<'a> {
     path: &'a str,
 }
