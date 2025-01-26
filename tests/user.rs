@@ -9,11 +9,21 @@ use serde_json::json;
 use sqlx::PgPool;
 use time::Duration;
 use tracing::{info, Level};
+use tracing_subscriber::fmt::format::FmtSpan;
 
 #[tokio::test]
 async fn test_user_creation() {
-    // Initialize logging
-    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+    // Initialize logging with custom format
+    tracing_subscriber::fmt()
+        .with_max_level(Level::INFO)
+        .with_test_writer()
+        .with_span_events(FmtSpan::NONE)
+        .with_target(false)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .with_file(false)
+        .with_line_number(false)
+        .init();
 
     // Load environment variables
     dotenv().ok();
@@ -68,12 +78,12 @@ async fn test_user_creation() {
                     "display_name": "Invalid User"
                 }
             }),
-            422, // Using 422 Unprocessable Entity for validation errors
+            422,
         ),
     ];
 
     for (test_description, input, expected_status) in test_cases {
-        info!("\n\nTesting {}: {}", test_description, input);
+        info!("Testing {} ...", test_description);
         
         // Make request
         let response = server
@@ -147,6 +157,8 @@ async fn test_user_creation() {
                     test_description
                 );
             }
+
+            info!("✓ {} succeeded", test_description);
         }
 
         // For error cases, verify error response
@@ -157,6 +169,7 @@ async fn test_user_creation() {
                 "{} - Error response should contain error field",
                 test_description
             );
+            info!("✓ {} failed as expected with: {}", test_description, error["error"]);
         }
     }
 
