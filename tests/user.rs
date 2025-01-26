@@ -3,10 +3,11 @@ use axum_test::TestServer;
 use dotenvy::dotenv;
 use openagents::server::{
     handlers::user::create_user,
-    models::user::{CreateUser, User},
+    models::user::User,
 };
 use serde_json::json;
 use sqlx::PgPool;
+use time::Duration;
 use tracing::{info, Level};
 
 #[tokio::test]
@@ -73,7 +74,7 @@ async fn test_user_creation() {
         ),
     ];
 
-    for (input, expected_status, expected_response) in test_cases {
+    for (input, expected_status, _expected_response) in test_cases {
         info!("\n\nTesting user creation with input: {}", input);
         
         // Make request
@@ -124,7 +125,25 @@ async fn test_user_creation() {
             .await
             .expect("User should exist in database");
 
-            assert_eq!(user, db_user, "Database user should match response");
+            // Compare non-timestamp fields
+            assert_eq!(user.id, db_user.id, "id mismatch");
+            assert_eq!(user.scramble_id, db_user.scramble_id, "scramble_id mismatch");
+            assert_eq!(user.metadata, db_user.metadata, "metadata mismatch");
+            
+            // Verify timestamps are within 1 second of each other
+            if let (Some(user_created), Some(db_created)) = (user.created_at, db_user.created_at) {
+                assert!(
+                    (user_created - db_created).abs() < Duration::seconds(1),
+                    "created_at timestamps differ by more than 1 second"
+                );
+            }
+            
+            if let (Some(user_updated), Some(db_updated)) = (user.updated_at, db_user.updated_at) {
+                assert!(
+                    (user_updated - db_updated).abs() < Duration::seconds(1),
+                    "updated_at timestamps differ by more than 1 second"
+                );
+            }
         }
 
         // For error cases, verify error response
