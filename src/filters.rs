@@ -1,6 +1,6 @@
 use pulldown_cmark::{html, Options, Parser};
 
-pub fn markdown(s: &str) -> ::askama::Result<String> {
+pub fn render_markdown(s: &str) -> String {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
@@ -9,9 +9,5 @@ pub fn markdown(s: &str) -> ::askama::Result<String> {
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
 
-    Ok(html_output)
-}
-
-pub fn safe(s: &str) -> ::askama::Result<String> {
-    Ok(s.to_string())
+    html_output
 }
