@@ -39,10 +39,10 @@ async fn test_user_creation() {
     // Create test server
     let server = TestServer::new(app).unwrap();
 
-    // Test cases
+    // Test cases with descriptions for better error messages
     let test_cases = vec![
         (
-            // Valid user creation
+            "Valid user creation",
             json!({
                 "scramble_id": "test_user_1",
                 "metadata": {
@@ -50,15 +50,9 @@ async fn test_user_creation() {
                 }
             }),
             200,
-            Some(json!({
-                "scramble_id": "test_user_1",
-                "metadata": {
-                    "display_name": "Test User 1"
-                }
-            })),
         ),
         (
-            // Duplicate scramble_id
+            "Duplicate scramble_id",
             json!({
                 "scramble_id": "test_user_1",
                 "metadata": {
@@ -66,22 +60,20 @@ async fn test_user_creation() {
                 }
             }),
             409,
-            None,
         ),
         (
-            // Missing required field
+            "Missing required field",
             json!({
                 "metadata": {
                     "display_name": "Invalid User"
                 }
             }),
-            400,
-            None,
+            422, // Using 422 Unprocessable Entity for validation errors
         ),
     ];
 
-    for (input, expected_status, _expected_response) in test_cases {
-        info!("\n\nTesting user creation with input: {}", input);
+    for (test_description, input, expected_status) in test_cases {
+        info!("\n\nTesting {}: {}", test_description, input);
         
         // Make request
         let response = server
@@ -93,7 +85,8 @@ async fn test_user_creation() {
         assert_eq!(
             response.status_code(),
             expected_status,
-            "Status code mismatch for input: {}",
+            "{} - Status code mismatch for input: {}",
+            test_description,
             input
         );
 
@@ -105,7 +98,8 @@ async fn test_user_creation() {
             assert_eq!(
                 user.scramble_id,
                 input["scramble_id"].as_str().unwrap(),
-                "scramble_id mismatch"
+                "{} - scramble_id mismatch",
+                test_description
             );
             
             // Verify metadata
@@ -113,13 +107,14 @@ async fn test_user_creation() {
                 assert_eq!(
                     user.metadata.as_ref().unwrap(),
                     metadata,
-                    "metadata mismatch"
+                    "{} - metadata mismatch",
+                    test_description
                 );
             }
 
             // Verify timestamps exist
-            assert!(user.created_at.is_some(), "created_at should be set");
-            assert!(user.updated_at.is_some(), "updated_at should be set");
+            assert!(user.created_at.is_some(), "{} - created_at should be set", test_description);
+            assert!(user.updated_at.is_some(), "{} - updated_at should be set", test_description);
 
             // Verify user exists in database
             let db_user = sqlx::query_as!(
@@ -132,22 +127,24 @@ async fn test_user_creation() {
             .expect("User should exist in database");
 
             // Compare non-timestamp fields
-            assert_eq!(user.id, db_user.id, "id mismatch");
-            assert_eq!(user.scramble_id, db_user.scramble_id, "scramble_id mismatch");
-            assert_eq!(user.metadata, db_user.metadata, "metadata mismatch");
+            assert_eq!(user.id, db_user.id, "{} - id mismatch", test_description);
+            assert_eq!(user.scramble_id, db_user.scramble_id, "{} - scramble_id mismatch", test_description);
+            assert_eq!(user.metadata, db_user.metadata, "{} - metadata mismatch", test_description);
             
             // Verify timestamps are within 1 second of each other
             if let (Some(user_created), Some(db_created)) = (user.created_at, db_user.created_at) {
                 assert!(
                     (user_created - db_created).abs() < Duration::seconds(1),
-                    "created_at timestamps differ by more than 1 second"
+                    "{} - created_at timestamps differ by more than 1 second",
+                    test_description
                 );
             }
             
             if let (Some(user_updated), Some(db_updated)) = (user.updated_at, db_user.updated_at) {
                 assert!(
                     (user_updated - db_updated).abs() < Duration::seconds(1),
-                    "updated_at timestamps differ by more than 1 second"
+                    "{} - updated_at timestamps differ by more than 1 second",
+                    test_description
                 );
             }
         }
@@ -155,7 +152,11 @@ async fn test_user_creation() {
         // For error cases, verify error response
         if expected_status != 200 {
             let error: serde_json::Value = response.json();
-            assert!(error.get("error").is_some(), "Error response should contain error field");
+            assert!(
+                error.get("error").is_some(), 
+                "{} - Error response should contain error field",
+                test_description
+            );
         }
     }
 
