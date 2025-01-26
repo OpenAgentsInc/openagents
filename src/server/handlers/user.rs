@@ -5,7 +5,7 @@ use axum::{
 };
 use serde_json::json;
 use sqlx::PgPool;
-use tracing::error;
+use tracing::{debug, error};
 
 use crate::server::models::user::{CreateUser, User};
 
@@ -17,6 +17,7 @@ pub async fn create_user(
     let input = match result {
         Ok(json) => json.0,
         Err(err) => {
+            debug!("Validation error: {}", err);
             return Err((
                 StatusCode::UNPROCESSABLE_ENTITY,
                 Json(json!({
@@ -44,29 +45,29 @@ pub async fn create_user(
     match result {
         Ok(user) => Ok(Json(user)),
         Err(err) => {
-            error!("Failed to create user: {:?}", err);
-            
             // Handle specific error cases
-            let error_response = match err {
-                sqlx::Error::Database(ref db_err) if db_err.is_unique_violation() => {
-                    (
+            match err {
+                ref e if e.to_string().contains("users_scramble_id_key") => {
+                    debug!("Duplicate scramble_id attempted");
+                    Err((
                         StatusCode::CONFLICT,
                         Json(json!({
                             "error": "User with this scramble_id already exists",
                             "code": "DUPLICATE_SCRAMBLE_ID"
                         }))
-                    )
+                    ))
                 }
-                _ => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "error": "Failed to create user",
-                        "code": "INTERNAL_ERROR"
-                    }))
-                )
-            };
-            
-            Err(error_response)
+                e => {
+                    error!("Unexpected error creating user: {:?}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({
+                            "error": "Failed to create user",
+                            "code": "INTERNAL_ERROR"
+                        }))
+                    ))
+                }
+            }
         }
     }
 }
