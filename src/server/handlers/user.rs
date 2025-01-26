@@ -1,8 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde_json::json;
 use sqlx::PgPool;
 use tracing::{debug, error};
@@ -23,7 +19,7 @@ pub async fn create_user(
                 Json(json!({
                     "error": format!("Invalid input: {}", err),
                     "code": "VALIDATION_ERROR"
-                }))
+                })),
             ));
         }
     };
@@ -54,7 +50,7 @@ pub async fn create_user(
                         Json(json!({
                             "error": "User with this scramble_id already exists",
                             "code": "DUPLICATE_SCRAMBLE_ID"
-                        }))
+                        })),
                     ))
                 }
                 e => {
@@ -64,7 +60,7 @@ pub async fn create_user(
                         Json(json!({
                             "error": "Failed to create user",
                             "code": "INTERNAL_ERROR"
-                        }))
+                        })),
                     ))
                 }
             }

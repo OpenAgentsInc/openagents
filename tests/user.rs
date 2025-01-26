@@ -1,10 +1,7 @@
 use axum::{routing::post, Router};
 use axum_test::TestServer;
 use dotenvy::dotenv;
-use openagents::server::{
-    handlers::user::create_user,
-    models::user::User,
-};
+use openagents::server::{handlers::user::create_user, models::user::User};
 use serde_json::json;
 use sqlx::PgPool;
 use time::Duration;
@@ -29,8 +26,7 @@ async fn test_user_creation() {
     dotenv().ok();
 
     // Set up database connection
-    let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url)
         .await
         .expect("Failed to connect to database");
@@ -84,12 +80,9 @@ async fn test_user_creation() {
 
     for (test_description, input, expected_status) in test_cases {
         info!("Testing {} ...", test_description);
-        
+
         // Make request
-        let response = server
-            .post("/users")
-            .json(&input)
-            .await;
+        let response = server.post("/users").json(&input).await;
 
         // Assert status code
         assert_eq!(
@@ -103,7 +96,7 @@ async fn test_user_creation() {
         // For successful creation, verify response
         if expected_status == 200 {
             let user: User = response.json();
-            
+
             // Verify user fields
             assert_eq!(
                 user.scramble_id,
@@ -111,7 +104,7 @@ async fn test_user_creation() {
                 "{} - scramble_id mismatch",
                 test_description
             );
-            
+
             // Verify metadata
             if let Some(metadata) = input.get("metadata") {
                 assert_eq!(
@@ -123,8 +116,16 @@ async fn test_user_creation() {
             }
 
             // Verify timestamps exist
-            assert!(user.created_at.is_some(), "{} - created_at should be set", test_description);
-            assert!(user.updated_at.is_some(), "{} - updated_at should be set", test_description);
+            assert!(
+                user.created_at.is_some(),
+                "{} - created_at should be set",
+                test_description
+            );
+            assert!(
+                user.updated_at.is_some(),
+                "{} - updated_at should be set",
+                test_description
+            );
 
             // Verify user exists in database
             let db_user = sqlx::query_as!(
@@ -138,9 +139,17 @@ async fn test_user_creation() {
 
             // Compare non-timestamp fields
             assert_eq!(user.id, db_user.id, "{} - id mismatch", test_description);
-            assert_eq!(user.scramble_id, db_user.scramble_id, "{} - scramble_id mismatch", test_description);
-            assert_eq!(user.metadata, db_user.metadata, "{} - metadata mismatch", test_description);
-            
+            assert_eq!(
+                user.scramble_id, db_user.scramble_id,
+                "{} - scramble_id mismatch",
+                test_description
+            );
+            assert_eq!(
+                user.metadata, db_user.metadata,
+                "{} - metadata mismatch",
+                test_description
+            );
+
             // Verify timestamps are within 1 second of each other
             if let (Some(user_created), Some(db_created)) = (user.created_at, db_user.created_at) {
                 assert!(
@@ -149,7 +158,7 @@ async fn test_user_creation() {
                     test_description
                 );
             }
-            
+
             if let (Some(user_updated), Some(db_updated)) = (user.updated_at, db_user.updated_at) {
                 assert!(
                     (user_updated - db_updated).abs() < Duration::seconds(1),
@@ -165,11 +174,14 @@ async fn test_user_creation() {
         if expected_status != 200 {
             let error: serde_json::Value = response.json();
             assert!(
-                error.get("error").is_some(), 
+                error.get("error").is_some(),
                 "{} - Error response should contain error field",
                 test_description
             );
-            info!("✓ {} failed as expected with: {}", test_description, error["error"]);
+            info!(
+                "✓ {} failed as expected with: {}",
+                test_description, error["error"]
+            );
         }
     }
 
