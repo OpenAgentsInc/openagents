@@ -36,6 +36,10 @@ styles/tailwind.css:
 │pre
 │pre code
 │code:not(pre code)
+│textarea
+│textarea:focus
+│@layer components
+│.prose-custom-dark
 
 templates/admin/login.html:
 │<body>
@@ -147,7 +151,7 @@ templates/header.html:
 postcss.config.js:
 
 assets/main.css:
-│::after
+│*, ::before, ::after
 │::backdrop
 │::after
 │::after
@@ -166,12 +170,12 @@ assets/main.css:
 │table
 │textarea
 │select
-│input:where([type="submit"])
+│input:where([type='submit'])
 │:-moz-focusring
 │:-moz-ui-invalid
 │progress
 │::-webkit-outer-spin-button
-│[type="search"]
+│[type='search']
 │::-webkit-search-decoration
 │::-webkit-file-upload-button
 │summary
@@ -181,16 +185,46 @@ assets/main.css:
 │menu
 │dialog
 │textarea
-│textarea::-moz-placeholder
+│input::-moz-placeholder, textarea::-moz-placeholder
 │textarea::placeholder
 │[role="button"]
 │:disabled
 │object
 │video
 │[hidden]:where(:not([hidden="until-found"]))
+│[type='text'],input:where(:not([type])),[type='email'],[type='url'],[type='password'],[type='number'],[type='date'],[type='datetime-local'],[type='month'],[type='search'],[type='tel'],[type='time'],[type='week'],[multiple],textarea,select
+│[type='text']:focus, input:where(:not([type])):focus, [type='email']:focus, [type='url']:focus, [type='password']:focus, [type='number']:focus, [type='date']:focus, [type='datetime-local']:focus, [type='month']:focus, [type='search']:focus, [type='tel']:focus, [type='time']:focus, [type='week']:focus, [multiple]:focus, textarea:focus, select:focus
+│input::-moz-placeholder, textarea::-moz-placeholder
+│input::placeholder,textarea::placeholder
+│::-webkit-datetime-edit-fields-wrapper
+│::-webkit-date-and-time-value
+│::-webkit-datetime-edit
+│::-webkit-datetime-edit,::-webkit-datetime-edit-year-field,::-webkit-datetime-edit-month-field,::-webkit-datetime-edit-day-field,::-webkit-datetime-edit-hour-field,::-webkit-datetime-edit-minute-field,::-webkit-datetime-edit-second-field,::-webkit-datetime-edit-millisecond-field,::-webkit-datetime-edit-meridiem-field
+│select
+│[multiple],[size]:where(select:not([size="1"]))
+│[type='checkbox'],[type='radio']
+│[type='checkbox']
+│[type='radio']
+│[type='checkbox']:focus,[type='radio']:focus
+│[type='checkbox']:checked,[type='radio']:checked
+│[type='checkbox']:checked
+│@media (forced-colors: active)
+│[type='checkbox']:checked
+│[type='radio']:checked
+│@media (forced-colors: active)
+│[type='radio']:checked
+│[type='checkbox']:checked:hover,[type='checkbox']:checked:focus,[type='radio']:checked:hover,[type='radio']:checked:focus
+│[type='checkbox']:indeterminate
+│@media (forced-colors: active)
+│[type='checkbox']:indeterminate
+│[type='checkbox']:indeterminate:hover,[type='checkbox']:indeterminate:focus
+│[type='file']
+│[type='file']:focus
 │pre
 │pre code
 │code:not(pre code)
+│textarea:focus
+│textarea:focus
 │.container
 │@media (min-width: 640px)
 │.container
@@ -202,6 +236,95 @@ assets/main.css:
 │.container
 │@media (min-width: 1536px)
 │.container
+│.prose
+│.prose :where(p):not(:where([class~="not-prose"],[class~="not-prose"] *))
+│.prose :where([class~="lead"]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(a):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(strong):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(a strong):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(blockquote strong):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(thead th strong):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="A"]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="a"]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="A" s]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="a" s]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="I"]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="i"]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="I" s]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="i" s]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol[type="1"]):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ul):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol > li):not(:where([class~="not-prose"],[class~="not-prose"] _))::marker
+│.prose :where(ul > li):not(:where([class~="not-prose"],[class~="not-prose"] _))::marker
+│.prose :where(dt):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(hr):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(blockquote):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(blockquote p:first-of-type):not(:where([class~="not-prose"],[class~="not-prose"] _))::before
+│.prose :where(blockquote p:last-of-type):not(:where([class~="not-prose"],[class~="not-prose"] _))::after
+│.prose :where(h1):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h1 strong):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h2):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h2 strong):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h3):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h3 strong):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h4):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h4 strong):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(img):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(picture):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(video):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(kbd):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(code):not(:where([class~="not-prose"],[class~="not-prose"] _))::before
+│.prose :where(code):not(:where([class~="not-prose"],[class~="not-prose"] _))::after
+│.prose :where(a code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h1 code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h2 code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h3 code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h4 code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(blockquote code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(thead th code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(pre):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(pre code):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(pre code):not(:where([class~="not-prose"],[class~="not-prose"] _))::before
+│.prose :where(pre code):not(:where([class~="not-prose"],[class~="not-prose"] _))::after
+│.prose :where(table):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(thead):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(thead th):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(tbody tr):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(tbody tr:last-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(tbody td):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(tfoot):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(tfoot td):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(th, td):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(figure > _):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(figcaption):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose
+│.prose :where(picture > img):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(li):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ol > li):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ul > li):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(.prose > ul > li p):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(.prose > ul > li > p:first-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(.prose > ul > li > p:last-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(.prose > ol > li > p:first-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(.prose > ol > li > p:last-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(ul ul, ul ol, ol ul, ol ol):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(dl):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(dd):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(hr + _):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h2 + _):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h3 + _):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(h4 + _):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(thead th:first-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(thead th:last-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(tbody td, tfoot td):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(tbody td:first-child, tfoot td:first-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(tbody td:last-child, tfoot td:last-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(figure):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(.prose > :first-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose :where(.prose > :last-child):not(:where([class~="not-prose"],[class~="not-prose"] _))
+│.prose-invert
 │.fixed
 │.absolute
 │.relative
@@ -212,8 +335,6 @@ assets/main.css:
 │.right-\[50px\]
 │.top-1
 │.top-\[12px\]
-│.right-2
-│.top-2
 │.mx-2
 │.mx-auto
 │.my-2
@@ -230,7 +351,6 @@ assets/main.css:
 │.mt-2
 │.mt-4
 │.mt-6
-│.\!block
 │.block
 │.inline
 │.flex
@@ -450,6 +570,10 @@ src/bin/deepseek-cli.rs:
 │fn main
 
 src/bin/repo.rs:
+│fn print_colored
+│fn main
+
+src/bin/chat.rs:
 │fn print_colored
 │fn main
 
