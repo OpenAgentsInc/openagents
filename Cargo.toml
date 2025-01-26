@@ -39,7 +39,7 @@ config = "0.14"
 secrecy = { version = "0.8", features = ["serde"] }
 tracing = { version = "0.1", features = ["log"] }
 url = "2.4"
-time = "0.3.37"
+time = { version = "0.3.37", features = ["serde", "serde-well-known"] }
 anyhow = "1.0"
 askama = "0.12.1"
 askama_axum = "0.4.0"
