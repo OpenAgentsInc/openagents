@@ -25,6 +25,12 @@ async fn test_user_creation() {
         .await
         .expect("Failed to connect to database");
 
+    // Clean up any existing test data before starting
+    sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_user_%'")
+        .execute(&pool)
+        .await
+        .expect("Failed to clean up existing test data");
+
     // Create router with user creation endpoint
     let app = Router::new()
         .route("/users", post(create_user))
@@ -151,15 +157,11 @@ async fn test_user_creation() {
             let error: serde_json::Value = response.json();
             assert!(error.get("error").is_some(), "Error response should contain error field");
         }
-
-        // Clean up test data
-        if expected_status == 200 {
-            sqlx::query!("DELETE FROM users WHERE scramble_id = $1", 
-                input["scramble_id"].as_str().unwrap()
-            )
-            .execute(&pool)
-            .await
-            .expect("Failed to clean up test user");
-        }
     }
+
+    // Clean up all test data at the end
+    sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_user_%'")
+        .execute(&pool)
+        .await
+        .expect("Failed to clean up test data");
 }
