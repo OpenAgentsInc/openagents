@@ -11,8 +11,22 @@ use crate::server::models::user::{CreateUser, User};
 
 pub async fn create_user(
     State(pool): State<PgPool>,
-    Json(input): Json<CreateUser>,
+    result: Result<Json<CreateUser>, axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<User>, (StatusCode, Json<serde_json::Value>)> {
+    // Handle JSON parsing/validation errors
+    let input = match result {
+        Ok(json) => json.0,
+        Err(err) => {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({
+                    "error": format!("Invalid input: {}", err),
+                    "code": "VALIDATION_ERROR"
+                }))
+            ));
+        }
+    };
+
     // Attempt to create the user
     let result = sqlx::query_as!(
         User,
