@@ -41,7 +41,7 @@ tracing = { version = "0.1", features = ["log"] }
 url = "2.4"
 time = { version = "0.3.37", features = ["serde", "serde-well-known"] }
 anyhow = "1.0"
-askama = "0.12.1"
+askama = { version = "0.12.1", features = ["markdown", "with-axum"] }
 askama_axum = "0.4.0"
 axum = { version = "0.8.1", features = ["ws", "macros"] }
 axum-extra = { version = "0.9.2", features = ["cookie"] }
