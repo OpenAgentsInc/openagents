@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+use axum::extract::ws::Message;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct ConnectionState {
     pub user_id: i32,
-    pub tx: tokio::sync::mpsc::UnboundedSender<axum::extract::ws::Message>,
+    pub tx: mpsc::UnboundedSender<Message>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
