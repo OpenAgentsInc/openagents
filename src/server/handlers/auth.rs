@@ -122,19 +122,24 @@ mod tests {
     use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path};
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+    use std::sync::Once;
 
-    async fn setup_logging() {
-        tracing_subscriber::registry()
-            .with(tracing_subscriber::EnvFilter::new(
-                std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".into()),
-            ))
-            .with(tracing_subscriber::fmt::layer())
-            .init();
+    static INIT: Once = Once::new();
+
+    fn setup_logging() {
+        INIT.call_once(|| {
+            tracing_subscriber::registry()
+                .with(tracing_subscriber::EnvFilter::new(
+                    std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".into()),
+                ))
+                .with(tracing_subscriber::fmt::layer())
+                .init();
+        });
     }
 
     #[tokio::test]
     async fn test_auth_flow() {
-        setup_logging().await;
+        setup_logging();
         info!("Starting auth flow test");
 
         // Setup mock OIDC server
@@ -256,7 +261,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_callback() {
-        setup_logging().await;
+        setup_logging();
         info!("Starting invalid callback test");
 
         // Setup mock OIDC server
@@ -314,7 +319,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_duplicate_login() {
-        setup_logging().await;
+        setup_logging();
         info!("Starting duplicate login test");
 
         // Setup mock OIDC server
@@ -407,4 +412,3 @@ mod tests {
         info!("Duplicate login test completed successfully");
     }
 }
-
