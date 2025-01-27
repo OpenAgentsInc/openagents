@@ -4,10 +4,12 @@ use super::services::{
     RepomapService,
 };
 use super::ws::transport::WebSocketState;
-use axum::Router;
+use axum::{routing::get, Router};
 use serde_json::json;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
+
+use crate::routes::{login, signup};
 
 fn create_tools() -> Vec<Tool> {
     vec![
@@ -81,7 +83,10 @@ pub fn configure_app() -> Router {
 
     // Create the main router
     Router::new()
-        .route("/", axum::routing::get(|| async { "Hello, World!" }))
+        .route("/", get(|| async { "Hello, World!" }))
+        // Auth routes
+        .route("/login", get(login))
+        .route("/signup", get(signup))
         // Static files
         .nest_service("/static", ServeDir::new("./static").precompressed_gzip())
         // Template files
