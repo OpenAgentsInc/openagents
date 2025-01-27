@@ -4,7 +4,7 @@ use serde_json::json;
 use tracing::{info, Level};
 use tracing_subscriber;
 use wiremock::{
-    matchers::{body_partial_json, header, method, path},
+    matchers::{body_json, header, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -18,60 +18,6 @@ async fn test_routing_decision() {
 
     // Create mock server
     let mock_server = MockServer::start().await;
-
-    // Test cases with their corresponding mock responses
-    let test_cases = vec![
-        (
-            "Can you check issue #595?",
-            json!({
-                "needs_tool": true,
-                "reasoning": "User is requesting to view a GitHub issue",
-                "suggested_tool": "read_github_issue"
-            }),
-            json!({
-                "choices": [{
-                    "message": {
-                        "content": "{\"needs_tool\":true,\"reasoning\":\"User is requesting to view a GitHub issue\",\"suggested_tool\":\"read_github_issue\"}",
-                        "role": "assistant"
-                    }
-                }]
-            }),
-        ),
-        (
-            "Hello, how are you today?",
-            json!({
-                "needs_tool": false,
-                "reasoning": "General chat message that doesn't require tools",
-                "suggested_tool": null
-            }),
-            json!({
-                "choices": [{
-                    "message": {
-                        "content": "{\"needs_tool\":false,\"reasoning\":\"General chat message that doesn't require tools\",\"suggested_tool\":null}",
-                        "role": "assistant"
-                    }
-                }]
-            }),
-        ),
-    ];
-
-    // Create service with mock server
-    let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
-
-    // Create a dummy tool for routing tests
-    let dummy_tool = DeepSeekService::create_tool(
-        "dummy_tool".to_string(),
-        Some("A dummy tool for testing routing decisions".to_string()),
-        json!({
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "description": "A test message"
-                }
-            }
-        }),
-    );
 
     // System prompt for routing decisions
     let system_message = ChatMessage {
@@ -102,7 +48,135 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         tool_calls: None,
     };
 
-    for (input, expected_decision, mock_response) in test_cases {
+    // Create dummy tool
+    let dummy_tool = DeepSeekService::create_tool(
+        "dummy_tool".to_string(),
+        Some("A dummy tool for testing routing decisions".to_string()),
+        json!({
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "A test message"
+                }
+            }
+        }),
+    );
+
+    // Test cases with their corresponding mock responses
+    let test_cases = vec![
+        (
+            "Can you check issue #595?",
+            json!({
+                "needs_tool": true,
+                "reasoning": "User is requesting to view a GitHub issue",
+                "suggested_tool": "read_github_issue"
+            }),
+            json!({
+                "model": "deepseek-chat",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": system_message.content,
+                        "tool_call_id": null,
+                        "tool_calls": null
+                    },
+                    {
+                        "role": "user",
+                        "content": "Can you check issue #595?",
+                        "tool_call_id": null,
+                        "tool_calls": null
+                    }
+                ],
+                "stream": false,
+                "temperature": 0.7,
+                "max_tokens": null,
+                "tools": [{
+                    "type": "function",
+                    "function": {
+                        "name": "dummy_tool",
+                        "description": "A dummy tool for testing routing decisions",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "A test message"
+                                }
+                            }
+                        }
+                    }
+                }],
+                "tool_choice": "auto"
+            }),
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"needs_tool\":true,\"reasoning\":\"User is requesting to view a GitHub issue\",\"suggested_tool\":\"read_github_issue\"}",
+                        "role": "assistant"
+                    }
+                }]
+            }),
+        ),
+        (
+            "Hello, how are you today?",
+            json!({
+                "needs_tool": false,
+                "reasoning": "General chat message that doesn't require tools",
+                "suggested_tool": null
+            }),
+            json!({
+                "model": "deepseek-chat",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": system_message.content,
+                        "tool_call_id": null,
+                        "tool_calls": null
+                    },
+                    {
+                        "role": "user",
+                        "content": "Hello, how are you today?",
+                        "tool_call_id": null,
+                        "tool_calls": null
+                    }
+                ],
+                "stream": false,
+                "temperature": 0.7,
+                "max_tokens": null,
+                "tools": [{
+                    "type": "function",
+                    "function": {
+                        "name": "dummy_tool",
+                        "description": "A dummy tool for testing routing decisions",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "A test message"
+                                }
+                            }
+                        }
+                    }
+                }],
+                "tool_choice": "auto"
+            }),
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"needs_tool\":false,\"reasoning\":\"General chat message that doesn't require tools\",\"suggested_tool\":null}",
+                        "role": "assistant"
+                    }
+                }]
+            }),
+        ),
+    ];
+
+    // Create service with mock server
+    let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
+
+    for (input, expected_decision, request_body, mock_response) in test_cases {
         info!("\n\nTesting routing for input: {}", input);
         info!("Expected decision: {}", expected_decision);
 
@@ -110,14 +184,9 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
             .and(header("content-type", "application/json"))
-            .and(body_partial_json(json!({
-                "messages": [{
-                    "role": "user",
-                    "content": input
-                }]
-            })))
+            .and(body_json(&request_body))
             .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
-            .expect(1)  // Expect exactly one call
+            .expect(1)
             .mount(&mock_server)
             .await;
 
