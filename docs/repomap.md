@@ -175,12 +175,6 @@ templates/header.html:
 
 postcss.config.js:
 
-assets/fonts.css:
-│@font-face
-│@font-face
-│@font-face
-│@font-face
-
 src/bin/deepseek-cli.rs:
 │fn print_colored
 │fn main
