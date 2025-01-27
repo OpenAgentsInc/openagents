@@ -32,6 +32,18 @@ struct ChatPageTemplate<'a> {
 #[template(path = "layouts/chat_content.html")]
 struct ChatContentTemplate;
 
+#[derive(Template)]
+#[template(path = "pages/login.html")]
+struct LoginTemplate<'a> {
+    title: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "pages/signup.html")]
+struct SignupTemplate<'a> {
+    title: &'a str,
+}
+
 pub async fn health_check() -> Json<serde_json::Value> {
     Json(json!({ "status": "healthy" }))
 }
@@ -51,6 +63,42 @@ pub async fn home(headers: HeaderMap) -> Response {
         response
     } else {
         let template = PageTemplate { title, path };
+        Html(template.render().unwrap()).into_response()
+    }
+}
+
+pub async fn login(headers: HeaderMap) -> Response {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Log in";
+
+    if is_htmx {
+        let content = LoginTemplate { title }.render().unwrap();
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
+        response
+    } else {
+        let template = LoginTemplate { title };
+        Html(template.render().unwrap()).into_response()
+    }
+}
+
+pub async fn signup(headers: HeaderMap) -> Response {
+    let is_htmx = headers.contains_key("hx-request");
+    let title = "Sign up";
+
+    if is_htmx {
+        let content = SignupTemplate { title }.render().unwrap();
+        let mut response = Response::new(content.into());
+        response.headers_mut().insert(
+            "HX-Title",
+            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+        );
+        response
+    } else {
+        let template = SignupTemplate { title };
         Html(template.render().unwrap()).into_response()
     }
 }
