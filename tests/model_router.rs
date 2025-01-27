@@ -4,7 +4,7 @@ use serde_json::json;
 use tracing::{info, Level};
 use tracing_subscriber;
 use wiremock::{
-    matchers::{body_json, header, method, path},
+    matchers::{header, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -73,43 +73,6 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
                 "suggested_tool": "read_github_issue"
             }),
             json!({
-                "model": "deepseek-chat",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": system_message.content,
-                        "tool_call_id": null,
-                        "tool_calls": null
-                    },
-                    {
-                        "role": "user",
-                        "content": "Can you check issue #595?",
-                        "tool_call_id": null,
-                        "tool_calls": null
-                    }
-                ],
-                "stream": false,
-                "temperature": 0.7,
-                "max_tokens": null,
-                "tools": [{
-                    "type": "function",
-                    "function": {
-                        "name": "dummy_tool",
-                        "description": "A dummy tool for testing routing decisions",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "message": {
-                                    "type": "string",
-                                    "description": "A test message"
-                                }
-                            }
-                        }
-                    }
-                }],
-                "tool_choice": "auto"
-            }),
-            json!({
                 "choices": [{
                     "message": {
                         "content": "{\"needs_tool\":true,\"reasoning\":\"User is requesting to view a GitHub issue\",\"suggested_tool\":\"read_github_issue\"}",
@@ -126,43 +89,6 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
                 "suggested_tool": null
             }),
             json!({
-                "model": "deepseek-chat",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": system_message.content,
-                        "tool_call_id": null,
-                        "tool_calls": null
-                    },
-                    {
-                        "role": "user",
-                        "content": "Hello, how are you today?",
-                        "tool_call_id": null,
-                        "tool_calls": null
-                    }
-                ],
-                "stream": false,
-                "temperature": 0.7,
-                "max_tokens": null,
-                "tools": [{
-                    "type": "function",
-                    "function": {
-                        "name": "dummy_tool",
-                        "description": "A dummy tool for testing routing decisions",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "message": {
-                                    "type": "string",
-                                    "description": "A test message"
-                                }
-                            }
-                        }
-                    }
-                }],
-                "tool_choice": "auto"
-            }),
-            json!({
                 "choices": [{
                     "message": {
                         "content": "{\"needs_tool\":false,\"reasoning\":\"General chat message that doesn't require tools\",\"suggested_tool\":null}",
@@ -176,19 +102,21 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
     // Create service with mock server
     let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
 
-    for (input, expected_decision, request_body, mock_response) in test_cases {
-        info!("\n\nTesting routing for input: {}", input);
-        info!("Expected decision: {}", expected_decision);
-
-        // Set up mock for this specific test case
+    // Set up mock responses
+    for (i, (_, _, mock_response)) in test_cases.iter().enumerate() {
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
             .and(header("content-type", "application/json"))
-            .and(body_json(&request_body))
             .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
+            .named(&format!("mock_{}", i))
             .expect(1)
             .mount(&mock_server)
             .await;
+    }
+
+    for (input, expected_decision, _) in test_cases {
+        info!("\n\nTesting routing for input: {}", input);
+        info!("Expected decision: {}", expected_decision);
 
         // Create messages with system context and user input
         let messages = vec![
