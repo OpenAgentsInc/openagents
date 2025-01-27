@@ -1,8 +1,6 @@
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use time::OffsetDateTime;
-use uuid::Uuid;
 
 use crate::server::models::user::User;
 
@@ -23,7 +21,7 @@ pub struct TokenResponse {
     id_token: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AuthError {
     InvalidConfig,
     AuthenticationFailed,
