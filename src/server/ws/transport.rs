@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use axum_extra::extract::CookieJar;
+use axum_extra::extract::cookie::CookieJar;
 use tracing::{error, info};
 use uuid::Uuid;
 
