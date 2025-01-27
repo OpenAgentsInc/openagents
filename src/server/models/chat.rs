@@ -29,7 +29,7 @@ pub struct CreateConversationRequest {
     pub title: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CreateMessageRequest {
     pub conversation_id: Uuid,
     pub role: String,
