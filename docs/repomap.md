@@ -32,6 +32,9 @@ tests/deepseek.rs:
 tests/health_check.rs:
 │fn health_check_works
 
+tests/chat_database.rs:
+│fn test_chat_persistence
+
 build.rs:
 │fn main
 
@@ -156,6 +159,415 @@ templates/header.html:
 
 postcss.config.js:
 
+assets/main.css:
+│::after
+│::backdrop
+│::after
+│::after
+│:host
+│body
+│hr
+│abbr:where([title])
+│h6
+│a
+│strong
+│pre
+│small
+│sup
+│sub
+│sup
+│table
+│textarea
+│select
+│input:where([type="submit"])
+│:-moz-focusring
+│:-moz-ui-invalid
+│progress
+│::-webkit-outer-spin-button
+│[type="search"]
+│::-webkit-search-decoration
+│::-webkit-file-upload-button
+│summary
+│pre
+│fieldset
+│legend
+│menu
+│dialog
+│textarea
+│textarea::-moz-placeholder
+│textarea::placeholder
+│[role="button"]
+│:disabled
+│object
+│video
+│[hidden]:where(:not([hidden="until-found"]))
+│select
+│select:focus
+│textarea::-moz-placeholder
+│textarea::placeholder
+│::-webkit-datetime-edit-fields-wrapper
+│::-webkit-date-and-time-value
+│::-webkit-datetime-edit
+│::-webkit-datetime-edit-meridiem-field
+│select
+│[size]:where(select:not([size="1"]))
+│[type="radio"]
+│[type="checkbox"]
+│[type="radio"]
+│[type="radio"]:focus
+│[type="radio"]:checked
+│[type="checkbox"]:checked
+│@media (forced-colors: active)
+│[type="checkbox"]:checked
+│[type="radio"]:checked
+│@media (forced-colors: active)
+│[type="radio"]:checked
+│[type="radio"]:checked:focus
+│[type="checkbox"]:indeterminate
+│@media (forced-colors: active)
+│[type="checkbox"]:indeterminate
+│[type="checkbox"]:indeterminate:focus
+│[type="file"]
+│[type="file"]:focus
+│pre
+│pre code
+│code:not(pre code)
+│textarea:focus
+│textarea:focus
+│.container
+│@media (min-width: 640px)
+│.container
+│@media (min-width: 768px)
+│.container
+│@media (min-width: 1024px)
+│.container
+│@media (min-width: 1280px)
+│.container
+│@media (min-width: 1536px)
+│.container
+│.prose
+│.prose :where(p):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)
+│.prose :where(a):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(strong):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(a strong):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)
+│)
+│.prose :where(ol):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)
+│)
+│)
+│)
+│)
+│)
+│)
+│)
+│)
+│.prose :where(ul):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)::marker
+│)::marker
+│.prose :where(dt):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(hr):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)::before
+│)::after
+│.prose :where(h1):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h1 strong):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(h2):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h2 strong):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(h3):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h3 strong):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(h4):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h4 strong):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(img):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(picture):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(video):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(kbd):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)::before
+│)::after
+│:where(a code):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h1 code):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h2 code):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h3 code):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h4 code):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)
+│)
+│.prose :where(pre):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(pre code):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)::before
+│)::after
+│.prose :where(table):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(thead):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(thead th):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(tbody tr):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)
+│:where(tbody td):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(tfoot):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(tfoot td):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(th, td):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(figure > *):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(figcaption):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose
+│)
+│.prose :where(li):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(ol > li):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(ul > li):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)
+│)
+│)
+│)
+│)
+│)
+│.prose :where(dl):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│.prose :where(dd):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(hr + *):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h2 + *):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h3 + *):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│:where(h4 + *):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)
+│)
+│)
+│)
+│)
+│:where(figure):not(:where([class~="not-prose"], [class~="not-prose"] *))
+│)
+│)
+│.prose-invert
+│.fixed
+│.absolute
+│.relative
+│.bottom-0
+│.bottom-4
+│.left-1
+│.right-4
+│.right-\[50px\]
+│.top-1
+│.top-\[12px\]
+│.mx-2
+│.mx-auto
+│.my-2
+│.my-6
+│.mb-2
+│.mb-3
+│.mb-4
+│.mb-6
+│.mb-8
+│.ml-2
+│.ml-6
+│.mt-1
+│.mt-10
+│.mt-2
+│.mt-4
+│.mt-6
+│.block
+│.inline
+│.flex
+│.inline-flex
+│.grid
+│.hidden
+│.h-1\.5
+│.h-4
+│.h-5
+│.h-6
+│.h-8
+│.h-\[57px\]
+│.h-\[60px\]
+│.h-\[calc\(100vh-57px\)\]
+│.h-full
+│.min-h-\[60px\]
+│.min-h-screen
+│.w-1\.5
+│.w-4
+│.w-5
+│.w-6
+│.w-64
+│.w-8
+│.w-\[48rem\]
+│.w-\[600px\]
+│.w-\[60rem\]
+│.w-\[80px\]
+│.w-full
+│.w-screen
+│.max-w-2xl
+│.max-w-4xl
+│.max-w-7xl
+│.max-w-full
+│.max-w-none
+│.max-w-xl
+│.flex-1
+│.flex-shrink-0
+│.flex-grow
+│@keyframes spin
+│to
+│.animate-spin
+│.touch-manipulation
+│.select-none
+│.resize
+│.list-disc
+│.grid-cols-1
+│.grid-cols-3
+│.flex-col
+│.items-center
+│.justify-center
+│.gap-2
+│.gap-4
+│.gap-8
+│.gap-x-6
+│.gap-x-8
+│.gap-y-16
+│.space-y-1 > :not([hidden]) ~ :not([hidden])
+│.space-y-2 > :not([hidden]) ~ :not([hidden])
+│.space-y-3 > :not([hidden]) ~ :not([hidden])
+│.space-y-4 > :not([hidden]) ~ :not([hidden])
+│.space-y-6 > :not([hidden]) ~ :not([hidden])
+│.space-y-8 > :not([hidden]) ~ :not([hidden])
+│.overflow-hidden
+│.overflow-x-auto
+│.overflow-y-auto
+│.overflow-x-hidden
+│.whitespace-nowrap
+│.whitespace-pre-wrap
+│.break-words
+│.break-all
+│.rounded
+│.rounded-full
+│.rounded-md
+│.rounded-xl
+│.border
+│.border-b
+│.border-b-2
+│.border-l
+│.border-l-4
+│.border-r
+│.border-t
+│.border-red-500\/20
+│.border-white
+│.border-white\/10
+│.border-white\/50
+│.border-white\/90
+│.bg-black
+│.bg-black\/30
+│.bg-black\/50
+│.bg-gray-800
+│.bg-indigo-600
+│.bg-red-900\/20
+│.bg-white
+│.bg-white\/5
+│.p-1\.5
+│.p-2
+│.p-4
+│.p-6
+│.px-3
+│.px-3\.5
+│.px-4
+│.px-6
+│.py-1
+│.py-2
+│.py-2\.5
+│.py-24
+│.py-3
+│.py-4
+│.py-6
+│.pb-4
+│.pl-4
+│.pl-9
+│.text-center
+│.align-middle
+│.font-mono
+│.text-3xl
+│.text-base
+│.text-lg
+│.text-sm
+│.text-xs
+│.font-bold
+│.font-medium
+│.font-semibold
+│.italic
+│.leading-6
+│.leading-7
+│.leading-8
+│.tracking-tight
+│.text-gray-300
+│.text-gray-400
+│.text-gray-500
+│.text-gray-600
+│.text-gray-900
+│.text-green-400
+│.text-indigo-600
+│.text-red-300
+│.text-red-400
+│.text-white
+│.text-white\/50
+│.text-white\/70
+│.text-white\/80
+│.text-yellow-400
+│.underline
+│.no-underline
+│.placeholder-white\/50::-moz-placeholder
+│.placeholder-white\/50::placeholder
+│.opacity-75
+│.shadow-nav
+│.shadow-sm
+│.shadow-xl
+│.outline-none
+│.ring-1
+│.ring-gray-400\/10
+│.transition
+│.transition-all
+│.transition-colors
+│.transition-transform
+│.duration-300
+│.duration-nav
+│.ease-in-out
+│.ease-nav
+│.hover\:bg-indigo-500:hover
+│.hover\:bg-white:hover
+│.hover\:bg-white\/10:hover
+│.hover\:bg-zinc-900:hover
+│.hover\:text-black:hover
+│.hover\:text-gray-300:hover
+│.hover\:text-white:hover
+│.hover\:text-white\/80:hover
+│.hover\:shadow-nav-hover:hover
+│.focus\:border-white:focus
+│.focus\:outline-none:focus
+│.focus\:ring-1:focus
+│.focus\:ring-2:focus
+│.focus\:ring-white:focus
+│.focus\:ring-offset-2:focus
+│.focus-visible\:outline:focus-visible
+│.focus-visible\:outline-2:focus-visible
+│.focus-visible\:outline-offset-2:focus-visible
+│.focus-visible\:outline-indigo-600:focus-visible
+│.active\:shadow-nav-active:active
+│.disabled\:cursor-not-allowed:disabled
+│.disabled\:opacity-50:disabled
+│@media (min-width: 640px)
+│.sm\:w-\[57rem\]
+│.sm\:gap-y-20
+│.sm\:px-6
+│.sm\:py-32
+│.sm\:text-4xl
+│@media (min-width: 768px)
+│.md\:mx-6
+│.md\:-ml-4
+│.md\:grid-cols-2
+│.md\:px-4
+│.md\:py-1
+│.md\:py-2
+│.md\:py-3
+│@media (min-width: 1024px)
+│.lg\:mx-0
+│.lg\:-ml-0
+│.lg\:max-w-lg
+│.lg\:max-w-none
+│.lg\:grid-cols-2
+│.lg\:grid-cols-6
+│.lg\:px-8
+│.lg\:pr-8
+│.lg\:pt-4
+
 assets/fonts.css:
 │@font-face
 │@font-face
@@ -200,6 +612,10 @@ src/server/config.rs:
 src/server/models/user.rs:
 
 src/server/models/mod.rs:
+
+src/server/models/chat.rs:
+│fn new
+│fn new
 
 src/server/mod.rs:
 
@@ -258,16 +674,28 @@ src/server/services/model_router.rs:
 │fn chat_stream
 │fn handle_tool_response
 
+src/server/services/chat_database.rs:
+│fn new
+│fn create_conversation
+│fn add_message
+│fn get_conversation
+│fn get_conversation_messages
+│fn list_user_conversations
+│fn delete_conversation
+
 src/server/services/github_types.rs:
 
 src/server/ws/types.rs:
+│fn fmt
 
 src/server/ws/transport.rs:
 │fn new
 │fn create_handlers
+│fn validate_session
 │fn handle_socket
 │fn broadcast
 │fn send_to
+│fn get_user_id
 │fn add_test_connection
 
 src/server/ws/mod.rs:
