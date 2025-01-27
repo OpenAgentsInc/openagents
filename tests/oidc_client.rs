@@ -1,6 +1,5 @@
 use axum::{
     body::Body,
-    extract::State,
     http::{Request, StatusCode},
     Router,
     routing::{get, post},
@@ -12,8 +11,8 @@ use wiremock::{MockServer, Mock, ResponseTemplate};
 use wiremock::matchers::{method, path};
 
 use openagents::server::{
-    handlers::auth::{login, callback, logout, AppState},
-    services::auth::OIDCConfig,
+    handlers::{login, callback, logout, AppState},
+    services::OIDCConfig,
 };
 
 async fn setup_test_db() -> PgPool {
