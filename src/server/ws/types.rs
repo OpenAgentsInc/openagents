@@ -1,36 +1,43 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum WebSocketMessage {
-    #[serde(rename = "chat")]
-    Chat(ChatMessage),
-    #[serde(rename = "solver")]
-    Solver(SolverMessage),
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConnectionState {
+    pub user_id: i32,
+    pub tx: tokio::sync::mpsc::UnboundedSender<axum::extract::ws::Message>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ChatMessage {
-    #[serde(rename = "user_message")]
-    UserMessage { content: String },
-    #[serde(rename = "agent_response")]
-    AgentResponse { content: String },
+    #[serde(rename = "user")]
+    UserMessage {
+        content: String,
+    },
+    #[serde(rename = "assistant")]
+    AssistantMessage {
+        content: String,
+    },
     #[serde(rename = "error")]
-    Error { message: String },
+    ErrorMessage {
+        content: String,
+    },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum SolverMessage {
-    #[serde(rename = "progress")]
-    Progress { stage: String, message: String },
-    #[serde(rename = "files_reasoning")]
-    FilesReasoning { content: String },
-    #[serde(rename = "solution")]
-    Solution { content: String },
-    #[serde(rename = "error")]
-    Error { message: String },
-    #[serde(rename = "complete")]
-    Complete { summary: String },
+#[derive(Debug)]
+pub enum WebSocketError {
+    AuthenticationError(String),
+    ConnectionError(String),
+    MessageError(String),
 }
+
+impl std::fmt::Display for WebSocketError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WebSocketError::AuthenticationError(msg) => write!(f, "Authentication error: {}", msg),
+            WebSocketError::ConnectionError(msg) => write!(f, "Connection error: {}", msg),
+            WebSocketError::MessageError(msg) => write!(f, "Message error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for WebSocketError {}
