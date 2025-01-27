@@ -83,7 +83,15 @@ pub fn configure_app() -> Router {
 
     // Create the main router
     Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
+        // Main routes
+        .route("/", get(routes::home))
+        .route("/chat", get(routes::chat))
+        .route("/onyx", get(routes::mobile_app))
+        .route("/services", get(routes::business))
+        .route("/video-series", get(routes::video_series))
+        .route("/company", get(routes::company))
+        .route("/coming-soon", get(routes::coming_soon))
+        .route("/repomap", get(routes::repomap))
         // Auth routes
         .route("/login", get(routes::login))
         .route("/signup", get(routes::signup))
