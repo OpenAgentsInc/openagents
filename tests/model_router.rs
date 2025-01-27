@@ -1,9 +1,12 @@
 use dotenvy::dotenv;
 use openagents::server::services::deepseek::{ChatMessage, DeepSeekService, ToolChoice};
 use serde_json::json;
-use std::env;
 use tracing::{info, Level};
 use tracing_subscriber;
+use wiremock::{
+    matchers::{header, method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
 #[tokio::test]
 async fn test_routing_decision() {
@@ -13,9 +16,48 @@ async fn test_routing_decision() {
     // Load environment variables from .env file
     dotenv().ok();
 
-    // Create a real DeepSeek service instance
-    let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
-    let service = DeepSeekService::new(api_key);
+    // Create mock server
+    let mock_server = MockServer::start().await;
+
+    // Set up mock responses
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(header("content-type", "application/json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{
+                "message": {
+                    "content": json!({
+                        "needs_tool": true,
+                        "reasoning": "User is requesting to view a GitHub issue",
+                        "suggested_tool": "read_github_issue"
+                    }).to_string(),
+                    "role": "assistant"
+                }
+            }]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(header("content-type", "application/json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{
+                "message": {
+                    "content": json!({
+                        "needs_tool": false,
+                        "reasoning": "General chat message that doesn't require tools",
+                        "suggested_tool": null
+                    }).to_string(),
+                    "role": "assistant"
+                }
+            }]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Create service with mock server
+    let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
 
     // Create a dummy tool for routing tests
     let dummy_tool = DeepSeekService::create_tool(
