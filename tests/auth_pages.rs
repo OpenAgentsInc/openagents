@@ -3,14 +3,37 @@ use axum::{
     http::{Request, StatusCode},
 };
 use tower::ServiceExt;
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
+};
 
 use openagents::server::config::configure_app;
 
-// Maximum size for response body (16MB)
-const MAX_BODY_SIZE: usize = 16 * 1024 * 1024;
-
 #[tokio::test]
 async fn test_login_page() {
+    // Create mock server for DeepSeek API
+    let mock_server = MockServer::start().await;
+
+    // Mock the DeepSeek API response
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "Hello! How can I help you?",
+                    "role": "assistant"
+                }
+            }]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Set environment variables for testing
+    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
+    std::env::set_var("GITHUB_TOKEN", "test_token");
+    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+
     // Initialize the app
     let app = configure_app();
 
@@ -28,7 +51,7 @@ async fn test_login_page() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+    let body = to_bytes(response.into_body(), 16 * 1024 * 1024).await.unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     // Check for expected content
@@ -41,6 +64,28 @@ async fn test_login_page() {
 
 #[tokio::test]
 async fn test_signup_page() {
+    // Create mock server for DeepSeek API
+    let mock_server = MockServer::start().await;
+
+    // Mock the DeepSeek API response
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "Hello! How can I help you?",
+                    "role": "assistant"
+                }
+            }]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Set environment variables for testing
+    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
+    std::env::set_var("GITHUB_TOKEN", "test_token");
+    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+
     // Initialize the app
     let app = configure_app();
 
@@ -58,7 +103,7 @@ async fn test_signup_page() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+    let body = to_bytes(response.into_body(), 16 * 1024 * 1024).await.unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     // Check for expected content
