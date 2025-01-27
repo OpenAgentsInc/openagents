@@ -110,7 +110,7 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
             .and(header("content-type", "application/json"))
-            .and(body_string_contains(input))  // Match based on the input text
+            .and(body_string_contains(input)) // Match based on the input text
             .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
             .expect(1)
             .mount(&mock_server)
