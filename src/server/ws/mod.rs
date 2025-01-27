@@ -7,12 +7,14 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use tracing::{error, info};
 
-use self::{transport::WebSocketState, types::WebSocketError};
+use self::transport::WebSocketState;
 
 pub mod handlers;
 pub mod transport;
 pub mod types;
 
+// Add the debug handler attribute to improve error messages
+#[axum::debug_handler]
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     cookies: CookieJar,
