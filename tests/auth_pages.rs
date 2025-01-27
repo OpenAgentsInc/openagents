@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use tower::ServiceExt;
@@ -25,7 +25,7 @@ async fn test_login_page() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body()).await.unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     // Check for expected content
@@ -55,7 +55,7 @@ async fn test_signup_page() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body()).await.unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     // Check for expected content
