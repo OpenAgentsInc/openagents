@@ -1,4 +1,6 @@
-use crate::server::models::chat::{Conversation, CreateConversationRequest, CreateMessageRequest, Message};
+use crate::server::models::chat::{
+    Conversation, CreateConversationRequest, CreateMessageRequest, Message,
+};
 use anyhow::{Context, Result};
 use sqlx::PgPool;
 use uuid::Uuid;

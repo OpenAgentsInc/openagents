@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use axum::{
     extract::{ws::WebSocket, State, WebSocketUpgrade},
-    response::IntoResponse,
     http::Request,
+    response::IntoResponse,
 };
 use axum_extra::extract::cookie::CookieJar;
 use tracing::{error, info};
@@ -30,16 +30,13 @@ pub async fn ws_handler(
             info!("WebSocket connection authenticated for user {}", user_id);
             // Create chat handler
             let chat_handler = WebSocketState::create_handlers(state.clone());
-            
+
             // Upgrade connection with user_id
             ws.on_upgrade(move |socket| handle_socket(socket, state, chat_handler, user_id))
         }
         Err(e) => {
             error!("WebSocket authentication failed: {}", e);
-            (
-                axum::http::StatusCode::UNAUTHORIZED,
-                "Unauthorized"
-            ).into_response()
+            (axum::http::StatusCode::UNAUTHORIZED, "Unauthorized").into_response()
         }
     }
 }

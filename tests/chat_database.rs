@@ -58,8 +58,14 @@ async fn test_chat_persistence() {
         Some("Test Conversation"),
         "Title mismatch"
     );
-    assert!(conversation.created_at.is_some(), "created_at should be set");
-    assert!(conversation.updated_at.is_some(), "updated_at should be set");
+    assert!(
+        conversation.created_at.is_some(),
+        "created_at should be set"
+    );
+    assert!(
+        conversation.updated_at.is_some(),
+        "updated_at should be set"
+    );
 
     // Test message creation
     info!("Testing message creation...");

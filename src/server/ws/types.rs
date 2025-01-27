@@ -1,6 +1,6 @@
+use axum::extract::ws::Message;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use axum::extract::ws::Message;
 
 #[derive(Debug, Clone)]
 pub struct ConnectionState {
@@ -12,17 +12,11 @@ pub struct ConnectionState {
 #[serde(tag = "type")]
 pub enum ChatMessage {
     #[serde(rename = "user")]
-    UserMessage {
-        content: String,
-    },
+    UserMessage { content: String },
     #[serde(rename = "assistant")]
-    AssistantMessage {
-        content: String,
-    },
+    AssistantMessage { content: String },
     #[serde(rename = "error")]
-    ErrorMessage {
-        content: String,
-    },
+    ErrorMessage { content: String },
 }
 
 #[derive(Debug)]
