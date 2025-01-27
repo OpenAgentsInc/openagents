@@ -149,7 +149,8 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
         return Err(AuthError::AuthenticationFailed);
     }
 
-    let claims = base64::decode(parts[1])
+    let claims = base64::engine::general_purpose::STANDARD
+        .decode(parts[1])
         .map_err(|_| AuthError::AuthenticationFailed)?;
         
     let claims: serde_json::Value = serde_json::from_slice(&claims)
