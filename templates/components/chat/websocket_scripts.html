@@ -45,20 +45,15 @@
   });
 
   document.addEventListener("htmx:wsError", function (evt) {
-    console.error("WebSocket error:", evt.detail.error);
+    console.error("WebSocket error:", evt);
     
-    // Check if the error is an authentication error
-    if (evt.detail.error.includes("unauthorized") || evt.detail.error.includes("unauthenticated")) {
-      // Show login overlay
-      document.getElementById("login-overlay").classList.remove("hidden");
-    } else {
-      // Show error message for other types of errors
-      const errorSection = document.getElementById("error-section");
-      const errorMessage = document.getElementById("error-message");
-      errorSection.classList.remove("hidden");
-      errorMessage.textContent = "Connection error: " + evt.detail.error;
-    }
-  });
+    // Show login overlay for connection failures
+    document.getElementById("login-overlay").classList.remove("hidden");
+    
+    // Hide the error section if it was showing
+    const errorSection = document.getElementById("error-section");
+    errorSection.classList.add("hidden");
+});
 
   document.addEventListener("htmx:wsBeforeSend", function (evt) {
     // Get the form data
