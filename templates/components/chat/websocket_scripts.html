@@ -13,6 +13,8 @@
 
   document.addEventListener("htmx:wsOpen", function (evt) {
     console.log("Connected to WebSocket");
+    // Hide login overlay if it was showing
+    document.getElementById("login-overlay").classList.add("hidden");
   });
 
   document.addEventListener("htmx:wsClose", function (evt) {
@@ -43,12 +45,15 @@
   });
 
   document.addEventListener("htmx:wsError", function (evt) {
-    console.error("WebSocket error:", evt.detail.error);
+    console.error("WebSocket error:", evt);
+    
+    // Show login overlay for connection failures
+    document.getElementById("login-overlay").classList.remove("hidden");
+    
+    // Hide the error section if it was showing
     const errorSection = document.getElementById("error-section");
-    const errorMessage = document.getElementById("error-message");
-    errorSection.classList.remove("hidden");
-    errorMessage.textContent = "Connection error: " + evt.detail.error;
-  });
+    errorSection.classList.add("hidden");
+});
 
   document.addEventListener("htmx:wsBeforeSend", function (evt) {
     // Get the form data
@@ -92,6 +97,12 @@
     try {
       const data = JSON.parse(evt.detail.message);
       console.log("Parsed message data:", data);
+
+      // Check for authentication error in the message
+      if (data.type === "error" && (data.message.includes("unauthorized") || data.message.includes("unauthenticated"))) {
+        document.getElementById("login-overlay").classList.remove("hidden");
+        return;
+      }
 
       // Handle different message types
       if (data.type === "chat") {
@@ -297,9 +308,15 @@
   }
 
   function handleErrorMessage(data) {
-    const errorSection = document.getElementById("error-section");
-    const errorMessage = document.getElementById("error-message");
-    errorSection.classList.remove("hidden");
-    errorMessage.textContent = data.message;
+    // Check if it's an authentication error
+    if (data.message.includes("unauthorized") || data.message.includes("unauthenticated")) {
+      document.getElementById("login-overlay").classList.remove("hidden");
+    } else {
+      // Show error message for other types of errors
+      const errorSection = document.getElementById("error-section");
+      const errorMessage = document.getElementById("error-message");
+      errorSection.classList.remove("hidden");
+      errorMessage.textContent = data.message;
+    }
   }
 </script>
