@@ -9,7 +9,7 @@ use serde_json::json;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
 
-use crate::routes::{login, signup};
+use crate::routes;
 
 fn create_tools() -> Vec<Tool> {
     vec![
@@ -85,8 +85,8 @@ pub fn configure_app() -> Router {
     Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         // Auth routes
-        .route("/login", get(login))
-        .route("/signup", get(signup))
+        .route("/login", get(routes::login))
+        .route("/signup", get(routes::signup))
         // Static files
         .nest_service("/static", ServeDir::new("./static").precompressed_gzip())
         // Template files
