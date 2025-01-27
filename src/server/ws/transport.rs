@@ -44,9 +44,9 @@ impl WebSocketState {
         ))
     }
 
-    pub async fn validate_session(cookies: &CookieJar) -> Result<i32, WebSocketError> {
+    pub async fn validate_session(jar: &CookieJar) -> Result<i32, WebSocketError> {
         // Get session cookie
-        let _session_cookie = cookies
+        let _session_cookie = jar
             .get("session")
             .ok_or_else(|| WebSocketError::AuthenticationError("No session cookie found".into()))?;
 
