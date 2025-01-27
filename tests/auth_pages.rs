@@ -6,6 +6,9 @@ use tower::ServiceExt;
 
 use openagents::server::config::configure_app;
 
+// Maximum size for response body (16MB)
+const MAX_BODY_SIZE: usize = 16 * 1024 * 1024;
+
 #[tokio::test]
 async fn test_login_page() {
     // Initialize the app
@@ -25,7 +28,7 @@ async fn test_login_page() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     // Check for expected content
@@ -55,7 +58,7 @@ async fn test_signup_page() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     // Check for expected content
