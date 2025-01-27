@@ -4,7 +4,7 @@ use axum::{
     extract::{ws::WebSocket, State, WebSocketUpgrade},
     response::IntoResponse,
 };
-use tower_cookies::Cookies;
+use axum_extra::extract::CookieJar;
 use tracing::{error, info};
 
 use self::{transport::WebSocketState, types::WebSocketError};
@@ -15,7 +15,7 @@ pub mod types;
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
-    cookies: Cookies,
+    cookies: CookieJar,
     State(state): State<Arc<WebSocketState>>,
 ) -> impl IntoResponse {
     // Validate session and get user_id
@@ -30,11 +30,10 @@ pub async fn ws_handler(
         }
         Err(e) => {
             error!("WebSocket authentication failed: {}", e);
-            axum::response::Response::builder()
-                .status(401)
-                .body(axum::body::boxed(axum::body::Full::from("Unauthorized")))
-                .unwrap()
-                .into_response()
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                "Unauthorized"
+            ).into_response()
         }
     }
 }
