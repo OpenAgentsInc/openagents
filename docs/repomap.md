@@ -1,12 +1,25 @@
 tests/tool_selection.rs:
 │fn test_tool_selection
 
-tests/model_router_service.rs:
+tests/oidc_client.rs:
+│fn setup_test_db
+│fn test_full_auth_flow
+│fn test_invalid_callback
+│fn test_duplicate_login
+
+tests/model_router_service/mod.rs:
 │fn init_logging
 │fn create_test_tools
-│fn test_model_router_service
-│fn test_model_router_chat
+│fn create_mock_router
+
+tests/model_router_service/tool_execution.rs:
 │fn test_model_router_tool_execution
+
+tests/model_router_service/routing.rs:
+│fn test_model_router_service
+
+tests/model_router_service/chat.rs:
+│fn test_model_router_chat
 
 tests/repomap.rs:
 │fn test_repomap_endpoint
@@ -213,6 +226,16 @@ src/server/models/chat.rs:
 
 src/server/mod.rs:
 
+src/server/handlers/auth.rs:
+│fn new
+│fn login
+│fn callback
+│fn logout
+│fn setup_logging
+│fn test_auth_flow
+│fn test_invalid_callback
+│fn test_duplicate_login
+
 src/server/handlers/user.rs:
 │fn create_user
 
@@ -223,6 +246,18 @@ src/server/services/github_issue.rs:
 │fn get_issue
 │fn post_comment
 │fn post_github_comment
+
+src/server/services/auth.rs:
+│fn fmt
+│fn from
+│fn new
+│fn authorization_url
+│fn exchange_code
+│fn authenticate
+│fn extract_pseudonym
+│fn test_oidc_config_validation
+│fn test_authorization_url_generation
+│fn test_token_exchange
 
 src/server/services/repomap.rs:
 │fn new
