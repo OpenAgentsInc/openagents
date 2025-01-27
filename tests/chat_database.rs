@@ -1,4 +1,3 @@
-use axum_test::TestServer;
 use dotenvy::dotenv;
 use openagents::server::{
     models::chat::{CreateConversationRequest, CreateMessageRequest},
@@ -6,10 +5,8 @@ use openagents::server::{
 };
 use serde_json::json;
 use sqlx::PgPool;
-use time::Duration;
 use tracing::{info, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
-use uuid::Uuid;
 
 #[tokio::test]
 async fn test_chat_persistence() {
