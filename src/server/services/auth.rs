@@ -166,7 +166,7 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
 mod tests {
     use super::*;
     use wiremock::{MockServer, Mock, ResponseTemplate};
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::method;
     use serde_json::json;
 
     #[test]
@@ -210,7 +210,7 @@ mod tests {
         assert!(auth_url.contains("client_id=client123"));
         assert!(auth_url.contains("response_type=code"));
         assert!(auth_url.contains("scope=openid"));
-        assert!(auth_url.contains(&encoded_callback));
+        assert!(auth_url.contains(&*encoded_callback));
     }
 
     #[tokio::test]
