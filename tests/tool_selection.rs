@@ -1,9 +1,12 @@
 use dotenvy::dotenv;
 use openagents::server::services::deepseek::{ChatMessage, DeepSeekService, ToolChoice};
 use serde_json::json;
-use std::env;
 use tracing::{info, Level};
 use tracing_subscriber;
+use wiremock::{
+    matchers::{body_string_contains, header, method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
 #[tokio::test]
 async fn test_tool_selection() {
@@ -13,9 +16,11 @@ async fn test_tool_selection() {
     // Load environment variables from .env file
     dotenv().ok();
 
-    // Create a real DeepSeek service instance
-    let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set in .env file");
-    let service = DeepSeekService::new(api_key);
+    // Create mock server
+    let mock_server = MockServer::start().await;
+
+    // Create DeepSeek service with mock server
+    let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
 
     // Create a tool for reading GitHub issues
     let read_issue_tool = DeepSeekService::create_tool(
@@ -43,7 +48,7 @@ async fn test_tool_selection() {
 
     info!("Tool definition: {:?}", read_issue_tool);
 
-    // Test cases with expected tool usage
+    // Test cases with expected tool usage and mock responses
     let test_cases = vec![
         (
             "analyze https://github.com/OpenAgentsInc/openagents/issues/596",
@@ -54,12 +59,36 @@ async fn test_tool_selection() {
                 "repo": "openagents",
                 "issue_number": 596
             }),
+            json!({
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [{
+                            "id": "call_123",
+                            "type": "function",
+                            "function": {
+                                "name": "read_github_issue",
+                                "arguments": "{\"owner\":\"OpenAgentsInc\",\"repo\":\"openagents\",\"issue_number\":596}"
+                            }
+                        }]
+                    }
+                }]
+            }),
         ),
         (
             "Hello, how are you?",
             false, // Should not use tool
             "",
             json!({}),
+            json!({
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "Hello! I'm doing well, thank you for asking. How can I help you today?"
+                    }
+                }]
+            }),
         ),
         (
             "Can you check issue #595 in the OpenAgents repo?",
@@ -70,16 +99,42 @@ async fn test_tool_selection() {
                 "repo": "openagents",
                 "issue_number": 595
             }),
+            json!({
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [{
+                            "id": "call_124",
+                            "type": "function",
+                            "function": {
+                                "name": "read_github_issue",
+                                "arguments": "{\"owner\":\"OpenAgentsInc\",\"repo\":\"openagents\",\"issue_number\":595}"
+                            }
+                        }]
+                    }
+                }]
+            }),
         ),
     ];
 
-    for (input, should_use_tool, expected_tool, expected_args) in test_cases {
+    for (input, should_use_tool, expected_tool, expected_args, mock_response) in test_cases {
         info!("\n\nTesting input: {}", input);
         info!("Expected tool usage: {}", should_use_tool);
         if should_use_tool {
             info!("Expected tool: {}", expected_tool);
             info!("Expected args: {}", expected_args);
         }
+
+        // Set up mock for this test case
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(header("content-type", "application/json"))
+            .and(body_string_contains(input))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
 
         // Create messages with system context
         let _messages = vec![

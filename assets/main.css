@@ -1376,6 +1376,10 @@ textarea:focus {
 
 /* Dark mode prose customization */
 
+.pointer-events-none {
+  pointer-events: none;
+}
+
 .fixed {
   position: fixed;
 }
