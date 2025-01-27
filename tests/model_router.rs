@@ -4,7 +4,7 @@ use serde_json::json;
 use tracing::{info, Level};
 use tracing_subscriber;
 use wiremock::{
-    matchers::{header, method, path},
+    matchers::{body_string_contains, header, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -102,21 +102,19 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
     // Create service with mock server
     let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
 
-    // Set up mock responses
-    for (i, (_, _, mock_response)) in test_cases.iter().enumerate() {
+    for (input, expected_decision, mock_response) in test_cases {
+        info!("\n\nTesting routing for input: {}", input);
+        info!("Expected decision: {}", expected_decision);
+
+        // Set up mock for this specific test case
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
             .and(header("content-type", "application/json"))
+            .and(body_string_contains(input))  // Match based on the input text
             .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
-            .named(&format!("mock_{}", i))
             .expect(1)
             .mount(&mock_server)
             .await;
-    }
-
-    for (input, expected_decision, _) in test_cases {
-        info!("\n\nTesting routing for input: {}", input);
-        info!("Expected decision: {}", expected_decision);
 
         // Create messages with system context and user input
         let messages = vec![
