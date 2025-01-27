@@ -64,6 +64,7 @@ async fn main() {
 
     // Create the router with WebSocket state
     let app = Router::new()
+        // Main routes
         .route("/", get(routes::home))
         .route("/chat", get(routes::chat))
         .route("/ws", get(server::ws::ws_handler))
@@ -74,6 +75,9 @@ async fn main() {
         .route("/coming-soon", get(routes::coming_soon))
         .route("/health", get(routes::health_check))
         .route("/repomap", get(routes::repomap))
+        // Auth routes
+        .route("/login", get(routes::login))
+        .route("/signup", get(routes::signup))
         .with_state(ws_state);
 
     // Add repomap routes with repomap state
