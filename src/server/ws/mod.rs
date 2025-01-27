@@ -4,7 +4,7 @@ use axum::{
     extract::{ws::WebSocket, State, WebSocketUpgrade},
     response::IntoResponse,
 };
-use axum_extra::extract::CookieJar;
+use axum_extra::extract::cookie::CookieJar;
 use tracing::{error, info};
 
 use self::transport::WebSocketState;
@@ -17,11 +17,11 @@ pub mod types;
 #[axum::debug_handler]
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
-    cookies: CookieJar,
     State(state): State<Arc<WebSocketState>>,
+    jar: CookieJar,
 ) -> impl IntoResponse {
     // Validate session and get user_id
-    match WebSocketState::validate_session(&cookies).await {
+    match WebSocketState::validate_session(&jar).await {
         Ok(user_id) => {
             info!("WebSocket connection authenticated for user {}", user_id);
             // Create chat handler
