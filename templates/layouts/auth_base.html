@@ -1,3 +1,6 @@
+{% from "components/auth/error.html" import auth_error %}
+{% from "components/auth/auth_scripts.html" import auth_scripts %}
+
 <!doctype html>
 <html>
   <head>
@@ -10,8 +13,10 @@
     <link href="/assets/fonts.css" rel="stylesheet" />
     <title>OpenAgents - {{title}}</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    {{ auth_scripts() }}
   </head>
   <body class="bg-gray-50">
+    {{ auth_error() }}
     {% block content %}{% endblock %}
   </body>
 </html>
