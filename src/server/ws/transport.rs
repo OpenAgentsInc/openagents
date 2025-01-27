@@ -1,13 +1,10 @@
-use axum::{
-    extract::ws::{Message, WebSocket},
-    http::StatusCode,
-};
+use axum::extract::ws::{Message, WebSocket};
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use tower_cookies::Cookies;
+use axum_extra::extract::CookieJar;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -47,7 +44,7 @@ impl WebSocketState {
         ))
     }
 
-    pub async fn validate_session(cookies: &Cookies) -> Result<i32, WebSocketError> {
+    pub async fn validate_session(cookies: &CookieJar) -> Result<i32, WebSocketError> {
         // Get session cookie
         let session_cookie = cookies
             .get("session")
