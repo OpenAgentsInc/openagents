@@ -35,7 +35,7 @@ impl DeepSeekService {
         let model = if use_reasoner {
             "deepseek-reasoner"
         } else {
-            "deepseek-chat"
+            "deepseek-coder-33b-instruct"  // Updated model name
         };
 
         // Only include tools if we have them and we're not using the reasoner
