@@ -144,8 +144,8 @@ async fn test_chat_router_integration() {
     // Create WebSocket state
     let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
 
-    // Add test connection
-    let mut rx = ws_state.add_test_connection("test_conn").await;
+    // Add test connection with test user_id
+    let mut rx = ws_state.add_test_connection("test_conn", 1).await;
 
     // Create chat handler
     let chat_handler = ChatHandler::new(ws_state.clone(), github_service.clone());
@@ -240,8 +240,8 @@ async fn test_chat_router_streaming() {
     // Create WebSocket state
     let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
 
-    // Add test connection
-    let mut rx = ws_state.add_test_connection("test_conn").await;
+    // Add test connection with test user_id
+    let mut rx = ws_state.add_test_connection("test_conn", 1).await;
 
     // Create chat handler
     let chat_handler = ChatHandler::new(ws_state.clone(), github_service.clone());

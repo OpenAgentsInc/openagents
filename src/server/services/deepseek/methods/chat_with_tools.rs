@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::server::services::deepseek::types::{
     ChatMessage, ChatRequest, ChatResponse, Tool, ToolCallResponse, ToolChoice,
@@ -53,6 +53,9 @@ impl DeepSeekService {
         };
 
         let url = format!("{}/chat/completions", self.base_url);
+        info!("Making request to {}", url);
+        info!("Request body: {}", serde_json::to_string(&request)?);
+
         let response = self
             .client
             .post(&url)
@@ -66,6 +69,7 @@ impl DeepSeekService {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await?;
+            error!("API request failed with status {}: {}", status, text);
             return Err(anyhow::anyhow!(
                 "API request failed with status {}: {}",
                 status,
@@ -78,12 +82,15 @@ impl DeepSeekService {
         info!("API Response: {}", text);
 
         if text.is_empty() {
+            error!("Empty response from API");
             return Err(anyhow::anyhow!("Empty response from API"));
         }
 
         // Parse the response
         let chat_response: ChatResponse = serde_json::from_str(&text).map_err(|e| {
-            anyhow::anyhow!("Failed to parse response: {}\nResponse text: {}", e, text)
+            let err = format!("Failed to parse response: {}\nResponse text: {}", e, text);
+            error!("{}", err);
+            anyhow::anyhow!(err)
         })?;
 
         if let Some(choice) = chat_response.choices.first() {
@@ -93,7 +100,9 @@ impl DeepSeekService {
                 choice.message.tool_calls.clone(),
             ))
         } else {
-            Err(anyhow::anyhow!("No response from model"))
+            let err = "No response from model";
+            error!("{}", err);
+            Err(anyhow::anyhow!(err))
         }
     }
 }
