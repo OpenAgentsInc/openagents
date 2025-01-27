@@ -1424,6 +1424,14 @@ textarea:focus {
   top: 12px;
 }
 
+.right-0 {
+  right: 0px;
+}
+
+.top-0 {
+  top: 0px;
+}
+
 .mx-2 {
   margin-left: 0.5rem;
   margin-right: 0.5rem;
@@ -1490,6 +1498,10 @@ textarea:focus {
 
 .mt-6 {
   margin-top: 1.5rem;
+}
+
+.mt-8 {
+  margin-top: 2rem;
 }
 
 .block {
@@ -1672,6 +1684,12 @@ textarea:focus {
   list-style-type: disc;
 }
 
+.appearance-none {
+  -webkit-appearance: none;
+     -moz-appearance: none;
+          appearance: none;
+}
+
 .grid-cols-1 {
   grid-template-columns: repeat(1, minmax(0, 1fr));
 }
@@ -1690,6 +1708,10 @@ textarea:focus {
 
 .justify-center {
   justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
 }
 
 .gap-2 {
@@ -1851,6 +1873,20 @@ textarea:focus {
   border-color: rgb(255 255 255 / 0.9);
 }
 
+.border-gray-300 {
+  --tw-border-opacity: 1;
+  border-color: rgb(209 213 219 / var(--tw-border-opacity, 1));
+}
+
+.border-transparent {
+  border-color: transparent;
+}
+
+.border-red-400 {
+  --tw-border-opacity: 1;
+  border-color: rgb(248 113 113 / var(--tw-border-opacity, 1));
+}
+
 .bg-black {
   --tw-bg-opacity: 1;
   background-color: rgb(0 0 0 / var(--tw-bg-opacity, 1));
@@ -1885,6 +1921,20 @@ textarea:focus {
 
 .bg-white\/5 {
   background-color: rgb(255 255 255 / 0.05);
+}
+
+.bg-gray-50 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));
+}
+
+.bg-red-100 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(254 226 226 / var(--tw-bg-opacity, 1));
+}
+
+.fill-current {
+  fill: currentColor;
 }
 
 .p-1\.5 {
@@ -1958,6 +2008,21 @@ textarea:focus {
   padding-bottom: 1.5rem;
 }
 
+.px-2 {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.py-12 {
+  padding-top: 3rem;
+  padding-bottom: 3rem;
+}
+
+.py-8 {
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
 .pb-4 {
   padding-bottom: 1rem;
 }
@@ -2022,6 +2087,10 @@ textarea:focus {
 
 .font-semibold {
   font-weight: 600;
+}
+
+.font-extrabold {
+  font-weight: 800;
 }
 
 .italic {
@@ -2111,6 +2180,21 @@ textarea:focus {
   color: rgb(250 204 21 / var(--tw-text-opacity, 1));
 }
 
+.text-gray-700 {
+  --tw-text-opacity: 1;
+  color: rgb(55 65 81 / var(--tw-text-opacity, 1));
+}
+
+.text-red-500 {
+  --tw-text-opacity: 1;
+  color: rgb(239 68 68 / var(--tw-text-opacity, 1));
+}
+
+.text-red-700 {
+  --tw-text-opacity: 1;
+  color: rgb(185 28 28 / var(--tw-text-opacity, 1));
+}
+
 .underline {
   text-decoration-line: underline;
 }
@@ -2125,6 +2209,16 @@ textarea:focus {
 
 .placeholder-white\/50::placeholder {
   color: rgb(255 255 255 / 0.5);
+}
+
+.placeholder-gray-400::-moz-placeholder {
+  --tw-placeholder-opacity: 1;
+  color: rgb(156 163 175 / var(--tw-placeholder-opacity, 1));
+}
+
+.placeholder-gray-400::placeholder {
+  --tw-placeholder-opacity: 1;
+  color: rgb(156 163 175 / var(--tw-placeholder-opacity, 1));
 }
 
 .opacity-75 {
@@ -2146,6 +2240,12 @@ textarea:focus {
 .shadow-xl {
   --tw-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
   --tw-shadow-colored: 0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
+.shadow {
+  --tw-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --tw-shadow-colored: 0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color);
   box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
@@ -2225,6 +2325,16 @@ textarea:focus {
   background-color: rgb(24 24 27 / var(--tw-bg-opacity, 1));
 }
 
+.hover\:bg-gray-50:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-indigo-700:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(67 56 202 / var(--tw-bg-opacity, 1));
+}
+
 .hover\:text-black:hover {
   --tw-text-opacity: 1;
   color: rgb(0 0 0 / var(--tw-text-opacity, 1));
@@ -2244,6 +2354,11 @@ textarea:focus {
   color: rgb(255 255 255 / 0.8);
 }
 
+.hover\:text-indigo-500:hover {
+  --tw-text-opacity: 1;
+  color: rgb(99 102 241 / var(--tw-text-opacity, 1));
+}
+
 .hover\:shadow-nav-hover:hover {
   --tw-shadow: 3px 3px 0 0 rgba(255, 255, 255, 0.5);
   --tw-shadow-colored: 3px 3px 0 0 var(--tw-shadow-color);
@@ -2253,6 +2368,11 @@ textarea:focus {
 .focus\:border-white:focus {
   --tw-border-opacity: 1;
   border-color: rgb(255 255 255 / var(--tw-border-opacity, 1));
+}
+
+.focus\:border-indigo-500:focus {
+  --tw-border-opacity: 1;
+  border-color: rgb(99 102 241 / var(--tw-border-opacity, 1));
 }
 
 .focus\:outline-none:focus {
@@ -2275,6 +2395,11 @@ textarea:focus {
 .focus\:ring-white:focus {
   --tw-ring-opacity: 1;
   --tw-ring-color: rgb(255 255 255 / var(--tw-ring-opacity, 1));
+}
+
+.focus\:ring-indigo-500:focus {
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(99 102 241 / var(--tw-ring-opacity, 1));
 }
 
 .focus\:ring-offset-2:focus {
@@ -2312,12 +2437,33 @@ textarea:focus {
 }
 
 @media (min-width: 640px) {
+  .sm\:mx-auto {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .sm\:inline {
+    display: inline;
+  }
+
   .sm\:w-\[57rem\] {
     width: 57rem;
   }
 
+  .sm\:w-full {
+    width: 100%;
+  }
+
+  .sm\:max-w-md {
+    max-width: 28rem;
+  }
+
   .sm\:gap-y-20 {
     row-gap: 5rem;
+  }
+
+  .sm\:rounded-lg {
+    border-radius: 0.5rem;
   }
 
   .sm\:px-6 {
@@ -2330,9 +2476,19 @@ textarea:focus {
     padding-bottom: 8rem;
   }
 
+  .sm\:px-10 {
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+  }
+
   .sm\:text-4xl {
     font-size: 2.25rem;
     line-height: 2.5rem;
+  }
+
+  .sm\:text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
   }
 }
 
