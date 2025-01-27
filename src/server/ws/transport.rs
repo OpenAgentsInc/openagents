@@ -1,4 +1,5 @@
 use axum::extract::ws::{Message, WebSocket};
+use axum_extra::extract::cookie::CookieJar;
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::collections::HashMap;
 use std::error::Error;
@@ -8,7 +9,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use super::handlers::{chat::ChatHandler, MessageHandler};
-use super::types::ChatMessage;
+use super::types::{ChatMessage, ConnectionState, WebSocketError};
 use crate::server::services::{
     deepseek::{DeepSeekService, Tool},
     github_issue::GitHubService,
@@ -16,7 +17,7 @@ use crate::server::services::{
 };
 
 pub struct WebSocketState {
-    connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
+    connections: Arc<RwLock<HashMap<String, ConnectionState>>>,
     pub model_router: Arc<ModelRouter>,
     github_service: Arc<GitHubService>,
 }
@@ -43,7 +44,23 @@ impl WebSocketState {
         ))
     }
 
-    pub async fn handle_socket(self: Arc<Self>, socket: WebSocket, chat_handler: Arc<ChatHandler>) {
+    pub async fn validate_session(jar: &CookieJar) -> Result<i32, WebSocketError> {
+        // Get session cookie
+        let _session_cookie = jar
+            .get("session")
+            .ok_or_else(|| WebSocketError::AuthenticationError("No session cookie found".into()))?;
+
+        // TODO: Validate session and get user_id from the session store
+        // For now, return a mock user_id
+        Ok(1)
+    }
+
+    pub async fn handle_socket(
+        self: Arc<Self>,
+        socket: WebSocket,
+        chat_handler: Arc<ChatHandler>,
+        user_id: i32,
+    ) {
         let (mut sender, mut receiver) = socket.split();
         let (tx, mut rx) = mpsc::unbounded_channel();
 
@@ -51,11 +68,17 @@ impl WebSocketState {
         let conn_id = Uuid::new_v4().to_string();
         info!("New WebSocket connection established: {}", conn_id);
 
-        // Store connection
+        // Store connection with user ID
         {
             let mut conns = self.connections.write().await;
-            conns.insert(conn_id.clone(), tx.clone());
-            info!("Connection stored: {}", conn_id);
+            conns.insert(
+                conn_id.clone(),
+                ConnectionState {
+                    user_id,
+                    tx: tx.clone(),
+                },
+            );
+            info!("Connection stored for user {}: {}", user_id, conn_id);
         }
 
         // Handle outgoing messages
@@ -145,8 +168,8 @@ impl WebSocketState {
     pub async fn broadcast(&self, msg: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Broadcasting message: {}", msg);
         let conns = self.connections.read().await;
-        for tx in conns.values() {
-            tx.send(Message::Text(msg.to_string().into()))?;
+        for conn in conns.values() {
+            conn.tx.send(Message::Text(msg.to_string().into()))?;
         }
         Ok(())
     }
@@ -157,8 +180,8 @@ impl WebSocketState {
         msg: &str,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Sending message to {}: {}", conn_id, msg);
-        if let Some(tx) = self.connections.read().await.get(conn_id) {
-            tx.send(Message::Text(msg.to_string().into()))?;
+        if let Some(conn) = self.connections.read().await.get(conn_id) {
+            conn.tx.send(Message::Text(msg.to_string().into()))?;
             info!("Message sent successfully");
         } else {
             error!("Connection {} not found", conn_id);
@@ -166,14 +189,29 @@ impl WebSocketState {
         Ok(())
     }
 
-    // Test helper method - but we'll expose it always since it's useful for testing
+    pub async fn get_user_id(&self, conn_id: &str) -> Option<i32> {
+        self.connections
+            .read()
+            .await
+            .get(conn_id)
+            .map(|conn| conn.user_id)
+    }
+
+    // Test helper method
     pub async fn add_test_connection(
         self: &Arc<Self>,
         conn_id: &str,
+        user_id: i32,
     ) -> mpsc::UnboundedReceiver<Message> {
         let (tx, rx) = mpsc::unbounded_channel();
         let mut conns = self.connections.write().await;
-        conns.insert(conn_id.to_string(), tx);
+        conns.insert(
+            conn_id.to_string(),
+            ConnectionState {
+                user_id,
+                tx: tx.clone(),
+            },
+        );
         rx
     }
 }
