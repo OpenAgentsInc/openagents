@@ -14,6 +14,7 @@ async fn test_login_page() {
     // Create a request to the login page
     let request = Request::builder()
         .uri("/login")
+        .header("Accept", "text/html")
         .body(Body::empty())
         .unwrap();
 
@@ -43,6 +44,7 @@ async fn test_signup_page() {
     // Create a request to the signup page
     let request = Request::builder()
         .uri("/signup")
+        .header("Accept", "text/html")
         .body(Body::empty())
         .unwrap();
 
