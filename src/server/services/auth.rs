@@ -28,6 +28,7 @@ pub enum AuthError {
     AuthenticationFailed,
     TokenExchangeFailed(String),
     DatabaseError(String),
+    UserAlreadyExists,
 }
 
 impl std::fmt::Display for AuthError {
@@ -37,6 +38,7 @@ impl std::fmt::Display for AuthError {
             AuthError::AuthenticationFailed => write!(f, "Authentication failed"),
             AuthError::TokenExchangeFailed(msg) => write!(f, "Token exchange failed: {}", msg),
             AuthError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
+            AuthError::UserAlreadyExists => write!(f, "User already exists"),
         }
     }
 }
@@ -50,6 +52,7 @@ impl From<AuthError> for StatusCode {
             AuthError::AuthenticationFailed => StatusCode::UNAUTHORIZED,
             AuthError::TokenExchangeFailed(_) => StatusCode::BAD_GATEWAY,
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthError::UserAlreadyExists => StatusCode::CONFLICT,
         }
     }
 }
@@ -75,13 +78,19 @@ impl OIDCConfig {
         })
     }
 
-    pub fn authorization_url(&self) -> String {
-        format!(
+    pub fn authorization_url(&self, is_signup: bool) -> String {
+        let mut url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
             self.auth_url,
             self.client_id,
             urlencoding::encode(&self.redirect_uri)
-        )
+        );
+        
+        if is_signup {
+            url.push_str("&prompt=create");
+        }
+        
+        url
     }
 
     pub async fn exchange_code(&self, code: String) -> Result<TokenResponse, AuthError> {
@@ -141,6 +150,43 @@ impl OIDCConfig {
 
         Ok(user)
     }
+
+    pub async fn signup(&self, code: String, pool: &PgPool) -> Result<User, AuthError> {
+        // Exchange code for tokens
+        let token_response = self.exchange_code(code).await?;
+
+        // Extract pseudonym from ID token claims
+        let pseudonym = extract_pseudonym(&token_response.id_token)
+            .map_err(|_| AuthError::AuthenticationFailed)?;
+
+        // Check if user already exists
+        if let Ok(_) = sqlx::query!(
+            "SELECT id FROM users WHERE scramble_id = $1",
+            pseudonym
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))? {
+            return Err(AuthError::UserAlreadyExists);
+        }
+
+        // Create new user
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            INSERT INTO users (scramble_id, metadata)
+            VALUES ($1, $2)
+            RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+            "#,
+            pseudonym,
+            serde_json::json!({})
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        Ok(user)
+    }
 }
 
 // Helper function to extract pseudonym from ID token
@@ -167,7 +213,7 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use wiremock::matchers::method;
+    use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
@@ -204,7 +250,8 @@ mod tests {
         )
         .unwrap();
 
-        let auth_url = config.authorization_url();
+        // Test login URL
+        let auth_url = config.authorization_url(false);
         let encoded_callback = urlencoding::encode("http://localhost:3000/callback");
 
         assert!(auth_url.starts_with("https://auth.scramble.com/authorize"));
@@ -212,6 +259,11 @@ mod tests {
         assert!(auth_url.contains("response_type=code"));
         assert!(auth_url.contains("scope=openid"));
         assert!(auth_url.contains(&*encoded_callback));
+        assert!(!auth_url.contains("prompt=create"));
+
+        // Test signup URL
+        let signup_url = config.authorization_url(true);
+        assert!(signup_url.contains("prompt=create"));
     }
 
     #[tokio::test]
@@ -245,5 +297,52 @@ mod tests {
         assert_eq!(response.access_token, "test_access_token");
         assert_eq!(response.token_type, "Bearer");
         assert_eq!(response.expires_in, Some(3600));
+    }
+
+    #[tokio::test]
+    async fn test_signup_flow() {
+        // Start mock server
+        let mock_server = MockServer::start().await;
+
+        // Create test config
+        let config = OIDCConfig::new(
+            "client123".to_string(),
+            "secret456".to_string(),
+            "http://localhost:3000/callback".to_string(),
+            mock_server.uri(),
+            format!("{}/token", mock_server.uri()),
+        )
+        .unwrap();
+
+        // Setup token endpoint mock
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "test_access_token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+                "id_token": "header.eyJzdWIiOiJuZXdfdXNlcl9wc2V1ZG9ueW0ifQ.signature"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Create test database
+        let pool = sqlx::PgPool::connect("postgres://postgres:postgres@localhost/test_db")
+            .await
+            .unwrap();
+
+        // Test signup flow
+        let user = config.signup("test_code".to_string(), &pool).await.unwrap();
+        assert_eq!(user.scramble_id, "new_user_pseudonym");
+
+        // Test duplicate signup
+        let result = config.signup("test_code".to_string(), &pool).await;
+        assert!(matches!(result, Err(AuthError::UserAlreadyExists)));
+
+        // Cleanup
+        sqlx::query!("DELETE FROM users WHERE scramble_id = $1", "new_user_pseudonym")
+            .execute(&pool)
+            .await
+            .unwrap();
     }
 }
