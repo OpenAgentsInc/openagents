@@ -4,7 +4,7 @@ use serde_json::json;
 use tracing::{info, Level};
 use tracing_subscriber;
 use wiremock::{
-    matchers::{header, method, path},
+    matchers::{body_json_schema, header, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -19,42 +19,41 @@ async fn test_routing_decision() {
     // Create mock server
     let mock_server = MockServer::start().await;
 
-    // Set up mock responses
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .and(header("content-type", "application/json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "choices": [{
-                "message": {
-                    "content": json!({
-                        "needs_tool": true,
-                        "reasoning": "User is requesting to view a GitHub issue",
-                        "suggested_tool": "read_github_issue"
-                    }).to_string(),
-                    "role": "assistant"
-                }
-            }]
-        })))
-        .mount(&mock_server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .and(header("content-type", "application/json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "choices": [{
-                "message": {
-                    "content": json!({
-                        "needs_tool": false,
-                        "reasoning": "General chat message that doesn't require tools",
-                        "suggested_tool": null
-                    }).to_string(),
-                    "role": "assistant"
-                }
-            }]
-        })))
-        .mount(&mock_server)
-        .await;
+    // Test cases with their corresponding mock responses
+    let test_cases = vec![
+        (
+            "Can you check issue #595?",
+            json!({
+                "needs_tool": true,
+                "reasoning": "User is requesting to view a GitHub issue",
+                "suggested_tool": "read_github_issue"
+            }),
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"needs_tool\":true,\"reasoning\":\"User is requesting to view a GitHub issue\",\"suggested_tool\":\"read_github_issue\"}",
+                        "role": "assistant"
+                    }
+                }]
+            }),
+        ),
+        (
+            "Hello, how are you today?",
+            json!({
+                "needs_tool": false,
+                "reasoning": "General chat message that doesn't require tools",
+                "suggested_tool": null
+            }),
+            json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"needs_tool\":false,\"reasoning\":\"General chat message that doesn't require tools\",\"suggested_tool\":null}",
+                        "role": "assistant"
+                    }
+                }]
+            }),
+        ),
+    ];
 
     // Create service with mock server
     let service = DeepSeekService::with_base_url("test_key".to_string(), mock_server.uri());
@@ -103,29 +102,18 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         tool_calls: None,
     };
 
-    // Test cases for routing decisions
-    let test_cases = vec![
-        (
-            "Can you check issue #595?",
-            json!({
-                "needs_tool": true,
-                "reasoning": "User is requesting to view a GitHub issue",
-                "suggested_tool": "read_github_issue"
-            }),
-        ),
-        (
-            "Hello, how are you today?",
-            json!({
-                "needs_tool": false,
-                "reasoning": "General chat message that doesn't require tools",
-                "suggested_tool": null
-            }),
-        ),
-    ];
-
-    for (input, expected_decision) in test_cases {
+    for (input, expected_decision, mock_response) in test_cases {
         info!("\n\nTesting routing for input: {}", input);
         info!("Expected decision: {}", expected_decision);
+
+        // Set up mock for this specific test case
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(header("content-type", "application/json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
+            .expect(1)  // Expect exactly one call
+            .mount(&mock_server)
+            .await;
 
         // Create messages with system context and user input
         let messages = vec![
@@ -153,6 +141,10 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         // Parse the response as JSON
         let decision: serde_json::Value =
             serde_json::from_str(&response).expect("Response should be valid JSON");
+
+        // Log the comparison
+        info!("Expected decision: {}", expected_decision);
+        info!("Actual decision: {}", decision);
 
         // Verify the decision structure
         assert!(
@@ -193,13 +185,15 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         // Compare with expected decision
         assert_eq!(
             decision["needs_tool"], expected_decision["needs_tool"],
-            "needs_tool mismatch"
+            "needs_tool mismatch for input '{}'. Expected {:?}, got {:?}",
+            input, expected_decision["needs_tool"], decision["needs_tool"]
         );
 
         if decision["needs_tool"].as_bool().unwrap() {
             assert_eq!(
                 decision["suggested_tool"], expected_decision["suggested_tool"],
-                "suggested_tool mismatch for tool-requiring message"
+                "suggested_tool mismatch for input '{}'. Expected {:?}, got {:?}",
+                input, expected_decision["suggested_tool"], decision["suggested_tool"]
             );
         }
     }
