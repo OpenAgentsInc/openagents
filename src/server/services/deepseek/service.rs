@@ -20,7 +20,7 @@ impl DeepSeekService {
         Self {
             client,
             api_key,
-            base_url: "https://api.deepseek.ai".to_string(),
+            base_url: "https://api.deepseek.com".to_string(),
         }
     }
 
