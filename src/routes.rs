@@ -34,14 +34,14 @@ struct ChatContentTemplate;
 
 #[derive(Template)]
 #[template(path = "pages/login.html")]
-struct LoginTemplate<'a> {
-    title: &'a str,
+struct LoginTemplate {
+    title: String,
 }
 
 #[derive(Template)]
 #[template(path = "pages/signup.html")]
-struct SignupTemplate<'a> {
-    title: &'a str,
+struct SignupTemplate {
+    title: String,
 }
 
 pub async fn health_check() -> Json<serde_json::Value> {
@@ -69,14 +69,14 @@ pub async fn home(headers: HeaderMap) -> Response {
 
 pub async fn login(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Log in";
+    let title = "Log in".to_string();
 
     if is_htmx {
         let content = LoginTemplate { title }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+            HeaderValue::from_str("OpenAgents - Log in").unwrap(),
         );
         response
     } else {
@@ -87,14 +87,14 @@ pub async fn login(headers: HeaderMap) -> Response {
 
 pub async fn signup(headers: HeaderMap) -> Response {
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Sign up";
+    let title = "Sign up".to_string();
 
     if is_htmx {
         let content = SignupTemplate { title }.render().unwrap();
         let mut response = Response::new(content.into());
         response.headers_mut().insert(
             "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
+            HeaderValue::from_str("OpenAgents - Sign up").unwrap(),
         );
         response
     } else {
