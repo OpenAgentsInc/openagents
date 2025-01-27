@@ -1,4 +1,5 @@
-use reqwest::Client;
+use reqwest::{Client, ClientBuilder};
+use std::time::Duration;
 
 use super::types::{FunctionDefinition, Tool};
 
@@ -11,16 +12,26 @@ pub struct DeepSeekService {
 
 impl DeepSeekService {
     pub fn new(api_key: String) -> Self {
+        let client = ClientBuilder::new()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("Failed to create HTTP client");
+
         Self {
-            client: Client::new(),
+            client,
             api_key,
-            base_url: "https://api.deepseek.com".to_string(),
+            base_url: "https://api.deepseek.ai".to_string(),
         }
     }
 
     pub fn with_base_url(api_key: String, base_url: String) -> Self {
+        let client = ClientBuilder::new()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("Failed to create HTTP client");
+
         Self {
-            client: Client::new(),
+            client,
             api_key,
             base_url,
         }
