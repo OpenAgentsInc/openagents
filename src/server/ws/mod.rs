@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::{
     extract::{ws::WebSocket, State, WebSocketUpgrade},
     response::IntoResponse,
+    http::Request,
 };
 use axum_extra::extract::cookie::CookieJar;
 use tracing::{error, info};
@@ -18,8 +19,11 @@ pub mod types;
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<WebSocketState>>,
-    jar: CookieJar,
+    request: Request<axum::body::Body>,
 ) -> impl IntoResponse {
+    // Extract cookies from request
+    let jar = CookieJar::from_headers(request.headers());
+
     // Validate session and get user_id
     match WebSocketState::validate_session(&jar).await {
         Ok(user_id) => {
