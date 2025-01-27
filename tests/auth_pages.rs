@@ -4,14 +4,12 @@ use axum::{
 };
 use tower::ServiceExt;
 
-use openagents::configuration::get_configuration;
 use openagents::server::config::configure_app;
 
 #[tokio::test]
 async fn test_login_page() {
     // Initialize the app
-    let config = get_configuration().expect("Failed to read configuration");
-    let app = configure_app(config).await;
+    let app = configure_app();
 
     // Create a request to the login page
     let request = Request::builder()
@@ -40,8 +38,7 @@ async fn test_login_page() {
 #[tokio::test]
 async fn test_signup_page() {
     // Initialize the app
-    let config = get_configuration().expect("Failed to read configuration");
-    let app = configure_app(config).await;
+    let app = configure_app();
 
     // Create a request to the signup page
     let request = Request::builder()
