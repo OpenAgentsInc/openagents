@@ -86,7 +86,7 @@ impl OIDCConfig {
 
     pub async fn exchange_code(&self, code: String) -> Result<TokenResponse, AuthError> {
         let client = reqwest::Client::new();
-        
+
         let response = client
             .post(&self.token_url)
             .form(&[
@@ -117,7 +117,7 @@ impl OIDCConfig {
     pub async fn authenticate(&self, code: String, pool: &PgPool) -> Result<User, AuthError> {
         // Exchange code for tokens
         let token_response = self.exchange_code(code).await?;
-        
+
         // Extract pseudonym from ID token claims
         let pseudonym = extract_pseudonym(&token_response.id_token)
             .map_err(|_| AuthError::AuthenticationFailed)?;
@@ -153,11 +153,12 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
     let claims = base64::engine::general_purpose::STANDARD
         .decode(parts[1])
         .map_err(|_| AuthError::AuthenticationFailed)?;
-        
-    let claims: serde_json::Value = serde_json::from_slice(&claims)
-        .map_err(|_| AuthError::AuthenticationFailed)?;
 
-    claims["sub"].as_str()
+    let claims: serde_json::Value =
+        serde_json::from_slice(&claims).map_err(|_| AuthError::AuthenticationFailed)?;
+
+    claims["sub"]
+        .as_str()
         .ok_or(AuthError::AuthenticationFailed)
         .map(String::from)
 }
@@ -165,9 +166,9 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
-    use wiremock::matchers::method;
     use serde_json::json;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn test_oidc_config_validation() {
@@ -205,7 +206,7 @@ mod tests {
 
         let auth_url = config.authorization_url();
         let encoded_callback = urlencoding::encode("http://localhost:3000/callback");
-        
+
         assert!(auth_url.starts_with("https://auth.scramble.com/authorize"));
         assert!(auth_url.contains("client_id=client123"));
         assert!(auth_url.contains("response_type=code"));

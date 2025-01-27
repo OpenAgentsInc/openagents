@@ -1,17 +1,17 @@
 use axum::{
     body::Body,
     http::{Request, StatusCode},
-    Router,
     routing::{get, post},
+    Router,
 };
 use serde_json::json;
 use sqlx::PgPool;
 use tower::ServiceExt;
-use wiremock::{MockServer, Mock, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use openagents::server::{
-    handlers::{login, callback, logout, AppState},
+    handlers::{callback, login, logout, AppState},
     services::OIDCConfig,
 };
 
@@ -70,13 +70,21 @@ async fn test_full_auth_flow() {
     // Test login endpoint - should redirect to auth server
     let login_response = app
         .clone()
-        .oneshot(Request::builder().uri("/login").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/login")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     assert_eq!(login_response.status(), StatusCode::TEMPORARY_REDIRECT);
     let location = login_response.headers().get("location").unwrap();
-    assert!(location.to_str().unwrap().starts_with(&format!("{}/authorize", mock_server.uri())));
+    assert!(location
+        .to_str()
+        .unwrap()
+        .starts_with(&format!("{}/authorize", mock_server.uri())));
 
     // Test callback endpoint - should create user and set session
     let callback_response = app
@@ -127,7 +135,7 @@ async fn test_full_auth_flow() {
         .unwrap();
 
     assert_eq!(logout_response.status(), StatusCode::TEMPORARY_REDIRECT);
-    
+
     let logout_cookie = logout_response
         .headers()
         .get("set-cookie")

@@ -8,7 +8,7 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use time::Duration;
-use tracing::{error, info, debug};
+use tracing::{debug, error, info};
 
 use crate::server::services::OIDCConfig;
 
@@ -42,9 +42,7 @@ impl AppState {
     }
 }
 
-pub async fn login(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn login(State(state): State<AppState>) -> impl IntoResponse {
     let auth_url = state.config.authorization_url();
     debug!("Redirecting to auth URL: {}", auth_url);
     Redirect::temporary(&auth_url)
@@ -57,7 +55,9 @@ pub async fn callback(
     debug!("Received callback with code length: {}", params.code.len());
 
     // Exchange code for tokens and get/create user
-    let user = state.config.authenticate(params.code, &state.pool)
+    let user = state
+        .config
+        .authenticate(params.code, &state.pool)
         .await
         .map_err(|e| {
             error!("Authentication error: {}", e.to_string());
@@ -65,7 +65,7 @@ pub async fn callback(
                 StatusCode::from(e.clone()),
                 Json(ErrorResponse {
                     error: e.to_string(),
-                })
+                }),
             )
         })?;
 
@@ -115,14 +115,14 @@ mod tests {
     use axum::{
         body::Body,
         http::Request,
-        Router,
         routing::{get, post},
+        Router,
     };
-    use tower::ServiceExt;
-    use wiremock::{MockServer, Mock, ResponseTemplate};
-    use wiremock::matchers::{method, path};
-    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
     use std::sync::Once;
+    use tower::ServiceExt;
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     static INIT: Once = Once::new();
 
@@ -200,13 +200,18 @@ mod tests {
         // Test login endpoint
         let login_response = app
             .clone()
-            .oneshot(Request::builder().uri("/login").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
         info!("Login response status: {}", login_response.status());
         assert_eq!(login_response.status(), StatusCode::TEMPORARY_REDIRECT);
-        
+
         let location = login_response.headers().get("location").unwrap();
         let location_str = location.to_str().unwrap();
         debug!("Login redirect location: {}", location_str);
@@ -226,7 +231,7 @@ mod tests {
 
         info!("Callback response status: {}", callback_response.status());
         assert_eq!(callback_response.status(), StatusCode::TEMPORARY_REDIRECT);
-        
+
         let cookie = callback_response
             .headers()
             .get("set-cookie")
@@ -248,12 +253,15 @@ mod tests {
 
         info!("Logout response status: {}", logout_response.status());
         assert_eq!(logout_response.status(), StatusCode::TEMPORARY_REDIRECT);
-        
+
         let logout_cookie = logout_response
             .headers()
             .get("set-cookie")
             .expect("Logout cookie missing");
-        debug!("Logout set-cookie header: {}", logout_cookie.to_str().unwrap());
+        debug!(
+            "Logout set-cookie header: {}",
+            logout_cookie.to_str().unwrap()
+        );
         assert!(logout_cookie.to_str().unwrap().contains("Max-Age=0"));
 
         info!("Auth flow test completed successfully");

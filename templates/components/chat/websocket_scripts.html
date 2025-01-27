@@ -46,14 +46,14 @@
 
   document.addEventListener("htmx:wsError", function (evt) {
     console.error("WebSocket error:", evt);
-    
+
     // Show login overlay for connection failures
     document.getElementById("login-overlay").classList.remove("hidden");
-    
+
     // Hide the error section if it was showing
     const errorSection = document.getElementById("error-section");
     errorSection.classList.add("hidden");
-});
+  });
 
   document.addEventListener("htmx:wsBeforeSend", function (evt) {
     // Get the form data
@@ -99,7 +99,11 @@
       console.log("Parsed message data:", data);
 
       // Check for authentication error in the message
-      if (data.type === "error" && (data.message.includes("unauthorized") || data.message.includes("unauthenticated"))) {
+      if (
+        data.type === "error" &&
+        (data.message.includes("unauthorized") ||
+          data.message.includes("unauthenticated"))
+      ) {
         document.getElementById("login-overlay").classList.remove("hidden");
         return;
       }
@@ -309,7 +313,10 @@
 
   function handleErrorMessage(data) {
     // Check if it's an authentication error
-    if (data.message.includes("unauthorized") || data.message.includes("unauthenticated")) {
+    if (
+      data.message.includes("unauthorized") ||
+      data.message.includes("unauthenticated")
+    ) {
       document.getElementById("login-overlay").classList.remove("hidden");
     } else {
       // Show error message for other types of errors

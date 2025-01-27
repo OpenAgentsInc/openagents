@@ -1,4 +1,4 @@
 pub mod auth;
 pub mod user;
 
-pub use auth::{login, callback, logout, AppState};
+pub use auth::{callback, login, logout, AppState};
