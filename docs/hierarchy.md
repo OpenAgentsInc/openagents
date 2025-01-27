@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-24 10:54:53
+Generated on: 2025-01-27 13:35:24
 
 ### Structure
 
@@ -32,15 +32,16 @@ Generated on: 2025-01-24 10:54:53
 |   |-- repomap.md
 |   `-- templates.md
 |-- migrations/
+|   |-- 20240126000000_create_chat_tables.sql
 |   |-- 20250110000000_initial.sql
-|   |-- 20250112001624_create_subscriptions_table.sql
-|   `-- 20250112002000_create_agent_tables.sql
+|   `-- 20250126023641_create_users_table.sql
 |-- scripts/
 |   |-- generate_hierarchy.sh*
 |   |-- init_db.sh*
 |   `-- init_redis.sh*
 |-- src/
 |   |-- bin/
+|   |   |-- chat.rs
 |   |   |-- deepseek-cli.rs
 |   |   `-- repo.rs
 |   |-- repo/
@@ -50,15 +51,32 @@ Generated on: 2025-01-24 10:54:53
 |   |   |-- test.rs
 |   |   `-- types.rs
 |   |-- server/
+|   |   |-- handlers/
+|   |   |   |-- auth.rs
+|   |   |   |-- mod.rs
+|   |   |   `-- user.rs
+|   |   |-- models/
+|   |   |   |-- chat.rs
+|   |   |   |-- mod.rs
+|   |   |   `-- user.rs
 |   |   |-- services/
 |   |   |   |-- deepseek/
+|   |   |   |   |-- methods/
+|   |   |   |   |   |-- chat.rs
+|   |   |   |   |   |-- chat_stream.rs
+|   |   |   |   |   |-- chat_with_tool_response.rs
+|   |   |   |   |   |-- chat_with_tools.rs
+|   |   |   |   |   `-- mod.rs
 |   |   |   |   |-- mod.rs
 |   |   |   |   |-- service.rs
 |   |   |   |   |-- streaming.rs
 |   |   |   |   `-- types.rs
+|   |   |   |-- auth.rs
+|   |   |   |-- chat_database.rs
 |   |   |   |-- github_issue.rs
 |   |   |   |-- github_types.rs
 |   |   |   |-- mod.rs
+|   |   |   |-- model_router.rs
 |   |   |   `-- repomap.rs
 |   |   |-- ws/
 |   |   |   |-- handlers/
@@ -74,7 +92,8 @@ Generated on: 2025-01-24 10:54:53
 |   |-- filters.rs
 |   |-- lib.rs
 |   |-- main.rs
-|   `-- repomap.rs
+|   |-- repomap.rs
+|   `-- routes.rs
 |-- styles/
 |   `-- tailwind.css
 |-- templates/
@@ -86,6 +105,7 @@ Generated on: 2025-01-24 10:54:53
 |   |   |   |-- error_section.html
 |   |   |   |-- head_scripts.html
 |   |   |   |-- header.html
+|   |   |   |-- login_overlay.html
 |   |   |   |-- main_chat.html
 |   |   |   |-- sidebar_left.html
 |   |   |   |-- sidebar_right.html
@@ -115,22 +135,34 @@ Generated on: 2025-01-24 10:54:53
 |   |   |-- services.html
 |   |   |-- solver.html
 |   |   `-- video-series.html
+|   |-- blog_post.html
 |   `-- header.html
 |-- tests/
+|   |-- model_router_service/
+|   |   |-- chat.rs
+|   |   |-- mod.rs
+|   |   |-- routing.rs
+|   |   `-- tool_execution.rs
+|   |-- chat_database.rs
+|   |-- chat_router_integration.rs
 |   |-- deepseek.rs
 |   |-- health_check.rs
+|   |-- model_router.rs
+|   |-- oidc_client.rs
 |   |-- repomap.rs
-|   `-- tool_selection.rs
+|   |-- tool_selection.rs
+|   `-- user.rs
 |-- Cargo.lock
 |-- Cargo.toml
 |-- DEVELOPMENT.md
 |-- Dockerfile
 |-- README.md
+|-- build.rs
 |-- package.json
 |-- pnpm-lock.yaml
 |-- postcss.config.js
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-24 directories, 102 files
+28 directories, 130 files
 ```
