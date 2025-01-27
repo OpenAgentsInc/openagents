@@ -46,11 +46,11 @@ impl WebSocketState {
 
     pub async fn validate_session(cookies: &CookieJar) -> Result<i32, WebSocketError> {
         // Get session cookie
-        let session_cookie = cookies
+        let _session_cookie = cookies
             .get("session")
             .ok_or_else(|| WebSocketError::AuthenticationError("No session cookie found".into()))?;
 
-        // TODO: Validate session and get user_id
+        // TODO: Validate session and get user_id from the session store
         // For now, return a mock user_id
         Ok(1)
     }
