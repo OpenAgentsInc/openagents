@@ -8,12 +8,9 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use time::Duration;
-use tracing::{debug, error};
+use tracing::error;
 
-use crate::server::{
-    models::user::User,
-    services::auth::{AuthError, OIDCConfig},
-};
+use crate::server::services::OIDCConfig;
 
 const SESSION_COOKIE_NAME: &str = "session";
 const SESSION_DURATION_DAYS: i64 = 7;
@@ -60,9 +57,9 @@ pub async fn callback(
     let user = state.config.authenticate(params.code, &state.pool)
         .await
         .map_err(|e| {
-            error!("Authentication error: {}", e);
+            error!("Authentication error: {}", e.to_string());
             (
-                StatusCode::from(e),
+                StatusCode::from(e.clone()),
                 Json(ErrorResponse {
                     error: e.to_string(),
                 })
@@ -129,7 +126,7 @@ mod tests {
         )
         .unwrap();
 
-        // Setup mock responses
+        // Setup mock token endpoint
         Mock::given(method("POST"))
             .and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -142,7 +139,7 @@ mod tests {
             .await;
 
         // Create test database connection
-        let pool = sqlx::PgPool::connect("postgres://postgres:password@localhost/test_db")
+        let pool = sqlx::PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
             .await
             .unwrap();
 
@@ -157,17 +154,18 @@ mod tests {
             .with_state(state);
 
         // Test login endpoint
-        let response = app
+        let login_response = app
             .clone()
             .oneshot(Request::builder().uri("/login").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
-        assert!(response.headers().contains_key("location"));
+        assert_eq!(login_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = login_response.headers().get("location").unwrap();
+        assert!(location.to_str().unwrap().starts_with(&format!("{}/authorize", mock_server.uri())));
 
         // Test callback endpoint
-        let response = app
+        let callback_response = app
             .clone()
             .oneshot(
                 Request::builder()
@@ -178,24 +176,39 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
-        assert!(response.headers().contains_key(SET_COOKIE));
-        assert!(response.headers().contains_key("location"));
+        assert_eq!(callback_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert!(callback_response.headers().contains_key("set-cookie"));
+
+        // Extract session cookie
+        let cookie = callback_response
+            .headers()
+            .get("set-cookie")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
 
         // Test logout endpoint
-        let response = app
+        let logout_response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
                     .uri("/logout")
+                    .header("Cookie", cookie)
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
-        assert!(response.headers().contains_key(SET_COOKIE));
-        assert!(response.headers().contains_key("location"));
+        assert_eq!(logout_response.status(), StatusCode::TEMPORARY_REDIRECT);
+        
+        let logout_cookie = logout_response
+            .headers()
+            .get("set-cookie")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(logout_cookie.contains("Max-Age=0"));
     }
 }
