@@ -4,7 +4,7 @@ use serde_json::json;
 use tracing::{info, Level};
 use tracing_subscriber;
 use wiremock::{
-    matchers::{body_json_schema, header, method, path},
+    matchers::{body_partial_json, header, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -110,6 +110,12 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
             .and(header("content-type", "application/json"))
+            .and(body_partial_json(json!({
+                "messages": [{
+                    "role": "user",
+                    "content": input
+                }]
+            })))
             .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
             .expect(1)  // Expect exactly one call
             .mount(&mock_server)
