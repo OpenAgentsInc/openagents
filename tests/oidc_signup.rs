@@ -42,6 +42,7 @@ async fn setup_test_db() -> PgPool {
 async fn create_test_service(base_url: String) -> OIDCService {
     let config = OIDCConfig::new(
         format!("test_client_{}", Uuid::new_v4()),
+        "test_secret".to_string(),
         "http://localhost:8000/auth/callback".to_string(),
         format!("{}/authorize", base_url),
         format!("{}/token", base_url),
