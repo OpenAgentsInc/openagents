@@ -4,11 +4,26 @@ use wiremock::{
 };
 use serde_json::json;
 use base64::Engine;
+use sqlx::PgPool;
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
 
+async fn setup_test_db() -> PgPool {
+    let pool = PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
+        .await
+        .unwrap();
+
+    // Clean up any existing test data
+    sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    pool
+}
+
 // Helper function to create test service
-fn create_test_service(base_url: String) -> OIDCService {
+async fn create_test_service(base_url: String) -> OIDCService {
     let config = OIDCConfig::new(
         "test_client".to_string(),
         "test_secret".to_string(),
@@ -16,7 +31,7 @@ fn create_test_service(base_url: String) -> OIDCService {
         format!("{}/authorize", base_url),
         format!("{}/token", base_url),
     ).unwrap();
-    let pool = sqlx::Pool::connect_lazy("postgres://postgres:postgres@localhost/test").unwrap();
+    let pool = setup_test_db().await;
     OIDCService::new(pool, config)
 }
 
@@ -42,7 +57,7 @@ fn create_test_token(sub: &str) -> String {
 #[tokio::test]
 async fn test_signup_authorization_url() {
     let mock_server = MockServer::start().await;
-    let service = create_test_service(mock_server.uri());
+    let service = create_test_service(mock_server.uri()).await;
 
     let url = service.authorization_url_for_signup().unwrap();
     
@@ -54,7 +69,7 @@ async fn test_signup_authorization_url() {
 #[tokio::test]
 async fn test_signup_flow() {
     let mock_server = MockServer::start().await;
-    let service = create_test_service(mock_server.uri());
+    let service = create_test_service(mock_server.uri()).await;
 
     // Mock token endpoint
     Mock::given(method("POST"))
@@ -79,7 +94,7 @@ async fn test_signup_flow() {
 #[tokio::test]
 async fn test_duplicate_signup() {
     let mock_server = MockServer::start().await;
-    let service = create_test_service(mock_server.uri());
+    let service = create_test_service(mock_server.uri()).await;
 
     // Mock token endpoint for both requests
     Mock::given(method("POST"))
