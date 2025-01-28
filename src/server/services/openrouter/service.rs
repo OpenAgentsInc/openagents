@@ -12,7 +12,7 @@ use crate::server::services::{
 };
 
 use super::types::{
-    OpenRouterError, OpenRouterMessage, OpenRouterRequest, OpenRouterResponse,
+    OpenRouterConfig, OpenRouterError, OpenRouterMessage, OpenRouterRequest, OpenRouterResponse,
     OpenRouterStreamResponse,
 };
 
@@ -22,6 +22,8 @@ pub struct OpenRouterService {
     client: Client,
     api_key: String,
     base_url: String,
+    config: OpenRouterConfig,
+    conversation_history: Vec<OpenRouterMessage>,
 }
 
 impl OpenRouterService {
@@ -43,7 +45,15 @@ impl OpenRouterService {
             client,
             api_key,
             base_url,
+            config: OpenRouterConfig::default(),
+            conversation_history: Vec::new(),
         })
+    }
+
+    pub fn with_config(config: OpenRouterConfig) -> Result<Self> {
+        let mut service = Self::new()?;
+        service.config = config;
+        Ok(service)
     }
 
     fn is_test_mode(&self) -> bool {
@@ -58,6 +68,22 @@ impl OpenRouterService {
         }
     }
 
+    fn prepare_messages(&mut self, prompt: String) -> Vec<OpenRouterMessage> {
+        let user_message = OpenRouterMessage {
+            role: "user".to_string(),
+            content: prompt,
+            name: None,
+        };
+
+        // Add to history and return full conversation
+        self.conversation_history.push(user_message.clone());
+        self.conversation_history.clone()
+    }
+
+    fn update_history(&mut self, response: &OpenRouterMessage) {
+        self.conversation_history.push(response.clone());
+    }
+
     async fn make_request(&self, request: OpenRouterRequest) -> Result<OpenRouterResponse> {
         if self.is_test_mode() {
             // Return mock response for testing
@@ -67,12 +93,17 @@ impl OpenRouterService {
                 choices: vec![super::types::OpenRouterChoice {
                     message: OpenRouterMessage {
                         role: "assistant".to_string(),
-                        content: request.messages[0].content.clone(),
+                        content: request.messages.last().unwrap().content.clone(),
                         name: None,
                     },
                     finish_reason: Some("stop".to_string()),
                     index: 0,
                 }],
+                usage: Some(super::types::OpenRouterUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                }),
             });
         }
 
@@ -158,31 +189,32 @@ impl Gateway for OpenRouterService {
         }
     }
 
-    async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
-        let messages = vec![OpenRouterMessage {
-            role: "user".to_string(),
-            content: prompt,
-            name: None,
-        }];
+    async fn chat(&mut self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
+        let messages = self.prepare_messages(prompt);
 
         let request = OpenRouterRequest {
             model: self.get_model(use_reasoner),
             messages,
             stream: false,
-            temperature: 0.7,
-            max_tokens: None,
+            temperature: self.config.temperature,
+            max_tokens: self.config.max_tokens,
+            top_p: self.config.top_p,
+            frequency_penalty: self.config.frequency_penalty,
+            presence_penalty: self.config.presence_penalty,
+            stop: self.config.stop.clone(),
         };
 
         let response = self.make_request(request).await?;
         
         if let Some(choice) = response.choices.first() {
+            self.update_history(&choice.message);
             Ok((choice.message.content.clone(), None))
         } else {
             Err(anyhow!("No response from model"))
         }
     }
 
-    async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
+    async fn chat_stream(&mut self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
         let (tx, rx) = mpsc::channel(100);
         
         if self.is_test_mode() {
@@ -197,24 +229,24 @@ impl Gateway for OpenRouterService {
             return rx;
         }
 
+        let messages = self.prepare_messages(prompt);
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let model = self.get_model(use_reasoner);
+        let config = self.config.clone();
 
         tokio::spawn(async move {
-            let messages = vec![OpenRouterMessage {
-                role: "user".to_string(),
-                content: prompt,
-                name: None,
-            }];
-
             let request = OpenRouterRequest {
                 model,
                 messages,
                 stream: true,
-                temperature: 0.7,
-                max_tokens: None,
+                temperature: config.temperature,
+                max_tokens: config.max_tokens,
+                top_p: config.top_p,
+                frequency_penalty: config.frequency_penalty,
+                presence_penalty: config.presence_penalty,
+                stop: config.stop,
             };
 
             let url = format!("{}/chat/completions", base_url);
