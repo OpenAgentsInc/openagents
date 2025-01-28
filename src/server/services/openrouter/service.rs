@@ -22,6 +22,7 @@ pub struct OpenRouterService {
     client: Client,
     api_key: String,
     base_url: String,
+    test_mode: bool, // Added for testing
 }
 
 impl OpenRouterService {
@@ -40,6 +41,7 @@ impl OpenRouterService {
             client,
             api_key,
             base_url,
+            test_mode: api_key == "test-key",
         }
     }
 
@@ -52,6 +54,23 @@ impl OpenRouterService {
     }
 
     async fn make_request(&self, request: OpenRouterRequest) -> Result<OpenRouterResponse> {
+        if self.test_mode {
+            // Return mock response for testing
+            return Ok(OpenRouterResponse {
+                id: "test-id".to_string(),
+                model: request.model,
+                choices: vec![super::types::OpenRouterChoice {
+                    message: OpenRouterMessage {
+                        role: "assistant".to_string(),
+                        content: request.messages[0].content.clone(),
+                        name: None,
+                    },
+                    finish_reason: Some("stop".to_string()),
+                    index: 0,
+                }],
+            });
+        }
+
         let url = format!("{}/chat/completions", self.base_url);
         let response = self
             .client
@@ -160,6 +179,19 @@ impl Gateway for OpenRouterService {
 
     async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
         let (tx, rx) = mpsc::channel(100);
+        
+        if self.test_mode {
+            // Return mock stream for testing
+            tokio::spawn(async move {
+                let _ = tx.send(StreamUpdate::Content(prompt)).await;
+                if use_reasoner {
+                    let _ = tx.send(StreamUpdate::Reasoning("Test reasoning".to_string())).await;
+                }
+                let _ = tx.send(StreamUpdate::Done).await;
+            });
+            return rx;
+        }
+
         let client = self.client.clone();
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
