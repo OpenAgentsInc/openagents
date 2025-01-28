@@ -36,6 +36,11 @@ tests/repomap.rs:
 │fn test_repomap_endpoint
 │fn handle_repomap
 
+tests/gateway.rs:
+│fn test_openrouter_metadata
+│fn test_openrouter_chat
+│fn test_openrouter_stream
+
 tests/user.rs:
 │fn test_user_creation
 
@@ -320,6 +325,18 @@ src/server/handlers/user.rs:
 
 src/server/handlers/mod.rs:
 
+src/server/services/openrouter/types.rs:
+
+src/server/services/openrouter/service.rs:
+│fn new
+│impl Gateway for Gateway
+│impl OpenRouterService for OpenRouterService
+│fn metadata
+│fn chat
+│fn chat_stream
+
+src/server/services/openrouter/mod.rs:
+
 src/server/services/github_issue.rs:
 │fn new
 │fn get_issue
@@ -394,6 +411,13 @@ src/server/services/chat_database.rs:
 
 src/server/services/github_types.rs:
 
+src/server/services/gateway/types.rs:
+
+src/server/services/gateway/mod.rs:
+│trait Gateway
+
+src/server/services/gateway/streaming.rs:
+
 src/server/ws/types.rs:
 │fn fmt
 
@@ -466,3 +490,4 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
+
