@@ -12,6 +12,10 @@ tests/oidc_signup.rs:
 │fn test_signup_flow
 │fn test_duplicate_signup
 
+tests/solver.rs:
+│fn test_branch_creation
+│fn test_pr_creation
+
 tests/oidc_client.rs:
 │fn create_test_token
 │fn test_full_auth_flow
@@ -261,7 +265,6 @@ assets/fonts.css:
 │@font-face
 
 src/bin/solver.rs:
-│fn print_colored
 │fn main
 
 src/bin/deepseek-cli.rs:
@@ -355,6 +358,8 @@ src/server/services/github_issue.rs:
 │fn new
 │fn get_issue
 │fn post_comment
+│fn create_branch
+│fn create_pull_request
 │fn post_github_comment
 
 src/server/services/auth.rs:
@@ -469,6 +474,32 @@ src/repomap.rs:
 │fn extract_class_name
 │fn extract_const_name
 
+src/solver/display.rs:
+│fn print_colored
+│fn flush_stdout
+
+src/solver/solution.rs:
+│fn new
+│fn clone_repository
+│fn generate_repo_map
+│fn cleanup
+
+src/solver/config.rs:
+│fn load
+
+src/solver/mod.rs:
+
+src/solver/github.rs:
+│fn new
+│fn create_branch
+│fn create_pull_request
+│fn post_comment
+│fn get_issue
+
+src/solver/planning.rs:
+│fn new
+│fn generate_plan
+
 src/routes.rs:
 │fn health_check
 │fn home
@@ -504,4 +535,3 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
-
