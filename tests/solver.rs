@@ -18,8 +18,9 @@ async fn test_branch_creation() -> Result<()> {
     let branch_name = format!("solver/issue-{}", issue_number);
     assert_eq!(branch_name, "solver/issue-123");
 
-    // Test branch creation (only in CI with write permissions)
-    if env::var("CI").is_ok() {
+    // Only test actual API calls if explicitly enabled
+    if env::var("RUN_GITHUB_API_TESTS").is_ok() {
+        println!("Testing actual GitHub API calls...");
         github_service
             .create_branch(
                 "OpenAgentsInc",
@@ -28,6 +29,8 @@ async fn test_branch_creation() -> Result<()> {
                 "main",
             )
             .await?;
+    } else {
+        println!("Skipping GitHub API calls - set RUN_GITHUB_API_TESTS=1 to enable");
     }
 
     Ok(())
@@ -56,10 +59,11 @@ async fn test_pr_creation() -> Result<()> {
     assert!(description.contains("Automated solution for issue #123"));
     assert!(description.contains("Implemented by the OpenAgents solver"));
 
-    // Test PR creation (only in CI with write permissions)
-    if env::var("CI").is_ok() {
+    // Only test actual API calls if explicitly enabled
+    if env::var("RUN_GITHUB_API_TESTS").is_ok() {
+        println!("Testing actual GitHub API calls...");
         let test_branch = format!("test/solver/issue-{}", issue_number);
-
+        
         // Create test branch first
         github_service
             .create_branch("OpenAgentsInc", "openagents", &test_branch, "main")
@@ -76,6 +80,8 @@ async fn test_pr_creation() -> Result<()> {
                 &description,
             )
             .await?;
+    } else {
+        println!("Skipping GitHub API calls - set RUN_GITHUB_API_TESTS=1 to enable");
     }
 
     Ok(())
