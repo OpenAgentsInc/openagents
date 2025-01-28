@@ -1,4 +1,4 @@
-use crate::server::services::github_issue::GitHubService;
+use crate::server::services::github_issue::{GitHubComment, GitHubIssue, GitHubService};
 use anyhow::{anyhow, Result};
 
 pub struct GitHubContext {
@@ -55,12 +55,15 @@ impl GitHubContext {
             .await
     }
 
-    pub async fn get_issue(
-        &self,
-        issue_number: i32,
-    ) -> Result<crate::server::services::github_issue::GitHubIssue> {
+    pub async fn get_issue(&self, issue_number: i32) -> Result<GitHubIssue> {
         self.service
             .get_issue(&self.owner, &self.repo, issue_number)
+            .await
+    }
+
+    pub async fn get_issue_comments(&self, issue_number: i32) -> Result<Vec<GitHubComment>> {
+        self.service
+            .get_issue_comments(&self.owner, &self.repo, issue_number)
             .await
     }
 }

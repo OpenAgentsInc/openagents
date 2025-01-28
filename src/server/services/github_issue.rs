@@ -17,6 +17,21 @@ pub struct GitHubIssue {
     pub html_url: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitHubUser {
+    pub login: String,
+    pub id: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitHubComment {
+    pub id: i64,
+    pub body: String,
+    pub user: GitHubUser,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Serialize)]
 struct CommentPayload {
     body: String,
@@ -71,6 +86,37 @@ impl GitHubService {
 
         let issue = response.json::<GitHubIssue>().await?;
         Ok(issue)
+    }
+
+    pub async fn get_issue_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue_number: i32,
+    ) -> Result<Vec<GitHubComment>> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/issues/{}/comments",
+            owner, repo, issue_number
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("User-Agent", "OpenAgents")
+            .header("Accept", "application/vnd.github.v3+json")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Failed to get issue comments: {}",
+                response.status()
+            ));
+        }
+
+        let comments = response.json::<Vec<GitHubComment>>().await?;
+        Ok(comments)
     }
 
     pub async fn post_comment(
