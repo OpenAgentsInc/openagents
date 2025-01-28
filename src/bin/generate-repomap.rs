@@ -77,9 +77,11 @@ async fn main() -> Result<()> {
         bail!("Failed to checkout branch: {}", branch);
     }
 
-    // Generate and store the repository map with additional blacklist item
-    let map = generate_repo_map(&ctx.temp_dir).blacklist(&["assets/main.css"]);
-    fs::write("docs/repomap.md", map.to_string())?;
+    // Generate and store the repository map
+    let mut blacklist = vec!["target", ".git", "node_modules"];
+    blacklist.push("assets/main.css");
+    let map = generate_repo_map(&ctx.temp_dir);
+    fs::write("docs/repomap.md", map)?;
     println!("Repository map saved to docs/repomap.md");
 
     // Clean up at the end
