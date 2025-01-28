@@ -90,19 +90,6 @@ impl OIDCService {
         Self { config, pool }
     }
 
-    #[cfg(test)]
-    pub fn new_with_base_url(base_url: String) -> Self {
-        let config = OIDCConfig::new(
-            "test_client".to_string(),
-            "test_secret".to_string(),
-            "http://localhost:8000/auth/callback".to_string(),
-            format!("{}/authorize", base_url),
-            format!("{}/token", base_url),
-        ).unwrap();
-        let pool = sqlx::Pool::connect_lazy("postgres://postgres:postgres@localhost/test").unwrap();
-        Self::new(pool, config)
-    }
-
     pub fn authorization_url_for_login(&self) -> Result<String, AuthError> {
         let url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
@@ -212,4 +199,23 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
         .as_str()
         .ok_or(AuthError::AuthenticationFailed)
         .map(String::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl OIDCService {
+        pub fn new_with_base_url(base_url: String) -> Self {
+            let config = OIDCConfig::new(
+                "test_client".to_string(),
+                "test_secret".to_string(),
+                "http://localhost:8000/auth/callback".to_string(),
+                format!("{}/authorize", base_url),
+                format!("{}/token", base_url),
+            ).unwrap();
+            let pool = sqlx::Pool::connect_lazy("postgres://postgres:postgres@localhost/test").unwrap();
+            Self::new(pool, config)
+        }
+    }
 }
