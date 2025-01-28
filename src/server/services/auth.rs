@@ -20,6 +20,28 @@ pub struct OIDCConfig {
     pub token_url: String,
 }
 
+impl OIDCConfig {
+    pub fn new(
+        client_id: String,
+        client_secret: String,
+        redirect_uri: String,
+        auth_url: String,
+        token_url: String,
+    ) -> Result<Self, AuthError> {
+        if client_id.is_empty() || client_secret.is_empty() || redirect_uri.is_empty() {
+            return Err(AuthError::InvalidConfig);
+        }
+
+        Ok(Self {
+            client_id,
+            client_secret,
+            redirect_uri,
+            auth_url,
+            token_url,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenResponse {
     access_token: String,
@@ -70,13 +92,13 @@ impl OIDCService {
 
     #[cfg(test)]
     pub fn new_with_base_url(base_url: String) -> Self {
-        let config = OIDCConfig {
-            client_id: "test_client".to_string(),
-            client_secret: "test_secret".to_string(),
-            redirect_uri: "http://localhost:8000/auth/callback".to_string(),
-            auth_url: format!("{}/authorize", base_url),
-            token_url: format!("{}/token", base_url),
-        };
+        let config = OIDCConfig::new(
+            "test_client".to_string(),
+            "test_secret".to_string(),
+            "http://localhost:8000/auth/callback".to_string(),
+            format!("{}/authorize", base_url),
+            format!("{}/token", base_url),
+        ).unwrap();
         let pool = sqlx::Pool::connect_lazy("postgres://postgres:postgres@localhost/test").unwrap();
         Self::new(pool, config)
     }
