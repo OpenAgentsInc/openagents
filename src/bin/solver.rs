@@ -8,9 +8,9 @@ use openagents::{
 };
 use std::env;
 use std::io::{stdout, Write};
+use std::time::Duration;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use tokio::time::timeout;
-use std::time::Duration;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -70,12 +70,12 @@ async fn main() -> Result<()> {
     let issue = github_service
         .get_issue(owner, repo_name, cli.issue)
         .await?;
-    
+
     println!("\nIssue #{}: {}", issue.number, issue.title);
     if let Some(body) = &issue.body {
         println!("Description:\n{}\n", body);
     }
-    
+
     // Define the temporary directory path
     let temp_dir = env::temp_dir().join(format!("solver_{}", cli.issue));
 
@@ -102,7 +102,10 @@ async fn main() -> Result<()> {
     // Create a new branch for the solution (if in live mode)
     let branch_name = format!("solver/issue-{}", cli.issue);
     if cli.live {
-        print_colored(&format!("\nCreating branch '{}'...\n", branch_name), Color::Blue)?;
+        print_colored(
+            &format!("\nCreating branch '{}'...\n", branch_name),
+            Color::Blue,
+        )?;
         // TODO: Implement branch creation
     } else {
         print_colored(
@@ -110,7 +113,7 @@ async fn main() -> Result<()> {
             Color::Yellow,
         )?;
     }
-    
+
     // Analyze issue and generate implementation plan
     let plan_prompt = format!(
         "You are a Rust development expert. Analyze this GitHub issue and repository map to create an implementation plan.\n\n\
@@ -121,21 +124,26 @@ async fn main() -> Result<()> {
         3. Required dependencies or imports\n\
         4. Testing strategy\n\
         Be specific and focus on practical implementation details.",
-        issue.number, 
+        issue.number,
         issue.title,
         issue.body.as_deref().unwrap_or("No description provided"),
         map
     );
 
     print_colored("\nGenerating Implementation Plan:\n", Color::Yellow)?;
-    println!("Sending prompt to DeepSeek ({} chars)...", plan_prompt.len());
-    
+    println!(
+        "Sending prompt to DeepSeek ({} chars)...",
+        plan_prompt.len()
+    );
+
     let mut implementation_plan = String::new();
     let mut in_reasoning = true;
-    let mut stream = deepseek_service.chat_stream(plan_prompt.clone(), true).await;
+    let mut stream = deepseek_service
+        .chat_stream(plan_prompt.clone(), true)
+        .await;
 
     println!("Waiting for DeepSeek response...");
-    
+
     // Set a longer timeout for the entire stream processing
     let stream_timeout = Duration::from_secs(180); // 3 minutes
     match timeout(stream_timeout, async {
@@ -164,7 +172,9 @@ async fn main() -> Result<()> {
                 }
             }
         }
-    }).await {
+    })
+    .await
+    {
         Ok(_) => {
             println!("\nStream processing completed successfully");
         }
@@ -176,7 +186,7 @@ async fn main() -> Result<()> {
     if implementation_plan.is_empty() {
         print_colored("\nWARNING: No implementation plan generated!\n", Color::Red)?;
         print_colored("\nTrying non-streaming API...\n", Color::Yellow)?;
-        
+
         match deepseek_service.chat(plan_prompt, true).await {
             Ok((content, reasoning)) => {
                 if let Some(r) = reasoning {
@@ -207,22 +217,28 @@ async fn main() -> Result<()> {
             .post_comment(owner, repo_name, cli.issue, &comment)
             .await?;
     } else {
-        print_colored("\n[DRY RUN] Would post implementation plan to GitHub:\n", Color::Yellow)?;
+        print_colored(
+            "\n[DRY RUN] Would post implementation plan to GitHub:\n",
+            Color::Yellow,
+        )?;
         println!("{}", implementation_plan);
     }
 
     // TODO: Generate solution
     print_colored("\nGenerating solution...\n", Color::Blue)?;
     // Implementation will go here
-    
+
     // TODO: Track file modifications
     let modified_files: Vec<String> = Vec::new();
-    
+
     if cli.live {
         print_colored("\nCreating pull request...\n", Color::Blue)?;
         // TODO: Implement PR creation
     } else {
-        print_colored("\n[DRY RUN] Summary of changes that would be made:\n", Color::Yellow)?;
+        print_colored(
+            "\n[DRY RUN] Summary of changes that would be made:\n",
+            Color::Yellow,
+        )?;
         if modified_files.is_empty() {
             println!("No files modified yet");
         } else {
