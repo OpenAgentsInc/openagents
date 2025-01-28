@@ -3,7 +3,6 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use time::OffsetDateTime;
 use tracing::{debug, error, info};
 
 use crate::server::models::user::User;
@@ -119,8 +118,7 @@ impl OIDCService {
         let token_response = self.exchange_code(code).await?;
 
         // Extract pseudonym from ID token claims
-        let pseudonym = extract_pseudonym(&token_response.id_token)
-            .map_err(|_| AuthError::AuthenticationFailed)?;
+        let pseudonym = extract_pseudonym(&token_response.id_token)?;
 
         // Get or create user
         let user = sqlx::query_as!(
@@ -150,11 +148,7 @@ impl OIDCService {
         debug!("Received token response");
 
         // Extract pseudonym from ID token claims
-        let pseudonym = extract_pseudonym(&token_response.id_token)
-            .map_err(|e| {
-                error!("Failed to extract pseudonym: {:?}", e);
-                AuthError::AuthenticationFailed
-            })?;
+        let pseudonym = extract_pseudonym(&token_response.id_token)?;
         info!("Extracted pseudonym: {}", pseudonym);
 
         // Check if user already exists
