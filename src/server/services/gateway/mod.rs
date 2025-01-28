@@ -2,10 +2,11 @@ use anyhow::Result;
 use tokio::sync::mpsc;
 
 use super::StreamUpdate;
-use crate::server::services::gateway::types::GatewayMetadata;
 
 pub mod types;
 pub mod streaming;
+
+pub use self::types::GatewayMetadata;
 
 /// Gateway trait defines the common interface that all AI providers must implement
 #[async_trait::async_trait]
