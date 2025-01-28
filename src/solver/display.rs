@@ -13,3 +13,4 @@ pub fn print_colored(text: &str, color: Color) -> Result<()> {
 pub fn flush_stdout() -> Result<()> {
     stdout().flush()?;
     Ok(())
+}
