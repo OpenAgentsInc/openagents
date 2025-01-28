@@ -129,7 +129,6 @@ async fn main() -> Result<()> {
 
     print_colored("\nGenerating Implementation Plan:\n", Color::Yellow)?;
     println!("Sending prompt to DeepSeek ({} chars)...", plan_prompt.len());
-    println!("Using base URL: {}", deepseek_service.base_url);
     
     let mut implementation_plan = String::new();
     let mut in_reasoning = true;
@@ -158,10 +157,6 @@ async fn main() -> Result<()> {
                 }
                 StreamUpdate::Done => {
                     println!("\nDeepSeek response complete");
-                    break;
-                }
-                StreamUpdate::Error(e) => {
-                    println!("\nDeepSeek error: {}", e);
                     break;
                 }
                 _ => {
