@@ -216,29 +216,15 @@ impl OIDCService {
             .await
             .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
 
-        // Check for required id_token field
-        let id_token = json_value.get("id_token").ok_or_else(|| {
-            error!("Response missing required id_token field");
-            AuthError::TokenExchangeFailed("missing field `id_token`".to_string())
-        })?;
+        // Try to parse into TokenResponse first to catch any missing fields
+        let token_response: TokenResponse = serde_json::from_value(json_value)
+            .map_err(|_| AuthError::AuthenticationFailed)?;
 
-        // Check JWT format before proceeding
-        let id_token_str = id_token.as_str().ok_or_else(|| {
-            error!("id_token is not a string");
-            AuthError::TokenExchangeFailed("id_token is not a string".to_string())
-        })?;
-
-        if !is_valid_jwt_format(id_token_str) {
+        // Now validate JWT format
+        if !is_valid_jwt_format(&token_response.id_token) {
             error!("Invalid JWT format in id_token");
             return Err(AuthError::AuthenticationFailed);
         }
-
-        // Now try to parse into TokenResponse
-        let token_response: TokenResponse = serde_json::from_value(json_value)
-            .map_err(|e| {
-                error!("Failed to parse token response: {}", e);
-                AuthError::TokenExchangeFailed(format!("error decoding response body: {}", e))
-            })?;
 
         debug!("Successfully exchanged code for tokens");
         Ok(token_response)
