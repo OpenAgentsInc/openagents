@@ -1,45 +1,19 @@
-use axum::{
-    body::Body,
-    extract::State,
-    http::{Request, StatusCode},
-    response::{IntoResponse, Redirect},
-    routing::get,
-    Router,
-};
+mod common;
+
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use serde_json::json;
 use sqlx::PgPool;
-use tower::ServiceExt;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
-use crate::server::services::auth::{AuthError, OIDCConfig, OIDCService};
-use crate::server::models::user::User;
+// Import the actual types we're testing
+use openagents::server::services::auth::{AuthError, OIDCConfig, OIDCService};
+use openagents::server::models::user::User;
 
-async fn setup_test_db() -> PgPool {
-    let pool = PgPool::connect("postgres://postgres:postgres@localhost:5432/test_db")
-        .await
-        .expect("Failed to connect to test database");
-
-    sqlx::query!(
-        r#"
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            scramble_id VARCHAR(255) UNIQUE NOT NULL,
-            metadata JSONB DEFAULT '{}'::jsonb,
-            last_login_at TIMESTAMP WITH TIME ZONE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        )
-        "#
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to create users table");
-
-    pool
-}
+use crate::common::setup_test_db;
 
 fn create_test_service(mock_server: &MockServer, pool: PgPool) -> OIDCService {
     let config = OIDCConfig::new(
@@ -56,9 +30,9 @@ fn create_test_service(mock_server: &MockServer, pool: PgPool) -> OIDCService {
 
 fn create_test_token(sub: &str) -> String {
     // Create a simple JWT token for testing
-    let header = base64::encode(r#"{"alg":"HS256","typ":"JWT"}"#);
-    let claims = base64::encode(&format!(r#"{{"sub":"{}","iat":1516239022}}"#, sub));
-    let signature = base64::encode("test_signature");
+    let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+    let claims = URL_SAFE_NO_PAD.encode(&format!(r#"{{"sub":"{}","iat":1516239022}}"#, sub));
+    let signature = URL_SAFE_NO_PAD.encode("test_signature");
     format!("{}.{}.{}", header, claims, signature)
 }
 
