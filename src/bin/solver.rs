@@ -142,18 +142,18 @@ async fn main() -> Result<()> {
         while let Some(update) = stream.recv().await {
             match update {
                 StreamUpdate::Reasoning(r) => {
-                    print_colored(&r, Color::Yellow)?;
-                    stdout().flush()?;
+                    let _ = print_colored(&r, Color::Yellow);
+                    let _ = stdout().flush();
                 }
                 StreamUpdate::Content(c) => {
                     if in_reasoning {
                         println!();
-                        print_colored("\nImplementation Plan:\n", Color::Green)?;
+                        let _ = print_colored("\nImplementation Plan:\n", Color::Green);
                         in_reasoning = false;
                     }
                     print!("{}", c);
                     implementation_plan.push_str(&c);
-                    stdout().flush()?;
+                    let _ = stdout().flush();
                 }
                 StreamUpdate::Done => {
                     println!("\nDeepSeek response complete");
@@ -164,13 +164,9 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Ok::<(), std::io::Error>(())
     }).await {
-        Ok(Ok(_)) => {
+        Ok(_) => {
             println!("\nStream processing completed successfully");
-        }
-        Ok(Err(e)) => {
-            print_colored(&format!("\nError processing stream: {}\n", e), Color::Red)?;
         }
         Err(_) => {
             print_colored("\nTimeout waiting for DeepSeek response\n", Color::Red)?;
