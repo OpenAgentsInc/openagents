@@ -5,14 +5,18 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use crate::server::services::{
-    gateway::{Gateway, GatewayMetadata},
+    gateway::Gateway,
     StreamUpdate,
 };
 
 /// OpenRouter service implementation
+#[derive(Debug)]
 pub struct OpenRouterService {
+    #[allow(dead_code)] // Will be used in future implementations
     client: Client,
+    #[allow(dead_code)] // Will be used in future implementations
     api_key: String,
+    #[allow(dead_code)] // Will be used in future implementations
     base_url: String,
 }
 
@@ -38,8 +42,8 @@ impl OpenRouterService {
 
 #[async_trait::async_trait]
 impl Gateway for OpenRouterService {
-    fn metadata(&self) -> GatewayMetadata {
-        GatewayMetadata {
+    fn metadata(&self) -> crate::server::services::gateway::types::GatewayMetadata {
+        crate::server::services::gateway::types::GatewayMetadata {
             name: "OpenRouter".to_string(),
             openai_compatible: true,
             supported_features: vec![
