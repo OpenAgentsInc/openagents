@@ -5,9 +5,7 @@ use std::env;
 
 fn setup() {
     dotenvy::dotenv().ok();
-    if env::var("OPENROUTER_API_KEY").is_err() {
-        env::set_var("OPENROUTER_API_KEY", "test-key");
-    }
+    env::set_var("OPENROUTER_TEST_MODE", "1");
 }
 
 #[tokio::test]
