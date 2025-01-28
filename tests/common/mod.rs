@@ -5,9 +5,15 @@ pub async fn setup_test_db() -> PgPool {
         .await
         .expect("Failed to connect to test database");
 
+    // Drop and recreate the users table to ensure a clean state
+    sqlx::query!("DROP TABLE IF EXISTS users")
+        .execute(&pool)
+        .await
+        .expect("Failed to drop users table");
+
     sqlx::query!(
         r#"
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE users (
             id SERIAL PRIMARY KEY,
             scramble_id VARCHAR(255) UNIQUE NOT NULL,
             metadata JSONB DEFAULT '{}'::jsonb,
