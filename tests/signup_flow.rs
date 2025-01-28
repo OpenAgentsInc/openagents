@@ -64,7 +64,6 @@ async fn test_signup_flow() {
             "expires_in": 3600,
             "id_token": test_token
         })))
-        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -94,7 +93,7 @@ async fn test_duplicate_signup() {
     let pool = setup_test_db().await;
     let service = create_test_service(&mock_server, pool.clone());
 
-    // Setup mock token endpoint
+    // Setup mock token endpoint for both calls
     let test_token = create_test_token("test_user_456");
     Mock::given(method("POST"))
         .and(path("/token"))
@@ -115,6 +114,15 @@ async fn test_duplicate_signup() {
     // Second signup with same pseudonym should fail
     let result = service.signup("test_code".to_string()).await;
     assert!(matches!(result, Err(AuthError::UserAlreadyExists)));
+
+    // Verify only one user exists
+    let count = sqlx::query!("SELECT COUNT(*) as count FROM users")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .count
+        .unwrap();
+    assert_eq!(count, 1);
 }
 
 #[tokio::test]
@@ -127,7 +135,6 @@ async fn test_signup_error_handling() {
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(400).set_body_string("Invalid code"))
-        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -138,7 +145,6 @@ async fn test_signup_error_handling() {
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
-        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -152,12 +158,12 @@ async fn test_signup_error_handling() {
             "access_token": "test_access_token",
             "token_type": "Bearer",
             "expires_in": 3600,
-            "id_token": "invalid.token"
+            "id_token": "not.a.jwt"
         })))
-        .expect(1)
         .mount(&mock_server)
         .await;
 
     let result = service.signup("test_code".to_string()).await;
-    assert!(matches!(result, Err(AuthError::AuthenticationFailed)));
+    assert!(matches!(result, Err(AuthError::AuthenticationFailed)), 
+        "Expected AuthenticationFailed, got {:?}", result);
 }
