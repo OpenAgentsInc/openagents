@@ -111,6 +111,34 @@ impl OIDCService {
         Ok(url)
     }
 
+    pub async fn login(&self, code: String) -> Result<User, AuthError> {
+        // Exchange code for tokens
+        let token_response = self.exchange_code(code).await?;
+
+        // Extract pseudonym from ID token claims
+        let pseudonym = extract_pseudonym(&token_response.id_token)
+            .map_err(|_| AuthError::AuthenticationFailed)?;
+
+        // Get or create user
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            INSERT INTO users (scramble_id, metadata)
+            VALUES ($1, $2)
+            ON CONFLICT (scramble_id) DO UPDATE
+            SET last_login_at = NOW()
+            RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+            "#,
+            pseudonym,
+            serde_json::json!({})
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        Ok(user)
+    }
+
     pub async fn signup(&self, code: String) -> Result<User, AuthError> {
         // Exchange code for tokens
         let token_response = self.exchange_code(code).await?;
