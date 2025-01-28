@@ -81,6 +81,16 @@ impl OIDCService {
         Self::new(pool, config)
     }
 
+    pub fn authorization_url_for_login(&self) -> Result<String, AuthError> {
+        let url = format!(
+            "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
+            self.config.auth_url,
+            self.config.client_id,
+            urlencoding::encode(&self.config.redirect_uri)
+        );
+        Ok(url)
+    }
+
     pub fn authorization_url_for_signup(&self) -> Result<String, AuthError> {
         let mut url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
