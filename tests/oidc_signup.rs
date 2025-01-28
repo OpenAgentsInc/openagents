@@ -9,18 +9,39 @@ use tracing::{debug, info};
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
 
+async fn clean_test_db(pool: &PgPool) {
+    info!("Cleaning up test database");
+    
+    // Drop all existing connections to allow TRUNCATE
+    sqlx::query!("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()")
+        .execute(pool)
+        .await
+        .unwrap();
+
+    // Truncate the table
+    sqlx::query!("TRUNCATE TABLE users RESTART IDENTITY CASCADE")
+        .execute(pool)
+        .await
+        .unwrap();
+
+    // Verify the table is empty
+    let count = sqlx::query!("SELECT COUNT(*) as count FROM users")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+        .count
+        .unwrap_or(0);
+    
+    assert_eq!(count, 0, "Database should be empty after cleanup");
+    info!("Database cleaned successfully");
+}
+
 async fn setup_test_db() -> PgPool {
     let pool = PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
         .await
         .unwrap();
 
-    // Clean up any existing test data
-    info!("Cleaning up test database");
-    sqlx::query!("TRUNCATE TABLE users CASCADE")
-        .execute(&pool)
-        .await
-        .unwrap();
-
+    clean_test_db(&pool).await;
     pool
 }
 
@@ -110,6 +131,16 @@ async fn test_duplicate_signup() {
     let mock_server = MockServer::start().await;
     let service = create_test_service(mock_server.uri()).await;
 
+    // Verify database is empty
+    let pool = &service.pool;
+    let count = sqlx::query!("SELECT COUNT(*) as count FROM users")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+        .count
+        .unwrap_or(0);
+    assert_eq!(count, 0, "Database should be empty at start");
+
     // Mock token endpoint for both requests
     Mock::given(method("POST"))
         .and(path("/token"))
@@ -129,7 +160,6 @@ async fn test_duplicate_signup() {
     assert!(result.is_ok(), "First signup failed: {:?}", result.err());
 
     // Verify first user was created
-    let pool = &service.pool;
     let count = sqlx::query!(
         "SELECT COUNT(*) as count FROM users WHERE scramble_id = $1",
         "test_user_123"
