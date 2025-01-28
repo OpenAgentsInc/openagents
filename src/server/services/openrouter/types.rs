@@ -9,9 +9,17 @@ pub struct OpenRouterRequest {
     pub temperature: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenRouterMessage {
     pub role: String,
     pub content: String,
@@ -34,6 +42,7 @@ pub struct OpenRouterResponse {
     pub id: String,
     pub choices: Vec<OpenRouterChoice>,
     pub model: String,
+    pub usage: Option<OpenRouterUsage>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,4 +82,34 @@ pub struct OpenRouterError {
 pub struct OpenRouterErrorDetail {
     pub message: String,
     pub r#type: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OpenRouterUsage {
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct OpenRouterConfig {
+    pub temperature: f32,
+    pub max_tokens: Option<i32>,
+    pub top_p: Option<f32>,
+    pub frequency_penalty: Option<f32>,
+    pub presence_penalty: Option<f32>,
+    pub stop: Option<Vec<String>>,
+}
+
+impl Default for OpenRouterConfig {
+    fn default() -> Self {
+        Self {
+            temperature: 0.7,
+            max_tokens: None,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop: None,
+        }
+    }
 }
