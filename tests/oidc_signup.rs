@@ -3,6 +3,7 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 use serde_json::json;
+use base64::Engine;
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
 
