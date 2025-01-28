@@ -5,7 +5,8 @@ use wiremock::{
 use serde_json::json;
 use base64::Engine;
 use sqlx::PgPool;
-use tracing::{debug, info};
+use tracing::{debug, info, error};
+use uuid::Uuid;
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
 
@@ -14,21 +15,33 @@ async fn setup_test_db() -> PgPool {
         .await
         .unwrap();
 
-    // Clean up any existing test data
+    // Clean up any existing test data with better error handling
     info!("Cleaning up test database");
-    sqlx::query!("DELETE FROM users")
-        .execute(&pool)
+    match sqlx::query!("DELETE FROM users").execute(&pool).await {
+        Ok(_) => info!("Successfully cleaned up test database"),
+        Err(e) => {
+            error!("Failed to clean up test database: {}", e);
+            panic!("Database cleanup failed: {}", e);
+        }
+    }
+
+    // Verify the cleanup worked
+    let count = sqlx::query!("SELECT COUNT(*) as count FROM users")
+        .fetch_one(&pool)
         .await
-        .unwrap();
+        .unwrap()
+        .count
+        .unwrap_or(0);
+    
+    assert_eq!(count, 0, "Database should be empty after cleanup");
 
     pool
 }
 
-// Helper function to create test service
+// Helper function to create test service with unique client ID
 async fn create_test_service(base_url: String) -> OIDCService {
     let config = OIDCConfig::new(
-        "test_client".to_string(),
-        "test_secret".to_string(),
+        format!("test_client_{}", Uuid::new_v4()),
         "http://localhost:8000/auth/callback".to_string(),
         format!("{}/authorize", base_url),
         format!("{}/token", base_url),
@@ -73,12 +86,18 @@ async fn test_signup_flow() {
     let mock_server = MockServer::start().await;
     let service = create_test_service(mock_server.uri()).await;
 
+    // Start a transaction for test isolation
+    let mut tx = service.pool.begin().await.unwrap();
+
+    // Generate unique test user ID
+    let test_user_id = format!("test_user_{}", Uuid::new_v4());
+
     // Mock token endpoint
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
-            "id_token": create_test_token("test_user_123"),
+            "id_token": create_test_token(&test_user_id),
             "token_type": "Bearer",
             "expires_in": 3600
         })))
@@ -90,19 +109,21 @@ async fn test_signup_flow() {
     assert!(result.is_ok(), "Signup failed: {:?}", result.err());
     
     let user = result.unwrap();
-    assert_eq!(user.scramble_id, "test_user_123");
+    assert_eq!(user.scramble_id, test_user_id);
 
     // Verify user was created
-    let pool = &service.pool;
     let db_user = sqlx::query!(
         "SELECT scramble_id FROM users WHERE scramble_id = $1",
-        "test_user_123"
+        test_user_id
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await
     .unwrap();
 
-    assert_eq!(db_user.scramble_id, "test_user_123");
+    assert_eq!(db_user.scramble_id, test_user_id);
+
+    // Rollback the transaction
+    tx.rollback().await.unwrap();
 }
 
 #[tokio::test]
@@ -110,10 +131,15 @@ async fn test_duplicate_signup() {
     let mock_server = MockServer::start().await;
     let service = create_test_service(mock_server.uri()).await;
 
+    // Start a transaction for test isolation
+    let mut tx = service.pool.begin().await.unwrap();
+
+    // Generate unique test user ID
+    let test_user_id = format!("test_user_{}", Uuid::new_v4());
+
     // Verify database is empty
-    let pool = &service.pool;
     let count = sqlx::query!("SELECT COUNT(*) as count FROM users")
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await
         .unwrap()
         .count
@@ -125,7 +151,7 @@ async fn test_duplicate_signup() {
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
-            "id_token": create_test_token("test_user_123"),
+            "id_token": create_test_token(&test_user_id),
             "token_type": "Bearer",
             "expires_in": 3600
         })))
@@ -141,9 +167,9 @@ async fn test_duplicate_signup() {
     // Verify first user was created
     let count = sqlx::query!(
         "SELECT COUNT(*) as count FROM users WHERE scramble_id = $1",
-        "test_user_123"
+        test_user_id
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await
     .unwrap()
     .count
@@ -158,12 +184,15 @@ async fn test_duplicate_signup() {
     // Verify still only one user exists
     let count = sqlx::query!(
         "SELECT COUNT(*) as count FROM users WHERE scramble_id = $1",
-        "test_user_123"
+        test_user_id
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await
     .unwrap()
     .count
     .unwrap_or(0);
     assert_eq!(count, 1, "Should still be only one user");
+
+    // Rollback the transaction
+    tx.rollback().await.unwrap();
 }
