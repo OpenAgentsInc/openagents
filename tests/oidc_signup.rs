@@ -3,13 +3,27 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 use serde_json::json;
+use sqlx::PgPool;
 
-use openagents::server::services::auth::tests::OIDCService;
+use openagents::server::services::auth::{OIDCService, OIDCConfig};
+
+// Helper function to create test service
+fn create_test_service(base_url: String) -> OIDCService {
+    let config = OIDCConfig::new(
+        "test_client".to_string(),
+        "test_secret".to_string(),
+        "http://localhost:8000/auth/callback".to_string(),
+        format!("{}/authorize", base_url),
+        format!("{}/token", base_url),
+    ).unwrap();
+    let pool = sqlx::Pool::connect_lazy("postgres://postgres:postgres@localhost/test").unwrap();
+    OIDCService::new(pool, config)
+}
 
 #[tokio::test]
 async fn test_signup_authorization_url() {
     let mock_server = MockServer::start().await;
-    let service = OIDCService::new_with_base_url(mock_server.uri());
+    let service = create_test_service(mock_server.uri());
 
     let url = service.authorization_url_for_signup().unwrap();
     
@@ -21,7 +35,7 @@ async fn test_signup_authorization_url() {
 #[tokio::test]
 async fn test_signup_flow() {
     let mock_server = MockServer::start().await;
-    let service = OIDCService::new_with_base_url(mock_server.uri());
+    let service = create_test_service(mock_server.uri());
 
     // Mock token endpoint
     Mock::given(method("POST"))
@@ -46,7 +60,7 @@ async fn test_signup_flow() {
 #[tokio::test]
 async fn test_duplicate_signup() {
     let mock_server = MockServer::start().await;
-    let service = OIDCService::new_with_base_url(mock_server.uri());
+    let service = create_test_service(mock_server.uri());
 
     // Mock token endpoint for first signup
     Mock::given(method("POST"))
