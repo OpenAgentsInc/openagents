@@ -139,7 +139,8 @@ async fn test_signup_error_handling() {
         .await;
 
     let result = service.signup("invalid_code".to_string()).await;
-    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))));
+    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
+        "Expected TokenExchangeFailed, got {:?}", result);
 
     // Test malformed token response
     Mock::given(method("POST"))
@@ -149,7 +150,8 @@ async fn test_signup_error_handling() {
         .await;
 
     let result = service.signup("test_code".to_string()).await;
-    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))));
+    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
+        "Expected TokenExchangeFailed, got {:?}", result);
 
     // Test invalid JWT token
     Mock::given(method("POST"))
@@ -158,7 +160,7 @@ async fn test_signup_error_handling() {
             "access_token": "test_access_token",
             "token_type": "Bearer",
             "expires_in": 3600,
-            "id_token": "not.a.jwt"
+            "id_token": "invalid.jwt"
         })))
         .mount(&mock_server)
         .await;
