@@ -4,12 +4,12 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use serde_json::json;
 use tower::ServiceExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
 
 use openagents::server::{
     handlers::{callback, login, logout, AppState},

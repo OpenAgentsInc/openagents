@@ -7,15 +7,18 @@ This document analyzes common test failures in the OpenAgents codebase, focusing
 ### 1. Tracing Setup Issues
 
 **Problem**: Multiple test failures due to tracing initialization conflicts:
+
 ```
 Unable to install global subscriber: SetGlobalDefaultError("a global default trace dispatcher has already been set")
 ```
 
-**Root Cause**: 
+**Root Cause**:
+
 - Multiple tests trying to initialize the global tracing subscriber
 - Each test file attempting to set up its own tracing configuration
 
 **Solution**:
+
 - Remove tracing setup from individual test files
 - Use a single, global tracing setup in test configuration
 - Consider using test-specific logging that doesn't require global state
@@ -23,22 +26,26 @@ Unable to install global subscriber: SetGlobalDefaultError("a global default tra
 ### 2. Mock Response Handling
 
 **Problem**: Tests failing with unexpected error types:
+
 ```
 Expected AuthenticationFailed, got Err(TokenExchangeFailed("error decoding response body: missing field `id_token` at line 1 column 76"))
 ```
 
 **Root Cause**:
+
 - Incorrect mock response format
 - Error happening at wrong layer (JSON parsing vs JWT validation)
 - Mock responses not matching real OIDC server behavior
 
 **Solution**:
+
 - Always use proper JSON structure in mock responses
 - Match error types to the actual processing layer:
+
   ```rust
   // Bad - returns invalid JSON
   .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
-  
+
   // Good - returns valid JSON missing required field
   .respond_with(ResponseTemplate::new(200).set_body_json(json!({
       "access_token": "test_access_token",
@@ -50,19 +57,22 @@ Expected AuthenticationFailed, got Err(TokenExchangeFailed("error decoding respo
 ### 3. Test Isolation Issues
 
 **Problem**: Tests interfering with each other due to shared state:
+
 - Database records from one test affecting another
 - Mock server expectations carrying over
 - Global state pollution
 
 **Solution**:
+
 - Always clean up test data before and after tests
-- Use unique identifiers per test (e.g., test_user_{unique_id})
+- Use unique identifiers per test (e.g., test*user*{unique_id})
 - Reset mock server between tests
 - Avoid global state
 
 ### 4. Error Handling Flow
 
 **Problem**: Tests asserting wrong error types because error handling happens in wrong order:
+
 ```rust
 // Bad - checks JWT before JSON
 assert!(matches!(result, Err(AuthError::AuthenticationFailed)));
@@ -72,6 +82,7 @@ assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))));
 ```
 
 **Solution**:
+
 - Understand and test the error handling flow:
   1. HTTP errors (400, 500, etc.)
   2. JSON parsing errors
@@ -82,6 +93,7 @@ assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))));
 ## Best Practices
 
 ### 1. Mock Response Structure
+
 ```rust
 // For testing token exchange failures:
 .respond_with(ResponseTemplate::new(400).set_body_json(json!({
@@ -99,22 +111,24 @@ assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))));
 ```
 
 ### 2. Test Database Management
+
 ```rust
 // In common/mod.rs:
 pub async fn setup_test_db() -> PgPool {
     dotenv().ok();
     let pool = PgPool::connect(&database_url).await?;
-    
+
     // Clean up before test
     sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
         .execute(&pool)
         .await?;
-        
+
     pool
 }
 ```
 
 ### 3. Test Organization
+
 ```rust
 #[tokio::test]
 async fn test_signup_error_handling() {
@@ -135,11 +149,13 @@ async fn test_signup_error_handling() {
 1. **Mock Server State**: Each mock response replaces previous ones. Use separate mock servers or reset between tests.
 
 2. **Database Cleanup**: Always clean up test data using patterns that won't affect production data:
+
    ```sql
    DELETE FROM users WHERE scramble_id LIKE 'test_%'
    ```
 
 3. **Error Order**: Test errors in the order they occur in the code:
+
    - Network/HTTP errors
    - Response parsing
    - Token validation
@@ -153,23 +169,26 @@ async fn test_signup_error_handling() {
 ## Testing Strategy
 
 1. **Unit Tests**: Test individual components in isolation
+
    - Mock external services
    - Use in-memory databases when possible
    - Focus on business logic
 
 2. **Integration Tests**: Test complete flows
+
    - Use test databases
    - Mock external services
    - Test error cases thoroughly
 
 3. **Error Cases**: Test all possible error scenarios
+
    - Network errors
    - Invalid responses
    - Business logic errors
    - Edge cases
 
 4. **Test Data**: Use clear patterns for test data
-   - Prefix test data (e.g., test_*)
+   - Prefix test data (e.g., test\_\*)
    - Use meaningful identifiers
    - Clean up after tests
 

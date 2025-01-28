@@ -7,12 +7,12 @@ use sqlx::PgPool;
 use tracing::{info, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
 use wiremock::{
-    matchers::{method, path, body_string_contains},
+    matchers::{body_string_contains, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
-use openagents::server::services::auth::{AuthError, OIDCConfig, OIDCService};
 use openagents::server::models::user::User;
+use openagents::server::services::auth::{AuthError, OIDCConfig, OIDCService};
 
 use crate::common::setup_test_db;
 
@@ -87,7 +87,7 @@ async fn test_signup_flow() {
     // Test successful signup
     let result = service.signup("test_code".to_string()).await;
     assert!(result.is_ok(), "Signup failed: {:?}", result.err());
-    
+
     let user = result.unwrap();
     assert_eq!(user.scramble_id, "test_user_123");
 
@@ -134,12 +134,15 @@ async fn test_duplicate_signup() {
     assert!(matches!(result, Err(AuthError::UserAlreadyExists)));
 
     // Verify only one user exists
-    let count = sqlx::query!("SELECT COUNT(*) as count FROM users WHERE scramble_id = $1", "test_user_456")
-        .fetch_one(&pool)
-        .await
-        .unwrap()
-        .count
-        .unwrap();
+    let count = sqlx::query!(
+        "SELECT COUNT(*) as count FROM users WHERE scramble_id = $1",
+        "test_user_456"
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap()
+    .count
+    .unwrap();
     assert_eq!(count, 1);
 }
 
@@ -167,8 +170,11 @@ async fn test_signup_error_handling() {
 
     let result = service.signup("malformed_test".to_string()).await;
     info!("Got result: {:?}", result);
-    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
-        "Expected TokenExchangeFailed, got {:?}", result);
+    assert!(
+        matches!(result, Err(AuthError::TokenExchangeFailed(_))),
+        "Expected TokenExchangeFailed, got {:?}",
+        result
+    );
 
     // Test invalid token response
     info!("Testing invalid token response");
@@ -184,8 +190,11 @@ async fn test_signup_error_handling() {
 
     let result = service.signup("invalid_code".to_string()).await;
     info!("Got result: {:?}", result);
-    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
-        "Expected TokenExchangeFailed, got {:?}", result);
+    assert!(
+        matches!(result, Err(AuthError::TokenExchangeFailed(_))),
+        "Expected TokenExchangeFailed, got {:?}",
+        result
+    );
 
     // Test invalid JWT token
     info!("Testing invalid JWT token");
@@ -204,6 +213,9 @@ async fn test_signup_error_handling() {
 
     let result = service.signup("jwt_test".to_string()).await;
     info!("Got result: {:?}", result);
-    assert!(matches!(result, Err(AuthError::AuthenticationFailed)), 
-        "Expected AuthenticationFailed, got {:?}", result);
+    assert!(
+        matches!(result, Err(AuthError::AuthenticationFailed)),
+        "Expected AuthenticationFailed, got {:?}",
+        result
+    );
 }

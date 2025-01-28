@@ -1,13 +1,13 @@
+use base64::Engine;
+use serde_json::json;
+use tracing::debug;
+use uuid::Uuid;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
 };
-use serde_json::json;
-use base64::Engine;
-use tracing::debug;
-use uuid::Uuid;
 
-use openagents::server::services::auth::{OIDCService, OIDCConfig};
+use openagents::server::services::auth::{OIDCConfig, OIDCService};
 mod common;
 use common::setup_test_db;
 
@@ -19,7 +19,8 @@ async fn create_test_service(base_url: String) -> OIDCService {
         "http://localhost:8000/auth/callback".to_string(),
         format!("{}/authorize", base_url),
         format!("{}/token", base_url),
-    ).unwrap();
+    )
+    .unwrap();
     let pool = setup_test_db().await;
     OIDCService::new(pool, config)
 }
@@ -28,18 +29,16 @@ async fn create_test_service(base_url: String) -> OIDCService {
 fn create_test_token(sub: &str) -> String {
     // Create a simple JWT token with just the sub claim
     // Header: {"alg":"HS256","typ":"JWT"}
-    let header = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
-        b"{\"alg\":\"HS256\",\"typ\":\"JWT\"}"
-    );
-    
+    let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(b"{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
+
     // Claims: {"sub":"test_user_123"}
-    let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
-        format!("{{\"sub\":\"{}\"}}", sub).as_bytes()
-    );
-    
+    let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(format!("{{\"sub\":\"{}\"}}", sub).as_bytes());
+
     // Signature (not validated in tests)
     let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b"signature");
-    
+
     format!("{}.{}.{}", header, claims, signature)
 }
 
@@ -49,7 +48,7 @@ async fn test_signup_authorization_url() {
     let service = create_test_service(mock_server.uri()).await;
 
     let url = service.authorization_url_for_signup().unwrap();
-    
+
     assert!(url.contains("response_type=code"));
     assert!(url.contains("prompt=create"));
     assert!(url.contains("scope=openid"));
@@ -81,7 +80,7 @@ async fn test_signup_flow() {
     // Test successful signup
     let result = service.signup("test_code".to_string()).await;
     assert!(result.is_ok(), "Signup failed: {:?}", result.err());
-    
+
     let user = result.unwrap();
     assert_eq!(user.scramble_id, test_user_id);
 
@@ -129,7 +128,7 @@ async fn test_duplicate_signup() {
             "token_type": "Bearer",
             "expires_in": 3600
         })))
-        .expect(2)  // Expect two calls
+        .expect(2) // Expect two calls
         .mount(&mock_server)
         .await;
 
@@ -153,7 +152,10 @@ async fn test_duplicate_signup() {
     // Second signup with same pseudonym should fail
     debug!("Attempting duplicate signup");
     let err = service.signup("test_code".to_string()).await.unwrap_err();
-    assert!(matches!(err, openagents::server::services::auth::AuthError::UserAlreadyExists));
+    assert!(matches!(
+        err,
+        openagents::server::services::auth::AuthError::UserAlreadyExists
+    ));
 
     // Verify still only one user exists
     let count = sqlx::query!(

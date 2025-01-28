@@ -1,11 +1,11 @@
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use tower::ServiceExt;
 use wiremock::{
-    Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
+    Mock, MockServer, ResponseTemplate,
 };
 
 use openagents::server::config::configure_app;
@@ -51,7 +51,9 @@ async fn test_login_page() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body(), 16 * 1024 * 1024).await.unwrap();
+    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     // Check for expected content
@@ -103,7 +105,9 @@ async fn test_signup_page() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body(), 16 * 1024 * 1024).await.unwrap();
+    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     // Check for expected content

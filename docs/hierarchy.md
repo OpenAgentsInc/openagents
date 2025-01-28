@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-01-27 13:35:24
+Generated on: 2025-01-27 23:34:02
 
 ### Structure
 
@@ -30,7 +30,9 @@ Generated on: 2025-01-27 13:35:24
 |   |-- hierarchy.md
 |   |-- local-repos.md
 |   |-- repomap.md
-|   `-- templates.md
+|   |-- repomap_generation.md
+|   |-- templates.md
+|   `-- test-failures-analysis.md
 |-- migrations/
 |   |-- 20240126000000_create_chat_tables.sql
 |   |-- 20250110000000_initial.sql
@@ -43,6 +45,7 @@ Generated on: 2025-01-27 13:35:24
 |   |-- bin/
 |   |   |-- chat.rs
 |   |   |-- deepseek-cli.rs
+|   |   |-- generate-repomap.rs
 |   |   `-- repo.rs
 |   |-- repo/
 |   |   |-- analysis.rs
@@ -86,7 +89,8 @@ Generated on: 2025-01-27 13:35:24
 |   |   |   |-- transport.rs
 |   |   |   `-- types.rs
 |   |   |-- config.rs
-|   |   `-- mod.rs
+|   |   |-- mod.rs
+|   |   `-- tools.rs
 |   |-- configuration.rs
 |   |-- database.rs
 |   |-- filters.rs
@@ -101,6 +105,10 @@ Generated on: 2025-01-27 13:35:24
 |   |   |-- dashboard.html
 |   |   `-- login.html
 |   |-- components/
+|   |   |-- auth/
+|   |   |   |-- auth_scripts.html
+|   |   |   |-- error.html
+|   |   |   `-- error_handler.js
 |   |   |-- chat/
 |   |   |   |-- error_section.html
 |   |   |   |-- head_scripts.html
@@ -114,6 +122,7 @@ Generated on: 2025-01-27 13:35:24
 |   |   |-- features.html
 |   |   `-- hero.html
 |   |-- layouts/
+|   |   |-- auth_base.html
 |   |   |-- base.html
 |   |   |-- chat_base.html
 |   |   |-- chat_content.html
@@ -130,26 +139,36 @@ Generated on: 2025-01-27 13:35:24
 |   |   |-- coming-soon.html
 |   |   |-- company.html
 |   |   |-- home.html
+|   |   |-- login.html
 |   |   |-- onyx.html
 |   |   |-- repomap.html
 |   |   |-- services.html
+|   |   |-- signup.html
 |   |   |-- solver.html
 |   |   `-- video-series.html
 |   |-- blog_post.html
 |   `-- header.html
 |-- tests/
+|   |-- common/
+|   |   `-- mod.rs
 |   |-- model_router_service/
 |   |   |-- chat.rs
 |   |   |-- mod.rs
 |   |   |-- routing.rs
 |   |   `-- tool_execution.rs
+|   |-- auth_error_handling.rs
+|   |-- auth_pages.rs
+|   |-- auth_signup_test.rs
 |   |-- chat_database.rs
 |   |-- chat_router_integration.rs
 |   |-- deepseek.rs
 |   |-- health_check.rs
+|   |-- mod.rs
 |   |-- model_router.rs
 |   |-- oidc_client.rs
+|   |-- oidc_signup.rs
 |   |-- repomap.rs
+|   |-- signup_flow.rs
 |   |-- tool_selection.rs
 |   `-- user.rs
 |-- Cargo.lock
@@ -164,5 +183,5 @@ Generated on: 2025-01-27 13:35:24
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-28 directories, 130 files
+30 directories, 147 files
 ```

@@ -64,7 +64,10 @@ pub async fn callback(
 
     // Determine if this is a signup flow
     let is_signup = params.flow.as_deref() == Some("signup");
-    debug!("Callback flow: {}", if is_signup { "signup" } else { "login" });
+    debug!(
+        "Callback flow: {}",
+        if is_signup { "signup" } else { "login" }
+    );
 
     // Use appropriate service method based on flow
     let user = if is_signup {

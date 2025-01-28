@@ -45,11 +45,11 @@ impl OIDCConfig {
             self.client_id,
             urlencoding::encode(&self.redirect_uri)
         );
-        
+
         if is_signup {
             url.push_str("&prompt=create");
         }
-        
+
         url
     }
 }

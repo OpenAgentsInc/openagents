@@ -20,7 +20,7 @@ fn get_current_branch() -> Option<String> {
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .output()
         .ok()?;
-    
+
     if output.status.success() {
         String::from_utf8(output.stdout)
             .ok()
@@ -47,7 +47,10 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Determine which branch to use
-    let branch = cli.branch.or_else(get_current_branch).unwrap_or_else(|| "main".to_string());
+    let branch = cli
+        .branch
+        .or_else(get_current_branch)
+        .unwrap_or_else(|| "main".to_string());
     println!("Using branch: {}", branch);
 
     // Load .env file first

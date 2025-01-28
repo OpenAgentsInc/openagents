@@ -1,11 +1,11 @@
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use tower::ServiceExt;
 use wiremock::{
-    Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
+    Mock, MockServer, ResponseTemplate,
 };
 
 use openagents::server::config::configure_app;
@@ -49,7 +49,9 @@ async fn test_error_component_included() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body(), 16 * 1024 * 1024).await.unwrap();
+    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
     let html = String::from_utf8(body.to_vec()).unwrap();
 
     // Check that error component is present but hidden
@@ -97,7 +99,9 @@ async fn test_error_js_included() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body(), 16 * 1024 * 1024).await.unwrap();
+    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
     let html = String::from_utf8(body.to_vec()).unwrap();
 
     // Check that error handling JS is included
@@ -145,7 +149,9 @@ async fn test_error_component_accessibility() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Get response body
-    let body = to_bytes(response.into_body(), 16 * 1024 * 1024).await.unwrap();
+    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+        .await
+        .unwrap();
     let html = String::from_utf8(body.to_vec()).unwrap();
 
     // Check accessibility attributes

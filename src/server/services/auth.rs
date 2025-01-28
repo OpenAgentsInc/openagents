@@ -152,13 +152,10 @@ impl OIDCService {
         info!("Extracted pseudonym: {}", pseudonym);
 
         // Check if user already exists
-        let existing_user = sqlx::query!(
-            "SELECT id FROM users WHERE scramble_id = $1",
-            pseudonym
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        let existing_user = sqlx::query!("SELECT id FROM users WHERE scramble_id = $1", pseudonym)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
         if existing_user.is_some() {
             debug!("User already exists with pseudonym: {}", pseudonym);
@@ -224,7 +221,9 @@ impl OIDCService {
             })?,
             None => {
                 error!("Response missing required id_token field");
-                return Err(AuthError::TokenExchangeFailed("missing field `id_token`".to_string()));
+                return Err(AuthError::TokenExchangeFailed(
+                    "missing field `id_token`".to_string(),
+                ));
             }
         };
 
@@ -235,12 +234,11 @@ impl OIDCService {
         }
 
         // Now try to parse into TokenResponse
-        let token_response: TokenResponse = serde_json::from_value(json_value.clone())
-            .map_err(|e| {
+        let token_response: TokenResponse =
+            serde_json::from_value(json_value.clone()).map_err(|e| {
                 error!("Failed to parse token response: {}", e);
                 AuthError::TokenExchangeFailed(format!("error decoding response body: {}", e))
             })?;
-
 
         debug!("Successfully exchanged code for tokens");
         Ok(token_response)
@@ -254,7 +252,8 @@ fn is_valid_jwt_format(token: &str) -> bool {
     }
 
     // Try to decode each part as base64
-    for part in &parts[..2] { // Only check header and payload
+    for part in &parts[..2] {
+        // Only check header and payload
         if URL_SAFE_NO_PAD.decode(part).is_err() {
             return false;
         }
@@ -268,22 +267,22 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
     debug!("Extracting pseudonym from token: {}", id_token);
     let parts: Vec<&str> = id_token.split('.').collect();
     if parts.len() != 3 {
-        error!("Invalid token format - expected 3 parts, got {}", parts.len());
+        error!(
+            "Invalid token format - expected 3 parts, got {}",
+            parts.len()
+        );
         return Err(AuthError::AuthenticationFailed);
     }
 
-    let claims = URL_SAFE_NO_PAD
-        .decode(parts[1])
-        .map_err(|e| {
-            error!("Failed to decode claims: {}", e);
-            AuthError::AuthenticationFailed
-        })?;
+    let claims = URL_SAFE_NO_PAD.decode(parts[1]).map_err(|e| {
+        error!("Failed to decode claims: {}", e);
+        AuthError::AuthenticationFailed
+    })?;
 
-    let claims: serde_json::Value =
-        serde_json::from_slice(&claims).map_err(|e| {
-            error!("Failed to parse claims: {}", e);
-            AuthError::AuthenticationFailed
-        })?;
+    let claims: serde_json::Value = serde_json::from_slice(&claims).map_err(|e| {
+        error!("Failed to parse claims: {}", e);
+        AuthError::AuthenticationFailed
+    })?;
 
     debug!("Parsed claims: {:?}", claims);
 

@@ -1,14 +1,13 @@
-use super::services::{
-    deepseek::DeepSeekService,
-    github_issue::GitHubService,
-    RepomapService,
-};
+use super::services::{deepseek::DeepSeekService, github_issue::GitHubService, RepomapService};
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
-use axum::{routing::{get, post}, Router};
+use crate::{routes, server};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
-use crate::{routes, server};
 
 pub fn configure_app() -> Router {
     // Create shared services

@@ -36,7 +36,10 @@ pub fn generate_repo_map_with_blacklist(repo_path: &Path, blacklist: &[&str]) ->
 
     walk_dir(repo_path, &mut |path| {
         // Skip blacklisted paths
-        if blacklist.iter().any(|item| path.to_string_lossy().contains(item)) {
+        if blacklist
+            .iter()
+            .any(|item| path.to_string_lossy().contains(item))
+        {
             return;
         }
 
