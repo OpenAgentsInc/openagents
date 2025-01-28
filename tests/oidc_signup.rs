@@ -9,39 +9,18 @@ use tracing::{debug, info};
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
 
-async fn clean_test_db(pool: &PgPool) {
-    info!("Cleaning up test database");
-    
-    // Terminate other connections
-    sqlx::query!("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()")
-        .fetch_all(pool)
-        .await
-        .unwrap();
-
-    // Truncate the table
-    sqlx::query!("TRUNCATE TABLE users RESTART IDENTITY CASCADE")
-        .execute(pool)
-        .await
-        .unwrap();
-
-    // Verify the table is empty
-    let count = sqlx::query!("SELECT COUNT(*) as count FROM users")
-        .fetch_one(pool)
-        .await
-        .unwrap()
-        .count
-        .unwrap_or(0);
-    
-    assert_eq!(count, 0, "Database should be empty after cleanup");
-    info!("Database cleaned successfully");
-}
-
 async fn setup_test_db() -> PgPool {
     let pool = PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
         .await
         .unwrap();
 
-    clean_test_db(&pool).await;
+    // Clean up any existing test data
+    info!("Cleaning up test database");
+    sqlx::query!("DELETE FROM users")
+        .execute(&pool)
+        .await
+        .unwrap();
+
     pool
 }
 
