@@ -9,9 +9,11 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 
 use openagents::server::{
-    handlers::{callback, login, logout, AppState},
+    handlers::{callback, login, logout, signup, AppState},
     services::OIDCConfig,
 };
 
@@ -27,6 +29,14 @@ async fn setup_test_db() -> PgPool {
         .unwrap();
 
     pool
+}
+
+fn create_test_token(sub: &str) -> String {
+    // Create a simple JWT token for testing
+    let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+    let claims = URL_SAFE_NO_PAD.encode(&format!(r#"{{"sub":"{}","iat":1516239022}}"#, sub));
+    let signature = URL_SAFE_NO_PAD.encode("test_signature");
+    format!("{}.{}.{}", header, claims, signature)
 }
 
 #[tokio::test]
@@ -45,13 +55,14 @@ async fn test_full_auth_flow() {
     .unwrap();
 
     // Setup mock token endpoint
+    let test_token = create_test_token("test_pseudonym");
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
             "token_type": "Bearer",
             "expires_in": 3600,
-            "id_token": "header.eyJzdWIiOiJ0ZXN0X3BzZXVkb255bSJ9.signature"
+            "id_token": test_token
         })))
         .mount(&mock_server)
         .await;
@@ -63,6 +74,7 @@ async fn test_full_auth_flow() {
     let state = AppState::new(config.clone(), pool.clone());
     let app = Router::new()
         .route("/login", get(login))
+        .route("/signup", get(signup))
         .route("/callback", get(callback))
         .route("/logout", post(logout))
         .with_state(state);
@@ -209,14 +221,16 @@ async fn test_duplicate_login() {
     .unwrap();
 
     // Setup mock token endpoint
+    let test_token = create_test_token("test_pseudonym");
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
             "token_type": "Bearer",
             "expires_in": 3600,
-            "id_token": "header.eyJzdWIiOiJ0ZXN0X3BzZXVkb255bSJ9.signature"
+            "id_token": test_token
         })))
+        .expect(2)
         .mount(&mock_server)
         .await;
 
