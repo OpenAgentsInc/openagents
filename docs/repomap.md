@@ -252,6 +252,10 @@ assets/fonts.css:
 │@font-face
 │@font-face
 
+src/bin/solver.rs:
+│fn print_colored
+│fn main
+
 src/bin/deepseek-cli.rs:
 │fn print_colored
 │fn main
@@ -462,4 +466,3 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
-
