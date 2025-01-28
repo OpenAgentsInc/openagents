@@ -6,7 +6,6 @@ tests/tool_selection.rs:
 │fn test_tool_selection
 
 tests/oidc_signup.rs:
-│fn setup_test_db
 │fn create_test_service
 │fn create_test_token
 │fn test_signup_authorization_url
@@ -14,7 +13,6 @@ tests/oidc_signup.rs:
 │fn test_duplicate_signup
 
 tests/oidc_client.rs:
-│fn setup_test_db
 │fn create_test_token
 │fn test_full_auth_flow
 │fn test_invalid_callback
