@@ -539,4 +539,3 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
-

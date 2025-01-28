@@ -109,7 +109,10 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to get issue comments: {}", response.status()));
+            return Err(anyhow!(
+                "Failed to get issue comments: {}",
+                response.status()
+            ));
         }
 
         let comments = response.json::<Vec<GitHubComment>>().await?;

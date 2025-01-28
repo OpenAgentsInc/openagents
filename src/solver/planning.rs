@@ -38,7 +38,7 @@ impl PlanningContext {
         );
 
         print_colored("\nGenerating Implementation Plan:\n", Color::Yellow)?;
-        
+
         // Log the full context being sent to the LLM
         print_colored("\n=== CONTEXT SENT TO LLM ===\n", Color::Cyan)?;
         print_colored("Issue Title: ", Color::Cyan)?;

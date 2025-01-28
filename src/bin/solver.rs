@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
 
     // Generate implementation plan
     let planning = PlanningContext::new()?;
-    
+
     // Include comments in the context for planning
     let comments_context = if !comments.is_empty() {
         let mut context = String::from("\nRelevant comments:\n");
