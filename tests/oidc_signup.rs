@@ -3,7 +3,6 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 use serde_json::json;
-use sqlx::PgPool;
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
 
