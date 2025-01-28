@@ -13,7 +13,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 
 use openagents::server::{
-    handlers::{callback, login, logout, signup, AppState},
+    handlers::{callback, login, logout, AppState},
     services::OIDCConfig,
 };
 
@@ -74,7 +74,6 @@ async fn test_full_auth_flow() {
     let state = AppState::new(config.clone(), pool.clone());
     let app = Router::new()
         .route("/login", get(login))
-        .route("/signup", get(signup))
         .route("/callback", get(callback))
         .route("/logout", post(logout))
         .with_state(state);
