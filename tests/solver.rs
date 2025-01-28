@@ -63,7 +63,7 @@ async fn test_pr_creation() -> Result<()> {
     if env::var("RUN_GITHUB_API_TESTS").is_ok() {
         println!("Testing actual GitHub API calls...");
         let test_branch = format!("test/solver/issue-{}", issue_number);
-        
+
         // Create test branch first
         github_service
             .create_branch("OpenAgentsInc", "openagents", &test_branch, "main")
