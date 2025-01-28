@@ -5,6 +5,7 @@ use wiremock::{
 use serde_json::json;
 use base64::Engine;
 use sqlx::PgPool;
+use tracing::{debug, info};
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
 
@@ -14,6 +15,7 @@ async fn setup_test_db() -> PgPool {
         .unwrap();
 
     // Clean up any existing test data
+    info!("Cleaning up test database");
     sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
         .execute(&pool)
         .await
@@ -110,9 +112,12 @@ async fn test_duplicate_signup() {
         .await;
 
     // First signup should succeed
-    let _ = service.signup("test_code".to_string()).await.unwrap();
+    debug!("Attempting first signup");
+    let result = service.signup("test_code".to_string()).await;
+    assert!(result.is_ok(), "First signup failed: {:?}", result.err());
 
     // Second signup with same pseudonym should fail
+    debug!("Attempting duplicate signup");
     let err = service.signup("test_code".to_string()).await.unwrap_err();
     assert!(matches!(err, openagents::server::services::auth::AuthError::UserAlreadyExists));
 }
