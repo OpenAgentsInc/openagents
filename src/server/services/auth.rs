@@ -228,6 +228,12 @@ impl OIDCService {
             }
         };
 
+        // Validate JWT format after successful parsing
+        if !is_valid_jwt_format(&token_response.id_token) {
+            error!("Invalid JWT format in id_token");
+            return Err(AuthError::AuthenticationFailed);
+        }
+
         // Now try to parse into TokenResponse
         let token_response: TokenResponse = serde_json::from_value(json_value.clone())
             .map_err(|e| {
@@ -235,11 +241,6 @@ impl OIDCService {
                 AuthError::TokenExchangeFailed(format!("error decoding response body: {}", e))
             })?;
 
-        // Validate JWT format after successful parsing
-        if !is_valid_jwt_format(&token_response.id_token) {
-            error!("Invalid JWT format in id_token");
-            return Err(AuthError::AuthenticationFailed);
-        }
 
         debug!("Successfully exchanged code for tokens");
         Ok(token_response)
