@@ -36,6 +36,41 @@ fn print_colored(text: &str, color: Color) -> Result<()> {
     Ok(())
 }
 
+async fn create_branch(
+    github_service: &GitHubService,
+    owner: &str,
+    repo: &str,
+    branch_name: &str,
+) -> Result<()> {
+    // Create branch via GitHub API
+    github_service
+        .create_branch(owner, repo, branch_name, "main")
+        .await?;
+    Ok(())
+}
+
+async fn create_pull_request(
+    github_service: &GitHubService,
+    owner: &str,
+    repo: &str,
+    branch_name: &str,
+    issue_number: i32,
+    implementation_plan: &str,
+) -> Result<()> {
+    let title = format!("Implement solution for #{}", issue_number);
+    let description = format!(
+        "Automated solution for issue #{}\n\n\
+        Implementation Plan:\n{}\n\n\
+        Implemented by the OpenAgents solver.",
+        issue_number, implementation_plan
+    );
+
+    github_service
+        .create_pull_request(owner, repo, branch_name, "main", &title, &description)
+        .await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -106,7 +141,13 @@ async fn main() -> Result<()> {
             &format!("\nCreating branch '{}'...\n", branch_name),
             Color::Blue,
         )?;
-        // TODO: Implement branch creation
+        if let Err(e) = create_branch(&github_service, owner, repo_name, &branch_name).await {
+            print_colored(
+                &format!("\nFailed to create branch: {}\n", e),
+                Color::Red,
+            )?;
+            bail!("Branch creation failed");
+        }
     } else {
         print_colored(
             &format!("\n[DRY RUN] Would create branch '{}'\n", branch_name),
@@ -233,7 +274,22 @@ async fn main() -> Result<()> {
 
     if cli.live {
         print_colored("\nCreating pull request...\n", Color::Blue)?;
-        // TODO: Implement PR creation
+        if let Err(e) = create_pull_request(
+            &github_service,
+            owner,
+            repo_name,
+            &branch_name,
+            cli.issue,
+            &implementation_plan,
+        )
+        .await
+        {
+            print_colored(
+                &format!("\nFailed to create pull request: {}\n", e),
+                Color::Red,
+            )?;
+            bail!("Pull request creation failed");
+        }
     } else {
         print_colored(
             "\n[DRY RUN] Summary of changes that would be made:\n",
