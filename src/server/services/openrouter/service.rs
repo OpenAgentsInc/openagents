@@ -9,8 +9,6 @@ use crate::server::services::{
     StreamUpdate,
 };
 
-use super::types::OpenRouterRequest;
-
 /// OpenRouter service implementation
 pub struct OpenRouterService {
     client: Client,
