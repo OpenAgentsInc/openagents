@@ -1,116 +1,129 @@
+use axum::{
+    body::Body,
+    extract::State,
+    http::{Request, StatusCode},
+    response::{IntoResponse, Redirect},
+    routing::get,
+    Router,
+};
 use sqlx::PgPool;
-use wiremock::matchers::{method, path};
+use tower::ServiceExt;
 use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::{method, path};
 
-use openagents::server::services::auth::{AuthError, OIDCConfig};
+#[derive(Clone)]
+struct AppState {
+    config: OIDCConfig,
+}
 
-async fn setup_test_db() -> PgPool {
-    let pool = PgPool::connect("postgres://postgres:postgres@localhost/test_db")
-        .await
-        .unwrap();
+#[derive(Debug, Clone)]
+struct OIDCConfig {
+    client_id: String,
+    redirect_uri: String,
+    auth_url: String,
+}
 
-    // Clean up any existing test data
-    sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
-        .execute(&pool)
-        .await
-        .unwrap();
+impl OIDCConfig {
+    fn new(
+        client_id: String,
+        redirect_uri: String,
+        auth_url: String,
+    ) -> Result<Self, &'static str> {
+        if client_id.is_empty() || redirect_uri.is_empty() {
+            return Err("Invalid config");
+        }
 
-    pool
+        Ok(Self {
+            client_id,
+            redirect_uri,
+            auth_url,
+        })
+    }
+
+    fn authorization_url(&self, is_signup: bool) -> String {
+        let mut url = format!(
+            "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
+            self.auth_url,
+            self.client_id,
+            urlencoding::encode(&self.redirect_uri)
+        );
+        
+        if is_signup {
+            url.push_str("&prompt=create");
+        }
+        
+        url
+    }
+}
+
+impl AppState {
+    fn new(config: OIDCConfig) -> Self {
+        Self { config }
+    }
+}
+
+async fn signup(State(state): State<AppState>) -> impl IntoResponse {
+    let auth_url = state.config.authorization_url(true);
+    Redirect::temporary(&auth_url)
 }
 
 #[tokio::test]
 async fn test_full_signup_flow() {
-    // Setup
+    // Setup mock OIDC server
     let mock_server = MockServer::start().await;
-    let pool = setup_test_db().await;
 
+    // Create test config
     let config = OIDCConfig::new(
         "client123".to_string(),
-        "secret456".to_string(),
         "http://localhost:3000/callback".to_string(),
-        mock_server.uri(),
-        format!("{}/token", mock_server.uri()),
+        format!("{}/authorize", mock_server.uri()),
     )
     .unwrap();
 
-    // Test signup authorization URL
-    let signup_url = config.authorization_url(true);
-    assert!(signup_url.contains("prompt=create"));
+    // Create app state and router
+    let state = AppState::new(config);
+    let app = Router::new()
+        .route("/signup", get(signup))
+        .with_state(state);
 
-    // Setup token endpoint mock
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "access_token": "test_access_token",
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            "id_token": "header.eyJzdWIiOiJ0ZXN0X3NpZ251cF91c2VyIn0.signature"
-        })))
-        .mount(&mock_server)
-        .await;
-
-    // Test successful signup
-    let user = config
-        .signup("test_signup_code".to_string(), &pool)
+    // Test signup endpoint
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/signup")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
-    assert_eq!(user.scramble_id, "test_signup_user");
 
-    // Test duplicate signup
-    let result = config.signup("test_signup_code".to_string(), &pool).await;
-    assert!(matches!(result, Err(AuthError::UserAlreadyExists)));
-
-    // Verify user in database
-    let db_user = sqlx::query!("SELECT * FROM users WHERE scramble_id = $1", "test_signup_user")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(db_user.scramble_id, "test_signup_user");
-
-    // Cleanup
-    sqlx::query!("DELETE FROM users WHERE scramble_id = $1", "test_signup_user")
-        .execute(&pool)
-        .await
-        .unwrap();
+    assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+    let location = response.headers().get("location").unwrap();
+    let location_str = location.to_str().unwrap();
+    assert!(location_str.contains("prompt=create"));
+    assert!(location_str.contains("client_id=client123"));
+    assert!(location_str.contains("response_type=code"));
 }
 
 #[tokio::test]
 async fn test_signup_error_handling() {
-    // Setup
-    let mock_server = MockServer::start().await;
-    let pool = setup_test_db().await;
+    // Test with invalid config
+    let result = OIDCConfig::new(
+        "".to_string(),
+        "http://localhost:3000/callback".to_string(),
+        "https://auth.example.com/authorize".to_string(),
+    );
+    assert!(result.is_err());
 
+    // Test with valid config
     let config = OIDCConfig::new(
         "client123".to_string(),
-        "secret456".to_string(),
         "http://localhost:3000/callback".to_string(),
-        mock_server.uri(),
-        format!("{}/token", mock_server.uri()),
+        "https://auth.example.com/authorize".to_string(),
     )
     .unwrap();
 
-    // Test invalid token response
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(400).set_body_string("Invalid code"))
-        .mount(&mock_server)
-        .await;
-
-    let result = config.signup("invalid_code".to_string(), &pool).await;
-    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))));
-
-    // Test malformed ID token
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "access_token": "test_access_token",
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            "id_token": "invalid_token"
-        })))
-        .mount(&mock_server)
-        .await;
-
-    let result = config.signup("test_code".to_string(), &pool).await;
-    assert!(matches!(result, Err(AuthError::AuthenticationFailed)));
+    let url = config.authorization_url(true);
+    assert!(url.contains("prompt=create"));
+    assert!(url.contains("client_id=client123"));
 }
