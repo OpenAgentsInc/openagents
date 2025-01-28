@@ -9,6 +9,8 @@ use openagents::{
 use std::env;
 use std::io::{stdout, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+use tokio::time::timeout;
+use std::time::Duration;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -48,6 +50,9 @@ async fn main() -> Result<()> {
         .map_err(|_| anyhow::anyhow!("DEEPSEEK_API_KEY not found in environment or .env file"))?;
     let github_token = env::var("GITHUB_TOKEN")
         .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not found in environment or .env file"))?;
+
+    println!("DeepSeek API key length: {}", api_key.len());
+    println!("GitHub token length: {}", github_token.len());
 
     // Parse repo owner and name
     let repo_parts: Vec<&str> = cli.repo.split('/').collect();
@@ -130,32 +135,47 @@ async fn main() -> Result<()> {
     let mut stream = deepseek_service.chat_stream(plan_prompt, true).await;
 
     println!("Waiting for DeepSeek response...");
-    while let Some(update) = stream.recv().await {
-        match update {
-            StreamUpdate::Reasoning(r) => {
-                print_colored(&r, Color::Yellow)?;
-                stdout().flush()?;
-            }
-            StreamUpdate::Content(c) => {
-                if in_reasoning {
-                    println!();
-                    print_colored("\nImplementation Plan:\n", Color::Green)?;
-                    in_reasoning = false;
+    
+    // Set a longer timeout for the entire stream processing
+    let stream_timeout = Duration::from_secs(180); // 3 minutes
+    match timeout(stream_timeout, async {
+        while let Some(update) = stream.recv().await {
+            match update {
+                StreamUpdate::Reasoning(r) => {
+                    print_colored(&r, Color::Yellow)?;
+                    stdout().flush()?;
                 }
-                print!("{}", c);
-                implementation_plan.push_str(&c);
-                stdout().flush()?;
-            }
-            StreamUpdate::Done => {
-                println!("\nDeepSeek response complete");
-                break;
-            }
-            _ => {
-                println!("Received other update type");
+                StreamUpdate::Content(c) => {
+                    if in_reasoning {
+                        println!();
+                        print_colored("\nImplementation Plan:\n", Color::Green)?;
+                        in_reasoning = false;
+                    }
+                    print!("{}", c);
+                    implementation_plan.push_str(&c);
+                    stdout().flush()?;
+                }
+                StreamUpdate::Done => {
+                    println!("\nDeepSeek response complete");
+                    break;
+                }
+                _ => {
+                    println!("Received other update type");
+                }
             }
         }
+        Ok::<(), std::io::Error>(())
+    }).await {
+        Ok(Ok(_)) => {
+            println!("\nStream processing completed successfully");
+        }
+        Ok(Err(e)) => {
+            print_colored(&format!("\nError processing stream: {}\n", e), Color::Red)?;
+        }
+        Err(_) => {
+            print_colored("\nTimeout waiting for DeepSeek response\n", Color::Red)?;
+        }
     }
-    println!();
 
     if implementation_plan.is_empty() {
         print_colored("\nWARNING: No implementation plan generated!\n", Color::Red)?;
