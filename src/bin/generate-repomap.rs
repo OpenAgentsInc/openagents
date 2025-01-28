@@ -2,7 +2,6 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use dotenvy::dotenv;
 use openagents::repo::{cleanup_temp_dir, clone_repository, RepoContext};
-use openagents::repomap::generate_repo_map;
 use std::env;
 use std::fs;
 use std::process::Command;
@@ -79,7 +78,7 @@ async fn main() -> Result<()> {
 
     // Add assets/main.css to blacklist and generate repository map
     let map = {
-        let mut blacklist = vec!["target", ".git", "node_modules", "assets/main.css"];
+        let blacklist = vec!["target", ".git", "node_modules", "assets/main.css"];
         generate_repo_map_with_blacklist(&ctx.temp_dir, &blacklist)
     };
 
