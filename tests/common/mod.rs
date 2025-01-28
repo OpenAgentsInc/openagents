@@ -1,21 +1,7 @@
 use dotenvy::dotenv;
 use sqlx::PgPool;
-use tracing::{Level};
-use tracing_subscriber::fmt::format::FmtSpan;
 
 pub async fn setup_test_db() -> PgPool {
-    // Initialize logging
-    tracing_subscriber::fmt()
-        .with_max_level(Level::DEBUG)
-        .with_test_writer()
-        .with_span_events(FmtSpan::NONE)
-        .with_target(false)
-        .with_thread_ids(false)
-        .with_thread_names(false)
-        .with_file(false)
-        .with_line_number(false)
-        .init();
-
     // Load environment variables
     dotenv().ok();
 
