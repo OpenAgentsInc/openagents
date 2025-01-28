@@ -1,12 +1,43 @@
 use anyhow::{bail, Result};
+use clap::Parser;
 use dotenvy::dotenv;
 use openagents::repo::{cleanup_temp_dir, clone_repository, RepoContext};
 use openagents::repomap::generate_repo_map;
 use std::env;
 use std::fs;
+use std::process::Command;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Specify which branch to map
+    #[arg(short, long)]
+    branch: Option<String>,
+}
+
+fn get_current_branch() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()?;
+    
+    if output.status.success() {
+        String::from_utf8(output.stdout)
+            .ok()
+            .map(|s| s.trim().to_string())
+    } else {
+        None
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    // Determine which branch to use
+    let branch = cli.branch.or_else(get_current_branch).unwrap_or_else(|| "main".to_string());
+    println!("Using branch: {}", branch);
+
     // Load .env file first
     if let Err(e) = dotenv() {
         bail!("Failed to load .env file: {}", e);
@@ -34,6 +65,17 @@ async fn main() -> Result<()> {
     // Clone the repository
     let repo_url = "https://github.com/OpenAgentsInc/openagents";
     let _repo = clone_repository(repo_url, &ctx.temp_dir)?;
+
+    // Checkout the specified branch
+    let status = Command::new("git")
+        .current_dir(&ctx.temp_dir)
+        .args(["checkout", &branch])
+        .status()
+        .map_err(|e| anyhow::anyhow!("Failed to checkout branch: {}", e))?;
+
+    if !status.success() {
+        bail!("Failed to checkout branch: {}", branch);
+    }
 
     // Add assets/main.css to blacklist and generate repository map
     let map = {
