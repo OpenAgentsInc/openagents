@@ -4,12 +4,12 @@ use wiremock::{
 };
 use serde_json::json;
 use base64::Engine;
-use sqlx::PgPool;
-use tracing::{debug, info, error};
+use tracing::debug;
 use uuid::Uuid;
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
-use crate::common::setup_test_db;
+mod common;
+use common::setup_test_db;
 
 // Helper function to create test service with unique client ID
 async fn create_test_service(base_url: String) -> OIDCService {
