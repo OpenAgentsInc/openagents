@@ -22,7 +22,6 @@ pub struct OpenRouterService {
     client: Client,
     api_key: String,
     base_url: String,
-    test_mode: bool,
 }
 
 impl OpenRouterService {
@@ -42,10 +41,13 @@ impl OpenRouterService {
 
         Ok(Self {
             client,
-            api_key: api_key.clone(),
+            api_key,
             base_url,
-            test_mode: api_key == "test-key",
         })
+    }
+
+    fn is_test_mode(&self) -> bool {
+        self.api_key == "test-key" || std::env::var("OPENROUTER_TEST_MODE").is_ok()
     }
 
     fn get_model(&self, use_reasoner: bool) -> String {
@@ -57,7 +59,7 @@ impl OpenRouterService {
     }
 
     async fn make_request(&self, request: OpenRouterRequest) -> Result<OpenRouterResponse> {
-        if self.test_mode {
+        if self.is_test_mode() {
             // Return mock response for testing
             return Ok(OpenRouterResponse {
                 id: "test-id".to_string(),
@@ -183,7 +185,7 @@ impl Gateway for OpenRouterService {
     async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
         let (tx, rx) = mpsc::channel(100);
         
-        if self.test_mode {
+        if self.is_test_mode() {
             // Return mock stream for testing
             tokio::spawn(async move {
                 let _ = tx.send(StreamUpdate::Content(prompt)).await;
