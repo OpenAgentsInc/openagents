@@ -42,6 +42,9 @@ tests/user.rs:
 
 tests/mod.rs:
 
+tests/common/mod.rs:
+│fn setup_test_db
+
 tests/auth_error_handling.rs:
 │fn test_error_component_included
 │fn test_error_js_included
@@ -57,11 +60,12 @@ tests/model_router.rs:
 │fn test_routing_decision
 
 tests/signup_flow.rs:
-│fn new
-│fn authorization_url
-│fn new
-│fn signup
-│fn test_full_signup_flow
+│fn init_test_logging
+│fn create_test_service
+│fn create_test_token
+│fn test_signup_authorization_url
+│fn test_signup_flow
+│fn test_duplicate_signup
 │fn test_signup_error_handling
 
 tests/deepseek.rs:
