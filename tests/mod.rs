@@ -1,2 +1,1 @@
-mod auth_signup_test;
-mod common;
+pub mod common;
