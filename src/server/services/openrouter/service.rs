@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use futures::StreamExt;
 use reqwest::{Client, ClientBuilder};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -23,7 +24,7 @@ pub struct OpenRouterService {
     api_key: String,
     base_url: String,
     config: OpenRouterConfig,
-    conversation_history: Vec<OpenRouterMessage>,
+    conversation_history: Arc<Mutex<Vec<OpenRouterMessage>>>,
 }
 
 impl OpenRouterService {
@@ -46,7 +47,7 @@ impl OpenRouterService {
             api_key,
             base_url,
             config: OpenRouterConfig::default(),
-            conversation_history: Vec::new(),
+            conversation_history: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
@@ -68,20 +69,21 @@ impl OpenRouterService {
         }
     }
 
-    fn prepare_messages(&mut self, prompt: String) -> Vec<OpenRouterMessage> {
+    fn prepare_messages(&self, prompt: String) -> Vec<OpenRouterMessage> {
         let user_message = OpenRouterMessage {
             role: "user".to_string(),
             content: prompt,
             name: None,
         };
 
-        // Add to history and return full conversation
-        self.conversation_history.push(user_message.clone());
-        self.conversation_history.clone()
+        let mut history = self.conversation_history.lock().unwrap();
+        history.push(user_message.clone());
+        history.clone()
     }
 
-    fn update_history(&mut self, response: &OpenRouterMessage) {
-        self.conversation_history.push(response.clone());
+    fn update_history(&self, response: &OpenRouterMessage) {
+        let mut history = self.conversation_history.lock().unwrap();
+        history.push(response.clone());
     }
 
     async fn make_request(&self, request: OpenRouterRequest) -> Result<OpenRouterResponse> {
@@ -189,7 +191,7 @@ impl Gateway for OpenRouterService {
         }
     }
 
-    async fn chat(&mut self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
+    async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
         let messages = self.prepare_messages(prompt);
 
         let request = OpenRouterRequest {
@@ -214,7 +216,7 @@ impl Gateway for OpenRouterService {
         }
     }
 
-    async fn chat_stream(&mut self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
+    async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
         let (tx, rx) = mpsc::channel(100);
         
         if self.is_test_mode() {
