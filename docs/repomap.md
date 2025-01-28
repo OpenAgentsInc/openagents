@@ -15,6 +15,7 @@ tests/oidc_signup.rs:
 
 tests/oidc_client.rs:
 │fn setup_test_db
+│fn create_test_token
 │fn test_full_auth_flow
 │fn test_invalid_callback
 │fn test_duplicate_login
@@ -333,6 +334,7 @@ src/server/services/auth.rs:
 │fn login
 │fn signup
 │fn exchange_code
+│fn is_valid_jwt_format
 │fn extract_pseudonym
 
 src/server/services/repomap.rs:
