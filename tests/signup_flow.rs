@@ -4,6 +4,8 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde_json::json;
 use sqlx::PgPool;
+use tracing::{info, Level};
+use tracing_subscriber::fmt::format::FmtSpan;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
@@ -13,6 +15,19 @@ use openagents::server::services::auth::{AuthError, OIDCConfig, OIDCService};
 use openagents::server::models::user::User;
 
 use crate::common::setup_test_db;
+
+fn init_test_logging() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
+        .with_test_writer()
+        .with_span_events(FmtSpan::NONE)
+        .with_target(false)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .with_file(false)
+        .with_line_number(false)
+        .try_init();
+}
 
 fn create_test_service(mock_server: &MockServer, pool: PgPool) -> OIDCService {
     let config = OIDCConfig::new(
@@ -37,6 +52,7 @@ fn create_test_token(sub: &str) -> String {
 
 #[tokio::test]
 async fn test_signup_authorization_url() {
+    init_test_logging();
     let mock_server = MockServer::start().await;
     let pool = setup_test_db().await;
     let service = create_test_service(&mock_server, pool);
@@ -50,6 +66,7 @@ async fn test_signup_authorization_url() {
 
 #[tokio::test]
 async fn test_signup_flow() {
+    init_test_logging();
     let mock_server = MockServer::start().await;
     let pool = setup_test_db().await;
     let service = create_test_service(&mock_server, pool.clone());
@@ -89,6 +106,7 @@ async fn test_signup_flow() {
 
 #[tokio::test]
 async fn test_duplicate_signup() {
+    init_test_logging();
     let mock_server = MockServer::start().await;
     let pool = setup_test_db().await;
     let service = create_test_service(&mock_server, pool.clone());
@@ -127,11 +145,14 @@ async fn test_duplicate_signup() {
 
 #[tokio::test]
 async fn test_signup_error_handling() {
+    init_test_logging();
+    info!("Starting error handling test");
     let mock_server = MockServer::start().await;
     let pool = setup_test_db().await;
     let service = create_test_service(&mock_server, pool);
 
     // Test invalid token response
+    info!("Testing invalid token response");
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(400).set_body_string("Invalid code"))
@@ -139,10 +160,12 @@ async fn test_signup_error_handling() {
         .await;
 
     let result = service.signup("invalid_code".to_string()).await;
+    info!("Got result: {:?}", result);
     assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
         "Expected TokenExchangeFailed, got {:?}", result);
 
     // Test malformed token response
+    info!("Testing malformed token response");
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
@@ -150,10 +173,12 @@ async fn test_signup_error_handling() {
         .await;
 
     let result = service.signup("test_code".to_string()).await;
+    info!("Got result: {:?}", result);
     assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
         "Expected TokenExchangeFailed, got {:?}", result);
 
     // Test invalid JWT token
+    info!("Testing invalid JWT token");
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -166,6 +191,7 @@ async fn test_signup_error_handling() {
         .await;
 
     let result = service.signup("test_code".to_string()).await;
+    info!("Got result: {:?}", result);
     assert!(matches!(result, Err(AuthError::AuthenticationFailed)), 
         "Expected AuthenticationFailed, got {:?}", result);
 }
