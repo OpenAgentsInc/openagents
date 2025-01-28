@@ -6,12 +6,9 @@ use axum::{
     routing::get,
     Router,
 };
-use sqlx::PgPool;
 use tower::ServiceExt;
-use wiremock::{Mock, MockServer, ResponseTemplate};
-use wiremock::matchers::{method, path};
+use wiremock::MockServer;
 
-// Import the actual types we need to test
 #[derive(Clone)]
 struct AppState {
     config: OIDCConfig,
