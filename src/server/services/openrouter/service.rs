@@ -1,22 +1,26 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use bytes::Bytes;
+use futures::StreamExt;
 use reqwest::{Client, ClientBuilder};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::server::services::{
     gateway::Gateway,
     StreamUpdate,
 };
 
+use super::types::{
+    OpenRouterError, OpenRouterMessage, OpenRouterRequest, OpenRouterResponse,
+    OpenRouterStreamResponse,
+};
+
 /// OpenRouter service implementation
 #[derive(Debug)]
 pub struct OpenRouterService {
-    #[allow(dead_code)] // Will be used in future implementations
     client: Client,
-    #[allow(dead_code)] // Will be used in future implementations
     api_key: String,
-    #[allow(dead_code)] // Will be used in future implementations
     base_url: String,
 }
 
@@ -37,6 +41,77 @@ impl OpenRouterService {
             api_key,
             base_url,
         }
+    }
+
+    fn get_model(&self, use_reasoner: bool) -> String {
+        if use_reasoner {
+            "anthropic/claude-2".to_string()
+        } else {
+            "openai/gpt-3.5-turbo".to_string()
+        }
+    }
+
+    async fn make_request(&self, request: OpenRouterRequest) -> Result<OpenRouterResponse> {
+        let url = format!("{}/chat/completions", self.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("HTTP-Referer", "https://openagents.com")
+            .header("X-Title", "OpenAgents")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error: OpenRouterError = response.json().await?;
+            return Err(anyhow!(
+                "OpenRouter API error: {} ({})",
+                error.error.message,
+                error.error.r#type
+            ));
+        }
+
+        Ok(response.json().await?)
+    }
+
+    async fn process_stream_chunk(
+        chunk: Bytes,
+        buffer: &mut String,
+        tx: &mpsc::Sender<StreamUpdate>,
+    ) -> Result<bool> {
+        let chunk_str = String::from_utf8_lossy(&chunk);
+        buffer.push_str(&chunk_str);
+
+        let mut done = false;
+        while let Some(pos) = buffer.find('\n') {
+            let line = buffer[..pos].trim().to_string();
+            *buffer = buffer[pos + 1..].to_string();
+
+            if let Some(data) = line.strip_prefix("data: ") {
+                if data == "[DONE]" {
+                    let _ = tx.send(StreamUpdate::Done).await;
+                    done = true;
+                    break;
+                }
+
+                if let Ok(response) = serde_json::from_str::<OpenRouterStreamResponse>(data) {
+                    if let Some(choice) = response.choices.first() {
+                        if let Some(content) = &choice.delta.content {
+                            let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
+                        }
+                        if choice.finish_reason.is_some() {
+                            let _ = tx.send(StreamUpdate::Done).await;
+                            done = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(done)
     }
 }
 
@@ -60,22 +135,97 @@ impl Gateway for OpenRouterService {
     }
 
     async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
-        // For initial implementation, we'll just return the prompt as-is
-        // This allows us to test the interface without actual API calls
-        Ok((prompt, if use_reasoner { Some("Reasoning".to_string()) } else { None }))
+        let messages = vec![OpenRouterMessage {
+            role: "user".to_string(),
+            content: prompt,
+            name: None,
+        }];
+
+        let request = OpenRouterRequest {
+            model: self.get_model(use_reasoner),
+            messages,
+            stream: false,
+            temperature: 0.7,
+            max_tokens: None,
+        };
+
+        let response = self.make_request(request).await?;
+        
+        if let Some(choice) = response.choices.first() {
+            Ok((choice.message.content.clone(), None))
+        } else {
+            Err(anyhow!("No response from model"))
+        }
     }
 
     async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
         let (tx, rx) = mpsc::channel(100);
-        
-        // For initial implementation, just send the prompt as a single message
-        // This allows us to test the interface without actual API calls
+        let client = self.client.clone();
+        let api_key = self.api_key.clone();
+        let base_url = self.base_url.clone();
+        let model = self.get_model(use_reasoner);
+
         tokio::spawn(async move {
-            let _ = tx.send(StreamUpdate::Content(prompt)).await;
-            if use_reasoner {
-                let _ = tx.send(StreamUpdate::Reasoning("Test reasoning".to_string())).await;
+            let messages = vec![OpenRouterMessage {
+                role: "user".to_string(),
+                content: prompt,
+                name: None,
+            }];
+
+            let request = OpenRouterRequest {
+                model,
+                messages,
+                stream: true,
+                temperature: 0.7,
+                max_tokens: None,
+            };
+
+            let url = format!("{}/chat/completions", base_url);
+            let response = client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("HTTP-Referer", "https://openagents.com")
+                .header("X-Title", "OpenAgents")
+                .json(&request)
+                .send()
+                .await;
+
+            match response {
+                Ok(response) => {
+                    if !response.status().is_success() {
+                        if let Ok(error) = response.json::<OpenRouterError>().await {
+                            error!(
+                                "OpenRouter API error: {} ({})",
+                                error.error.message, error.error.r#type
+                            );
+                        }
+                        return;
+                    }
+
+                    let mut stream = response.bytes_stream();
+                    let mut buffer = String::new();
+
+                    while let Some(chunk_result) = stream.next().await {
+                        match chunk_result {
+                            Ok(chunk) => {
+                                if let Ok(true) =
+                                    Self::process_stream_chunk(chunk, &mut buffer, &tx).await
+                                {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!("Stream error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Request error: {}", e);
+                }
             }
-            let _ = tx.send(StreamUpdate::Done).await;
         });
 
         rx
