@@ -6,7 +6,10 @@ pub mod server;
 pub mod solver;
 
 pub use filters::*;
+pub use repo::*;
 pub use repomap::*;
 pub use routes::*;
-pub use server::*;
-pub use solver::*;
+
+// Export server and solver modules without glob to avoid conflicts
+pub use server;
+pub use solver;
