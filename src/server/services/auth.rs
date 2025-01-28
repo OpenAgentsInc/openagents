@@ -2,6 +2,7 @@ use axum::http::StatusCode;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use tracing::{debug, error, info};
 
 use crate::server::models::user::User;
 
@@ -140,12 +141,19 @@ impl OIDCService {
     }
 
     pub async fn signup(&self, code: String) -> Result<User, AuthError> {
+        debug!("Starting signup process with code length: {}", code.len());
+
         // Exchange code for tokens
         let token_response = self.exchange_code(code).await?;
+        debug!("Received token response");
 
         // Extract pseudonym from ID token claims
         let pseudonym = extract_pseudonym(&token_response.id_token)
-            .map_err(|_| AuthError::AuthenticationFailed)?;
+            .map_err(|e| {
+                error!("Failed to extract pseudonym: {:?}", e);
+                AuthError::AuthenticationFailed
+            })?;
+        info!("Extracted pseudonym: {}", pseudonym);
 
         // Check if user already exists
         let existing_user = sqlx::query!(
@@ -157,6 +165,7 @@ impl OIDCService {
         .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
         if existing_user.is_some() {
+            debug!("User already exists with pseudonym: {}", pseudonym);
             return Err(AuthError::UserAlreadyExists);
         }
 
@@ -175,10 +184,12 @@ impl OIDCService {
         .await
         .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
+        info!("Created new user with pseudonym: {}", pseudonym);
         Ok(user)
     }
 
     async fn exchange_code(&self, code: String) -> Result<TokenResponse, AuthError> {
+        debug!("Exchanging code for tokens");
         let client = reqwest::Client::new();
 
         let response = client
@@ -199,32 +210,48 @@ impl OIDCService {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
+            error!("Token exchange failed: {}", error_text);
             return Err(AuthError::TokenExchangeFailed(error_text));
         }
 
-        response
+        let token_response = response
             .json::<TokenResponse>()
             .await
-            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))
+            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
+        debug!("Successfully exchanged code for tokens");
+        Ok(token_response)
     }
 }
 
 // Helper function to extract pseudonym from ID token
 fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
+    debug!("Extracting pseudonym from token: {}", id_token);
     let parts: Vec<&str> = id_token.split('.').collect();
     if parts.len() != 3 {
+        error!("Invalid token format - expected 3 parts, got {}", parts.len());
         return Err(AuthError::AuthenticationFailed);
     }
 
-    let claims = base64::engine::general_purpose::STANDARD
+    let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(parts[1])
-        .map_err(|_| AuthError::AuthenticationFailed)?;
+        .map_err(|e| {
+            error!("Failed to decode claims: {}", e);
+            AuthError::AuthenticationFailed
+        })?;
 
     let claims: serde_json::Value =
-        serde_json::from_slice(&claims).map_err(|_| AuthError::AuthenticationFailed)?;
+        serde_json::from_slice(&claims).map_err(|e| {
+            error!("Failed to parse claims: {}", e);
+            AuthError::AuthenticationFailed
+        })?;
+
+    debug!("Parsed claims: {:?}", claims);
 
     claims["sub"]
         .as_str()
-        .ok_or(AuthError::AuthenticationFailed)
+        .ok_or_else(|| {
+            error!("No 'sub' claim found in token");
+            AuthError::AuthenticationFailed
+        })
         .map(String::from)
 }
