@@ -9,34 +9,7 @@ use tracing::{debug, info, error};
 use uuid::Uuid;
 
 use openagents::server::services::auth::{OIDCService, OIDCConfig};
-
-async fn setup_test_db() -> PgPool {
-    let pool = PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
-        .await
-        .unwrap();
-
-    // Clean up any existing test data with better error handling
-    info!("Cleaning up test database");
-    match sqlx::query!("DELETE FROM users").execute(&pool).await {
-        Ok(_) => info!("Successfully cleaned up test database"),
-        Err(e) => {
-            error!("Failed to clean up test database: {}", e);
-            panic!("Database cleanup failed: {}", e);
-        }
-    }
-
-    // Verify the cleanup worked
-    let count = sqlx::query!("SELECT COUNT(*) as count FROM users")
-        .fetch_one(&pool)
-        .await
-        .unwrap()
-        .count
-        .unwrap_or(0);
-    
-    assert_eq!(count, 0, "Database should be empty after cleanup");
-
-    pool
-}
+use crate::common::setup_test_db;
 
 // Helper function to create test service with unique client ID
 async fn create_test_service(base_url: String) -> OIDCService {

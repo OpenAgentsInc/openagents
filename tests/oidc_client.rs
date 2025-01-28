@@ -16,20 +16,7 @@ use openagents::server::{
     handlers::{callback, login, logout, AppState},
     services::OIDCConfig,
 };
-
-async fn setup_test_db() -> PgPool {
-    let pool = PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
-        .await
-        .unwrap();
-
-    // Clean up any existing test data
-    sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    pool
-}
+use crate::common::setup_test_db;
 
 fn create_test_token(sub: &str) -> String {
     // Create a simple JWT token for testing
