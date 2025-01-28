@@ -8,6 +8,10 @@ lazy_static! {
 }
 
 pub fn generate_repo_map(repo_path: &Path) -> String {
+    generate_repo_map_with_blacklist(repo_path, &[])
+}
+
+pub fn generate_repo_map_with_blacklist(repo_path: &Path, blacklist: &[&str]) -> String {
     let mut parser = Parser::new();
     parser
         .set_language(*RUST_LANGUAGE)
@@ -31,6 +35,11 @@ pub fn generate_repo_map(repo_path: &Path) -> String {
     let mut cursor = QueryCursor::new();
 
     walk_dir(repo_path, &mut |path| {
+        // Skip blacklisted paths
+        if blacklist.iter().any(|item| path.to_string_lossy().contains(item)) {
+            return;
+        }
+
         let ext = path.extension().and_then(|e| e.to_str());
 
         match ext {
