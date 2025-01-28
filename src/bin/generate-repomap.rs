@@ -2,6 +2,7 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use dotenvy::dotenv;
 use openagents::repo::{cleanup_temp_dir, clone_repository, RepoContext};
+use openagents::repomap::generate_repo_map;
 use std::env;
 use std::fs;
 use std::process::Command;
@@ -76,49 +77,13 @@ async fn main() -> Result<()> {
         bail!("Failed to checkout branch: {}", branch);
     }
 
-    // Add assets/main.css to blacklist and generate repository map
-    let map = {
-        let blacklist = vec!["target", ".git", "node_modules", "assets/main.css"];
-        generate_repo_map_with_blacklist(&ctx.temp_dir, &blacklist)
-    };
-
-    // Save the map to docs/repomap.md
-    fs::write("docs/repomap.md", map.as_bytes())?;
+    // Generate and store the repository map with additional blacklist item
+    let map = generate_repo_map(&ctx.temp_dir).blacklist(&["assets/main.css"]);
+    fs::write("docs/repomap.md", map.to_string())?;
     println!("Repository map saved to docs/repomap.md");
 
     // Clean up at the end
     cleanup_temp_dir(&temp_dir);
 
     Ok(())
-}
-
-fn generate_repo_map_with_blacklist(path: &std::path::Path, blacklist: &[&str]) -> String {
-    let mut map = String::new();
-    let mut stack = vec![(path.to_path_buf(), 0)];
-
-    while let Some((current_path, depth)) = stack.pop() {
-        if let Ok(entries) = fs::read_dir(&current_path) {
-            for entry in entries.filter_map(Result::ok) {
-                let path = entry.path();
-                let file_name = path.file_name().unwrap().to_string_lossy();
-
-                // Skip blacklisted items
-                if blacklist.iter().any(|b| file_name.contains(b)) {
-                    continue;
-                }
-
-                // Add indentation
-                map.push_str(&"  ".repeat(depth));
-
-                if path.is_dir() {
-                    map.push_str(&format!("📁 {}/\n", file_name));
-                    stack.push((path, depth + 1));
-                } else {
-                    map.push_str(&format!("📄 {}\n", file_name));
-                }
-            }
-        }
-    }
-
-    map
 }
