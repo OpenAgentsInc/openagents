@@ -1,7 +1,9 @@
 use axum::http::StatusCode;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use time::OffsetDateTime;
 use tracing::{debug, error, info};
 
 use crate::server::models::user::User;
@@ -131,7 +133,7 @@ impl OIDCService {
             RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
             "#,
             pseudonym,
-            serde_json::json!({})
+            serde_json::json!({}) as _
         )
         .fetch_one(&self.pool)
         .await
@@ -178,7 +180,7 @@ impl OIDCService {
             RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
             "#,
             pseudonym,
-            serde_json::json!({})
+            serde_json::json!({}) as _
         )
         .fetch_one(&self.pool)
         .await
@@ -232,7 +234,7 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
         return Err(AuthError::AuthenticationFailed);
     }
 
-    let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+    let claims = URL_SAFE_NO_PAD
         .decode(parts[1])
         .map_err(|e| {
             error!("Failed to decode claims: {}", e);
