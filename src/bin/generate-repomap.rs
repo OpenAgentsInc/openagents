@@ -5,6 +5,7 @@ use openagents::repo::{cleanup_temp_dir, clone_repository, RepoContext};
 use openagents::repomap::generate_repo_map;
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 #[derive(Parser)]
@@ -28,6 +29,11 @@ fn get_current_branch() -> Option<String> {
     } else {
         None
     }
+}
+
+fn should_skip_path(path: &Path, blacklist: &[&str]) -> bool {
+    let path_str = path.to_string_lossy();
+    blacklist.iter().any(|item| path_str.contains(item))
 }
 
 #[tokio::main]
@@ -78,9 +84,9 @@ async fn main() -> Result<()> {
     }
 
     // Generate and store the repository map
-    let mut blacklist = vec!["target", ".git", "node_modules"];
-    blacklist.push("assets/main.css");
-    let map = generate_repo_map(&ctx.temp_dir);
+    let blacklist = vec!["target", ".git", "node_modules", "assets/main.css"];
+    let mut map = String::new();
+    walk_dir(&ctx.temp_dir, &blacklist, 0, &mut map);
     fs::write("docs/repomap.md", map)?;
     println!("Repository map saved to docs/repomap.md");
 
@@ -88,4 +94,29 @@ async fn main() -> Result<()> {
     cleanup_temp_dir(&temp_dir);
 
     Ok(())
+}
+
+fn walk_dir(dir: &Path, blacklist: &[&str], depth: usize, output: &mut String) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            
+            // Skip blacklisted paths
+            if should_skip_path(&path, blacklist) {
+                continue;
+            }
+
+            // Add indentation
+            output.push_str(&"  ".repeat(depth));
+
+            let file_name = path.file_name().unwrap().to_string_lossy();
+            
+            if path.is_dir() {
+                output.push_str(&format!("📁 {}/\n", file_name));
+                walk_dir(&path, blacklist, depth + 1, output);
+            } else {
+                output.push_str(&format!("📄 {}\n", file_name));
+            }
+        }
+    }
 }
