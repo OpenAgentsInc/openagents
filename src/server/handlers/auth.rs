@@ -18,6 +18,7 @@ const SESSION_DURATION_DAYS: i64 = 7;
 #[derive(Debug, Deserialize)]
 pub struct CallbackParams {
     code: String,
+    flow: Option<String>, // Optional flow parameter to distinguish login vs signup
 }
 
 #[derive(Debug, Serialize)]
@@ -61,20 +62,25 @@ pub async fn callback(
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     debug!("Received callback with code length: {}", params.code.len());
 
-    // Exchange code for tokens and get/create user
-    let user = state
-        .service
-        .login(params.code)
-        .await
-        .map_err(|e| {
-            error!("Authentication error: {}", e.to_string());
-            (
-                StatusCode::from(e.clone()),
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            )
-        })?;
+    // Determine if this is a signup flow
+    let is_signup = params.flow.as_deref() == Some("signup");
+    debug!("Callback flow: {}", if is_signup { "signup" } else { "login" });
+
+    // Use appropriate service method based on flow
+    let user = if is_signup {
+        state.service.signup(params.code).await
+    } else {
+        state.service.login(params.code).await
+    }
+    .map_err(|e| {
+        error!("Authentication error: {}", e.to_string());
+        (
+            StatusCode::from(e.clone()),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     info!("User authenticated with scramble_id: {}", user.scramble_id);
 
