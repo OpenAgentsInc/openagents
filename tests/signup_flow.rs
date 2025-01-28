@@ -151,33 +151,7 @@ async fn test_signup_error_handling() {
     let pool = setup_test_db().await;
     let service = create_test_service(&mock_server, pool);
 
-    // Test invalid token response
-    info!("Testing invalid token response");
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(400).set_body_string("Invalid code"))
-        .mount(&mock_server)
-        .await;
-
-    let result = service.signup("invalid_code".to_string()).await;
-    info!("Got result: {:?}", result);
-    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
-        "Expected TokenExchangeFailed, got {:?}", result);
-
-    // Test malformed token response
-    info!("Testing malformed token response");
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
-        .mount(&mock_server)
-        .await;
-
-    let result = service.signup("test_code".to_string()).await;
-    info!("Got result: {:?}", result);
-    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
-        "Expected TokenExchangeFailed, got {:?}", result);
-
-    // Test invalid JWT token
+    // Test invalid JWT token first
     info!("Testing invalid JWT token");
     Mock::given(method("POST"))
         .and(path("/token"))
@@ -194,4 +168,30 @@ async fn test_signup_error_handling() {
     info!("Got result: {:?}", result);
     assert!(matches!(result, Err(AuthError::AuthenticationFailed)), 
         "Expected AuthenticationFailed, got {:?}", result);
+
+    // Test malformed token response
+    info!("Testing malformed token response");
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+        .mount(&mock_server)
+        .await;
+
+    let result = service.signup("test_code".to_string()).await;
+    info!("Got result: {:?}", result);
+    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
+        "Expected TokenExchangeFailed, got {:?}", result);
+
+    // Test invalid token response
+    info!("Testing invalid token response");
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(ResponseTemplate::new(400).set_body_string("Invalid code"))
+        .mount(&mock_server)
+        .await;
+
+    let result = service.signup("invalid_code".to_string()).await;
+    info!("Got result: {:?}", result);
+    assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
+        "Expected TokenExchangeFailed, got {:?}", result);
 }
