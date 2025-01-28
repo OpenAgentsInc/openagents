@@ -38,8 +38,19 @@ impl PlanningContext {
         );
 
         print_colored("\nGenerating Implementation Plan:\n", Color::Yellow)?;
+        
+        // Log the full context being sent to the LLM
+        print_colored("\n=== CONTEXT SENT TO LLM ===\n", Color::Cyan)?;
+        print_colored("Issue Title: ", Color::Cyan)?;
+        println!("{}", title);
+        print_colored("Issue Number: ", Color::Cyan)?;
+        println!("#{}", issue_number);
+        print_colored("\nFull Context (including comments):\n", Color::Cyan)?;
+        println!("{}", body);
+        print_colored("\n=== END CONTEXT ===\n", Color::Cyan)?;
+
         println!(
-            "Sending prompt to OpenRouter ({} chars)...",
+            "\nSending prompt to OpenRouter ({} chars)...",
             plan_prompt.len()
         );
 
