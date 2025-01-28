@@ -1,380 +1,184 @@
-tests/tool_selection.rs:
-│fn test_tool_selection
-
-tests/oidc_client.rs:
-│fn setup_test_db
-│fn test_full_auth_flow
-│fn test_invalid_callback
-│fn test_duplicate_login
-
-tests/model_router_service/mod.rs:
-│fn init_logging
-│fn create_test_tools
-│fn create_mock_router
-
-tests/model_router_service/tool_execution.rs:
-│fn test_model_router_tool_execution
-
-tests/model_router_service/routing.rs:
-│fn test_model_router_service
-
-tests/model_router_service/chat.rs:
-│fn test_model_router_chat
-
-tests/repomap.rs:
-│fn test_repomap_endpoint
-│fn handle_repomap
-
-tests/user.rs:
-│fn test_user_creation
-
-tests/chat_router_integration.rs:
-│fn init_logging
-│fn create_test_tools
-│fn test_chat_router_integration
-│fn test_chat_router_streaming
-
-tests/model_router.rs:
-│fn test_routing_decision
-
-tests/deepseek.rs:
-│fn test_chat_basic
-│fn test_chat_with_reasoning
-│fn test_chat_with_tools
-
-tests/health_check.rs:
-│fn health_check_works
-
-tests/chat_database.rs:
-│fn test_chat_persistence
-
-build.rs:
-│fn main
-
-styles/tailwind.css:
-│@layer base
-│pre
-│pre code
-│code:not(pre code)
-│textarea
-│textarea:focus
-│@layer components
-│.prose-custom-dark
-
-templates/blog_post.html:
-
-templates/admin/login.html:
-│<body>
-│<head>
-│#id: bg
-│#id: error-message
-
-templates/admin/dashboard.html:
-│<body>
-│<head>
-│#id: bg
-│#id: solver-progress
-│#id: solver-status
-│#id: solver-result
-
-templates/macros/blog.html:
-
-templates/macros/video.html:
-
-templates/macros/blog_post.html:
-
-templates/macros/ui.html:
-
-templates/macros/nav.html:
-
-templates/components/hero.html:
-
-templates/components/chat/error_section.html:
-│#id: error-section
-│#id: error-message
-
-templates/components/chat/head_scripts.html:
-
-templates/components/chat/login_overlay.html:
-│#id: login-overlay
-
-templates/components/chat/sidebar_right.html:
-
-templates/components/chat/sidebar_left.html:
-
-templates/components/chat/templates.html:
-│#id: message-template
-│#id: ai-icon-template
-│#id: user-icon-template
-
-templates/components/chat/main_chat.html:
-│#id: chat-messages
-│#id: input
-│#id: submit-button
-
-templates/components/chat/websocket_scripts.html:
-
-templates/components/chat/header.html:
-
-templates/components/features.html:
-
-templates/layouts/chat_base.html:
-│<body>
-│<head>
-
-templates/layouts/base.html:
-│<body>
-│<head>
-
-templates/layouts/chat_content.html:
-│#id: chat-messages
-
-templates/layouts/content.html:
-│#id: content
-
-templates/pages/onyx.html:
-
-templates/pages/home.html:
-
-templates/pages/repomap.html:
-│#id: repo_url
-│#id: submit-button
-│#id: loading
-│#id: repomap-result
-
-templates/pages/video-series.html:
-
-templates/pages/404.html:
-
-templates/pages/solver.html:
-│#id: issue_url
-│#id: submit-button
-│#id: loading
-│#id: solver-container
-│#id: progress-section
-│#id: progress-bar
-│#id: solver-status
-│#id: files-section
-│#id: files-list
-│#id: files-reasoning
-│#id: solution-section
-│#id: solution-reasoning
-│#id: solution-code
-│#id: error-section
-│#id: error-message
-
-templates/pages/coming-soon.html:
-
-templates/pages/company.html:
-
-templates/pages/services.html:
-
-templates/pages/chat.html:
-
-templates/header.html:
-
-postcss.config.js:
-
-src/bin/deepseek-cli.rs:
-│fn print_colored
-│fn main
-
-src/bin/repo.rs:
-│fn print_colored
-│fn main
-
-src/bin/chat.rs:
-│fn print_colored
-│fn main
-
-src/database.rs:
-│fn get_connection_pool
-│fn migrate_database
-
-src/lib.rs:
-
-src/configuration.rs:
-│impl Default for Default
-│impl DatabaseSettings for DatabaseSettings
-│fn default
-│fn connect_options
-│fn default_admin_token
-│fn default_password
-│fn default_port
-│fn default_true
-│fn get_configuration
-│fn as_str
-│fn try_from
-
-src/server/config.rs:
-│fn create_tools
-│fn configure_app
-
-src/server/models/user.rs:
-
-src/server/models/mod.rs:
-
-src/server/models/chat.rs:
-│fn new
-│fn new
-
-src/server/mod.rs:
-
-src/server/handlers/auth.rs:
-│fn new
-│fn login
-│fn callback
-│fn logout
-│fn setup_logging
-│fn test_auth_flow
-│fn test_invalid_callback
-│fn test_duplicate_login
-
-src/server/handlers/user.rs:
-│fn create_user
-
-src/server/handlers/mod.rs:
-
-src/server/services/github_issue.rs:
-│fn new
-│fn get_issue
-│fn post_comment
-│fn post_github_comment
-
-src/server/services/auth.rs:
-│fn fmt
-│fn from
-│fn new
-│fn authorization_url
-│fn exchange_code
-│fn authenticate
-│fn extract_pseudonym
-│fn test_oidc_config_validation
-│fn test_authorization_url_generation
-│fn test_token_exchange
-
-src/server/services/repomap.rs:
-│fn new
-│fn with_base_url
-│fn generate_repomap
-
-src/server/services/deepseek/types.rs:
-│fn from
-
-src/server/services/deepseek/methods/chat_with_tool_response.rs:
-│fn chat_with_tool_response
-
-src/server/services/deepseek/methods/chat_stream.rs:
-│fn chat_stream
-│fn process_chunk
-
-src/server/services/deepseek/methods/mod.rs:
-
-src/server/services/deepseek/methods/chat_with_tools.rs:
-│fn chat_with_tools
-│fn chat_with_tools_messages
-
-src/server/services/deepseek/methods/chat.rs:
-│fn chat
-│fn chat_internal
-
-src/server/services/deepseek/service.rs:
-│fn new
-│fn with_base_url
-│fn create_tool
-
-src/server/services/deepseek/mod.rs:
-
-src/server/services/deepseek/streaming.rs:
-
-src/server/services/mod.rs:
-
-src/server/services/model_router.rs:
-│fn new
-│fn route_message
-│fn execute_tool_call
-│fn chat
-│fn chat_stream
-│fn handle_tool_response
-
-src/server/services/chat_database.rs:
-│fn new
-│fn create_conversation
-│fn add_message
-│fn get_conversation
-│fn get_conversation_messages
-│fn list_user_conversations
-│fn delete_conversation
-
-src/server/services/github_types.rs:
-
-src/server/ws/types.rs:
-│fn fmt
-
-src/server/ws/transport.rs:
-│fn new
-│fn create_handlers
-│fn validate_session
-│fn handle_socket
-│fn broadcast
-│fn send_to
-│fn get_user_id
-│fn add_test_connection
-
-src/server/ws/mod.rs:
-│fn ws_handler
-│fn handle_socket
-
-src/server/ws/handlers/mod.rs:
-│trait MessageHandler
-
-src/server/ws/handlers/chat.rs:
-│fn new
-│fn process_message
-│impl MessageHandler for MessageHandler
-│impl ChatHandler for ChatHandler
-│fn handle_message
-│fn broadcast
-
-src/repomap.rs:
-│fn generate_repo_map
-│fn walk_dir
-│fn extract_id
-│fn extract_function_name
-│fn extract_class_name
-│fn extract_const_name
-
-src/routes.rs:
-│fn health_check
-│fn home
-│fn chat
-│fn mobile_app
-│fn business
-│fn video_series
-│fn company
-│fn coming_soon
-│fn repomap
-│fn generate_repomap
-
-src/filters.rs:
-│fn render_markdown
-
-src/main.rs:
-│fn main
-│fn create_tools
-
-src/repo/test.rs:
-│fn run_cargo_tests
-
-src/repo/types.rs:
-│fn new
-
-src/repo/analysis.rs:
-│fn analyze_repository
-│fn post_analysis
-
-src/repo/git.rs:
-│fn cleanup_temp_dir
-│fn clone_repository
-
-src/repo/mod.rs:
+📄 pnpm-lock.yaml
+📄 Cargo.toml
+📁 migrations/
+📁 configuration/
+📄 spec.yaml
+📄 Dockerfile
+📁 tests/
+📄 Cargo.lock
+📄 build.rs
+📁 docs/
+📄 README.md
+📁 styles/
+📄 tailwind.config.cjs
+📄 package.json
+📁 scripts/
+📁 templates/
+📄 .env.example
+📁 .sqlx/
+📄 postcss.config.js
+📄 DEVELOPMENT.md
+📁 assets/
+📁 src/
+  📁 bin/
+  📄 database.rs
+  📄 lib.rs
+  📄 configuration.rs
+  📁 server/
+  📄 repomap.rs
+  📄 routes.rs
+  📄 filters.rs
+  📄 main.rs
+  📁 repo/
+    📄 test.rs
+    📄 types.rs
+    📄 analysis.rs
+    📄 git.rs
+    📄 mod.rs
+    📄 tools.rs
+    📄 config.rs
+    📁 models/
+    📄 mod.rs
+    📁 handlers/
+    📁 services/
+    📁 ws/
+      📄 types.rs
+      📄 transport.rs
+      📄 mod.rs
+      📁 handlers/
+        📄 mod.rs
+        📄 chat.rs
+      📄 github_issue.rs
+      📄 auth.rs
+      📄 repomap.rs
+      📁 deepseek/
+      📄 mod.rs
+      📄 model_router.rs
+      📄 chat_database.rs
+      📄 github_types.rs
+        📄 types.rs
+        📁 methods/
+        📄 service.rs
+        📄 mod.rs
+        📄 streaming.rs
+          📄 chat_with_tool_response.rs
+          📄 chat_stream.rs
+          📄 mod.rs
+          📄 chat_with_tools.rs
+          📄 chat.rs
+      📄 auth.rs
+      📄 user.rs
+      📄 mod.rs
+      📄 user.rs
+      📄 mod.rs
+      📄 chat.rs
+    📄 deepseek-cli.rs
+    📄 repo.rs
+    📄 generate-repomap.rs
+    📄 chat.rs
+  📄 favicon.ico
+  📄 main.css
+  📄 fonts.css
+  📁 fonts/
+    📄 BerkeleyMono-Regular.woff2
+    📄 BerkeleyMono-Regular.woff
+    📄 BerkeleyMono-BoldItalic.woff
+    📄 BerkeleyMono-Bold.woff2
+    📄 BerkeleyMono-Italic.woff
+    📄 BerkeleyMono-BoldItalic.woff2
+    📄 BerkeleyMono-Bold.woff
+    📄 BerkeleyMono-Italic.woff2
+  📄 query-9d4c8a085215a2ffc3d569246c407284c89da81020489bf65118267b642f5576.json
+  📄 query-a58a33dcebb27e8d0de9a785f590f4cebbf6ede1f67e11ef4001f152e129b85d.json
+  📄 query-2c7f8374a4295c9e90337eb366535c10431885e6c66627243fa8f471c98deafc.json
+  📄 query-2f1b63e9dd71f469bf00be7dd168dd19a60f51109dab01e02f8fe090de3c9df4.json
+  📄 query-531ecb732a452b6d716ce475349d905a5bc1406755207620978a441c2508f988.json
+  📄 query-bc09eb7fc2c0ab1240adf1f759c4915319e79a486f9be844ea05e7edbba4dfd3.json
+  📄 query-af6f51a83cd0974a9182266763c37e977b4735f7fa159529d915ea182da96c9a.json
+  📄 query-4162f888f554515936fc3b050578a4727f145969131243483b9c6be9e8721086.json
+  📄 query-b42d7449b65b1b4878da708bddbc522938718170b8cbc045fef111b29f141858.json
+  📄 blog_post.html
+  📁 admin/
+  📁 macros/
+  📁 components/
+  📁 layouts/
+  📁 pages/
+  📄 header.html
+    📄 onyx.html
+    📄 home.html
+    📄 repomap.html
+    📄 video-series.html
+    📄 404.html
+    📄 login.html
+    📄 solver.html
+    📄 coming-soon.html
+    📄 company.html
+    📄 services.html
+    📄 signup.html
+    📄 chat.html
+    📄 chat_base.html
+    📄 base.html
+    📄 auth_base.html
+    📄 chat_content.html
+    📄 content.html
+    📄 hero.html
+    📁 chat/
+    📁 auth/
+    📄 features.html
+      📄 error_handler.js
+      📄 auth_scripts.html
+      📄 error.html
+      📄 error_section.html
+      📄 head_scripts.html
+      📄 login_overlay.html
+      📄 sidebar_right.html
+      📄 sidebar_left.html
+      📄 templates.html
+      📄 main_chat.html
+      📄 websocket_scripts.html
+      📄 header.html
+    📄 blog.html
+    📄 video.html
+    📄 blog_post.html
+    📄 ui.html
+    📄 nav.html
+    📄 login.html
+    📄 dashboard.html
+  📄 init_redis.sh
+  📄 generate_hierarchy.sh
+  📄 init_db.sh
+  📄 tailwind.css
+  📄 templates.md
+  📄 configuration.md
+  📄 repomap.md
+  📄 repomap_generation.md
+  📄 chat_template.md
+  📄 adding-tools.md
+  📄 hierarchy.md
+  📄 local-repos.md
+  📄 auth_pages.rs
+  📄 tool_selection.rs
+  📄 oidc_signup.rs
+  📄 oidc_client.rs
+  📁 model_router_service/
+  📄 repomap.rs
+  📄 user.rs
+  📄 mod.rs
+  📄 auth_error_handling.rs
+  📄 chat_router_integration.rs
+  📄 model_router.rs
+  📄 signup_flow.rs
+  📄 deepseek.rs
+  📄 health_check.rs
+  📄 auth_signup_test.rs
+  📄 chat_database.rs
+    📄 mod.rs
+    📄 tool_execution.rs
+    📄 routing.rs
+    📄 chat.rs
+  📄 production.yaml
+  📄 local.yaml
+  📄 base.yaml
+  📄 20240126000000_create_chat_tables.sql
+  📄 20250110000000_initial.sql
+  📄 20250126023641_create_users_table.sql
