@@ -155,7 +155,11 @@ async fn test_signup_error_handling() {
     info!("Testing malformed token response");
     Mock::given(method("POST"))
         .and(path("/token"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "access_token": "test_access_token",
+            "token_type": "Bearer",
+            "expires_in": 3600
+        })))
         .mount(&mock_server)
         .await;
 
@@ -168,7 +172,9 @@ async fn test_signup_error_handling() {
     info!("Testing invalid token response");
     Mock::given(method("POST"))
         .and(path("/token"))
-        .respond_with(ResponseTemplate::new(400).set_body_string("Invalid code"))
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+            "error": "Invalid code"
+        })))
         .mount(&mock_server)
         .await;
 
