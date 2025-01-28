@@ -15,6 +15,8 @@ tests/oidc_signup.rs:
 tests/solver.rs:
 │fn test_branch_creation
 │fn test_pr_creation
+│fn test_issue_comments
+│fn test_comment_context_generation
 
 tests/oidc_client.rs:
 │fn create_test_token
@@ -357,6 +359,7 @@ src/server/services/openrouter/mod.rs:
 src/server/services/github_issue.rs:
 │fn new
 │fn get_issue
+│fn get_issue_comments
 │fn post_comment
 │fn create_branch
 │fn create_pull_request
@@ -495,6 +498,7 @@ src/solver/github.rs:
 │fn create_pull_request
 │fn post_comment
 │fn get_issue
+│fn get_issue_comments
 
 src/solver/planning.rs:
 │fn new
@@ -535,3 +539,4 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
+
