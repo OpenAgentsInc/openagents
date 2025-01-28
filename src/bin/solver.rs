@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
     // Implementation will go here
     
     // TODO: Track file modifications
-    let mut modified_files = Vec::new();
+    let mut modified_files: Vec<String> = Vec::new();
     
     if cli.live {
         print_colored("\nCreating pull request...\n", Color::Blue)?;
