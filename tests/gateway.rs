@@ -1,5 +1,5 @@
 use openagents::server::services::{
-    Gateway, GatewayMetadata, OpenRouterService, StreamUpdate,
+    Gateway, OpenRouterService, StreamUpdate,
 };
 
 #[tokio::test]
