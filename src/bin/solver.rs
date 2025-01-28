@@ -15,7 +15,7 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 struct Cli {
     /// GitHub issue number to solve
     #[arg(short, long)]
-    issue: u32,
+    issue: i32,
 
     /// GitHub repository (format: owner/name)
     #[arg(short, long, default_value = "OpenAgentsInc/openagents")]
@@ -110,7 +110,10 @@ async fn main() -> Result<()> {
         3. Required dependencies or imports\n\
         4. Testing strategy\n\
         Be specific and focus on practical implementation details.",
-        issue.number, issue.title, issue.body, map
+        issue.number, 
+        issue.title,
+        issue.body.as_deref().unwrap_or("No description provided"),
+        map
     );
 
     print_colored("\nGenerating Implementation Plan:\n", Color::Yellow)?;
