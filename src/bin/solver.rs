@@ -66,6 +66,11 @@ async fn main() -> Result<()> {
         .get_issue(owner, repo_name, cli.issue)
         .await?;
     
+    println!("\nIssue #{}: {}", issue.number, issue.title);
+    if let Some(body) = &issue.body {
+        println!("Description:\n{}\n", body);
+    }
+    
     // Define the temporary directory path
     let temp_dir = env::temp_dir().join(format!("solver_{}", cli.issue));
 
@@ -87,6 +92,7 @@ async fn main() -> Result<()> {
     // Generate repository map
     print_colored("\nGenerating repository map...\n", Color::Blue)?;
     let map = generate_repo_map(&ctx.temp_dir);
+    println!("\nRepository map generated ({} chars)", map.len());
 
     // Create a new branch for the solution (if in live mode)
     let branch_name = format!("solver/issue-{}", cli.issue);
@@ -117,14 +123,18 @@ async fn main() -> Result<()> {
     );
 
     print_colored("\nGenerating Implementation Plan:\n", Color::Yellow)?;
+    println!("Sending prompt to DeepSeek ({} chars)...", plan_prompt.len());
+    
     let mut implementation_plan = String::new();
     let mut in_reasoning = true;
     let mut stream = deepseek_service.chat_stream(plan_prompt, true).await;
 
+    println!("Waiting for DeepSeek response...");
     while let Some(update) = stream.recv().await {
         match update {
             StreamUpdate::Reasoning(r) => {
                 print_colored(&r, Color::Yellow)?;
+                stdout().flush()?;
             }
             StreamUpdate::Content(c) => {
                 if in_reasoning {
@@ -136,11 +146,20 @@ async fn main() -> Result<()> {
                 implementation_plan.push_str(&c);
                 stdout().flush()?;
             }
-            StreamUpdate::Done => break,
-            _ => {}
+            StreamUpdate::Done => {
+                println!("\nDeepSeek response complete");
+                break;
+            }
+            _ => {
+                println!("Received other update type");
+            }
         }
     }
     println!();
+
+    if implementation_plan.is_empty() {
+        print_colored("\nWARNING: No implementation plan generated!\n", Color::Red)?;
+    }
 
     // Post implementation plan as comment if in live mode
     if cli.live {
@@ -165,7 +184,7 @@ async fn main() -> Result<()> {
     // Implementation will go here
     
     // TODO: Track file modifications
-    let mut modified_files: Vec<String> = Vec::new();
+    let modified_files: Vec<String> = Vec::new();
     
     if cli.live {
         print_colored("\nCreating pull request...\n", Color::Blue)?;
@@ -175,7 +194,7 @@ async fn main() -> Result<()> {
         if modified_files.is_empty() {
             println!("No files modified yet");
         } else {
-            for file in modified_files {
+            for file in &modified_files {
                 println!("- Would modify: {}", file);
             }
         }
@@ -183,6 +202,7 @@ async fn main() -> Result<()> {
 
     // Clean up at the end
     cleanup_temp_dir(&temp_dir);
+    println!("Temporary directory removed.");
 
     Ok(())
 }
