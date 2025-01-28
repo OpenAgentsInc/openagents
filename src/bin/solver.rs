@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
     
     let mut implementation_plan = String::new();
     let mut in_reasoning = true;
-    let mut stream = deepseek_service.chat_stream(plan_prompt, true).await;
+    let mut stream = deepseek_service.chat_stream(plan_prompt.clone(), true).await;
 
     println!("Waiting for DeepSeek response...");
     
