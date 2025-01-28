@@ -30,6 +30,18 @@ fn get_current_branch() -> Option<String> {
     }
 }
 
+fn run_git_command(args: &[&str]) -> Result<()> {
+    let status = Command::new("git")
+        .args(args)
+        .status()
+        .map_err(|e| anyhow::anyhow!("Failed to run git command: {}", e))?;
+
+    if !status.success() {
+        bail!("Git command failed: {:?}", args);
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -84,6 +96,13 @@ async fn main() -> Result<()> {
 
     // Clean up at the end
     cleanup_temp_dir(&temp_dir);
+
+    // Commit and push the changes
+    println!("Committing and pushing changes...");
+    run_git_command(&["add", "docs/repomap.md"])?;
+    run_git_command(&["commit", "-m", "Update repomap"])?;
+    run_git_command(&["push"])?;
+    println!("Changes pushed successfully");
 
     Ok(())
 }
