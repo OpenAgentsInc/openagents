@@ -160,6 +160,7 @@ async fn test_signup_error_handling() {
             "token_type": "Bearer",
             "expires_in": 3600
         })))
+        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -175,6 +176,7 @@ async fn test_signup_error_handling() {
         .respond_with(ResponseTemplate::new(400).set_body_json(json!({
             "error": "Invalid code"
         })))
+        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -193,6 +195,7 @@ async fn test_signup_error_handling() {
             "expires_in": 3600,
             "id_token": "not.a.jwt"
         })))
+        .expect(1)
         .mount(&mock_server)
         .await;
 
