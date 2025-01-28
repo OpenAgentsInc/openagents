@@ -4,12 +4,11 @@ use super::services::{
     RepomapService,
 };
 use super::ws::transport::WebSocketState;
-use axum::{routing::get, Router};
+use axum::{routing::{get, post}, Router};
 use serde_json::json;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
-
-use crate::routes;
+use crate::{routes, server};
 
 fn create_tools() -> Vec<Tool> {
     vec![
@@ -71,36 +70,43 @@ pub fn configure_app() -> Router {
         .expect("Failed to create GitHub service"),
     );
 
-    let _repomap_service = Arc::new(RepomapService::new(
-        env::var("FIRECRAWL_API_KEY").expect("FIRECRAWL_API_KEY must be set"),
-    ));
-
     // Create available tools
     let tools = create_tools();
 
     // Create WebSocket state with services
     let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
 
+    // Initialize repomap service
+    let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
+    let repomap_service = Arc::new(RepomapService::new(aider_api_key));
+
     // Create the main router
-    Router::new()
+    let app = Router::new()
         // Main routes
         .route("/", get(routes::home))
         .route("/chat", get(routes::chat))
+        .route("/ws", get(server::ws::ws_handler))
         .route("/onyx", get(routes::mobile_app))
         .route("/services", get(routes::business))
         .route("/video-series", get(routes::video_series))
         .route("/company", get(routes::company))
         .route("/coming-soon", get(routes::coming_soon))
+        .route("/health", get(routes::health_check))
         .route("/repomap", get(routes::repomap))
         // Auth routes
         .route("/login", get(routes::login))
         .route("/signup", get(routes::signup))
-        // Static files
-        .nest_service("/static", ServeDir::new("./static").precompressed_gzip())
-        // Template files
+        .with_state(ws_state);
+
+    // Add repomap routes with repomap state
+    let app = app
+        .route("/repomap/generate", post(routes::generate_repomap))
+        .with_state(repomap_service);
+
+    // Static files
+    app.nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
         .nest_service(
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
         )
-        .with_state(ws_state)
 }
