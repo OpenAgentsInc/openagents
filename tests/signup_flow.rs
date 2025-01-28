@@ -151,6 +151,24 @@ async fn test_signup_error_handling() {
     let pool = setup_test_db().await;
     let service = create_test_service(&mock_server, pool);
 
+    // Test invalid JWT token first
+    info!("Testing invalid JWT token");
+    Mock::given(method("POST"))
+        .and(path("/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "access_token": "test_access_token",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "id_token": "not.a.jwt"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let result = service.signup("test_code".to_string()).await;
+    info!("Got result: {:?}", result);
+    assert!(matches!(result, Err(AuthError::AuthenticationFailed)), 
+        "Expected AuthenticationFailed, got {:?}", result);
+
     // Test malformed token response
     info!("Testing malformed token response");
     Mock::given(method("POST"))
@@ -180,22 +198,4 @@ async fn test_signup_error_handling() {
     info!("Got result: {:?}", result);
     assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
         "Expected TokenExchangeFailed, got {:?}", result);
-
-    // Test invalid JWT token
-    info!("Testing invalid JWT token");
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "access_token": "test_access_token",
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            "id_token": "not.a.jwt"
-        })))
-        .mount(&mock_server)
-        .await;
-
-    let result = service.signup("test_code".to_string()).await;
-    info!("Got result: {:?}", result);
-    assert!(matches!(result, Err(AuthError::AuthenticationFailed)), 
-        "Expected AuthenticationFailed, got {:?}", result);
 }
