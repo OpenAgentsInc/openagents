@@ -37,9 +37,12 @@ tests/repomap.rs:
 │fn handle_repomap
 
 tests/gateway.rs:
+│fn setup
 │fn test_openrouter_metadata
 │fn test_openrouter_chat
 │fn test_openrouter_stream
+│fn test_openrouter_with_config
+│fn test_openrouter_conversation
 
 tests/user.rs:
 │fn test_user_creation
@@ -326,9 +329,20 @@ src/server/handlers/user.rs:
 src/server/handlers/mod.rs:
 
 src/server/services/openrouter/types.rs:
+│fn from
+│impl Default for Default
+│impl OpenRouterConfig for OpenRouterConfig
+│fn default
 
 src/server/services/openrouter/service.rs:
 │fn new
+│fn with_config
+│fn is_test_mode
+│fn get_model
+│fn prepare_messages
+│fn update_history
+│fn make_request
+│fn process_stream_chunk
 │impl Gateway for Gateway
 │impl OpenRouterService for OpenRouterService
 │fn metadata
