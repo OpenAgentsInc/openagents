@@ -20,6 +20,10 @@ struct Cli {
     /// GitHub repository (format: owner/name)
     #[arg(short, long, default_value = "OpenAgentsInc/openagents")]
     repo: String,
+
+    /// Execute changes on GitHub (create branch, post comments, create PR)
+    #[arg(long)]
+    live: bool,
 }
 
 fn print_colored(text: &str, color: Color) -> Result<()> {
@@ -42,8 +46,14 @@ async fn main() -> Result<()> {
     // Get API keys immediately and fail if not present
     let api_key = env::var("DEEPSEEK_API_KEY")
         .map_err(|_| anyhow::anyhow!("DEEPSEEK_API_KEY not found in environment or .env file"))?;
-    let github_token = env::var("GITHUB_TOKEN")
-        .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not found in environment or .env file"))?;
+    
+    // GitHub token only required for live mode
+    let github_token = if cli.live {
+        Some(env::var("GITHUB_TOKEN")
+            .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN required for live mode but not found"))?)
+    } else {
+        None
+    };
 
     // Parse repo owner and name
     let repo_parts: Vec<&str> = cli.repo.split('/').collect();
@@ -53,14 +63,23 @@ async fn main() -> Result<()> {
     let (owner, repo_name) = (repo_parts[0], repo_parts[1]);
 
     // Initialize services
-    let github_service = GitHubService::new(Some(github_token.clone()))?;
+    let github_service = if cli.live {
+        Some(GitHubService::new(github_token.clone())?)
+    } else {
+        None
+    };
     let deepseek_service = DeepSeekService::new(api_key.clone());
 
-    // Fetch issue details
+    // Fetch or simulate issue details
     print_colored("\nFetching issue details...\n", Color::Blue)?;
-    let issue = github_service
-        .get_issue(owner, repo_name, cli.issue)
-        .await?;
+    let issue = if let Some(ref github_service) = github_service {
+        github_service
+            .get_issue(owner, repo_name, cli.issue)
+            .await?
+    } else {
+        print_colored("[DRY RUN] Would fetch issue details from GitHub\n", Color::Yellow)?;
+        bail!("In dry run mode - implement mock issue details here");
+    };
     
     // Define the temporary directory path
     let temp_dir = env::temp_dir().join(format!("solver_{}", cli.issue));
@@ -74,7 +93,7 @@ async fn main() -> Result<()> {
     println!("Temporary directory created at: {:?}", temp_dir);
 
     // Create context
-    let ctx = RepoContext::new(temp_dir.clone(), api_key, Some(github_token));
+    let ctx = RepoContext::new(temp_dir.clone(), api_key, github_token);
 
     // Clone the repository
     let repo_url = format!("https://github.com/{}/{}", owner, repo_name);
@@ -84,9 +103,17 @@ async fn main() -> Result<()> {
     print_colored("\nGenerating repository map...\n", Color::Blue)?;
     let map = generate_repo_map(&ctx.temp_dir);
 
-    // Create a new branch for the solution
+    // Create a new branch for the solution (if in live mode)
     let branch_name = format!("solver/issue-{}", cli.issue);
-    print_colored(&format!("\nCreating branch '{}'...\n", branch_name), Color::Blue)?;
+    if cli.live {
+        print_colored(&format!("\nCreating branch '{}'...\n", branch_name), Color::Blue)?;
+        // TODO: Implement branch creation
+    } else {
+        print_colored(
+            &format!("\n[DRY RUN] Would create branch '{}'\n", branch_name),
+            Color::Yellow,
+        )?;
+    }
     
     // Analyze issue and generate implementation plan
     let plan_prompt = format!(
@@ -127,21 +154,36 @@ async fn main() -> Result<()> {
     }
     println!();
 
-    // Post implementation plan as comment
-    print_colored("\nPosting implementation plan to GitHub...\n", Color::Blue)?;
-    let comment = format!(
-        "# Implementation Plan\n\n\
-        Based on the analysis of the issue and codebase, here's the proposed implementation plan:\n\n\
-        {}\n\n\
-        I'll now proceed with implementing this solution.",
-        implementation_plan
-    );
-    github_service
-        .post_comment(owner, repo_name, cli.issue, &comment)
-        .await?;
+    // Post implementation plan as comment if in live mode
+    if cli.live {
+        print_colored("\nPosting implementation plan to GitHub...\n", Color::Blue)?;
+        let comment = format!(
+            "# Implementation Plan\n\n\
+            Based on the analysis of the issue and codebase, here's the proposed implementation plan:\n\n\
+            {}\n\n\
+            I'll now proceed with implementing this solution.",
+            implementation_plan
+        );
+        if let Some(ref github_service) = github_service {
+            github_service
+                .post_comment(owner, repo_name, cli.issue, &comment)
+                .await?;
+        }
+    } else {
+        print_colored("\n[DRY RUN] Would post implementation plan to GitHub:\n", Color::Yellow)?;
+        println!("{}", implementation_plan);
+    }
 
     // TODO: Implement solution generation and PR creation
     // This will be added in subsequent commits as we build out the solver functionality
+    if cli.live {
+        print_colored("\nTODO: Implement solution generation and PR creation\n", Color::Red)?;
+    } else {
+        print_colored(
+            "\n[DRY RUN] Would generate solution and create PR\n",
+            Color::Yellow,
+        )?;
+    }
 
     // Clean up at the end
     cleanup_temp_dir(&temp_dir);
