@@ -129,6 +129,7 @@ async fn main() -> Result<()> {
 
     print_colored("\nGenerating Implementation Plan:\n", Color::Yellow)?;
     println!("Sending prompt to DeepSeek ({} chars)...", plan_prompt.len());
+    println!("Using base URL: {}", deepseek_service.base_url);
     
     let mut implementation_plan = String::new();
     let mut in_reasoning = true;
@@ -159,6 +160,10 @@ async fn main() -> Result<()> {
                     println!("\nDeepSeek response complete");
                     break;
                 }
+                StreamUpdate::Error(e) => {
+                    println!("\nDeepSeek error: {}", e);
+                    break;
+                }
                 _ => {
                     println!("Received other update type");
                 }
@@ -175,6 +180,22 @@ async fn main() -> Result<()> {
 
     if implementation_plan.is_empty() {
         print_colored("\nWARNING: No implementation plan generated!\n", Color::Red)?;
+        print_colored("\nTrying non-streaming API...\n", Color::Yellow)?;
+        
+        match deepseek_service.chat(plan_prompt, true).await {
+            Ok((content, reasoning)) => {
+                if let Some(r) = reasoning {
+                    print_colored("\nReasoning:\n", Color::Yellow)?;
+                    println!("{}", r);
+                }
+                print_colored("\nImplementation Plan:\n", Color::Green)?;
+                println!("{}", content);
+                implementation_plan = content;
+            }
+            Err(e) => {
+                print_colored(&format!("\nDeepSeek API error: {}\n", e), Color::Red)?;
+            }
+        }
     }
 
     // Post implementation plan as comment if in live mode
