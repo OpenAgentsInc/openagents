@@ -1,7 +1,7 @@
-use anyhow::Result;
-use std::path::PathBuf;
 use crate::repo::{cleanup_temp_dir, clone_repository, RepoContext};
 use crate::repomap::generate_repo_map;
+use anyhow::Result;
+use std::path::PathBuf;
 
 pub struct SolutionContext {
     pub temp_dir: PathBuf,
@@ -10,9 +10,13 @@ pub struct SolutionContext {
 }
 
 impl SolutionContext {
-    pub fn new(issue_number: i32, openrouter_key: String, github_token: Option<String>) -> Result<Self> {
+    pub fn new(
+        issue_number: i32,
+        openrouter_key: String,
+        github_token: Option<String>,
+    ) -> Result<Self> {
         let temp_dir = std::env::temp_dir().join(format!("solver_{}", issue_number));
-        
+
         // Clean up any existing temp directory first
         cleanup_temp_dir(&temp_dir);
 

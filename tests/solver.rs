@@ -59,7 +59,7 @@ async fn test_pr_creation() -> Result<()> {
     // Test PR creation (only in CI with write permissions)
     if env::var("CI").is_ok() {
         let test_branch = format!("test/solver/issue-{}", issue_number);
-        
+
         // Create test branch first
         github_service
             .create_branch("OpenAgentsInc", "openagents", &test_branch, "main")

@@ -66,10 +66,7 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!(
-                "GitHub API request failed: {}",
-                response.status()
-            ));
+            return Err(anyhow!("GitHub API request failed: {}", response.status()));
         }
 
         let issue = response.json::<GitHubIssue>().await?;
@@ -147,10 +144,7 @@ impl GitHubService {
             .ok_or_else(|| anyhow!("Invalid base branch ref response"))?;
 
         // Create the new branch
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/git/refs",
-            owner, repo
-        );
+        let url = format!("https://api.github.com/repos/{}/{}/git/refs", owner, repo);
 
         let payload = BranchPayload {
             ref_name: format!("refs/heads/{}", branch_name),
@@ -168,10 +162,7 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!(
-                "Failed to create branch: {}",
-                response.status()
-            ));
+            return Err(anyhow!("Failed to create branch: {}", response.status()));
         }
 
         Ok(())
@@ -186,10 +177,7 @@ impl GitHubService {
         title: &str,
         description: &str,
     ) -> Result<()> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls",
-            owner, repo
-        );
+        let url = format!("https://api.github.com/repos/{}/{}/pulls", owner, repo);
 
         let payload = PullRequestPayload {
             title: title.to_string(),

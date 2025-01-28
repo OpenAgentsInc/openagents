@@ -1,13 +1,9 @@
+use crate::server::services::{gateway::Gateway, openrouter::OpenRouterService, StreamUpdate};
+use crate::solver::display::{flush_stdout, print_colored};
 use anyhow::Result;
 use std::time::Duration;
-use tokio::time::timeout;
-use crate::server::services::{
-    gateway::Gateway,
-    openrouter::OpenRouterService,
-    StreamUpdate,
-};
-use crate::solver::display::{print_colored, flush_stdout};
 use termcolor::Color;
+use tokio::time::timeout;
 
 pub struct PlanningContext {
     service: OpenRouterService,
@@ -19,7 +15,13 @@ impl PlanningContext {
         Ok(Self { service })
     }
 
-    pub async fn generate_plan(&self, issue_number: i32, title: &str, body: &str, map: &str) -> Result<String> {
+    pub async fn generate_plan(
+        &self,
+        issue_number: i32,
+        title: &str,
+        body: &str,
+        map: &str,
+    ) -> Result<String> {
         let plan_prompt = format!(
             "You are a Rust development expert. Analyze this GitHub issue and repository map to create an implementation plan.\n\n\
             Issue #{}: {}\n{}\n\nRepository map:\n{}\n\n\

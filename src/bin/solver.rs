@@ -23,11 +23,7 @@ async fn main() -> Result<()> {
     }
 
     // Initialize solution context
-    let solution = SolutionContext::new(
-        cli.issue,
-        openrouter_api_key,
-        Some(github_token.clone()),
-    )?;
+    let solution = SolutionContext::new(cli.issue, openrouter_api_key, Some(github_token.clone()))?;
 
     // Clone repository and generate map
     let repo_url = format!("https://github.com/{}", cli.repo);
