@@ -229,9 +229,31 @@ impl OIDCService {
                 AuthError::TokenExchangeFailed(format!("error decoding response body: {}", e))
             })?;
 
+        // Validate JWT format before returning
+        if !is_valid_jwt_format(&token_response.id_token) {
+            error!("Invalid JWT format in id_token");
+            return Err(AuthError::AuthenticationFailed);
+        }
+
         debug!("Successfully exchanged code for tokens");
         Ok(token_response)
     }
+}
+
+fn is_valid_jwt_format(token: &str) -> bool {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+
+    // Try to decode each part as base64
+    for part in &parts[..2] { // Only check header and payload
+        if URL_SAFE_NO_PAD.decode(part).is_err() {
+            return false;
+        }
+    }
+
+    true
 }
 
 // Helper function to extract pseudonym from ID token
