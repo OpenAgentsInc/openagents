@@ -116,7 +116,7 @@ async fn test_duplicate_signup() {
     assert!(matches!(result, Err(AuthError::UserAlreadyExists)));
 
     // Verify only one user exists
-    let count = sqlx::query!("SELECT COUNT(*) as count FROM users")
+    let count = sqlx::query!("SELECT COUNT(*) as count FROM users WHERE scramble_id = $1", "test_user_456")
         .fetch_one(&pool)
         .await
         .unwrap()
