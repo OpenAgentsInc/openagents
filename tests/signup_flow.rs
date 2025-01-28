@@ -9,7 +9,6 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 
-// Import the actual types we're testing
 use openagents::server::services::auth::{AuthError, OIDCConfig, OIDCService};
 use openagents::server::models::user::User;
 
@@ -65,12 +64,14 @@ async fn test_signup_flow() {
             "expires_in": 3600,
             "id_token": test_token
         })))
+        .expect(1)
         .mount(&mock_server)
         .await;
 
     // Test successful signup
     let result = service.signup("test_code".to_string()).await;
-    assert!(result.is_ok());
+    assert!(result.is_ok(), "Signup failed: {:?}", result.err());
+    
     let user = result.unwrap();
     assert_eq!(user.scramble_id, "test_user_123");
 
@@ -103,12 +104,13 @@ async fn test_duplicate_signup() {
             "expires_in": 3600,
             "id_token": test_token
         })))
+        .expect(2)
         .mount(&mock_server)
         .await;
 
     // First signup should succeed
     let result = service.signup("test_code".to_string()).await;
-    assert!(result.is_ok());
+    assert!(result.is_ok(), "First signup failed: {:?}", result.err());
 
     // Second signup with same pseudonym should fail
     let result = service.signup("test_code".to_string()).await;
@@ -125,6 +127,7 @@ async fn test_signup_error_handling() {
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(400).set_body_string("Invalid code"))
+        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -135,6 +138,7 @@ async fn test_signup_error_handling() {
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -148,8 +152,9 @@ async fn test_signup_error_handling() {
             "access_token": "test_access_token",
             "token_type": "Bearer",
             "expires_in": 3600,
-            "id_token": "invalid.jwt.token"
+            "id_token": "invalid.token"
         })))
+        .expect(1)
         .mount(&mock_server)
         .await;
 
