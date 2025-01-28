@@ -8,8 +8,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = Config::load()?;
 
+    // Clone tokens before moving
+    let github_token = config.github_token.clone();
+    let openrouter_api_key = config.openrouter_api_key.clone();
+
     // Initialize GitHub context
-    let github = GitHubContext::new(&cli.repo, config.github_token)?;
+    let github = GitHubContext::new(&cli.repo, github_token.clone())?;
 
     // Fetch issue details
     let issue = github.get_issue(cli.issue).await?;
@@ -21,8 +25,8 @@ async fn main() -> Result<()> {
     // Initialize solution context
     let solution = SolutionContext::new(
         cli.issue,
-        config.openrouter_api_key,
-        Some(config.github_token.clone()),
+        openrouter_api_key,
+        Some(github_token.clone()),
     )?;
 
     // Clone repository and generate map
