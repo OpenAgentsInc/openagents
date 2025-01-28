@@ -229,7 +229,7 @@ impl OIDCService {
         };
 
         // Validate JWT format after successful parsing
-        if !is_valid_jwt_format(&token_response.id_token) {
+        if !is_valid_jwt_format(id_token) {
             error!("Invalid JWT format in id_token");
             return Err(AuthError::AuthenticationFailed);
         }
