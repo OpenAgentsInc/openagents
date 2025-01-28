@@ -6,6 +6,12 @@ use sqlx::PgPool;
 use crate::server::models::user::User;
 
 #[derive(Debug, Clone)]
+pub struct OIDCService {
+    pub config: OIDCConfig,
+    pub pool: PgPool,
+}
+
+#[derive(Debug, Clone)]
 pub struct OIDCConfig {
     pub client_id: String,
     pub client_secret: String,
@@ -57,101 +63,36 @@ impl From<AuthError> for StatusCode {
     }
 }
 
-impl OIDCConfig {
-    pub fn new(
-        client_id: String,
-        client_secret: String,
-        redirect_uri: String,
-        auth_url: String,
-        token_url: String,
-    ) -> Result<Self, AuthError> {
-        if client_id.is_empty() || client_secret.is_empty() || redirect_uri.is_empty() {
-            return Err(AuthError::InvalidConfig);
-        }
-
-        Ok(Self {
-            client_id,
-            client_secret,
-            redirect_uri,
-            auth_url,
-            token_url,
-        })
+impl OIDCService {
+    pub fn new(pool: PgPool, config: OIDCConfig) -> Self {
+        Self { config, pool }
     }
 
-    pub fn authorization_url(&self, is_signup: bool) -> String {
+    #[cfg(test)]
+    pub fn new_with_base_url(base_url: String) -> Self {
+        let config = OIDCConfig {
+            client_id: "test_client".to_string(),
+            client_secret: "test_secret".to_string(),
+            redirect_uri: "http://localhost:8000/auth/callback".to_string(),
+            auth_url: format!("{}/authorize", base_url),
+            token_url: format!("{}/token", base_url),
+        };
+        let pool = sqlx::Pool::connect_lazy("postgres://postgres:postgres@localhost/test").unwrap();
+        Self::new(pool, config)
+    }
+
+    pub fn authorization_url_for_signup(&self) -> Result<String, AuthError> {
         let mut url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
-            self.auth_url,
-            self.client_id,
-            urlencoding::encode(&self.redirect_uri)
+            self.config.auth_url,
+            self.config.client_id,
+            urlencoding::encode(&self.config.redirect_uri)
         );
-        
-        if is_signup {
-            url.push_str("&prompt=create");
-        }
-        
-        url
+        url.push_str("&prompt=create");
+        Ok(url)
     }
 
-    pub async fn exchange_code(&self, code: String) -> Result<TokenResponse, AuthError> {
-        let client = reqwest::Client::new();
-
-        let response = client
-            .post(&self.token_url)
-            .form(&[
-                ("grant_type", "authorization_code"),
-                ("code", &code),
-                ("redirect_uri", &self.redirect_uri),
-                ("client_id", &self.client_id),
-                ("client_secret", &self.client_secret),
-            ])
-            .send()
-            .await
-            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AuthError::TokenExchangeFailed(error_text));
-        }
-
-        response
-            .json::<TokenResponse>()
-            .await
-            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))
-    }
-
-    pub async fn authenticate(&self, code: String, pool: &PgPool) -> Result<User, AuthError> {
-        // Exchange code for tokens
-        let token_response = self.exchange_code(code).await?;
-
-        // Extract pseudonym from ID token claims
-        let pseudonym = extract_pseudonym(&token_response.id_token)
-            .map_err(|_| AuthError::AuthenticationFailed)?;
-
-        // Get or create user
-        let user = sqlx::query_as!(
-            User,
-            r#"
-            INSERT INTO users (scramble_id, metadata)
-            VALUES ($1, $2)
-            ON CONFLICT (scramble_id) DO UPDATE
-            SET last_login_at = NOW()
-            RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
-            "#,
-            pseudonym,
-            serde_json::json!({})
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
-
-        Ok(user)
-    }
-
-    pub async fn signup(&self, code: String, pool: &PgPool) -> Result<User, AuthError> {
+    pub async fn signup(&self, code: String) -> Result<User, AuthError> {
         // Exchange code for tokens
         let token_response = self.exchange_code(code).await?;
 
@@ -164,7 +105,7 @@ impl OIDCConfig {
             "SELECT id FROM users WHERE scramble_id = $1",
             pseudonym
         )
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
@@ -183,11 +124,41 @@ impl OIDCConfig {
             pseudonym,
             serde_json::json!({})
         )
-        .fetch_one(pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
         Ok(user)
+    }
+
+    async fn exchange_code(&self, code: String) -> Result<TokenResponse, AuthError> {
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(&self.config.token_url)
+            .form(&[
+                ("grant_type", "authorization_code"),
+                ("code", &code),
+                ("redirect_uri", &self.config.redirect_uri),
+                ("client_id", &self.config.client_id),
+                ("client_secret", &self.config.client_secret),
+            ])
+            .send()
+            .await
+            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AuthError::TokenExchangeFailed(error_text));
+        }
+
+        response
+            .json::<TokenResponse>()
+            .await
+            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))
     }
 }
 
