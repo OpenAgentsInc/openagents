@@ -210,10 +210,25 @@ impl OIDCService {
             return Err(AuthError::TokenExchangeFailed(error_text));
         }
 
-        let token_response = response
-            .json::<TokenResponse>()
+        // First parse as Value to check for required fields
+        let json_value: serde_json::Value = response
+            .json()
             .await
             .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
+
+        // Check for required id_token field
+        if !json_value.get("id_token").is_some() {
+            error!("Response missing required id_token field");
+            return Err(AuthError::AuthenticationFailed);
+        }
+
+        // Now try to parse into TokenResponse
+        let token_response: TokenResponse = serde_json::from_value(json_value)
+            .map_err(|e| {
+                error!("Failed to parse token response: {}", e);
+                AuthError::AuthenticationFailed
+            })?;
+
         debug!("Successfully exchanged code for tokens");
         Ok(token_response)
     }
