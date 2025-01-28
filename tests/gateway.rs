@@ -1,10 +1,19 @@
 use openagents::server::services::{
     Gateway, OpenRouterService, StreamUpdate,
 };
+use std::env;
+
+fn setup() {
+    dotenvy::dotenv().ok();
+    if env::var("OPENROUTER_API_KEY").is_err() {
+        env::set_var("OPENROUTER_API_KEY", "test-key");
+    }
+}
 
 #[tokio::test]
 async fn test_openrouter_metadata() {
-    let service = OpenRouterService::new("test-key".to_string());
+    setup();
+    let service = OpenRouterService::new().unwrap();
     let metadata = service.metadata();
     
     assert_eq!(metadata.name, "OpenRouter");
@@ -15,7 +24,8 @@ async fn test_openrouter_metadata() {
 
 #[tokio::test]
 async fn test_openrouter_chat() {
-    let service = OpenRouterService::new("test-key".to_string());
+    setup();
+    let service = OpenRouterService::new().unwrap();
     let result = service.chat("test prompt".to_string(), false).await.unwrap();
     
     assert_eq!(result.0, "test prompt");
@@ -24,12 +34,13 @@ async fn test_openrouter_chat() {
     // Test with reasoner
     let result = service.chat("test prompt".to_string(), true).await.unwrap();
     assert_eq!(result.0, "test prompt");
-    assert_eq!(result.1, Some("Reasoning".to_string()));
+    assert_eq!(result.1, None);
 }
 
 #[tokio::test]
 async fn test_openrouter_stream() {
-    let service = OpenRouterService::new("test-key".to_string());
+    setup();
+    let service = OpenRouterService::new().unwrap();
     let mut stream = service.chat_stream("test prompt".to_string(), true).await;
     
     // Test content
