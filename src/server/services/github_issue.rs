@@ -17,7 +17,7 @@ pub struct GitHubIssue {
     pub html_url: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitHubUser {
     pub login: String,
     pub id: i64,
