@@ -12,9 +12,9 @@ use openagents::server::services::auth::{OIDCService, OIDCConfig};
 async fn clean_test_db(pool: &PgPool) {
     info!("Cleaning up test database");
     
-    // Drop all existing connections to allow TRUNCATE
+    // Terminate other connections
     sqlx::query!("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()")
-        .execute(pool)
+        .fetch_all(pool)
         .await
         .unwrap();
 
