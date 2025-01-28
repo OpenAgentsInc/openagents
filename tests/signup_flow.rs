@@ -7,7 +7,7 @@ use sqlx::PgPool;
 use tracing::{info, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
 use wiremock::{
-    matchers::{method, path},
+    matchers::{method, path, body_string_contains},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -155,6 +155,7 @@ async fn test_signup_error_handling() {
     info!("Testing malformed token response");
     Mock::given(method("POST"))
         .and(path("/token"))
+        .and(body_string_contains("code=malformed_test"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
             "token_type": "Bearer",
@@ -164,7 +165,7 @@ async fn test_signup_error_handling() {
         .mount(&mock_server)
         .await;
 
-    let result = service.signup("test_code".to_string()).await;
+    let result = service.signup("malformed_test".to_string()).await;
     info!("Got result: {:?}", result);
     assert!(matches!(result, Err(AuthError::TokenExchangeFailed(_))), 
         "Expected TokenExchangeFailed, got {:?}", result);
@@ -173,6 +174,7 @@ async fn test_signup_error_handling() {
     info!("Testing invalid token response");
     Mock::given(method("POST"))
         .and(path("/token"))
+        .and(body_string_contains("code=invalid_code"))
         .respond_with(ResponseTemplate::new(400).set_body_json(json!({
             "error": "Invalid code"
         })))
@@ -189,6 +191,7 @@ async fn test_signup_error_handling() {
     info!("Testing invalid JWT token");
     Mock::given(method("POST"))
         .and(path("/token"))
+        .and(body_string_contains("code=jwt_test"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
             "token_type": "Bearer",
@@ -199,7 +202,7 @@ async fn test_signup_error_handling() {
         .mount(&mock_server)
         .await;
 
-    let result = service.signup("test_code".to_string()).await;
+    let result = service.signup("jwt_test".to_string()).await;
     info!("Got result: {:?}", result);
     assert!(matches!(result, Err(AuthError::AuthenticationFailed)), 
         "Expected AuthenticationFailed, got {:?}", result);
