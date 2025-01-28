@@ -64,7 +64,7 @@ pub async fn callback(
     // Exchange code for tokens and get/create user
     let user = state
         .service
-        .signup(params.code)
+        .login(params.code)
         .await
         .map_err(|e| {
             error!("Authentication error: {}", e.to_string());
