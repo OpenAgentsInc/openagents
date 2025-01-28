@@ -1,57 +1,14 @@
 use super::services::{
-    deepseek::{DeepSeekService, Tool},
+    deepseek::DeepSeekService,
     github_issue::GitHubService,
     RepomapService,
 };
+use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use axum::{routing::{get, post}, Router};
-use serde_json::json;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
 use crate::{routes, server};
-
-fn create_tools() -> Vec<Tool> {
-    vec![
-        // GitHub issue tool
-        DeepSeekService::create_tool(
-            "read_github_issue".to_string(),
-            Some("Read a GitHub issue by number".to_string()),
-            json!({
-                "type": "object",
-                "properties": {
-                    "owner": {
-                        "type": "string",
-                        "description": "The owner of the repository"
-                    },
-                    "repo": {
-                        "type": "string",
-                        "description": "The name of the repository"
-                    },
-                    "issue_number": {
-                        "type": "integer",
-                        "description": "The issue number"
-                    }
-                },
-                "required": ["owner", "repo", "issue_number"]
-            }),
-        ),
-        // Calculator tool
-        DeepSeekService::create_tool(
-            "calculate".to_string(),
-            Some("Perform a calculation".to_string()),
-            json!({
-                "type": "object",
-                "properties": {
-                    "expression": {
-                        "type": "string",
-                        "description": "The mathematical expression to evaluate"
-                    }
-                },
-                "required": ["expression"]
-            }),
-        ),
-    ]
-}
 
 pub fn configure_app() -> Router {
     // Create shared services
