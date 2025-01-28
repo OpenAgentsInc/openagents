@@ -1,7 +1,6 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Debug, Clone)]
 pub struct GitHubService {
@@ -40,7 +39,7 @@ struct PullRequestPayload {
 
 impl GitHubService {
     pub fn new(token: Option<String>) -> Result<Self> {
-        let token = token.ok_or_else(|| anyhow::anyhow!("GitHub token is required"))?;
+        let token = token.ok_or_else(|| anyhow!("GitHub token is required"))?;
         Ok(Self {
             client: Client::new(),
             token,
@@ -67,7 +66,7 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "GitHub API request failed: {}",
                 response.status()
             ));
@@ -104,7 +103,7 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Failed to post GitHub comment: {}",
                 response.status()
             ));
@@ -136,7 +135,7 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Failed to get base branch ref: {}",
                 response.status()
             ));
@@ -145,7 +144,7 @@ impl GitHubService {
         let base_ref = response.json::<serde_json::Value>().await?;
         let sha = base_ref["object"]["sha"]
             .as_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid base branch ref response"))?;
+            .ok_or_else(|| anyhow!("Invalid base branch ref response"))?;
 
         // Create the new branch
         let url = format!(
@@ -169,7 +168,7 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Failed to create branch: {}",
                 response.status()
             ));
@@ -210,7 +209,7 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Failed to create pull request: {}",
                 response.status()
             ));
