@@ -5,7 +5,6 @@ use axum::{
     Router,
 };
 use serde_json::json;
-use sqlx::PgPool;
 use tower::ServiceExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -16,7 +15,8 @@ use openagents::server::{
     handlers::{callback, login, logout, AppState},
     services::OIDCConfig,
 };
-use crate::common::setup_test_db;
+mod common;
+use common::setup_test_db;
 
 fn create_test_token(sub: &str) -> String {
     // Create a simple JWT token for testing
