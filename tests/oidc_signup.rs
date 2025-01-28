@@ -16,7 +16,7 @@ async fn setup_test_db() -> PgPool {
 
     // Clean up any existing test data
     info!("Cleaning up test database");
-    sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
+    sqlx::query!("TRUNCATE TABLE users CASCADE")
         .execute(&pool)
         .await
         .unwrap();
@@ -91,6 +91,18 @@ async fn test_signup_flow() {
     
     let user = result.unwrap();
     assert_eq!(user.scramble_id, "test_user_123");
+
+    // Verify user was created
+    let pool = &service.pool;
+    let db_user = sqlx::query!(
+        "SELECT scramble_id FROM users WHERE scramble_id = $1",
+        "test_user_123"
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+
+    assert_eq!(db_user.scramble_id, "test_user_123");
 }
 
 #[tokio::test]
@@ -116,8 +128,33 @@ async fn test_duplicate_signup() {
     let result = service.signup("test_code".to_string()).await;
     assert!(result.is_ok(), "First signup failed: {:?}", result.err());
 
+    // Verify first user was created
+    let pool = &service.pool;
+    let count = sqlx::query!(
+        "SELECT COUNT(*) as count FROM users WHERE scramble_id = $1",
+        "test_user_123"
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+    .count
+    .unwrap_or(0);
+    assert_eq!(count, 1, "First user should exist");
+
     // Second signup with same pseudonym should fail
     debug!("Attempting duplicate signup");
     let err = service.signup("test_code".to_string()).await.unwrap_err();
     assert!(matches!(err, openagents::server::services::auth::AuthError::UserAlreadyExists));
+
+    // Verify still only one user exists
+    let count = sqlx::query!(
+        "SELECT COUNT(*) as count FROM users WHERE scramble_id = $1",
+        "test_user_123"
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+    .count
+    .unwrap_or(0);
+    assert_eq!(count, 1, "Should still be only one user");
 }
