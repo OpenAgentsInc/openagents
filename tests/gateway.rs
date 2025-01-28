@@ -24,7 +24,7 @@ async fn test_openrouter_metadata() {
 #[tokio::test]
 async fn test_openrouter_chat() {
     setup();
-    let mut service = OpenRouterService::new().unwrap();
+    let service = OpenRouterService::new().unwrap();
     let result = service.chat("test prompt".to_string(), false).await.unwrap();
     
     assert_eq!(result.0, "test prompt");
@@ -39,7 +39,7 @@ async fn test_openrouter_chat() {
 #[tokio::test]
 async fn test_openrouter_stream() {
     setup();
-    let mut service = OpenRouterService::new().unwrap();
+    let service = OpenRouterService::new().unwrap();
     let mut stream = service.chat_stream("test prompt".to_string(), true).await;
     
     // Test content
@@ -76,7 +76,7 @@ async fn test_openrouter_with_config() {
         stop: Some(vec!["STOP".to_string()]),
     };
 
-    let mut service = OpenRouterService::with_config(config).unwrap();
+    let service = OpenRouterService::with_config(config).unwrap();
     let result = service.chat("test prompt".to_string(), false).await.unwrap();
     assert_eq!(result.0, "test prompt");
 }
@@ -84,7 +84,7 @@ async fn test_openrouter_with_config() {
 #[tokio::test]
 async fn test_openrouter_conversation() {
     setup();
-    let mut service = OpenRouterService::new().unwrap();
+    let service = OpenRouterService::new().unwrap();
     
     // First message
     let result = service.chat("Hello".to_string(), false).await.unwrap();
