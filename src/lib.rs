@@ -10,6 +10,6 @@ pub use repo::*;
 pub use repomap::*;
 pub use routes::*;
 
-// Export server and solver modules without glob to avoid conflicts
-pub use server;
-pub use solver;
+// Re-export specific items from server and solver as needed
+pub use server::services;
+pub use solver::Cli;
