@@ -1,9 +1,6 @@
 use openagents::server::services::{
-    gateway::{Gateway, GatewayMetadata},
-    openrouter::OpenRouterService,
-    StreamUpdate,
+    Gateway, GatewayMetadata, OpenRouterService, StreamUpdate,
 };
-use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn test_openrouter_metadata() {
