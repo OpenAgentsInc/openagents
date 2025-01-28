@@ -3,8 +3,8 @@ use tokio::sync::mpsc;
 
 use super::StreamUpdate;
 
-pub mod types;
 pub mod streaming;
+pub mod types;
 
 pub use self::types::GatewayMetadata;
 
@@ -16,7 +16,8 @@ pub trait Gateway: Send + Sync {
 
     /// Send a chat request and get a response
     async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)>;
-    
+
     /// Send a chat request and get a streaming response
-    async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate>;
+    async fn chat_stream(&self, prompt: String, use_reasoner: bool)
+        -> mpsc::Receiver<StreamUpdate>;
 }

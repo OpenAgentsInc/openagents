@@ -1,6 +1,5 @@
 use openagents::server::services::{
-    Gateway, OpenRouterService, StreamUpdate,
-    openrouter::types::OpenRouterConfig,
+    openrouter::types::OpenRouterConfig, Gateway, OpenRouterService, StreamUpdate,
 };
 use std::env;
 
@@ -14,19 +13,24 @@ async fn test_openrouter_metadata() {
     setup();
     let service = OpenRouterService::new().unwrap();
     let metadata = service.metadata();
-    
+
     assert_eq!(metadata.name, "OpenRouter");
     assert!(metadata.openai_compatible);
     assert!(metadata.supported_features.contains(&"chat".to_string()));
-    assert!(metadata.supported_features.contains(&"streaming".to_string()));
+    assert!(metadata
+        .supported_features
+        .contains(&"streaming".to_string()));
 }
 
 #[tokio::test]
 async fn test_openrouter_chat() {
     setup();
     let service = OpenRouterService::new().unwrap();
-    let result = service.chat("test prompt".to_string(), false).await.unwrap();
-    
+    let result = service
+        .chat("test prompt".to_string(), false)
+        .await
+        .unwrap();
+
     assert_eq!(result.0, "test prompt");
     assert!(result.1.is_none());
 
@@ -41,7 +45,7 @@ async fn test_openrouter_stream() {
     setup();
     let service = OpenRouterService::new().unwrap();
     let mut stream = service.chat_stream("test prompt".to_string(), true).await;
-    
+
     // Test content
     if let Some(StreamUpdate::Content(content)) = stream.recv().await {
         assert_eq!(content, "test prompt");
@@ -77,7 +81,10 @@ async fn test_openrouter_with_config() {
     };
 
     let service = OpenRouterService::with_config(config).unwrap();
-    let result = service.chat("test prompt".to_string(), false).await.unwrap();
+    let result = service
+        .chat("test prompt".to_string(), false)
+        .await
+        .unwrap();
     assert_eq!(result.0, "test prompt");
 }
 
@@ -85,12 +92,15 @@ async fn test_openrouter_with_config() {
 async fn test_openrouter_conversation() {
     setup();
     let service = OpenRouterService::new().unwrap();
-    
+
     // First message
     let result = service.chat("Hello".to_string(), false).await.unwrap();
     assert_eq!(result.0, "Hello");
 
     // Second message should include conversation history
-    let result = service.chat("How are you?".to_string(), false).await.unwrap();
+    let result = service
+        .chat("How are you?".to_string(), false)
+        .await
+        .unwrap();
     assert_eq!(result.0, "How are you?");
 }

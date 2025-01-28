@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::server::services::gateway::types::Message;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub struct OpenRouterRequest {

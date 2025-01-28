@@ -7,10 +7,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
-use crate::server::services::{
-    gateway::Gateway,
-    StreamUpdate,
-};
+use crate::server::services::{gateway::Gateway, StreamUpdate};
 
 use super::types::{
     OpenRouterConfig, OpenRouterError, OpenRouterMessage, OpenRouterRequest, OpenRouterResponse,
@@ -178,10 +175,7 @@ impl Gateway for OpenRouterService {
         crate::server::services::gateway::types::GatewayMetadata {
             name: "OpenRouter".to_string(),
             openai_compatible: true,
-            supported_features: vec![
-                "chat".to_string(),
-                "streaming".to_string(),
-            ],
+            supported_features: vec!["chat".to_string(), "streaming".to_string()],
             default_model: "openai/gpt-3.5-turbo".to_string(),
             available_models: vec![
                 "openai/gpt-3.5-turbo".to_string(),
@@ -207,7 +201,7 @@ impl Gateway for OpenRouterService {
         };
 
         let response = self.make_request(request).await?;
-        
+
         if let Some(choice) = response.choices.first() {
             self.update_history(&choice.message);
             Ok((choice.message.content.clone(), None))
@@ -216,15 +210,21 @@ impl Gateway for OpenRouterService {
         }
     }
 
-    async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
+    async fn chat_stream(
+        &self,
+        prompt: String,
+        use_reasoner: bool,
+    ) -> mpsc::Receiver<StreamUpdate> {
         let (tx, rx) = mpsc::channel(100);
-        
+
         if self.is_test_mode() {
             // Return mock stream for testing
             tokio::spawn(async move {
                 let _ = tx.send(StreamUpdate::Content(prompt)).await;
                 if use_reasoner {
-                    let _ = tx.send(StreamUpdate::Reasoning("Test reasoning".to_string())).await;
+                    let _ = tx
+                        .send(StreamUpdate::Reasoning("Test reasoning".to_string()))
+                        .await;
                 }
                 let _ = tx.send(StreamUpdate::Done).await;
             });
