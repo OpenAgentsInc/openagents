@@ -22,27 +22,30 @@ pub struct OpenRouterService {
     client: Client,
     api_key: String,
     base_url: String,
-    test_mode: bool, // Added for testing
+    test_mode: bool,
 }
 
 impl OpenRouterService {
-    pub fn new(api_key: String) -> Self {
+    pub fn new() -> Result<Self> {
         let client = ClientBuilder::new()
             .timeout(Duration::from_secs(180)) // 3 minutes timeout
             .build()
             .expect("Failed to create HTTP client");
+
+        let api_key = std::env::var("OPENROUTER_API_KEY")
+            .map_err(|_| anyhow!("OPENROUTER_API_KEY not found in environment"))?;
 
         let base_url = std::env::var("OPENROUTER_API_URL")
             .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_string());
 
         info!("Using OpenRouter API URL: {}", base_url);
 
-        Self {
+        Ok(Self {
             client,
-            api_key,
+            api_key: api_key.clone(),
             base_url,
             test_mode: api_key == "test-key",
-        }
+        })
     }
 
     fn get_model(&self, use_reasoner: bool) -> String {
