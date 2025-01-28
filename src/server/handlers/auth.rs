@@ -10,7 +10,7 @@ use sqlx::PgPool;
 use time::Duration;
 use tracing::{debug, error, info};
 
-use crate::server::services::OIDCConfig;
+use crate::server::services::auth::{OIDCConfig, OIDCService};
 
 const SESSION_COOKIE_NAME: &str = "session";
 const SESSION_DURATION_DAYS: i64 = 7;
@@ -32,24 +32,25 @@ pub struct LoginResponse {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub config: OIDCConfig,
-    pub pool: PgPool,
+    pub service: OIDCService,
 }
 
 impl AppState {
     pub fn new(config: OIDCConfig, pool: PgPool) -> Self {
-        Self { config, pool }
+        Self {
+            service: OIDCService::new(pool, config),
+        }
     }
 }
 
 pub async fn login(State(state): State<AppState>) -> impl IntoResponse {
-    let auth_url = state.config.authorization_url(false);  // false for regular login
+    let auth_url = state.service.authorization_url_for_login().unwrap();
     debug!("Redirecting to auth URL: {}", auth_url);
     Redirect::temporary(&auth_url)
 }
 
 pub async fn signup(State(state): State<AppState>) -> impl IntoResponse {
-    let auth_url = state.config.authorization_url(true);  // true for signup
+    let auth_url = state.service.authorization_url_for_signup().unwrap();
     debug!("Redirecting to signup URL: {}", auth_url);
     Redirect::temporary(&auth_url)
 }
@@ -62,8 +63,8 @@ pub async fn callback(
 
     // Exchange code for tokens and get/create user
     let user = state
-        .config
-        .authenticate(params.code, &state.pool)
+        .service
+        .signup(params.code)
         .await
         .map_err(|e| {
             error!("Authentication error: {}", e.to_string());
