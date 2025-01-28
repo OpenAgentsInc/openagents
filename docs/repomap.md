@@ -1,12 +1,36 @@
+tests/auth_pages.rs:
+│fn test_login_page
+│fn test_signup_page
+
 tests/tool_selection.rs:
 │fn test_tool_selection
 
-tests/model_router_service.rs:
+tests/oidc_signup.rs:
+│fn create_test_service
+│fn create_test_token
+│fn test_signup_authorization_url
+│fn test_signup_flow
+│fn test_duplicate_signup
+
+tests/oidc_client.rs:
+│fn create_test_token
+│fn test_full_auth_flow
+│fn test_invalid_callback
+│fn test_duplicate_login
+
+tests/model_router_service/mod.rs:
 │fn init_logging
 │fn create_test_tools
-│fn test_model_router_service
-│fn test_model_router_chat
+│fn create_mock_router
+
+tests/model_router_service/tool_execution.rs:
 │fn test_model_router_tool_execution
+
+tests/model_router_service/routing.rs:
+│fn test_model_router_service
+
+tests/model_router_service/chat.rs:
+│fn test_model_router_chat
 
 tests/repomap.rs:
 │fn test_repomap_endpoint
@@ -14,6 +38,16 @@ tests/repomap.rs:
 
 tests/user.rs:
 │fn test_user_creation
+
+tests/mod.rs:
+
+tests/common/mod.rs:
+│fn setup_test_db
+
+tests/auth_error_handling.rs:
+│fn test_error_component_included
+│fn test_error_js_included
+│fn test_error_component_accessibility
 
 tests/chat_router_integration.rs:
 │fn init_logging
@@ -24,6 +58,15 @@ tests/chat_router_integration.rs:
 tests/model_router.rs:
 │fn test_routing_decision
 
+tests/signup_flow.rs:
+│fn init_test_logging
+│fn create_test_service
+│fn create_test_token
+│fn test_signup_authorization_url
+│fn test_signup_flow
+│fn test_duplicate_signup
+│fn test_signup_error_handling
+
 tests/deepseek.rs:
 │fn test_chat_basic
 │fn test_chat_with_reasoning
@@ -31,6 +74,14 @@ tests/deepseek.rs:
 
 tests/health_check.rs:
 │fn health_check_works
+
+tests/auth_signup_test.rs:
+│fn new
+│fn authorization_url
+│fn new
+│fn signup
+│fn test_signup_flow
+│fn test_signup_url_generation
 
 tests/chat_database.rs:
 │fn test_chat_persistence
@@ -103,6 +154,22 @@ templates/components/chat/websocket_scripts.html:
 
 templates/components/chat/header.html:
 
+templates/components/auth/error_handler.js:
+│function showAuthError
+│const errorDiv
+│const errorMessage
+│function clearAuthError
+│const errorDiv
+│function handleAuthError
+│const errorMessages
+│const message
+
+templates/components/auth/auth_scripts.html:
+
+templates/components/auth/error.html:
+│#id: auth-error
+│#id: auth-error-message
+
 templates/components/features.html:
 
 templates/layouts/chat_base.html:
@@ -110,6 +177,10 @@ templates/layouts/chat_base.html:
 │<head>
 
 templates/layouts/base.html:
+│<body>
+│<head>
+
+templates/layouts/auth_base.html:
 │<body>
 │<head>
 
@@ -132,6 +203,13 @@ templates/pages/repomap.html:
 templates/pages/video-series.html:
 
 templates/pages/404.html:
+
+templates/pages/login.html:
+│#id: auth-error
+│#id: auth-error-message
+│#id: email
+│#id: password
+│#id: remember-me
 
 templates/pages/solver.html:
 │#id: issue_url
@@ -156,6 +234,12 @@ templates/pages/company.html:
 
 templates/pages/services.html:
 
+templates/pages/signup.html:
+│#id: email
+│#id: password
+│#id: password-confirm
+│#id: terms
+
 templates/pages/chat.html:
 
 templates/header.html:
@@ -174,6 +258,11 @@ src/bin/deepseek-cli.rs:
 
 src/bin/repo.rs:
 │fn print_colored
+│fn main
+
+src/bin/generate-repomap.rs:
+│fn get_current_branch
+│fn run_git_command
 │fn main
 
 src/bin/chat.rs:
@@ -199,8 +288,10 @@ src/configuration.rs:
 │fn as_str
 │fn try_from
 
-src/server/config.rs:
+src/server/tools.rs:
 │fn create_tools
+
+src/server/config.rs:
 │fn configure_app
 
 src/server/models/user.rs:
@@ -213,6 +304,13 @@ src/server/models/chat.rs:
 
 src/server/mod.rs:
 
+src/server/handlers/auth.rs:
+│fn new
+│fn login
+│fn signup
+│fn callback
+│fn logout
+
 src/server/handlers/user.rs:
 │fn create_user
 
@@ -223,6 +321,19 @@ src/server/services/github_issue.rs:
 │fn get_issue
 │fn post_comment
 │fn post_github_comment
+
+src/server/services/auth.rs:
+│fn new
+│fn fmt
+│fn from
+│fn new
+│fn authorization_url_for_login
+│fn authorization_url_for_signup
+│fn login
+│fn signup
+│fn exchange_code
+│fn is_valid_jwt_format
+│fn extract_pseudonym
 
 src/server/services/repomap.rs:
 │fn new
@@ -309,6 +420,7 @@ src/server/ws/handlers/chat.rs:
 
 src/repomap.rs:
 │fn generate_repo_map
+│fn generate_repo_map_with_blacklist
 │fn walk_dir
 │fn extract_id
 │fn extract_function_name
@@ -318,6 +430,8 @@ src/repomap.rs:
 src/routes.rs:
 │fn health_check
 │fn home
+│fn login
+│fn signup
 │fn chat
 │fn mobile_app
 │fn business
@@ -332,7 +446,6 @@ src/filters.rs:
 
 src/main.rs:
 │fn main
-│fn create_tools
 
 src/repo/test.rs:
 │fn run_cargo_tests
@@ -349,3 +462,4 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
+
