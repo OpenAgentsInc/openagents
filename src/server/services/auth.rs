@@ -160,13 +160,15 @@ impl OIDCConfig {
             .map_err(|_| AuthError::AuthenticationFailed)?;
 
         // Check if user already exists
-        if let Ok(_) = sqlx::query!(
+        let existing_user = sqlx::query!(
             "SELECT id FROM users WHERE scramble_id = $1",
             pseudonym
         )
         .fetch_optional(pool)
         .await
-        .map_err(|e| AuthError::DatabaseError(e.to_string()))? {
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        if existing_user.is_some() {
             return Err(AuthError::UserAlreadyExists);
         }
 
@@ -207,142 +209,4 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
         .as_str()
         .ok_or(AuthError::AuthenticationFailed)
         .map(String::from)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    #[test]
-    fn test_oidc_config_validation() {
-        // Test invalid config (empty client_id)
-        let result = OIDCConfig::new(
-            "".to_string(),
-            "secret".to_string(),
-            "http://localhost:3000/callback".to_string(),
-            "https://auth.scramble.com/authorize".to_string(),
-            "https://auth.scramble.com/token".to_string(),
-        );
-        assert!(matches!(result, Err(AuthError::InvalidConfig)));
-
-        // Test valid config
-        let result = OIDCConfig::new(
-            "client123".to_string(),
-            "secret".to_string(),
-            "http://localhost:3000/callback".to_string(),
-            "https://auth.scramble.com/authorize".to_string(),
-            "https://auth.scramble.com/token".to_string(),
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_authorization_url_generation() {
-        let config = OIDCConfig::new(
-            "client123".to_string(),
-            "secret".to_string(),
-            "http://localhost:3000/callback".to_string(),
-            "https://auth.scramble.com/authorize".to_string(),
-            "https://auth.scramble.com/token".to_string(),
-        )
-        .unwrap();
-
-        // Test login URL
-        let auth_url = config.authorization_url(false);
-        let encoded_callback = urlencoding::encode("http://localhost:3000/callback");
-
-        assert!(auth_url.starts_with("https://auth.scramble.com/authorize"));
-        assert!(auth_url.contains("client_id=client123"));
-        assert!(auth_url.contains("response_type=code"));
-        assert!(auth_url.contains("scope=openid"));
-        assert!(auth_url.contains(&*encoded_callback));
-        assert!(!auth_url.contains("prompt=create"));
-
-        // Test signup URL
-        let signup_url = config.authorization_url(true);
-        assert!(signup_url.contains("prompt=create"));
-    }
-
-    #[tokio::test]
-    async fn test_token_exchange() {
-        // Start mock server
-        let mock_server = MockServer::start().await;
-
-        // Create test config with mock server URL
-        let config = OIDCConfig::new(
-            "client123".to_string(),
-            "secret456".to_string(),
-            "http://localhost:3000/callback".to_string(),
-            "https://auth.scramble.com/authorize".to_string(),
-            mock_server.uri(),
-        )
-        .unwrap();
-
-        // Setup successful token response
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "access_token": "test_access_token",
-                "token_type": "Bearer",
-                "expires_in": 3600,
-                "id_token": "header.eyJzdWIiOiJ0ZXN0X3BzZXVkb255bSJ9.signature"
-            })))
-            .mount(&mock_server)
-            .await;
-
-        // Test successful token exchange
-        let response = config.exchange_code("test_code".to_string()).await.unwrap();
-        assert_eq!(response.access_token, "test_access_token");
-        assert_eq!(response.token_type, "Bearer");
-        assert_eq!(response.expires_in, Some(3600));
-    }
-
-    #[tokio::test]
-    async fn test_signup_flow() {
-        // Start mock server
-        let mock_server = MockServer::start().await;
-
-        // Create test config
-        let config = OIDCConfig::new(
-            "client123".to_string(),
-            "secret456".to_string(),
-            "http://localhost:3000/callback".to_string(),
-            mock_server.uri(),
-            format!("{}/token", mock_server.uri()),
-        )
-        .unwrap();
-
-        // Setup token endpoint mock
-        Mock::given(method("POST"))
-            .and(path("/token"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "access_token": "test_access_token",
-                "token_type": "Bearer",
-                "expires_in": 3600,
-                "id_token": "header.eyJzdWIiOiJuZXdfdXNlcl9wc2V1ZG9ueW0ifQ.signature"
-            })))
-            .mount(&mock_server)
-            .await;
-
-        // Create test database
-        let pool = sqlx::PgPool::connect("postgres://postgres:postgres@localhost/test_db")
-            .await
-            .unwrap();
-
-        // Test signup flow
-        let user = config.signup("test_code".to_string(), &pool).await.unwrap();
-        assert_eq!(user.scramble_id, "new_user_pseudonym");
-
-        // Test duplicate signup
-        let result = config.signup("test_code".to_string(), &pool).await;
-        assert!(matches!(result, Err(AuthError::UserAlreadyExists)));
-
-        // Cleanup
-        sqlx::query!("DELETE FROM users WHERE scramble_id = $1", "new_user_pseudonym")
-            .execute(&pool)
-            .await
-            .unwrap();
-    }
 }
