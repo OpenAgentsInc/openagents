@@ -4,7 +4,7 @@ use wiremock::{
 };
 use serde_json::json;
 
-use openagents::server::services::auth::OIDCService;
+use openagents::server::services::auth::tests::OIDCService;
 
 #[tokio::test]
 async fn test_signup_authorization_url() {
