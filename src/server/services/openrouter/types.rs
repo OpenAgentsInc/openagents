@@ -1,98 +1,9 @@
-use crate::server::services::gateway::types::Message;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
-pub struct OpenRouterRequest {
-    pub model: String,
-    pub messages: Vec<OpenRouterMessage>,
-    pub stream: bool,
-    pub temperature: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub top_p: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub frequency_penalty: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub presence_penalty: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stop: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct OpenRouterMessage {
-    pub role: String,
-    pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-}
-
-impl From<Message> for OpenRouterMessage {
-    fn from(msg: Message) -> Self {
-        OpenRouterMessage {
-            role: msg.role,
-            content: msg.content,
-            name: None,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenRouterResponse {
-    pub id: String,
-    pub choices: Vec<OpenRouterChoice>,
-    pub model: String,
-    pub usage: Option<OpenRouterUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenRouterChoice {
-    pub message: OpenRouterMessage,
-    pub finish_reason: Option<String>,
-    pub index: i32,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenRouterStreamResponse {
-    pub id: String,
-    pub choices: Vec<OpenRouterStreamChoice>,
-    pub model: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenRouterStreamChoice {
-    pub delta: OpenRouterDelta,
-    pub finish_reason: Option<String>,
-    pub index: i32,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenRouterDelta {
-    #[serde(default)]
-    pub role: String,
-    pub content: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenRouterError {
-    pub error: OpenRouterErrorDetail,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenRouterErrorDetail {
-    pub message: String,
-    pub r#type: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenRouterUsage {
-    pub prompt_tokens: i32,
-    pub completion_tokens: i32,
-    pub total_tokens: i32,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterConfig {
+    pub api_key: String,
+    pub model: String,
     pub temperature: f32,
     pub max_tokens: Option<i32>,
     pub top_p: Option<f32>,
@@ -104,12 +15,60 @@ pub struct OpenRouterConfig {
 impl Default for OpenRouterConfig {
     fn default() -> Self {
         Self {
+            api_key: String::new(),
+            model: "deepseek/deepseek-r1-distill-llama-70b".to_string(),
             temperature: 0.7,
-            max_tokens: None,
-            top_p: None,
-            frequency_penalty: None,
-            presence_penalty: None,
+            max_tokens: Some(2048),
+            top_p: Some(0.95),
+            frequency_penalty: Some(0.0),
+            presence_penalty: Some(0.0),
             stop: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterRequest {
+    pub model: String,
+    pub messages: Vec<OpenRouterMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterResponse {
+    pub id: String,
+    pub model: String,
+    pub choices: Vec<OpenRouterChoice>,
+    pub usage: Option<OpenRouterUsage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterChoice {
+    pub message: OpenRouterMessage,
+    pub finish_reason: Option<String>,
+    pub index: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterUsage {
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
 }
