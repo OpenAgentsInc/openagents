@@ -1,5 +1,5 @@
-use crate::server::services::gateway::Gateway;
 use crate::server::services::gateway::types::GatewayMetadata;
+use crate::server::services::gateway::Gateway;
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use reqwest::Client;
@@ -66,11 +66,7 @@ impl OpenRouterService {
         })]
     }
 
-    async fn make_request(
-        &self,
-        prompt: &str,
-        stream: bool,
-    ) -> Result<reqwest::Response> {
+    async fn make_request(&self, prompt: &str, stream: bool) -> Result<reqwest::Response> {
         let model = self.get_model();
         debug!("Using model: {}", model);
 
@@ -164,9 +160,7 @@ impl Gateway for OpenRouterService {
         if self.is_test_mode() {
             let (tx, rx) = tokio::sync::mpsc::channel(1);
             tokio::spawn(async move {
-                tx.send(Ok("Test response".to_string()))
-                    .await
-                    .ok();
+                tx.send(Ok("Test response".to_string())).await.ok();
             });
             return Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)));
         }
@@ -196,9 +190,7 @@ impl Gateway for OpenRouterService {
                             buffer = buffer[pos + 2..].to_vec();
 
                             if let Ok(Some(content)) = Self::process_stream_chunk(&message) {
-                                tx.send(Ok(content))
-                                    .await
-                                    .ok();
+                                tx.send(Ok(content)).await.ok();
                             }
                         }
                     }

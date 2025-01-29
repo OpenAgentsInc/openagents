@@ -5,7 +5,7 @@ use tracing::debug;
 
 pub fn run_cargo_tests(repo_path: &Path) -> Result<bool> {
     debug!("Running cargo tests in {:?}", repo_path);
-    
+
     let output = Command::new("cargo")
         .arg("test")
         .current_dir(repo_path)

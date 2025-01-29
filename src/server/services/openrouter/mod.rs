@@ -1,3 +1,3 @@
 mod service;
 
-pub use service::{OpenRouterService, OpenRouterConfig};
+pub use service::{OpenRouterConfig, OpenRouterService};

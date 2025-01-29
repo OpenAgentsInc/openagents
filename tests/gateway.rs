@@ -1,7 +1,7 @@
 use futures_util::StreamExt;
 use openagents::server::services::{
     gateway::Gateway,
-    openrouter::{OpenRouterService, OpenRouterConfig},
+    openrouter::{OpenRouterConfig, OpenRouterService},
 };
 use std::time::Duration;
 use tokio::time::timeout;
@@ -30,7 +30,10 @@ async fn test_openrouter_chat() {
     };
 
     let service = OpenRouterService::with_config("test-key".to_string(), config);
-    let (response, _) = service.chat("Test prompt".to_string(), false).await.unwrap();
+    let (response, _) = service
+        .chat("Test prompt".to_string(), false)
+        .await
+        .unwrap();
 
     assert_eq!(response, "Test response");
 }
