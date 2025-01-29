@@ -21,13 +21,12 @@ pub mod context;
 pub mod display;
 pub mod github;
 pub mod planning;
-pub mod solution;
 pub mod types;
 
-pub use config::*;
-pub use context::*;
-pub use display::*;
-pub use github::*;
-pub use planning::*;
-pub use solution::*;
+// Re-export specific items
+pub use config::Config;
+pub use context::SolutionContext;
+pub use display::print_colored;
+pub use github::GitHubContext;
+pub use planning::PlanningContext;
 pub use types::*;
