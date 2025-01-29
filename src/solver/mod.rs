@@ -19,6 +19,7 @@ pub struct Cli {
 pub mod config;
 pub mod context;
 pub mod display;
+pub mod file_list;
 pub mod github;
 pub mod planning;
 pub mod types;
@@ -27,6 +28,7 @@ pub mod types;
 pub use config::Config;
 pub use context::SolutionContext;
 pub use display::print_colored;
+pub use file_list::generate_file_list;
 pub use github::GitHubContext;
 pub use planning::PlanningContext;
 pub use types::*;
