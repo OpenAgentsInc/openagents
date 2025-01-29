@@ -130,8 +130,8 @@ Example Response:
 /// Parses SEARCH/REPLACE blocks from text
 pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
     let mut changes = Vec::new();
-    let mut current_path = None;
-    let mut current_search = None;
+    let mut current_path: Option<String> = None;
+    let mut current_search: Option<String> = None;
     let mut current_replace = String::new();
     let mut in_search = false;
     let mut in_replace = false;
@@ -149,7 +149,9 @@ pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
                         search.clone(),
                         current_replace.trim().to_string(),
                     );
-                    changes.push(change);
+                    if change.validate().is_ok() {
+                        changes.push(change);
+                    }
                 }
             }
 
@@ -184,7 +186,9 @@ pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
                         search.clone(),
                         current_replace.trim().to_string(),
                     );
-                    changes.push(change);
+                    if change.validate().is_ok() {
+                        changes.push(change);
+                    }
                 }
                 current_search = None;
                 current_replace.clear();
@@ -206,6 +210,20 @@ pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
                 current_replace.push('\n');
             }
             current_replace.push_str(line);
+        }
+    }
+
+    // Handle any remaining change
+    if let (Some(path), Some(search)) = (&current_path, &current_search) {
+        if !current_replace.is_empty() {
+            let change = Change::new(
+                path.clone(),
+                search.clone(),
+                current_replace.trim().to_string(),
+            );
+            if change.validate().is_ok() {
+                changes.push(change);
+            }
         }
     }
 
