@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use openagents::solver::{Cli, Config, GitHubContext, PlanningContext, SolutionContext};
+use std::fs;
 use termcolor::Color;
 
 #[tokio::main]
@@ -33,7 +34,7 @@ async fn main() -> Result<()> {
     }
 
     // Initialize solution context
-    let solution = SolutionContext::new(cli.issue, openrouter_api_key, Some(github_token.clone()))?;
+    let mut solution = SolutionContext::new(cli.issue, openrouter_api_key, Some(github_token.clone()))?;
 
     // Clone repository and generate map
     let repo_url = format!("https://github.com/{}", cli.repo);
@@ -89,9 +90,54 @@ async fn main() -> Result<()> {
         github.post_comment(cli.issue, &comment).await?;
     }
 
-    // TODO: Generate solution
+    // Generate solution
     openagents::solver::display::print_colored("\nGenerating solution...\n", Color::Blue)?;
-    // Implementation will go here
+
+    // 1. Generate list of files to modify
+    openagents::solver::display::print_colored("\nIdentifying files to modify...\n", Color::Blue)?;
+    let files = solution.generate_file_list(
+        &issue.title,
+        &format!(
+            "{}\n{}",
+            issue.body.as_deref().unwrap_or("No description provided"),
+            comments_context
+        ),
+        &map,
+    ).await?;
+
+    println!("\nFiles to modify:");
+    for file in &files {
+        println!("- {}", file);
+    }
+
+    // 2. For each file, generate and apply changes
+    for file_path in files {
+        openagents::solver::display::print_colored(
+            &format!("\nProcessing {}...\n", file_path),
+            Color::Blue
+        )?;
+        
+        // Read current content
+        let file_path_buf = solution.temp_dir.join(&file_path);
+        let current_content = fs::read_to_string(&file_path_buf)?;
+        
+        // Generate changes
+        openagents::solver::display::print_colored("Generating changes...\n", Color::Green)?;
+        let changes = solution.generate_changes(
+            &file_path,
+            &current_content,
+            &issue.title,
+            &format!(
+                "{}\n{}",
+                issue.body.as_deref().unwrap_or("No description provided"),
+                comments_context
+            ),
+        ).await?;
+        
+        // Apply changes
+        openagents::solver::display::print_colored("Applying changes...\n", Color::Green)?;
+        solution.apply_changes(&changes)?;
+    }
 
     // Create pull request if in live mode
     if cli.live && !solution.modified_files.is_empty() {
@@ -99,8 +145,11 @@ async fn main() -> Result<()> {
         let description = format!(
             "Automated solution for issue #{}\n\n\
             Implementation Plan:\n{}\n\n\
+            Modified Files:\n{}\n\n\
             Implemented by the OpenAgents solver.",
-            cli.issue, implementation_plan
+            cli.issue,
+            implementation_plan,
+            solution.modified_files.join("\n")
         );
         github
             .create_pull_request(&branch_name, "main", &title, &description)
