@@ -1,10 +1,12 @@
-use crate::repo::{cleanup_temp_dir, clone_repository, RepoContext};
+use crate::repo::{cleanup_temp_dir, clone_repository, commit_changes, checkout_branch, RepoContext};
 use crate::repomap::generate_repo_map;
 use crate::solver::changes::{generate_changes, parse_search_replace};
 use crate::solver::types::{Change, ChangeError, ChangeResult};
-use anyhow::Result;
+use anyhow::{Result, Context as _};
+use git2::Repository;
 use std::fs;
 use std::path::PathBuf;
+use tracing::{debug, info};
 
 /// Context for generating and applying solutions to GitHub issues
 pub struct SolutionContext {
@@ -14,6 +16,8 @@ pub struct SolutionContext {
     pub repo_context: RepoContext,
     /// List of files that have been modified
     pub modified_files: Vec<String>,
+    /// Git repository instance
+    repo: Option<Repository>,
 }
 
 impl SolutionContext {
@@ -30,7 +34,7 @@ impl SolutionContext {
 
         // Create the temporary directory
         fs::create_dir_all(&temp_dir)?;
-        tracing::info!("Temporary directory created at: {:?}", temp_dir);
+        debug!("Temporary directory created at: {:?}", temp_dir);
 
         let repo_context = RepoContext::new(temp_dir.clone(), openrouter_key, github_token);
 
@@ -38,6 +42,7 @@ impl SolutionContext {
             temp_dir,
             repo_context,
             modified_files: Vec::new(),
+            repo: None,
         })
     }
 
@@ -54,13 +59,40 @@ impl SolutionContext {
             temp_dir,
             repo_context,
             modified_files: Vec::new(),
+            repo: None,
         })
     }
 
     /// Clones a repository into the temporary directory
-    pub fn clone_repository(&self, repo_url: &str) -> Result<()> {
-        clone_repository(repo_url, &self.repo_context.temp_dir)?;
+    pub fn clone_repository(&mut self, repo_url: &str) -> Result<()> {
+        let repo = clone_repository(repo_url, &self.repo_context.temp_dir)?;
+        self.repo = Some(repo);
         Ok(())
+    }
+
+    /// Checks out a branch in the repository
+    pub fn checkout_branch(&self, branch_name: &str) -> Result<()> {
+        let repo = self.repo.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Repository not initialized"))?;
+        checkout_branch(repo, branch_name)
+            .with_context(|| format!("Failed to checkout branch: {}", branch_name))
+    }
+
+    /// Commits changes to the repository
+    pub fn commit_changes(&self, message: &str) -> Result<()> {
+        let repo = self.repo.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Repository not initialized"))?;
+        
+        if self.modified_files.is_empty() {
+            debug!("No files to commit");
+            return Ok(());
+        }
+
+        info!("Committing changes to {} files", self.modified_files.len());
+        debug!("Modified files: {:?}", self.modified_files);
+        
+        commit_changes(repo, &self.modified_files, message)
+            .with_context(|| format!("Failed to commit changes: {}", message))
     }
 
     /// Generates a map of the repository structure
@@ -86,7 +118,7 @@ impl SolutionContext {
 
     /// Generates changes for a specific file
     pub async fn generate_changes(
-        &self,
+        &mut self,
         path: &str,
         title: &str,
         description: &str,
@@ -94,14 +126,21 @@ impl SolutionContext {
         let file_path = self.temp_dir.join(path);
         let content = fs::read_to_string(&file_path)?;
 
-        generate_changes(
+        let (changes, reasoning) = generate_changes(
             path,
             &content,
             title,
             description,
             &self.repo_context.api_key,
         )
-        .await
+        .await?;
+
+        // Track modified files
+        if !changes.is_empty() && !self.modified_files.contains(&path.to_string()) {
+            self.modified_files.push(path.to_string());
+        }
+
+        Ok((changes, reasoning))
     }
 
     /// Generates changes from SEARCH/REPLACE blocks
@@ -155,7 +194,7 @@ impl SolutionContext {
     /// Cleans up temporary files
     pub fn cleanup(&self) {
         cleanup_temp_dir(&self.temp_dir);
-        tracing::info!("Temporary directory removed.");
+        debug!("Temporary directory removed.");
     }
 }
 
@@ -211,7 +250,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_changes() -> Result<()> {
         let temp_dir = tempfile::tempdir()?;
-        let context = SolutionContext::new_with_dir(
+        let mut context = SolutionContext::new_with_dir(
             temp_dir.path().to_path_buf(),
             "test_key".to_string(),
             Some("test_token".to_string()),
