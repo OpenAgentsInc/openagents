@@ -1,23 +1,20 @@
-use anyhow::Result;
-use tokio::sync::mpsc;
-
-use super::StreamUpdate;
-
-pub mod streaming;
 pub mod types;
 
-pub use self::types::GatewayMetadata;
+use anyhow::Result;
+use std::pin::Pin;
+use tokio_stream::Stream;
 
-/// Gateway trait defines the common interface that all AI providers must implement
+use self::types::GatewayMetadata;
+
 #[async_trait::async_trait]
-pub trait Gateway: Send + Sync {
-    /// Get metadata about this gateway's capabilities
+pub trait Gateway {
     fn metadata(&self) -> GatewayMetadata;
 
-    /// Send a chat request and get a response
     async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)>;
 
-    /// Send a chat request and get a streaming response
-    async fn chat_stream(&self, prompt: String, use_reasoner: bool)
-        -> mpsc::Receiver<StreamUpdate>;
+    async fn chat_stream(
+        &self,
+        prompt: String,
+        use_reasoner: bool,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>>;
 }

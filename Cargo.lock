@@ -1990,6 +1990,7 @@ dependencies = [
  "dotenvy",
  "env_logger",
  "futures",
+ "futures-util",
  "git2",
  "html-escape",
  "http 1.2.0",

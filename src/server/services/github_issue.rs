@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone)]
 pub struct GitHubService {
@@ -146,13 +147,41 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await?;
             return Err(anyhow!(
-                "Failed to post GitHub comment: {}",
-                response.status()
+                "Failed to post GitHub comment: {} - {}",
+                status,
+                error_body
             ));
         }
 
         Ok(())
+    }
+
+    pub async fn check_branch_exists(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch_name: &str,
+    ) -> Result<bool> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/git/ref/heads/{}",
+            owner, repo, branch_name
+        );
+
+        debug!("Checking if branch exists: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("User-Agent", "OpenAgents")
+            .header("Accept", "application/vnd.github.v3+json")
+            .send()
+            .await?;
+
+        Ok(response.status().is_success())
     }
 
     pub async fn create_branch(
@@ -162,11 +191,21 @@ impl GitHubService {
         branch_name: &str,
         base_branch: &str,
     ) -> Result<()> {
+        debug!("Creating branch '{}' from '{}'", branch_name, base_branch);
+
+        // Check if branch already exists
+        if self.check_branch_exists(owner, repo, branch_name).await? {
+            warn!("Branch '{}' already exists", branch_name);
+            return Ok(());
+        }
+
         // First get the SHA of the base branch
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/ref/heads/{}",
             owner, repo, base_branch
         );
+
+        debug!("Getting base branch SHA from: {}", url);
 
         let response = self
             .client
@@ -178,9 +217,12 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await?;
             return Err(anyhow!(
-                "Failed to get base branch ref: {}",
-                response.status()
+                "Failed to get base branch ref: {} - {}",
+                status,
+                error_body
             ));
         }
 
@@ -189,6 +231,8 @@ impl GitHubService {
             .as_str()
             .ok_or_else(|| anyhow!("Invalid base branch ref response"))?;
 
+        debug!("Got base branch SHA: {}", sha);
+
         // Create the new branch
         let url = format!("https://api.github.com/repos/{}/{}/git/refs", owner, repo);
 
@@ -196,6 +240,8 @@ impl GitHubService {
             ref_name: format!("refs/heads/{}", branch_name),
             sha: sha.to_string(),
         };
+
+        debug!("Creating branch with payload: {:?}", payload);
 
         let response = self
             .client
@@ -208,10 +254,59 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to create branch: {}", response.status()));
+            let status = response.status();
+            let error_body = response.text().await?;
+            return Err(anyhow!(
+                "Failed to create branch: {} - {}",
+                status,
+                error_body
+            ));
         }
 
+        debug!("Successfully created branch '{}'", branch_name);
         Ok(())
+    }
+
+    pub async fn check_branch_has_commits(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch_name: &str,
+    ) -> Result<bool> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/commits?sha={}",
+            owner, repo, branch_name
+        );
+
+        debug!("Checking commits on branch: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("User-Agent", "OpenAgents")
+            .header("Accept", "application/vnd.github.v3+json")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await?;
+            warn!(
+                "Failed to check branch commits: {} - {}",
+                status, error_body
+            );
+            return Ok(false);
+        }
+
+        let commits: Vec<serde_json::Value> = response.json().await?;
+        debug!(
+            "Found {} commits on branch '{}'",
+            commits.len(),
+            branch_name
+        );
+
+        Ok(!commits.is_empty())
     }
 
     pub async fn create_pull_request(
@@ -223,6 +318,17 @@ impl GitHubService {
         title: &str,
         description: &str,
     ) -> Result<()> {
+        debug!("Creating PR: {} -> {}", head, base);
+
+        // First check if branch exists and has commits
+        if !self.check_branch_exists(owner, repo, head).await? {
+            return Err(anyhow!("Head branch '{}' does not exist", head));
+        }
+
+        if !self.check_branch_has_commits(owner, repo, head).await? {
+            return Err(anyhow!("Head branch '{}' has no commits", head));
+        }
+
         let url = format!("https://api.github.com/repos/{}/{}/pulls", owner, repo);
 
         let payload = PullRequestPayload {
@@ -231,6 +337,8 @@ impl GitHubService {
             head: head.to_string(),
             base: base.to_string(),
         };
+
+        debug!("Creating PR with payload: {:?}", payload);
 
         let response = self
             .client
@@ -243,12 +351,16 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await?;
             return Err(anyhow!(
-                "Failed to create pull request: {}",
-                response.status()
+                "Failed to create pull request: {} - {}",
+                status,
+                error_body
             ));
         }
 
+        debug!("Successfully created PR");
         Ok(())
     }
 }
