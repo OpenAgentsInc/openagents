@@ -13,12 +13,17 @@ struct FileListResponse {
 /// Extracts JSON object from a string that may contain markdown and other text
 fn extract_json(content: &str) -> Option<&str> {
     // Look for JSON code block
-    if let Some(start) = content.find("```json") {
-        if let Some(end) = content[start..].find("```") {
-            // Get content between markers
-            let json_start = start + "```json".len();
-            let json_end = start + end;
-            return Some(content[json_start..json_end].trim());
+    if let Some(start_marker) = content.find("```json") {
+        // Find the end marker after the start marker
+        if let Some(end_marker) = content[start_marker..].find("```") {
+            // Calculate absolute positions
+            let json_start = start_marker + "```json".len();
+            let json_end = start_marker + end_marker;
+            
+            // Ensure valid slice and return trimmed content
+            if json_start < json_end {
+                return Some(content[json_start..json_end].trim());
+            }
         }
     }
     
@@ -200,7 +205,9 @@ That's all."#,
         ];
 
         for (input, expected) in inputs {
-            assert_eq!(extract_json(input).map(str::trim), expected.map(str::trim));
+            let result = extract_json(input).map(str::trim);
+            let expected = expected.map(str::trim);
+            assert_eq!(result, expected, "Failed for input:\n{}", input);
         }
     }
 
