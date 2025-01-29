@@ -90,7 +90,10 @@ Example Response:
     let response = client
         .post("https://openrouter.ai/api/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", openrouter_key))
-        .header("HTTP-Referer", "https://github.com/OpenAgentsInc/openagents")
+        .header(
+            "HTTP-Referer",
+            "https://github.com/OpenAgentsInc/openagents",
+        )
         .json(&serde_json::json!({
             "model": "deepseek/deepseek-coder-33b-instruct",
             "messages": [{"role": "user", "content": prompt}]
@@ -115,11 +118,7 @@ Example Response:
         }
 
         // Create and validate change
-        let change = Change::new(
-            block.path,
-            block.search,
-            block.replace,
-        );
+        let change = Change::new(block.path, block.search, block.replace);
         if change.validate().is_ok() {
             changes.push(change);
         }
@@ -247,7 +246,8 @@ mod tests {
             "Add multiply function",
             "Add a multiply function that multiplies two integers",
             "test_key",
-        ).await?;
+        )
+        .await?;
 
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].path, "src/lib.rs");
@@ -265,7 +265,8 @@ mod tests {
             "Add multiply function",
             "Add a multiply function to lib.rs",
             "test_key",
-        ).await?;
+        )
+        .await?;
 
         assert!(changes.is_empty());
         assert_eq!(reasoning, "No changes needed");

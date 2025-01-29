@@ -10,7 +10,8 @@ async fn test_change_generation() -> Result<()> {
         "Add multiply function",
         "Add a multiply function that multiplies two integers",
         "test_key",
-    ).await?;
+    )
+    .await?;
 
     // Verify changes
     assert_eq!(changes.len(), 1);
@@ -30,7 +31,8 @@ async fn test_change_generation_no_changes() -> Result<()> {
         "Add multiply function",
         "Add a multiply function to lib.rs",
         "test_key",
-    ).await?;
+    )
+    .await?;
 
     assert!(changes.is_empty());
     assert_eq!(reasoning, "No changes needed");
@@ -50,10 +52,13 @@ pub fn multiply(a: i32, b: i32) -> i32 { a * b }
 >>>>>>> REPLACE"#;
 
     let changes = parse_search_replace(content)?;
-    
+
     assert_eq!(changes.len(), 1);
     assert_eq!(changes[0].path, "src/lib.rs");
-    assert_eq!(changes[0].search, "pub fn add(a: i32, b: i32) -> i32 { a + b }");
+    assert_eq!(
+        changes[0].search,
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }"
+    );
     assert!(changes[0].replace.contains("multiply"));
     assert!(changes[0].replace.contains("add")); // Original function preserved
 
@@ -84,7 +89,7 @@ fn main() {
 >>>>>>> REPLACE"#;
 
     let changes = parse_search_replace(content)?;
-    
+
     assert_eq!(changes.len(), 2);
     assert_eq!(changes[0].path, "src/lib.rs");
     assert_eq!(changes[1].path, "src/main.rs");
@@ -105,7 +110,7 @@ pub fn multiply(a: i32, b: i32) -> i32 {
 >>>>>>> REPLACE"#;
 
     let changes = parse_search_replace(content)?;
-    
+
     assert_eq!(changes.len(), 1);
     assert_eq!(changes[0].path, "src/multiply.rs");
     assert!(changes[0].search.is_empty());
