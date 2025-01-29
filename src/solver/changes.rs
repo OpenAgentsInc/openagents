@@ -15,6 +15,7 @@ struct ChangeBlock {
     path: String,
     search: String,
     replace: String,
+    #[serde(skip)]
     reason: String,
 }
 
@@ -131,64 +132,80 @@ pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
     let mut changes = Vec::new();
     let mut current_path = None;
     let mut current_search = None;
-    let mut lines = content.lines();
-    let mut current_block = String::new();
+    let mut current_replace = String::new();
+    let mut in_search = false;
+    let mut in_replace = false;
 
-    while let Some(line) = lines.next() {
-        let line = line.trim();
+    for line in content.lines() {
+        let line = line.trim_end();
 
         // Look for file path markers
         if line.ends_with(".rs:") || line.ends_with(".toml:") {
+            // Save previous change if any
+            if let (Some(path), Some(search)) = (&current_path, &current_search) {
+                if !current_replace.is_empty() {
+                    let change = Change::new(
+                        path.clone(),
+                        search.clone(),
+                        current_replace.trim().to_string(),
+                    );
+                    changes.push(change);
+                }
+            }
+
+            // Reset state for new file
             current_path = Some(line.trim_end_matches(':').to_string());
+            current_search = None;
+            current_replace.clear();
+            in_search = false;
+            in_replace = false;
             continue;
         }
 
-        // Look for SEARCH blocks
-        if line == "<<<<<<< SEARCH" {
-            current_search = Some(String::new());
-            continue;
+        // Handle SEARCH/REPLACE markers
+        match line {
+            "<<<<<<< SEARCH" => {
+                in_search = true;
+                current_search = Some(String::new());
+                continue;
+            }
+            "=======" => {
+                in_search = false;
+                in_replace = true;
+                current_replace.clear();
+                continue;
+            }
+            ">>>>>>> REPLACE" => {
+                in_replace = false;
+                // Save the change
+                if let (Some(path), Some(search)) = (&current_path, &current_search) {
+                    let change = Change::new(
+                        path.clone(),
+                        search.clone(),
+                        current_replace.trim().to_string(),
+                    );
+                    changes.push(change);
+                }
+                current_search = None;
+                current_replace.clear();
+                continue;
+            }
+            _ => {}
         }
 
-        // Collect SEARCH content
-        if current_search.is_some() && line != "=======" {
+        // Collect content
+        if in_search {
             if let Some(ref mut search) = current_search {
                 if !search.is_empty() {
                     search.push('\n');
                 }
                 search.push_str(line);
             }
-            continue;
-        }
-
-        // Switch to REPLACE content
-        if line == "=======" {
-            current_block = String::new();
-            continue;
-        }
-
-        // Look for end of REPLACE block
-        if line == ">>>>>>> REPLACE" && current_path.is_some() && current_search.is_some() {
-            // Create and validate change
-            let change = Change::new(
-                current_path.clone().unwrap(),
-                current_search.clone().unwrap_or_default(),
-                current_block.trim().to_string(),
-            );
-            if change.validate().is_ok() {
-                changes.push(change);
+        } else if in_replace {
+            if !current_replace.is_empty() {
+                current_replace.push('\n');
             }
-
-            current_search = None;
-            current_block.clear();
-            continue;
-        }
-
-        // Collect REPLACE content
-        if current_search.is_some() {
-            if !current_block.is_empty() {
-                current_block.push('\n');
-            }
-            current_block.push_str(line);
+            current_replace.push_str(line);
         }
     }
 
