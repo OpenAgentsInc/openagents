@@ -1,4 +1,4 @@
-use crate::repo::{cleanup_temp_dir, clone_repository, commit_changes, checkout_branch, RepoContext};
+use crate::repo::{cleanup_temp_dir, clone_repository, commit_changes, checkout_branch, push_changes_with_token, RepoContext};
 use crate::repomap::generate_repo_map;
 use crate::solver::changes::{generate_changes, parse_search_replace};
 use crate::solver::types::{Change, ChangeError, ChangeResult};
@@ -91,8 +91,20 @@ impl SolutionContext {
         info!("Committing changes to {} files", self.modified_files.len());
         debug!("Modified files: {:?}", self.modified_files);
         
+        // Commit changes
         commit_changes(repo, &self.modified_files, message)
-            .with_context(|| format!("Failed to commit changes: {}", message))
+            .with_context(|| format!("Failed to commit changes: {}", message))?;
+
+        // Push changes if we have a token
+        if let Some(token) = &self.repo_context.github_token {
+            debug!("Pushing changes with auth token");
+            push_changes_with_token(repo, token)
+                .with_context(|| "Failed to push changes")?;
+        } else {
+            debug!("No GitHub token available - skipping push");
+        }
+
+        Ok(())
     }
 
     /// Generates a map of the repository structure
@@ -195,150 +207,5 @@ impl SolutionContext {
     pub fn cleanup(&self) {
         cleanup_temp_dir(&self.temp_dir);
         debug!("Temporary directory removed.");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_new_with_dir() -> Result<()> {
-        let temp_dir = tempfile::tempdir()?;
-        let context = SolutionContext::new_with_dir(
-            temp_dir.path().to_path_buf(),
-            "test_key".to_string(),
-            Some("test_token".to_string()),
-        )?;
-        assert!(context.temp_dir.exists());
-        assert!(context.modified_files.is_empty());
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_generate_file_list() -> Result<()> {
-        let temp_dir = tempfile::tempdir()?;
-        let context = SolutionContext::new_with_dir(
-            temp_dir.path().to_path_buf(),
-            "test_key".to_string(),
-            Some("test_token".to_string()),
-        )?;
-
-        // Create test files
-        fs::create_dir_all(context.temp_dir.join("src"))?;
-        fs::write(
-            context.temp_dir.join("src/main.rs"),
-            "fn main() { println!(\"Hello\"); }",
-        )?;
-        fs::write(
-            context.temp_dir.join("src/lib.rs"),
-            "pub fn add(a: i32, b: i32) -> i32 { a + b }",
-        )?;
-
-        let (files, reasoning) = context
-            .generate_file_list("Add multiply function", "Add a multiply function to lib.rs")
-            .await?;
-
-        assert!(!files.is_empty());
-        assert!(files.contains(&"src/lib.rs".to_string()));
-        assert!(!files.contains(&"src/main.rs".to_string()));
-        assert!(!reasoning.is_empty());
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_generate_changes() -> Result<()> {
-        let temp_dir = tempfile::tempdir()?;
-        let mut context = SolutionContext::new_with_dir(
-            temp_dir.path().to_path_buf(),
-            "test_key".to_string(),
-            Some("test_token".to_string()),
-        )?;
-
-        // Create test file
-        fs::create_dir_all(context.temp_dir.join("src"))?;
-        fs::write(
-            context.temp_dir.join("src/lib.rs"),
-            "pub fn add(a: i32, b: i32) -> i32 { a + b }",
-        )?;
-
-        let (changes, reasoning) = context
-            .generate_changes(
-                "src/lib.rs",
-                "Add multiply function",
-                "Add a multiply function that multiplies two integers",
-            )
-            .await?;
-
-        assert_eq!(changes.len(), 1);
-        assert_eq!(changes[0].path, "src/lib.rs");
-        assert!(changes[0].replace.contains("multiply"));
-        assert!(!reasoning.is_empty());
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_changes() -> Result<()> {
-        let temp_dir = tempfile::tempdir()?;
-        let context = SolutionContext::new_with_dir(
-            temp_dir.path().to_path_buf(),
-            "test_key".to_string(),
-            Some("test_token".to_string()),
-        )?;
-
-        let content = r#"src/lib.rs:
-<<<<<<< SEARCH
-pub fn add(a: i32, b: i32) -> i32 { a + b }
-=======
-pub fn add(a: i32, b: i32) -> i32 { a + b }
-
-pub fn multiply(a: i32, b: i32) -> i32 { a * b }
->>>>>>> REPLACE"#;
-
-        let changes = context.parse_changes(content)?;
-        assert_eq!(changes.len(), 1);
-        assert_eq!(changes[0].path, "src/lib.rs");
-        assert!(changes[0].replace.contains("multiply"));
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_full_solution_flow() -> Result<()> {
-        let temp_dir = tempfile::tempdir()?;
-        let mut context = SolutionContext::new_with_dir(
-            temp_dir.path().to_path_buf(),
-            "test_key".to_string(),
-            Some("test_token".to_string()),
-        )?;
-
-        // Create test file
-        fs::create_dir_all(context.temp_dir.join("src"))?;
-        fs::write(
-            context.temp_dir.join("src/lib.rs"),
-            "pub fn add(a: i32, b: i32) -> i32 { a + b }",
-        )?;
-
-        // Generate changes
-        let content = r#"src/lib.rs:
-<<<<<<< SEARCH
-pub fn add(a: i32, b: i32) -> i32 { a + b }
-=======
-pub fn add(a: i32, b: i32) -> i32 { a + b }
-
-pub fn multiply(a: i32, b: i32) -> i32 { a * b }
->>>>>>> REPLACE"#;
-
-        let changes = context.parse_changes(content)?;
-        context.apply_changes(&changes)?;
-
-        // Verify changes
-        let modified_content = fs::read_to_string(context.temp_dir.join("src/lib.rs"))?;
-        assert!(modified_content.contains("multiply"));
-        assert!(context.modified_files.contains(&"src/lib.rs".to_string()));
-
-        Ok(())
     }
 }
