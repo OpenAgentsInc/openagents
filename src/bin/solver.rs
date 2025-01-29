@@ -9,8 +9,7 @@ async fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive("openagents=debug".parse()?)
-            .add_directive("solver=debug".parse()?))
+            .add_directive("openagents=debug".parse()?))
         .init();
 
     let cli = Cli::parse();
@@ -66,6 +65,13 @@ async fn main() -> Result<()> {
         info!("Creating branch: {}", branch_name);
         github.create_branch(&branch_name, "main").await
             .context("Failed to create branch")?;
+        
+        // Verify branch was created
+        debug!("Verifying branch creation");
+        if !github.service.check_branch_exists(&github.owner, &github.repo, &branch_name).await? {
+            return Err(anyhow::anyhow!("Failed to verify branch creation"));
+        }
+        info!("Branch creation verified");
     }
 
     // Generate implementation plan
@@ -195,6 +201,14 @@ async fn main() -> Result<()> {
     // Create pull request if in live mode
     if cli.live && !solution.modified_files.is_empty() {
         info!("Creating pull request");
+        
+        // Verify branch has commits
+        debug!("Verifying branch has commits");
+        if !github.service.check_branch_has_commits(&github.owner, &github.repo, &branch_name).await? {
+            return Err(anyhow::anyhow!("Branch has no commits - cannot create PR"));
+        }
+        info!("Branch commits verified");
+
         let title = format!("Implement solution for #{}", cli.issue);
         let description = format!(
             "Automated solution for issue #{}\n\n\
@@ -205,6 +219,11 @@ async fn main() -> Result<()> {
             implementation_plan,
             solution.modified_files.join("\n")
         );
+
+        debug!("Creating PR with title: {}", title);
+        debug!("PR description length: {} chars", description.len());
+        debug!("Modified files: {:?}", solution.modified_files);
+
         github
             .create_pull_request(&branch_name, "main", &title, &description)
             .await
