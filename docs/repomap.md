@@ -522,21 +522,31 @@ src/solver/solution.rs:
 src/solver/config.rs:
 │fn load
 
-src/solver/file_list.rs:
-│fn generate_file_list
-│fn setup_test_repo
-│fn test_generate_file_list
-│fn test_invalid_files_filtered
-│fn test_empty_repo
+src/solver/changes/types.rs:
 
-src/solver/changes.rs:
+src/solver/changes/generation.rs:
 │fn generate_changes
+
+src/solver/changes/parsing.rs:
 │fn parse_search_replace
+
+src/solver/changes/mod.rs:
+
+src/solver/changes/tests.rs:
 │fn test_generate_changes
 │fn test_generate_changes_no_changes
 │fn test_parse_search_replace
 │fn test_parse_search_replace_multiple
 │fn test_parse_search_replace_invalid
+
+src/solver/file_list.rs:
+│fn extract_json
+│fn generate_file_list
+│fn test_extract_json
+│fn setup_test_repo
+│fn test_generate_file_list
+│fn test_invalid_files_filtered
+│fn test_empty_repo
 
 src/solver/mod.rs:
 
