@@ -5,7 +5,7 @@ use std::fs;
 
 /// Generate changes for a specific file based on the issue
 pub async fn generate_changes(
-    gateway: &impl Gateway,
+    gateway: &(impl Gateway + ?Sized),
     file_path: &str,
     file_content: &str,
     issue_title: &str,
