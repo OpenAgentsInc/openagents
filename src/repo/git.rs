@@ -69,7 +69,7 @@ pub fn push_changes(repo: &Repository) -> Result<()> {
     callbacks.push_update_reference(|refname, status| {
         if let Some(msg) = status {
             debug!("Failed to push {}: {}", refname, msg);
-            Err(anyhow!("Failed to push {}: {}", refname, msg))
+            Err(git2::Error::from_str(&format!("Failed to push {}: {}", refname, msg)))
         } else {
             debug!("Pushed {} successfully", refname);
             Ok(())
@@ -79,7 +79,10 @@ pub fn push_changes(repo: &Repository) -> Result<()> {
     let mut push_opts = PushOptions::new();
     push_opts.remote_callbacks(callbacks);
 
-    let refspec = format!("refs/heads/*:refs/heads/*");
+    // Get current branch name
+    let head = repo.head()?;
+    let branch_name = head.shorthand().ok_or_else(|| anyhow!("Invalid branch name"))?;
+    let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
     debug!("Pushing with refspec: {}", refspec);
 
     remote.push(&[&refspec], Some(&mut push_opts))?;
