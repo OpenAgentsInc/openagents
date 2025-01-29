@@ -1,3 +1,4 @@
+use crate::server::services::gateway::Gateway;
 use crate::server::services::openrouter::{OpenRouterService, OpenRouterConfig};
 use anyhow::Result;
 use tracing::debug;
