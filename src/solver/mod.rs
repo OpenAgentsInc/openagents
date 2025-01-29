@@ -16,6 +16,7 @@ pub struct Cli {
     pub live: bool,
 }
 
+pub mod changes;
 pub mod config;
 pub mod context;
 pub mod display;
@@ -25,6 +26,7 @@ pub mod planning;
 pub mod types;
 
 // Re-export specific items
+pub use changes::{generate_changes, parse_search_replace};
 pub use config::Config;
 pub use context::SolutionContext;
 pub use display::print_colored;
