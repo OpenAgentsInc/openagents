@@ -1,23 +1,19 @@
+use crate::server::services::StreamUpdate;
 use anyhow::Result;
 use tokio::sync::mpsc;
 
-use super::StreamUpdate;
+#[derive(Debug, Clone)]
+pub struct GatewayMetadata {
+    pub name: String,
+    pub openai_compatible: bool,
+    pub supported_features: Vec<String>,
+    pub default_model: String,
+    pub available_models: Vec<String>,
+}
 
-pub mod streaming;
-pub mod types;
-
-pub use self::types::GatewayMetadata;
-
-/// Gateway trait defines the common interface that all AI providers must implement
 #[async_trait::async_trait]
 pub trait Gateway: Send + Sync {
-    /// Get metadata about this gateway's capabilities
     fn metadata(&self) -> GatewayMetadata;
-
-    /// Send a chat request and get a response
     async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)>;
-
-    /// Send a chat request and get a streaming response
-    async fn chat_stream(&self, prompt: String, use_reasoner: bool)
-        -> mpsc::Receiver<StreamUpdate>;
+    async fn chat_stream(&self, prompt: String, use_reasoner: bool) -> mpsc::Receiver<StreamUpdate>;
 }
