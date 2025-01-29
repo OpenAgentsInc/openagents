@@ -93,6 +93,7 @@ async fn test_file_list_empty_repo() -> Result<()> {
 
     assert!(files.is_empty());
     assert!(!reasoning.is_empty());
+    assert!(reasoning.contains("No files"));
 
     Ok(())
 }
