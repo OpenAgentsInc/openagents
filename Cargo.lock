@@ -2006,6 +2006,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "streaming-iterator",
+ "tempfile",
  "termcolor",
  "time",
  "tokio",
