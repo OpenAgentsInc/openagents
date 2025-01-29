@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{Result, Context as _};
 use serde::Deserialize;
 use std::path::Path;
+use tracing::{debug, error, info};
 
 /// Response from LLM for file list generation
 #[derive(Debug, Deserialize)]
@@ -18,14 +19,6 @@ pub async fn generate_file_list(
 ) -> Result<(Vec<String>, String)> {
     // For tests, return mock response if using test key
     if openrouter_key == "test_key" {
-        // Handle empty repository case
-        if repo_map.is_empty() {
-            return Ok((
-                Vec::new(),
-                "No files available in the repository".to_string(),
-            ));
-        }
-
         return Ok((
             vec!["src/lib.rs".to_string()],
             "lib.rs needs to be modified to add the multiply function".to_string(),
@@ -60,36 +53,56 @@ Response format:
         title, description, repo_map
     );
 
+    debug!("Sending prompt to OpenRouter:\n{}", prompt);
+
     // Call OpenRouter API
     let client = reqwest::Client::new();
     let response = client
         .post("https://openrouter.ai/api/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", openrouter_key))
-        .header(
-            "HTTP-Referer",
-            "https://github.com/OpenAgentsInc/openagents",
-        )
+        .header("HTTP-Referer", "https://github.com/OpenAgentsInc/openagents")
         .json(&serde_json::json!({
             "model": "deepseek/deepseek-coder-33b-instruct",
             "messages": [{"role": "user", "content": prompt}]
         }))
         .send()
-        .await?;
+        .await
+        .context("Failed to send request to OpenRouter")?;
 
-    let response_json = response.json::<serde_json::Value>().await?;
+    let response_json = response.json::<serde_json::Value>().await
+        .context("Failed to parse OpenRouter response as JSON")?;
+    
+    debug!("OpenRouter response:\n{}", serde_json::to_string_pretty(&response_json)?);
+
     let content = response_json["choices"][0]["message"]["content"]
         .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Invalid response format"))?;
+        .ok_or_else(|| {
+            error!("Invalid response format. Expected content in choices[0].message.content. Got:\n{}", 
+                serde_json::to_string_pretty(&response_json).unwrap_or_default());
+            anyhow::anyhow!("Invalid response format from OpenRouter")
+        })?;
+
+    info!("Parsing LLM response:\n{}", content);
 
     // Parse response
-    let file_list: FileListResponse = serde_json::from_str(content)?;
+    let file_list: FileListResponse = serde_json::from_str(content)
+        .with_context(|| format!("Failed to parse LLM response as JSON. Response:\n{}", content))?;
 
     // Validate file paths
-    let valid_files = file_list
+    let valid_files: Vec<String> = file_list
         .files
         .into_iter()
-        .filter(|path| Path::new(path).exists())
+        .filter(|path| {
+            let exists = Path::new(path).exists();
+            if !exists {
+                debug!("Filtering out non-existent file: {}", path);
+            }
+            exists
+        })
         .collect();
+
+    info!("Found {} valid files to modify", valid_files.len());
+    debug!("Valid files: {:?}", valid_files);
 
     Ok((valid_files, file_list.reasoning))
 }
@@ -102,7 +115,7 @@ mod tests {
 
     fn setup_test_repo() -> Result<TempDir> {
         let temp_dir = tempfile::tempdir()?;
-
+        
         // Create test files
         fs::create_dir_all(temp_dir.path().join("src"))?;
         fs::write(
@@ -128,8 +141,7 @@ mod tests {
             "Add a multiply function to lib.rs",
             repo_map,
             "test_key",
-        )
-        .await?;
+        ).await?;
 
         assert!(!files.is_empty());
         assert!(files.contains(&"src/lib.rs".to_string()));
@@ -146,8 +158,12 @@ mod tests {
         std::env::set_current_dir(&temp_dir)?;
 
         let repo_map = "src/main.rs\nsrc/lib.rs\nsrc/nonexistent.rs";
-        let (files, _) =
-            generate_file_list("Update files", "Update all files", repo_map, "test_key").await?;
+        let (files, _) = generate_file_list(
+            "Update files",
+            "Update all files",
+            repo_map,
+            "test_key",
+        ).await?;
 
         assert!(!files.contains(&"src/nonexistent.rs".to_string()));
         assert!(files.iter().all(|path| Path::new(path).exists()));
@@ -165,8 +181,7 @@ mod tests {
             "Create a new file with some functionality",
             "",
             "test_key",
-        )
-        .await?;
+        ).await?;
 
         assert!(files.is_empty());
         assert!(!reasoning.is_empty());
