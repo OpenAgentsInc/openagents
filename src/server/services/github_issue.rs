@@ -126,7 +126,7 @@ impl GitHubService {
         repo: &str,
         issue_number: i32,
         comment: &str,
-    ) -> Result<()> {
+    ) -> Result<GitHubComment> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/issues/{}/comments",
             owner, repo, issue_number
@@ -156,7 +156,8 @@ impl GitHubService {
             ));
         }
 
-        Ok(())
+        let comment = response.json::<GitHubComment>().await?;
+        Ok(comment)
     }
 
     pub async fn check_branch_exists(
@@ -371,7 +372,7 @@ pub async fn post_github_comment(
     owner: &str,
     repo: &str,
     token: &str,
-) -> Result<()> {
+) -> Result<GitHubComment> {
     let service = GitHubService::new(Some(token.to_string()))?;
     service
         .post_comment(owner, repo, issue_number, comment)
