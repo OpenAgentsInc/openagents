@@ -60,9 +60,9 @@ impl OpenRouterService {
 
     fn get_model(&self, use_reasoner: bool) -> String {
         if use_reasoner {
-            "anthropic/claude-2".to_string()
+            "anthropic/claude-3.5-haiku".to_string()
         } else {
-            "openai/gpt-3.5-turbo".to_string()
+            "anthropic/claude-3.5-haiku".to_string()
         }
     }
 
@@ -181,6 +181,7 @@ impl Gateway for OpenRouterService {
                 "openai/gpt-3.5-turbo".to_string(),
                 "openai/gpt-4".to_string(),
                 "anthropic/claude-2".to_string(),
+                "anthropic/claude-3.5-haiku".to_string(),
             ],
         }
     }
