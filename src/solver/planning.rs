@@ -1,6 +1,8 @@
 use crate::server::services::gateway::Gateway;
 use crate::server::services::openrouter::{OpenRouterConfig, OpenRouterService};
+use crate::server::services::deepseek::StreamUpdate;
 use anyhow::Result;
+use tokio::sync::mpsc;
 use tracing::debug;
 
 pub struct PlanningContext {
@@ -25,6 +27,40 @@ impl PlanningContext {
     }
 
     pub async fn generate_plan(
+        &self,
+        issue_number: i32,
+        title: &str,
+        description: &str,
+        repo_map: &str,
+    ) -> mpsc::Receiver<StreamUpdate> {
+        let prompt = format!(
+            r#"You are an expert software developer. Your task is to analyze this GitHub issue and generate an implementation plan.
+
+Issue #{}: {}
+
+Description:
+{}
+
+Repository Map:
+{}
+
+Output a detailed implementation plan that:
+1. Lists files that need to be modified
+2. Describes specific changes needed
+3. Explains implementation steps
+4. Provides rationale for changes
+
+Focus on minimal, precise changes that directly address the issue requirements.
+"#,
+            issue_number, title, description, repo_map
+        );
+
+        debug!("Starting streaming plan generation with OpenRouter");
+        self.service.chat_stream(prompt, true).await
+    }
+
+    // Keep the old method for backwards compatibility during transition
+    pub async fn generate_plan_sync(
         &self,
         issue_number: i32,
         title: &str,
