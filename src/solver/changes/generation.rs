@@ -80,7 +80,7 @@ Example Response:
             "https://github.com/OpenAgentsInc/openagents",
         )
         .json(&serde_json::json!({
-            "model": "deepseek/deepseek-coder-33b-instruct",
+            "model": "deepseek/deepseek-chat",
             "messages": [{"role": "user", "content": prompt}]
         }))
         .send()
