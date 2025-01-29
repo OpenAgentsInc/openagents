@@ -1,7 +1,6 @@
-use crate::server::services::gateway::types::{ChatResponse, ChatStreamResponse, GatewayMetadata};
 use crate::server::services::gateway::Gateway;
+use crate::server::services::gateway::types::GatewayMetadata;
 use anyhow::{anyhow, Result};
-use bytes::Bytes;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -133,7 +132,7 @@ impl Gateway for OpenRouterService {
         }
     }
 
-    async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
+    async fn chat(&self, prompt: String, _use_reasoner: bool) -> Result<(String, Option<String>)> {
         // Return test response if in test mode
         if self.is_test_mode() {
             return Ok(("Test response".to_string(), None));
@@ -159,17 +158,15 @@ impl Gateway for OpenRouterService {
     async fn chat_stream(
         &self,
         prompt: String,
-        use_reasoner: bool,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamResponse>> + Send>>> {
+        _use_reasoner: bool,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
         // Return test stream if in test mode
         if self.is_test_mode() {
             let (tx, rx) = tokio::sync::mpsc::channel(1);
             tokio::spawn(async move {
-                tx.send(Ok(ChatStreamResponse {
-                    content: "Test response".to_string(),
-                }))
-                .await
-                .ok();
+                tx.send(Ok("Test response".to_string()))
+                    .await
+                    .ok();
             });
             return Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)));
         }
@@ -199,7 +196,7 @@ impl Gateway for OpenRouterService {
                             buffer = buffer[pos + 2..].to_vec();
 
                             if let Ok(Some(content)) = Self::process_stream_chunk(&message) {
-                                tx.send(Ok(ChatStreamResponse { content }))
+                                tx.send(Ok(content))
                                     .await
                                     .ok();
                             }
