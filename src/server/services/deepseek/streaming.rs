@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct StreamMessage {
     pub role: String,
     pub content: String,
+    pub reasoning_content: Option<String>,
+    pub tool_calls: Option<Vec<ToolCallResponse>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +26,14 @@ pub struct StreamResponse {
 pub enum StreamUpdate {
     Content(String),
     ReasoningContent(String),
+    ToolCalls(Vec<ToolCallResponse>),
     Error(String),
     Done,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallResponse {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
 }
