@@ -49,12 +49,11 @@ tests/repomap.rs:
 │fn handle_repomap
 
 tests/gateway.rs:
-│fn setup
 │fn test_openrouter_metadata
 │fn test_openrouter_chat
-│fn test_openrouter_stream
+│fn test_openrouter_chat_stream
 │fn test_openrouter_with_config
-│fn test_openrouter_conversation
+│fn test_openrouter_error_handling
 
 tests/solver_context.rs:
 │fn setup_test_context
@@ -302,7 +301,6 @@ src/bin/deepseek-cli.rs:
 │fn main
 
 src/bin/repo.rs:
-│fn print_colored
 │fn main
 
 src/bin/generate-repomap.rs:
@@ -368,12 +366,14 @@ src/server/services/openrouter/types.rs:
 │fn default
 
 src/server/services/openrouter/service.rs:
+│impl Default for Default
+│impl OpenRouterConfig for OpenRouterConfig
+│fn default
 │fn new
 │fn with_config
 │fn is_test_mode
 │fn get_model
 │fn prepare_messages
-│fn update_history
 │fn make_request
 │fn process_stream_chunk
 │impl Gateway for Gateway
@@ -389,7 +389,9 @@ src/server/services/github_issue.rs:
 │fn get_issue
 │fn get_issue_comments
 │fn post_comment
+│fn check_branch_exists
 │fn create_branch
+│fn check_branch_has_commits
 │fn create_pull_request
 │fn post_github_comment
 
@@ -514,10 +516,6 @@ src/solver/types.rs:
 │fn validate
 
 src/solver/solution.rs:
-│fn new
-│fn clone_repository
-│fn generate_repo_map
-│fn cleanup
 
 src/solver/config.rs:
 │fn load
@@ -566,17 +564,14 @@ src/solver/context.rs:
 │fn new
 │fn new_with_dir
 │fn clone_repository
+│fn checkout_branch
+│fn commit_changes
 │fn generate_repo_map
 │fn generate_file_list
 │fn generate_changes
 │fn parse_changes
 │fn apply_changes
 │fn cleanup
-│fn test_new_with_dir
-│fn test_generate_file_list
-│fn test_generate_changes
-│fn test_parse_changes
-│fn test_full_solution_flow
 
 src/routes.rs:
 │fn health_check
@@ -611,5 +606,9 @@ src/repo/analysis.rs:
 src/repo/git.rs:
 │fn cleanup_temp_dir
 │fn clone_repository
+│fn commit_changes
+│fn push_changes_with_token
+│fn checkout_branch
 
 src/repo/mod.rs:
+
