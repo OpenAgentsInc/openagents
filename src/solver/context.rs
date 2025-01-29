@@ -1,4 +1,5 @@
 use crate::repo::{cleanup_temp_dir, clone_repository, RepoContext};
+use crate::repomap::generate_repo_map;
 use crate::solver::types::{Change, ChangeError, ChangeResult};
 use anyhow::Result;
 use std::fs;
@@ -60,6 +61,11 @@ impl SolutionContext {
     pub fn clone_repository(&self, repo_url: &str) -> Result<()> {
         clone_repository(repo_url, &self.repo_context.temp_dir)?;
         Ok(())
+    }
+
+    /// Generates a map of the repository structure
+    pub fn generate_repo_map(&self) -> String {
+        generate_repo_map(&self.temp_dir)
     }
 
     /// Applies a set of changes to files
