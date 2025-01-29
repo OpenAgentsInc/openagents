@@ -1,5 +1,6 @@
 use crate::repo::{cleanup_temp_dir, clone_repository, RepoContext};
 use crate::repomap::generate_repo_map;
+use crate::solver::file_list::generate_file_list;
 use crate::solver::types::{Change, ChangeError, ChangeResult};
 use anyhow::Result;
 use std::fs;
@@ -67,6 +68,16 @@ impl SolutionContext {
         generate_repo_map(&self.temp_dir)
     }
 
+    /// Generates a list of files that need to be modified
+    pub async fn generate_file_list(
+        &self,
+        title: &str,
+        description: &str,
+    ) -> Result<(Vec<String>, String)> {
+        let repo_map = self.generate_repo_map();
+        generate_file_list(title, description, &repo_map, &self.repo_context.api_key).await
+    }
+
     /// Applies a set of changes to files
     pub fn apply_changes(&mut self, changes: &[Change]) -> ChangeResult<()> {
         for change in changes {
@@ -131,6 +142,38 @@ mod tests {
         )?;
         assert!(context.temp_dir.exists());
         assert!(context.modified_files.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_generate_file_list() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let context = SolutionContext::new_with_dir(
+            temp_dir.path().to_path_buf(),
+            "test_key".to_string(),
+            Some("test_token".to_string()),
+        )?;
+
+        // Create test files
+        fs::create_dir_all(context.temp_dir.join("src"))?;
+        fs::write(
+            context.temp_dir.join("src/main.rs"),
+            "fn main() { println!(\"Hello\"); }",
+        )?;
+        fs::write(
+            context.temp_dir.join("src/lib.rs"),
+            "pub fn add(a: i32, b: i32) -> i32 { a + b }",
+        )?;
+
+        let (files, reasoning) = context
+            .generate_file_list("Add multiply function", "Add a multiply function to lib.rs")
+            .await?;
+
+        assert!(!files.is_empty());
+        assert!(files.contains(&"src/lib.rs".to_string()));
+        assert!(!files.contains(&"src/main.rs".to_string()));
+        assert!(!reasoning.is_empty());
+
         Ok(())
     }
 }
