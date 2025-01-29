@@ -56,7 +56,29 @@ Focus on minimal, precise changes that directly address the issue requirements.
         );
 
         debug!("Starting streaming plan generation with OpenRouter");
-        self.service.chat_stream(prompt, true).await
+        let (tx, rx) = mpsc::channel(100);
+
+        // Convert OpenRouter stream to our StreamUpdate format
+        let stream = self.service.chat_stream(prompt, true).await;
+        tokio::spawn(async move {
+            while let Some(update) = stream.recv().await {
+                match update {
+                    StreamUpdate::Content(content) => {
+                        let _ = tx.send(StreamUpdate::Content(content)).await;
+                    }
+                    StreamUpdate::Reasoning(reasoning) => {
+                        let _ = tx.send(StreamUpdate::Reasoning(reasoning)).await;
+                    }
+                    StreamUpdate::Done => {
+                        let _ = tx.send(StreamUpdate::Done).await;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        rx
     }
 
     // Keep the old method for backwards compatibility during transition
