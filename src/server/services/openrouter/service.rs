@@ -1,4 +1,5 @@
 use crate::server::services::gateway::{Gateway, GatewayMetadata};
+use crate::server::services::StreamUpdate;
 use crate::server::services::openrouter::types::{OpenRouterConfig, OpenRouterMessage, OpenRouterRequest, OpenRouterResponse};
 use anyhow::{anyhow, Result};
 use reqwest::Client;
@@ -120,7 +121,7 @@ impl Gateway for OpenRouterService {
         Ok((content, None))
     }
 
-    async fn chat_stream(&self, prompt: String, _use_reasoner: bool) -> mpsc::Receiver<crate::server::services::StreamUpdate> {
+    async fn chat_stream(&self, prompt: String, _use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
         let (tx, rx) = mpsc::channel(100);
         let service = self.clone();
 
@@ -128,11 +129,12 @@ impl Gateway for OpenRouterService {
             match service.make_request(prompt).await {
                 Ok(response) => {
                     if let Some(choice) = response.choices.first() {
-                        let _ = tx.send(crate::server::services::StreamUpdate::Content(choice.message.content.clone())).await;
+                        let _ = tx.send(StreamUpdate::Content(choice.message.content.clone())).await;
+                        let _ = tx.send(StreamUpdate::Done).await;
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(crate::server::services::StreamUpdate::Error(e.to_string())).await;
+                    let _ = tx.send(StreamUpdate::Error(e.to_string())).await;
                 }
             }
         });
