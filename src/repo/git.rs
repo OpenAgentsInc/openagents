@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use git2::{Repository, Signature, BranchType};
+use git2::{Repository, Signature, BranchType, FetchOptions};
 use std::fs;
 use std::path::PathBuf;
 use tracing::debug;
@@ -66,14 +66,18 @@ pub fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<()> {
             debug!("Branch not found locally, fetching from remote");
             
             // Get the remote
-            let remote = repo.find_remote("origin")?;
+            let mut remote = repo.find_remote("origin")?;
+            
+            // Set up fetch options
+            let mut fetch_opts = FetchOptions::new();
             
             // Fetch from remote
             debug!("Fetching from remote");
-            remote.fetch(&[branch_name], None, None)?;
+            remote.fetch(&[branch_name], Some(&mut fetch_opts), None)?;
             
             // Create local branch from remote
             let remote_branch = format!("origin/{}", branch_name);
+            debug!("Looking up remote branch: {}", remote_branch);
             let commit = repo.revparse_single(&remote_branch)?;
             
             debug!("Creating local branch from remote");
