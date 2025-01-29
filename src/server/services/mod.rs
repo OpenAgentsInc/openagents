@@ -8,11 +8,5 @@ pub mod model_router;
 pub mod openrouter;
 pub mod repomap;
 
-pub use auth::OIDCConfig;
-pub use chat_database::ChatDatabase;
-pub use deepseek::{DeepSeekService, StreamUpdate};
-pub use gateway::{types::GatewayMetadata, Gateway};
-pub use github_issue::GitHubService;
-pub use model_router::ModelRouter;
-pub use openrouter::OpenRouterService;
-pub use repomap::RepomapService;
+pub use deepseek::streaming::StreamUpdate;
+pub use gateway::Gateway;
