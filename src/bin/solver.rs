@@ -33,7 +33,8 @@ async fn main() -> Result<()> {
     }
 
     // Initialize solution context
-    let mut solution = SolutionContext::new(cli.issue, openrouter_api_key, Some(github_token.clone()))?;
+    let mut solution =
+        SolutionContext::new(cli.issue, openrouter_api_key, Some(github_token.clone()))?;
 
     // Clone repository and generate map
     let repo_url = format!("https://github.com/{}", cli.repo);
@@ -115,9 +116,9 @@ async fn main() -> Result<()> {
     for file_path in files {
         openagents::solver::display::print_colored(
             &format!("\nProcessing {}...\n", file_path),
-            Color::Blue
+            Color::Blue,
         )?;
-        
+
         // Generate changes
         openagents::solver::display::print_colored("Generating changes...\n", Color::Green)?;
         let (changes, change_reasoning) = solution
@@ -133,7 +134,7 @@ async fn main() -> Result<()> {
             .await?;
 
         println!("\nChange reasoning:\n{}\n", change_reasoning);
-        
+
         // Apply changes
         openagents::solver::display::print_colored("Applying changes...\n", Color::Green)?;
         solution.apply_changes(&changes)?;
