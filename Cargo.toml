@@ -24,6 +24,7 @@ streaming-iterator = "0.1.9"
 env_logger = "0.10"
 dotenvy = "0.15"
 futures = "0.3"
+futures-util = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde-aux = "4"

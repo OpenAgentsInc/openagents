@@ -5,6 +5,12 @@ tests/auth_pages.rs:
 tests/tool_selection.rs:
 │fn test_tool_selection
 
+tests/solver_file_list.rs:
+│fn setup_test_repo
+│fn test_file_list_generation
+│fn test_file_list_with_invalid_paths
+│fn test_file_list_empty_repo
+
 tests/oidc_signup.rs:
 │fn create_test_service
 │fn create_test_token
@@ -50,6 +56,15 @@ tests/gateway.rs:
 │fn test_openrouter_with_config
 │fn test_openrouter_conversation
 
+tests/solver_context.rs:
+│fn setup_test_context
+│fn test_context_initialization
+│fn test_apply_changes_new_file
+│fn test_apply_changes_modify_file
+│fn test_apply_changes_no_match
+│fn test_apply_changes_file_not_found
+│fn test_cleanup
+
 tests/user.rs:
 │fn test_user_creation
 
@@ -89,6 +104,10 @@ tests/deepseek.rs:
 tests/health_check.rs:
 │fn health_check_works
 
+tests/solver_types.rs:
+│fn test_change_validation
+│fn test_change_equality
+
 tests/auth_signup_test.rs:
 │fn new
 │fn authorization_url
@@ -99,6 +118,15 @@ tests/auth_signup_test.rs:
 
 tests/chat_database.rs:
 │fn test_chat_persistence
+
+tests/solver_changes.rs:
+│fn test_change_generation
+│fn test_change_generation_no_changes
+│fn test_parse_search_replace_blocks
+│fn test_parse_search_replace_multiple_files
+│fn test_parse_search_replace_new_file
+│fn test_parse_search_replace_invalid
+│fn test_parse_search_replace_missing_path
 
 build.rs:
 │fn main
@@ -481,6 +509,10 @@ src/solver/display.rs:
 │fn print_colored
 │fn flush_stdout
 
+src/solver/types.rs:
+│fn new
+│fn validate
+
 src/solver/solution.rs:
 │fn new
 │fn clone_repository
@@ -489,6 +521,32 @@ src/solver/solution.rs:
 
 src/solver/config.rs:
 │fn load
+
+src/solver/changes/types.rs:
+
+src/solver/changes/generation.rs:
+│fn generate_changes
+
+src/solver/changes/parsing.rs:
+│fn parse_search_replace
+
+src/solver/changes/mod.rs:
+
+src/solver/changes/tests.rs:
+│fn test_generate_changes
+│fn test_generate_changes_no_changes
+│fn test_parse_search_replace
+│fn test_parse_search_replace_multiple
+│fn test_parse_search_replace_invalid
+
+src/solver/file_list.rs:
+│fn extract_json
+│fn generate_file_list
+│fn test_extract_json
+│fn setup_test_repo
+│fn test_generate_file_list
+│fn test_invalid_files_filtered
+│fn test_empty_repo
 
 src/solver/mod.rs:
 
@@ -503,6 +561,22 @@ src/solver/github.rs:
 src/solver/planning.rs:
 │fn new
 │fn generate_plan
+
+src/solver/context.rs:
+│fn new
+│fn new_with_dir
+│fn clone_repository
+│fn generate_repo_map
+│fn generate_file_list
+│fn generate_changes
+│fn parse_changes
+│fn apply_changes
+│fn cleanup
+│fn test_new_with_dir
+│fn test_generate_file_list
+│fn test_generate_changes
+│fn test_parse_changes
+│fn test_full_solution_flow
 
 src/routes.rs:
 │fn health_check
