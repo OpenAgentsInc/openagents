@@ -70,7 +70,7 @@ Response format:
         .header("Authorization", format!("Bearer {}", openrouter_key))
         .header("HTTP-Referer", "https://github.com/OpenAgentsInc/openagents")
         .json(&serde_json::json!({
-            "model": "deepseek/deepseek-coder-33b-instruct",
+            "model": "anthropic/claude-2",
             "messages": [{"role": "user", "content": prompt}]
         }))
         .send()
