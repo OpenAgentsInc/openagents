@@ -74,4 +74,36 @@ impl SolutionContext {
         cleanup_temp_dir(&self.temp_dir);
         debug!("Temporary directory removed.");
     }
+
+    pub async fn generate_file_list(
+        &self,
+        title: &str,
+        context: &str,
+    ) -> Result<(Vec<String>, String)> {
+        // TODO: Implement this
+        Ok((vec!["README.md".to_string()], "Generated file list".to_string()))
+    }
+
+    pub async fn generate_changes(
+        &mut self,
+        file_path: &str,
+        title: &str,
+        context: &str,
+    ) -> Result<(Vec<Change>, String)> {
+        // TODO: Implement this
+        self.modified_files.push(file_path.to_string());
+        Ok((vec![], "Generated changes".to_string()))
+    }
+
+    pub fn apply_changes(&self, changes: &[Change]) -> Result<()> {
+        // TODO: Implement this
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Change {
+    pub path: String,
+    pub search: String,
+    pub replace: String,
 }
