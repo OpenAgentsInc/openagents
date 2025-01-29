@@ -21,9 +21,11 @@ pub mod display;
 pub mod github;
 pub mod planning;
 pub mod solution;
+pub mod types;
 
 pub use config::*;
 pub use display::*;
 pub use github::*;
 pub use planning::*;
 pub use solution::*;
+pub use types::*;
