@@ -147,9 +147,12 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await?;
             return Err(anyhow!(
-                "Failed to post GitHub comment: {}",
-                response.status()
+                "Failed to post GitHub comment: {} - {}",
+                status,
+                error_body
             ));
         }
 
@@ -214,10 +217,11 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
             let error_body = response.text().await?;
             return Err(anyhow!(
                 "Failed to get base branch ref: {} - {}",
-                response.status(),
+                status,
                 error_body
             ));
         }
@@ -250,10 +254,11 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
             let error_body = response.text().await?;
             return Err(anyhow!(
                 "Failed to create branch: {} - {}",
-                response.status(),
+                status,
                 error_body
             ));
         }
@@ -285,8 +290,9 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
             let error_body = response.text().await?;
-            warn!("Failed to check branch commits: {} - {}", response.status(), error_body);
+            warn!("Failed to check branch commits: {} - {}", status, error_body);
             return Ok(false);
         }
 
@@ -338,10 +344,11 @@ impl GitHubService {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
             let error_body = response.text().await?;
             return Err(anyhow!(
                 "Failed to create pull request: {} - {}",
-                response.status(),
+                status,
                 error_body
             ));
         }
