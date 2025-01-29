@@ -63,6 +63,13 @@ tests/auth_error_handling.rs:
 │fn test_error_js_included
 │fn test_error_component_accessibility
 
+tests/solver_solutions.rs:
+│fn setup_test_context
+│fn test_generate_file_list
+│fn test_generate_changes
+│fn test_apply_changes
+│fn test_full_solution_flow
+
 tests/chat_router_integration.rs:
 │fn init_logging
 │fn create_test_tools
@@ -539,3 +546,4 @@ src/repo/git.rs:
 │fn clone_repository
 
 src/repo/mod.rs:
+
