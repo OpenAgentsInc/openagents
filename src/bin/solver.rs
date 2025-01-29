@@ -2,7 +2,7 @@ use anyhow::{Result, Context as _};
 use clap::Parser;
 use openagents::solver::{Cli, Config, GitHubContext, PlanningContext, SolutionContext};
 use termcolor::Color;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<()> {
