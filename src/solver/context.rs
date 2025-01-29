@@ -100,7 +100,7 @@ impl SolutionContext {
 
             // Write updated content
             fs::write(&file_path, new_content)?;
-            
+
             // Track modified file
             if !self.modified_files.contains(&change.path) {
                 self.modified_files.push(change.path.clone());

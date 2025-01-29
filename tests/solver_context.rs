@@ -1,6 +1,6 @@
 use anyhow::Result;
-use openagents::solver::{Change, ChangeError};
 use openagents::solver::context::SolutionContext;
+use openagents::solver::{Change, ChangeError};
 use std::fs;
 use tempfile::TempDir;
 
@@ -39,7 +39,9 @@ fn test_apply_changes_new_file() -> Result<()> {
     let file_path = context.temp_dir.join("src/new_file.rs");
     assert!(file_path.exists());
     assert_eq!(fs::read_to_string(file_path)?, "fn new_function() {}");
-    assert!(context.modified_files.contains(&"src/new_file.rs".to_string()));
+    assert!(context
+        .modified_files
+        .contains(&"src/new_file.rs".to_string()));
 
     Ok(())
 }
@@ -51,10 +53,7 @@ fn test_apply_changes_modify_file() -> Result<()> {
     // Create initial file
     let file_path = "src/test.rs";
     fs::create_dir_all(context.temp_dir.join("src"))?;
-    fs::write(
-        context.temp_dir.join(file_path),
-        "fn old_function() {}",
-    )?;
+    fs::write(context.temp_dir.join(file_path), "fn old_function() {}")?;
 
     // Modify the file
     let changes = vec![Change::new(
@@ -122,7 +121,7 @@ fn test_apply_changes_file_not_found() -> Result<()> {
 fn test_cleanup() -> Result<()> {
     let temp_dir = tempfile::tempdir()?;
     let temp_path = temp_dir.path().to_path_buf();
-    
+
     {
         let context = SolutionContext::new_with_dir(
             temp_path.clone(),
@@ -132,10 +131,7 @@ fn test_cleanup() -> Result<()> {
 
         // Create some test files
         fs::create_dir_all(context.temp_dir.join("src"))?;
-        fs::write(
-            context.temp_dir.join("src/test.rs"),
-            "fn test() {}",
-        )?;
+        fs::write(context.temp_dir.join("src/test.rs"), "fn test() {}")?;
 
         // Verify files exist
         assert!(context.temp_dir.join("src/test.rs").exists());
