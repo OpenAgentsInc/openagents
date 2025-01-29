@@ -22,22 +22,18 @@ mod config;
 mod context;
 mod display;
 mod file_list;
-mod fs;
 mod github;
 mod parser;
 mod planning;
-mod solution;
 
 pub use changes::*;
 pub use config::*;
 pub use context::*;
 pub use display::*;
 pub use file_list::*;
-pub use fs::*;
 pub use github::*;
 pub use parser::*;
 pub use planning::*;
-pub use solution::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Change {
