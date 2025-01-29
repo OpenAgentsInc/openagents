@@ -7,6 +7,7 @@ pub async fn handle_planning(
     cli: &Cli,
     issue: &Issue,
     comments: &[Comment],
+    repo_map: &str,
 ) -> Result<String> {
     // Generate implementation plan
     let planning = PlanningContext::new().context("Failed to initialize planning context")?;
@@ -47,7 +48,7 @@ pub async fn handle_planning(
                 issue.body.as_deref().unwrap_or("No description provided"),
                 comments_context
             ),
-            "repo_map", // TODO: Pass actual repo map
+            repo_map,
         )
         .await;
 
