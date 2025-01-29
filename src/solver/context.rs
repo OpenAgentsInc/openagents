@@ -79,7 +79,7 @@ impl SolutionContext {
             title,
             description,
             &repo_map,
-            &self.repo_context.openrouter_key,
+            &self.repo_context.api_key,
         ).await
     }
 
