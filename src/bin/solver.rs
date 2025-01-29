@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
     info!("Generated repository map ({} chars)", map.len());
     debug!("Repository map:\n{}", map);
 
-    // Create branch if in live mode
+    // Create and checkout branch if in live mode
     let branch_name = format!("issue-{}", cli.issue);
     if cli.live {
         info!("Creating branch: {}", branch_name);
@@ -72,6 +72,12 @@ async fn main() -> Result<()> {
             return Err(anyhow::anyhow!("Failed to verify branch creation"));
         }
         info!("Branch creation verified");
+
+        // Checkout the branch locally
+        info!("Checking out branch locally");
+        solution.checkout_branch(&branch_name)
+            .context("Failed to checkout branch")?;
+        debug!("Branch checked out successfully");
     }
 
     // Generate implementation plan
@@ -198,10 +204,14 @@ async fn main() -> Result<()> {
             .with_context(|| format!("Failed to apply changes to {}", file_path))?;
     }
 
-    // Create pull request if in live mode
+    // Commit changes if in live mode
     if cli.live && !solution.modified_files.is_empty() {
-        info!("Creating pull request");
-        
+        info!("Committing changes");
+        let commit_message = format!("Implement solution for #{}\n\n{}", cli.issue, implementation_plan);
+        solution.commit_changes(&commit_message)
+            .context("Failed to commit changes")?;
+        debug!("Changes committed successfully");
+
         // Verify branch has commits
         debug!("Verifying branch has commits");
         if !github.service.check_branch_has_commits(&github.owner, &github.repo, &branch_name).await? {
@@ -209,6 +219,8 @@ async fn main() -> Result<()> {
         }
         info!("Branch commits verified");
 
+        // Create pull request
+        info!("Creating pull request");
         let title = format!("Implement solution for #{}", cli.issue);
         let description = format!(
             "Automated solution for issue #{}\n\n\
