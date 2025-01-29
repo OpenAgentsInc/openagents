@@ -80,7 +80,8 @@ impl SolutionContext {
             description,
             &repo_map,
             &self.repo_context.api_key,
-        ).await
+        )
+        .await
     }
 
     /// Generates changes for a specific file
@@ -99,7 +100,8 @@ impl SolutionContext {
             title,
             description,
             &self.repo_context.api_key,
-        ).await
+        )
+        .await
     }
 
     /// Generates changes from SEARCH/REPLACE blocks
@@ -140,7 +142,7 @@ impl SolutionContext {
 
             // Write updated content
             fs::write(&file_path, new_content)?;
-            
+
             // Track modified file
             if !self.modified_files.contains(&change.path) {
                 self.modified_files.push(change.path.clone());
@@ -195,10 +197,7 @@ mod tests {
         )?;
 
         let (files, reasoning) = context
-            .generate_file_list(
-                "Add multiply function",
-                "Add a multiply function to lib.rs",
-            )
+            .generate_file_list("Add multiply function", "Add a multiply function to lib.rs")
             .await?;
 
         assert!(!files.is_empty());
