@@ -13,7 +13,8 @@ impl PlanningContext {
             .map_err(|_| anyhow::anyhow!("OPENROUTER_API_KEY not set"))?;
 
         let config = OpenRouterConfig {
-            model: "anthropic/claude-3.5-haiku".to_string(),
+            model: "deepseek/deepseek-chat".to_string(),
+            //model: "anthropic/claude-3.5-sonnet".to_string(),
             use_reasoner: true,
             test_mode: false,
         };
