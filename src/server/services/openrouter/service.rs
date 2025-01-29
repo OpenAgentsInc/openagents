@@ -1,6 +1,8 @@
-use crate::server::services::gateway::types::{ChatMessage, ChatResponse, ChatStreamResponse};
+use crate::server::services::gateway::types::{ChatResponse, ChatStreamResponse, GatewayMetadata};
 use crate::server::services::gateway::Gateway;
 use anyhow::{anyhow, Result};
+use bytes::Bytes;
+use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -58,28 +60,16 @@ impl OpenRouterService {
         "anthropic/claude-3.5-haiku".to_string()
     }
 
-    fn prepare_messages(&self, messages: &[ChatMessage]) -> Vec<Value> {
-        messages
-            .iter()
-            .map(|msg| {
-                serde_json::json!({
-                    "role": msg.role,
-                    "content": msg.content
-                })
-            })
-            .collect()
-    }
-
-    fn update_history(&self, history: &mut Vec<ChatMessage>, response: &str) {
-        history.push(ChatMessage {
-            role: "assistant".to_string(),
-            content: response.to_string(),
-        });
+    fn prepare_messages(&self, prompt: &str) -> Vec<Value> {
+        vec![serde_json::json!({
+            "role": "user",
+            "content": prompt
+        })]
     }
 
     async fn make_request(
         &self,
-        messages: &[ChatMessage],
+        prompt: &str,
         stream: bool,
     ) -> Result<reqwest::Response> {
         let model = self.get_model();
@@ -95,7 +85,7 @@ impl OpenRouterService {
             )
             .json(&serde_json::json!({
                 "model": model,
-                "messages": self.prepare_messages(messages),
+                "messages": self.prepare_messages(prompt),
                 "stream": stream
             }))
             .send()
@@ -104,12 +94,17 @@ impl OpenRouterService {
         Ok(response)
     }
 
-    fn process_stream_chunk(&self, chunk: &str) -> Result<Option<String>> {
-        if chunk.is_empty() || chunk == "[DONE]" {
+    fn process_stream_chunk(chunk: &[u8]) -> Result<Option<String>> {
+        if chunk.is_empty() {
             return Ok(None);
         }
 
-        let value: Value = serde_json::from_str(chunk)?;
+        let chunk_str = String::from_utf8_lossy(chunk);
+        if chunk_str == "[DONE]" {
+            return Ok(None);
+        }
+
+        let value: Value = serde_json::from_str(&chunk_str)?;
         let content = value["choices"][0]["delta"]["content"]
             .as_str()
             .unwrap_or("")
@@ -125,23 +120,26 @@ impl OpenRouterService {
 
 #[async_trait::async_trait]
 impl Gateway for OpenRouterService {
-    async fn metadata(&self) -> Result<Value> {
-        Ok(serde_json::json!({
-            "name": "OpenRouter",
-            "version": "1.0.0",
-            "models": ["deepseek/deepseek-chat", "anthropic/claude-3.5-haiku"]
-        }))
+    fn metadata(&self) -> GatewayMetadata {
+        GatewayMetadata {
+            name: "OpenRouter".to_string(),
+            openai_compatible: true,
+            supported_features: vec!["chat".to_string(), "streaming".to_string()],
+            default_model: "anthropic/claude-3.5-haiku".to_string(),
+            available_models: vec![
+                "anthropic/claude-3.5-haiku".to_string(),
+                "deepseek/deepseek-chat".to_string(),
+            ],
+        }
     }
 
-    async fn chat(&self, messages: &[ChatMessage]) -> Result<ChatResponse> {
+    async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
         // Return test response if in test mode
         if self.is_test_mode() {
-            return Ok(ChatResponse {
-                content: "Test response".to_string(),
-            });
+            return Ok(("Test response".to_string(), None));
         }
 
-        let response = self.make_request(messages, false).await?;
+        let response = self.make_request(&prompt, false).await?;
 
         if !response.status().is_success() {
             let error = response.text().await?;
@@ -155,12 +153,13 @@ impl Gateway for OpenRouterService {
             .ok_or_else(|| anyhow!("Invalid response format"))?
             .to_string();
 
-        Ok(ChatResponse { content })
+        Ok((content, None))
     }
 
     async fn chat_stream(
         &self,
-        messages: &[ChatMessage],
+        prompt: String,
+        use_reasoner: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<ChatStreamResponse>> + Send>>> {
         // Return test stream if in test mode
         if self.is_test_mode() {
@@ -175,7 +174,7 @@ impl Gateway for OpenRouterService {
             return Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)));
         }
 
-        let response = self.make_request(messages, true).await?;
+        let response = self.make_request(&prompt, true).await?;
 
         if !response.status().is_success() {
             let error = response.text().await?;
@@ -185,28 +184,24 @@ impl Gateway for OpenRouterService {
 
         let mut stream = response.bytes_stream();
         let (tx, rx) = tokio::sync::mpsc::channel(100);
-        let service = self.clone();
 
         tokio::spawn(async move {
-            let mut buffer = String::new();
+            let mut buffer = Vec::new();
 
-            while let Some(chunk) = stream.next().await {
-                match chunk {
-                    Ok(bytes) => {
-                        let chunk_str = String::from_utf8_lossy(&bytes);
-                        buffer.push_str(&chunk_str);
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        buffer.extend_from_slice(&chunk);
 
-                        while let Some(pos) = buffer.find('\n') {
-                            let line = buffer[..pos].trim();
-                            buffer = buffer[pos + 1..].to_string();
+                        // Process complete messages
+                        while let Some(pos) = buffer.windows(2).position(|w| w == b"\n\n") {
+                            let message = buffer[..pos].to_vec();
+                            buffer = buffer[pos + 2..].to_vec();
 
-                            if !line.is_empty() && line.starts_with("data: ") {
-                                let data = &line["data: ".len()..];
-                                if let Ok(Some(content)) = service.process_stream_chunk(data) {
-                                    tx.send(Ok(ChatStreamResponse { content }))
-                                        .await
-                                        .ok();
-                                }
+                            if let Ok(Some(content)) = Self::process_stream_chunk(&message) {
+                                tx.send(Ok(ChatStreamResponse { content }))
+                                    .await
+                                    .ok();
                             }
                         }
                     }
