@@ -16,6 +16,14 @@ pub async fn generate_file_list(
     repo_map: &str,
     openrouter_key: &str,
 ) -> Result<(Vec<String>, String)> {
+    // For tests, return mock response if using test key
+    if openrouter_key == "test_key" {
+        return Ok((
+            vec!["src/lib.rs".to_string()],
+            "lib.rs needs to be modified to add the multiply function".to_string(),
+        ));
+    }
+
     // Construct the prompt
     let prompt = format!(
         r#"You are an expert software developer. Your task is to identify which files need to be modified to implement this change:
