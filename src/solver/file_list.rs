@@ -10,6 +10,40 @@ struct FileListResponse {
     reasoning: String,
 }
 
+/// Extracts JSON object from a string that may contain markdown and other text
+fn extract_json(content: &str) -> Option<&str> {
+    // Look for JSON code block
+    if let Some(start) = content.find("```json") {
+        if let Some(end) = content[start..].find("```") {
+            // Get content between markers
+            let json_start = start + "```json".len();
+            let json_end = start + end;
+            return Some(content[json_start..json_end].trim());
+        }
+    }
+    
+    // Fallback: try to find JSON object directly
+    if let Some(start) = content.find('{') {
+        let mut depth = 0;
+        let chars: Vec<_> = content[start..].chars().collect();
+        
+        for (i, &c) in chars.iter().enumerate() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(&content[start..=start+i]);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    None
+}
+
 /// Generates a list of files that need to be modified
 pub async fn generate_file_list(
     title: &str,
@@ -43,7 +77,7 @@ Description: {}
 Repository structure:
 {}
 
-Output a JSON object with:
+Output ONLY a JSON object with:
 1. "files": Array of file paths that need to be modified
 2. "reasoning": Explanation of why each file needs changes
 
@@ -52,8 +86,9 @@ Rules:
 - Use exact paths from the repository structure
 - Explain the planned changes for each file
 - Focus on minimal, targeted changes
+- Return ONLY the JSON object, no other text
 
-Response format:
+Example response:
 {{
     "files": ["path/to/file1", "path/to/file2"],
     "reasoning": "File1 needs X changes because... File2 needs Y changes because..."
@@ -92,9 +127,17 @@ Response format:
 
     info!("Parsing LLM response:\n{}", content);
 
+    // Extract JSON from response
+    let json_str = extract_json(content).ok_or_else(|| {
+        error!("Failed to extract JSON from LLM response:\n{}", content);
+        anyhow::anyhow!("No valid JSON found in LLM response")
+    })?;
+
+    debug!("Extracted JSON:\n{}", json_str);
+
     // Parse response
-    let file_list: FileListResponse = serde_json::from_str(content)
-        .with_context(|| format!("Failed to parse LLM response as JSON. Response:\n{}", content))?;
+    let file_list: FileListResponse = serde_json::from_str(json_str)
+        .with_context(|| format!("Failed to parse LLM response as JSON. Response:\n{}", json_str))?;
 
     // Validate file paths
     let valid_files: Vec<String> = file_list
@@ -120,6 +163,46 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_extract_json() {
+        let inputs = vec![
+            (
+                r#"Here's the JSON:
+```json
+{"key": "value"}
+```
+More text"#,
+                Some(r#"{"key": "value"}"#),
+            ),
+            (
+                r#"{"key": "value"}"#,
+                Some(r#"{"key": "value"}"#),
+            ),
+            (
+                "No JSON here",
+                None,
+            ),
+            (
+                r#"Based on the analysis:
+```json
+{
+    "files": ["README.md"],
+    "reasoning": "Update docs"
+}
+```
+That's all."#,
+                Some(r#"{
+    "files": ["README.md"],
+    "reasoning": "Update docs"
+}"#),
+            ),
+        ];
+
+        for (input, expected) in inputs {
+            assert_eq!(extract_json(input).map(str::trim), expected.map(str::trim));
+        }
+    }
 
     fn setup_test_repo() -> Result<TempDir> {
         let temp_dir = tempfile::tempdir()?;
