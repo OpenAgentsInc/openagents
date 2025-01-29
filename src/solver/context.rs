@@ -12,8 +12,6 @@ pub struct SolutionContext {
     pub repo_context: RepoContext,
     /// List of files that have been modified
     pub modified_files: Vec<String>,
-    /// OpenRouter API key for LLM requests
-    openrouter_key: String,
 }
 
 impl SolutionContext {
@@ -32,13 +30,12 @@ impl SolutionContext {
         fs::create_dir_all(&temp_dir)?;
         tracing::info!("Temporary directory created at: {:?}", temp_dir);
 
-        let repo_context = RepoContext::new(temp_dir.clone(), openrouter_key.clone(), github_token);
+        let repo_context = RepoContext::new(temp_dir.clone(), openrouter_key, github_token);
 
         Ok(Self {
             temp_dir,
             repo_context,
             modified_files: Vec::new(),
-            openrouter_key,
         })
     }
 
@@ -50,13 +47,12 @@ impl SolutionContext {
         github_token: Option<String>,
     ) -> Result<Self> {
         fs::create_dir_all(&temp_dir)?;
-        let repo_context = RepoContext::new(temp_dir.clone(), openrouter_key.clone(), github_token);
+        let repo_context = RepoContext::new(temp_dir.clone(), openrouter_key, github_token);
 
         Ok(Self {
             temp_dir,
             repo_context,
             modified_files: Vec::new(),
-            openrouter_key,
         })
     }
 
