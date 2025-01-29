@@ -11,7 +11,7 @@ pub struct SolutionContext {
     pub temp_dir: PathBuf,
     pub repo_context: RepoContext,
     pub modified_files: Vec<String>,
-    gateway: Box<dyn Gateway>,
+    gateway: Box<dyn Gateway + Send + Sync>,
 }
 
 impl SolutionContext {
