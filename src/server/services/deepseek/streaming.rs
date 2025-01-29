@@ -1,30 +1,29 @@
-use crate::server::services::deepseek::types::ToolCallResponse;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct StreamChoice {
-    pub delta: StreamDelta,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamChoice {
+    pub delta: StreamMessage,
     pub finish_reason: Option<String>,
+    pub index: i32,
 }
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub(crate) struct StreamDelta {
-    pub content: Option<String>,
-    pub reasoning_content: Option<String>,
-    pub tool_calls: Option<Vec<ToolCallResponse>>,
-    pub role: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct StreamResponse {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamResponse {
+    pub id: String,
     pub choices: Vec<StreamChoice>,
+    pub model: String,
 }
 
 #[derive(Debug, Clone)]
 pub enum StreamUpdate {
     Content(String),
-    Reasoning(String),
-    ToolCalls(Vec<ToolCallResponse>),
+    ReasoningContent(String),
+    Error(String),
     Done,
 }
