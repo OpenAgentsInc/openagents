@@ -5,7 +5,7 @@ use tempfile::TempDir;
 
 fn setup_test_repo() -> Result<TempDir> {
     let temp_dir = tempfile::tempdir()?;
-    
+
     // Create test files
     fs::create_dir_all(temp_dir.path().join("src"))?;
     fs::write(
@@ -36,7 +36,8 @@ async fn test_file_list_generation() -> Result<()> {
         "Add a multiply function that multiplies two integers",
         repo_map,
         "test_key",
-    ).await?;
+    )
+    .await?;
 
     // Verify file selection
     assert!(!files.is_empty());
@@ -70,7 +71,8 @@ async fn test_file_list_with_invalid_paths() -> Result<()> {
         "Make changes to all files",
         repo_map,
         "test_key",
-    ).await?;
+    )
+    .await?;
 
     // Verify invalid files are filtered out
     assert!(!files.contains(&"src/nonexistent.rs".to_string()));
@@ -89,7 +91,8 @@ async fn test_file_list_empty_repo() -> Result<()> {
         "Create a new file with some functionality",
         "",
         "test_key",
-    ).await?;
+    )
+    .await?;
 
     assert!(files.is_empty());
     assert!(!reasoning.is_empty());

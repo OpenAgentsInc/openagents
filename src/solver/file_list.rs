@@ -65,7 +65,10 @@ Response format:
     let response = client
         .post("https://openrouter.ai/api/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", openrouter_key))
-        .header("HTTP-Referer", "https://github.com/OpenAgentsInc/openagents")
+        .header(
+            "HTTP-Referer",
+            "https://github.com/OpenAgentsInc/openagents",
+        )
         .json(&serde_json::json!({
             "model": "deepseek/deepseek-coder-33b-instruct",
             "messages": [{"role": "user", "content": prompt}]
@@ -99,7 +102,7 @@ mod tests {
 
     fn setup_test_repo() -> Result<TempDir> {
         let temp_dir = tempfile::tempdir()?;
-        
+
         // Create test files
         fs::create_dir_all(temp_dir.path().join("src"))?;
         fs::write(
@@ -125,7 +128,8 @@ mod tests {
             "Add a multiply function to lib.rs",
             repo_map,
             "test_key",
-        ).await?;
+        )
+        .await?;
 
         assert!(!files.is_empty());
         assert!(files.contains(&"src/lib.rs".to_string()));
@@ -142,12 +146,8 @@ mod tests {
         std::env::set_current_dir(&temp_dir)?;
 
         let repo_map = "src/main.rs\nsrc/lib.rs\nsrc/nonexistent.rs";
-        let (files, _) = generate_file_list(
-            "Update files",
-            "Update all files",
-            repo_map,
-            "test_key",
-        ).await?;
+        let (files, _) =
+            generate_file_list("Update files", "Update all files", repo_map, "test_key").await?;
 
         assert!(!files.contains(&"src/nonexistent.rs".to_string()));
         assert!(files.iter().all(|path| Path::new(path).exists()));
@@ -165,7 +165,8 @@ mod tests {
             "Create a new file with some functionality",
             "",
             "test_key",
-        ).await?;
+        )
+        .await?;
 
         assert!(files.is_empty());
         assert!(!reasoning.is_empty());

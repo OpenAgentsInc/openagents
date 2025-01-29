@@ -75,12 +75,7 @@ impl SolutionContext {
         description: &str,
     ) -> Result<(Vec<String>, String)> {
         let repo_map = self.generate_repo_map();
-        generate_file_list(
-            title,
-            description,
-            &repo_map,
-            &self.repo_context.api_key,
-        ).await
+        generate_file_list(title, description, &repo_map, &self.repo_context.api_key).await
     }
 
     /// Applies a set of changes to files
@@ -116,7 +111,7 @@ impl SolutionContext {
 
             // Write updated content
             fs::write(&file_path, new_content)?;
-            
+
             // Track modified file
             if !self.modified_files.contains(&change.path) {
                 self.modified_files.push(change.path.clone());
@@ -171,10 +166,7 @@ mod tests {
         )?;
 
         let (files, reasoning) = context
-            .generate_file_list(
-                "Add multiply function",
-                "Add a multiply function to lib.rs",
-            )
+            .generate_file_list("Add multiply function", "Add a multiply function to lib.rs")
             .await?;
 
         assert!(!files.is_empty());
