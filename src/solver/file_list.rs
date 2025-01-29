@@ -4,7 +4,7 @@ use std::path::Path;
 
 /// Generate a list of files that need to be modified based on the issue
 pub async fn generate_file_list(
-    gateway: &impl Gateway,
+    gateway: &(impl Gateway + ?Sized),
     issue_title: &str,
     issue_body: &str,
     repo_map: &str,
