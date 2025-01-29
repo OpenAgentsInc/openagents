@@ -1,6 +1,6 @@
-use crate::repo::{cleanup_temp_dir, clone_repository, RepoContext};
+use crate::repo::{clone_repository, RepoContext};
 use crate::repomap::generate_repo_map;
-use crate::server::services::openrouter::service::OpenRouterService;
+use crate::server::services::openrouter::OpenRouterService;
 use crate::solver::Change;
 use anyhow::{anyhow, Result};
 use std::fs;
