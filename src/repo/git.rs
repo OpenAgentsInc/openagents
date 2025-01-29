@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use git2::{Repository, Signature};
+use git2::{Repository, Signature, BranchType};
 use std::fs;
 use std::path::PathBuf;
 use tracing::debug;
@@ -58,16 +58,40 @@ pub fn commit_changes(repo: &Repository, files: &[String], message: &str) -> Res
 
 pub fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<()> {
     debug!("Checking out branch: {}", branch_name);
+
+    // First try to find the local branch
+    let branch = match repo.find_branch(branch_name, BranchType::Local) {
+        Ok(branch) => branch,
+        Err(_) => {
+            debug!("Branch not found locally, fetching from remote");
+            
+            // Get the remote
+            let remote = repo.find_remote("origin")?;
+            
+            // Fetch from remote
+            debug!("Fetching from remote");
+            remote.fetch(&[branch_name], None, None)?;
+            
+            // Create local branch from remote
+            let remote_branch = format!("origin/{}", branch_name);
+            let commit = repo.revparse_single(&remote_branch)?;
+            
+            debug!("Creating local branch from remote");
+            repo.branch(branch_name, &commit.peel_to_commit()?, false)?;
+            
+            repo.find_branch(branch_name, BranchType::Local)?
+        }
+    };
+
+    let reference = branch.get();
+    let commit = reference.peel_to_commit()?;
     
-    let (object, reference) = repo.revparse_ext(branch_name)?;
+    debug!("Setting HEAD to branch");
+    repo.set_head(reference.name().ok_or_else(|| anyhow!("Invalid reference name"))?)?;
     
-    repo.checkout_tree(&object, None)?;
-    
-    match reference {
-        Some(gref) => repo.set_head(gref.name().unwrap()),
-        None => repo.set_head(&format!("refs/heads/{}", branch_name)),
-    }?;
-    
+    debug!("Checking out tree");
+    repo.checkout_tree(commit.as_object(), None)?;
+
     debug!("Successfully checked out branch: {}", branch_name);
     Ok(())
 }
