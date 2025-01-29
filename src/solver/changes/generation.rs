@@ -1,5 +1,5 @@
-use crate::solver::types::{Change, ChangeError};
-use crate::solver::changes::types::{ChangeResponse, ChangeBlock};
+use crate::solver::types::Change;
+use crate::solver::changes::types::ChangeResponse;
 use anyhow::Result;
 use tracing::{debug, error, info};
 
@@ -117,7 +117,7 @@ Example Response:
         }
 
         // Create and validate change
-        let change = Change::new(block.path, block.search, block.replace);
+        let change = Change::new(block.path.clone(), block.search.clone(), block.replace.clone());
         match change.validate() {
             Ok(_) => {
                 debug!("Valid change: {:?}", change);
