@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
 use openagents::solver::{Cli, Config, GitHubContext, PlanningContext, SolutionContext};
-use std::fs;
 use termcolor::Color;
 
 #[tokio::main]
