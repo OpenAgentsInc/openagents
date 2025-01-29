@@ -1,5 +1,5 @@
 use super::*;
-use crate::solver::types::ChangeResult;
+use crate::solver::types::{ChangeError, ChangeResult};
 use anyhow::Result;
 
 #[tokio::test]

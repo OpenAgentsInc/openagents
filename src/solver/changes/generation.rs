@@ -52,6 +52,7 @@ Rules:
 - Keep changes minimal and focused
 - Preserve code style and formatting
 - Empty search means new file content
+- Do not put it inside a markdown code block, respond ONLY with the valid JSON. (Do not say "```json" at the beginning)
 
 Example Response:
 {{
