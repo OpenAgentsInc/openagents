@@ -40,8 +40,7 @@ impl SolutionContext {
         })
     }
 
-    /// Creates a new SolutionContext with a specified directory (for testing)
-    #[cfg(test)]
+    /// Creates a new SolutionContext with a specified directory
     pub fn new_with_dir(
         temp_dir: PathBuf,
         openrouter_key: String,
@@ -115,5 +114,23 @@ impl SolutionContext {
     pub fn cleanup(&self) {
         cleanup_temp_dir(&self.temp_dir);
         tracing::info!("Temporary directory removed.");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_with_dir() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let context = SolutionContext::new_with_dir(
+            temp_dir.path().to_path_buf(),
+            "test_key".to_string(),
+            Some("test_token".to_string()),
+        )?;
+        assert!(context.temp_dir.exists());
+        assert!(context.modified_files.is_empty());
+        Ok(())
     }
 }
