@@ -1,3 +1,4 @@
+use futures_util::StreamExt;
 use openagents::server::services::{
     gateway::Gateway,
     openrouter::{OpenRouterService, OpenRouterConfig},
