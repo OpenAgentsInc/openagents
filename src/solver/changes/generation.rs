@@ -1,6 +1,6 @@
-use crate::solver::types::Change;
 use crate::solver::changes::types::ChangeResponse;
-use anyhow::{Result, anyhow};
+use crate::solver::types::Change;
+use anyhow::{anyhow, Result};
 use tracing::{debug, error, info, warn};
 
 /// Generates changes for a specific file
@@ -88,30 +88,42 @@ Example Response:
         .await?;
 
     let response_json = response.json::<serde_json::Value>().await?;
-    
-    debug!("OpenRouter response:\n{}", serde_json::to_string_pretty(&response_json)?);
+
+    debug!(
+        "OpenRouter response:\n{}",
+        serde_json::to_string_pretty(&response_json)?
+    );
 
     // Check for error response
     if let Some(error) = response_json.get("error") {
         let error_msg = error["message"].as_str().unwrap_or("Unknown error");
         let error_code = error["code"].as_i64().unwrap_or(0);
-        
+
         error!("OpenRouter API error: {} ({})", error_msg, error_code);
-        
+
         // Handle specific error codes
         match error_code {
             500 => {
                 warn!("OpenRouter internal error - retrying with different model");
                 // TODO: Implement retry with different model
-                return Err(anyhow!("OpenRouter internal error: {}. Please try again", error_msg));
-            },
+                return Err(anyhow!(
+                    "OpenRouter internal error: {}. Please try again",
+                    error_msg
+                ));
+            }
             429 => {
                 warn!("Rate limit exceeded - implementing backoff");
                 // TODO: Implement rate limit backoff
-                return Err(anyhow!("Rate limit exceeded. Please wait a moment and try again"));
-            },
+                return Err(anyhow!(
+                    "Rate limit exceeded. Please wait a moment and try again"
+                ));
+            }
             _ => {
-                return Err(anyhow!("OpenRouter API error: {} ({})", error_msg, error_code));
+                return Err(anyhow!(
+                    "OpenRouter API error: {} ({})",
+                    error_msg,
+                    error_code
+                ));
             }
         }
     }
@@ -127,11 +139,13 @@ Example Response:
     info!("Parsing LLM response:\n{}", content);
 
     // Parse response
-    let change_response: ChangeResponse = serde_json::from_str(content)
-        .map_err(|e| {
-            error!("Failed to parse LLM response as JSON: {}\nResponse:\n{}", e, content);
-            anyhow!("Failed to parse LLM response. See logs for details.")
-        })?;
+    let change_response: ChangeResponse = serde_json::from_str(content).map_err(|e| {
+        error!(
+            "Failed to parse LLM response as JSON: {}\nResponse:\n{}",
+            e, content
+        );
+        anyhow!("Failed to parse LLM response. See logs for details.")
+    })?;
 
     // Convert to Change objects and validate
     let mut changes = Vec::new();
@@ -143,7 +157,11 @@ Example Response:
         }
 
         // Create and validate change
-        let change = Change::new(block.path.clone(), block.search.clone(), block.replace.clone());
+        let change = Change::new(
+            block.path.clone(),
+            block.search.clone(),
+            block.replace.clone(),
+        );
         match change.validate() {
             Ok(_) => {
                 debug!("Valid change: {:?}", change);

@@ -38,10 +38,7 @@ Create a focused implementation plan that:
 
 Keep the plan concise and focused on the specific issue.
 Do not add unnecessary changes or suggest refactoring unrelated code."#,
-            issue_number,
-            title,
-            body,
-            map
+            issue_number, title, body, map
         );
 
         print_colored("\nGenerating Implementation Plan:\n", Color::Yellow)?;

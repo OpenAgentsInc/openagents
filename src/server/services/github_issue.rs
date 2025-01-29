@@ -171,7 +171,7 @@ impl GitHubService {
         );
 
         debug!("Checking if branch exists: {}", url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -235,7 +235,7 @@ impl GitHubService {
 
         // Create the new branch
         let url = format!("https://api.github.com/repos/{}/{}/git/refs", owner, repo);
-        
+
         let payload = BranchPayload {
             ref_name: format!("refs/heads/{}", branch_name),
             sha: sha.to_string(),
@@ -292,13 +292,20 @@ impl GitHubService {
         if !response.status().is_success() {
             let status = response.status();
             let error_body = response.text().await?;
-            warn!("Failed to check branch commits: {} - {}", status, error_body);
+            warn!(
+                "Failed to check branch commits: {} - {}",
+                status, error_body
+            );
             return Ok(false);
         }
 
         let commits: Vec<serde_json::Value> = response.json().await?;
-        debug!("Found {} commits on branch '{}'", commits.len(), branch_name);
-        
+        debug!(
+            "Found {} commits on branch '{}'",
+            commits.len(),
+            branch_name
+        );
+
         Ok(!commits.is_empty())
     }
 

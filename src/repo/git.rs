@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use git2::{Repository, Signature, BranchType, FetchOptions, PushOptions, RemoteCallbacks, Cred};
+use git2::{BranchType, Cred, FetchOptions, PushOptions, RemoteCallbacks, Repository, Signature};
 use std::fs;
 use std::path::PathBuf;
 use tracing::debug;
@@ -24,25 +24,26 @@ pub fn clone_repository(url: &str, temp_dir: &PathBuf) -> Result<Repository> {
 
 pub fn commit_changes(repo: &Repository, files: &[String], message: &str) -> Result<()> {
     debug!("Committing changes to files: {:?}", files);
-    
+
     let mut index = repo.index()?;
-    
+
     // Add all modified files to the index
     for file in files {
         debug!("Adding file to index: {}", file);
         index.add_path(std::path::Path::new(file))?;
     }
-    
+
     index.write()?;
-    
+
     let tree_id = index.write_tree()?;
     let tree = repo.find_tree(tree_id)?;
-    
+
     let head = repo.head()?;
-    let parent_commit = repo.find_commit(head.target().ok_or_else(|| anyhow!("No HEAD target"))?)?;
-    
+    let parent_commit =
+        repo.find_commit(head.target().ok_or_else(|| anyhow!("No HEAD target"))?)?;
+
     let signature = Signature::now("OpenAgents Solver", "solver@openagents.com")?;
-    
+
     repo.commit(
         Some("HEAD"),
         &signature,
@@ -51,7 +52,7 @@ pub fn commit_changes(repo: &Repository, files: &[String], message: &str) -> Res
         &tree,
         &[&parent_commit],
     )?;
-    
+
     debug!("Changes committed successfully");
 
     Ok(())
@@ -60,22 +61,22 @@ pub fn commit_changes(repo: &Repository, files: &[String], message: &str) -> Res
 pub fn push_changes_with_token(repo: &Repository, token: &str) -> Result<()> {
     debug!("Setting up push with auth");
     let mut remote = repo.find_remote("origin")?;
-    
+
     let mut callbacks = RemoteCallbacks::new();
-    
+
     // Set up authentication callback
     callbacks.credentials(move |_url, username_from_url, _allowed_types| {
         debug!("Auth callback triggered");
-        Cred::userpass_plaintext(
-            username_from_url.unwrap_or("git"),
-            token
-        )
+        Cred::userpass_plaintext(username_from_url.unwrap_or("git"), token)
     });
 
     callbacks.push_update_reference(|refname, status| {
         if let Some(msg) = status {
             debug!("Failed to push {}: {}", refname, msg);
-            Err(git2::Error::from_str(&format!("Failed to push {}: {}", refname, msg)))
+            Err(git2::Error::from_str(&format!(
+                "Failed to push {}: {}",
+                refname, msg
+            )))
         } else {
             debug!("Pushed {} successfully", refname);
             Ok(())
@@ -87,7 +88,9 @@ pub fn push_changes_with_token(repo: &Repository, token: &str) -> Result<()> {
 
     // Get current branch name
     let head = repo.head()?;
-    let branch_name = head.shorthand().ok_or_else(|| anyhow!("Invalid branch name"))?;
+    let branch_name = head
+        .shorthand()
+        .ok_or_else(|| anyhow!("Invalid branch name"))?;
     let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
     debug!("Pushing with refspec: {}", refspec);
 
@@ -105,35 +108,39 @@ pub fn checkout_branch(repo: &Repository, branch_name: &str) -> Result<()> {
         Ok(branch) => branch,
         Err(_) => {
             debug!("Branch not found locally, fetching from remote");
-            
+
             // Get the remote
             let mut remote = repo.find_remote("origin")?;
-            
+
             // Set up fetch options
             let mut fetch_opts = FetchOptions::new();
-            
+
             // Fetch from remote
             debug!("Fetching from remote");
             remote.fetch(&[branch_name], Some(&mut fetch_opts), None)?;
-            
+
             // Create local branch from remote
             let remote_branch = format!("origin/{}", branch_name);
             debug!("Looking up remote branch: {}", remote_branch);
             let commit = repo.revparse_single(&remote_branch)?;
-            
+
             debug!("Creating local branch from remote");
             repo.branch(branch_name, &commit.peel_to_commit()?, false)?;
-            
+
             repo.find_branch(branch_name, BranchType::Local)?
         }
     };
 
     let reference = branch.get();
     let commit = reference.peel_to_commit()?;
-    
+
     debug!("Setting HEAD to branch");
-    repo.set_head(reference.name().ok_or_else(|| anyhow!("Invalid reference name"))?)?;
-    
+    repo.set_head(
+        reference
+            .name()
+            .ok_or_else(|| anyhow!("Invalid reference name"))?,
+    )?;
+
     debug!("Checking out tree");
     repo.checkout_tree(commit.as_object(), None)?;
 

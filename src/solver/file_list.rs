@@ -1,4 +1,4 @@
-use anyhow::{Result, Context as _};
+use anyhow::{Context as _, Result};
 use serde::Deserialize;
 use std::path::Path;
 use tracing::{debug, error, info};
@@ -19,33 +19,33 @@ fn extract_json(content: &str) -> Option<&str> {
             // Calculate absolute positions
             let json_start = start_marker + "```json".len();
             let json_end = start_marker + end_marker;
-            
+
             // Ensure valid slice and return trimmed content
             if json_start < json_end {
                 return Some(content[json_start..json_end].trim());
             }
         }
     }
-    
+
     // Fallback: try to find JSON object directly
     if let Some(start) = content.find('{') {
         let mut depth = 0;
         let chars: Vec<_> = content[start..].chars().collect();
-        
+
         for (i, &c) in chars.iter().enumerate() {
             match c {
                 '{' => depth += 1,
                 '}' => {
                     depth -= 1;
                     if depth == 0 {
-                        return Some(&content[start..=start+i]);
+                        return Some(&content[start..=start + i]);
                     }
                 }
                 _ => {}
             }
         }
     }
-    
+
     None
 }
 
@@ -108,7 +108,10 @@ Example response:
     let response = client
         .post("https://openrouter.ai/api/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", openrouter_key))
-        .header("HTTP-Referer", "https://github.com/OpenAgentsInc/openagents")
+        .header(
+            "HTTP-Referer",
+            "https://github.com/OpenAgentsInc/openagents",
+        )
         .json(&serde_json::json!({
             "model": "anthropic/claude-2",
             "messages": [{"role": "user", "content": prompt}]
@@ -117,16 +120,23 @@ Example response:
         .await
         .context("Failed to send request to OpenRouter")?;
 
-    let response_json = response.json::<serde_json::Value>().await
+    let response_json = response
+        .json::<serde_json::Value>()
+        .await
         .context("Failed to parse OpenRouter response as JSON")?;
-    
-    debug!("OpenRouter response:\n{}", serde_json::to_string_pretty(&response_json)?);
+
+    debug!(
+        "OpenRouter response:\n{}",
+        serde_json::to_string_pretty(&response_json)?
+    );
 
     let content = response_json["choices"][0]["message"]["content"]
         .as_str()
         .ok_or_else(|| {
-            error!("Invalid response format. Expected content in choices[0].message.content. Got:\n{}", 
-                serde_json::to_string_pretty(&response_json).unwrap_or_default());
+            error!(
+                "Invalid response format. Expected content in choices[0].message.content. Got:\n{}",
+                serde_json::to_string_pretty(&response_json).unwrap_or_default()
+            );
             anyhow::anyhow!("Invalid response format from OpenRouter")
         })?;
 
@@ -141,8 +151,12 @@ Example response:
     debug!("Extracted JSON:\n{}", json_str);
 
     // Parse response
-    let file_list: FileListResponse = serde_json::from_str(json_str)
-        .with_context(|| format!("Failed to parse LLM response as JSON. Response:\n{}", json_str))?;
+    let file_list: FileListResponse = serde_json::from_str(json_str).with_context(|| {
+        format!(
+            "Failed to parse LLM response as JSON. Response:\n{}",
+            json_str
+        )
+    })?;
 
     // Validate file paths
     let valid_files: Vec<String> = file_list
@@ -180,14 +194,8 @@ mod tests {
 More text"#,
                 Some(r#"{"key": "value"}"#),
             ),
-            (
-                r#"{"key": "value"}"#,
-                Some(r#"{"key": "value"}"#),
-            ),
-            (
-                "No JSON here",
-                None,
-            ),
+            (r#"{"key": "value"}"#, Some(r#"{"key": "value"}"#)),
+            ("No JSON here", None),
             (
                 r#"Based on the analysis:
 ```json
@@ -197,10 +205,12 @@ More text"#,
 }
 ```
 That's all."#,
-                Some(r#"{
+                Some(
+                    r#"{
     "files": ["README.md"],
     "reasoning": "Update docs"
-}"#),
+}"#,
+                ),
             ),
         ];
 
@@ -213,7 +223,7 @@ That's all."#,
 
     fn setup_test_repo() -> Result<TempDir> {
         let temp_dir = tempfile::tempdir()?;
-        
+
         // Create test files
         fs::create_dir_all(temp_dir.path().join("src"))?;
         fs::write(
@@ -239,7 +249,8 @@ That's all."#,
             "Add a multiply function to lib.rs",
             repo_map,
             "test_key",
-        ).await?;
+        )
+        .await?;
 
         assert!(!files.is_empty());
         assert!(files.contains(&"src/lib.rs".to_string()));
@@ -256,12 +267,8 @@ That's all."#,
         std::env::set_current_dir(&temp_dir)?;
 
         let repo_map = "src/main.rs\nsrc/lib.rs\nsrc/nonexistent.rs";
-        let (files, _) = generate_file_list(
-            "Update files",
-            "Update all files",
-            repo_map,
-            "test_key",
-        ).await?;
+        let (files, _) =
+            generate_file_list("Update files", "Update all files", repo_map, "test_key").await?;
 
         assert!(!files.contains(&"src/nonexistent.rs".to_string()));
         assert!(files.iter().all(|path| Path::new(path).exists()));
@@ -279,7 +286,8 @@ That's all."#,
             "Create a new file with some functionality",
             "",
             "test_key",
-        ).await?;
+        )
+        .await?;
 
         assert!(files.is_empty());
         assert!(!reasoning.is_empty());

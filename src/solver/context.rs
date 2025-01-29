@@ -1,8 +1,11 @@
-use crate::repo::{cleanup_temp_dir, clone_repository, commit_changes, checkout_branch, push_changes_with_token, RepoContext};
+use crate::repo::{
+    checkout_branch, cleanup_temp_dir, clone_repository, commit_changes, push_changes_with_token,
+    RepoContext,
+};
 use crate::repomap::generate_repo_map;
 use crate::solver::changes::{generate_changes, parse_search_replace};
 use crate::solver::types::{Change, ChangeError, ChangeResult};
-use anyhow::{Result, Context as _};
+use anyhow::{Context as _, Result};
 use git2::Repository;
 use std::fs;
 use std::path::PathBuf;
@@ -72,7 +75,9 @@ impl SolutionContext {
 
     /// Checks out a branch in the repository
     pub fn checkout_branch(&self, branch_name: &str) -> Result<()> {
-        let repo = self.repo.as_ref()
+        let repo = self
+            .repo
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Repository not initialized"))?;
         checkout_branch(repo, branch_name)
             .with_context(|| format!("Failed to checkout branch: {}", branch_name))
@@ -80,9 +85,11 @@ impl SolutionContext {
 
     /// Commits changes to the repository
     pub fn commit_changes(&self, message: &str) -> Result<()> {
-        let repo = self.repo.as_ref()
+        let repo = self
+            .repo
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Repository not initialized"))?;
-        
+
         if self.modified_files.is_empty() {
             debug!("No files to commit");
             return Ok(());
@@ -90,7 +97,7 @@ impl SolutionContext {
 
         info!("Committing changes to {} files", self.modified_files.len());
         debug!("Modified files: {:?}", self.modified_files);
-        
+
         // Commit changes
         commit_changes(repo, &self.modified_files, message)
             .with_context(|| format!("Failed to commit changes: {}", message))?;
@@ -98,8 +105,7 @@ impl SolutionContext {
         // Push changes if we have a token
         if let Some(token) = &self.repo_context.github_token {
             debug!("Pushing changes with auth token");
-            push_changes_with_token(repo, token)
-                .with_context(|| "Failed to push changes")?;
+            push_changes_with_token(repo, token).with_context(|| "Failed to push changes")?;
         } else {
             debug!("No GitHub token available - skipping push");
         }
