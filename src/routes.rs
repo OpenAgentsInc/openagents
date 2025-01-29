@@ -1,4 +1,3 @@
-use crate::server::services::repomap::RepomapService;
 use axum::{
     extract::State,
     http::StatusCode,
@@ -54,16 +53,24 @@ pub async fn repomap() -> Html<&'static str> {
 
 #[axum::debug_handler]
 pub async fn generate_repomap(
-    State(repomap_service): State<Arc<RepomapService>>,
+    State(model_router): State<Arc<crate::server::services::model_router::ModelRouter>>,
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, StatusCode> {
     let repo_url = payload["repo_url"]
         .as_str()
         .ok_or(StatusCode::BAD_REQUEST)?;
 
-    repomap_service
-        .generate_repomap(repo_url)
+    let prompt = format!(
+        "Generate a repository map for {}. Include all files and their key functions.",
+        repo_url
+    );
+
+    let (response, _) = model_router
+        .chat(prompt)
         .await
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({
+        "result": response
+    })))
 }
