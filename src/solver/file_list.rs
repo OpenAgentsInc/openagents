@@ -19,6 +19,14 @@ pub async fn generate_file_list(
 ) -> Result<(Vec<String>, String)> {
     // For tests, return mock response if using test key
     if openrouter_key == "test_key" {
+        // Handle empty repository case
+        if repo_map.is_empty() {
+            return Ok((
+                Vec::new(),
+                "No files available in the repository".to_string(),
+            ));
+        }
+
         return Ok((
             vec!["src/lib.rs".to_string()],
             "lib.rs needs to be modified to add the multiply function".to_string(),
