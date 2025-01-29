@@ -27,8 +27,25 @@ async fn main() -> Result<()> {
     // Handle issue details
     let (issue, comments) = issue::handle_issue(&cli, &github_token).await?;
 
+    // Initialize solution context for repo map
+    let mut solution = openagents::solver::SolutionContext::new(
+        cli.issue,
+        openrouter_api_key.clone(),
+        Some(github_token.clone()),
+    )
+    .context("Failed to initialize solution context")?;
+
+    // Clone repository and generate map
+    let repo_url = format!("https://github.com/{}", cli.repo);
+    info!("Cloning repository: {}", repo_url);
+    solution
+        .clone_repository(&repo_url)
+        .context("Failed to clone repository")?;
+
+    let repo_map = solution.generate_repo_map();
+
     // Generate implementation plan
-    let plan = planning::handle_planning(&cli, &issue, &comments).await?;
+    let plan = planning::handle_planning(&cli, &issue, &comments, &repo_map).await?;
 
     // Generate and apply solution
     solution::handle_solution(&cli, &issue, &comments, &plan, github_token, openrouter_api_key).await?;
