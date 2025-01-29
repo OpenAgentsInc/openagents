@@ -1,4 +1,4 @@
-mod chat;
-mod chat_stream;
-mod chat_with_tool_response;
-mod chat_with_tools;
+pub mod chat;
+pub mod chat_stream;
+pub mod chat_with_tool_response;
+pub mod chat_with_tools;
