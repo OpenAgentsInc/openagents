@@ -18,6 +18,14 @@ pub async fn generate_file_list(
 ) -> Result<(Vec<String>, String)> {
     // For tests, return mock response if using test key
     if openrouter_key == "test_key" {
+        // Handle empty repository case
+        if repo_map.is_empty() {
+            return Ok((
+                Vec::new(),
+                "No files available in the repository".to_string(),
+            ));
+        }
+
         return Ok((
             vec!["src/lib.rs".to_string()],
             "lib.rs needs to be modified to add the multiply function".to_string(),
@@ -143,6 +151,25 @@ mod tests {
 
         assert!(!files.contains(&"src/nonexistent.rs".to_string()));
         assert!(files.iter().all(|path| Path::new(path).exists()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_empty_repo() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        std::env::set_current_dir(&temp_dir)?;
+
+        let (files, reasoning) = generate_file_list(
+            "Add new file",
+            "Create a new file with some functionality",
+            "",
+            "test_key",
+        ).await?;
+
+        assert!(files.is_empty());
+        assert!(!reasoning.is_empty());
+        assert!(reasoning.contains("No files"));
 
         Ok(())
     }
