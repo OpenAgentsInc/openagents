@@ -23,14 +23,21 @@ impl PlanningContext {
         map: &str,
     ) -> Result<String> {
         let plan_prompt = format!(
-            "You are a Rust development expert. Analyze this GitHub issue and repository map to create an implementation plan.\n\n\
-            Issue #{}: {}\n{}\n\nRepository map:\n{}\n\n\
-            Create a detailed implementation plan including:\n\
-            1. Files that need to be created or modified\n\
-            2. Key functionality to implement\n\
-            3. Required dependencies or imports\n\
-            4. Testing strategy\n\
-            Be specific and focus on practical implementation details.",
+            r#"You are a Rust development expert. Analyze this GitHub issue and repository map to create a focused implementation plan.
+
+Issue #{}: {}
+{}
+
+Repository map:
+{}
+
+Create a focused implementation plan that:
+1. Lists ONLY the specific files that need to be modified
+2. Explains EXACTLY what changes are needed in each file
+3. Focuses on the minimal changes needed to implement the solution
+
+Keep the plan concise and focused on the specific issue.
+Do not add unnecessary changes or suggest refactoring unrelated code."#,
             issue_number,
             title,
             body,
