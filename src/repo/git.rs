@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use git2::{Repository, Signature, BranchType, FetchOptions, PushOptions, RemoteCallbacks};
+use git2::{Repository, Signature, BranchType, FetchOptions, PushOptions, RemoteCallbacks, Cred};
 use std::fs;
 use std::path::PathBuf;
 use tracing::debug;
@@ -54,18 +54,24 @@ pub fn commit_changes(repo: &Repository, files: &[String], message: &str) -> Res
     
     debug!("Changes committed successfully");
 
-    // Push changes
-    debug!("Pushing changes to remote");
-    push_changes(repo)?;
-
     Ok(())
 }
 
-pub fn push_changes(repo: &Repository) -> Result<()> {
-    debug!("Setting up push");
+pub fn push_changes_with_token(repo: &Repository, token: &str) -> Result<()> {
+    debug!("Setting up push with auth");
     let mut remote = repo.find_remote("origin")?;
     
     let mut callbacks = RemoteCallbacks::new();
+    
+    // Set up authentication callback
+    callbacks.credentials(move |_url, username_from_url, _allowed_types| {
+        debug!("Auth callback triggered");
+        Cred::userpass_plaintext(
+            username_from_url.unwrap_or("git"),
+            token
+        )
+    });
+
     callbacks.push_update_reference(|refname, status| {
         if let Some(msg) = status {
             debug!("Failed to push {}: {}", refname, msg);
