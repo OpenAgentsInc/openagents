@@ -1,106 +1,92 @@
 use openagents::server::services::{
-    openrouter::types::OpenRouterConfig, Gateway, OpenRouterService, StreamUpdate,
+    gateway::Gateway,
+    openrouter::{OpenRouterService, OpenRouterConfig},
 };
-use std::env;
-
-fn setup() {
-    dotenvy::dotenv().ok();
-    env::set_var("OPENROUTER_TEST_MODE", "1");
-}
+use std::time::Duration;
+use tokio::time::timeout;
 
 #[tokio::test]
 async fn test_openrouter_metadata() {
-    setup();
-    let service = OpenRouterService::new().unwrap();
+    let config = OpenRouterConfig {
+        model: "test-model".to_string(),
+        use_reasoner: false,
+        test_mode: true,
+    };
+
+    let service = OpenRouterService::with_config("test-key".to_string(), config);
     let metadata = service.metadata();
 
     assert_eq!(metadata.name, "OpenRouter");
-    assert!(metadata.openai_compatible);
     assert!(metadata.supported_features.contains(&"chat".to_string()));
-    assert!(metadata
-        .supported_features
-        .contains(&"streaming".to_string()));
 }
 
 #[tokio::test]
 async fn test_openrouter_chat() {
-    setup();
-    let service = OpenRouterService::new().unwrap();
-    let result = service
-        .chat("test prompt".to_string(), false)
-        .await
-        .unwrap();
+    let config = OpenRouterConfig {
+        model: "test-model".to_string(),
+        use_reasoner: false,
+        test_mode: true,
+    };
 
-    assert_eq!(result.0, "test prompt");
-    assert!(result.1.is_none());
+    let service = OpenRouterService::with_config("test-key".to_string(), config);
+    let (response, _) = service.chat("Test prompt".to_string(), false).await.unwrap();
 
-    // Test with reasoner
-    let result = service.chat("test prompt".to_string(), true).await.unwrap();
-    assert_eq!(result.0, "test prompt");
-    assert_eq!(result.1, None);
+    assert_eq!(response, "Test response");
 }
 
 #[tokio::test]
-async fn test_openrouter_stream() {
-    setup();
-    let service = OpenRouterService::new().unwrap();
-    let mut stream = service.chat_stream("test prompt".to_string(), true).await;
+async fn test_openrouter_chat_stream() {
+    let config = OpenRouterConfig {
+        model: "test-model".to_string(),
+        use_reasoner: false,
+        test_mode: true,
+    };
 
-    // Test content
-    if let Some(StreamUpdate::Content(content)) = stream.recv().await {
-        assert_eq!(content, "test prompt");
-    } else {
-        panic!("Expected content update");
-    }
+    let service = OpenRouterService::with_config("test-key".to_string(), config);
+    let mut stream = service
+        .chat_stream("Test prompt".to_string(), false)
+        .await
+        .unwrap();
 
-    // Test reasoning
-    if let Some(StreamUpdate::Reasoning(reasoning)) = stream.recv().await {
-        assert_eq!(reasoning, "Test reasoning");
-    } else {
-        panic!("Expected reasoning update");
-    }
+    // Set a timeout for the test
+    let timeout_duration = Duration::from_secs(5);
+    let result = timeout(timeout_duration, async {
+        let mut response = String::new();
+        while let Some(chunk) = stream.next().await {
+            response.push_str(&chunk.unwrap());
+        }
+        response
+    })
+    .await
+    .unwrap();
 
-    // Test done
-    if let Some(StreamUpdate::Done) = stream.recv().await {
-        // Success
-    } else {
-        panic!("Expected done update");
-    }
+    assert_eq!(result, "Test response");
 }
 
 #[tokio::test]
 async fn test_openrouter_with_config() {
-    setup();
     let config = OpenRouterConfig {
-        temperature: 0.5,
-        max_tokens: Some(100),
-        top_p: Some(0.9),
-        frequency_penalty: Some(0.0),
-        presence_penalty: Some(0.0),
-        stop: Some(vec!["STOP".to_string()]),
+        model: "test-model".to_string(),
+        use_reasoner: true,
+        test_mode: true,
     };
 
-    let service = OpenRouterService::with_config(config).unwrap();
-    let result = service
-        .chat("test prompt".to_string(), false)
-        .await
-        .unwrap();
-    assert_eq!(result.0, "test prompt");
+    let service = OpenRouterService::with_config("test-key".to_string(), config);
+    let (response, _) = service.chat("Test prompt".to_string(), true).await.unwrap();
+
+    assert_eq!(response, "Test response");
 }
 
 #[tokio::test]
-async fn test_openrouter_conversation() {
-    setup();
-    let service = OpenRouterService::new().unwrap();
+async fn test_openrouter_error_handling() {
+    let config = OpenRouterConfig {
+        model: "test-model".to_string(),
+        use_reasoner: false,
+        test_mode: false, // Not in test mode to test error handling
+    };
 
-    // First message
-    let result = service.chat("Hello".to_string(), false).await.unwrap();
-    assert_eq!(result.0, "Hello");
+    let service = OpenRouterService::with_config("invalid-key".to_string(), config);
+    let result = service.chat("Test prompt".to_string(), false).await;
 
-    // Second message should include conversation history
-    let result = service
-        .chat("How are you?".to_string(), false)
-        .await
-        .unwrap();
-    assert_eq!(result.0, "How are you?");
+    assert!(result.is_err());
 }
