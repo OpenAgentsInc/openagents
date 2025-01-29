@@ -131,7 +131,8 @@ pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
     let mut changes = Vec::new();
     let mut current_path = None;
     let mut current_search = None;
-    let mut lines = content.lines().peekable();
+    let mut lines = content.lines();
+    let mut current_block = String::new();
 
     while let Some(line) = lines.next() {
         let line = line.trim();
@@ -144,41 +145,50 @@ pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
 
         // Look for SEARCH blocks
         if line == "<<<<<<< SEARCH" {
-            let mut search = String::new();
-            while let Some(line) = lines.next() {
-                if line.trim() == "=======" {
-                    break;
-                }
-                search.push_str(line);
-                search.push('\n');
-            }
-            current_search = Some(search.trim_end().to_string());
+            current_search = Some(String::new());
             continue;
         }
 
-        // Look for REPLACE blocks
-        if line == ">>>>>>> REPLACE" && current_path.is_some() && current_search.is_some() {
-            let mut replace = String::new();
-            while let Some(line) = lines.peek() {
-                if line.trim() == "<<<<<<< SEARCH" || line.trim().ends_with(".rs:") || line.trim().ends_with(".toml:") {
-                    break;
+        // Collect SEARCH content
+        if current_search.is_some() && line != "=======" {
+            if let Some(ref mut search) = current_search {
+                if !search.is_empty() {
+                    search.push('\n');
                 }
-                replace.push_str(lines.next().unwrap());
-                replace.push('\n');
+                search.push_str(line);
             }
+            continue;
+        }
 
+        // Switch to REPLACE content
+        if line == "=======" {
+            current_block = String::new();
+            continue;
+        }
+
+        // Look for end of REPLACE block
+        if line == ">>>>>>> REPLACE" && current_path.is_some() && current_search.is_some() {
             // Create and validate change
             let change = Change::new(
                 current_path.clone().unwrap(),
-                current_search.clone().unwrap(),
-                replace.trim_end().to_string(),
+                current_search.clone().unwrap_or_default(),
+                current_block.trim().to_string(),
             );
             if change.validate().is_ok() {
                 changes.push(change);
             }
 
             current_search = None;
+            current_block.clear();
             continue;
+        }
+
+        // Collect REPLACE content
+        if current_search.is_some() {
+            if !current_block.is_empty() {
+                current_block.push('\n');
+            }
+            current_block.push_str(line);
         }
     }
 
