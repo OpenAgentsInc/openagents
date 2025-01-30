@@ -9,15 +9,12 @@ pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<C
         .context("Failed to initialize GitHub context")?;
 
     // Fetch issue details and comments
-    info!("Fetching issue #{} from {}", cli.issue, cli.repo);
+    info!("\nFetching issue #{} from {}", cli.issue, cli.repo);
     let issue = github
         .get_issue(cli.issue)
         .await
         .context("Failed to fetch issue details")?;
-    println!("\nIssue #{}: {}", issue.number, issue.title);
-    if let Some(body) = &issue.body {
-        println!("Description:\n{}\n", body);
-    }
+    println!("Solving issue #{}: {}", issue.number, issue.title);
 
     // Fetch and display comments
     let comments = github
@@ -26,7 +23,7 @@ pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<C
         .context("Failed to fetch issue comments")?;
 
     if !comments.is_empty() {
-        println!("\nComments ({}):", comments.len());
+        println!("Appending {} comments", comments.len());
     }
 
     Ok((
