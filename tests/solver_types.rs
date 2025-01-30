@@ -2,13 +2,13 @@ use openagents::solver::types::Change;
 
 #[test]
 fn test_change_validation() {
-    // Valid change
+    // Valid change with non-empty search and replace
     let change = Change::new(
         "src/main.rs".to_string(),
         "fn old()".to_string(),
         "fn new()".to_string(),
     );
-    assert!(change.validate().is_ok());
+    assert!(change.validate().is_ok(), "Valid change should be ok");
 
     // Empty path
     let change = Change::new(
