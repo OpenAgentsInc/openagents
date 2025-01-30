@@ -1,24 +1,16 @@
-use crate::server::services::deepseek::StreamUpdate;
 use crate::server::services::gateway::Gateway;
-use crate::server::services::ollama::service::OllamaService;
 use anyhow::Result;
-use futures::StreamExt;
-use tokio::sync::mpsc;
-use tracing::debug;
+use futures_util::{Stream, StreamExt};
+use std::pin::Pin;
 
 pub struct PlanningContext {
-    service: OllamaService,
+    service: crate::server::services::ollama::OllamaService,
 }
 
 impl PlanningContext {
     pub fn new() -> Result<Self> {
-        let base_url = std::env::var("OLLAMA_URL")
-            .unwrap_or_else(|_| "http://localhost:11434".to_string());
-        let model = std::env::var("OLLAMA_MODEL")
-            .unwrap_or_else(|_| "codellama:latest".to_string());
-
         Ok(Self {
-            service: OllamaService::with_config(&base_url, &model),
+            service: crate::server::services::ollama::OllamaService::new(),
         })
     }
 
@@ -28,7 +20,7 @@ impl PlanningContext {
         title: &str,
         description: &str,
         repo_map: &str,
-    ) -> mpsc::Receiver<StreamUpdate> {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
         let prompt = format!(
             r#"You are an expert software developer. Your task is to analyze this GitHub issue and generate an implementation plan.
 
@@ -51,119 +43,7 @@ Focus on minimal, precise changes that directly address the issue requirements.
             issue_number, title, description, repo_map
         );
 
-        debug!("Starting streaming plan generation with Ollama");
-        let (tx, rx) = mpsc::channel(100);
-
-        // Convert Ollama stream to our StreamUpdate format
-        let stream_result = self.service.chat_stream(prompt, true).await;
-
-        tokio::spawn(async move {
-            match stream_result {
-                Ok(mut stream) => {
-                    let mut content_buffer = String::new();
-
-                    while let Some(result) = stream.next().await {
-                        match result {
-                            Ok(content) => {
-                                content_buffer.push_str(&content);
-
-                                // Try to find complete JSON objects
-                                if let Some(json_start) = content_buffer.find('{') {
-                                    if let Some(json_end) =
-                                        find_json_end(&content_buffer[json_start..])
-                                    {
-                                        let json_str = &content_buffer[json_start..=json_end];
-
-                                        // Parse and send any complete JSON objects
-                                        if let Ok(parsed) =
-                                            serde_json::from_str::<serde_json::Value>(json_str)
-                                        {
-                                            if let Some(content) =
-                                                parsed.get("content").and_then(|v| v.as_str())
-                                            {
-                                                let _ = tx
-                                                    .send(StreamUpdate::Content(
-                                                        content.to_string(),
-                                                    ))
-                                                    .await;
-                                            }
-                                            if let Some(reasoning) =
-                                                parsed.get("reasoning").and_then(|v| v.as_str())
-                                            {
-                                                let _ = tx
-                                                    .send(StreamUpdate::Reasoning(
-                                                        reasoning.to_string(),
-                                                    ))
-                                                    .await;
-                                            }
-
-                                            // Remove processed JSON from buffer
-                                            content_buffer =
-                                                content_buffer[json_end + 1..].to_string();
-                                        }
-                                    }
-                                }
-
-                                // If no JSON found, send as raw content
-                                if !content_buffer.contains('{') {
-                                    let _ = tx
-                                        .send(StreamUpdate::Content(content_buffer.clone()))
-                                        .await;
-                                    content_buffer.clear();
-                                }
-                            }
-                            Err(e) => {
-                                debug!("Error in stream: {}", e);
-                                break;
-                            }
-                        }
-                    }
-
-                    // Send any remaining content
-                    if !content_buffer.is_empty() {
-                        let _ = tx.send(StreamUpdate::Content(content_buffer)).await;
-                    }
-
-                    let _ = tx.send(StreamUpdate::Done).await;
-                }
-                Err(e) => {
-                    debug!("Failed to create stream: {}", e);
-                    let _ = tx.send(StreamUpdate::Done).await;
-                }
-            }
-        });
-
-        fn find_json_end(s: &str) -> Option<usize> {
-            let mut depth = 0;
-            let mut in_string = false;
-            let mut escaped = false;
-
-            for (i, c) in s.char_indices() {
-                if !in_string {
-                    if c == '{' {
-                        depth += 1;
-                    } else if c == '}' {
-                        depth -= 1;
-                        if depth == 0 {
-                            return Some(i);
-                        }
-                    } else if c == '"' {
-                        in_string = true;
-                    }
-                } else if !escaped {
-                    if c == '\\' {
-                        escaped = true;
-                    } else if c == '"' {
-                        in_string = false;
-                    }
-                } else {
-                    escaped = false;
-                }
-            }
-            None
-        }
-
-        rx
+        self.service.chat_stream(prompt, true).await
     }
 
     // Keep the old method for backwards compatibility during transition
@@ -196,7 +76,6 @@ Focus on minimal, precise changes that directly address the issue requirements.
             issue_number, title, description, repo_map
         );
 
-        debug!("Sending planning prompt to Ollama");
         let (response, _) = self.service.chat(prompt, true).await?;
         Ok(response)
     }
