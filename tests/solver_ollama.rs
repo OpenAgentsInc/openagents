@@ -1,6 +1,8 @@
 use anyhow::Result;
 use openagents::solver::{
-    changes::generation::generate_changes, file_list::generate_file_list, planning::PlanningContext,
+    changes::generation::generate_changes,
+    file_list::generate_file_list,
+    planning::PlanningContext,
 };
 use std::fs;
 use tempfile::TempDir;
