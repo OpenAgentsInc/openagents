@@ -1,6 +1,7 @@
 use anyhow::{Context as _, Result};
+use octocrab::models::issues::{Issue, Comment};
 use openagents::solver::{
-    Cli, GitHubContext, SolutionContext, Issue, Comment,
+    Cli, GitHubContext, SolutionContext,
     print_colored,  // Use re-exported function
 };
 use termcolor::Color;
@@ -88,7 +89,9 @@ pub async fn handle_solution(
         for comment in comments {
             context.push_str(&format!(
                 "\n@{} at {}:\n{}\n",
-                comment.user.login, comment.created_at, comment.body
+                comment.user.login, 
+                comment.created_at,
+                comment.body.as_deref().unwrap_or("No comment body")
             ));
         }
         context
