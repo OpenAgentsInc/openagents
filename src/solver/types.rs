@@ -58,8 +58,6 @@ impl Change {
         }
 
         Ok(())
-
-        Ok(())
     }
 }
 
