@@ -1,4 +1,6 @@
 use anyhow::{anyhow, Result};
+use std::path::PathBuf;
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Change {
@@ -47,6 +49,28 @@ impl Change {
         Ok(())
     }
 }
+
+/// Errors that can occur during change operations
+#[derive(Error, Debug)]
+pub enum ChangeError {
+    #[error("File path cannot be empty")]
+    EmptyPath,
+    #[error("Both search and replace content cannot be empty")]
+    EmptyContent,
+    #[error("File not found: {0}")]
+    FileNotFound(PathBuf),
+    #[error("No matching content found in file")]
+    NoMatch,
+    #[error("Multiple matches found for search content")]
+    MultipleMatches,
+    #[error("Invalid SEARCH/REPLACE block format")]
+    InvalidFormat,
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
+/// Result type for change operations
+pub type ChangeResult<T> = Result<T, ChangeError>;
 
 pub fn validate_pr_title(title: &str) -> Result<()> {
     // Title must contain one of these words
