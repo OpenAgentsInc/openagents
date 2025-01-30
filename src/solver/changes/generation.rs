@@ -101,10 +101,11 @@ pub async fn generate_changes(
     if ollama_url == "test_url" {
         if path == "src/lib.rs" {
             return Ok((
-                vec![Change::new(
+                vec![Change::with_reason(
                     path.to_string(),
                     "pub fn add(a: i32, b: i32) -> i32 { a + b }".to_string(),
                     "pub fn add(a: i32, b: i32) -> i32 { a + b }\n\npub fn multiply(a: i32, b: i32) -> i32 { a * b }".to_string(),
+                    "Added multiply function next to add function".to_string(),
                 )],
                 "Added multiply function next to add function".to_string(),
             ));
@@ -210,10 +211,11 @@ Rules:
         }
 
         // Create and validate change
-        let change = Change::new(
+        let change = Change::with_reason(
             block.path.clone(),
             block.search.clone(),
             block.replace.clone(),
+            block.reason.clone(),
         );
         match change.validate() {
             Ok(_) => {
@@ -260,10 +262,11 @@ More text"#;
 
     #[test]
     fn test_validate_changes_relevance() {
-        let changes = vec![Change::new(
+        let changes = vec![Change::with_reason(
             "test.rs".to_string(),
             "old".to_string(),
             "new".to_string(),
+            "Update test".to_string(),
         )];
         let reasoning = "Added multiply function to implement calculation feature";
         let title = "Add multiply function";
