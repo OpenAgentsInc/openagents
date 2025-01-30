@@ -29,30 +29,12 @@ impl Change {
             return Err(anyhow!("Path must be relative (not start with /)"));
         }
 
-        // Replace must not be empty
-        if self.replace.is_empty() {
-            return Err(anyhow!("Replace content cannot be empty"));
+        // Empty search content is not allowed for modifications
+        if self.search.is_empty() && !self.replace.is_empty() {
+            return Err(anyhow!("Search content cannot be empty"));
         }
 
-        // Path must not be empty
-        if self.path.is_empty() {
-            return Err(anyhow!("Path cannot be empty"));
-        }
-
-        // Path must be relative (not start with /)
-        if self.path.starts_with('/') {
-            return Err(anyhow!("Path must be relative (not start with /)"));
-        }
-
-        // Empty search is only allowed for new files
-        if self.search.is_empty() {
-            if self.replace.is_empty() {
-                return Err(anyhow!("Replace content cannot be empty"));
-            }
-            return Ok(());
-        }
-
-        // For modifications (non-empty search), replace must not be empty
+        // Replace content cannot be empty
         if self.replace.is_empty() {
             return Err(anyhow!("Replace content cannot be empty"));
         }
