@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use futures_util::Stream;
 use serde_json::Value;
 use std::pin::Pin;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 const MAX_RETRIES: u32 = 3;
 
