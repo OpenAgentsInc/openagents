@@ -4,10 +4,11 @@ use crate::server::services::gateway::{
 };
 use crate::server::services::ollama::types::*;
 use anyhow::{anyhow, Result};
-use futures_util::{Stream, StreamExt};
+use futures_util::{Stream, StreamExt, TryStreamExt};
 use reqwest::Client;
 use std::pin::Pin;
 use tokio_stream::wrappers::ReceiverStream;
+use futures_util::stream;
 
 pub struct OllamaService {
     config: OllamaConfig,
@@ -101,17 +102,14 @@ impl Gateway for OllamaService {
         let response = self.make_request(prompt, true).await?;
         let stream = response.bytes_stream();
 
-        let content_stream = stream.map(|chunk_result| {
-            chunk_result
-                .map_err(|e| anyhow!(e))
-                .and_then(|chunk| async move {
-                    if let Some(content) = Self::process_stream_chunk(&chunk).await? {
-                        Ok(content)
-                    } else {
-                        Err(anyhow!("Stream ended"))
-                    }
-                }.boxed().await)
-        });
+        let content_stream = stream
+            .map_err(|e| anyhow!(e))
+            .try_filter_map(|chunk| {
+                let fut = async move {
+                    Self::process_stream_chunk(&chunk).await
+                };
+                Box::pin(fut)
+            });
 
         Ok(Box::pin(content_stream))
     }
