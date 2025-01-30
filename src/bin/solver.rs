@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
 
     // Generate repository map
     info!("Generating repository map...");
-    let repo_map = openagents::repomap::generate_repo_map(Path::new("."))?;
+    let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
     debug!("Repository map:\n{}", repo_map);
 
     // Generate implementation plan

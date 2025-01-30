@@ -6,10 +6,10 @@ use openagents::solver::{
 use tracing::{debug, info};
 
 pub async fn handle_solution(
-    issue_number: i32,
+    _issue_number: i32,
     title: &str,
     description: &str,
-    plan: &str,
+    _plan: &str,
     repo_map: &str,
     ollama_url: &str,
 ) -> Result<()> {
