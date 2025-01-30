@@ -1,3 +1,4 @@
+use glob::Pattern;
 use ignore::Walk;
 use std::path::{Path, PathBuf};
 use tracing::debug;
@@ -19,16 +20,20 @@ pub fn generate_repo_map(path: &Path) -> String {
     let mut output = String::new();
     let mut entries: Vec<(PathBuf, String)> = Vec::new();
 
+    // Compile glob patterns
+    let patterns: Vec<Pattern> = DEFAULT_BLACKLIST
+        .iter()
+        .filter_map(|p| Pattern::new(p).ok())
+        .collect();
+
     // Use ignore crate to respect .gitignore
     for result in Walk::new(path) {
         if let Ok(entry) = result {
             let path = entry.path();
             
             // Skip if path matches any blacklist pattern
-            if DEFAULT_BLACKLIST.iter().any(|pattern| {
-                ignore::gitignore::Pattern::new(pattern)
-                    .map(|p| p.matches_path(path))
-                    .unwrap_or(false)
+            if patterns.iter().any(|pattern| {
+                pattern.matches_path(path)
             }) {
                 debug!("Skipping blacklisted path: {:?}", path);
                 continue;
