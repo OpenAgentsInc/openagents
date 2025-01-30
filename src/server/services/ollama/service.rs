@@ -3,6 +3,7 @@ use anyhow::Result;
 use futures_util::{Stream, StreamExt};
 use std::pin::Pin;
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 pub struct OllamaService {
     config: super::config::OllamaConfig,
@@ -65,7 +66,7 @@ impl Gateway for OllamaService {
         prompt: String,
         _use_reasoner: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, rx) = mpsc::channel(100);
         let client = reqwest::Client::new();
         let config = self.config.clone();
 
@@ -113,13 +114,6 @@ impl Gateway for OllamaService {
             }
         });
 
-        // Convert mpsc::Receiver into a Stream
-        let stream = async_stream::stream! {
-            while let Some(result) = rx.recv().await {
-                yield result;
-            }
-        };
-
-        Ok(Box::pin(stream))
+        Ok(Box::pin(ReceiverStream::new(rx)))
     }
 }
