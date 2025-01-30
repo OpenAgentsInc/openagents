@@ -55,7 +55,7 @@ async fn test_ollama_planning() -> Result<()> {
     std::env::set_var("OLLAMA_MODEL", "codellama:latest");
 
     let context = PlanningContext::new()?;
-    let stream = context
+    let mut stream = context
         .generate_plan(
             123,
             "Add multiply function",
