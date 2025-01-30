@@ -136,16 +136,14 @@ Focus on minimal, precise changes that directly address the issue requirements.
                     } else if c == '"' {
                         in_string = true;
                     }
-                } else {
-                    if !escaped {
-                        if c == '\\' {
-                            escaped = true;
-                        } else if c == '"' {
-                            in_string = false;
-                        }
-                    } else {
-                        escaped = false;
+                } else if !escaped {
+                    if c == '\\' {
+                        escaped = true;
+                    } else if c == '"' {
+                        in_string = false;
                     }
+                } else {
+                    escaped = false;
                 }
             }
             None
