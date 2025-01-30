@@ -379,6 +379,3 @@ pub async fn post_github_comment(
         .post_comment(owner, repo, issue_number, comment)
         .await
 }
-
-// Re-export types for public use
-pub use self::{GitHubComment, GitHubIssue, GitHubService, GitHubUser};
