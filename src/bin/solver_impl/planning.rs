@@ -3,10 +3,21 @@ use openagents::solver::{planning::PlanningContext, streaming::handle_plan_strea
 use regex::Regex;
 use tracing::{debug, info};
 
+// Error messages
 const ERR_NO_JSON: &str = "JSON block not found";
 const ERR_NO_CHANGES: &str = "Changes array not found";
 const ERR_WRONG_TARGET: &str = "Incorrect target file";
+
+// File paths
 const GITHUB_RS_PATH: &str = "src/solver/github.rs";
+const JSON_RS_PATH: &str = "src/solver/json.rs";
+
+// JSON keys
+const KEY_CHANGES: &str = "changes";
+const KEY_PATH: &str = "path";
+const KEY_SEARCH: &str = "search";
+
+// Other constants
 const TARGET_FUNCTION: &str = "generate_pr_title";
 const EMPTY_STR: &str = "";
 
@@ -28,7 +39,7 @@ async fn gather_context(issue_title: &str, issue_description: &str) -> Result<St
 
     // For JSON escaping issues, we need json.rs
     if issue_title.contains("JSON") || issue_description.contains("JSON") {
-        relevant_files.push("src/solver/json.rs");
+        relevant_files.push(JSON_RS_PATH);
     }
 
     // Add any other relevant files based on keywords
@@ -129,10 +140,10 @@ pub async fn handle_planning(
     let json: serde_json::Value = serde_json::from_str(json_str)?;
 
     // Verify response targets correct file
-    let changes = json["changes"].as_array().ok_or_else(|| anyhow!(ERR_NO_CHANGES))?;
+    let changes = json[KEY_CHANGES].as_array().ok_or_else(|| anyhow!(ERR_NO_CHANGES))?;
     let targets_github_rs = changes.iter().any(|c| {
-        let path = c["path"].as_str().unwrap_or(EMPTY_STR);
-        let search = c["search"].as_str().unwrap_or(EMPTY_STR);
+        let path = c[KEY_PATH].as_str().unwrap_or(EMPTY_STR);
+        let search = c[KEY_SEARCH].as_str().unwrap_or(EMPTY_STR);
         path == GITHUB_RS_PATH && search.contains(TARGET_FUNCTION)
     });
 
