@@ -296,9 +296,31 @@ assets/fonts.css:
 src/bin/solver.rs:
 │fn main
 
+src/bin/solver/solution.rs:
+│fn handle_solution
+
+src/bin/solver/mod.rs:
+
+src/bin/solver/issue.rs:
+│fn handle_issue
+
+src/bin/solver/planning.rs:
+│fn handle_planning
+
 src/bin/deepseek-cli.rs:
 │fn print_colored
 │fn main
+
+src/bin/solver_impl/solution.rs:
+│fn handle_solution
+
+src/bin/solver_impl/mod.rs:
+
+src/bin/solver_impl/issue.rs:
+│fn handle_issue
+
+src/bin/solver_impl/planning.rs:
+│fn handle_planning
 
 src/bin/repo.rs:
 │fn main
@@ -359,6 +381,22 @@ src/server/handlers/user.rs:
 
 src/server/handlers/mod.rs:
 
+src/server/services/github_issue/conversions.rs:
+│fn from
+│fn from
+│fn from
+
+src/server/services/github_issue/mod.rs:
+│fn new
+│fn get_issue
+│fn get_issue_comments
+│fn post_comment
+│fn check_branch_exists
+│fn create_branch
+│fn check_branch_has_commits
+│fn create_pull_request
+│fn post_github_comment
+
 src/server/services/openrouter/types.rs:
 │fn from
 │impl Default for Default
@@ -383,17 +421,6 @@ src/server/services/openrouter/service.rs:
 │fn chat_stream
 
 src/server/services/openrouter/mod.rs:
-
-src/server/services/github_issue.rs:
-│fn new
-│fn get_issue
-│fn get_issue_comments
-│fn post_comment
-│fn check_branch_exists
-│fn create_branch
-│fn check_branch_has_commits
-│fn create_pull_request
-│fn post_github_comment
 
 src/server/services/auth.rs:
 │fn new
@@ -556,9 +583,13 @@ src/solver/github.rs:
 │fn get_issue
 │fn get_issue_comments
 
+src/solver/streaming.rs:
+│fn handle_plan_stream
+
 src/solver/planning.rs:
 │fn new
 │fn generate_plan
+│fn generate_plan_sync
 
 src/solver/context.rs:
 │fn new
@@ -572,6 +603,8 @@ src/solver/context.rs:
 │fn parse_changes
 │fn apply_changes
 │fn cleanup
+
+src/solver/cli.rs:
 
 src/routes.rs:
 │fn health_check
