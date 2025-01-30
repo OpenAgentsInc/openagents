@@ -75,7 +75,7 @@ async fn test_ollama_planning() -> Result<()> {
     load_env();
     let context = PlanningContext::new()?;
     
-    println!("\nGenerating plan...\n");
+    println!("\nStreaming plan:\n");
     let mut stream = context
         .generate_plan(
             123,
@@ -85,35 +85,21 @@ async fn test_ollama_planning() -> Result<()> {
         )
         .await?;
 
-    let mut buffer = String::new();
     let mut saw_content = false;
-    
     while let Some(result) = stream.next().await {
         match result {
             Ok(content) => {
-                buffer.push_str(&content);
-                // Print if we have a complete sentence or significant chunk
-                if content.ends_with('.') || content.ends_with('\n') || content.len() > 50 {
-                    println!("{}", buffer);
-                    buffer.clear();
-                }
+                print!("{}", content);
+                std::io::Write::flush(&mut std::io::stdout())?;
                 saw_content = true;
             }
             Err(e) => {
-                if !buffer.is_empty() {
-                    println!("{}", buffer);
-                }
                 println!("\nError: {}", e);
                 break;
             }
         }
     }
-
-    // Print any remaining content
-    if !buffer.is_empty() {
-        println!("{}", buffer);
-    }
-    println!(); // Add final newline
+    println!("\n"); // Add final newlines
 
     assert!(saw_content);
     Ok(())
