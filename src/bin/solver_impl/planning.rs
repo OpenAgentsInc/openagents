@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result};
 use openagents::solver::{planning::PlanningContext, streaming::handle_plan_stream};
 use regex::Regex;
 use futures_util::StreamExt;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
+use serde_json::Value;
 
 // Error messages
-const ERR_NO_JSON: &str = "JSON block not found";
 const ERR_NO_CHANGES: &str = "Changes array not found";
 const ERR_WRONG_TARGET: &str = "Incorrect target file";
 const ERR_INVALID_JSON: &str = "Invalid JSON format";
@@ -89,10 +89,54 @@ const TARGET_FUNCTION: &str = "generate_pr_title";
 const EMPTY_STR: &str = "";
 const MAX_RETRIES: u32 = 3;
 
+/// Escapes special characters in JSON strings
+fn escape_json_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('\"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+/// Creates a properly escaped JSON change object
+fn create_json_change(path: &str, search: &str, replace: &str, reason: &str) -> Value {
+    serde_json::json!({
+        KEY_PATH: path,
+        KEY_SEARCH: escape_json_string(search),
+        KEY_REPLACE: escape_json_string(replace),
+        KEY_REASON: reason,
+    })
+}
+
 /// Extracts JSON from markdown code block
 fn extract_json_from_markdown(content: &str) -> Option<&str> {
     let re = Regex::new(r"```json\s*(\{[\s\S]*?\})\s*```").ok()?;
     re.captures(content)?.get(1).map(|m| m.as_str())
+}
+
+/// Validates JSON content from LLM response
+fn validate_llm_response(json_str: &str) -> Result<bool> {
+    let json: Value = serde_json::from_str(json_str)?;
+    
+    // Check for required fields
+    if !json.is_object() || !json.get(KEY_CHANGES).is_some() {
+        debug!(LOG_VALIDATION_ERROR, "Missing required fields");
+        return Ok(false);
+    }
+
+    // Validate each change
+    if let Some(changes) = json[KEY_CHANGES].as_array() {
+        for change in changes {
+            if !change.get(KEY_PATH).is_some() || 
+               !change.get(KEY_SEARCH).is_some() ||
+               !change.get(KEY_REPLACE).is_some() {
+                debug!(LOG_VALIDATION_ERROR, "Change missing required fields");
+                return Ok(false);
+            }
+        }
+    }
+
+    Ok(true)
 }
 
 /// Gathers relevant file contents for context
@@ -134,14 +178,21 @@ pub async fn handle_planning(
     info!(LOG_GENERATING);
     let context = PlanningContext::new(ollama_url)?;
     
-    let stream = context
+    let plan_stream = context
         .generate_plan(issue_number, title, description, repo_map, &file_context)
         .await?;
 
     let mut response = String::new();
-    let mut stream = handle_plan_stream(stream).await?;
-    while let Some(chunk) = stream.next().await {
+    let mut chunks = handle_plan_stream(plan_stream).await?;
+    while let Some(chunk) = chunks.next().await {
         response.push_str(&chunk?);
+    }
+
+    if let Some(json_str) = extract_json_from_markdown(&response) {
+        debug!(LOG_EXTRACTED_JSON, json_str);
+        if validate_llm_response(json_str)? {
+            return Ok(response);
+        }
     }
 
     debug!(LOG_FULL_RESPONSE, response);
