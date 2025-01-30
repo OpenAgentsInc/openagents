@@ -39,11 +39,9 @@ impl Change {
             return Ok(());
         }
 
-        // Search must be contained in replace for modifications
-        if !self.replace.contains(&self.search) {
-            return Err(anyhow!(
-                "Replace content must contain original content for modifications"
-            ));
+        // If search is not empty, this is a modification
+        if !self.search.is_empty() && self.replace.is_empty() {
+            return Err(anyhow!("Replace content cannot be empty for modifications"));
         }
 
         Ok(())
