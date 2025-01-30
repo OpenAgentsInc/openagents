@@ -2,10 +2,8 @@ use anyhow::{Result};
 use openagents::solver::{planning::PlanningContext, streaming::handle_plan_stream};
 use regex::Regex;
 use futures_util::StreamExt;
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 use serde_json::Value;
-use futures_util::Stream;
-use std::pin::Pin;
 
 // Error messages
 const ERR_NO_CHANGES: &str = "Changes array not found";
@@ -184,13 +182,7 @@ pub async fn handle_planning(
         .generate_plan(issue_number, title, description, repo_map, &file_context)
         .await?;
 
-    let mut response = String::new();
-    let mut chunks = handle_plan_stream(plan_stream).await?;
-    
-    while let Some(chunk_result) = chunks.next().await {
-        let chunk = chunk_result?;
-        response.push_str(&chunk);
-    }
+    let response = handle_plan_stream(plan_stream).await?;
 
     if let Some(json_str) = extract_json_from_markdown(&response) {
         debug!(LOG_EXTRACTED_JSON, json_str);
