@@ -20,7 +20,10 @@ impl TryFrom<GitHubIssue> for octocrab::models::issues::Issue {
         let minimal_user = octocrab::models::Author::try_from(GitHubUser {
             login: "unknown".to_string(),
             id: 0,
-            ..Default::default()
+            html_url: "https://github.com".to_string(),
+            avatar_url: "https://github.com".to_string(),
+            gravatar_id: None,
+            url: "https://github.com".to_string(),
         })?;
 
         // Use octocrab's serde to construct the issue
