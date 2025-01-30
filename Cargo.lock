@@ -2141,6 +2141,7 @@ dependencies = [
  "log",
  "octocrab",
  "pulldown-cmark",
+ "regex",
  "reqwest",
  "secp256k1",
  "secrecy",
