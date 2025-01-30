@@ -8,6 +8,7 @@ const ERR_NO_CHANGES: &str = "Changes array not found";
 const ERR_WRONG_TARGET: &str = "Incorrect target file";
 const GITHUB_RS_PATH: &str = "src/solver/github.rs";
 const TARGET_FUNCTION: &str = "generate_pr_title";
+const EMPTY_STR: &str = "";
 
 /// Extracts JSON from markdown code block
 fn extract_json_from_markdown(content: &str) -> Option<&str> {
@@ -130,8 +131,8 @@ pub async fn handle_planning(
     // Verify response targets correct file
     let changes = json["changes"].as_array().ok_or_else(|| anyhow!(ERR_NO_CHANGES))?;
     let targets_github_rs = changes.iter().any(|c| {
-        let path = c["path"].as_str().unwrap_or("");
-        let search = c["search"].as_str().unwrap_or("");
+        let path = c["path"].as_str().unwrap_or(EMPTY_STR);
+        let search = c["search"].as_str().unwrap_or(EMPTY_STR);
         path == GITHUB_RS_PATH && search.contains(TARGET_FUNCTION)
     });
 
