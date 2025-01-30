@@ -16,11 +16,11 @@ fn test_change_validation() {
         "fn old()".to_string(),
         "fn new()".to_string(),
     );
-    assert!(matches!(change.validate(), Err(ChangeError::EmptyPath)));
+    assert!(matches!(change.validate(), Err(e) if e.to_string().contains("Path cannot be empty")));
 
     // Empty content
     let change = Change::new("src/main.rs".to_string(), "".to_string(), "".to_string());
-    assert!(matches!(change.validate(), Err(ChangeError::EmptyContent)));
+    assert!(matches!(change.validate(), Err(e) if e.to_string().contains("Search content cannot be empty")));
 
     // Empty search but non-empty replace (valid for new file)
     let change = Change::new(

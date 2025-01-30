@@ -74,7 +74,7 @@ async fn test_ollama_file_list() -> Result<()> {
 #[ignore = "requires local Ollama server"]
 async fn test_ollama_planning() -> Result<()> {
     load_env();
-    let context = PlanningContext::new()?;
+    let context = PlanningContext::new(&std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string()))?;
 
     println!("\nStreaming plan:\n");
     let mut stream = context
