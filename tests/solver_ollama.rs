@@ -25,18 +25,32 @@ fn setup_test_repo() -> Result<TempDir> {
     Ok(temp_dir)
 }
 
+fn load_env() {
+    dotenvy::dotenv().ok();
+    // Set defaults if not in .env
+    if std::env::var("OLLAMA_URL").is_err() {
+        std::env::set_var("OLLAMA_URL", "http://localhost:11434");
+    }
+    if std::env::var("OLLAMA_MODEL").is_err() {
+        std::env::set_var("OLLAMA_MODEL", "codellama:latest");
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires local Ollama server"]
 async fn test_ollama_file_list() -> Result<()> {
+    load_env();
     let temp_dir = setup_test_repo()?;
     std::env::set_current_dir(&temp_dir)?;
 
     let repo_map = "src/main.rs\nsrc/lib.rs";
+    let ollama_url = std::env::var("OLLAMA_URL").unwrap();
+    
     let (files, reasoning) = generate_file_list(
         "Add multiply function",
         "Add a multiply function to lib.rs",
         repo_map,
-        "http://localhost:11434",
+        &ollama_url,
     )
     .await?;
 
@@ -52,9 +66,7 @@ async fn test_ollama_file_list() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires local Ollama server"]
 async fn test_ollama_planning() -> Result<()> {
-    std::env::set_var("OLLAMA_URL", "http://localhost:11434");
-    std::env::set_var("OLLAMA_MODEL", "codellama:latest");
-
+    load_env();
     let context = PlanningContext::new()?;
     let mut stream = context
         .generate_plan(
@@ -86,15 +98,18 @@ async fn test_ollama_planning() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires local Ollama server"]
 async fn test_ollama_changes() -> Result<()> {
+    load_env();
     let temp_dir = setup_test_repo()?;
     std::env::set_current_dir(&temp_dir)?;
+
+    let ollama_url = std::env::var("OLLAMA_URL").unwrap();
 
     let (changes, reasoning) = generate_changes(
         "src/lib.rs",
         "pub fn add(a: i32, b: i32) -> i32 { a + b }",
         "Add multiply function",
         "Add a multiply function to lib.rs",
-        "http://localhost:11434",
+        &ollama_url,
     )
     .await?;
 
