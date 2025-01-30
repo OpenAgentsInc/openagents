@@ -1,7 +1,6 @@
 use anyhow::Result;
-use futures_util::StreamExt;
 use std::pin::Pin;
-use futures_core::Stream;
+use futures_util::Stream;
 use tracing::info;
 
 pub struct PlanningContext {
@@ -43,6 +42,7 @@ mod tests {
     use super::*;
     use mockito::Server;
     use serde_json::json;
+    use futures_util::StreamExt;
 
     #[tokio::test]
     async fn test_validate_llm_response() {
