@@ -42,6 +42,7 @@ File Context: {}"#,
                 StreamUpdate::Content(content) => Ok(content),
                 StreamUpdate::Reasoning(reasoning) => Ok(reasoning),
                 StreamUpdate::Done => Ok("".to_string()),
+                StreamUpdate::ToolCalls(_) => Ok("".to_string()), // Ignore tool calls in planning
             });
             
         Ok(Box::pin(stream))
