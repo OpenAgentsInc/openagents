@@ -1,9 +1,4 @@
-mod generation;
-mod parsing;
-#[cfg(test)]
-mod tests;
-mod types;
-
-pub use generation::generate_changes;
-pub use parsing::parse_search_replace;
-pub use types::{ChangeBlock, ChangeResponse};
+pub mod generation;
+pub mod parsing;
+pub mod tests;
+pub mod types;
