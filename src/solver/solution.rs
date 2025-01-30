@@ -112,10 +112,10 @@ mod tests {
     use tempfile::tempdir;
 
     #[tokio::test]
-    async fn test_handle_solution() {
-        let temp_dir = tempdir().unwrap();
+    async fn test_handle_solution() -> Result<()> {
+        let temp_dir = tempdir()?;
         let test_file = temp_dir.path().join("test.rs");
-        fs::write(&test_file, "// Original content").unwrap();
+        fs::write(&test_file, "// Original content")?;
 
         let result = handle_solution(
             123,
@@ -128,5 +128,6 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
+        Ok(())
     }
 }
