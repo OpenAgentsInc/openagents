@@ -21,4 +21,4 @@ pub use streaming::*;
 pub use types::*;
 
 // Re-export octocrab types that we use
-pub use octocrab::models::issues::{Comment, Issue};
+pub use crate::octocrab::models::issues::{Comment, Issue};
