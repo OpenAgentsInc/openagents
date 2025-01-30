@@ -12,7 +12,7 @@ impl PlanningContext {
         Ok(Self {
             service: crate::server::services::ollama::OllamaService::with_config(
                 ollama_url,
-                "codellama:latest",
+                "deepseek-r1:14b",
             ),
         })
     }
