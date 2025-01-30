@@ -1,5 +1,3 @@
-use crate::solver::types::Change;
-
 #[test]
 fn test_generate_changes() {
     // Test implementation
