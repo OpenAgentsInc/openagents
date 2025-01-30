@@ -112,8 +112,9 @@ mod tests {
     use tempfile::tempdir;
     use mockito::Server;
     use serde_json::json;
+    use tokio::test;
 
-    #[tokio::test]
+    #[test]
     async fn test_handle_solution() -> Result<()> {
         let temp_dir = tempdir()?;
         let test_file = temp_dir.path().join("test.rs");
