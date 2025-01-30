@@ -1,7 +1,7 @@
 use crate::solver::changes::types::ChangeResponse;
 use crate::solver::types::Change;
 use anyhow::{anyhow, Result};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Generates changes for a specific file
 pub async fn generate_changes(
@@ -9,10 +9,10 @@ pub async fn generate_changes(
     content: &str,
     title: &str,
     description: &str,
-    openrouter_key: &str,
+    ollama_url: &str,
 ) -> Result<(Vec<Change>, String)> {
-    // For tests, return mock response if using test key
-    if openrouter_key == "test_key" {
+    // For tests, return mock response if using test URL
+    if ollama_url == "test_url" {
         if path == "src/lib.rs" {
             return Ok((
                 vec![Change::new(
@@ -69,20 +69,19 @@ Example Response:
         path, content, title, description
     );
 
-    debug!("Sending prompt to OpenRouter:\n{}", prompt);
+    debug!("Sending prompt to Ollama:\n{}", prompt);
 
-    // Call OpenRouter API
+    // Call Ollama API
     let client = reqwest::Client::new();
     let response = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", openrouter_key))
-        .header(
-            "HTTP-Referer",
-            "https://github.com/OpenAgentsInc/openagents",
-        )
+        .post(format!("{}/api/chat", ollama_url))
         .json(&serde_json::json!({
-            "model": "deepseek/deepseek-chat",
-            "messages": [{"role": "user", "content": prompt}]
+            "model": "codellama:latest",
+            "messages": [{
+                "role": "user",
+                "content": prompt
+            }],
+            "stream": false
         }))
         .send()
         .await?;
@@ -90,7 +89,7 @@ Example Response:
     let response_json = response.json::<serde_json::Value>().await?;
 
     debug!(
-        "OpenRouter response:\n{}",
+        "Ollama response:\n{}",
         serde_json::to_string_pretty(&response_json)?
     );
 
@@ -99,28 +98,24 @@ Example Response:
         let error_msg = error["message"].as_str().unwrap_or("Unknown error");
         let error_code = error["code"].as_i64().unwrap_or(0);
 
-        error!("OpenRouter API error: {} ({})", error_msg, error_code);
+        error!("Ollama API error: {} ({})", error_msg, error_code);
 
         // Handle specific error codes
         match error_code {
             500 => {
-                warn!("OpenRouter internal error - retrying with different model");
-                // TODO: Implement retry with different model
                 return Err(anyhow!(
-                    "OpenRouter internal error: {}. Please try again",
+                    "Ollama internal error: {}. Please try again",
                     error_msg
                 ));
             }
             429 => {
-                warn!("Rate limit exceeded - implementing backoff");
-                // TODO: Implement rate limit backoff
                 return Err(anyhow!(
                     "Rate limit exceeded. Please wait a moment and try again"
                 ));
             }
             _ => {
                 return Err(anyhow!(
-                    "OpenRouter API error: {} ({})",
+                    "Ollama API error: {} ({})",
                     error_msg,
                     error_code
                 ));
@@ -128,11 +123,13 @@ Example Response:
         }
     }
 
-    let content = response_json["choices"][0]["message"]["content"]
+    let content = response_json["message"]["content"]
         .as_str()
         .ok_or_else(|| {
-            error!("Invalid response format. Expected content in choices[0].message.content. Full response:\n{}", 
-                serde_json::to_string_pretty(&response_json).unwrap_or_default());
+            error!(
+                "Invalid response format. Expected content in message.content. Full response:\n{}",
+                serde_json::to_string_pretty(&response_json).unwrap_or_default()
+            );
             anyhow!("Invalid response format. See logs for details.")
         })?;
 
