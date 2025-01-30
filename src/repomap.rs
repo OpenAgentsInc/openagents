@@ -32,10 +32,13 @@ pub fn generate_repo_map(base_path: &Path) -> String {
     for entry in Walk::new(base_path).flatten() {
         let path = entry.path();
         debug!("Processing path: {:?}", path);
-        
+
         // Skip if path matches any blacklist pattern
         if let Ok(rel_path) = path.strip_prefix(base_path) {
-            if patterns.iter().any(|pattern| pattern.matches_path(rel_path)) {
+            if patterns
+                .iter()
+                .any(|pattern| pattern.matches_path(rel_path))
+            {
                 debug!("Skipping blacklisted path: {:?}", rel_path);
                 continue;
             }
@@ -73,9 +76,13 @@ pub fn generate_repo_map(base_path: &Path) -> String {
                     }
 
                     // Only include files that have identifiable content
-                    if !ids.is_empty() || !functions.is_empty() || !classes.is_empty() || !consts.is_empty() {
+                    if !ids.is_empty()
+                        || !functions.is_empty()
+                        || !classes.is_empty()
+                        || !consts.is_empty()
+                    {
                         let mut file_content = String::new();
-                        
+
                         // Add IDs
                         for id in ids {
                             file_content.push_str(&format!("#id: {}\n", id));
@@ -207,35 +214,26 @@ mod tests {
     fn setup_test_repo() -> TempDir {
         let dir = tempfile::tempdir().unwrap();
         debug!("Created test directory: {:?}", dir.path());
-        
+
         // Create some test files
         fs::create_dir_all(dir.path().join("src")).unwrap();
         fs::create_dir_all(dir.path().join("assets")).unwrap();
         fs::create_dir_all(dir.path().join("docs")).unwrap();
-        
+
         // Source files
         let main_rs_path = dir.path().join("src/main.rs");
         debug!("Writing main.rs to: {:?}", main_rs_path);
-        fs::write(
-            main_rs_path,
-            "fn main() {}\nfn helper() {}\n",
-        ).unwrap();
-        
+        fs::write(main_rs_path, "fn main() {}\nfn helper() {}\n").unwrap();
+
         // CSS file that should be ignored
         let css_path = dir.path().join("assets/style.css");
         debug!("Writing style.css to: {:?}", css_path);
-        fs::write(
-            css_path,
-            ".class { color: red; }\n",
-        ).unwrap();
+        fs::write(css_path, ".class { color: red; }\n").unwrap();
 
         // Docs file that should be listed without content
         let docs_path = dir.path().join("docs/api.md");
         debug!("Writing api.md to: {:?}", docs_path);
-        fs::write(
-            docs_path,
-            "# API Documentation\n## Functions\n",
-        ).unwrap();
+        fs::write(docs_path, "# API Documentation\n## Functions\n").unwrap();
 
         dir
     }
@@ -245,21 +243,33 @@ mod tests {
         init_logging();
         let dir = setup_test_repo();
         debug!("Test repo setup at: {:?}", dir.path());
-        
+
         let map = generate_repo_map(dir.path());
         debug!("Generated map:\n{}", map);
-        
+
         // Should include source files with content
-        assert!(map.contains("src/main.rs"), "Map should contain src/main.rs");
+        assert!(
+            map.contains("src/main.rs"),
+            "Map should contain src/main.rs"
+        );
         assert!(map.contains("fn main"), "Map should contain fn main");
         assert!(map.contains("fn helper"), "Map should contain fn helper");
-        
+
         // Should include docs files without content
-        assert!(map.contains("docs/api.md"), "Map should contain docs/api.md");
-        assert!(!map.contains("# API Documentation"), "Map should not contain docs file content");
-        
+        assert!(
+            map.contains("docs/api.md"),
+            "Map should contain docs/api.md"
+        );
+        assert!(
+            !map.contains("# API Documentation"),
+            "Map should not contain docs file content"
+        );
+
         // Should not include CSS files
-        assert!(!map.contains("assets/style.css"), "Map should not contain assets/style.css");
+        assert!(
+            !map.contains("assets/style.css"),
+            "Map should not contain assets/style.css"
+        );
         assert!(!map.contains(".class"), "Map should not contain .class");
     }
 
@@ -268,6 +278,9 @@ mod tests {
         assert_eq!(extract_id(r#"<div id="test">"#), Some("test"));
         assert_eq!(extract_function_name("fn test_func() {"), Some("test_func"));
         assert_eq!(extract_class_name("class TestClass {"), Some("TestClass"));
-        assert_eq!(extract_const_name("const TEST_CONST: i32 = 42;"), Some("TEST_CONST"));
+        assert_eq!(
+            extract_const_name("const TEST_CONST: i32 = 42;"),
+            Some("TEST_CONST")
+        );
     }
 }
