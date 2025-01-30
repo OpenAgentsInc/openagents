@@ -1,12 +1,11 @@
-use crate::repo::git::{checkout_branch, cleanup_temp_dir, clone_repository, commit_changes};
 use crate::repomap::generate_repo_map;
 use crate::solver::changes::parsing::parse_search_replace;
 use crate::solver::file_list::generate_file_list;
 use crate::solver::types::{Change, ChangeError, ChangeResult};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::fs;
-use std::path::{Path, PathBuf};
-use tracing::{debug, error, info};
+use std::path::PathBuf;
+use tracing::{debug, error};
 
 pub struct SolverContext {
     pub temp_dir: PathBuf,
@@ -20,22 +19,6 @@ impl SolverContext {
 
     pub fn new_with_dir(temp_dir: PathBuf) -> Self {
         Self { temp_dir }
-    }
-
-    pub async fn clone_repository(&self, repo_url: &str, token: &str) -> Result<()> {
-        clone_repository(repo_url, &self.temp_dir, token).await
-    }
-
-    pub async fn checkout_branch(&self, branch: &str) -> Result<()> {
-        checkout_branch(&self.temp_dir, branch).await
-    }
-
-    pub async fn commit_changes(&self, message: &str, token: &str) -> Result<()> {
-        commit_changes(&self.temp_dir, message, token).await
-    }
-
-    pub fn generate_repo_map(&self) -> String {
-        generate_repo_map(&self.temp_dir)
     }
 
     pub async fn generate_file_list(
@@ -107,6 +90,10 @@ impl SolverContext {
     }
 
     pub fn cleanup(&self) -> Result<()> {
-        cleanup_temp_dir(&self.temp_dir).await
+        // Just remove the temp directory
+        if self.temp_dir.exists() {
+            fs::remove_dir_all(&self.temp_dir)?;
+        }
+        Ok(())
     }
 }
