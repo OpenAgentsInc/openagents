@@ -1,6 +1,8 @@
-use openagents::server::services::gateway::{Gateway, GatewayMetadata, StreamUpdate};
-use openagents::server::services::ollama::service::OllamaService;
-use std::env;
+use openagents::server::services::{
+    gateway::{types::GatewayMetadata, Gateway},
+    ollama::service::OllamaService,
+    StreamUpdate,
+};
 use tokio::sync::mpsc;
 
 #[tokio::test]
