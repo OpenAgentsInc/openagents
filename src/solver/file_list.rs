@@ -72,6 +72,9 @@ pub async fn generate_file_list(
         ));
     }
 
+    // Get model from env or use default
+    let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "codellama:latest".to_string());
+
     // Construct the prompt
     let prompt = format!(
         r#"You are an expert software developer. Your task is to identify which files need to be modified to implement this change:
@@ -109,7 +112,7 @@ Example response:
     let response = client
         .post(format!("{}/api/chat", ollama_url))
         .json(&serde_json::json!({
-            "model": "codellama:latest",
+            "model": model,
             "messages": [{
                 "role": "user",
                 "content": prompt
