@@ -20,12 +20,7 @@ pub fn is_valid_json_string(s: &str) -> bool {
 
 pub fn fix_common_json_issues(json: &str) -> String {
     // Fix unescaped newlines in strings
-    let mut fixed = json.replace("\"\n", "\"\\n");
-    
-    // Fix unescaped quotes in strings
-    fixed = fixed.replace("\\\"", "TEMP_QUOTE")
-                .replace("\"", "\\\"")
-                .replace("TEMP_QUOTE", "\\\"");
+    let mut fixed = json.to_string();
     
     // Fix missing commas between objects
     fixed = fixed.replace("}\n{", "},\n{");
