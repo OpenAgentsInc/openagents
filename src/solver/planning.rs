@@ -37,7 +37,11 @@ File Context: {}"#,
         
         // Convert receiver into a Stream
         let stream = ReceiverStream::new(receiver)
-            .map(|update| Ok(update.content));
+            .map(|update| match update {
+                StreamUpdate::Content(content) => Ok(content),
+                StreamUpdate::Reasoning(reasoning) => Ok(reasoning),
+                StreamUpdate::Done => Ok("".to_string()),
+            });
             
         Ok(Box::pin(stream))
     }
