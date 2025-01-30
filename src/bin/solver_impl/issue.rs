@@ -1,8 +1,8 @@
 use anyhow::{Context as _, Result};
-use openagents::solver::{Cli, GitHubContext};
+use openagents::solver::{Cli, GitHubContext, Issue, Comment};
 use tracing::info;
 
-pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(octocrab::models::issues::Issue, Vec<octocrab::models::issues::Comment>)> {
+pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<Comment>)> {
     // Initialize GitHub context
     let github = GitHubContext::new(&cli.repo, github_token.to_string())
         .context("Failed to initialize GitHub context")?;
