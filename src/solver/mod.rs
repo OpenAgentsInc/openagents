@@ -3,7 +3,7 @@ mod cli;
 mod config;
 mod context;
 mod display;
-mod file_list;
+pub mod file_list;  // Make this public
 mod github;
 mod planning;
 mod streaming;
