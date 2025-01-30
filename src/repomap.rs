@@ -28,82 +28,80 @@ pub fn generate_repo_map(base_path: &Path) -> String {
         .collect();
     debug!("Compiled {} blacklist patterns", patterns.len());
 
-    // Use ignore crate to respect .gitignore
-    for result in Walk::new(base_path) {
-        if let Ok(entry) = result {
-            let path = entry.path();
-            debug!("Processing path: {:?}", path);
-            
-            // Skip if path matches any blacklist pattern
-            if let Ok(rel_path) = path.strip_prefix(base_path) {
-                if patterns.iter().any(|pattern| pattern.matches_path(rel_path)) {
-                    debug!("Skipping blacklisted path: {:?}", rel_path);
-                    continue;
-                }
+    // Use ignore crate to respect .gitignore and flatten the iterator
+    for entry in Walk::new(base_path).flatten() {
+        let path = entry.path();
+        debug!("Processing path: {:?}", path);
+        
+        // Skip if path matches any blacklist pattern
+        if let Ok(rel_path) = path.strip_prefix(base_path) {
+            if patterns.iter().any(|pattern| pattern.matches_path(rel_path)) {
+                debug!("Skipping blacklisted path: {:?}", rel_path);
+                continue;
+            }
 
-                // Only process files
-                if path.is_file() {
-                    debug!("Reading file: {:?}", path);
-                    if let Ok(content) = std::fs::read_to_string(path) {
-                        let mut ids = Vec::new();
-                        let mut functions = Vec::new();
-                        let mut classes = Vec::new();
-                        let mut consts = Vec::new();
+            // Only process files
+            if path.is_file() {
+                debug!("Reading file: {:?}", path);
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    let mut ids = Vec::new();
+                    let mut functions = Vec::new();
+                    let mut classes = Vec::new();
+                    let mut consts = Vec::new();
 
-                        // Extract identifiers from content
-                        for line in content.lines() {
-                            if let Some(id) = extract_id(line) {
-                                ids.push(id);
-                            }
-                            if let Some(name) = extract_function_name(line) {
-                                functions.push(name);
-                            }
-                            if let Some(name) = extract_class_name(line) {
-                                classes.push(name);
-                            }
-                            if let Some(name) = extract_const_name(line) {
-                                consts.push(name);
-                            }
+                    // Extract identifiers from content
+                    for line in content.lines() {
+                        if let Some(id) = extract_id(line) {
+                            ids.push(id);
+                        }
+                        if let Some(name) = extract_function_name(line) {
+                            functions.push(name);
+                        }
+                        if let Some(name) = extract_class_name(line) {
+                            classes.push(name);
+                        }
+                        if let Some(name) = extract_const_name(line) {
+                            consts.push(name);
+                        }
+                    }
+
+                    // Only include files that have identifiable content
+                    if !ids.is_empty() || !functions.is_empty() || !classes.is_empty() || !consts.is_empty() {
+                        let mut file_content = String::new();
+                        
+                        // Add IDs
+                        for id in ids {
+                            file_content.push_str(&format!("#id: {}\n", id));
                         }
 
-                        // Only include files that have identifiable content
-                        if !ids.is_empty() || !functions.is_empty() || !classes.is_empty() || !consts.is_empty() {
-                            let mut file_content = String::new();
-                            
-                            // Add IDs
-                            for id in ids {
-                                file_content.push_str(&format!("#id: {}\n", id));
-                            }
+                        // Add functions
+                        for func in functions {
+                            file_content.push_str(&format!("fn {}\n", func));
+                        }
 
-                            // Add functions
-                            for func in functions {
-                                file_content.push_str(&format!("fn {}\n", func));
-                            }
+                        // Add classes
+                        for class in classes {
+                            file_content.push_str(&format!("class {}\n", class));
+                        }
 
-                            // Add classes
-                            for class in classes {
-                                file_content.push_str(&format!("class {}\n", class));
-                            }
+                        // Add constants
+                        for const_name in consts {
+                            file_content.push_str(&format!("const {}\n", const_name));
+                        }
 
-                            // Add constants
-                            for const_name in consts {
-                                file_content.push_str(&format!("const {}\n", const_name));
-                            }
-
-                            if !file_content.is_empty() {
-                                debug!("Adding entry for path: {:?}", rel_path);
-                                entries.push((rel_path.to_path_buf(), file_content));
-                            }
-                        } else {
-                            debug!("No identifiable content in file: {:?}", path);
+                        if !file_content.is_empty() {
+                            debug!("Adding entry for path: {:?}", rel_path);
+                            entries.push((rel_path.to_path_buf(), file_content));
                         }
                     } else {
-                        debug!("Failed to read file: {:?}", path);
+                        debug!("No identifiable content in file: {:?}", path);
                     }
+                } else {
+                    debug!("Failed to read file: {:?}", path);
                 }
-            } else {
-                debug!("Failed to get relative path for: {:?}", path);
             }
+        } else {
+            debug!("Failed to get relative path for: {:?}", path);
         }
     }
 
