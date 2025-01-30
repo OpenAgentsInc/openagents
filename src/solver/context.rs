@@ -1,4 +1,3 @@
-use crate::repomap::generate_repo_map;
 use crate::solver::changes::parsing::parse_search_replace;
 use crate::solver::file_list::generate_file_list;
 use crate::solver::types::{Change, ChangeError, ChangeResult};
@@ -39,14 +38,8 @@ impl SolverContext {
         description: &str,
         ollama_url: &str,
     ) -> Result<(Vec<Change>, String)> {
-        crate::solver::changes::generation::generate_changes(
-            path,
-            content,
-            title,
-            description,
-            ollama_url,
-        )
-        .await
+        crate::solver::changes::generation::generate_changes(path, content, title, description, ollama_url)
+            .await
     }
 
     pub fn parse_changes(&self, content: &str) -> ChangeResult<Vec<Change>> {
