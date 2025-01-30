@@ -7,6 +7,7 @@ pub struct GitHubContext {
     pub owner: String,
     pub repo: String,
     pub service: GitHubService,
+    pub llm_service: DeepSeekService,
 }
 
 impl GitHubContext {
@@ -17,12 +18,14 @@ impl GitHubContext {
         }
 
         let (owner, repo) = (repo_parts[0].to_string(), repo_parts[1].to_string());
-        let service = GitHubService::new(Some(token))?;
+        let service = GitHubService::new(Some(token.clone()))?;
+        let llm_service = DeepSeekService::new(token);
 
         Ok(Self {
             owner,
             repo,
             service,
+            llm_service,
         })
     }
 
@@ -66,8 +69,7 @@ Generate title:"#,
             issue_number, context
         );
 
-        let llm_service = DeepSeekService::new();
-        let (response, _) = llm_service.chat(prompt, true).await?;
+        let (response, _) = self.llm_service.chat(prompt, true).await?;
 
         let title = response.trim();
         
