@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
         &issue.title,
         issue.body.as_deref().unwrap_or("No description provided"),
         &repo_map,
+        &ollama_url,
     )
     .await?;
 
