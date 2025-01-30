@@ -20,7 +20,9 @@ fn test_change_validation() {
 
     // Empty content
     let change = Change::new("src/main.rs".to_string(), "".to_string(), "".to_string());
-    assert!(matches!(change.validate(), Err(e) if e.to_string().contains("Search content cannot be empty")));
+    assert!(
+        matches!(change.validate(), Err(e) if e.to_string().contains("Search content cannot be empty"))
+    );
 
     // Empty search but non-empty replace (valid for new file)
     let change = Change::new(
