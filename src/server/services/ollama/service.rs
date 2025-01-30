@@ -1,23 +1,19 @@
-use crate::server::services::gateway::{
-    types::{GatewayMetadata, Message},
-    Gateway,
-};
-use crate::server::services::ollama::types::*;
-use anyhow::{anyhow, Result};
-use futures_util::{Stream, TryStreamExt};
-use reqwest::Client;
+use crate::server::services::gateway::{types::GatewayMetadata, Gateway};
+use anyhow::Result;
+use futures_util::{Stream, StreamExt};
 use std::pin::Pin;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tracing::{debug, error};
 
 pub struct OllamaService {
-    config: OllamaConfig,
-    client: Client,
+    config: super::config::OllamaConfig,
 }
 
 impl Default for OllamaService {
     fn default() -> Self {
         Self {
-            config: OllamaConfig::default(),
-            client: Client::new(),
+            config: super::config::OllamaConfig::global().clone(),
         }
     }
 }
@@ -29,55 +25,11 @@ impl OllamaService {
 
     pub fn with_config(base_url: &str, model: &str) -> Self {
         Self {
-            config: OllamaConfig {
+            config: super::config::OllamaConfig {
                 base_url: base_url.to_string(),
                 model: model.to_string(),
             },
-            client: Client::new(),
         }
-    }
-
-    async fn make_request(&self, prompt: String, stream: bool) -> Result<reqwest::Response> {
-        let request = OllamaChatRequest {
-            model: self.config.model.clone(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: prompt,
-            }],
-            stream,
-            options: Some(OllamaOptions {
-                temperature: Some(0.7),
-                num_predict: Some(100),
-            }),
-        };
-
-        let response = self
-            .client
-            .post(format!("{}/api/chat", self.config.base_url))
-            .json(&request)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let error: ErrorResponse = response.json().await?;
-            return Err(anyhow!(error.error));
-        }
-
-        Ok(response)
-    }
-
-    async fn process_stream_chunk(chunk: &[u8]) -> Result<Option<String>> {
-        if chunk.is_empty() {
-            return Ok(None);
-        }
-
-        let response: OllamaChatResponse = serde_json::from_slice(chunk)?;
-        if response.done {
-            return Ok(None);
-        }
-
-        // Extract just the new content from the message
-        Ok(Some(response.message.content))
     }
 }
 
@@ -94,9 +46,26 @@ impl Gateway for OllamaService {
     }
 
     async fn chat(&self, prompt: String, _use_reasoner: bool) -> Result<(String, Option<String>)> {
-        let response = self.make_request(prompt, false).await?;
-        let chat_response: OllamaChatResponse = response.json().await?;
-        Ok((chat_response.message.content, None))
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{}/api/chat", self.config.base_url))
+            .json(&serde_json::json!({
+                "model": self.config.model,
+                "messages": [{
+                    "role": "user",
+                    "content": prompt
+                }],
+                "stream": false
+            }))
+            .send()
+            .await?;
+
+        let response_json = response.json::<serde_json::Value>().await?;
+        let content = response_json["message"]["content"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid response format from Ollama"))?;
+
+        Ok((content.to_string(), None))
     }
 
     async fn chat_stream(
@@ -104,23 +73,71 @@ impl Gateway for OllamaService {
         prompt: String,
         _use_reasoner: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
-        let response = self.make_request(prompt, true).await?;
+        let (tx, rx) = mpsc::channel(100);
+        let client = reqwest::Client::new();
+        let config = self.config.clone();
 
-        // Split the response stream by newlines to handle each chunk
-        let stream = response
-            .bytes_stream()
-            .map_err(|e| anyhow!(e))
-            .try_filter_map(|chunk| {
-                let fut = async move {
-                    match Self::process_stream_chunk(&chunk).await {
-                        Ok(Some(content)) => Ok(Some(content)),
-                        Ok(None) => Ok(None),
-                        Err(e) => Err(e),
+        debug!("Starting Ollama chat stream with URL: {}", config.base_url);
+
+        tokio::spawn(async move {
+            let response = client
+                .post(format!("{}/api/chat", config.base_url))
+                .json(&serde_json::json!({
+                    "model": config.model,
+                    "messages": [{
+                        "role": "user",
+                        "content": prompt
+                    }],
+                    "stream": true
+                }))
+                .send()
+                .await;
+
+            match response {
+                Ok(response) => {
+                    debug!("Got response from Ollama, starting stream");
+                    let mut stream = response.bytes_stream();
+                    let mut full_response = String::new();
+
+                    while let Some(chunk) = stream.next().await {
+                        match chunk {
+                            Ok(bytes) => {
+                                if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                                    debug!("Received chunk: {}", text);
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(&text)
+                                    {
+                                        if let Some(content) = json["message"]["content"].as_str() {
+                                            debug!("Extracted content: {}", content);
+                                            let _ = tx.send(Ok(content.to_string())).await;
+                                            full_response.push_str(content);
+                                        }
+                                        if json["done"].as_bool().unwrap_or(false) {
+                                            debug!("Stream done, full response: {}", full_response);
+                                            break;
+                                        }
+                                    } else {
+                                        error!("Failed to parse JSON from chunk: {}", text);
+                                    }
+                                } else {
+                                    error!("Failed to parse UTF-8 from chunk");
+                                }
+                            }
+                            Err(e) => {
+                                error!("Error in stream chunk: {}", e);
+                                let _ = tx.send(Err(anyhow::anyhow!(e))).await;
+                                break;
+                            }
+                        }
                     }
-                };
-                Box::pin(fut)
-            });
+                }
+                Err(e) => {
+                    error!("Failed to connect to Ollama: {}", e);
+                    let _ = tx.send(Err(anyhow::anyhow!(e))).await;
+                }
+            }
+        });
 
-        Ok(Box::pin(stream))
+        Ok(Box::pin(ReceiverStream::new(rx)))
     }
 }

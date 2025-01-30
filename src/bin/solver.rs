@@ -1,61 +1,121 @@
 use anyhow::{Context as _, Result};
 use clap::Parser;
-use openagents::solver::{Cli, Config};
-use tracing::info;
+use openagents::server::services::github_issue::GitHubService;
+use std::path::Path;
+use tracing::{debug, info};
 
 mod solver_impl;
+
+#[derive(Parser)]
+struct Cli {
+    #[clap(long)]
+    issue: i32,
+
+    #[clap(long)]
+    repo: Option<String>,
+
+    #[clap(long)]
+    live: bool,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("openagents=debug".parse()?),
-        )
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    // Parse command line arguments
     let cli = Cli::parse();
-    let config = Config::load().context("Failed to load configuration")?;
 
-    // Clone tokens before moving
-    let github_token = config.github_token.clone();
-    let openrouter_api_key = config.openrouter_api_key.clone();
+    // Load environment variables
+    dotenvy::dotenv().ok();
 
-    // Handle issue details
-    let (issue, comments) = solver_impl::issue::handle_issue(&cli, &github_token).await?;
+    // Get GitHub token from environment
+    let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
 
-    // Initialize solution context for repo map
-    let mut solution = openagents::solver::SolutionContext::new(
-        cli.issue,
-        openrouter_api_key.clone(),
-        Some(github_token.clone()),
-    )
-    .context("Failed to initialize solution context")?;
+    // Get Ollama URL from environment or use default
+    let ollama_url =
+        std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
-    // Clone repository and generate map
-    let repo_url = format!("https://github.com/{}", cli.repo);
-    info!("Cloning repository: {}", repo_url);
-    solution
-        .clone_repository(&repo_url)
-        .context("Failed to clone repository")?;
+    // Get repository owner/name
+    let repo = cli
+        .repo
+        .unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
+    let (owner, name) = repo
+        .split_once('/')
+        .context("Invalid repository format. Expected owner/name")?;
 
-    let repo_map = solution.generate_repo_map();
+    // Initialize GitHub service
+    let github = GitHubService::new(Some(github_token.clone()))
+        .context("Failed to initialize GitHub service")?;
+
+    // Fetch issue details
+    info!("Fetching issue #{}", cli.issue);
+    let issue = github.get_issue(owner, name, cli.issue).await?;
+
+    // Generate repository map
+    info!("Generating repository map...");
+    let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
+    debug!("Repository map:\n{}", repo_map);
 
     // Generate implementation plan
-    let plan = solver_impl::planning::handle_planning(&cli, &issue, &comments, &repo_map).await?;
-
-    // Generate and apply solution
-    solver_impl::solution::handle_solution(
-        &cli,
-        &issue,
-        &comments,
-        &plan,
-        github_token,
-        openrouter_api_key,
+    let plan = solver_impl::planning::handle_planning(
+        cli.issue,
+        &issue.title,
+        issue.body.as_deref().unwrap_or("No description provided"),
+        &repo_map,
+        &ollama_url,
     )
     .await?;
 
-    info!("Solver completed successfully");
+    // Generate and apply solution
+    solver_impl::solution::handle_solution(
+        cli.issue,
+        &issue.title,
+        issue.body.as_deref().unwrap_or("No description provided"),
+        &plan,
+        &repo_map,
+        &ollama_url,
+    )
+    .await?;
+
+    // If in live mode, create branch and post comment
+    if cli.live {
+        // Create branch
+        let branch_name = format!("solver/issue-{}", cli.issue);
+        github
+            .create_branch(owner, name, &branch_name, "main")
+            .await?;
+
+        // Post implementation plan as comment
+        github
+            .post_comment(
+                owner,
+                name,
+                cli.issue,
+                &format!("## Implementation Plan\n\n{}", plan),
+            )
+            .await?;
+
+        // Create pull request
+        github
+            .create_pull_request(
+                owner,
+                name,
+                &format!("Implement solution for #{}", cli.issue),
+                &format!(
+                    "This PR implements the solution for issue #{}\n\n## Implementation Plan\n\n{}",
+                    cli.issue, plan
+                ),
+                &branch_name,
+                "main",
+            )
+            .await?;
+    } else {
+        // Just print the plan
+        println!("\nImplementation Plan:\n{}", plan);
+    }
+
     Ok(())
 }

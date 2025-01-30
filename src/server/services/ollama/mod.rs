@@ -1,5 +1,5 @@
+pub mod config;
 pub mod service;
-pub mod types;
 
+pub use config::OllamaConfig;
 pub use service::OllamaService;
-pub use types::*;

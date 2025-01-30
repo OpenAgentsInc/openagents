@@ -1,64 +1,39 @@
-use anyhow::{Context as _, Result};
-use octocrab::models::issues::{Comment, Issue};
-use openagents::solver::{handle_plan_stream, Cli, PlanningContext};
+use anyhow::{anyhow, Result};
+use openagents::solver::{planning::PlanningContext, streaming::handle_plan_stream};
+use regex::Regex;
 use tracing::{debug, info};
 
+/// Extracts JSON from markdown code block
+fn extract_json_from_markdown(content: &str) -> Option<&str> {
+    let re = Regex::new(r"```json\s*(\{[\s\S]*?\})\s*```").ok()?;
+    re.captures(content)?.get(1).map(|m| m.as_str())
+}
+
 pub async fn handle_planning(
-    cli: &Cli,
-    issue: &Issue,
-    comments: &[Comment],
+    issue_number: i32,
+    title: &str,
+    description: &str,
     repo_map: &str,
+    ollama_url: &str,
 ) -> Result<String> {
-    // Generate implementation plan
-    let planning = PlanningContext::new().context("Failed to initialize planning context")?;
+    info!("Generating implementation plan...");
 
-    // Include comments in the context for planning
-    let comments_context = if !comments.is_empty() {
-        let mut context = String::from("\nRelevant comments:\n");
-        for comment in comments {
-            context.push_str(&format!(
-                "\n@{} at {}:\n{}\n",
-                comment.user.login,
-                comment.created_at,
-                comment.body.as_deref().unwrap_or("No comment body")
-            ));
-        }
-        context
-    } else {
-        String::from("\nNo additional comments on the issue.")
-    };
+    let context = PlanningContext::new(ollama_url)?;
+    let stream = context
+        .generate_plan(issue_number, title, description, repo_map)
+        .await?;
 
-    info!("Generating implementation plan");
-    debug!("=== CONTEXT SENT TO LLM ===");
-    debug!("Issue Title: {}", issue.title);
-    debug!("Issue Number: #{}", issue.number);
-    debug!("\nFull Context (including comments):");
-    debug!(
-        "{}",
-        issue.body.as_deref().unwrap_or("No description provided")
-    );
-    debug!("{}", comments_context);
-    debug!("=== END CONTEXT ===\n");
+    let full_response = handle_plan_stream(stream).await?;
+    debug!("Full response: {}", full_response);
 
-    // Get streaming plan generation
-    let stream = planning
-        .generate_plan(
-            cli.issue,
-            &issue.title,
-            &format!(
-                "{}\n{}",
-                issue.body.as_deref().unwrap_or("No description provided"),
-                comments_context
-            ),
-            repo_map,
-        )
-        .await;
+    // Extract JSON from markdown code block
+    let json_str = extract_json_from_markdown(&full_response)
+        .ok_or_else(|| anyhow!("No JSON code block found in response"))?;
 
-    // Handle the stream and get the final plan
-    let implementation_plan = handle_plan_stream(stream).await?;
+    debug!("Extracted JSON: {}", json_str);
 
-    info!("Implementation plan generated");
-    debug!("Plan:\n{}", implementation_plan);
+    // Parse JSON to verify it's valid
+    let _json: serde_json::Value = serde_json::from_str(json_str)?;
 
-    Ok(implementation_plan)
+    Ok(json_str.to_string())
 }

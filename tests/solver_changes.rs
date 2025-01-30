@@ -9,7 +9,7 @@ async fn test_change_generation() -> Result<()> {
         "pub fn add(a: i32, b: i32) -> i32 { a + b }",
         "Add multiply function",
         "Add a multiply function that multiplies two integers",
-        "test_key",
+        "test_url",
     )
     .await?;
 
@@ -30,7 +30,7 @@ async fn test_change_generation_no_changes() -> Result<()> {
         "fn main() { println!(\"Hello\"); }",
         "Add multiply function",
         "Add a multiply function to lib.rs",
-        "test_key",
+        "test_url",
     )
     .await?;
 

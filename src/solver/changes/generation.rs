@@ -1,7 +1,17 @@
+use crate::server::services::gateway::Gateway;
 use crate::solver::changes::types::ChangeResponse;
 use crate::solver::types::Change;
 use anyhow::{anyhow, Result};
-use tracing::{debug, error, info, warn};
+use futures_util::StreamExt;
+use regex::Regex;
+use std::io::Write;
+use tracing::{debug, error, info};
+
+/// Extracts JSON from markdown code block
+fn extract_json_from_markdown(content: &str) -> Option<&str> {
+    let re = Regex::new(r"```json\s*(\{[\s\S]*?\})\s*```").ok()?;
+    re.captures(content)?.get(1).map(|m| m.as_str())
+}
 
 /// Generates changes for a specific file
 pub async fn generate_changes(
@@ -9,10 +19,10 @@ pub async fn generate_changes(
     content: &str,
     title: &str,
     description: &str,
-    openrouter_key: &str,
+    ollama_url: &str,
 ) -> Result<(Vec<Change>, String)> {
-    // For tests, return mock response if using test key
-    if openrouter_key == "test_key" {
+    // For tests, return mock response if using test URL
+    if ollama_url == "test_url" {
         if path == "src/lib.rs" {
             return Ok((
                 vec![Change::new(
@@ -38,7 +48,23 @@ Change Request:
 Title: {}
 Description: {}
 
-Output a JSON object with:
+First, think through the changes needed. Then output your solution as a JSON object in a markdown code block like this:
+
+```json
+{{
+    "changes": [
+        {{
+            "path": "path/to/file",
+            "search": "exact content to find",
+            "replace": "new content",
+            "reason": "why this change is needed"
+        }}
+    ],
+    "reasoning": "Overall explanation of changes"
+}}
+```
+
+The JSON object must have:
 1. "changes": Array of change blocks with:
    - "path": File path
    - "search": Exact content to find
@@ -51,98 +77,43 @@ Rules:
 - Include enough context for unique matches
 - Keep changes minimal and focused
 - Preserve code style and formatting
-- Empty search means new file content
-- Do not put it inside a markdown code block, respond ONLY with the valid JSON. (Do not say "```json" at the beginning)
-
-Example Response:
-{{
-    "changes": [
-        {{
-            "path": "src/lib.rs",
-            "search": "fn old_name() {{ ... }}",
-            "replace": "fn new_name() {{ ... }}",
-            "reason": "Renamed for clarity"
-        }}
-    ],
-    "reasoning": "Renamed function to better reflect..."
-}}"#,
+- Empty search means new file content"#,
         path, content, title, description
     );
 
-    debug!("Sending prompt to OpenRouter:\n{}", prompt);
+    debug!("Sending prompt to Ollama:\n{}", prompt);
 
-    // Call OpenRouter API
-    let client = reqwest::Client::new();
-    let response = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", openrouter_key))
-        .header(
-            "HTTP-Referer",
-            "https://github.com/OpenAgentsInc/openagents",
-        )
-        .json(&serde_json::json!({
-            "model": "deepseek/deepseek-chat",
-            "messages": [{"role": "user", "content": prompt}]
-        }))
-        .send()
-        .await?;
+    // Initialize Ollama service
+    let service = crate::server::services::ollama::OllamaService::new();
+    let mut stream = service.chat_stream(prompt, true).await?;
 
-    let response_json = response.json::<serde_json::Value>().await?;
-
-    debug!(
-        "OpenRouter response:\n{}",
-        serde_json::to_string_pretty(&response_json)?
-    );
-
-    // Check for error response
-    if let Some(error) = response_json.get("error") {
-        let error_msg = error["message"].as_str().unwrap_or("Unknown error");
-        let error_code = error["code"].as_i64().unwrap_or(0);
-
-        error!("OpenRouter API error: {} ({})", error_msg, error_code);
-
-        // Handle specific error codes
-        match error_code {
-            500 => {
-                warn!("OpenRouter internal error - retrying with different model");
-                // TODO: Implement retry with different model
-                return Err(anyhow!(
-                    "OpenRouter internal error: {}. Please try again",
-                    error_msg
-                ));
+    // Process the stream
+    let mut full_response = String::new();
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(content) => {
+                // Print thinking process
+                print!("{}", content);
+                std::io::stdout().flush()?;
+                full_response.push_str(&content);
             }
-            429 => {
-                warn!("Rate limit exceeded - implementing backoff");
-                // TODO: Implement rate limit backoff
-                return Err(anyhow!(
-                    "Rate limit exceeded. Please wait a moment and try again"
-                ));
-            }
-            _ => {
-                return Err(anyhow!(
-                    "OpenRouter API error: {} ({})",
-                    error_msg,
-                    error_code
-                ));
+            Err(e) => {
+                error!("Error in stream: {}", e);
+                break;
             }
         }
     }
 
-    let content = response_json["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| {
-            error!("Invalid response format. Expected content in choices[0].message.content. Full response:\n{}", 
-                serde_json::to_string_pretty(&response_json).unwrap_or_default());
-            anyhow!("Invalid response format. See logs for details.")
-        })?;
+    // Extract JSON from markdown code block
+    let json_str = extract_json_from_markdown(&full_response)
+        .ok_or_else(|| anyhow!("No JSON code block found in response"))?;
 
-    info!("Parsing LLM response:\n{}", content);
+    info!("Parsing LLM response:\n{}", json_str);
 
-    // Parse response
-    let change_response: ChangeResponse = serde_json::from_str(content).map_err(|e| {
+    let change_response: ChangeResponse = serde_json::from_str(json_str).map_err(|e| {
         error!(
             "Failed to parse LLM response as JSON: {}\nResponse:\n{}",
-            e, content
+            e, json_str
         );
         anyhow!("Failed to parse LLM response. See logs for details.")
     })?;

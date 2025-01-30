@@ -1,12 +1,13 @@
 pub mod changes;
-mod cli;
-mod config;
+pub mod cli;
+pub mod config;
 pub mod context;
 pub mod display;
 pub mod file_list;
-mod github;
-mod planning;
-mod streaming;
+pub mod github;
+pub mod planning;
+pub mod solution;
+pub mod streaming;
 pub mod types;
 
 pub use changes::*;

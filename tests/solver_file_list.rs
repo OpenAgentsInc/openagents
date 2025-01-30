@@ -35,7 +35,7 @@ async fn test_file_list_generation() -> Result<()> {
         "Add multiply function",
         "Add a multiply function that multiplies two integers",
         repo_map,
-        "test_key",
+        "test_url",
     )
     .await?;
 
@@ -70,7 +70,7 @@ async fn test_file_list_with_invalid_paths() -> Result<()> {
         "Update all files",
         "Make changes to all files",
         repo_map,
-        "test_key",
+        "test_url",
     )
     .await?;
 
@@ -90,7 +90,7 @@ async fn test_file_list_empty_repo() -> Result<()> {
         "Add new file",
         "Create a new file with some functionality",
         "",
-        "test_key",
+        "test_url",
     )
     .await?;
 

@@ -1,16 +1,12 @@
 use anyhow::Result;
-use openagents::solver::context::SolutionContext;
+use openagents::solver::context::SolverContext;
 use openagents::solver::{Change, ChangeError};
 use std::fs;
 use tempfile::TempDir;
 
-fn setup_test_context() -> Result<(SolutionContext, TempDir)> {
+fn setup_test_context() -> Result<(SolverContext, TempDir)> {
     let temp_dir = tempfile::tempdir()?;
-    let context = SolutionContext::new_with_dir(
-        temp_dir.path().to_path_buf(),
-        "test_key".to_string(),
-        Some("test_token".to_string()),
-    )?;
+    let context = SolverContext::new_with_dir(temp_dir.path().to_path_buf());
     Ok((context, temp_dir))
 }
 
@@ -18,13 +14,12 @@ fn setup_test_context() -> Result<(SolutionContext, TempDir)> {
 fn test_context_initialization() -> Result<()> {
     let (context, _temp_dir) = setup_test_context()?;
     assert!(context.temp_dir.exists());
-    assert!(context.modified_files.is_empty());
     Ok(())
 }
 
 #[test]
 fn test_apply_changes_new_file() -> Result<()> {
-    let (mut context, _temp_dir) = setup_test_context()?;
+    let (context, _temp_dir) = setup_test_context()?;
 
     // Create a new file
     let changes = vec![Change::new(
@@ -39,16 +34,14 @@ fn test_apply_changes_new_file() -> Result<()> {
     let file_path = context.temp_dir.join("src/new_file.rs");
     assert!(file_path.exists());
     assert_eq!(fs::read_to_string(file_path)?, "fn new_function() {}");
-    assert!(context
-        .modified_files
-        .contains(&"src/new_file.rs".to_string()));
+    assert!(context.temp_dir.join("src/new_file.rs").exists());
 
     Ok(())
 }
 
 #[test]
 fn test_apply_changes_modify_file() -> Result<()> {
-    let (mut context, _temp_dir) = setup_test_context()?;
+    let (context, _temp_dir) = setup_test_context()?;
 
     // Create initial file
     let file_path = "src/test.rs";
@@ -69,14 +62,14 @@ fn test_apply_changes_modify_file() -> Result<()> {
         fs::read_to_string(context.temp_dir.join(file_path))?,
         "fn new_function() {}"
     );
-    assert!(context.modified_files.contains(&file_path.to_string()));
+    assert!(context.temp_dir.join(file_path).exists());
 
     Ok(())
 }
 
 #[test]
 fn test_apply_changes_no_match() -> Result<()> {
-    let (mut context, _temp_dir) = setup_test_context()?;
+    let (context, _temp_dir) = setup_test_context()?;
 
     // Create initial file
     let file_path = "src/test.rs";
@@ -95,14 +88,19 @@ fn test_apply_changes_no_match() -> Result<()> {
 
     let result = context.apply_changes(&changes);
     assert!(matches!(result, Err(ChangeError::NoMatch)));
-    assert!(context.modified_files.is_empty());
+    // File should still exist, just unchanged
+    assert!(context.temp_dir.join("src/test.rs").exists());
+    assert_eq!(
+        fs::read_to_string(context.temp_dir.join(file_path))?,
+        "fn existing_function() {}"
+    );
 
     Ok(())
 }
 
 #[test]
 fn test_apply_changes_file_not_found() -> Result<()> {
-    let (mut context, _temp_dir) = setup_test_context()?;
+    let (context, _temp_dir) = setup_test_context()?;
 
     let changes = vec![Change::new(
         "non_existent.rs".to_string(),
@@ -112,7 +110,7 @@ fn test_apply_changes_file_not_found() -> Result<()> {
 
     let result = context.apply_changes(&changes);
     assert!(matches!(result, Err(ChangeError::FileNotFound(_))));
-    assert!(context.modified_files.is_empty());
+    assert!(!context.temp_dir.join("non_existent.rs").exists());
 
     Ok(())
 }
@@ -123,11 +121,7 @@ fn test_cleanup() -> Result<()> {
     let temp_path = temp_dir.path().to_path_buf();
 
     {
-        let context = SolutionContext::new_with_dir(
-            temp_path.clone(),
-            "test_key".to_string(),
-            Some("test_token".to_string()),
-        )?;
+        let context = SolverContext::new_with_dir(temp_path.clone());
 
         // Create some test files
         fs::create_dir_all(context.temp_dir.join("src"))?;
@@ -137,7 +131,7 @@ fn test_cleanup() -> Result<()> {
         assert!(context.temp_dir.join("src/test.rs").exists());
 
         // Clean up
-        context.cleanup();
+        let _ = context.cleanup();
     }
 
     // Verify directory was cleaned up
