@@ -23,6 +23,10 @@ docs/solve-runs/20250130-1120.md:
 
 docs/solve-runs/20250130-1130.md:
 
+docs/solve-runs/20250130-1145.md:
+
+docs/solve-runs/20250130-1225.md:
+
 docs/solver.md:
 
 docs/templates.md:
@@ -52,8 +56,26 @@ src/bin/solver_impl/issue.rs:
 │fn handle_issue
 
 src/bin/solver_impl/planning.rs:
+│fn generate_pr_title
 │fn extract_json_from_markdown
+│fn gather_context
 │fn handle_planning
+│const ERR_NO_JSON
+│const ERR_NO_CHANGES
+│const ERR_WRONG_TARGET
+│const GITHUB_RS_PATH
+│const JSON_RS_PATH
+│const KEY_CHANGES
+│const KEY_PATH
+│const KEY_SEARCH
+│const LOG_GATHERING
+│const LOG_GENERATING
+│const LOG_FILE_CONTEXT
+│const LOG_FULL_RESPONSE
+│const LOG_EXTRACTED_JSON
+│const GITHUB_RS_CONTENT
+│const TARGET_FUNCTION
+│const EMPTY_STR
 
 src/bin/solver_impl/solution.rs:
 │fn handle_solution
@@ -366,14 +388,12 @@ src/solver/file_list.rs:
 src/solver/github.rs:
 │fn new
 │fn create_branch
-│fn validate_pr_title
 │fn generate_pr_title
 │fn create_pull_request
 │fn post_comment
 │fn get_issue
 │fn get_issue_comments
 │fn test_generate_pr_title
-│fn test_validate_pr_title
 │fn test_new_with_invalid_repo
 
 src/solver/json.rs:
@@ -392,8 +412,10 @@ src/solver/planning.rs:
 │fn generate_plan
 │fn generate_plan_sync
 │fn test_validate_llm_response
-│fn generate_title
-│fn generate_title_with_prefix
+│fn generate_pr_title
+│fn generate_pr_title
+│fn test_something
+│fn test_something_new
 │fn test_generate_prompt
 │const MAX_RETRIES
 
