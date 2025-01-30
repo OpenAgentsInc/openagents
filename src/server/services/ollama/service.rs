@@ -2,12 +2,12 @@ use crate::server::services::gateway::{
     types::{ChatRequest, GatewayMetadata, Message},
     Gateway,
 };
-use crate::server::services::StreamUpdate;
 use crate::server::services::ollama::types::*;
 use anyhow::{anyhow, Result};
+use futures_util::{Stream, StreamExt};
 use reqwest::Client;
-use tokio::sync::mpsc;
-use futures_util::StreamExt;
+use std::pin::Pin;
+use tokio_stream::wrappers::ReceiverStream;
 
 pub struct OllamaService {
     config: OllamaConfig,
@@ -93,63 +93,26 @@ impl Gateway for OllamaService {
         Ok((chat_response.message.content, None))
     }
 
-    async fn chat_stream(&self, prompt: String, _use_reasoner: bool) -> mpsc::Receiver<StreamUpdate> {
-        let (tx, rx) = mpsc::channel(100);
-        let config = self.config.clone();
-        let client = self.client.clone();
+    async fn chat_stream(
+        &self,
+        prompt: String,
+        _use_reasoner: bool,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
+        let response = self.make_request(prompt, true).await?;
+        let stream = response.bytes_stream();
 
-        tokio::spawn(async move {
-            let request = ChatRequest {
-                model: config.model,
-                messages: vec![Message {
-                    role: "user".to_string(),
-                    content: prompt,
-                }],
-                stream: true,
-                temperature: 0.7,
-                max_tokens: None,
-            };
-
-            match client
-                .post(format!("{}/api/chat", config.base_url))
-                .json(&request)
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    let mut stream = response.bytes_stream();
-
-                    while let Some(chunk_result) = stream.next().await {
-                        match chunk_result {
-                            Ok(chunk) => {
-                                match Self::process_stream_chunk(&chunk).await {
-                                    Ok(Some(content)) => {
-                                        if tx.send(StreamUpdate::Content(content)).await.is_err() {
-                                            break;
-                                        }
-                                    }
-                                    Ok(None) => break,
-                                    Err(e) => {
-                                        let _ = tx.send(StreamUpdate::Error(e.to_string())).await;
-                                        break;
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                let _ = tx.send(StreamUpdate::Error(e.to_string())).await;
-                                break;
-                            }
-                        }
+        let content_stream = stream.map(|chunk_result| {
+            chunk_result
+                .map_err(|e| anyhow!(e))
+                .and_then(|chunk| async move {
+                    if let Some(content) = Self::process_stream_chunk(&chunk).await? {
+                        Ok(content)
+                    } else {
+                        Err(anyhow!("Stream ended"))
                     }
-                }
-                Err(e) => {
-                    let _ = tx.send(StreamUpdate::Error(e.to_string())).await;
-                }
-            }
-
-            let _ = tx.send(StreamUpdate::Done).await;
+                }.boxed().await)
         });
 
-        rx
+        Ok(Box::pin(content_stream))
     }
 }
