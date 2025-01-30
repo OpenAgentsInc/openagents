@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use clap::Parser;
 use dotenvy::dotenv;
 use openagents::repo::{cleanup_temp_dir, clone_repository, RepoContext};
-use openagents::repomap::generate_repo_map_with_blacklist;
+use openagents::repomap::generate_repo_map;
 use std::env;
 use std::fs;
 use std::process::Command;
@@ -92,8 +92,8 @@ async fn main() -> Result<()> {
         bail!("Failed to checkout branch: {}", branch);
     }
 
-    // Generate and store the repository map with blacklist
-    let map = generate_repo_map_with_blacklist(&ctx.temp_dir, &["assets/main.css"]);
+    // Generate and store the repository map
+    let map = generate_repo_map(&ctx.temp_dir);
     fs::write("docs/repomap.md", map)?;
     println!("Repository map saved to docs/repomap.md");
 
