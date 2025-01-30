@@ -3,6 +3,7 @@ use std::pin::Pin;
 use futures_util::{Stream, StreamExt};
 use tracing::info;
 use tokio_stream::wrappers::ReceiverStream;
+use crate::server::services::deepseek::StreamUpdate;
 
 pub struct PlanningContext {
     pub llm_service: crate::server::services::deepseek::DeepSeekService,
