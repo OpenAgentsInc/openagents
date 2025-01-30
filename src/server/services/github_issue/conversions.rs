@@ -106,14 +106,35 @@ impl TryFrom<GitHubComment> for octocrab::models::issues::Comment {
         let comment: octocrab::models::issues::Comment =
             serde_json::from_value(serde_json::json!({
                 "id": comment.id,
-                "node_id": "",
+                "node_id": "MDExOlB1bGxSZXF1ZXN0NTgzMTI5Nzcx",  // Placeholder node_id
                 "url": "https://github.com",
                 "html_url": "https://github.com",
                 "body": comment.body,
-                "user": comment.user,
+                "user": {
+                    "login": comment.user.login,
+                    "id": comment.user.id,
+                    "node_id": "MDQ6VXNlcjE=",  // Placeholder node_id
+                    "avatar_url": "https://github.com",
+                    "gravatar_id": "",
+                    "url": "https://github.com",
+                    "html_url": "https://github.com",
+                    "followers_url": "https://github.com",
+                    "following_url": "https://github.com",
+                    "gists_url": "https://github.com",
+                    "starred_url": "https://github.com", 
+                    "subscriptions_url": "https://github.com",
+                    "organizations_url": "https://github.com",
+                    "repos_url": "https://github.com",
+                    "events_url": "https://github.com",
+                    "received_events_url": "https://github.com",
+                    "type": "User",
+                    "site_admin": false,
+                    "email": null,
+                    "patch_url": null
+                },
                 "created_at": created_at,
                 "updated_at": updated_at,
-                "issue_url": null,
+                "issue_url": "https://github.com",
                 "body_text": null,
                 "body_html": null
             }))?;
