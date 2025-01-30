@@ -29,11 +29,14 @@ pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<C
         println!("\nComments ({}):", comments.len());
         for comment in &comments {
             println!("\nFrom @{} at {}:", comment.user.login, comment.created_at);
-            if let Some(body) = &comment.body {
-                println!("{}\n", body);
-            }
+            println!("{}\n", comment.body);
         }
     }
 
-    Ok((issue.into(), comments.into_iter().map(Into::into).collect()))
+    Ok((
+        octocrab::models::issues::Issue::try_from(issue)?,
+        comments.into_iter()
+            .map(|c| octocrab::models::issues::Comment::try_from(c))
+            .collect::<Result<Vec<_>, _>>()?
+    ))
 }
