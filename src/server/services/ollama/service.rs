@@ -8,17 +8,24 @@ use futures_util::{Stream, TryStreamExt};
 use reqwest::Client;
 use std::pin::Pin;
 
+#[derive(Default)]
 pub struct OllamaService {
     config: OllamaConfig,
     client: Client,
 }
 
-impl OllamaService {
-    pub fn new() -> Self {
+impl Default for OllamaService {
+    fn default() -> Self {
         Self {
             config: OllamaConfig::default(),
             client: Client::new(),
         }
+    }
+}
+
+impl OllamaService {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_config(base_url: &str, model: &str) -> Self {
