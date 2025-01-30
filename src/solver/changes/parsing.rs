@@ -58,7 +58,8 @@ pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
         ));
     }
 
-    if changes.is_empty() {
+    // Validate that we found at least one valid SEARCH/REPLACE block
+    if changes.is_empty() || !content.contains("<<<<<<< SEARCH") {
         return Err(ChangeError::InvalidFormat);
     }
 
