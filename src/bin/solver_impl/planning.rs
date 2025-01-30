@@ -17,6 +17,13 @@ const KEY_CHANGES: &str = "changes";
 const KEY_PATH: &str = "path";
 const KEY_SEARCH: &str = "search";
 
+// Log messages
+const LOG_GATHERING: &str = "Gathering relevant file contents...";
+const LOG_GENERATING: &str = "Generating implementation plan...";
+const LOG_FILE_CONTEXT: &str = "File context: {}";
+const LOG_FULL_RESPONSE: &str = "Full response: {}";
+const LOG_EXTRACTED_JSON: &str = "Extracted JSON: {}";
+
 // Other constants
 const TARGET_FUNCTION: &str = "generate_pr_title";
 const EMPTY_STR: &str = "";
@@ -117,24 +124,24 @@ pub async fn handle_planning(
     repo_map: &str,
     ollama_url: &str,
 ) -> Result<String> {
-    info!("Gathering relevant file contents...");
+    info!(LOG_GATHERING);
     let file_context = gather_context(title, description).await?;
-    debug!("File context: {}", file_context);
+    debug!(LOG_FILE_CONTEXT, file_context);
 
-    info!("Generating implementation plan...");
+    info!(LOG_GENERATING);
     let context = PlanningContext::new(ollama_url)?;
     let stream = context
         .generate_plan(issue_number, title, description, repo_map, &file_context)
         .await?;
 
     let full_response = handle_plan_stream(stream).await?;
-    debug!("Full response: {}", full_response);
+    debug!(LOG_FULL_RESPONSE, full_response);
 
     // Extract JSON from markdown code block
     let json_str = extract_json_from_markdown(&full_response)
         .ok_or_else(|| anyhow!(ERR_NO_JSON))?;
 
-    debug!("Extracted JSON: {}", json_str);
+    debug!(LOG_EXTRACTED_JSON, json_str);
 
     // Parse JSON to verify it's valid
     let json: serde_json::Value = serde_json::from_str(json_str)?;
