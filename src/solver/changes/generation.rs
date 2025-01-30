@@ -36,9 +36,6 @@ pub async fn generate_changes(
         return Ok((Vec::new(), "No changes needed".to_string()));
     }
 
-    // Get model from env or use default
-    let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "deepseek-r1:14b".to_string());
-
     // Construct the prompt
     let prompt = format!(
         r#"You are an expert software developer. Your task is to generate specific code changes for this file:
