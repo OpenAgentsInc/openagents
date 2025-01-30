@@ -4,11 +4,9 @@ use crate::server::services::gateway::{
 };
 use crate::server::services::ollama::types::*;
 use anyhow::{anyhow, Result};
-use futures_util::{Stream, StreamExt, TryStreamExt};
+use futures_util::{Stream, TryStreamExt};
 use reqwest::Client;
 use std::pin::Pin;
-use tokio_stream::wrappers::ReceiverStream;
-use futures_util::stream;
 
 pub struct OllamaService {
     config: OllamaConfig,
