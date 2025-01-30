@@ -34,26 +34,7 @@ impl TryFrom<GitHubIssue> for octocrab::models::issues::Issue {
             .updated_at(Utc::now())
             .build()?;
 
-        Ok(issue
-            labels: vec![],
-            assignee: None,
-            assignees: vec![],
-            milestone: None,
-            locked: false,
-            active_lock_reason: None,
-            comments: 0,
-            pull_request: None,
-            closed_at: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            node_id: String::new(),
-            url: html_url.clone(),
-            repository_url: html_url.clone(),
-            labels_url: html_url.clone(),
-            comments_url: html_url.clone(),
-            events_url: html_url.clone(),
-            author_association: String::new(),
-        })
+        Ok(issue)
     }
 }
 
