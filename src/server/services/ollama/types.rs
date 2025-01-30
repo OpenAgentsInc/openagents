@@ -11,7 +11,7 @@ impl Default for OllamaConfig {
     fn default() -> Self {
         Self {
             base_url: "http://localhost:11434".to_string(),
-            model: "llama2".to_string(),
+            model: "deepseek-r1:14b".to_string(),
         }
     }
 }
