@@ -1,4 +1,8 @@
-use crate::server::services::gateway::{Gateway, GatewayMetadata, StreamUpdate};
+use crate::server::services::gateway::{
+    types::{ChatRequest, GatewayMetadata, Message},
+    Gateway,
+};
+use crate::server::services::StreamUpdate;
 use crate::server::services::ollama::types::*;
 use anyhow::{anyhow, Result};
 use reqwest::Client;
@@ -31,11 +35,13 @@ impl OllamaService {
     async fn make_request(&self, prompt: String, stream: bool) -> Result<reqwest::Response> {
         let request = ChatRequest {
             model: self.config.model.clone(),
-            messages: vec![ChatMessage {
+            messages: vec![Message {
                 role: "user".to_string(),
                 content: prompt,
             }],
             stream,
+            temperature: 0.7,
+            max_tokens: None,
         };
 
         let response = self.client
@@ -57,7 +63,7 @@ impl OllamaService {
             return Ok(None);
         }
 
-        let response: ChatResponse = serde_json::from_slice(chunk)?;
+        let response: OllamaChatResponse = serde_json::from_slice(chunk)?;
         if response.done {
             return Ok(None);
         }
@@ -71,14 +77,19 @@ impl Gateway for OllamaService {
     fn metadata(&self) -> GatewayMetadata {
         GatewayMetadata {
             name: "ollama".to_string(),
-            description: "Local model execution via Ollama".to_string(),
-            model: Some(self.config.model.clone()),
+            openai_compatible: false,
+            supported_features: vec![
+                "chat".to_string(),
+                "streaming".to_string(),
+            ],
+            default_model: self.config.model.clone(),
+            available_models: vec![self.config.model.clone()],
         }
     }
 
     async fn chat(&self, prompt: String, _use_reasoner: bool) -> Result<(String, Option<String>)> {
         let response = self.make_request(prompt, false).await?;
-        let chat_response: ChatResponse = response.json().await?;
+        let chat_response: OllamaChatResponse = response.json().await?;
         Ok((chat_response.message.content, None))
     }
 
@@ -90,11 +101,13 @@ impl Gateway for OllamaService {
         tokio::spawn(async move {
             let request = ChatRequest {
                 model: config.model,
-                messages: vec![ChatMessage {
+                messages: vec![Message {
                     role: "user".to_string(),
                     content: prompt,
                 }],
                 stream: true,
+                temperature: 0.7,
+                max_tokens: None,
             };
 
             match client
