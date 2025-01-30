@@ -1,8 +1,5 @@
 use anyhow::{Context as _, Result};
-use openagents::solver::{
-    changes::generation::generate_changes,
-    file_list::generate_file_list,
-};
+use openagents::solver::{changes::generation::generate_changes, file_list::generate_file_list};
 use tracing::{debug, info};
 
 pub async fn handle_solution(

@@ -1,8 +1,5 @@
 use anyhow::{anyhow, Result};
-use openagents::solver::{
-    planning::PlanningContext,
-    streaming::handle_plan_stream,
-};
+use openagents::solver::{planning::PlanningContext, streaming::handle_plan_stream};
 use regex::Regex;
 use tracing::{debug, info};
 

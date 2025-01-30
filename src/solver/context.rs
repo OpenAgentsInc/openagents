@@ -39,8 +39,14 @@ impl SolverContext {
         description: &str,
         ollama_url: &str,
     ) -> Result<(Vec<Change>, String)> {
-        crate::solver::changes::generation::generate_changes(path, content, title, description, ollama_url)
-            .await
+        crate::solver::changes::generation::generate_changes(
+            path,
+            content,
+            title,
+            description,
+            ollama_url,
+        )
+        .await
     }
 
     pub fn parse_changes(&self, content: &str) -> ChangeResult<Vec<Change>> {

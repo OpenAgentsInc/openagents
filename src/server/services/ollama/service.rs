@@ -104,7 +104,9 @@ impl Gateway for OllamaService {
                             Ok(bytes) => {
                                 if let Ok(text) = String::from_utf8(bytes.to_vec()) {
                                     debug!("Received chunk: {}", text);
-                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(&text)
+                                    {
                                         if let Some(content) = json["message"]["content"].as_str() {
                                             debug!("Extracted content: {}", content);
                                             let _ = tx.send(Ok(content.to_string())).await;

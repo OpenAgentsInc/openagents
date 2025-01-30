@@ -1,9 +1,7 @@
 use anyhow::Result;
 use futures_util::StreamExt;
 use openagents::solver::{
-    changes::generation::generate_changes,
-    file_list::generate_file_list,
-    planning::PlanningContext,
+    changes::generation::generate_changes, file_list::generate_file_list, planning::PlanningContext,
 };
 use serial_test::serial;
 use std::fs;
@@ -47,7 +45,7 @@ async fn test_ollama_file_list() -> Result<()> {
 
     let repo_map = "src/main.rs\nsrc/lib.rs";
     let ollama_url = std::env::var("OLLAMA_URL").unwrap();
-    
+
     let (files, reasoning) = generate_file_list(
         "Add multiply function",
         "Add a multiply function to lib.rs",
@@ -77,7 +75,7 @@ async fn test_ollama_file_list() -> Result<()> {
 async fn test_ollama_planning() -> Result<()> {
     load_env();
     let context = PlanningContext::new()?;
-    
+
     println!("\nStreaming plan:\n");
     let mut stream = context
         .generate_plan(
