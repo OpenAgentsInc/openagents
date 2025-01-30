@@ -26,6 +26,9 @@ pub async fn generate_changes(
         return Ok((Vec::new(), "No changes needed".to_string()));
     }
 
+    // Get model from env or use default
+    let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "codellama:latest".to_string());
+
     // Construct the prompt
     let prompt = format!(
         r#"You are an expert software developer. Your task is to generate specific code changes for this file:
@@ -76,7 +79,7 @@ Example Response:
     let response = client
         .post(format!("{}/api/chat", ollama_url))
         .json(&serde_json::json!({
-            "model": "codellama:latest",
+            "model": model,
             "messages": [{
                 "role": "user",
                 "content": prompt
@@ -114,7 +117,11 @@ Example Response:
                 ));
             }
             _ => {
-                return Err(anyhow!("Ollama API error: {} ({})", error_msg, error_code));
+                return Err(anyhow!(
+                    "Ollama API error: {} ({})",
+                    error_msg,
+                    error_code
+                ));
             }
         }
     }
