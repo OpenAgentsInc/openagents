@@ -114,11 +114,7 @@ Example Response:
                 ));
             }
             _ => {
-                return Err(anyhow!(
-                    "Ollama API error: {} ({})",
-                    error_msg,
-                    error_code
-                ));
+                return Err(anyhow!("Ollama API error: {} ({})", error_msg, error_code));
             }
         }
     }

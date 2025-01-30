@@ -12,10 +12,10 @@ pub struct PlanningContext {
 
 impl PlanningContext {
     pub fn new() -> Result<Self> {
-        let url = std::env::var("OLLAMA_URL")
-            .unwrap_or_else(|_| "http://localhost:11434".to_string());
-        let model = std::env::var("OLLAMA_MODEL")
-            .unwrap_or_else(|_| "codellama:latest".to_string());
+        let url =
+            std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let model =
+            std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "codellama:latest".to_string());
 
         let config = OllamaConfig {
             url,
