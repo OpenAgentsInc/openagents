@@ -4,6 +4,7 @@ use futures_util::{Stream, StreamExt};
 use std::pin::Pin;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tracing::{debug, error};
 
 pub struct OllamaService {
     config: super::config::OllamaConfig,
@@ -76,6 +77,8 @@ impl Gateway for OllamaService {
         let client = reqwest::Client::new();
         let config = self.config.clone();
 
+        debug!("Starting Ollama chat stream with URL: {}", config.base_url);
+
         tokio::spawn(async move {
             let response = client
                 .post(format!("{}/api/chat", config.base_url))
@@ -92,6 +95,7 @@ impl Gateway for OllamaService {
 
             match response {
                 Ok(response) => {
+                    debug!("Got response from Ollama, starting stream");
                     let mut stream = response.bytes_stream();
                     let mut full_response = String::new();
 
@@ -99,29 +103,26 @@ impl Gateway for OllamaService {
                         match chunk {
                             Ok(bytes) => {
                                 if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                                    debug!("Received chunk: {}", text);
                                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
                                         if let Some(content) = json["message"]["content"].as_str() {
-                                            // Send each token immediately
+                                            debug!("Extracted content: {}", content);
                                             let _ = tx.send(Ok(content.to_string())).await;
                                             full_response.push_str(content);
                                         }
                                         if json["done"].as_bool().unwrap_or(false) {
-                                            // Try to extract JSON from the full response
-                                            if let Some(json_start) = full_response.find('{') {
-                                                if let Some(json_end) = full_response[json_start..].rfind('}') {
-                                                    let json_str = &full_response[json_start..=json_start + json_end];
-                                                    if let Ok(_) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                                        // Found valid JSON at the end, send it as a special message
-                                                        let _ = tx.send(Ok(format!("\n<json>{}</json>", json_str))).await;
-                                                    }
-                                                }
-                                            }
+                                            debug!("Stream done, full response: {}", full_response);
                                             break;
                                         }
+                                    } else {
+                                        error!("Failed to parse JSON from chunk: {}", text);
                                     }
+                                } else {
+                                    error!("Failed to parse UTF-8 from chunk");
                                 }
                             }
                             Err(e) => {
+                                error!("Error in stream chunk: {}", e);
                                 let _ = tx.send(Err(anyhow::anyhow!(e))).await;
                                 break;
                             }
@@ -129,6 +130,7 @@ impl Gateway for OllamaService {
                     }
                 }
                 Err(e) => {
+                    error!("Failed to connect to Ollama: {}", e);
                     let _ = tx.send(Err(anyhow::anyhow!(e))).await;
                 }
             }
