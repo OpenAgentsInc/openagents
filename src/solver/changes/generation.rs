@@ -1,10 +1,16 @@
-use crate::server::services::gateway::Gateway;
 use crate::solver::changes::types::ChangeResponse;
 use crate::solver::types::Change;
 use anyhow::{anyhow, Result};
 use futures_util::StreamExt;
+use regex::Regex;
 use std::io::Write;
 use tracing::{debug, error, info};
+
+/// Extracts JSON from markdown code block
+fn extract_json_from_markdown(content: &str) -> Option<&str> {
+    let re = Regex::new(r"```json\s*(\{[\s\S]*?\})\s*```").ok()?;
+    re.captures(content)?.get(1).map(|m| m.as_str())
+}
 
 /// Generates changes for a specific file
 pub async fn generate_changes(
@@ -44,7 +50,23 @@ Change Request:
 Title: {}
 Description: {}
 
-First, think through the changes needed. Then output a JSON object with:
+First, think through the changes needed. Then output your solution as a JSON object in a markdown code block like this:
+
+```json
+{{
+    "changes": [
+        {{
+            "path": "path/to/file",
+            "search": "exact content to find",
+            "replace": "new content",
+            "reason": "why this change is needed"
+        }}
+    ],
+    "reasoning": "Overall explanation of changes"
+}}
+```
+
+The JSON object must have:
 1. "changes": Array of change blocks with:
    - "path": File path
    - "search": Exact content to find
@@ -57,20 +79,7 @@ Rules:
 - Include enough context for unique matches
 - Keep changes minimal and focused
 - Preserve code style and formatting
-- Empty search means new file content
-
-Example:
-{{
-    "changes": [
-        {{
-            "path": "src/lib.rs",
-            "search": "fn old_name() {{ ... }}",
-            "replace": "fn new_name() {{ ... }}",
-            "reason": "Renamed for clarity"
-        }}
-    ],
-    "reasoning": "Renamed function to better reflect..."
-}}"#,
+- Empty search means new file content"#,
         path, content, title, description
     );
 
@@ -81,19 +90,14 @@ Example:
     let mut stream = service.chat_stream(prompt, true).await?;
 
     // Process the stream
-    let mut json_response = None;
+    let mut full_response = String::new();
     while let Some(result) = stream.next().await {
         match result {
             Ok(content) => {
-                // Check if this is a JSON response
-                if content.starts_with("\n<json>") && content.ends_with("</json>") {
-                    let json_str = &content[6..content.len()-7]; // Remove <json> tags
-                    json_response = Some(json_str.to_string());
-                } else {
-                    // Print thinking process
-                    print!("{}", content);
-                    std::io::stdout().flush()?;
-                }
+                // Print thinking process
+                print!("{}", content);
+                std::io::stdout().flush()?;
+                full_response.push_str(&content);
             }
             Err(e) => {
                 error!("Error in stream: {}", e);
@@ -102,11 +106,13 @@ Example:
         }
     }
 
-    // Parse the JSON response
-    let json_str = json_response.ok_or_else(|| anyhow!("No JSON response found in stream"))?;
+    // Extract JSON from markdown code block
+    let json_str = extract_json_from_markdown(&full_response)
+        .ok_or_else(|| anyhow!("No JSON code block found in response"))?;
+
     info!("Parsing LLM response:\n{}", json_str);
 
-    let change_response: ChangeResponse = serde_json::from_str(&json_str).map_err(|e| {
+    let change_response: ChangeResponse = serde_json::from_str(json_str).map_err(|e| {
         error!(
             "Failed to parse LLM response as JSON: {}\nResponse:\n{}",
             e, json_str
