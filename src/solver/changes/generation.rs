@@ -1,3 +1,4 @@
+use crate::server::services::gateway::Gateway;
 use crate::solver::changes::types::ChangeResponse;
 use crate::solver::types::Change;
 use anyhow::{anyhow, Result};
