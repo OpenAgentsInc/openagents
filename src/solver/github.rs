@@ -1,8 +1,8 @@
 use crate::server::services::github_issue::{GitHubComment, GitHubIssue, GitHubService};
 use crate::server::services::deepseek::DeepSeekService;
-use crate::solver::json::{escape_json_string, fix_common_json_issues};
+use crate::solver::json::escape_json_string;
 use anyhow::{anyhow, Result};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 pub struct GitHubContext {
     pub owner: String,
@@ -42,106 +42,57 @@ impl GitHubContext {
         Ok(())
     }
 
-    /// Validates a PR title against required format and constraints
-    fn validate_pr_title(&self, title: &str) -> Result<()> {
-        // Check length constraints
-        if title.len() < 10 || title.len() > 72 {
-            return Err(anyhow!("PR title must be between 10 and 72 characters"));
-        }
-
-        // Must contain a colon for type prefix
-        if !title.contains(':') {
-            return Err(anyhow!("PR title must have format <type>: <description>"));
-        }
-
-        // Validate prefix
-        let prefix = title.split(':').next().unwrap();
-        let valid_prefixes = ["feat", "fix", "refactor", "docs", "test", "chore", "style", "perf"];
-        if !valid_prefixes.contains(&prefix) {
-            return Err(anyhow!("Invalid PR title prefix: {}", prefix));
-        }
-
-        // Check for banned phrases
-        let banned_phrases = ["implement solution for", "fixes #", "resolves #"];
-        for phrase in banned_phrases {
-            if title.to_lowercase().contains(phrase) {
-                return Err(anyhow!("PR title contains banned phrase: {}", phrase));
-            }
-        }
-
-        // Description part should not be empty
-        let desc = title.split(':').nth(1).unwrap_or("").trim();
-        if desc.is_empty() {
-            return Err(anyhow!("PR title must have a description after the prefix"));
-        }
-
-        Ok(())
-    }
-
-    /// Generates a descriptive PR title using an LLM with retry logic
+    /// Generates a descriptive PR title using an LLM
     async fn generate_pr_title(&self, issue_number: i32, context: &str) -> Result<String> {
-        let max_retries = 3;
-        let mut last_error = None;
-
-        for attempt in 0..max_retries {
-            if attempt > 0 {
-                warn!("Retrying PR title generation (attempt {})", attempt + 1);
-            }
-
-            let prompt = format!(
-                r#"Generate a concise, descriptive pull request title for issue #{} based on this context:
+        let prompt = format!(
+            r#"Generate a concise, descriptive pull request title for issue #{} based on this context:
 
 {}
 
 Requirements:
-1. Must start with one of: feat:, fix:, refactor:, docs:, test:, chore:, style:, perf:
-2. Must be descriptive but succinct (10-72 chars)
-3. Must clearly describe the change
-4. Must not use generic phrases like "Implement solution for"
-5. Must not include issue references like "fixes #123"
+1. Must start with "feat:", "fix:", "refactor:", etc.
+2. Must be descriptive but succinct
+3. Must not exceed 72 characters
+4. Must not use "Implement solution for"
+5. Must clearly state what the PR does
 
 Example good titles:
 - "feat: add multiply function to calculator"
 - "fix: handle JSON escaping in PR titles"
 - "refactor: improve PR title generation"
-- "style: format code with rustfmt"
-- "perf: optimize database queries"
 
 Example bad titles:
-- "Implement solution for #123" (wrong format)
-- "Add function" (too vague)
-- "feat:without space" (missing space after colon)
-- "feat: implement the new feature that was requested in the issue" (too long)
+- "Implement solution for #123"
+- "Add function"
+- "Fix issue"
 
-Generate exactly one line containing only the title:"#,
-                issue_number, escape_json_string(context)
-            );
+Generate title:"#,
+            issue_number, context
+        );
 
-            match self.llm_service.chat(prompt, true).await {
-                Ok((response, _)) => {
-                    let title = response.trim();
-                    
-                    match self.validate_pr_title(title) {
-                        Ok(()) => {
-                            debug!("Generated valid PR title: {}", title);
-                            return Ok(title.to_string());
-                        }
-                        Err(e) => {
-                            warn!("Generated invalid PR title: {}", e);
-                            last_error = Some(e);
-                            continue;
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!("LLM request failed: {}", e);
-                    last_error = Some(e);
-                    continue;
-                }
-            }
+        let (response, _) = self.llm_service.chat(prompt, true).await?;
+
+        let title = response.trim();
+        
+        // Validate title
+        if title.len() < 10 || title.len() > 72 {
+            warn!("Generated title has invalid length: {}", title.len());
+            return Err(anyhow!("Generated title has invalid length"));
         }
 
-        Err(last_error.unwrap_or_else(|| anyhow!("Failed to generate valid PR title")))
+        if !title.contains(':') {
+            warn!("Generated title missing prefix: {}", title);
+            return Err(anyhow!("Generated title must start with feat:, fix:, etc."));
+        }
+
+        let prefix = title.split(':').next().unwrap();
+        if !["feat", "fix", "refactor", "docs", "test", "chore"].contains(&prefix) {
+            warn!("Generated title has invalid prefix: {}", prefix);
+            return Err(anyhow!("Generated title has invalid prefix"));
+        }
+
+        debug!("Generated PR title: {}", title);
+        Ok(title.to_string())
     }
 
     pub async fn create_pull_request(
@@ -208,28 +159,6 @@ mod tests {
         assert!(title.len() <= 72);
         assert!(title.len() >= 10);
         assert!(title.split(':').nth(1).unwrap().starts_with(" "));
-    }
-
-    #[test]
-    fn test_validate_pr_title() {
-        let context = GitHubContext::new(
-            "test/repo",
-            "test_token".to_string(),
-        ).unwrap();
-
-        // Valid titles
-        assert!(context.validate_pr_title("feat: add multiply function").is_ok());
-        assert!(context.validate_pr_title("fix: handle JSON escaping").is_ok());
-        assert!(context.validate_pr_title("refactor: improve title generation").is_ok());
-
-        // Invalid titles
-        assert!(context.validate_pr_title("add function").is_err()); // No prefix
-        assert!(context.validate_pr_title("feat:no space").is_err()); // No space after colon
-        assert!(context.validate_pr_title("feat: ").is_err()); // Empty description
-        assert!(context.validate_pr_title("invalid: wrong prefix").is_err()); // Invalid prefix
-        assert!(context.validate_pr_title("feat: implement solution for #123").is_err()); // Banned phrase
-        assert!(context.validate_pr_title("feat: a").is_err()); // Too short
-        assert!(context.validate_pr_title("feat: this title is way too long and exceeds the maximum length limit of 72 characters").is_err()); // Too long
     }
 
     #[test]
