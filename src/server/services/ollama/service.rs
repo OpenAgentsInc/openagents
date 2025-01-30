@@ -8,7 +8,6 @@ use futures_util::{Stream, TryStreamExt};
 use reqwest::Client;
 use std::pin::Pin;
 
-#[derive(Default)]
 pub struct OllamaService {
     config: OllamaConfig,
     client: Client,
