@@ -12,7 +12,7 @@ impl Default for OllamaConfig {
     fn default() -> Self {
         Self {
             base_url: "http://localhost:11434".to_string(),
-            model: "codellama:latest".to_string(),
+            model: "deepseek-r1:14b".to_string(),
         }
     }
 }
@@ -27,7 +27,7 @@ impl OllamaConfig {
                 base_url: std::env::var("OLLAMA_URL")
                     .unwrap_or_else(|_| "http://localhost:11434".to_string()),
                 model: std::env::var("OLLAMA_MODEL")
-                    .unwrap_or_else(|_| "codellama:latest".to_string()),
+                    .unwrap_or_else(|_| "deepseek-r1:14b".to_string()),
             }
         })
     }
