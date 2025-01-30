@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Result};
 use openagents::solver::{planning::PlanningContext, streaming::handle_plan_stream};
 use regex::Regex;
+use serde_json::json;
 use tracing::{debug, error, info};
 
 // Error messages
-const ERR_NO_JSON: &str = "JSON block not found";
 const ERR_NO_CHANGES: &str = "Changes array not found";
 const ERR_WRONG_TARGET: &str = "Incorrect target file";
 const ERR_INVALID_JSON: &str = "Invalid JSON format";
@@ -27,7 +27,7 @@ const LOG_GENERATING: &str = "Generating implementation plan...";
 const LOG_FILE_CONTEXT: &str = "File context: {}";
 const LOG_FULL_RESPONSE: &str = "Full response: {}";
 const LOG_EXTRACTED_JSON: &str = "Extracted JSON: {}";
-const LOG_RETRY_ATTEMPT: &str = "Retry attempt {} of {}";
+const LOG_RETRY_ATTEMPT: &str = "Retry attempt {current} of {max}";
 const LOG_VALIDATION_ERROR: &str = "Validation error: {}";
 
 // Function content
@@ -95,6 +95,8 @@ fn escape_json_string(s: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
+        .replace('\u{0000}', "\\u0000")
+        .replace('\u{001F}', "\\u001F")
 }
 
 /// Extracts JSON from markdown code block
@@ -126,28 +128,24 @@ fn is_common_word(word: &str) -> bool {
 
 /// Gathers relevant file contents for context
 async fn gather_context(issue_title: &str, issue_description: &str) -> Result<String> {
-    // First, identify key files that need to be examined based on the issue
-    let mut relevant_files = Vec::new();
-    
-    // For PR title generation, we know we need github.rs
-    if issue_title.contains("PR title") || issue_description.contains("PR title") {
-        relevant_files.push(GITHUB_RS_PATH);
-    }
-
-    // For JSON escaping issues, we need json.rs
-    if issue_title.contains("JSON") || issue_description.contains("JSON") {
-        relevant_files.push(JSON_RS_PATH);
-    }
-
-    // Build context string with file contents
     let mut context = String::new();
-    for file in relevant_files {
-        context.push_str(&format!("\nFile: {}\nContent:\n", file));
-        // TODO: Use view_file to get actual content
-        // For now, hardcoding the relevant function for testing
-        if file == GITHUB_RS_PATH {
-            context.push_str(GITHUB_RS_CONTENT);
-        }
+    
+    // Add explicit file content
+    context.push_str("Current generate_pr_title implementation:\n");
+    context.push_str(GITHUB_RS_CONTENT);
+    
+    // Add clear instructions
+    context.push_str("\nRequirements:\n");
+    context.push_str("1. Modify only the existing generate_pr_title function\n");
+    context.push_str("2. Use the existing llm_service.chat call\n");
+    context.push_str("3. Keep the current error handling\n");
+    
+    // Add file-specific context based on issue content
+    if issue_title.contains("JSON") || issue_description.contains("JSON") {
+        context.push_str("\nJSON handling requirements:\n");
+        context.push_str("1. All strings must be properly escaped\n");
+        context.push_str("2. Use proper JSON formatting\n");
+        context.push_str("3. Handle control characters correctly\n");
     }
 
     Ok(context)
@@ -160,6 +158,16 @@ fn fix_common_json_issues(json_str: &str) -> String {
         .replace("\\\"", "\"")
         .replace("\\\\", "\\")
         .replace("format!=", "format!")
+}
+
+/// Creates a properly escaped JSON change object
+fn create_json_change(path: &str, search: &str, replace: &str, reason: &str) -> serde_json::Value {
+    json!({
+        KEY_PATH: path,
+        KEY_SEARCH: escape_json_string(search),
+        KEY_REPLACE: escape_json_string(replace),
+        KEY_REASON: reason,
+    })
 }
 
 /// Validates the LLM response format and content
@@ -176,10 +184,17 @@ fn validate_llm_response(json_str: &str, issue_title: &str) -> Result<bool> {
     for change in changes {
         let path = change[KEY_PATH].as_str().unwrap_or(EMPTY_STR);
         let search = change[KEY_SEARCH].as_str().unwrap_or(EMPTY_STR);
+        let replace = change[KEY_REPLACE].as_str().unwrap_or(EMPTY_STR);
 
         // Verify target file and function
         if path != GITHUB_RS_PATH || !search.contains(TARGET_FUNCTION) {
             error!(LOG_VALIDATION_ERROR, ERR_WRONG_TARGET);
+            return Ok(false);
+        }
+
+        // Verify replace content is valid
+        if replace.is_empty() || !replace.contains("llm_service.chat") {
+            error!(LOG_VALIDATION_ERROR, "Replace content must use llm_service.chat");
             return Ok(false);
         }
     }
@@ -203,7 +218,7 @@ async fn retry_with_feedback(
     file_context: &str,
 ) -> Result<String> {
     for attempt in 0..MAX_RETRIES {
-        info!(LOG_RETRY_ATTEMPT, "{} {}", attempt + 1, MAX_RETRIES);
+        info!(LOG_RETRY_ATTEMPT, current = attempt + 1, max = MAX_RETRIES);
 
         let stream = context
             .generate_plan(issue_number, title, description, repo_map, file_context)
@@ -215,7 +230,26 @@ async fn retry_with_feedback(
         if let Some(json_str) = extract_json_from_markdown(&response) {
             let fixed_json = fix_common_json_issues(json_str);
             if validate_llm_response(&fixed_json, title)? {
-                return Ok(fixed_json);
+                // Create properly escaped JSON
+                let json: serde_json::Value = serde_json::from_str(&fixed_json)?;
+                let changes = json[KEY_CHANGES].as_array().unwrap();
+                
+                let escaped_changes: Vec<serde_json::Value> = changes
+                    .iter()
+                    .map(|c| create_json_change(
+                        c[KEY_PATH].as_str().unwrap_or(EMPTY_STR),
+                        c[KEY_SEARCH].as_str().unwrap_or(EMPTY_STR),
+                        c[KEY_REPLACE].as_str().unwrap_or(EMPTY_STR),
+                        c[KEY_REASON].as_str().unwrap_or(EMPTY_STR),
+                    ))
+                    .collect();
+
+                let result = json!({
+                    KEY_CHANGES: escaped_changes,
+                    "reasoning": json["reasoning"],
+                });
+
+                return Ok(result.to_string());
             }
         }
     }
@@ -254,7 +288,6 @@ pub async fn handle_planning(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn test_extract_json_from_markdown() {
@@ -288,5 +321,26 @@ More text"#;
         let fixed = fix_common_json_issues(input);
         assert!(fixed.contains("format!"));
         assert!(!fixed.contains("format!="));
+    }
+
+    #[test]
+    fn test_escape_json_string() {
+        let input = "line1\nline2\t\"quoted\"";
+        let escaped = escape_json_string(input);
+        assert!(escaped.contains("\\n"));
+        assert!(escaped.contains("\\t"));
+        assert!(escaped.contains("\\\""));
+    }
+
+    #[test]
+    fn test_create_json_change() {
+        let change = create_json_change(
+            "test.rs",
+            "old\ncode",
+            "new\ncode",
+            "test reason"
+        );
+        assert!(change[KEY_SEARCH].as_str().unwrap().contains("\\n"));
+        assert!(change[KEY_REPLACE].as_str().unwrap().contains("\\n"));
     }
 }
