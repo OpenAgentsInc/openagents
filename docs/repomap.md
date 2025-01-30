@@ -92,6 +92,7 @@ tests/chat_router_integration.rs:
 
 tests/solver_ollama.rs:
 │fn setup_test_repo
+│fn load_env
 │fn test_ollama_file_list
 │fn test_ollama_planning
 │fn test_ollama_changes
@@ -322,6 +323,7 @@ src/bin/solver_impl/issue.rs:
 │fn handle_issue
 
 src/bin/solver_impl/planning.rs:
+│fn extract_json_from_markdown
 │fn handle_planning
 
 src/bin/repo.rs:
@@ -493,6 +495,9 @@ src/server/services/ollama/config.rs:
 │fn global
 
 src/server/services/ollama/service.rs:
+│impl Default for Default
+│impl OllamaService for OllamaService
+│fn default
 │fn new
 │fn with_config
 │impl Gateway for Gateway
@@ -565,8 +570,10 @@ src/solver/display.rs:
 src/solver/types.rs:
 │fn new
 │fn validate
+│fn validate_pr_title
 
 src/solver/solution.rs:
+│fn handle_solution
 
 src/solver/config.rs:
 │fn load
@@ -574,6 +581,7 @@ src/solver/config.rs:
 src/solver/changes/types.rs:
 
 src/solver/changes/generation.rs:
+│fn extract_json_from_markdown
 │fn generate_changes
 
 src/solver/changes/parsing.rs:
@@ -618,10 +626,6 @@ src/solver/planning.rs:
 src/solver/context.rs:
 │fn new
 │fn new_with_dir
-│fn clone_repository
-│fn checkout_branch
-│fn commit_changes
-│fn generate_repo_map
 │fn generate_file_list
 │fn generate_changes
 │fn parse_changes
@@ -668,3 +672,4 @@ src/repo/git.rs:
 │fn checkout_branch
 
 src/repo/mod.rs:
+
