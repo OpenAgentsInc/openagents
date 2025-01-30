@@ -1,138 +1,67 @@
 use crate::solver::types::{Change, ChangeError, ChangeResult};
-use tracing::{debug, error};
+use regex::Regex;
 
-/// Parses SEARCH/REPLACE blocks from text
+/// Parses a string containing SEARCH/REPLACE blocks into a list of changes
 pub fn parse_search_replace(content: &str) -> ChangeResult<Vec<Change>> {
     let mut changes = Vec::new();
-    let mut current_path: Option<String> = None;
-    let mut current_search: Option<String> = None;
+    let mut current_path = None;
+    let mut current_search = String::new();
     let mut current_replace = String::new();
     let mut in_search = false;
     let mut in_replace = false;
 
-    debug!("Parsing SEARCH/REPLACE blocks from:\n{}", content);
+    // Extract path and content blocks
+    let path_re = Regex::new(r"^([^:\n]+):$").unwrap();
+    let search_start = "<<<<<<< SEARCH";
+    let search_end = "=======";
+    let replace_end = ">>>>>>> REPLACE";
 
-    for (line_num, line) in content.lines().enumerate() {
-        let line = line.trim_end();
-        debug!("Line {}: {}", line_num + 1, line);
-
-        // Look for file path markers
-        if line.ends_with(".rs:") || line.ends_with(".toml:") {
-            debug!("Found file path marker: {}", line);
+    for line in content.lines() {
+        if let Some(caps) = path_re.captures(line) {
             // Save previous change if any
-            if let (Some(path), Some(search)) = (&current_path, &current_search) {
-                if !current_replace.is_empty() {
-                    let change = Change::new(
-                        path.clone(),
-                        search.clone(),
-                        current_replace.trim().to_string(),
-                    );
-                    match change.validate() {
-                        Ok(_) => {
-                            debug!("Valid change: {:?}", change);
-                            changes.push(change);
-                        }
-                        Err(e) => {
-                            error!("Invalid change for {}: {:?}", path, e);
-                        }
-                    }
-                }
+            if let Some(path) = current_path.take() {
+                changes.push(Change::new(
+                    path,
+                    current_search.trim().to_string(),
+                    current_replace.trim().to_string(),
+                ));
+                current_search.clear();
+                current_replace.clear();
             }
-
-            // Reset state for new file
-            current_path = Some(line.trim_end_matches(':').to_string());
-            current_search = None;
-            current_replace.clear();
+            current_path = Some(caps[1].to_string());
             in_search = false;
             in_replace = false;
-            continue;
-        }
-
-        // Handle SEARCH/REPLACE markers
-        match line {
-            "<<<<<<< SEARCH" => {
-                debug!("Found SEARCH marker");
-                in_search = true;
-                current_search = Some(String::new());
-                continue;
-            }
-            "=======" => {
-                debug!("Found separator marker");
-                in_search = false;
-                in_replace = true;
-                current_replace.clear();
-                continue;
-            }
-            ">>>>>>> REPLACE" => {
-                debug!("Found REPLACE marker");
-                in_replace = false;
-                // Save the change
-                if let (Some(path), Some(search)) = (&current_path, &current_search) {
-                    let change = Change::new(
-                        path.clone(),
-                        search.clone(),
-                        current_replace.trim().to_string(),
-                    );
-                    match change.validate() {
-                        Ok(_) => {
-                            debug!("Valid change: {:?}", change);
-                            changes.push(change);
-                        }
-                        Err(e) => {
-                            error!("Invalid change for {}: {:?}", path, e);
-                        }
-                    }
-                }
-                current_search = None;
-                current_replace.clear();
-                continue;
-            }
-            _ => {}
-        }
-
-        // Collect content
-        if in_search {
-            if let Some(ref mut search) = current_search {
-                if !search.is_empty() {
-                    search.push('\n');
-                }
-                search.push_str(line);
-                debug!("Added to search: {}", line);
-            }
+        } else if line == search_start {
+            in_search = true;
+            in_replace = false;
+        } else if line == search_end {
+            in_search = false;
+            in_replace = true;
+        } else if line == replace_end {
+            in_search = false;
+            in_replace = false;
+        } else if in_search {
+            current_search.push_str(line);
+            current_search.push('\n');
         } else if in_replace {
-            if !current_replace.is_empty() {
-                current_replace.push('\n');
-            }
             current_replace.push_str(line);
-            debug!("Added to replace: {}", line);
+            current_replace.push('\n');
         }
     }
 
-    // Handle any remaining change
-    if let (Some(path), Some(search)) = (&current_path, &current_search) {
-        if !current_replace.is_empty() {
-            let change = Change::new(
-                path.clone(),
-                search.clone(),
-                current_replace.trim().to_string(),
-            );
-            match change.validate() {
-                Ok(_) => {
-                    debug!("Valid change: {:?}", change);
-                    changes.push(change);
-                }
-                Err(e) => {
-                    error!("Invalid change for {}: {:?}", path, e);
-                }
-            }
-        }
+    // Save final change if any
+    if let Some(path) = current_path {
+        changes.push(Change::new(
+            path,
+            current_search.trim().to_string(),
+            current_replace.trim().to_string(),
+        ));
     }
 
-    if changes.is_empty() {
-        error!("No valid changes found in content");
+    // Validate that we found at least one valid SEARCH/REPLACE block
+    if changes.is_empty() || !content.contains("<<<<<<< SEARCH") {
         return Err(ChangeError::InvalidFormat);
     }
 
-    debug!("Successfully parsed {} changes", changes.len());
     Ok(changes)
 }

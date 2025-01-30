@@ -1,19 +1,15 @@
+use anyhow::{anyhow, Result};
 use std::path::PathBuf;
 use thiserror::Error;
 
-/// Represents a code change to be applied to a file
 #[derive(Debug, Clone, PartialEq)]
 pub struct Change {
-    /// Path to the file being modified
     pub path: String,
-    /// Content to search for in the file
     pub search: String,
-    /// Content to replace the search content with
     pub replace: String,
 }
 
 impl Change {
-    /// Creates a new Change instance
     pub fn new(path: String, search: String, replace: String) -> Self {
         Self {
             path,
@@ -22,14 +18,22 @@ impl Change {
         }
     }
 
-    /// Validates that the change has non-empty path and content
-    pub fn validate(&self) -> Result<(), ChangeError> {
+    pub fn validate(&self) -> Result<()> {
+        // Path must not be empty
         if self.path.is_empty() {
-            return Err(ChangeError::EmptyPath);
+            return Err(anyhow!("Path cannot be empty"));
         }
+
+        // Path must be relative (not start with /)
+        if self.path.starts_with('/') {
+            return Err(anyhow!("Path must be relative (not start with /)"));
+        }
+
+        // Both search and replace cannot be empty
         if self.search.is_empty() && self.replace.is_empty() {
-            return Err(ChangeError::EmptyContent);
+            return Err(anyhow!("Search content cannot be empty"));
         }
+
         Ok(())
     }
 }
@@ -55,3 +59,19 @@ pub enum ChangeError {
 
 /// Result type for change operations
 pub type ChangeResult<T> = Result<T, ChangeError>;
+
+pub fn validate_pr_title(title: &str) -> Result<()> {
+    // Title must contain one of these words
+    if !title.contains("solver") && !title.contains("solution") && !title.contains("PR") {
+        return Err(anyhow!(
+            "PR title must contain 'solver', 'solution', or 'PR'"
+        ));
+    }
+
+    // Title must not be too short
+    if title.len() < 10 {
+        return Err(anyhow!("PR title must be at least 10 characters"));
+    }
+
+    Ok(())
+}

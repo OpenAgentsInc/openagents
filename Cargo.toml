@@ -71,7 +71,9 @@ urlencoding = "2.1"
 base64 = "0.21"
 thiserror = "1.0"
 tempfile = "3.10"
-octocrab = "0.34"  # Added octocrab dependency
+octocrab = "0.34"
+async-stream = "0.3"  # Added async-stream dependency
+regex = "1.10.2"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }
@@ -79,3 +81,4 @@ serde_json = "1.0"
 lazy_static = "1.4"
 wiremock = "0.6.2"
 axum-test = "17.1"
+serial_test = "2.0"
