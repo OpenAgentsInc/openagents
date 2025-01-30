@@ -1,19 +1,13 @@
-use std::path::PathBuf;
-use thiserror::Error;
+use anyhow::{anyhow, Result};
 
-/// Represents a code change to be applied to a file
 #[derive(Debug, Clone, PartialEq)]
 pub struct Change {
-    /// Path to the file being modified
     pub path: String,
-    /// Content to search for in the file
     pub search: String,
-    /// Content to replace the search content with
     pub replace: String,
 }
 
 impl Change {
-    /// Creates a new Change instance
     pub fn new(path: String, search: String, replace: String) -> Self {
         Self {
             path,
@@ -22,36 +16,50 @@ impl Change {
         }
     }
 
-    /// Validates that the change has non-empty path and content
-    pub fn validate(&self) -> Result<(), ChangeError> {
+    pub fn validate(&self) -> Result<()> {
+        // Path must not be empty
         if self.path.is_empty() {
-            return Err(ChangeError::EmptyPath);
+            return Err(anyhow!("Path cannot be empty"));
         }
-        if self.search.is_empty() && self.replace.is_empty() {
-            return Err(ChangeError::EmptyContent);
+
+        // Path must be relative (not start with /)
+        if self.path.starts_with('/') {
+            return Err(anyhow!("Path must be relative (not start with /)"));
         }
+
+        // Replace must not be empty
+        if self.replace.is_empty() {
+            return Err(anyhow!("Replace content cannot be empty"));
+        }
+
+        // If search is empty, this is a new file
+        if self.search.is_empty() {
+            return Ok(());
+        }
+
+        // Search must be contained in replace for modifications
+        if !self.replace.contains(&self.search) {
+            return Err(anyhow!(
+                "Replace content must contain original content for modifications"
+            ));
+        }
+
         Ok(())
     }
 }
 
-/// Errors that can occur during change operations
-#[derive(Error, Debug)]
-pub enum ChangeError {
-    #[error("File path cannot be empty")]
-    EmptyPath,
-    #[error("Both search and replace content cannot be empty")]
-    EmptyContent,
-    #[error("File not found: {0}")]
-    FileNotFound(PathBuf),
-    #[error("No matching content found in file")]
-    NoMatch,
-    #[error("Multiple matches found for search content")]
-    MultipleMatches,
-    #[error("Invalid SEARCH/REPLACE block format")]
-    InvalidFormat,
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-}
+pub fn validate_pr_title(title: &str) -> Result<()> {
+    // Title must contain one of these words
+    if !title.contains("solver") && !title.contains("solution") && !title.contains("PR") {
+        return Err(anyhow!(
+            "PR title must contain 'solver', 'solution', or 'PR'"
+        ));
+    }
 
-/// Result type for change operations
-pub type ChangeResult<T> = Result<T, ChangeError>;
+    // Title must not be too short
+    if title.len() < 10 {
+        return Err(anyhow!("PR title must be at least 10 characters"));
+    }
+
+    Ok(())
+}
