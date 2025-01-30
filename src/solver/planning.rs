@@ -1,7 +1,8 @@
 use anyhow::Result;
 use std::pin::Pin;
-use futures_util::Stream;
+use futures_util::{Stream, StreamExt};
 use tracing::info;
+use tokio_stream::wrappers::ReceiverStream;
 
 pub struct PlanningContext {
     pub llm_service: crate::server::services::deepseek::DeepSeekService,
@@ -35,7 +36,7 @@ File Context: {}"#,
         let receiver = self.llm_service.chat_stream(prompt, true).await;
         
         // Convert receiver into a Stream
-        let stream = tokio_stream::wrappers::ReceiverStream::new(receiver)
+        let stream = ReceiverStream::new(receiver)
             .map(|update| Ok(update.content));
             
         Ok(Box::pin(stream))
@@ -47,7 +48,6 @@ mod tests {
     use super::*;
     use mockito::Server;
     use serde_json::json;
-    use futures_util::StreamExt;
 
     #[tokio::test]
     async fn test_validate_llm_response() {
