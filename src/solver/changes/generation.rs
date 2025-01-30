@@ -37,7 +37,7 @@ pub async fn generate_changes(
     }
 
     // Get model from env or use default
-    let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "codellama:latest".to_string());
+    let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "deepseek-r1:14b".to_string());
 
     // Construct the prompt
     let prompt = format!(
