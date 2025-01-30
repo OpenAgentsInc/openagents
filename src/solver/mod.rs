@@ -1,4 +1,4 @@
-mod changes;
+pub mod changes;  // Make changes public
 mod cli;
 mod config;
 mod context;
@@ -7,7 +7,7 @@ pub mod file_list;
 mod github;
 mod planning;
 mod streaming;
-pub mod types;  // Make types public
+pub mod types;
 
 pub use changes::*;
 pub use cli::*;
