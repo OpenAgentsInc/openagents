@@ -1,7 +1,6 @@
 use anyhow::Result;
 use futures_util::StreamExt;
 use std::{io::Write, pin::Pin};
-use termcolor::Color;
 use tracing::info;
 
 pub async fn handle_plan_stream(
