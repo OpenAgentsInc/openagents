@@ -10,20 +10,25 @@ pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<C
 
     // Fetch issue details and comments
     info!("Fetching issue #{} from {}", cli.issue, cli.repo);
-    let issue = github
+    let issue: Issue = github
         .get_issue(cli.issue)
         .await
-        .context("Failed to fetch issue details")?;
+        .context("Failed to fetch issue details")?
+        .into();
     println!("\nIssue #{}: {}", issue.number, issue.title);
     if let Some(body) = &issue.body {
         println!("Description:\n{}\n", body);
     }
 
     // Fetch and display comments
-    let comments = github
+    let comments: Vec<Comment> = github
         .get_issue_comments(cli.issue)
         .await
-        .context("Failed to fetch issue comments")?;
+        .context("Failed to fetch issue comments")?
+        .into_iter()
+        .map(|c| c.into())
+        .collect();
+
     if !comments.is_empty() {
         println!("\nComments ({}):", comments.len());
         for comment in &comments {
