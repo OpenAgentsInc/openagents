@@ -1,7 +1,7 @@
 use anyhow::Result;
 use futures_util::StreamExt;
 use openagents::server::services::{
-    gateway::{types::GatewayMetadata, Gateway},
+    gateway::Gateway,
     ollama::service::OllamaService,
 };
 
@@ -16,10 +16,11 @@ async fn test_ollama_metadata() {
 }
 
 #[tokio::test]
-async fn test_ollama_chat() {
+async fn test_ollama_chat() -> Result<()> {
     let service = OllamaService::new();
-    let (response, _) = service.chat("Test message".to_string(), false).await.unwrap();
+    let (response, _) = service.chat("Test message".to_string(), false).await?;
     assert!(!response.is_empty());
+    Ok(())
 }
 
 #[tokio::test]
@@ -48,10 +49,10 @@ async fn test_ollama_chat_stream() -> Result<()> {
 
 #[tokio::test]
 async fn test_ollama_with_config() {
-    let service = OllamaService::with_config("http://localhost:11434", "llama2");
+    let service = OllamaService::with_config("http://localhost:11434", "deepseek-r1:14b");
     let metadata = service.metadata();
-    assert_eq!(metadata.default_model, "llama2");
-    assert!(metadata.available_models.contains(&"llama2".to_string()));
+    assert_eq!(metadata.default_model, "deepseek-r1:14b");
+    assert!(metadata.available_models.contains(&"deepseek-r1:14b".to_string()));
 }
 
 #[tokio::test]
