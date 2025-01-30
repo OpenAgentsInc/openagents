@@ -88,7 +88,12 @@ fn test_apply_changes_no_match() -> Result<()> {
 
     let result = context.apply_changes(&changes);
     assert!(matches!(result, Err(ChangeError::NoMatch)));
-    assert!(!context.temp_dir.join("src/test.rs").exists());
+    // File should still exist, just unchanged
+    assert!(context.temp_dir.join("src/test.rs").exists());
+    assert_eq!(
+        fs::read_to_string(context.temp_dir.join(file_path))?,
+        "fn existing_function() {}"
+    );
 
     Ok(())
 }
