@@ -119,7 +119,7 @@ mod tests {
         let test_file = temp_dir.path().join("test.rs");
         fs::write(&test_file, "// Original content")?;
 
-        let server = Server::new();
+        let mut server = Server::new();
         let mock_response = json!({
             "choices": [{
                 "message": {
