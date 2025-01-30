@@ -1,8 +1,8 @@
-pub mod changes;  // Make changes public
+pub mod changes;
 mod cli;
 mod config;
-mod context;
-mod display;
+pub mod context;
+pub mod display;
 pub mod file_list;
 mod github;
 mod planning;
@@ -19,3 +19,6 @@ pub use github::*;
 pub use planning::*;
 pub use streaming::*;
 pub use types::*;
+
+// Re-export octocrab types that we use
+pub use octocrab::models::issues::{Comment, Issue};
