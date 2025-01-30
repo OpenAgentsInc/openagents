@@ -3,12 +3,8 @@ use clap::Parser;
 use openagents::solver::{Cli, Config};
 use tracing::info;
 
-// Use local modules from solver directory
-mod solver {
-    pub mod issue;
-    pub mod planning;
-    pub mod solution;
-}
+mod solver;
+use solver::{issue, planning, solution};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,7 +24,7 @@ async fn main() -> Result<()> {
     let openrouter_api_key = config.openrouter_api_key.clone();
 
     // Handle issue details
-    let (issue, comments) = solver::issue::handle_issue(&cli, &github_token).await?;
+    let (issue, comments) = issue::handle_issue(&cli, &github_token).await?;
 
     // Initialize solution context for repo map
     let mut solution = openagents::solver::SolutionContext::new(
@@ -48,10 +44,10 @@ async fn main() -> Result<()> {
     let repo_map = solution.generate_repo_map();
 
     // Generate implementation plan
-    let plan = solver::planning::handle_planning(&cli, &issue, &comments, &repo_map).await?;
+    let plan = planning::handle_planning(&cli, &issue, &comments, &repo_map).await?;
 
     // Generate and apply solution
-    solver::solution::handle_solution(&cli, &issue, &comments, &plan, github_token, openrouter_api_key).await?;
+    solution::handle_solution(&cli, &issue, &comments, &plan, github_token, openrouter_api_key).await?;
 
     info!("Solver completed successfully");
     Ok(())
