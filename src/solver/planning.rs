@@ -8,9 +8,12 @@ pub struct PlanningContext {
 }
 
 impl PlanningContext {
-    pub fn new() -> Result<Self> {
+    pub fn new(ollama_url: &str) -> Result<Self> {
         Ok(Self {
-            service: crate::server::services::ollama::OllamaService::new(),
+            service: crate::server::services::ollama::OllamaService::with_config(
+                ollama_url,
+                "codellama:latest",
+            ),
         })
     }
 
