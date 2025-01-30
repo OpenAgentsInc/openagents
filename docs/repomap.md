@@ -67,6 +67,13 @@ tests/solver_context.rs:
 tests/user.rs:
 │fn test_user_creation
 
+tests/ollama.rs:
+│fn test_ollama_metadata
+│fn test_ollama_chat
+│fn test_ollama_chat_stream
+│fn test_ollama_with_config
+│fn test_ollama_error_handling
+
 tests/mod.rs:
 
 tests/common/mod.rs:
@@ -82,6 +89,12 @@ tests/chat_router_integration.rs:
 │fn create_test_tools
 │fn test_chat_router_integration
 │fn test_chat_router_streaming
+
+tests/solver_ollama.rs:
+│fn setup_test_repo
+│fn test_ollama_file_list
+│fn test_ollama_planning
+│fn test_ollama_changes
 
 tests/model_router.rs:
 │fn test_routing_decision
@@ -468,6 +481,28 @@ src/server/services/model_router.rs:
 │fn chat_stream
 │fn handle_tool_response
 
+src/server/services/ollama/types.rs:
+│impl Default for Default
+│impl OllamaConfig for OllamaConfig
+│fn default
+
+src/server/services/ollama/config.rs:
+│impl Default for Default
+│impl OllamaConfig for OllamaConfig
+│fn default
+│fn global
+
+src/server/services/ollama/service.rs:
+│fn new
+│fn with_config
+│impl Gateway for Gateway
+│impl OllamaService for OllamaService
+│fn metadata
+│fn chat
+│fn chat_stream
+
+src/server/services/ollama/mod.rs:
+
 src/server/services/chat_database.rs:
 │fn new
 │fn create_conversation
@@ -578,7 +613,6 @@ src/solver/streaming.rs:
 src/solver/planning.rs:
 │fn new
 │fn generate_plan
-│fn find_json_end
 │fn generate_plan_sync
 
 src/solver/context.rs:
@@ -634,3 +668,4 @@ src/repo/git.rs:
 │fn checkout_branch
 
 src/repo/mod.rs:
+
