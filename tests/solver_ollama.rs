@@ -54,6 +54,12 @@ async fn test_ollama_file_list() -> Result<()> {
     )
     .await?;
 
+    println!("\nFiles selected:");
+    for file in &files {
+        println!("- {}", file);
+    }
+    println!("\nReasoning:\n{}", reasoning);
+
     assert!(!files.is_empty());
     assert!(files.contains(&"src/lib.rs".to_string()));
     assert!(!files.contains(&"src/main.rs".to_string()));
@@ -68,6 +74,8 @@ async fn test_ollama_file_list() -> Result<()> {
 async fn test_ollama_planning() -> Result<()> {
     load_env();
     let context = PlanningContext::new()?;
+    
+    println!("\nGenerating plan...\n");
     let mut stream = context
         .generate_plan(
             123,
@@ -77,19 +85,35 @@ async fn test_ollama_planning() -> Result<()> {
         )
         .await?;
 
+    let mut buffer = String::new();
     let mut saw_content = false;
+    
     while let Some(result) = stream.next().await {
         match result {
             Ok(content) => {
-                println!("Content: {}", content);
+                buffer.push_str(&content);
+                // Print if we have a complete sentence or significant chunk
+                if content.ends_with('.') || content.ends_with('\n') || content.len() > 50 {
+                    println!("{}", buffer);
+                    buffer.clear();
+                }
                 saw_content = true;
             }
             Err(e) => {
-                println!("Error: {}", e);
+                if !buffer.is_empty() {
+                    println!("{}", buffer);
+                }
+                println!("\nError: {}", e);
                 break;
             }
         }
     }
+
+    // Print any remaining content
+    if !buffer.is_empty() {
+        println!("{}", buffer);
+    }
+    println!(); // Add final newline
 
     assert!(saw_content);
     Ok(())
@@ -104,6 +128,7 @@ async fn test_ollama_changes() -> Result<()> {
 
     let ollama_url = std::env::var("OLLAMA_URL").unwrap();
 
+    println!("\nGenerating changes...\n");
     let (changes, reasoning) = generate_changes(
         "src/lib.rs",
         "pub fn add(a: i32, b: i32) -> i32 { a + b }",
@@ -112,6 +137,13 @@ async fn test_ollama_changes() -> Result<()> {
         &ollama_url,
     )
     .await?;
+
+    println!("Changes:");
+    for change in &changes {
+        println!("\nFile: {}", change.path);
+        println!("Replace with:\n{}", change.replace);
+    }
+    println!("\nReasoning:\n{}", reasoning);
 
     assert!(!changes.is_empty());
     assert_eq!(changes[0].path, "src/lib.rs");
