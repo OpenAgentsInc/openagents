@@ -1,64 +1,22 @@
-use anyhow::{Context as _, Result};
-use octocrab::models::issues::{Comment, Issue};
-use openagents::solver::{handle_plan_stream, Cli, PlanningContext};
-use tracing::{debug, info};
+use anyhow::Result;
+use openagents::solver::{
+    planning::PlanningContext,
+    streaming::handle_plan_stream,
+};
+use tracing::info;
 
 pub async fn handle_planning(
-    cli: &Cli,
-    issue: &Issue,
-    comments: &[Comment],
+    issue_number: i32,
+    title: &str,
+    description: &str,
     repo_map: &str,
 ) -> Result<String> {
-    // Generate implementation plan
-    let planning = PlanningContext::new().context("Failed to initialize planning context")?;
+    info!("Generating implementation plan...");
 
-    // Include comments in the context for planning
-    let comments_context = if !comments.is_empty() {
-        let mut context = String::from("\nRelevant comments:\n");
-        for comment in comments {
-            context.push_str(&format!(
-                "\n@{} at {}:\n{}\n",
-                comment.user.login,
-                comment.created_at,
-                comment.body.as_deref().unwrap_or("No comment body")
-            ));
-        }
-        context
-    } else {
-        String::from("\nNo additional comments on the issue.")
-    };
+    let context = PlanningContext::new()?;
+    let stream = context
+        .generate_plan(issue_number, title, description, repo_map)
+        .await?;
 
-    info!("Generating implementation plan");
-    debug!("=== CONTEXT SENT TO LLM ===");
-    debug!("Issue Title: {}", issue.title);
-    debug!("Issue Number: #{}", issue.number);
-    debug!("\nFull Context (including comments):");
-    debug!(
-        "{}",
-        issue.body.as_deref().unwrap_or("No description provided")
-    );
-    debug!("{}", comments_context);
-    debug!("=== END CONTEXT ===\n");
-
-    // Get streaming plan generation
-    let stream = planning
-        .generate_plan(
-            cli.issue,
-            &issue.title,
-            &format!(
-                "{}\n{}",
-                issue.body.as_deref().unwrap_or("No description provided"),
-                comments_context
-            ),
-            repo_map,
-        )
-        .await;
-
-    // Handle the stream and get the final plan
-    let implementation_plan = handle_plan_stream(stream).await?;
-
-    info!("Implementation plan generated");
-    debug!("Plan:\n{}", implementation_plan);
-
-    Ok(implementation_plan)
+    handle_plan_stream(stream).await
 }
