@@ -10,7 +10,9 @@ async fn test_ollama_metadata() {
     let service = OllamaService::new();
     let metadata = service.metadata();
     assert_eq!(metadata.name, "ollama");
-    assert_eq!(metadata.description, "Local model execution via Ollama");
+    assert_eq!(metadata.openai_compatible, false);
+    assert!(metadata.supported_features.contains(&"chat".to_string()));
+    assert!(metadata.supported_features.contains(&"streaming".to_string()));
 }
 
 #[tokio::test]
@@ -43,7 +45,8 @@ async fn test_ollama_chat_stream() {
 async fn test_ollama_with_config() {
     let service = OllamaService::with_config("http://localhost:11434", "llama2");
     let metadata = service.metadata();
-    assert_eq!(metadata.model, Some("llama2".to_string()));
+    assert_eq!(metadata.default_model, "llama2");
+    assert!(metadata.available_models.contains(&"llama2".to_string()));
 }
 
 #[tokio::test]
