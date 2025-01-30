@@ -3,6 +3,11 @@ use openagents::solver::{planning::PlanningContext, streaming::handle_plan_strea
 use regex::Regex;
 use tracing::{debug, info};
 
+const ERR_NO_JSON: &str = "JSON block not found";
+const ERR_NO_CHANGES: &str = "Changes array not found";
+const ERR_WRONG_TARGET: &str = "Incorrect target file";
+const GITHUB_RS_PATH: &str = "src/solver/github.rs";
+
 /// Extracts JSON from markdown code block
 fn extract_json_from_markdown(content: &str) -> Option<&str> {
     let re = Regex::new(r"```json\s*(\{[\s\S]*?\})\s*```").ok()?;
@@ -16,7 +21,7 @@ async fn gather_context(issue_title: &str, issue_description: &str) -> Result<St
     
     // For PR title generation, we know we need github.rs
     if issue_title.contains("PR title") || issue_description.contains("PR title") {
-        relevant_files.push("src/solver/github.rs");
+        relevant_files.push(GITHUB_RS_PATH);
     }
 
     // For JSON escaping issues, we need json.rs
@@ -33,7 +38,7 @@ async fn gather_context(issue_title: &str, issue_description: &str) -> Result<St
         context.push_str(&format!("\nFile: {}\nContent:\n", file));
         // TODO: Use view_file to get actual content
         // For now, hardcoding the relevant function for testing
-        if file == "src/solver/github.rs" {
+        if file == GITHUB_RS_PATH {
             context.push_str(r#"
 async fn generate_pr_title(&self, issue_number: i32, context: &str) -> Result<String> {
     let prompt = format!(
@@ -114,7 +119,7 @@ pub async fn handle_planning(
 
     // Extract JSON from markdown code block
     let json_str = extract_json_from_markdown(&full_response)
-        .ok_or_else(|| anyhow!("Missing JSON block"))?;
+        .ok_or_else(|| anyhow!(ERR_NO_JSON))?;
 
     debug!("Extracted JSON: {}", json_str);
 
@@ -122,15 +127,15 @@ pub async fn handle_planning(
     let json: serde_json::Value = serde_json::from_str(json_str)?;
 
     // Verify response targets correct file
-    let changes = json["changes"].as_array().ok_or_else(|| anyhow!("Missing changes"))?;
+    let changes = json["changes"].as_array().ok_or_else(|| anyhow!(ERR_NO_CHANGES))?;
     let targets_github_rs = changes.iter().any(|c| {
         let path = c["path"].as_str().unwrap_or("");
         let search = c["search"].as_str().unwrap_or("");
-        path == "github/solver/github" && search.contains("generate_pr_title")
+        path == GITHUB_RS_PATH && search.contains("generate_pr_title")
     });
 
     if !targets_github_rs {
-        return Err(anyhow!("Invalid target"));
+        return Err(anyhow!(ERR_WRONG_TARGET));
     }
 
     Ok(json_str.to_string())
