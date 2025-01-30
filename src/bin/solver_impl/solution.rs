@@ -1,8 +1,10 @@
 use anyhow::{Context as _, Result};
-use octocrab::models::issues::{Issue, Comment};
+use octocrab::models::issues::{Comment, Issue};
 use openagents::solver::{
-    Cli, GitHubContext, SolutionContext,
-    print_colored,  // Use re-exported function
+    print_colored, // Use re-exported function
+    Cli,
+    GitHubContext,
+    SolutionContext,
 };
 use termcolor::Color;
 use tracing::{debug, info, warn};
@@ -17,8 +19,9 @@ pub async fn handle_solution(
 ) -> Result<()> {
     // Initialize solution context
     info!("Initializing solution context");
-    let mut solution = SolutionContext::new(cli.issue, openrouter_api_key, Some(github_token.clone()))
-        .context("Failed to initialize solution context")?;
+    let mut solution =
+        SolutionContext::new(cli.issue, openrouter_api_key, Some(github_token.clone()))
+            .context("Failed to initialize solution context")?;
 
     // Initialize GitHub context for branch/PR operations
     let github = GitHubContext::new(&cli.repo, github_token)
@@ -89,7 +92,7 @@ pub async fn handle_solution(
         for comment in comments {
             context.push_str(&format!(
                 "\n@{} at {}:\n{}\n",
-                comment.user.login, 
+                comment.user.login,
                 comment.created_at,
                 comment.body.as_deref().unwrap_or("No comment body")
             ));
@@ -125,10 +128,7 @@ pub async fn handle_solution(
 
     // 2. For each file, generate and apply changes
     for file_path in files {
-        print_colored(
-            &format!("\nProcessing {}...\n", file_path),
-            Color::Blue,
-        )?;
+        print_colored(&format!("\nProcessing {}...\n", file_path), Color::Blue)?;
 
         // Generate changes
         print_colored("Generating changes...\n", Color::Green)?;

@@ -1,4 +1,4 @@
-use super::{GitHubIssue, GitHubComment, GitHubUser};
+use super::{GitHubComment, GitHubIssue, GitHubUser};
 use chrono::{DateTime, Utc};
 use url::Url;
 
@@ -103,19 +103,20 @@ impl TryFrom<GitHubComment> for octocrab::models::issues::Comment {
             .unwrap_or_default()
             .with_timezone(&Utc);
 
-        let comment: octocrab::models::issues::Comment = serde_json::from_value(serde_json::json!({
-            "id": comment.id,
-            "node_id": "",
-            "url": "https://github.com",
-            "html_url": "https://github.com",
-            "body": comment.body,
-            "user": comment.user,
-            "created_at": created_at,
-            "updated_at": updated_at,
-            "issue_url": null,
-            "body_text": null,
-            "body_html": null
-        }))?;
+        let comment: octocrab::models::issues::Comment =
+            serde_json::from_value(serde_json::json!({
+                "id": comment.id,
+                "node_id": "",
+                "url": "https://github.com",
+                "html_url": "https://github.com",
+                "body": comment.body,
+                "user": comment.user,
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "issue_url": null,
+                "body_text": null,
+                "body_html": null
+            }))?;
 
         Ok(comment)
     }

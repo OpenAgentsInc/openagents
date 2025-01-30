@@ -1,6 +1,6 @@
+use crate::server::services::deepseek::StreamUpdate;
 use crate::server::services::gateway::Gateway;
 use crate::server::services::openrouter::{OpenRouterConfig, OpenRouterService};
-use crate::server::services::deepseek::StreamUpdate;
 use anyhow::Result;
 use futures::StreamExt;
 use tokio::sync::mpsc;
@@ -61,7 +61,7 @@ Focus on minimal, precise changes that directly address the issue requirements.
 
         // Convert OpenRouter stream to our StreamUpdate format
         let stream_result = self.service.chat_stream(prompt, true).await;
-        
+
         tokio::spawn(async move {
             match stream_result {
                 Ok(mut stream) => {

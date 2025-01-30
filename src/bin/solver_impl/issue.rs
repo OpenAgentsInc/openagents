@@ -1,6 +1,6 @@
 use anyhow::{Context as _, Result};
+use octocrab::models::issues::{Comment, Issue};
 use openagents::solver::{Cli, GitHubContext};
-use octocrab::models::issues::{Issue, Comment};
 use tracing::info;
 
 pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<Comment>)> {
@@ -35,8 +35,9 @@ pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<C
 
     Ok((
         octocrab::models::issues::Issue::try_from(issue)?,
-        comments.into_iter()
+        comments
+            .into_iter()
             .map(octocrab::models::issues::Comment::try_from)
-            .collect::<Result<Vec<_>, _>>()?
+            .collect::<Result<Vec<_>, _>>()?,
     ))
 }

@@ -4,9 +4,7 @@ use termcolor::Color;
 use tokio::sync::mpsc;
 use tracing::info;
 
-pub async fn handle_plan_stream(
-    mut stream: mpsc::Receiver<StreamUpdate>,
-) -> Result<String> {
+pub async fn handle_plan_stream(mut stream: mpsc::Receiver<StreamUpdate>) -> Result<String> {
     let mut full_response = String::new();
 
     while let Some(update) = stream.recv().await {
@@ -17,10 +15,16 @@ pub async fn handle_plan_stream(
             }
             StreamUpdate::Reasoning(reasoning) => {
                 info!("Planning reasoning: {}", reasoning);
-                crate::solver::display::print_colored(&format!("\nReasoning: {}\n", reasoning), Color::Yellow)?;
+                crate::solver::display::print_colored(
+                    &format!("\nReasoning: {}\n", reasoning),
+                    Color::Yellow,
+                )?;
             }
             StreamUpdate::Done => {
-                crate::solver::display::print_colored("\nPlan generation complete.\n", Color::Green)?;
+                crate::solver::display::print_colored(
+                    "\nPlan generation complete.\n",
+                    Color::Green,
+                )?;
                 break;
             }
             _ => {}

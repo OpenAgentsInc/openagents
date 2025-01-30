@@ -46,7 +46,15 @@ async fn main() -> Result<()> {
     let plan = solver_impl::planning::handle_planning(&cli, &issue, &comments, &repo_map).await?;
 
     // Generate and apply solution
-    solver_impl::solution::handle_solution(&cli, &issue, &comments, &plan, github_token, openrouter_api_key).await?;
+    solver_impl::solution::handle_solution(
+        &cli,
+        &issue,
+        &comments,
+        &plan,
+        github_token,
+        openrouter_api_key,
+    )
+    .await?;
 
     info!("Solver completed successfully");
     Ok(())
