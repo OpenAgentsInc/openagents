@@ -18,7 +18,7 @@ async fn test_change_generation() -> Result<()> {
     assert_eq!(changes[0].path, "src/lib.rs");
     assert!(changes[0].replace.contains("multiply"));
     assert!(changes[0].replace.contains("add")); // Original function preserved
-    assert!(!reasoning.is_empty());
+    assert!(reasoning.contains("Implement solution for #634: Add multiply function"));
 
     Ok(())
 }
