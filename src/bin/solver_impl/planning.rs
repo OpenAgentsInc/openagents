@@ -114,7 +114,7 @@ pub async fn handle_planning(
 
     // Extract JSON from markdown code block
     let json_str = extract_json_from_markdown(&full_response)
-        .ok_or_else(|| anyhow!("No JSON code block found"))?;
+        .ok_or_else(|| anyhow!("Missing JSON block"))?;
 
     debug!("Extracted JSON: {}", json_str);
 
@@ -122,15 +122,15 @@ pub async fn handle_planning(
     let json: serde_json::Value = serde_json::from_str(json_str)?;
 
     // Verify response targets correct file
-    let changes = json["changes"].as_array().ok_or_else(|| anyhow!("No changes array found"))?;
+    let changes = json["changes"].as_array().ok_or_else(|| anyhow!("Missing changes"))?;
     let targets_github_rs = changes.iter().any(|c| {
         let path = c["path"].as_str().unwrap_or("");
         let search = c["search"].as_str().unwrap_or("");
-        path == "src/solver/github.rs" && search.contains("generate_pr_title")
+        path == "github/solver/github" && search.contains("generate_pr_title")
     });
 
     if !targets_github_rs {
-        return Err(anyhow!("Changes must target generate_pr_title function"));
+        return Err(anyhow!("Invalid target"));
     }
 
     Ok(json_str.to_string())
