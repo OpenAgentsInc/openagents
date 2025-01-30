@@ -1,5 +1,5 @@
 use crate::server::services::gateway::Gateway;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use futures_util::Stream;
 use std::pin::Pin;
 
