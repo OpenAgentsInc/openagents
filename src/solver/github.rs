@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_with_invalid_repo() {
+    async fn test_new_with_invalid_repo() {
         let result = GitHubContext::new("invalid", "token".to_string());
         assert!(result.is_err());
     }
