@@ -110,12 +110,16 @@ pub async fn handle_solution(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+    use mockito::Server;
 
     #[tokio::test]
     async fn test_handle_solution() -> Result<()> {
         let temp_dir = tempdir()?;
         let test_file = temp_dir.path().join("test.rs");
         fs::write(&test_file, "// Original content")?;
+
+        let mut server = Server::new();
+        std::env::set_var("DEEPSEEK_API_URL", &server.url());
 
         let result = handle_solution(
             123,
