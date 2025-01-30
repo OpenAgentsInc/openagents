@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::server::services::gateway::types::Message;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OllamaConfig {
@@ -16,22 +17,9 @@ impl Default for OllamaConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ChatRequest {
+pub struct OllamaChatResponse {
     pub model: String,
-    pub messages: Vec<ChatMessage>,
-    pub stream: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatResponse {
-    pub model: String,
-    pub message: ChatMessage,
+    pub message: Message,
     pub done: bool,
 }
 
