@@ -1,9 +1,9 @@
+use anyhow::Result;
+use futures_util::StreamExt;
 use openagents::server::services::{
     gateway::{types::GatewayMetadata, Gateway},
     ollama::service::OllamaService,
-    StreamUpdate,
 };
-use tokio::sync::mpsc;
 
 #[tokio::test]
 async fn test_ollama_metadata() {
@@ -23,22 +23,27 @@ async fn test_ollama_chat() {
 }
 
 #[tokio::test]
-async fn test_ollama_chat_stream() {
+async fn test_ollama_chat_stream() -> Result<()> {
     let service = OllamaService::new();
-    let mut rx: mpsc::Receiver<StreamUpdate> = service.chat_stream("Test message".to_string(), false).await;
+    let mut stream = service.chat_stream("Test message".to_string(), false).await?;
     
     let mut saw_content = false;
-    while let Some(update) = rx.recv().await {
-        match update {
-            StreamUpdate::Content(content) => {
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(content) => {
                 assert!(!content.is_empty());
                 saw_content = true;
             }
-            StreamUpdate::Done => break,
-            StreamUpdate::Error(e) => panic!("Unexpected error: {}", e),
+            Err(e) => {
+                if e.to_string() != "Stream ended" {
+                    panic!("Unexpected error: {}", e);
+                }
+                break;
+            }
         }
     }
     assert!(saw_content);
+    Ok(())
 }
 
 #[tokio::test]
