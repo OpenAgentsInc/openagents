@@ -2,6 +2,7 @@ use crate::server::services::gateway::Gateway;
 use crate::server::services::openrouter::{OpenRouterConfig, OpenRouterService};
 use crate::server::services::deepseek::StreamUpdate;
 use anyhow::Result;
+use futures::StreamExt;
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -59,21 +60,27 @@ Focus on minimal, precise changes that directly address the issue requirements.
         let (tx, rx) = mpsc::channel(100);
 
         // Convert OpenRouter stream to our StreamUpdate format
-        let stream = self.service.chat_stream(prompt, true).await;
+        let stream_result = self.service.chat_stream(prompt, true).await;
+        
         tokio::spawn(async move {
-            while let Some(update) = stream.recv().await {
-                match update {
-                    StreamUpdate::Content(content) => {
-                        let _ = tx.send(StreamUpdate::Content(content)).await;
+            match stream_result {
+                Ok(mut stream) => {
+                    while let Some(result) = stream.next().await {
+                        match result {
+                            Ok(content) => {
+                                let _ = tx.send(StreamUpdate::Content(content)).await;
+                            }
+                            Err(e) => {
+                                debug!("Error in stream: {}", e);
+                                break;
+                            }
+                        }
                     }
-                    StreamUpdate::Reasoning(reasoning) => {
-                        let _ = tx.send(StreamUpdate::Reasoning(reasoning)).await;
-                    }
-                    StreamUpdate::Done => {
-                        let _ = tx.send(StreamUpdate::Done).await;
-                        break;
-                    }
-                    _ => {}
+                    let _ = tx.send(StreamUpdate::Done).await;
+                }
+                Err(e) => {
+                    debug!("Failed to create stream: {}", e);
+                    let _ = tx.send(StreamUpdate::Done).await;
                 }
             }
         });
