@@ -13,6 +13,3 @@ pub use routes::*;
 // Re-export specific items from server and solver as needed
 pub use server::services;
 pub use solver::Cli;
-
-// Re-export dependencies that our public API uses
-pub use octocrab;
