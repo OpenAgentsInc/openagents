@@ -23,9 +23,9 @@ impl PlanningContext {
     }
 
     fn validate_llm_response(response: &str) -> Result<bool> {
-        // Check response focuses on PR title
-        if !response.contains("PR title") || !response.contains("feat:") {
-            debug!("Response doesn't focus on PR title or use feat: prefix");
+        // Check response focuses on pull request title generation
+        if !response.contains("pull request title") || !response.contains("src/solver/github.rs") {
+            debug!("Response doesn't focus on pull request title generation or target correct file");
             return Ok(false);
         }
         
@@ -45,6 +45,18 @@ impl PlanningContext {
                 return Ok(false);
             }
         }
+
+        // Verify changes target the correct file and function
+        let changes = json["changes"].as_array().unwrap();
+        let targets_github_rs = changes.iter().any(|c| {
+            c["path"].as_str().unwrap_or("").contains("src/solver/github.rs") &&
+            c["search"].as_str().unwrap_or("").contains("generate_pr_title")
+        });
+
+        if !targets_github_rs {
+            debug!("Changes don't target src/solver/github.rs generate_pr_title function");
+            return Ok(false);
+        }
         
         Ok(true)
     }
@@ -58,11 +70,41 @@ impl PlanningContext {
         feedback: Option<&str>,
     ) -> String {
         let base_prompt = format!(
-            r#"Your task is to improve PR title generation in the solver.
+            r#"Your task is to improve pull request (PR) title generation in the OpenAgents solver.
 
-Current behavior: PR titles are like "Implement solution for #{}"
-Desired behavior: PR titles should be descriptive and succinct
-Example: "feat: add multiply function" instead of "Implement solution for #634"
+Context:
+- A pull request is a GitHub feature for submitting code changes
+- The solver automatically creates pull requests to solve issues
+- PR titles are currently generic like "Implement solution for #{}"
+- We want descriptive titles that follow the format "<type>: <description>"
+
+Current code (in src/solver/github.rs):
+```rust
+async fn generate_pr_title(&self, issue_number: i32, context: &str) -> Result<String> {{
+    // This function needs to be improved to generate better titles
+    // It uses self.llm_service.chat() to generate titles using DeepSeek
+}}
+```
+
+Required Changes:
+1. Modify ONLY the generate_pr_title function in src/solver/github.rs
+2. Use the DeepSeek LLM (self.llm_service.chat) to generate better titles
+3. Ensure titles follow the format "<type>: <description>"
+   - type must be: feat, fix, refactor, docs, style, test, or perf
+   - description must be clear and concise
+4. Do not modify test files or other code
+
+Example Good PR Titles:
+- "feat: add multiply function to calculator"
+- "fix: handle JSON escaping in PR titles"
+- "refactor: improve error handling in solver"
+- "style: format code with rustfmt"
+
+Example Bad PR Titles:
+- "Implement solution for #634" (wrong format)
+- "feat:add function" (missing space)
+- "update code" (missing type prefix)
+- "feat: implement the new feature that was requested in the issue" (too verbose)
 
 Issue Title: {}
 Description:
@@ -71,16 +113,16 @@ Description:
 Repository Map:
 {}
 
-Focus ONLY on the PR title generation logic. Output your solution as a JSON object in a markdown code block:
+Output your solution as a JSON object in a markdown code block:
 
 ```json
 {{
     "changes": [
         {{
-            "path": "path/to/file",
+            "path": "src/solver/github.rs",
             "search": "exact content to find",
             "replace": "new content",
-            "reason": "why this change is needed"
+            "reason": "why this change improves PR title generation"
         }}
     ],
     "reasoning": "Overall explanation of changes"
@@ -88,11 +130,12 @@ Focus ONLY on the PR title generation logic. Output your solution as a JSON obje
 ```
 
 Requirements:
-1. Changes MUST focus on PR title generation
-2. All strings MUST be properly escaped for JSON
-3. PR titles MUST start with "feat:", "fix:", etc.
-4. PR titles MUST be descriptive but succinct
-5. Changes should modify the title generation code, not test files
+1. Changes MUST focus on pull request title generation
+2. Changes MUST target src/solver/github.rs only
+3. All strings MUST be properly escaped for JSON
+4. PR titles MUST start with "feat:", "fix:", etc.
+5. PR titles MUST be descriptive but succinct
+6. Do NOT modify test files or other code
 
 Rules:
 - Use EXACT content matches for search
@@ -136,10 +179,11 @@ Rules:
             // Generate feedback for next attempt
             feedback = Some(
                 "Previous attempt was invalid because:\n\
-                - Response must focus on PR title generation\n\
-                - Must include actual changes to implement\n\
+                - Response must focus on pull request title generation\n\
+                - Must modify src/solver/github.rs generate_pr_title function\n\
                 - All strings must be properly escaped\n\
-                - PR titles must start with feat:, fix:, etc."
+                - PR titles must start with feat:, fix:, etc.\n\
+                - Do not modify test files"
             );
             
             info!("Attempt {} failed, retrying with feedback", attempt + 1);
@@ -179,12 +223,16 @@ mod tests {
         // Valid response
         let valid = r#"{
             "changes": [{
-                "path": "src/github.rs",
-                "search": "fn generate_title",
-                "replace": "fn generate_title_with_prefix",
-                "reason": "Add feat: prefix to PR titles"
+                "path": "src/solver/github.rs",
+                "search": "async fn generate_pr_title",
+                "replace": "async fn generate_pr_title(&self, issue_number: i32, context: &str) -> Result<String> {
+                    let prompt = format!(\"Generate a descriptive pull request title that starts with feat:, fix:, etc.\");
+                    let (response, _) = self.llm_service.chat(prompt, true).await?;
+                    Ok(response.trim().to_string())
+                }",
+                "reason": "Improve pull request title generation"
             }],
-            "reasoning": "Improve PR title with feat: prefix"
+            "reasoning": "Improve pull request title generation with better prompting"
         }"#;
         assert!(PlanningContext::validate_llm_response(valid).unwrap());
 
@@ -195,8 +243,8 @@ mod tests {
         }"#;
         assert!(!PlanningContext::validate_llm_response(no_changes).unwrap());
 
-        // Invalid - no PR title focus
-        let no_title = r#"{
+        // Invalid - wrong file
+        let wrong_file = r#"{
             "changes": [{
                 "path": "src/test.rs",
                 "search": "old",
@@ -205,7 +253,19 @@ mod tests {
             }],
             "reasoning": "Update tests"
         }"#;
-        assert!(!PlanningContext::validate_llm_response(no_title).unwrap());
+        assert!(!PlanningContext::validate_llm_response(wrong_file).unwrap());
+
+        // Invalid - no pull request focus
+        let no_pr = r#"{
+            "changes": [{
+                "path": "src/solver/github.rs",
+                "search": "fn test_something",
+                "replace": "fn test_something_new",
+                "reason": "Update test"
+            }],
+            "reasoning": "Update tests"
+        }"#;
+        assert!(!PlanningContext::validate_llm_response(no_pr).unwrap());
     }
 
     #[test]
@@ -219,8 +279,19 @@ mod tests {
             None,
         );
         
+        // Check for key phrases that indicate proper context
+        assert!(prompt.contains("pull request"));
+        assert!(prompt.contains("src/solver/github.rs"));
+        assert!(prompt.contains("generate_pr_title"));
         assert!(prompt.contains("feat:"));
-        assert!(prompt.contains("PR title"));
         assert!(prompt.contains("must be properly escaped"));
+        
+        // Check for examples
+        assert!(prompt.contains("feat: add multiply function"));
+        assert!(prompt.contains("Implement solution for #"));
+        
+        // Check for clear instructions
+        assert!(prompt.contains("Do NOT modify test files"));
+        assert!(prompt.contains("MUST target src/solver/github.rs"));
     }
 }
