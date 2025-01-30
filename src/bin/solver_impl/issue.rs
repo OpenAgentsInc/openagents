@@ -36,7 +36,7 @@ pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<C
     Ok((
         octocrab::models::issues::Issue::try_from(issue)?,
         comments.into_iter()
-            .map(|c| octocrab::models::issues::Comment::try_from(c))
+            .map(octocrab::models::issues::Comment::try_from)
             .collect::<Result<Vec<_>, _>>()?
     ))
 }
