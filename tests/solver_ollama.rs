@@ -1,4 +1,5 @@
 use anyhow::Result;
+use futures_util::StreamExt;
 use openagents::solver::{
     changes::generation::generate_changes,
     file_list::generate_file_list,
@@ -62,24 +63,19 @@ async fn test_ollama_planning() -> Result<()> {
             "Add a multiply function to lib.rs",
             "src/main.rs\nsrc/lib.rs",
         )
-        .await;
+        .await?;
 
     let mut saw_content = false;
-    while let Some(update) = stream.recv().await {
-        match update {
-            openagents::server::services::deepseek::StreamUpdate::Content(content) => {
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(content) => {
                 println!("Content: {}", content);
                 saw_content = true;
             }
-            openagents::server::services::deepseek::StreamUpdate::Reasoning(reasoning) => {
-                println!("Reasoning: {}", reasoning);
-                saw_content = true;
-            }
-            openagents::server::services::deepseek::StreamUpdate::Done => {
-                println!("Done");
+            Err(e) => {
+                println!("Error: {}", e);
                 break;
             }
-            _ => {}
         }
     }
 
