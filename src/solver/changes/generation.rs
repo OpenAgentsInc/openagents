@@ -41,7 +41,9 @@ Change Request:
 Title: {}
 Description: {}
 
-Output a JSON object with:
+IMPORTANT: Respond ONLY with a valid JSON object. No other text, no thinking process, no markdown.
+
+The JSON object must have:
 1. "changes": Array of change blocks with:
    - "path": File path
    - "search": Exact content to find
@@ -55,9 +57,8 @@ Rules:
 - Keep changes minimal and focused
 - Preserve code style and formatting
 - Empty search means new file content
-- Do not put it inside a markdown code block, respond ONLY with the valid JSON. (Do not say "```json" at the beginning)
 
-Example Response:
+Example:
 {{
     "changes": [
         {{
