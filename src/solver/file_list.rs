@@ -92,6 +92,7 @@ Rules:
 - Explain the planned changes for each file
 - Focus on minimal, targeted changes
 - Return ONLY the JSON object, no other text
+- DO NOT put the object in Markdown backticks, ONLY respond with valid JSON
 
 Example response:
 {{
@@ -113,7 +114,7 @@ Example response:
             "https://github.com/OpenAgentsInc/openagents",
         )
         .json(&serde_json::json!({
-            "model": "anthropic/claude-2",
+            "model": "anthropic/claude-3.5-haiku",
             "messages": [{"role": "user", "content": prompt}]
         }))
         .send()

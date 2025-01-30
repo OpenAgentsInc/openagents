@@ -12,7 +12,7 @@ pub use auth::OIDCConfig;
 pub use chat_database::ChatDatabase;
 pub use deepseek::{DeepSeekService, StreamUpdate};
 pub use gateway::{types::GatewayMetadata, Gateway};
-pub use github_issue::GitHubService;
+pub use github_issue::{GitHubComment, GitHubIssue, GitHubService, GitHubUser};
 pub use model_router::ModelRouter;
 pub use openrouter::OpenRouterService;
 pub use repomap::RepomapService;

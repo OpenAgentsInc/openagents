@@ -1,5 +1,6 @@
 use crate::server::services::github_issue::{GitHubComment, GitHubIssue, GitHubService};
 use anyhow::{anyhow, Result};
+use tracing::info;
 
 pub struct GitHubContext {
     pub owner: String,
@@ -25,9 +26,15 @@ impl GitHubContext {
     }
 
     pub async fn create_branch(&self, branch_name: &str, base_branch: &str) -> Result<()> {
+        info!(
+            "Creating branch '{}' from base '{}'",
+            branch_name, base_branch
+        );
         self.service
             .create_branch(&self.owner, &self.repo, branch_name, base_branch)
-            .await
+            .await?;
+        info!("Successfully created branch '{}'", branch_name);
+        Ok(())
     }
 
     pub async fn create_pull_request(

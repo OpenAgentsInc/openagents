@@ -56,7 +56,8 @@ impl OpenRouterService {
 
     fn get_model(&self) -> String {
         // Always use Claude for now
-        "anthropic/claude-3.5-haiku".to_string()
+        //"anthropic/claude-3.5-sonnet".to_string()
+        "deepseek/deepseek-chat".to_string()
     }
 
     fn prepare_messages(&self, prompt: &str) -> Vec<Value> {
@@ -120,9 +121,9 @@ impl Gateway for OpenRouterService {
             name: "OpenRouter".to_string(),
             openai_compatible: true,
             supported_features: vec!["chat".to_string(), "streaming".to_string()],
-            default_model: "anthropic/claude-3.5-haiku".to_string(),
+            default_model: "anthropic/claude-3.5-sonnet".to_string(),
             available_models: vec![
-                "anthropic/claude-3.5-haiku".to_string(),
+                "anthropic/claude-3.5-sonnet".to_string(),
                 "deepseek/deepseek-chat".to_string(),
             ],
         }

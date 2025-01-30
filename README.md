@@ -11,6 +11,7 @@ This repo holds the backend and website at [openagents.com](https://openagents.c
 The solver is an intelligent automation tool designed to help developers streamline code changes and problem-solving across repositories.
 
 ### Key Features
+
 - Automated GitHub issue analysis
 - Context-aware code change generation
 - Intelligent branch and pull request creation
@@ -24,10 +25,10 @@ The solver is an intelligent automation tool designed to help developers streaml
 ```
 
 ### Requirements
+
 - GitHub authentication token
 - Rust toolchain (1.70+ recommended)
 - Git installed
-
 
 ## Previous Work
 
