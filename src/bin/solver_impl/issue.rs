@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Result};
-use openagents::solver::{Cli, GitHubContext, Issue, Comment};
+use openagents::solver::{Cli, GitHubContext};
+use octocrab::models::issues::{Issue, Comment};
 use tracing::info;
 
 pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<Comment>)> {
@@ -27,7 +28,9 @@ pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<C
         println!("\nComments ({}):", comments.len());
         for comment in &comments {
             println!("\nFrom @{} at {}:", comment.user.login, comment.created_at);
-            println!("{}\n", comment.body);
+            if let Some(body) = &comment.body {
+                println!("{}\n", body);
+            }
         }
     }
 
