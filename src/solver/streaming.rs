@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures_util::StreamExt;
-use std::pin::Pin;
+use std::{io::Write, pin::Pin};
 use termcolor::Color;
 use tracing::info;
 
@@ -13,7 +13,8 @@ pub async fn handle_plan_stream(
         match result {
             Ok(content) => {
                 full_response.push_str(&content);
-                crate::solver::display::print_colored(&content, Color::White)?;
+                print!("{}", content);
+                std::io::stdout().flush()?;
             }
             Err(e) => {
                 info!("Error in stream: {}", e);
@@ -22,10 +23,7 @@ pub async fn handle_plan_stream(
         }
     }
 
-    crate::solver::display::print_colored(
-        "\nPlan generation complete.\n",
-        Color::Green,
-    )?;
+    println!("\nPlan generation complete.\n");
 
     Ok(full_response)
 }
