@@ -1,12 +1,12 @@
 use anyhow::Result;
-use openagents::solver::context::SolutionContext;
+use openagents::solver::context::SolverContext;
 use openagents::solver::{Change, ChangeError};
 use std::fs;
 use tempfile::TempDir;
 
-fn setup_test_context() -> Result<(SolutionContext, TempDir)> {
+fn setup_test_context() -> Result<(SolverContext, TempDir)> {
     let temp_dir = tempfile::tempdir()?;
-    let context = SolutionContext::new_with_dir(
+    let context = SolverContext::new_with_dir(
         temp_dir.path().to_path_buf(),
         "test_key".to_string(),
         Some("test_token".to_string()),
@@ -123,7 +123,7 @@ fn test_cleanup() -> Result<()> {
     let temp_path = temp_dir.path().to_path_buf();
 
     {
-        let context = SolutionContext::new_with_dir(
+        let context = SolverContext::new_with_dir(
             temp_path.clone(),
             "test_key".to_string(),
             Some("test_token".to_string()),

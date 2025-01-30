@@ -1,4 +1,4 @@
-use openagents::solver::types::{Change, ChangeError};
+use openagents::solver::types::Change;
 
 #[test]
 fn test_change_validation() {
