@@ -67,6 +67,7 @@ impl PlanningContext {
         title: &str,
         description: &str,
         repo_map: &str,
+        file_context: &str,
         feedback: Option<&str>,
     ) -> String {
         let base_prompt = format!(
@@ -78,13 +79,8 @@ Context:
 - PR titles are currently generic like "Implement solution for #{}"
 - We want descriptive titles that follow the format "<type>: <description>"
 
-Current code (in src/solver/github.rs):
-```rust
-async fn generate_pr_title(&self, issue_number: i32, context: &str) -> Result<String> {{
-    // This function needs to be improved to generate better titles
-    // It uses self.llm_service.chat() to generate titles using DeepSeek
-}}
-```
+Relevant Files:
+{}
 
 Required Changes:
 1. Modify ONLY the generate_pr_title function in src/solver/github.rs
@@ -142,8 +138,10 @@ Rules:
 - Include enough context for unique matches
 - Keep changes minimal and focused
 - Preserve code style and formatting
-- All strings must be properly escaped"#,
+- All strings must be properly escaped
+- Use the existing code structure and variables"#,
             issue_number,
+            file_context,
             escape_json_string(title),
             escape_json_string(description),
             escape_json_string(repo_map)
@@ -162,11 +160,12 @@ Rules:
         title: &str,
         description: &str,
         repo_map: &str,
+        file_context: &str,
     ) -> Result<String> {
         let mut feedback = None;
         
         for attempt in 0..MAX_RETRIES {
-            let prompt = self.generate_prompt(issue_number, title, description, repo_map, feedback);
+            let prompt = self.generate_prompt(issue_number, title, description, repo_map, file_context, feedback);
             let (response, _) = self.service.chat(prompt, true).await?;
             
             // Try to fix common JSON issues
@@ -181,6 +180,7 @@ Rules:
                 "Previous attempt was invalid because:\n\
                 - Response must focus on pull request title generation\n\
                 - Must modify src/solver/github.rs generate_pr_title function\n\
+                - Must use existing code structure and variables\n\
                 - All strings must be properly escaped\n\
                 - PR titles must start with feat:, fix:, etc.\n\
                 - Do not modify test files"
@@ -198,8 +198,9 @@ Rules:
         title: &str,
         description: &str,
         repo_map: &str,
+        file_context: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
-        let prompt = self.generate_prompt(issue_number, title, description, repo_map, None);
+        let prompt = self.generate_prompt(issue_number, title, description, repo_map, file_context, None);
         self.service.chat_stream(prompt, true).await
     }
 
@@ -209,8 +210,9 @@ Rules:
         title: &str,
         description: &str,
         repo_map: &str,
+        file_context: &str,
     ) -> Result<String> {
-        self.retry_with_feedback(issue_number, title, description, repo_map).await
+        self.retry_with_feedback(issue_number, title, description, repo_map, file_context).await
     }
 }
 
@@ -276,6 +278,7 @@ mod tests {
             "Test title",
             "Test description",
             "Test repo map",
+            "Test file context",
             None,
         );
         
@@ -293,5 +296,6 @@ mod tests {
         // Check for clear instructions
         assert!(prompt.contains("Do NOT modify test files"));
         assert!(prompt.contains("MUST target src/solver/github.rs"));
+        assert!(prompt.contains("Use the existing code structure"));
     }
 }
