@@ -9,11 +9,17 @@ pub struct OllamaService {
     config: super::config::OllamaConfig,
 }
 
-impl OllamaService {
-    pub fn new() -> Self {
+impl Default for OllamaService {
+    fn default() -> Self {
         Self {
             config: super::config::OllamaConfig::global().clone(),
         }
+    }
+}
+
+impl OllamaService {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_config(base_url: &str, model: &str) -> Self {
