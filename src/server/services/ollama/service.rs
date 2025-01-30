@@ -1,5 +1,5 @@
 use crate::server::services::gateway::{
-    types::{ChatRequest, GatewayMetadata, Message},
+    types::{GatewayMetadata, Message},
     Gateway,
 };
 use crate::server::services::ollama::types::*;
