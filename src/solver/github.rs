@@ -1,6 +1,5 @@
 use crate::server::services::github_issue::{GitHubComment, GitHubIssue, GitHubService};
 use crate::server::services::deepseek::DeepSeekService;
-use crate::solver::json::escape_json_string;
 use anyhow::{anyhow, Result};
 use tracing::{debug, info, warn};
 
