@@ -1,7 +1,8 @@
 use serde_json::Value;
 
 pub fn escape_json_string(s: &str) -> String {
-    s.replace('\"', "\\\"")
+    s.replace('\\', "\\\\")
+     .replace('\"', "\\\"")
      .replace('\n', "\\n")
      .replace('\r', "\\r")
      .replace('\t', "\\t")
