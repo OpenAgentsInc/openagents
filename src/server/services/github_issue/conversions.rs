@@ -1,99 +1,99 @@
 use super::{GitHubIssue, GitHubComment, GitHubUser};
-use octocrab::models::issues::{Issue, Comment};
-use octocrab::models::User;
 use chrono::{DateTime, Utc};
+use url::Url;
 
-impl From<GitHubIssue> for Issue {
+// Convert our GitHubIssue to octocrab's Issue
+impl From<GitHubIssue> for octocrab::models::issues::Issue {
     fn from(issue: GitHubIssue) -> Self {
-        Issue {
-            id: 0,  // Not used
-            number: issue.number,
+        let html_url = Url::parse(&issue.html_url).unwrap_or_else(|_| {
+            Url::parse("https://github.com").unwrap()
+        });
+
+        let state = match issue.state.as_str() {
+            "open" => octocrab::models::IssueState::Open,
+            "closed" => octocrab::models::IssueState::Closed,
+            _ => octocrab::models::IssueState::Open,
+        };
+
+        Self {
+            id: octocrab::models::IssueId(0), // Not used
+            number: issue.number as u64,
             title: issue.title,
             body: issue.body,
-            state: issue.state,
-            html_url: issue.html_url,
-            user: User::default(),  // Not used
-            labels: vec![],  // Not used
-            assignee: None,  // Not used
-            assignees: vec![],  // Not used
-            milestone: None,  // Not used
-            locked: false,  // Not used
-            active_lock_reason: None,  // Not used
-            comments: 0,  // Not used
-            pull_request: None,  // Not used
-            closed_at: None,  // Not used
-            created_at: Utc::now(),  // Not used
-            updated_at: Utc::now(),  // Not used
-            closed_by: None,  // Not used
-            author_association: String::new(),  // Not used
-            draft: None,  // Not used
+            state,
+            html_url,
+            user: octocrab::models::Author::default(),
+            labels: vec![],
+            assignee: None,
+            assignees: vec![],
+            milestone: None,
+            locked: false,
+            active_lock_reason: None,
+            comments: 0,
+            pull_request: None,
+            closed_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            node_id: String::new(),
+            url: html_url.clone(),
+            repository_url: html_url.clone(),
+            labels_url: html_url.clone(),
+            comments_url: html_url.clone(),
+            events_url: html_url.clone(),
+            author_association: String::new(),
         }
     }
 }
 
-impl From<GitHubUser> for User {
+// Convert our GitHubUser to octocrab's Author
+impl From<GitHubUser> for octocrab::models::Author {
     fn from(user: GitHubUser) -> Self {
-        User {
+        Self {
             login: user.login,
             id: user.id,
-            node_id: String::new(),  // Not used
-            avatar_url: String::new(),  // Not used
-            gravatar_id: None,  // Not used
-            url: String::new(),  // Not used
-            html_url: String::new(),  // Not used
-            followers_url: String::new(),  // Not used
-            following_url: String::new(),  // Not used
-            gists_url: String::new(),  // Not used
-            starred_url: String::new(),  // Not used
-            subscriptions_url: String::new(),  // Not used
-            organizations_url: String::new(),  // Not used
-            repos_url: String::new(),  // Not used
-            events_url: String::new(),  // Not used
-            received_events_url: String::new(),  // Not used
-            r#type: String::new(),  // Not used
-            site_admin: false,  // Not used
-            name: None,  // Not used
-            email: None,  // Not used
-            blog: None,  // Not used
-            company: None,  // Not used
-            location: None,  // Not used
-            hireable: None,  // Not used
-            bio: None,  // Not used
-            twitter_username: None,  // Not used
-            public_repos: None,  // Not used
-            public_gists: None,  // Not used
-            followers: None,  // Not used
-            following: None,  // Not used
-            created_at: None,  // Not used
-            updated_at: None,  // Not used
-            private_gists: None,  // Not used
-            total_private_repos: None,  // Not used
-            owned_private_repos: None,  // Not used
-            disk_usage: None,  // Not used
-            collaborators: None,  // Not used
-            two_factor_authentication: None,  // Not used
+            node_id: String::new(),
+            avatar_url: Url::parse("https://github.com").unwrap(),
+            gravatar_id: None,
+            url: Url::parse("https://github.com").unwrap(),
+            html_url: Url::parse("https://github.com").unwrap(),
+            followers_url: Url::parse("https://github.com").unwrap(),
+            following_url: Url::parse("https://github.com").unwrap(),
+            gists_url: Url::parse("https://github.com").unwrap(),
+            starred_url: Url::parse("https://github.com").unwrap(),
+            subscriptions_url: Url::parse("https://github.com").unwrap(),
+            organizations_url: Url::parse("https://github.com").unwrap(),
+            repos_url: Url::parse("https://github.com").unwrap(),
+            events_url: Url::parse("https://github.com").unwrap(),
+            received_events_url: Url::parse("https://github.com").unwrap(),
+            r#type: String::from("User"),
+            site_admin: false,
         }
     }
 }
 
-impl From<GitHubComment> for Comment {
+// Convert our GitHubComment to octocrab's Comment
+impl From<GitHubComment> for octocrab::models::issues::Comment {
     fn from(comment: GitHubComment) -> Self {
-        Comment {
-            id: comment.id,
-            node_id: String::new(),  // Not used
-            url: String::new(),  // Not used
-            html_url: String::new(),  // Not used
+        let created_at = DateTime::parse_from_rfc3339(&comment.created_at)
+            .unwrap_or_default()
+            .with_timezone(&Utc);
+
+        let updated_at = DateTime::parse_from_rfc3339(&comment.updated_at)
+            .unwrap_or_default()
+            .with_timezone(&Utc);
+
+        Self {
+            id: octocrab::models::CommentId(comment.id),
+            node_id: String::new(),
+            url: Url::parse("https://github.com").unwrap(),
+            html_url: Url::parse("https://github.com").unwrap(),
             body: Some(comment.body),
             user: comment.user.into(),
-            created_at: DateTime::parse_from_rfc3339(&comment.created_at)
-                .unwrap_or_default()
-                .with_timezone(&Utc),
-            updated_at: DateTime::parse_from_rfc3339(&comment.updated_at)
-                .unwrap_or_default()
-                .with_timezone(&Utc),
-            issue_url: None,  // Not used
-            author_association: String::new(),  // Not used
-            performed_via_github_app: None,  // Not used
+            created_at,
+            updated_at: Some(updated_at),
+            issue_url: None,
+            body_text: None,
+            body_html: None,
         }
     }
 }
