@@ -125,7 +125,7 @@ fn test_parse_search_replace_invalid() -> Result<()> {
 Invalid format without proper markers"#;
 
     let result = parse_search_replace(content);
-    assert!(matches!(result, Err(e) if e.to_string().contains("Missing search/replace markers")));
+    assert!(matches!(result, Err(e) if e.to_string().contains("Invalid format")));
 
     Ok(())
 }
