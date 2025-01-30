@@ -1,5 +1,5 @@
 use crate::server::services::gateway::Gateway;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use futures_util::Stream;
 use std::pin::Pin;
 
@@ -35,13 +35,36 @@ Description:
 Repository Map:
 {}
 
-Output a detailed implementation plan that:
-1. Lists files that need to be modified
-2. Describes specific changes needed
-3. Explains implementation steps
-4. Provides rationale for changes
+First, think through the changes needed. Then output your solution as a JSON object in a markdown code block like this:
 
-Focus on minimal, precise changes that directly address the issue requirements.
+```json
+{{
+    "changes": [
+        {{
+            "path": "path/to/file",
+            "search": "exact content to find",
+            "replace": "new content",
+            "reason": "why this change is needed"
+        }}
+    ],
+    "reasoning": "Overall explanation of changes"
+}}
+```
+
+The JSON object must have:
+1. "changes": Array of change blocks with:
+   - "path": File path
+   - "search": Exact content to find
+   - "replace": New content to replace it with
+   - "reason": Why this change is needed
+2. "reasoning": Overall explanation of changes
+
+Rules:
+- Use EXACT content matches for search
+- Include enough context for unique matches
+- Keep changes minimal and focused
+- Preserve code style and formatting
+- Empty search means new file content
 "#,
             issue_number, title, description, repo_map
         );
@@ -68,13 +91,36 @@ Description:
 Repository Map:
 {}
 
-Output a detailed implementation plan that:
-1. Lists files that need to be modified
-2. Describes specific changes needed
-3. Explains implementation steps
-4. Provides rationale for changes
+First, think through the changes needed. Then output your solution as a JSON object in a markdown code block like this:
 
-Focus on minimal, precise changes that directly address the issue requirements.
+```json
+{{
+    "changes": [
+        {{
+            "path": "path/to/file",
+            "search": "exact content to find",
+            "replace": "new content",
+            "reason": "why this change is needed"
+        }}
+    ],
+    "reasoning": "Overall explanation of changes"
+}}
+```
+
+The JSON object must have:
+1. "changes": Array of change blocks with:
+   - "path": File path
+   - "search": Exact content to find
+   - "replace": New content to replace it with
+   - "reason": Why this change is needed
+2. "reasoning": Overall explanation of changes
+
+Rules:
+- Use EXACT content matches for search
+- Include enough context for unique matches
+- Keep changes minimal and focused
+- Preserve code style and formatting
+- Empty search means new file content
 "#,
             issue_number, title, description, repo_map
         );
