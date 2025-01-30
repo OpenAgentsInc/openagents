@@ -51,7 +51,8 @@ impl OllamaService {
             }),
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/chat", self.config.base_url))
             .json(&request)
             .send()
@@ -86,10 +87,7 @@ impl Gateway for OllamaService {
         GatewayMetadata {
             name: "ollama".to_string(),
             openai_compatible: false,
-            supported_features: vec![
-                "chat".to_string(),
-                "streaming".to_string(),
-            ],
+            supported_features: vec!["chat".to_string(), "streaming".to_string()],
             default_model: self.config.model.clone(),
             available_models: vec![self.config.model.clone()],
         }
@@ -107,7 +105,7 @@ impl Gateway for OllamaService {
         _use_reasoner: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
         let response = self.make_request(prompt, true).await?;
-        
+
         // Split the response stream by newlines to handle each chunk
         let stream = response
             .bytes_stream()

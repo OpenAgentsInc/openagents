@@ -634,4 +634,3 @@ src/repo/git.rs:
 │fn checkout_branch
 
 src/repo/mod.rs:
-
