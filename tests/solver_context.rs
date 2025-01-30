@@ -19,7 +19,7 @@ fn test_context_initialization() -> Result<()> {
 
 #[test]
 fn test_apply_changes_new_file() -> Result<()> {
-    let (mut context, _temp_dir) = setup_test_context()?;
+    let (context, _temp_dir) = setup_test_context()?;
 
     // Create a new file
     let changes = vec![Change::new(
@@ -41,7 +41,7 @@ fn test_apply_changes_new_file() -> Result<()> {
 
 #[test]
 fn test_apply_changes_modify_file() -> Result<()> {
-    let (mut context, _temp_dir) = setup_test_context()?;
+    let (context, _temp_dir) = setup_test_context()?;
 
     // Create initial file
     let file_path = "src/test.rs";
@@ -69,7 +69,7 @@ fn test_apply_changes_modify_file() -> Result<()> {
 
 #[test]
 fn test_apply_changes_no_match() -> Result<()> {
-    let (mut context, _temp_dir) = setup_test_context()?;
+    let (context, _temp_dir) = setup_test_context()?;
 
     // Create initial file
     let file_path = "src/test.rs";
@@ -95,7 +95,7 @@ fn test_apply_changes_no_match() -> Result<()> {
 
 #[test]
 fn test_apply_changes_file_not_found() -> Result<()> {
-    let (mut context, _temp_dir) = setup_test_context()?;
+    let (context, _temp_dir) = setup_test_context()?;
 
     let changes = vec![Change::new(
         "non_existent.rs".to_string(),
@@ -126,7 +126,7 @@ fn test_cleanup() -> Result<()> {
         assert!(context.temp_dir.join("src/test.rs").exists());
 
         // Clean up
-        context.cleanup();
+        let _ = context.cleanup();
     }
 
     // Verify directory was cleaned up
