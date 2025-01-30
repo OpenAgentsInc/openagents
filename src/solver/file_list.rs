@@ -54,10 +54,10 @@ pub async fn generate_file_list(
     title: &str,
     description: &str,
     repo_map: &str,
-    openrouter_key: &str,
+    ollama_url: &str,
 ) -> Result<(Vec<String>, String)> {
-    // For tests, return mock response if using test key
-    if openrouter_key == "test_key" {
+    // For tests, return mock response if using test URL
+    if ollama_url == "test_url" {
         // Handle empty repository case
         if repo_map.is_empty() {
             return Ok((
@@ -102,43 +102,42 @@ Example response:
         title, description, repo_map
     );
 
-    debug!("Sending prompt to OpenRouter:\n{}", prompt);
+    debug!("Sending prompt to Ollama:\n{}", prompt);
 
-    // Call OpenRouter API
+    // Call Ollama API
     let client = reqwest::Client::new();
     let response = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", openrouter_key))
-        .header(
-            "HTTP-Referer",
-            "https://github.com/OpenAgentsInc/openagents",
-        )
+        .post(format!("{}/api/chat", ollama_url))
         .json(&serde_json::json!({
-            "model": "anthropic/claude-3.5-haiku",
-            "messages": [{"role": "user", "content": prompt}]
+            "model": "codellama:latest",
+            "messages": [{
+                "role": "user",
+                "content": prompt
+            }],
+            "stream": false
         }))
         .send()
         .await
-        .context("Failed to send request to OpenRouter")?;
+        .context("Failed to send request to Ollama")?;
 
     let response_json = response
         .json::<serde_json::Value>()
         .await
-        .context("Failed to parse OpenRouter response as JSON")?;
+        .context("Failed to parse Ollama response as JSON")?;
 
     debug!(
-        "OpenRouter response:\n{}",
+        "Ollama response:\n{}",
         serde_json::to_string_pretty(&response_json)?
     );
 
-    let content = response_json["choices"][0]["message"]["content"]
+    let content = response_json["message"]["content"]
         .as_str()
         .ok_or_else(|| {
             error!(
-                "Invalid response format. Expected content in choices[0].message.content. Got:\n{}",
+                "Invalid response format. Expected content in message.content. Got:\n{}",
                 serde_json::to_string_pretty(&response_json).unwrap_or_default()
             );
-            anyhow::anyhow!("Invalid response format from OpenRouter")
+            anyhow::anyhow!("Invalid response format from Ollama")
         })?;
 
     info!("Parsing LLM response:\n{}", content);
@@ -249,7 +248,7 @@ That's all."#,
             "Add multiply function",
             "Add a multiply function to lib.rs",
             repo_map,
-            "test_key",
+            "test_url",
         )
         .await?;
 
@@ -269,7 +268,7 @@ That's all."#,
 
         let repo_map = "src/main.rs\nsrc/lib.rs\nsrc/nonexistent.rs";
         let (files, _) =
-            generate_file_list("Update files", "Update all files", repo_map, "test_key").await?;
+            generate_file_list("Update files", "Update all files", repo_map, "test_url").await?;
 
         assert!(!files.contains(&"src/nonexistent.rs".to_string()));
         assert!(files.iter().all(|path| Path::new(path).exists()));
@@ -286,7 +285,7 @@ That's all."#,
             "Add new file",
             "Create a new file with some functionality",
             "",
-            "test_key",
+            "test_url",
         )
         .await?;
 
