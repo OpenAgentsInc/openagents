@@ -1,6 +1,6 @@
 use crate::server::services::deepseek::StreamUpdate;
 use crate::server::services::gateway::Gateway;
-use crate::server::services::ollama::{OllamaConfig, OllamaService};
+use crate::server::services::ollama::service::OllamaService;
 use anyhow::Result;
 use futures::StreamExt;
 use tokio::sync::mpsc;
@@ -12,20 +12,13 @@ pub struct PlanningContext {
 
 impl PlanningContext {
     pub fn new() -> Result<Self> {
-        let url =
-            std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
-        let model =
-            std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "codellama:latest".to_string());
-
-        let config = OllamaConfig {
-            url,
-            model,
-            use_reasoner: true,
-            test_mode: false,
-        };
+        let base_url = std::env::var("OLLAMA_URL")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let model = std::env::var("OLLAMA_MODEL")
+            .unwrap_or_else(|_| "codellama:latest".to_string());
 
         Ok(Self {
-            service: OllamaService::with_config(config),
+            service: OllamaService::with_config(&base_url, &model),
         })
     }
 
