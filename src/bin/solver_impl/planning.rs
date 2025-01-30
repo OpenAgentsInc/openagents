@@ -12,7 +12,6 @@ const ERR_INVALID_CHANGES: &str = "Changes do not match issue intent";
 
 // File paths
 const GITHUB_RS_PATH: &str = "src/solver/github.rs";
-const JSON_RS_PATH: &str = "src/solver/json.rs";
 
 // JSON keys
 const KEY_CHANGES: &str = "changes";
