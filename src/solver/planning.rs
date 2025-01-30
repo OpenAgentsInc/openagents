@@ -54,8 +54,9 @@ mod tests {
     use super::*;
     use mockito::Server;
     use serde_json::json;
+    use tokio::test;
 
-    #[tokio::test]
+    #[test]
     async fn test_validate_llm_response() {
         let mut server = Server::new();
         let mock_response = json!({
