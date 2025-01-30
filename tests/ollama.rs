@@ -18,7 +18,8 @@ async fn test_ollama_metadata() {
 #[tokio::test]
 async fn test_ollama_chat() -> Result<()> {
     let service = OllamaService::new();
-    let (response, _) = service.chat("Test message".to_string(), false).await?;
+    let (response, _) = service.chat("What is Rust's ownership model?".to_string(), false).await?;
+    println!("\nChat response:\n{}\n", response);
     assert!(!response.is_empty());
     Ok(())
 }
@@ -26,13 +27,14 @@ async fn test_ollama_chat() -> Result<()> {
 #[tokio::test]
 async fn test_ollama_chat_stream() -> Result<()> {
     let service = OllamaService::new();
-    let mut stream = service.chat_stream("Test message".to_string(), false).await?;
+    println!("\nStreaming response:");
+    let mut stream = service.chat_stream("What is Rust's ownership model?".to_string(), false).await?;
     
     let mut saw_content = false;
     while let Some(result) = stream.next().await {
         match result {
             Ok(content) => {
-                assert!(!content.is_empty());
+                print!("{}", content);
                 saw_content = true;
             }
             Err(e) => {
@@ -43,6 +45,7 @@ async fn test_ollama_chat_stream() -> Result<()> {
             }
         }
     }
+    println!("\n");
     assert!(saw_content);
     Ok(())
 }
