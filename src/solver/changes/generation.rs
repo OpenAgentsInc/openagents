@@ -1,6 +1,8 @@
 use crate::solver::changes::types::ChangeResponse;
 use crate::solver::types::Change;
 use anyhow::{anyhow, Result};
+use futures_util::StreamExt;
+use std::io::Write;
 use tracing::{debug, error, info};
 
 /// Generates changes for a specific file
@@ -41,9 +43,7 @@ Change Request:
 Title: {}
 Description: {}
 
-IMPORTANT: Respond ONLY with a valid JSON object. No other text, no thinking process, no markdown.
-
-The JSON object must have:
+First, think through the changes needed. Then output a JSON object with:
 1. "changes": Array of change blocks with:
    - "path": File path
    - "search": Exact content to find
@@ -75,75 +75,40 @@ Example:
 
     debug!("Sending prompt to Ollama:\n{}", prompt);
 
-    // Call Ollama API
-    let client = reqwest::Client::new();
-    let response = client
-        .post(format!("{}/api/chat", ollama_url))
-        .json(&serde_json::json!({
-            "model": model,
-            "messages": [{
-                "role": "user",
-                "content": prompt
-            }],
-            "stream": false
-        }))
-        .send()
-        .await?;
+    // Initialize Ollama service
+    let service = crate::server::services::ollama::OllamaService::new();
+    let mut stream = service.chat_stream(prompt, true).await?;
 
-    let response_json = response.json::<serde_json::Value>().await?;
-
-    debug!(
-        "Ollama response:\n{}",
-        serde_json::to_string_pretty(&response_json)?
-    );
-
-    // Check for error response
-    if let Some(error) = response_json.get("error") {
-        let error_msg = error["message"].as_str().unwrap_or("Unknown error");
-        let error_code = error["code"].as_i64().unwrap_or(0);
-
-        error!("Ollama API error: {} ({})", error_msg, error_code);
-
-        // Handle specific error codes
-        match error_code {
-            500 => {
-                return Err(anyhow!(
-                    "Ollama internal error: {}. Please try again",
-                    error_msg
-                ));
+    // Process the stream
+    let mut json_response = None;
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(content) => {
+                // Check if this is a JSON response
+                if content.starts_with("\n<json>") && content.ends_with("</json>") {
+                    let json_str = &content[6..content.len()-7]; // Remove <json> tags
+                    json_response = Some(json_str.to_string());
+                } else {
+                    // Print thinking process
+                    print!("{}", content);
+                    std::io::stdout().flush()?;
+                }
             }
-            429 => {
-                return Err(anyhow!(
-                    "Rate limit exceeded. Please wait a moment and try again"
-                ));
-            }
-            _ => {
-                return Err(anyhow!(
-                    "Ollama API error: {} ({})",
-                    error_msg,
-                    error_code
-                ));
+            Err(e) => {
+                error!("Error in stream: {}", e);
+                break;
             }
         }
     }
 
-    let content = response_json["message"]["content"]
-        .as_str()
-        .ok_or_else(|| {
-            error!(
-                "Invalid response format. Expected content in message.content. Full response:\n{}",
-                serde_json::to_string_pretty(&response_json).unwrap_or_default()
-            );
-            anyhow!("Invalid response format. See logs for details.")
-        })?;
+    // Parse the JSON response
+    let json_str = json_response.ok_or_else(|| anyhow!("No JSON response found in stream"))?;
+    info!("Parsing LLM response:\n{}", json_str);
 
-    info!("Parsing LLM response:\n{}", content);
-
-    // Parse response
-    let change_response: ChangeResponse = serde_json::from_str(content).map_err(|e| {
+    let change_response: ChangeResponse = serde_json::from_str(&json_str).map_err(|e| {
         error!(
             "Failed to parse LLM response as JSON: {}\nResponse:\n{}",
-            e, content
+            e, json_str
         );
         anyhow!("Failed to parse LLM response. See logs for details.")
     })?;
