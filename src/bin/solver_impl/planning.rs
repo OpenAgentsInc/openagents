@@ -10,10 +10,11 @@ pub async fn handle_planning(
     title: &str,
     description: &str,
     repo_map: &str,
+    ollama_url: &str,
 ) -> Result<String> {
     info!("Generating implementation plan...");
 
-    let context = PlanningContext::new()?;
+    let context = PlanningContext::new(ollama_url)?;
     let stream = context
         .generate_plan(issue_number, title, description, repo_map)
         .await?;
