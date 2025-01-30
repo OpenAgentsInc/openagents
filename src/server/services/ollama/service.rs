@@ -32,15 +32,17 @@ impl OllamaService {
     }
 
     async fn make_request(&self, prompt: String, stream: bool) -> Result<reqwest::Response> {
-        let request = ChatRequest {
+        let request = OllamaChatRequest {
             model: self.config.model.clone(),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: prompt,
             }],
             stream,
-            temperature: 0.7,
-            max_tokens: None,
+            options: Some(OllamaOptions {
+                temperature: Some(0.7),
+                num_predict: Some(100),
+            }),
         };
 
         let response = self.client
@@ -67,6 +69,7 @@ impl OllamaService {
             return Ok(None);
         }
 
+        // Extract just the new content from the message
         Ok(Some(response.message.content))
     }
 }
@@ -98,17 +101,22 @@ impl Gateway for OllamaService {
         _use_reasoner: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
         let response = self.make_request(prompt, true).await?;
-        let stream = response.bytes_stream();
-
-        let content_stream = stream
+        
+        // Split the response stream by newlines to handle each chunk
+        let stream = response
+            .bytes_stream()
             .map_err(|e| anyhow!(e))
             .try_filter_map(|chunk| {
                 let fut = async move {
-                    Self::process_stream_chunk(&chunk).await
+                    match Self::process_stream_chunk(&chunk).await {
+                        Ok(Some(content)) => Ok(Some(content)),
+                        Ok(None) => Ok(None),
+                        Err(e) => Err(e),
+                    }
                 };
                 Box::pin(fut)
             });
 
-        Ok(Box::pin(content_stream))
+        Ok(Box::pin(stream))
     }
 }
