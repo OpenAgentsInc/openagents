@@ -31,6 +31,9 @@ async fn main() -> Result<()> {
     // Get GitHub token from environment
     let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
 
+    // Get Ollama URL from environment or use default
+    let ollama_url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+
     // Get repository owner/name
     let repo = cli
         .repo
@@ -58,6 +61,17 @@ async fn main() -> Result<()> {
         &issue.title,
         issue.body.as_deref().unwrap_or("No description provided"),
         &repo_map,
+    )
+    .await?;
+
+    // Generate and apply solution
+    solver_impl::solution::handle_solution(
+        cli.issue,
+        &issue.title,
+        issue.body.as_deref().unwrap_or("No description provided"),
+        &plan,
+        &repo_map,
+        &ollama_url,
     )
     .await?;
 
