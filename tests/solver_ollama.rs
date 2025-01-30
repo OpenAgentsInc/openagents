@@ -1,5 +1,9 @@
 use anyhow::Result;
-use openagents::solver::planning::PlanningContext;
+use openagents::solver::{
+    changes::generation::generate_changes,
+    file_list::generate_file_list,
+    planning::PlanningContext,
+};
 use std::fs;
 use tempfile::tempdir;
 
@@ -9,18 +13,16 @@ async fn test_ollama_file_list() -> Result<()> {
     let test_file = temp_dir.path().join("test.rs");
     fs::write(&test_file, "// Original content")?;
 
-    let context = PlanningContext::new("test_url")?;
-    let result = context
-        .generate_file_list(
-            123,
-            "Add multiply function",
-            "Add a multiply function to lib.rs",
-            "src/main.rs\nsrc/lib.rs",
-            "test_url",
-        )
-        .await;
+    let (files, reasoning) = generate_file_list(
+        "Add multiply function",
+        "Add a multiply function to lib.rs",
+        "src/main.rs\nsrc/lib.rs",
+        "test_url",
+    )
+    .await?;
 
-    assert!(result.is_ok());
+    assert!(!files.is_empty());
+    assert!(!reasoning.is_empty());
     Ok(())
 }
 
@@ -51,17 +53,16 @@ async fn test_ollama_changes() -> Result<()> {
     let test_file = temp_dir.path().join("test.rs");
     fs::write(&test_file, "// Original content")?;
 
-    let context = PlanningContext::new("test_url")?;
-    let result = context
-        .generate_changes(
-            "test.rs",
-            "// Original content",
-            "Add multiply function",
-            "Add a multiply function",
-            "test_url",
-        )
-        .await;
+    let (changes, reasoning) = generate_changes(
+        "test.rs",
+        "// Original content",
+        "Add multiply function",
+        "Add a multiply function",
+        "test_url",
+    )
+    .await?;
 
-    assert!(result.is_ok());
+    assert!(!changes.is_empty());
+    assert!(!reasoning.is_empty());
     Ok(())
 }
