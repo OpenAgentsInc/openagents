@@ -49,12 +49,11 @@ tests/repomap.rs:
 │fn handle_repomap
 
 tests/gateway.rs:
-│fn setup
 │fn test_openrouter_metadata
 │fn test_openrouter_chat
-│fn test_openrouter_stream
+│fn test_openrouter_chat_stream
 │fn test_openrouter_with_config
-│fn test_openrouter_conversation
+│fn test_openrouter_error_handling
 
 tests/solver_context.rs:
 │fn setup_test_context
@@ -301,8 +300,18 @@ src/bin/deepseek-cli.rs:
 │fn print_colored
 │fn main
 
+src/bin/solver_impl/solution.rs:
+│fn handle_solution
+
+src/bin/solver_impl/mod.rs:
+
+src/bin/solver_impl/issue.rs:
+│fn handle_issue
+
+src/bin/solver_impl/planning.rs:
+│fn handle_planning
+
 src/bin/repo.rs:
-│fn print_colored
 │fn main
 
 src/bin/generate-repomap.rs:
@@ -361,6 +370,22 @@ src/server/handlers/user.rs:
 
 src/server/handlers/mod.rs:
 
+src/server/services/github_issue/conversions.rs:
+│fn try_from
+│fn try_from
+│fn try_from
+
+src/server/services/github_issue/mod.rs:
+│fn new
+│fn get_issue
+│fn get_issue_comments
+│fn post_comment
+│fn check_branch_exists
+│fn create_branch
+│fn check_branch_has_commits
+│fn create_pull_request
+│fn post_github_comment
+
 src/server/services/openrouter/types.rs:
 │fn from
 │impl Default for Default
@@ -368,12 +393,14 @@ src/server/services/openrouter/types.rs:
 │fn default
 
 src/server/services/openrouter/service.rs:
+│impl Default for Default
+│impl OpenRouterConfig for OpenRouterConfig
+│fn default
 │fn new
 │fn with_config
 │fn is_test_mode
 │fn get_model
 │fn prepare_messages
-│fn update_history
 │fn make_request
 │fn process_stream_chunk
 │impl Gateway for Gateway
@@ -383,15 +410,6 @@ src/server/services/openrouter/service.rs:
 │fn chat_stream
 
 src/server/services/openrouter/mod.rs:
-
-src/server/services/github_issue.rs:
-│fn new
-│fn get_issue
-│fn get_issue_comments
-│fn post_comment
-│fn create_branch
-│fn create_pull_request
-│fn post_github_comment
 
 src/server/services/auth.rs:
 │fn new
@@ -514,10 +532,6 @@ src/solver/types.rs:
 │fn validate
 
 src/solver/solution.rs:
-│fn new
-│fn clone_repository
-│fn generate_repo_map
-│fn cleanup
 
 src/solver/config.rs:
 │fn load
@@ -558,25 +572,28 @@ src/solver/github.rs:
 │fn get_issue
 │fn get_issue_comments
 
+src/solver/streaming.rs:
+│fn handle_plan_stream
+
 src/solver/planning.rs:
 │fn new
 │fn generate_plan
+│fn generate_plan_sync
 
 src/solver/context.rs:
 │fn new
 │fn new_with_dir
 │fn clone_repository
+│fn checkout_branch
+│fn commit_changes
 │fn generate_repo_map
 │fn generate_file_list
 │fn generate_changes
 │fn parse_changes
 │fn apply_changes
 │fn cleanup
-│fn test_new_with_dir
-│fn test_generate_file_list
-│fn test_generate_changes
-│fn test_parse_changes
-│fn test_full_solution_flow
+
+src/solver/cli.rs:
 
 src/routes.rs:
 │fn health_check
@@ -611,5 +628,8 @@ src/repo/analysis.rs:
 src/repo/git.rs:
 │fn cleanup_temp_dir
 │fn clone_repository
+│fn commit_changes
+│fn push_changes_with_token
+│fn checkout_branch
 
 src/repo/mod.rs:

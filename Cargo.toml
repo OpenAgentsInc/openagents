@@ -71,6 +71,7 @@ urlencoding = "2.1"
 base64 = "0.21"
 thiserror = "1.0"
 tempfile = "3.10"
+octocrab = "0.34"  # Added octocrab dependency
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }
