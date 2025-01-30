@@ -578,6 +578,7 @@ src/solver/streaming.rs:
 src/solver/planning.rs:
 │fn new
 │fn generate_plan
+│fn find_json_end
 │fn generate_plan_sync
 
 src/solver/context.rs:
@@ -633,3 +634,4 @@ src/repo/git.rs:
 │fn checkout_branch
 
 src/repo/mod.rs:
+
