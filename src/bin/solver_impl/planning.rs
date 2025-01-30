@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result};
-use octocrab::models::issues::{Comment, Issue};
-use openagents::solver::{Cli, PlanningContext, handle_plan_stream};
+use openagents::solver::{Cli, PlanningContext, handle_plan_stream, Issue, Comment};
 use tracing::{debug, info};
 
 pub async fn handle_planning(
