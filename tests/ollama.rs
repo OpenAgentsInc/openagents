@@ -18,7 +18,7 @@ async fn test_ollama_metadata() {
 #[tokio::test]
 async fn test_ollama_chat() -> Result<()> {
     let service = OllamaService::new();
-    let (response, _) = service.chat("What is a Rust macro in one sentence?".to_string(), false).await?;
+    let (response, _) = service.chat("Count from 1 to 5 slowly.".to_string(), false).await?;
     println!("\nChat response:\n{}\n", response);
     assert!(!response.is_empty());
     Ok(())
@@ -28,13 +28,14 @@ async fn test_ollama_chat() -> Result<()> {
 async fn test_ollama_chat_stream() -> Result<()> {
     let service = OllamaService::new();
     println!("\nStreaming response:");
-    let mut stream = service.chat_stream("What is a Rust macro in one sentence?".to_string(), false).await?;
+    let mut stream = service.chat_stream("Count from 1 to 5 slowly.".to_string(), false).await?;
     
     let mut saw_content = false;
     while let Some(result) = stream.next().await {
         match result {
             Ok(content) => {
                 print!("{}", content);
+                std::io::Write::flush(&mut std::io::stdout())?;
                 saw_content = true;
             }
             Err(e) => {
