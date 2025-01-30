@@ -26,7 +26,10 @@ impl GitHubContext {
     }
 
     pub async fn create_branch(&self, branch_name: &str, base_branch: &str) -> Result<()> {
-        info!("Creating branch '{}' from base '{}'", branch_name, base_branch);
+        info!(
+            "Creating branch '{}' from base '{}'",
+            branch_name, base_branch
+        );
         self.service
             .create_branch(&self.owner, &self.repo, branch_name, base_branch)
             .await?;

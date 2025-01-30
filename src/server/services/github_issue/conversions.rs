@@ -121,7 +121,7 @@ impl TryFrom<GitHubComment> for octocrab::models::issues::Comment {
                     "followers_url": "https://github.com",
                     "following_url": "https://github.com",
                     "gists_url": "https://github.com",
-                    "starred_url": "https://github.com", 
+                    "starred_url": "https://github.com",
                     "subscriptions_url": "https://github.com",
                     "organizations_url": "https://github.com",
                     "repos_url": "https://github.com",

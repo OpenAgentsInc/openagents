@@ -66,35 +66,54 @@ Focus on minimal, precise changes that directly address the issue requirements.
             match stream_result {
                 Ok(mut stream) => {
                     let mut content_buffer = String::new();
-                    
+
                     while let Some(result) = stream.next().await {
                         match result {
                             Ok(content) => {
                                 content_buffer.push_str(&content);
-                                
+
                                 // Try to find complete JSON objects
                                 if let Some(json_start) = content_buffer.find('{') {
-                                    if let Some(json_end) = find_json_end(&content_buffer[json_start..]) {
+                                    if let Some(json_end) =
+                                        find_json_end(&content_buffer[json_start..])
+                                    {
                                         let json_str = &content_buffer[json_start..=json_end];
-                                        
+
                                         // Parse and send any complete JSON objects
-                                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(json_str) {
-                                            if let Some(content) = parsed.get("content").and_then(|v| v.as_str()) {
-                                                let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
+                                        if let Ok(parsed) =
+                                            serde_json::from_str::<serde_json::Value>(json_str)
+                                        {
+                                            if let Some(content) =
+                                                parsed.get("content").and_then(|v| v.as_str())
+                                            {
+                                                let _ = tx
+                                                    .send(StreamUpdate::Content(
+                                                        content.to_string(),
+                                                    ))
+                                                    .await;
                                             }
-                                            if let Some(reasoning) = parsed.get("reasoning").and_then(|v| v.as_str()) {
-                                                let _ = tx.send(StreamUpdate::Reasoning(reasoning.to_string())).await;
+                                            if let Some(reasoning) =
+                                                parsed.get("reasoning").and_then(|v| v.as_str())
+                                            {
+                                                let _ = tx
+                                                    .send(StreamUpdate::Reasoning(
+                                                        reasoning.to_string(),
+                                                    ))
+                                                    .await;
                                             }
-                                            
+
                                             // Remove processed JSON from buffer
-                                            content_buffer = content_buffer[json_end + 1..].to_string();
+                                            content_buffer =
+                                                content_buffer[json_end + 1..].to_string();
                                         }
                                     }
                                 }
-                                
+
                                 // If no JSON found, send as raw content
                                 if !content_buffer.contains('{') {
-                                    let _ = tx.send(StreamUpdate::Content(content_buffer.clone())).await;
+                                    let _ = tx
+                                        .send(StreamUpdate::Content(content_buffer.clone()))
+                                        .await;
                                     content_buffer.clear();
                                 }
                             }
@@ -104,12 +123,12 @@ Focus on minimal, precise changes that directly address the issue requirements.
                             }
                         }
                     }
-                    
+
                     // Send any remaining content
                     if !content_buffer.is_empty() {
                         let _ = tx.send(StreamUpdate::Content(content_buffer)).await;
                     }
-                    
+
                     let _ = tx.send(StreamUpdate::Done).await;
                 }
                 Err(e) => {
@@ -123,7 +142,7 @@ Focus on minimal, precise changes that directly address the issue requirements.
             let mut depth = 0;
             let mut in_string = false;
             let mut escaped = false;
-            
+
             for (i, c) in s.char_indices() {
                 if !in_string {
                     if c == '{' {
