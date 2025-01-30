@@ -99,6 +99,7 @@ impl Gateway for OllamaService {
                                 if let Ok(text) = String::from_utf8(bytes.to_vec()) {
                                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
                                         if let Some(content) = json["message"]["content"].as_str() {
+                                            // Send each token immediately
                                             let _ = tx.send(Ok(content.to_string())).await;
                                         }
                                         if json["done"].as_bool().unwrap_or(false) {
