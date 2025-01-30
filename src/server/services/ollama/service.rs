@@ -1,30 +1,18 @@
-use crate::server::services::gateway::{
-    types::{GatewayMetadata, Message},
-    Gateway,
-};
-use crate::server::services::ollama::types::*;
-use anyhow::{anyhow, Result};
-use futures_util::{Stream, TryStreamExt};
-use reqwest::Client;
-use std::pin::Pin;
+use super::config::OllamaConfig;
+use crate::server::services::gateway::Gateway;
+use crate::server::services::deepseek::StreamUpdate;
+use anyhow::Result;
+use tokio::sync::mpsc;
 
 pub struct OllamaService {
     config: OllamaConfig,
-    client: Client,
-}
-
-impl Default for OllamaService {
-    fn default() -> Self {
-        Self {
-            config: OllamaConfig::default(),
-            client: Client::new(),
-        }
-    }
 }
 
 impl OllamaService {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            config: OllamaConfig::global().clone(),
+        }
     }
 
     pub fn with_config(base_url: &str, model: &str) -> Self {
@@ -33,58 +21,14 @@ impl OllamaService {
                 base_url: base_url.to_string(),
                 model: model.to_string(),
             },
-            client: Client::new(),
         }
-    }
-
-    async fn make_request(&self, prompt: String, stream: bool) -> Result<reqwest::Response> {
-        let request = OllamaChatRequest {
-            model: self.config.model.clone(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: prompt,
-            }],
-            stream,
-            options: Some(OllamaOptions {
-                temperature: Some(0.7),
-                num_predict: Some(100),
-            }),
-        };
-
-        let response = self
-            .client
-            .post(format!("{}/api/chat", self.config.base_url))
-            .json(&request)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let error: ErrorResponse = response.json().await?;
-            return Err(anyhow!(error.error));
-        }
-
-        Ok(response)
-    }
-
-    async fn process_stream_chunk(chunk: &[u8]) -> Result<Option<String>> {
-        if chunk.is_empty() {
-            return Ok(None);
-        }
-
-        let response: OllamaChatResponse = serde_json::from_slice(chunk)?;
-        if response.done {
-            return Ok(None);
-        }
-
-        // Extract just the new content from the message
-        Ok(Some(response.message.content))
     }
 }
 
 #[async_trait::async_trait]
 impl Gateway for OllamaService {
-    fn metadata(&self) -> GatewayMetadata {
-        GatewayMetadata {
+    fn metadata(&self) -> crate::server::services::gateway::GatewayMetadata {
+        crate::server::services::gateway::GatewayMetadata {
             name: "ollama".to_string(),
             openai_compatible: false,
             supported_features: vec!["chat".to_string(), "streaming".to_string()],
@@ -93,34 +37,83 @@ impl Gateway for OllamaService {
         }
     }
 
-    async fn chat(&self, prompt: String, _use_reasoner: bool) -> Result<(String, Option<String>)> {
-        let response = self.make_request(prompt, false).await?;
-        let chat_response: OllamaChatResponse = response.json().await?;
-        Ok((chat_response.message.content, None))
+    async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{}/api/chat", self.config.base_url))
+            .json(&serde_json::json!({
+                "model": self.config.model,
+                "messages": [{
+                    "role": "user",
+                    "content": prompt
+                }],
+                "stream": false
+            }))
+            .send()
+            .await?;
+
+        let response_json = response.json::<serde_json::Value>().await?;
+        let content = response_json["message"]["content"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid response format from Ollama"))?;
+
+        Ok((content.to_string(), None))
     }
 
     async fn chat_stream(
         &self,
         prompt: String,
-        _use_reasoner: bool,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
-        let response = self.make_request(prompt, true).await?;
+        use_reasoner: bool,
+    ) -> Result<mpsc::Receiver<StreamUpdate>> {
+        let (tx, rx) = mpsc::channel(100);
+        let client = reqwest::Client::new();
+        let config = self.config.clone();
 
-        // Split the response stream by newlines to handle each chunk
-        let stream = response
-            .bytes_stream()
-            .map_err(|e| anyhow!(e))
-            .try_filter_map(|chunk| {
-                let fut = async move {
-                    match Self::process_stream_chunk(&chunk).await {
-                        Ok(Some(content)) => Ok(Some(content)),
-                        Ok(None) => Ok(None),
-                        Err(e) => Err(e),
+        tokio::spawn(async move {
+            let response = client
+                .post(format!("{}/api/chat", config.base_url))
+                .json(&serde_json::json!({
+                    "model": config.model,
+                    "messages": [{
+                        "role": "user",
+                        "content": prompt
+                    }],
+                    "stream": true
+                }))
+                .send()
+                .await;
+
+            match response {
+                Ok(response) => {
+                    let mut stream = response.bytes_stream();
+                    while let Some(chunk) = stream.next().await {
+                        match chunk {
+                            Ok(bytes) => {
+                                if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                        if let Some(content) = json["message"]["content"].as_str() {
+                                            let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
+                                        }
+                                        if json["done"].as_bool().unwrap_or(false) {
+                                            let _ = tx.send(StreamUpdate::Done).await;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                let _ = tx.send(StreamUpdate::Error(e.to_string())).await;
+                                break;
+                            }
+                        }
                     }
-                };
-                Box::pin(fut)
-            });
+                }
+                Err(e) => {
+                    let _ = tx.send(StreamUpdate::Error(e.to_string())).await;
+                }
+            }
+        });
 
-        Ok(Box::pin(stream))
+        Ok(rx)
     }
 }
