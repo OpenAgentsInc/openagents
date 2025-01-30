@@ -143,8 +143,9 @@ mod tests {
     use super::*;
     use mockito::Server;
     use serde_json::json;
+    use tokio::test;
 
-    #[tokio::test]
+    #[test]
     async fn test_generate_pr_title() {
         let mut server = Server::new();
         let mock_response = json!({
