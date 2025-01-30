@@ -4,6 +4,8 @@ use regex::Regex;
 use futures_util::StreamExt;
 use tracing::{debug, info};
 use serde_json::Value;
+use futures_util::Stream;
+use std::pin::Pin;
 
 // Error messages
 const ERR_NO_CHANGES: &str = "Changes array not found";
@@ -184,8 +186,10 @@ pub async fn handle_planning(
 
     let mut response = String::new();
     let mut chunks = handle_plan_stream(plan_stream).await?;
-    while let Some(chunk) = chunks.next().await {
-        response.push_str(&chunk?);
+    
+    while let Some(chunk_result) = chunks.next().await {
+        let chunk = chunk_result?;
+        response.push_str(&chunk);
     }
 
     if let Some(json_str) = extract_json_from_markdown(&response) {
