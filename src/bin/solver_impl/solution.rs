@@ -1,6 +1,8 @@
 use anyhow::{Context as _, Result};
-use octocrab::models::issues::{Comment, Issue};
-use openagents::solver::{Cli, GitHubContext, SolutionContext};
+use openagents::solver::{
+    Cli, GitHubContext, SolutionContext, Issue, Comment,
+    print_colored,  // Use re-exported function
+};
 use termcolor::Color;
 use tracing::{debug, info, warn};
 
@@ -78,7 +80,7 @@ pub async fn handle_solution(
     }
 
     // Generate solution
-    openagents::solver::display::print_colored("\nGenerating solution...\n", Color::Blue)?;
+    print_colored("\nGenerating solution...\n", Color::Blue)?;
 
     // Include comments in context
     let comments_context = if !comments.is_empty() {
@@ -95,7 +97,7 @@ pub async fn handle_solution(
     };
 
     // 1. Generate list of files to modify
-    openagents::solver::display::print_colored("\nIdentifying files to modify...\n", Color::Blue)?;
+    print_colored("\nIdentifying files to modify...\n", Color::Blue)?;
     let (files, file_reasoning) = solution
         .generate_file_list(
             &issue.title,
@@ -120,13 +122,13 @@ pub async fn handle_solution(
 
     // 2. For each file, generate and apply changes
     for file_path in files {
-        openagents::solver::display::print_colored(
+        print_colored(
             &format!("\nProcessing {}...\n", file_path),
             Color::Blue,
         )?;
 
         // Generate changes
-        openagents::solver::display::print_colored("Generating changes...\n", Color::Green)?;
+        print_colored("Generating changes...\n", Color::Green)?;
         info!("Generating changes for {}", file_path);
         let (changes, change_reasoning) = solution
             .generate_changes(
@@ -145,7 +147,7 @@ pub async fn handle_solution(
         debug!("Generated {} changes for {}", changes.len(), file_path);
 
         // Apply changes
-        openagents::solver::display::print_colored("Applying changes...\n", Color::Green)?;
+        print_colored("Applying changes...\n", Color::Green)?;
         info!("Applying changes to {}", file_path);
         solution
             .apply_changes(&changes)
