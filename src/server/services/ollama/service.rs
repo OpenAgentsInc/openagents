@@ -93,6 +93,8 @@ impl Gateway for OllamaService {
             match response {
                 Ok(response) => {
                     let mut stream = response.bytes_stream();
+                    let mut full_response = String::new();
+
                     while let Some(chunk) = stream.next().await {
                         match chunk {
                             Ok(bytes) => {
@@ -101,8 +103,19 @@ impl Gateway for OllamaService {
                                         if let Some(content) = json["message"]["content"].as_str() {
                                             // Send each token immediately
                                             let _ = tx.send(Ok(content.to_string())).await;
+                                            full_response.push_str(content);
                                         }
                                         if json["done"].as_bool().unwrap_or(false) {
+                                            // Try to extract JSON from the full response
+                                            if let Some(json_start) = full_response.find('{') {
+                                                if let Some(json_end) = full_response[json_start..].rfind('}') {
+                                                    let json_str = &full_response[json_start..=json_start + json_end];
+                                                    if let Ok(_) = serde_json::from_str::<serde_json::Value>(json_str) {
+                                                        // Found valid JSON at the end, send it as a special message
+                                                        let _ = tx.send(Ok(format!("\n<json>{}</json>", json_str))).await;
+                                                    }
+                                                }
+                                            }
                                             break;
                                         }
                                     }
