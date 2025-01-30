@@ -2,6 +2,7 @@ use crate::server::services::github_issue::{GitHubComment, GitHubIssue, GitHubSe
 use crate::server::services::deepseek::DeepSeekService;
 use anyhow::{anyhow, Result};
 use tracing::{debug, info, warn};
+use tokio::runtime::Runtime;
 
 pub struct GitHubContext {
     pub owner: String,
@@ -144,38 +145,41 @@ mod tests {
     use mockito::Server;
     use serde_json::json;
 
-    #[tokio::test]
-    async fn test_generate_pr_title() {
-        let mut server = Server::new();
-        let mock_response = json!({
-            "choices": [{
-                "message": {
-                    "content": "feat: add multiply function"
-                }
-            }]
+    #[test]
+    fn test_generate_pr_title() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let mut server = Server::new();
+            let mock_response = json!({
+                "choices": [{
+                    "message": {
+                        "content": "feat: add multiply function"
+                    }
+                }]
+            });
+
+            let mock = server.mock("POST", "/v1/chat/completions")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(mock_response.to_string())
+                .create();
+
+            std::env::set_var("DEEPSEEK_API_URL", &server.url());
+            
+            let context = GitHubContext::new(
+                "test/repo",
+                "test_token".to_string(),
+            ).unwrap();
+
+            let test_context = "Add a multiply function that multiplies two integers";
+            let title = context.generate_pr_title(123, test_context).await.unwrap();
+
+            mock.assert();
+            assert!(title.starts_with("feat:"));
+            assert!(title.contains("multiply"));
+            assert!(title.len() <= 72);
+            assert!(title.len() >= 10);
         });
-
-        let mock = server.mock("POST", "/v1/chat/completions")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(mock_response.to_string())
-            .create();
-
-        std::env::set_var("DEEPSEEK_API_URL", &server.url());
-        
-        let context = GitHubContext::new(
-            "test/repo",
-            "test_token".to_string(),
-        ).unwrap();
-
-        let test_context = "Add a multiply function that multiplies two integers";
-        let title = context.generate_pr_title(123, test_context).await.unwrap();
-
-        mock.assert();
-        assert!(title.starts_with("feat:"));
-        assert!(title.contains("multiply"));
-        assert!(title.len() <= 72);
-        assert!(title.len() >= 10);
     }
 
     #[test]
