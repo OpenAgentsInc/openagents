@@ -3,11 +3,11 @@ mod cli;
 mod config;
 mod context;
 mod display;
-pub mod file_list;  // Make this public
+pub mod file_list;
 mod github;
 mod planning;
 mod streaming;
-mod types;
+pub mod types;  // Make types public
 
 pub use changes::*;
 pub use cli::*;
