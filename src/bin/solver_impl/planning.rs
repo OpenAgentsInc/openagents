@@ -1,26 +1,14 @@
-use anyhow::{Result};
+use anyhow::{Result, anyhow};
 use openagents::solver::{planning::PlanningContext, streaming::handle_plan_stream};
 use regex::Regex;
-use futures_util::StreamExt;
-use tracing::{debug, info, error};
+use tracing::{debug, info};
 use serde_json::Value;
-
-// Error messages
-const ERR_NO_CHANGES: &str = "Changes array not found";
-const ERR_WRONG_TARGET: &str = "Incorrect target file";
-const ERR_INVALID_JSON: &str = "Invalid JSON format";
-const ERR_INVALID_CHANGES: &str = "Changes do not match issue intent";
-
-// File paths
-const GITHUB_RS_PATH: &str = "src/solver/github.rs";
-const JSON_RS_PATH: &str = "src/solver/json.rs";
 
 // JSON keys
 const KEY_CHANGES: &str = "changes";
 const KEY_PATH: &str = "path";
 const KEY_SEARCH: &str = "search";
 const KEY_REPLACE: &str = "replace";
-const KEY_REASON: &str = "reason";
 
 // Log messages
 const LOG_GATHERING: &str = "Gathering relevant file contents...";
@@ -28,7 +16,6 @@ const LOG_GENERATING: &str = "Generating implementation plan...";
 const LOG_FILE_CONTEXT: &str = "File context: {}";
 const LOG_FULL_RESPONSE: &str = "Full response: {}";
 const LOG_EXTRACTED_JSON: &str = "Extracted JSON: {}";
-const LOG_RETRY_ATTEMPT: &str = "Retry attempt {current} of {max}";
 const LOG_VALIDATION_ERROR: &str = "Validation error: {}";
 
 // Function content
@@ -83,30 +70,6 @@ Generate title:"#,
     debug!("Generated PR title: {}", title);
     Ok(title.to_string())
 }"###;
-
-// Other constants
-const TARGET_FUNCTION: &str = "generate_pr_title";
-const EMPTY_STR: &str = "";
-const MAX_RETRIES: u32 = 3;
-
-/// Escapes special characters in JSON strings
-fn escape_json_string(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('\"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
-
-/// Creates a properly escaped JSON change object
-fn create_json_change(path: &str, search: &str, replace: &str, reason: &str) -> Value {
-    serde_json::json!({
-        KEY_PATH: path,
-        KEY_SEARCH: escape_json_string(search),
-        KEY_REPLACE: escape_json_string(replace),
-        KEY_REASON: reason,
-    })
-}
 
 /// Extracts JSON from markdown code block
 fn extract_json_from_markdown(content: &str) -> Option<&str> {
@@ -189,6 +152,7 @@ pub async fn handle_planning(
         if validate_llm_response(json_str)? {
             return Ok(response);
         }
+        return Err(anyhow!("Invalid JSON response format"));
     }
 
     debug!(LOG_FULL_RESPONSE, response);
