@@ -8,8 +8,13 @@ fn test_change_validation() {
         "fn old()".to_string(),
         "fn new()".to_string(),
     );
-    assert!(change.validate().is_ok(), "Valid change with path '{}', search '{}', replace '{}' should be ok",
-        change.path, change.search, change.replace);
+    assert!(
+        change.validate().is_ok(),
+        "Valid change with path '{}', search '{}', replace '{}' should be ok",
+        change.path,
+        change.search,
+        change.replace
+    );
 
     // Empty path
     let change = Change::new(
