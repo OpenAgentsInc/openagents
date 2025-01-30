@@ -24,42 +24,8 @@ const LOG_FILE_CONTEXT: &str = "File context: {}";
 const LOG_FULL_RESPONSE: &str = "Full response: {}";
 const LOG_EXTRACTED_JSON: &str = "Extracted JSON: {}";
 
-// Other constants
-const TARGET_FUNCTION: &str = "generate_pr_title";
-const EMPTY_STR: &str = "";
-
-/// Extracts JSON from markdown code block
-fn extract_json_from_markdown(content: &str) -> Option<&str> {
-    let re = Regex::new(r"```json\s*(\{[\s\S]*?\})\s*```").ok()?;
-    re.captures(content)?.get(1).map(|m| m.as_str())
-}
-
-/// Gathers relevant file contents for context
-async fn gather_context(issue_title: &str, issue_description: &str) -> Result<String> {
-    // First, identify key files that need to be examined based on the issue
-    let mut relevant_files = Vec::new();
-    
-    // For PR title generation, we know we need github.rs
-    if issue_title.contains("PR title") || issue_description.contains("PR title") {
-        relevant_files.push(GITHUB_RS_PATH);
-    }
-
-    // For JSON escaping issues, we need json.rs
-    if issue_title.contains("JSON") || issue_description.contains("JSON") {
-        relevant_files.push(JSON_RS_PATH);
-    }
-
-    // Add any other relevant files based on keywords
-    // TODO: Make this more sophisticated using the repo map
-
-    // Build context string with file contents
-    let mut context = String::new();
-    for file in relevant_files {
-        context.push_str(&format!("\nFile: {}\nContent:\n", file));
-        // TODO: Use view_file to get actual content
-        // For now, hardcoding the relevant function for testing
-        if file == GITHUB_RS_PATH {
-            context.push_str(r#"
+// Function content
+const GITHUB_RS_CONTENT: &str = r###"
 async fn generate_pr_title(&self, issue_number: i32, context: &str) -> Result<String> {
     let prompt = format!(
         r#"Generate a concise, descriptive pull request title for issue #{} based on this context:
@@ -110,7 +76,44 @@ Generate title:"#,
 
     debug!("Generated PR title: {}", title);
     Ok(title.to_string())
-}"#);
+}"###;
+
+// Other constants
+const TARGET_FUNCTION: &str = "generate_pr_title";
+const EMPTY_STR: &str = "";
+
+/// Extracts JSON from markdown code block
+fn extract_json_from_markdown(content: &str) -> Option<&str> {
+    let re = Regex::new(r"```json\s*(\{[\s\S]*?\})\s*```").ok()?;
+    re.captures(content)?.get(1).map(|m| m.as_str())
+}
+
+/// Gathers relevant file contents for context
+async fn gather_context(issue_title: &str, issue_description: &str) -> Result<String> {
+    // First, identify key files that need to be examined based on the issue
+    let mut relevant_files = Vec::new();
+    
+    // For PR title generation, we know we need github.rs
+    if issue_title.contains("PR title") || issue_description.contains("PR title") {
+        relevant_files.push(GITHUB_RS_PATH);
+    }
+
+    // For JSON escaping issues, we need json.rs
+    if issue_title.contains("JSON") || issue_description.contains("JSON") {
+        relevant_files.push(JSON_RS_PATH);
+    }
+
+    // Add any other relevant files based on keywords
+    // TODO: Make this more sophisticated using the repo map
+
+    // Build context string with file contents
+    let mut context = String::new();
+    for file in relevant_files {
+        context.push_str(&format!("\nFile: {}\nContent:\n", file));
+        // TODO: Use view_file to get actual content
+        // For now, hardcoding the relevant function for testing
+        if file == GITHUB_RS_PATH {
+            context.push_str(GITHUB_RS_CONTENT);
         }
     }
 
