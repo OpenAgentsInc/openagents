@@ -32,7 +32,12 @@ File Context: {}"#,
         );
 
         info!("Generating plan with prompt: {}", prompt);
-        let stream = self.llm_service.chat_stream(prompt, true).await?;
+        let receiver = self.llm_service.chat_stream(prompt, true).await;
+        
+        // Convert receiver into a Stream
+        let stream = tokio_stream::wrappers::ReceiverStream::new(receiver)
+            .map(|update| Ok(update.content));
+            
         Ok(Box::pin(stream))
     }
 }
@@ -46,7 +51,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_llm_response() {
-        let server = Server::new();
+        let mut server = Server::new();
         let mock_response = json!({
             "choices": [{
                 "message": {
