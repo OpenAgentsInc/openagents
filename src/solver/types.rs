@@ -36,12 +36,15 @@ impl Change {
 
         // If search is empty, this is a new file
         if self.search.is_empty() {
+            if self.replace.is_empty() {
+                return Err(anyhow!("Replace content cannot be empty"));
+            }
             return Ok(());
         }
 
-        // If search is not empty, this is a modification
-        if !self.search.is_empty() && self.replace.is_empty() {
-            return Err(anyhow!("Replace content cannot be empty for modifications"));
+        // For modifications, both search and replace must have content
+        if self.replace.is_empty() {
+            return Err(anyhow!("Replace content cannot be empty"));
         }
 
         Ok(())
