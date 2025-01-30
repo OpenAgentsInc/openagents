@@ -1,7 +1,7 @@
 use glob::Pattern;
 use ignore::Walk;
 use std::path::{Path, PathBuf};
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Default patterns to ignore when generating repository map
 const DEFAULT_BLACKLIST: &[&str] = &[
@@ -17,6 +17,7 @@ const DEFAULT_BLACKLIST: &[&str] = &[
 
 /// Generates a repository map with standard file filtering
 pub fn generate_repo_map(path: &Path) -> String {
+    debug!("Generating repo map for path: {:?}", path);
     let mut output = String::new();
     let mut entries: Vec<(PathBuf, String)> = Vec::new();
 
@@ -25,22 +26,23 @@ pub fn generate_repo_map(path: &Path) -> String {
         .iter()
         .filter_map(|p| Pattern::new(p).ok())
         .collect();
+    debug!("Compiled {} blacklist patterns", patterns.len());
 
     // Use ignore crate to respect .gitignore
     for result in Walk::new(path) {
         if let Ok(entry) = result {
             let path = entry.path();
+            debug!("Processing path: {:?}", path);
             
             // Skip if path matches any blacklist pattern
-            if patterns.iter().any(|pattern| {
-                pattern.matches_path(path)
-            }) {
+            if patterns.iter().any(|pattern| pattern.matches_path(path)) {
                 debug!("Skipping blacklisted path: {:?}", path);
                 continue;
             }
 
             // Only process files
             if path.is_file() {
+                debug!("Reading file: {:?}", path);
                 if let Ok(content) = std::fs::read_to_string(path) {
                     let mut ids = Vec::new();
                     let mut functions = Vec::new();
@@ -89,10 +91,17 @@ pub fn generate_repo_map(path: &Path) -> String {
 
                         if !file_content.is_empty() {
                             if let Ok(rel_path) = path.strip_prefix(path) {
+                                debug!("Adding entry for path: {:?}", rel_path);
                                 entries.push((rel_path.to_path_buf(), file_content));
+                            } else {
+                                debug!("Failed to strip prefix for path: {:?}", path);
                             }
                         }
+                    } else {
+                        debug!("No identifiable content in file: {:?}", path);
                     }
+                } else {
+                    debug!("Failed to read file: {:?}", path);
                 }
             }
         }
@@ -100,10 +109,12 @@ pub fn generate_repo_map(path: &Path) -> String {
 
     // Sort entries by path for consistent output
     entries.sort_by(|a, b| a.0.cmp(&b.0));
+    debug!("Sorted {} entries", entries.len());
 
     // Build final output
     for (path, content) in entries {
         if let Some(path_str) = path.to_str() {
+            debug!("Adding to output: {}", path_str);
             output.push_str(&format!("{}:\n", path_str));
             for line in content.lines() {
                 output.push_str(&format!("│{}\n", line));
@@ -112,6 +123,7 @@ pub fn generate_repo_map(path: &Path) -> String {
         }
     }
 
+    debug!("Final output length: {}", output.len());
     output
 }
 
@@ -169,23 +181,42 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+    use tracing_subscriber::fmt::format::FmtSpan;
+
+    fn init_logging() {
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_span_events(FmtSpan::CLOSE)
+            .with_thread_ids(true)
+            .with_file(true)
+            .with_line_number(true)
+            .try_init();
+        if subscriber.is_err() {
+            eprintln!("Failed to initialize logging");
+        }
+    }
 
     fn setup_test_repo() -> TempDir {
         let dir = tempfile::tempdir().unwrap();
+        debug!("Created test directory: {:?}", dir.path());
         
         // Create some test files
         fs::create_dir_all(dir.path().join("src")).unwrap();
         fs::create_dir_all(dir.path().join("assets")).unwrap();
         
         // Source files
+        let main_rs_path = dir.path().join("src/main.rs");
+        debug!("Writing main.rs to: {:?}", main_rs_path);
         fs::write(
-            dir.path().join("src/main.rs"),
+            main_rs_path,
             "fn main() {}\nfn helper() {}\n",
         ).unwrap();
         
         // CSS file that should be ignored
+        let css_path = dir.path().join("assets/style.css");
+        debug!("Writing style.css to: {:?}", css_path);
         fs::write(
-            dir.path().join("assets/style.css"),
+            css_path,
             ".class { color: red; }\n",
         ).unwrap();
 
@@ -194,17 +225,21 @@ mod tests {
 
     #[test]
     fn test_repo_map_generation() {
+        init_logging();
         let dir = setup_test_repo();
+        debug!("Test repo setup at: {:?}", dir.path());
+        
         let map = generate_repo_map(dir.path());
+        debug!("Generated map:\n{}", map);
         
         // Should include source files
-        assert!(map.contains("src/main.rs"));
-        assert!(map.contains("fn main"));
-        assert!(map.contains("fn helper"));
+        assert!(map.contains("src/main.rs"), "Map should contain src/main.rs");
+        assert!(map.contains("fn main"), "Map should contain fn main");
+        assert!(map.contains("fn helper"), "Map should contain fn helper");
         
         // Should not include CSS files
-        assert!(!map.contains("assets/style.css"));
-        assert!(!map.contains(".class"));
+        assert!(!map.contains("assets/style.css"), "Map should not contain assets/style.css");
+        assert!(!map.contains(".class"), "Map should not contain .class");
     }
 
     #[test]
