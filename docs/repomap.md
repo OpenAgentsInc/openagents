@@ -296,17 +296,6 @@ assets/fonts.css:
 src/bin/solver.rs:
 │fn main
 
-src/bin/solver/solution.rs:
-│fn handle_solution
-
-src/bin/solver/mod.rs:
-
-src/bin/solver/issue.rs:
-│fn handle_issue
-
-src/bin/solver/planning.rs:
-│fn handle_planning
-
 src/bin/deepseek-cli.rs:
 │fn print_colored
 │fn main
@@ -382,9 +371,9 @@ src/server/handlers/user.rs:
 src/server/handlers/mod.rs:
 
 src/server/services/github_issue/conversions.rs:
-│fn from
-│fn from
-│fn from
+│fn try_from
+│fn try_from
+│fn try_from
 
 src/server/services/github_issue/mod.rs:
 │fn new
@@ -644,3 +633,4 @@ src/repo/git.rs:
 │fn checkout_branch
 
 src/repo/mod.rs:
+
