@@ -17,6 +17,20 @@ impl Default for OllamaConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct OllamaChatRequest {
+    pub model: String,
+    pub messages: Vec<Message>,
+    pub stream: bool,
+    pub options: Option<OllamaOptions>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OllamaOptions {
+    pub temperature: Option<f32>,
+    pub num_predict: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OllamaChatResponse {
     pub model: String,
     pub message: Message,
