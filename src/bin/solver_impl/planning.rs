@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Result};
-use openagents::solver::{Cli, PlanningContext, handle_plan_stream, Issue, Comment};
+use octocrab::models::issues::{Issue, Comment};
+use openagents::solver::{Cli, PlanningContext, handle_plan_stream};
 use tracing::{debug, info};
 
 pub async fn handle_planning(
@@ -17,7 +18,9 @@ pub async fn handle_planning(
         for comment in comments {
             context.push_str(&format!(
                 "\n@{} at {}:\n{}\n",
-                comment.user.login, comment.created_at, comment.body
+                comment.user.login, 
+                comment.created_at,
+                comment.body.as_deref().unwrap_or("No comment body")
             ));
         }
         context
