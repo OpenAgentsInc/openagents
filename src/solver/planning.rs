@@ -1,29 +1,31 @@
 use crate::server::services::deepseek::StreamUpdate;
 use crate::server::services::gateway::Gateway;
-use crate::server::services::openrouter::{OpenRouterConfig, OpenRouterService};
+use crate::server::services::ollama::{OllamaConfig, OllamaService};
 use anyhow::Result;
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tracing::debug;
 
 pub struct PlanningContext {
-    service: OpenRouterService,
+    service: OllamaService,
 }
 
 impl PlanningContext {
     pub fn new() -> Result<Self> {
-        let api_key = std::env::var("OPENROUTER_API_KEY")
-            .map_err(|_| anyhow::anyhow!("OPENROUTER_API_KEY not set"))?;
+        let url = std::env::var("OLLAMA_URL")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let model = std::env::var("OLLAMA_MODEL")
+            .unwrap_or_else(|_| "codellama:latest".to_string());
 
-        let config = OpenRouterConfig {
-            model: "deepseek/deepseek-chat".to_string(),
-            //model: "anthropic/claude-3.5-sonnet".to_string(),
+        let config = OllamaConfig {
+            url,
+            model,
             use_reasoner: true,
             test_mode: false,
         };
 
         Ok(Self {
-            service: OpenRouterService::with_config(api_key, config),
+            service: OllamaService::with_config(config),
         })
     }
 
@@ -56,10 +58,10 @@ Focus on minimal, precise changes that directly address the issue requirements.
             issue_number, title, description, repo_map
         );
 
-        debug!("Starting streaming plan generation with OpenRouter");
+        debug!("Starting streaming plan generation with Ollama");
         let (tx, rx) = mpsc::channel(100);
 
-        // Convert OpenRouter stream to our StreamUpdate format
+        // Convert Ollama stream to our StreamUpdate format
         let stream_result = self.service.chat_stream(prompt, true).await;
 
         tokio::spawn(async move {
@@ -201,7 +203,7 @@ Focus on minimal, precise changes that directly address the issue requirements.
             issue_number, title, description, repo_map
         );
 
-        debug!("Sending planning prompt to OpenRouter");
+        debug!("Sending planning prompt to Ollama");
         let (response, _) = self.service.chat(prompt, true).await?;
         Ok(response)
     }
