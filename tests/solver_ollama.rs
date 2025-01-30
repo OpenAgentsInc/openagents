@@ -5,6 +5,7 @@ use openagents::solver::{
     file_list::generate_file_list,
     planning::PlanningContext,
 };
+use serial_test::serial;
 use std::fs;
 use tempfile::TempDir;
 
@@ -37,6 +38,7 @@ fn load_env() {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "requires local Ollama server"]
 async fn test_ollama_file_list() -> Result<()> {
     load_env();
@@ -70,6 +72,7 @@ async fn test_ollama_file_list() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "requires local Ollama server"]
 async fn test_ollama_planning() -> Result<()> {
     load_env();
@@ -106,6 +109,7 @@ async fn test_ollama_planning() -> Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 #[ignore = "requires local Ollama server"]
 async fn test_ollama_changes() -> Result<()> {
     load_env();
