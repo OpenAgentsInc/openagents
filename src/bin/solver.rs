@@ -3,11 +3,7 @@ use clap::Parser;
 use openagents::solver::{Cli, Config};
 use tracing::info;
 
-mod solver_impl {
-    pub mod issue;
-    pub mod planning;
-    pub mod solution;
-}
+mod solver_impl;
 
 #[tokio::main]
 async fn main() -> Result<()> {
