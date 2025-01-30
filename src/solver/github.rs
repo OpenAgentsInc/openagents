@@ -1,5 +1,5 @@
 use crate::server::services::github_issue::{GitHubComment, GitHubIssue, GitHubService};
-use crate::server::services::model_router::ModelRouterService;
+use crate::server::services::deepseek::DeepSeekService;
 use anyhow::{anyhow, Result};
 use tracing::{debug, error, info};
 
@@ -66,8 +66,8 @@ Generate title:"#,
             issue_number, context
         );
 
-        let llm_service = ModelRouterService::new();
-        let response = llm_service.chat(prompt, true).await?;
+        let llm_service = DeepSeekService::new();
+        let (response, _) = llm_service.chat(prompt, true).await?;
 
         let title = response.trim();
         
