@@ -1,7 +1,10 @@
 use anyhow::{Context as _, Result};
 use clap::Parser;
-use openagents::solver::{Comment, Issue};
+use openagents::server::services::github_issue::GitHubService;
+use std::path::Path;
 use tracing::{debug, info};
+
+mod solver_impl;
 
 #[derive(Parser)]
 struct Cli {
@@ -43,7 +46,8 @@ async fn main() -> Result<()> {
         .context("Invalid repository format. Expected owner/name")?;
 
     // Initialize GitHub service
-    let github = openagents::solver::github::GitHubService::new(&github_token);
+    let github = GitHubService::new(Some(github_token.clone()))
+        .context("Failed to initialize GitHub service")?;
 
     // Fetch issue details
     info!("Fetching issue #{}", cli.issue);
@@ -52,7 +56,7 @@ async fn main() -> Result<()> {
 
     // Generate repository map
     info!("Generating repository map...");
-    let repo_map = openagents::repomap::generate_repo_map(".")?;
+    let repo_map = openagents::repomap::generate_repo_map(Path::new("."))?;
     debug!("Repository map:\n{}", repo_map);
 
     // Generate implementation plan
