@@ -111,6 +111,7 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use mockito::Server;
+    use serde_json::json;
 
     #[tokio::test]
     async fn test_handle_solution() -> Result<()> {
@@ -118,7 +119,21 @@ mod tests {
         let test_file = temp_dir.path().join("test.rs");
         fs::write(&test_file, "// Original content")?;
 
-        let mut server = Server::new();
+        let server = Server::new();
+        let mock_response = json!({
+            "choices": [{
+                "message": {
+                    "content": "feat: add multiply function"
+                }
+            }]
+        });
+
+        let mock = server.mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(mock_response.to_string())
+            .create();
+
         std::env::set_var("DEEPSEEK_API_URL", &server.url());
 
         let result = handle_solution(
@@ -131,6 +146,7 @@ mod tests {
         )
         .await;
 
+        mock.assert();
         assert!(result.is_ok());
         Ok(())
     }
