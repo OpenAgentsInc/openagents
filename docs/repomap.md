@@ -15,6 +15,16 @@ docs/repomap.md:
 
 docs/repomap_generation.md:
 
+docs/solve-runs/20250130-1045.md:
+
+docs/solve-runs/20250130-1105.md:
+
+docs/solve-runs/20250130-1120.md:
+
+docs/solve-runs/20250130-1130.md:
+
+docs/solver.md:
+
 docs/templates.md:
 
 docs/test-failures-analysis.md:
@@ -292,9 +302,17 @@ src/server/ws/types.rs:
 
 src/solver/changes/generation.rs:
 │fn extract_json_from_markdown
+│fn parse_llm_response
+│fn validate_changes_relevance
+│fn extract_keywords
+│fn is_common_word
 │fn generate_changes
 │fn add
 │fn add
+│fn test_extract_json_from_markdown
+│fn test_validate_changes_relevance
+│fn test_extract_keywords
+│const MAX_RETRIES
 
 src/solver/changes/parsing.rs:
 │fn parse_search_replace
@@ -306,17 +324,29 @@ src/solver/changes/tests.rs:
 │fn test_parse_search_replace_multiple
 │fn test_parse_search_replace_invalid
 
+src/solver/changes/types.rs:
+│fn validate
+│fn test_change_block_validation
+
 src/solver/config.rs:
 │fn load
 
 src/solver/context.rs:
 │fn new
 │fn new_with_dir
+│fn with_github
+│fn create_branch
+│fn create_pull_request
 │fn generate_file_list
 │fn generate_changes
 │fn parse_changes
 │fn apply_changes
 │fn cleanup
+│fn test_apply_changes
+│fn test
+│fn test
+│fn test
+│fn test_cleanup
 
 src/solver/display.rs:
 │fn print_colored
@@ -336,26 +366,52 @@ src/solver/file_list.rs:
 src/solver/github.rs:
 │fn new
 │fn create_branch
+│fn validate_pr_title
+│fn generate_pr_title
 │fn create_pull_request
 │fn post_comment
 │fn get_issue
 │fn get_issue_comments
+│fn test_generate_pr_title
+│fn test_validate_pr_title
+│fn test_new_with_invalid_repo
+
+src/solver/json.rs:
+│fn escape_json_string
+│fn is_valid_json_string
+│fn fix_common_json_issues
+│fn test_escape_json_string
+│fn test_is_valid_json_string
+│fn test_fix_common_json_issues
 
 src/solver/planning.rs:
 │fn new
+│fn validate_llm_response
+│fn generate_prompt
+│fn retry_with_feedback
 │fn generate_plan
 │fn generate_plan_sync
+│fn test_validate_llm_response
+│fn generate_title
+│fn generate_title_with_prefix
+│fn test_generate_prompt
+│const MAX_RETRIES
 
 src/solver/solution.rs:
 │fn handle_solution
+│fn test_handle_solution
 
 src/solver/streaming.rs:
 │fn handle_plan_stream
 
 src/solver/types.rs:
 │fn new
+│fn with_reason
 │fn validate
 │fn validate_pr_title
+│fn test_change_with_reason
+│fn test_validate_pr_title
+│fn test_change_validation
 
 tailwind.config.cjs:
 │const 
