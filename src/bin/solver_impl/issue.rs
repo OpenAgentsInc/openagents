@@ -27,10 +27,6 @@ pub async fn handle_issue(cli: &Cli, github_token: &str) -> Result<(Issue, Vec<C
 
     if !comments.is_empty() {
         println!("\nComments ({}):", comments.len());
-        for comment in &comments {
-            println!("\nFrom @{} at {}:", comment.user.login, comment.created_at);
-            println!("{}\n", comment.body);
-        }
     }
 
     Ok((
