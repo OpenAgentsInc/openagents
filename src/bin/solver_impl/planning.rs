@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use openagents::solver::{planning::PlanningContext, streaming::handle_plan_stream};
 use regex::Regex;
-use serde_json::json;
 use tracing::{debug, error, info};
 
 // Error messages
@@ -204,7 +203,7 @@ async fn retry_with_feedback(
     file_context: &str,
 ) -> Result<String> {
     for attempt in 0..MAX_RETRIES {
-        info!(LOG_RETRY_ATTEMPT, attempt + 1, MAX_RETRIES);
+        info!(LOG_RETRY_ATTEMPT, "{} {}", attempt + 1, MAX_RETRIES);
 
         let stream = context
             .generate_plan(issue_number, title, description, repo_map, file_context)
@@ -255,6 +254,7 @@ pub async fn handle_planning(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_extract_json_from_markdown() {
