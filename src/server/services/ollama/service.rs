@@ -1,23 +1,23 @@
-use super::config::OllamaConfig;
-use crate::server::services::gateway::Gateway;
-use crate::server::services::deepseek::StreamUpdate;
+use crate::server::services::gateway::{types::GatewayMetadata, Gateway};
 use anyhow::Result;
+use futures_util::{Stream, StreamExt};
+use std::pin::Pin;
 use tokio::sync::mpsc;
 
 pub struct OllamaService {
-    config: OllamaConfig,
+    config: super::config::OllamaConfig,
 }
 
 impl OllamaService {
     pub fn new() -> Self {
         Self {
-            config: OllamaConfig::global().clone(),
+            config: super::config::OllamaConfig::global().clone(),
         }
     }
 
     pub fn with_config(base_url: &str, model: &str) -> Self {
         Self {
-            config: OllamaConfig {
+            config: super::config::OllamaConfig {
                 base_url: base_url.to_string(),
                 model: model.to_string(),
             },
@@ -27,8 +27,8 @@ impl OllamaService {
 
 #[async_trait::async_trait]
 impl Gateway for OllamaService {
-    fn metadata(&self) -> crate::server::services::gateway::GatewayMetadata {
-        crate::server::services::gateway::GatewayMetadata {
+    fn metadata(&self) -> GatewayMetadata {
+        GatewayMetadata {
             name: "ollama".to_string(),
             openai_compatible: false,
             supported_features: vec!["chat".to_string(), "streaming".to_string()],
@@ -37,7 +37,7 @@ impl Gateway for OllamaService {
         }
     }
 
-    async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
+    async fn chat(&self, prompt: String, _use_reasoner: bool) -> Result<(String, Option<String>)> {
         let client = reqwest::Client::new();
         let response = client
             .post(format!("{}/api/chat", self.config.base_url))
@@ -63,9 +63,9 @@ impl Gateway for OllamaService {
     async fn chat_stream(
         &self,
         prompt: String,
-        use_reasoner: bool,
-    ) -> Result<mpsc::Receiver<StreamUpdate>> {
-        let (tx, rx) = mpsc::channel(100);
+        _use_reasoner: bool,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
+        let (tx, mut rx) = mpsc::channel(100);
         let client = reqwest::Client::new();
         let config = self.config.clone();
 
@@ -92,28 +92,34 @@ impl Gateway for OllamaService {
                                 if let Ok(text) = String::from_utf8(bytes.to_vec()) {
                                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
                                         if let Some(content) = json["message"]["content"].as_str() {
-                                            let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
+                                            let _ = tx.send(Ok(content.to_string())).await;
                                         }
                                         if json["done"].as_bool().unwrap_or(false) {
-                                            let _ = tx.send(StreamUpdate::Done).await;
                                             break;
                                         }
                                     }
                                 }
                             }
                             Err(e) => {
-                                let _ = tx.send(StreamUpdate::Error(e.to_string())).await;
+                                let _ = tx.send(Err(anyhow::anyhow!(e))).await;
                                 break;
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(StreamUpdate::Error(e.to_string())).await;
+                    let _ = tx.send(Err(anyhow::anyhow!(e))).await;
                 }
             }
         });
 
-        Ok(rx)
+        // Convert mpsc::Receiver into a Stream
+        let stream = async_stream::stream! {
+            while let Some(result) = rx.recv().await {
+                yield result;
+            }
+        };
+
+        Ok(Box::pin(stream))
     }
 }
