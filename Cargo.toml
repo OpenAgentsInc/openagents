@@ -73,6 +73,7 @@ thiserror = "1.0"
 tempfile = "3.10"
 octocrab = "0.34"
 async-stream = "0.3"  # Added async-stream dependency
+regex = "1.10.2"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }
