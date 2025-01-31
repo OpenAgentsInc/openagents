@@ -1,6 +1,6 @@
 use anyhow::Result;
 use openagents::solver::context::SolverContext;
-use openagents::solver::{Change, ChangeError};
+use openagents::solver::types::{Change, ChangeError};
 use std::fs;
 use tempfile::TempDir;
 
