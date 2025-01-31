@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
 
     // Get Ollama URL from environment or use default
-    let ollama_url =
+    let _ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
     // Initialize GitHub service
@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     let comments = github.get_issue_comments(owner, name, issue_num).await?;
 
     println!("Title: {}", issue.title);
-    println!("Body: {}", issue.body.unwrap_or_default());
+    println!("Body: {}", issue.body.as_ref().unwrap_or_default());
     println!("State: {}", issue.state);
 
     // Print comments
@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     let prompt = format!(
         "Speculate about this: {} - {}", 
         issue.title,
-        issue.body.unwrap_or_default()
+        issue.body.as_ref().unwrap_or_default()
     );
     let stream = ollama.chat_stream(prompt.clone(), true).await?;
     let plan = handle_plan_stream(stream).await?;
