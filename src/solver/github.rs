@@ -144,8 +144,10 @@ mod tests {
     use mockito::Server;
     use serde_json::json;
     use crate::solver::test_helpers::run_async_test;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_generate_pr_title() {
         run_async_test(async {
             let mut server = Server::new();
@@ -182,6 +184,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_new_with_invalid_repo() {
         let result = GitHubContext::new("invalid", "token".to_string());
         assert!(result.is_err());
