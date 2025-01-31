@@ -194,7 +194,10 @@ mod tests {
             ChangeError::FileNotFound(PathBuf::from("test.rs")),
             ChangeError::FileNotFound(PathBuf::from("test.rs"))
         );
-        assert_eq!(ChangeError::IoError(std::io::Error::last_os_error()), ChangeError::IoError(std::io::Error::last_os_error()));
+        assert_eq!(
+            ChangeError::IoError(std::io::Error::last_os_error()),
+            ChangeError::IoError(std::io::Error::last_os_error())
+        );
         assert_ne!(ChangeError::NoMatch, ChangeError::EmptyPath);
     }
 }

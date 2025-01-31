@@ -50,7 +50,12 @@ impl SolverState {
         }
     }
 
-    pub fn add_file(&mut self, path: String, analysis: String, relevance_score: f32) -> &mut FileState {
+    pub fn add_file(
+        &mut self,
+        path: String,
+        analysis: String,
+        relevance_score: f32,
+    ) -> &mut FileState {
         let file_state = FileState {
             id: Uuid::new_v4().to_string(),
             path,
@@ -93,12 +98,8 @@ mod tests {
     #[test]
     fn test_add_file() {
         let mut state = SolverState::new("Initial analysis".to_string());
-        let file = state.add_file(
-            "src/main.rs".to_string(),
-            "Main file".to_string(),
-            0.9,
-        );
-        
+        let file = state.add_file("src/main.rs".to_string(), "Main file".to_string(), 0.9);
+
         assert_eq!(file.path, "src/main.rs");
         assert_eq!(file.analysis, "Main file");
         assert_eq!(file.relevance_score, 0.9);
@@ -109,12 +110,8 @@ mod tests {
     #[test]
     fn test_add_change() {
         let mut state = SolverState::new("Initial analysis".to_string());
-        let file = state.add_file(
-            "src/main.rs".to_string(),
-            "Main file".to_string(),
-            0.9,
-        );
-        
+        let file = state.add_file("src/main.rs".to_string(), "Main file".to_string(), 0.9);
+
         file.add_change(
             "old code".to_string(),
             "new code".to_string(),
@@ -131,10 +128,10 @@ mod tests {
     fn test_update_status() {
         let mut state = SolverState::new("Initial analysis".to_string());
         assert_eq!(state.status, SolverStatus::CollectingContext);
-        
+
         state.update_status(SolverStatus::Thinking);
         assert_eq!(state.status, SolverStatus::Thinking);
-        
+
         state.update_status(SolverStatus::GeneratingCode);
         assert_eq!(state.status, SolverStatus::GeneratingCode);
     }

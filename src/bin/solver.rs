@@ -1,9 +1,9 @@
 use anyhow::{Context as _, Result};
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::info;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RelevantFiles {
@@ -66,11 +66,8 @@ async fn main() -> Result<()> {
     // Generate repository map
     info!("Generating repository map...");
     let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
-    
-    let mistral = OllamaService::with_config(
-        "http://192.168.1.189:11434",
-        "mistral-small",
-    );
+
+    let mistral = OllamaService::with_config("http://192.168.1.189:11434", "mistral-small");
 
     let prompt = format!(
         "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}\n\nRepository map:\n{}", 
@@ -109,7 +106,7 @@ async fn main() -> Result<()> {
     });
 
     let relevant_files: RelevantFiles = mistral.chat_structured(prompt, format).await?;
-    
+
     println!("\nRelevant files to modify:");
     for file in relevant_files.files {
         println!("- {} (score: {:.2})", file.path, file.relevance_score);

@@ -3,7 +3,8 @@ mod tests {
     use anyhow::Result;
     use futures_util::StreamExt;
     use openagents::solver::{
-        changes::generation::generate_changes, file_list::generate_file_list, planning::PlanningContext,
+        changes::generation::generate_changes, file_list::generate_file_list,
+        planning::PlanningContext,
     };
     use serial_test::serial;
     use std::fs;

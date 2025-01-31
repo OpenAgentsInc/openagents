@@ -11,7 +11,7 @@ use tracing::info;
 struct Args {
     /// Issue number to solve
     #[arg(short, long)]
-    issue: i32,  // Changed from u64 to i32 to match API
+    issue: i32, // Changed from u64 to i32 to match API
 
     /// Repository owner/name (default: OpenAgentsInc/openagents)
     #[arg(short, long)]
@@ -122,7 +122,7 @@ async fn main() -> Result<()> {
     });
 
     let response: RelevantFiles = mistral.chat_structured(prompt, format).await?;
-    
+
     println!("\nRelevant files to modify:");
     for file in response.files {
         println!("- {} (score: {:.2})", file.path, file.relevance_score);

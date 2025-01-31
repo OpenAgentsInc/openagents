@@ -22,9 +22,9 @@ pub use file_list::*;
 pub use github::*;
 pub use json::*;
 pub use planning::*;
-pub use state::{SolverState, SolverStatus, FileState};
+pub use state::{FileState, SolverState, SolverStatus};
 pub use streaming::*;
-pub use types::Change as TypeChange;  // Rename to avoid conflict
+pub use types::Change as TypeChange; // Rename to avoid conflict
 
 // Re-export octocrab types that we use
 pub use octocrab::models::issues::{Comment, Issue};

@@ -74,10 +74,7 @@ fn test_apply_changes_no_match() -> Result<()> {
 
     let result = context.apply_changes(&changes);
     assert!(matches!(result, Err(ChangeError::NoMatch)));
-    assert_eq!(
-        fs::read_to_string(&test_file)?,
-        "fn existing_function() {}"
-    );
+    assert_eq!(fs::read_to_string(&test_file)?, "fn existing_function() {}");
 
     Ok(())
 }
