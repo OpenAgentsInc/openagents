@@ -1,20 +1,23 @@
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use openagents::server::services::github_issue::GitHubService;
+use openagents::server::services::ollama::OllamaService;
 use std::path::Path;
-use tracing::{debug, info};
+use tracing::info;
 
-mod solver_impl;
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Issue number to solve
+    #[arg(short, long)]
+    issue: u64,
 
-#[derive(Parser)]
-struct Cli {
-    #[clap(long)]
-    issue: i32,
-
-    #[clap(long)]
+    /// Repository owner/name (default: OpenAgentsInc/openagents)
+    #[arg(short, long)]
     repo: Option<String>,
 
-    #[clap(long)]
+    /// Live mode - actually create branch and PR
+    #[arg(short, long)]
     live: bool,
 }
 
@@ -25,11 +28,23 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    // Parse command line arguments
-    let cli = Cli::parse();
-
     // Load environment variables
     dotenvy::dotenv().ok();
+
+    // Parse command line arguments
+    let cli = Args::parse();
+
+    // Parse repo owner/name
+    let (owner, name) = match cli.repo {
+        Some(ref repo) => {
+            let parts: Vec<&str> = repo.split('/').collect();
+            if parts.len() != 2 {
+                anyhow::bail!("Invalid repo format. Expected owner/name");
+            }
+            (parts[0].to_string(), parts[1].to_string())
+        }
+        None => ("OpenAgentsInc".to_string(), "openagents".to_string()),
+    };
 
     // Get GitHub token from environment
     let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
@@ -38,86 +53,65 @@ async fn main() -> Result<()> {
     let ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
-    // Get repository owner/name
-    let repo = cli
-        .repo
-        .unwrap_or_else(|| "OpenAgentsInc/openagents".to_string());
-    let (owner, name) = repo
-        .split_once('/')
-        .context("Invalid repository format. Expected owner/name")?;
-
     // Initialize GitHub service
     let github = GitHubService::new(Some(github_token.clone()))
         .context("Failed to initialize GitHub service")?;
 
     // Fetch issue details
     info!("Fetching issue #{}", cli.issue);
-    let issue = github.get_issue(owner, name, cli.issue).await?;
-    let comments = github.get_issue_comments(owner, name, cli.issue).await?;
-    info!("Fetched comments");
+    let issue = github.get_issue(&owner, &name, cli.issue).await?;
+    let _comments = github.get_issue_comments(&owner, &name, cli.issue).await?;
+
+    println!("Title: {}", issue.title);
+    println!("Body: {}", issue.body.clone().unwrap_or_default());
+    println!("State: {}", issue.state);
 
     // Generate repository map
     info!("Generating repository map...");
     let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
-    debug!("Repository map:\n{}", repo_map);
 
-    // Generate implementation plan
-    let plan = solver_impl::planning::handle_planning(
-        cli.issue,
-        &issue.title,
-        issue.body.as_deref().unwrap_or("No description provided"),
-        &repo_map,
-        &ollama_url,
-    )
-    .await?;
+    let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
-    // Generate and apply solution
-    solver_impl::solution::handle_solution(
-        cli.issue,
-        &issue.title,
-        issue.body.as_deref().unwrap_or("No description provided"),
-        &plan,
-        &repo_map,
-        &ollama_url,
-    )
-    .await?;
+    let prompt = format!(
+        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}\\n\\nRepository map:\\n{}", 
+        issue.title,
+        issue.body.clone().unwrap_or_default(),
+        repo_map
+    );
 
-    // If in live mode, create branch and post comment
-    if cli.live {
-        // Create branch
-        let branch_name = format!("solver/issue-{}", cli.issue);
-        github
-            .create_branch(owner, name, &branch_name, "main")
-            .await?;
+    info!("Prompt: {}", prompt);
 
-        // Post implementation plan as comment
-        github
-            .post_comment(
-                owner,
-                name,
-                cli.issue,
-                &format!("## Implementation Plan\n\n{}", plan),
-            )
-            .await?;
+    let format = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "files": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string"
+                        },
+                        "relevance_score": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "reason": {
+                            "type": "string"
+                        }
+                    },
+                    "required": ["path", "relevance_score", "reason"]
+                }
+            }
+        },
+        "required": ["files"]
+    });
 
-        // Create pull request
-        github
-            .create_pull_request(
-                owner,
-                name,
-                &format!("Implement solution for #{}", cli.issue),
-                &format!(
-                    "This PR implements the solution for issue #{}\n\n## Implementation Plan\n\n{}",
-                    cli.issue, plan
-                ),
-                &branch_name,
-                "main",
-            )
-            .await?;
-    } else {
-        // Just print the plan
-        println!("\nImplementation Plan:\n{}", plan);
-    }
+    let response = mistral.chat_structured(prompt, format).await?;
+    println!("Response: {:?}", response);
+
+    println!("Success.");
 
     Ok(())
 }
