@@ -27,6 +27,8 @@ docs/solve-runs/20250130-1145.md:
 
 docs/solve-runs/20250130-1225.md:
 
+docs/solve-runs/20250130-1240.md:
+
 docs/solver.md:
 
 docs/templates.md:
@@ -57,25 +59,41 @@ src/bin/solver_impl/issue.rs:
 
 src/bin/solver_impl/planning.rs:
 │fn generate_pr_title
+│fn escape_json_string
 │fn extract_json_from_markdown
+│fn validate_changes_relevance
+│fn is_common_word
 │fn gather_context
+│fn fix_common_json_issues
+│fn validate_llm_response
+│fn retry_with_feedback
 │fn handle_planning
+│fn test_extract_json_from_markdown
+│fn test_validate_changes_relevance
+│fn test_fix_common_json_issues
 │const ERR_NO_JSON
 │const ERR_NO_CHANGES
 │const ERR_WRONG_TARGET
+│const ERR_INVALID_JSON
+│const ERR_INVALID_CHANGES
 │const GITHUB_RS_PATH
 │const JSON_RS_PATH
 │const KEY_CHANGES
 │const KEY_PATH
 │const KEY_SEARCH
+│const KEY_REPLACE
+│const KEY_REASON
 │const LOG_GATHERING
 │const LOG_GENERATING
 │const LOG_FILE_CONTEXT
 │const LOG_FULL_RESPONSE
 │const LOG_EXTRACTED_JSON
+│const LOG_RETRY_ATTEMPT
+│const LOG_VALIDATION_ERROR
 │const GITHUB_RS_CONTENT
 │const TARGET_FUNCTION
 │const EMPTY_STR
+│const MAX_RETRIES
 
 src/bin/solver_impl/solution.rs:
 │fn handle_solution
@@ -121,11 +139,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -137,15 +155,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -436,7 +454,7 @@ src/solver/types.rs:
 │fn test_change_validation
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -536,7 +554,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/company.html:
 │class of
@@ -786,3 +804,4 @@ tests/tool_selection.rs:
 
 tests/user.rs:
 │fn test_user_creation
+
