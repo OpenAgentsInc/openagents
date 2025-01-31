@@ -1,5 +1,7 @@
 use anyhow::{Context as _, Result};
 use openagents::server::services::github_issue::GitHubService;
+use openagents::server::services::ollama::OllamaService;
+use std::path::Path;
 use tracing::info;
 
 #[tokio::main]
@@ -41,12 +43,22 @@ async fn main() -> Result<()> {
     if !comments.is_empty() {
         println!("Comments:");
         for comment in comments {
-            let body = comment.body.clone().unwrap_or_default();
+            let body = comment.body.clone();
             println!("- {}", body);
         }
     } else {
         println!("No comments found.");
     }
+
+    // Generate repository map
+    info!("Generating repository map...");
+    let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
+    info!("Repository map:\n{}", repo_map);
+    
+    let ollama = OllamaService::with_config(
+        "http://192.168.1.189:11434",
+        "deepseek-r1:14b",
+    );
 
     println!("Success.");
 
