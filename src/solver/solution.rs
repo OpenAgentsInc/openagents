@@ -112,43 +112,45 @@ mod tests {
     use tempfile::tempdir;
     use mockito::Server;
     use serde_json::json;
-    use tokio::test;
+    use crate::solver::test_helpers::run_async_test;
 
     #[test]
-    async fn test_handle_solution() -> Result<()> {
-        let temp_dir = tempdir()?;
-        let test_file = temp_dir.path().join("test.rs");
-        fs::write(&test_file, "// Original content")?;
+    fn test_handle_solution() {
+        run_async_test(async {
+            let temp_dir = tempdir()?;
+            let test_file = temp_dir.path().join("test.rs");
+            fs::write(&test_file, "// Original content")?;
 
-        let mut server = Server::new();
-        let mock_response = json!({
-            "choices": [{
-                "message": {
-                    "content": "feat: add multiply function"
-                }
-            }]
-        });
+            let mut server = Server::new();
+            let mock_response = json!({
+                "choices": [{
+                    "message": {
+                        "content": "feat: add multiply function"
+                    }
+                }]
+            });
 
-        let mock = server.mock("POST", "/v1/chat/completions")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(mock_response.to_string())
-            .create();
+            let mock = server.mock("POST", "/v1/chat/completions")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(mock_response.to_string())
+                .create();
 
-        std::env::set_var("DEEPSEEK_API_URL", &server.url());
+            std::env::set_var("DEEPSEEK_API_URL", &server.url());
 
-        let result = handle_solution(
-            123,
-            "Add multiply function",
-            "Add a function that multiplies two numbers",
-            "Implementation plan",
-            "Repository map",
-            "test_url",
-        )
-        .await;
+            let result = handle_solution(
+                123,
+                "Add multiply function",
+                "Add a function that multiplies two numbers",
+                "Implementation plan",
+                "Repository map",
+                "test_url",
+            )
+            .await;
 
-        mock.assert();
-        assert!(result.is_ok());
-        Ok(())
+            mock.assert();
+            assert!(result.is_ok());
+            Ok(())
+        })
     }
 }
