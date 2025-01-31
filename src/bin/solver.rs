@@ -1,6 +1,8 @@
 use anyhow::{Context as _, Result};
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
+use openagents::server::services::Gateway;
+use openagents::solver::handle_plan_stream;
 use std::path::Path;
 use tracing::info;
 
@@ -59,6 +61,11 @@ async fn main() -> Result<()> {
         "http://192.168.1.189:11434",
         "deepseek-r1:14b",
     );
+
+    let prompt = "Speculate about this: ${issue.title}, ${issue.body}".to_string();
+    let stream = ollama.chat_stream(prompt.clone(), true).await?;
+    let plan = handle_plan_stream(stream).await?;
+    info!("Plan: {}", plan);
 
     println!("Success.");
 
