@@ -53,6 +53,7 @@ mod tests {
     fn test_fix_common_json_issues() {
         let input = "{\n\"key\": \"value\"\n}\n{\"key2\": \"value2\"}";
         let expected = "{\n\"key\": \"value\"\n},\n{\"key2\": \"value2\"}";
-        assert_eq!(fix_common_json_issues(input), expected);
+        let result = fix_common_json_issues(input);
+        assert_eq!(result, expected);
     }
 }
