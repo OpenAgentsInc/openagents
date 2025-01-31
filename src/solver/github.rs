@@ -143,44 +143,46 @@ mod tests {
     use super::*;
     use mockito::Server;
     use serde_json::json;
-    use tokio::test;
+    use crate::solver::test_helpers::run_async_test;
 
     #[test]
-    async fn test_generate_pr_title() {
-        let mut server = Server::new();
-        let mock_response = json!({
-            "choices": [{
-                "message": {
-                    "content": "feat: add multiply function"
-                }
-            }]
+    fn test_generate_pr_title() {
+        run_async_test(async {
+            let mut server = Server::new();
+            let mock_response = json!({
+                "choices": [{
+                    "message": {
+                        "content": "feat: add multiply function"
+                    }
+                }]
+            });
+
+            let mock = server.mock("POST", "/v1/chat/completions")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(mock_response.to_string())
+                .create();
+
+            std::env::set_var("DEEPSEEK_API_URL", &server.url());
+            
+            let context = GitHubContext::new(
+                "test/repo",
+                "test_token".to_string(),
+            ).unwrap();
+
+            let test_context = "Add a multiply function that multiplies two integers";
+            let title = context.generate_pr_title(123, test_context).await.unwrap();
+
+            mock.assert();
+            assert!(title.starts_with("feat:"));
+            assert!(title.contains("multiply"));
+            assert!(title.len() <= 72);
+            assert!(title.len() >= 10);
         });
-
-        let mock = server.mock("POST", "/v1/chat/completions")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(mock_response.to_string())
-            .create();
-
-        std::env::set_var("DEEPSEEK_API_URL", &server.url());
-        
-        let context = GitHubContext::new(
-            "test/repo",
-            "test_token".to_string(),
-        ).unwrap();
-
-        let test_context = "Add a multiply function that multiplies two integers";
-        let title = context.generate_pr_title(123, test_context).await.unwrap();
-
-        mock.assert();
-        assert!(title.starts_with("feat:"));
-        assert!(title.contains("multiply"));
-        assert!(title.len() <= 72);
-        assert!(title.len() >= 10);
     }
 
     #[test]
-    async fn test_new_with_invalid_repo() {
+    fn test_new_with_invalid_repo() {
         let result = GitHubContext::new("invalid", "token".to_string());
         assert!(result.is_err());
     }
