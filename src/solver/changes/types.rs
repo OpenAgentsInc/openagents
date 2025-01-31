@@ -18,9 +18,9 @@ pub struct ChangeBlock {
 
 impl ChangeBlock {
     pub fn validate(&self) -> bool {
-        !self.path.is_empty() && 
-        !self.reason.is_empty() && 
-        (!self.search.is_empty() || !self.replace.is_empty())
+        !self.path.is_empty()
+            && !self.reason.is_empty()
+            && (!self.search.is_empty() || !self.replace.is_empty())
     }
 }
 

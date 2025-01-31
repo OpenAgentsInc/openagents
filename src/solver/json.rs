@@ -2,9 +2,9 @@ use serde_json::Value;
 
 pub fn escape_json_string(s: &str) -> String {
     s.replace('\"', "\\\"")
-     .replace('\n', "\\n")
-     .replace('\r', "\\r")
-     .replace('\t', "\\t")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 pub fn is_valid_json_string(s: &str) -> bool {
@@ -18,15 +18,16 @@ pub fn is_valid_json_string(s: &str) -> bool {
 pub fn fix_common_json_issues(json: &str) -> String {
     // Fix unescaped newlines in strings
     let mut fixed = json.replace("\"\n", "\"\\n");
-    
+
     // Fix unescaped quotes in strings
-    fixed = fixed.replace("\\\"", "TEMP_QUOTE")
-                .replace("\"", "\\\"")
-                .replace("TEMP_QUOTE", "\\\"");
-    
+    fixed = fixed
+        .replace("\\\"", "TEMP_QUOTE")
+        .replace("\"", "\\\"")
+        .replace("TEMP_QUOTE", "\\\"");
+
     // Fix missing commas between objects
     fixed = fixed.replace("}\n{", "},\n{");
-    
+
     fixed
 }
 

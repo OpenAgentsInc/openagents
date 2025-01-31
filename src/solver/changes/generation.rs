@@ -51,35 +51,37 @@ fn validate_changes_relevance(
     // Check if reasoning contains keywords from title or description
     let keywords = extract_keywords(title, description);
     let reasoning_matches = keywords.iter().any(|k| reasoning.contains(k));
-    
+
     // Check if any change reasons contain keywords
     let changes_match = changes.iter().any(|c| {
-        keywords.iter().any(|k| c.reason.as_ref().map_or(false, |r| r.contains(k)))
+        keywords
+            .iter()
+            .any(|k| c.reason.as_ref().map_or(false, |r| r.contains(k)))
     });
-    
+
     reasoning_matches || changes_match
 }
 
 /// Extracts important keywords from title and description
 fn extract_keywords(title: &str, description: &str) -> Vec<String> {
     let mut keywords = Vec::new();
-    
+
     // Add words from title (excluding common words)
     keywords.extend(
         title
             .split_whitespace()
             .filter(|w| w.len() > 3 && !is_common_word(w))
-            .map(String::from)
+            .map(String::from),
     );
-    
+
     // Add words from description
     keywords.extend(
         description
             .split_whitespace()
             .filter(|w| w.len() > 3 && !is_common_word(w))
-            .map(String::from)
+            .map(String::from),
     );
-    
+
     keywords
 }
 
@@ -271,8 +273,13 @@ More text"#;
         let reasoning = "Added multiply function to implement calculation feature";
         let title = "Add multiply function";
         let description = "Implement multiplication calculation";
-        
-        assert!(validate_changes_relevance(&changes, reasoning, title, description));
+
+        assert!(validate_changes_relevance(
+            &changes,
+            reasoning,
+            title,
+            description
+        ));
     }
 
     #[test]
@@ -280,7 +287,7 @@ More text"#;
         let title = "Add multiply function";
         let description = "Implement multiplication calculation";
         let keywords = extract_keywords(title, description);
-        
+
         assert!(keywords.contains(&"multiply".to_string()));
         assert!(keywords.contains(&"multiplication".to_string()));
         assert!(keywords.contains(&"calculation".to_string()));

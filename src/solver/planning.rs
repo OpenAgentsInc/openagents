@@ -25,17 +25,19 @@ impl PlanningContext {
     fn validate_llm_response(response: &str) -> Result<bool> {
         // Check response focuses on pull request title generation
         if !response.contains("pull request title") || !response.contains("src/solver/github.rs") {
-            debug!("Response doesn't focus on pull request title generation or target correct file");
+            debug!(
+                "Response doesn't focus on pull request title generation or target correct file"
+            );
             return Ok(false);
         }
-        
+
         // Validate JSON structure
         let json = serde_json::from_str::<Value>(response)?;
         if json["changes"].as_array().map_or(0, |a| a.len()) == 0 {
             debug!("Response contains no changes");
             return Ok(false);
         }
-        
+
         // Check for proper string escaping
         for change in json["changes"].as_array().unwrap() {
             let search = change["search"].as_str().unwrap_or("");
@@ -49,15 +51,21 @@ impl PlanningContext {
         // Verify changes target the correct file and function
         let changes = json["changes"].as_array().unwrap();
         let targets_github_rs = changes.iter().any(|c| {
-            c["path"].as_str().unwrap_or("").contains("src/solver/github.rs") &&
-            c["search"].as_str().unwrap_or("").contains("generate_pr_title")
+            c["path"]
+                .as_str()
+                .unwrap_or("")
+                .contains("src/solver/github.rs")
+                && c["search"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("generate_pr_title")
         });
 
         if !targets_github_rs {
             debug!("Changes don't target src/solver/github.rs generate_pr_title function");
             return Ok(false);
         }
-        
+
         Ok(true)
     }
 
@@ -148,7 +156,10 @@ Rules:
         );
 
         if let Some(feedback) = feedback {
-            format!("{}\n\nPrevious attempt feedback:\n{}", base_prompt, feedback)
+            format!(
+                "{}\n\nPrevious attempt feedback:\n{}",
+                base_prompt, feedback
+            )
         } else {
             base_prompt
         }
@@ -163,18 +174,25 @@ Rules:
         file_context: &str,
     ) -> Result<String> {
         let mut feedback = None;
-        
+
         for attempt in 0..MAX_RETRIES {
-            let prompt = self.generate_prompt(issue_number, title, description, repo_map, file_context, feedback);
+            let prompt = self.generate_prompt(
+                issue_number,
+                title,
+                description,
+                repo_map,
+                file_context,
+                feedback,
+            );
             let (response, _) = self.service.chat(prompt, true).await?;
-            
+
             // Try to fix common JSON issues
             let fixed_response = fix_common_json_issues(&response);
-            
+
             if Self::validate_llm_response(&fixed_response)? {
                 return Ok(fixed_response);
             }
-            
+
             // Generate feedback for next attempt
             feedback = Some(
                 "Previous attempt was invalid because:\n\
@@ -183,13 +201,16 @@ Rules:
                 - Must use existing code structure and variables\n\
                 - All strings must be properly escaped\n\
                 - PR titles must start with feat:, fix:, etc.\n\
-                - Do not modify test files"
+                - Do not modify test files",
             );
-            
+
             info!("Attempt {} failed, retrying with feedback", attempt + 1);
         }
-        
-        Err(anyhow!("Failed to generate valid response after {} attempts", MAX_RETRIES))
+
+        Err(anyhow!(
+            "Failed to generate valid response after {} attempts",
+            MAX_RETRIES
+        ))
     }
 
     pub async fn generate_plan(
@@ -200,7 +221,14 @@ Rules:
         repo_map: &str,
         file_context: &str,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
-        let prompt = self.generate_prompt(issue_number, title, description, repo_map, file_context, None);
+        let prompt = self.generate_prompt(
+            issue_number,
+            title,
+            description,
+            repo_map,
+            file_context,
+            None,
+        );
         self.service.chat_stream(prompt, true).await
     }
 
@@ -212,7 +240,8 @@ Rules:
         repo_map: &str,
         file_context: &str,
     ) -> Result<String> {
-        self.retry_with_feedback(issue_number, title, description, repo_map, file_context).await
+        self.retry_with_feedback(issue_number, title, description, repo_map, file_context)
+            .await
     }
 }
 
@@ -281,18 +310,18 @@ mod tests {
             "Test file context",
             None,
         );
-        
+
         // Check for key phrases that indicate proper context
         assert!(prompt.contains("pull request"));
         assert!(prompt.contains("src/solver/github.rs"));
         assert!(prompt.contains("generate_pr_title"));
         assert!(prompt.contains("feat:"));
         assert!(prompt.contains("must be properly escaped"));
-        
+
         // Check for examples
         assert!(prompt.contains("feat: add multiply function"));
         assert!(prompt.contains("Implement solution for #"));
-        
+
         // Check for clear instructions
         assert!(prompt.contains("Do NOT modify test files"));
         assert!(prompt.contains("MUST target src/solver/github.rs"));

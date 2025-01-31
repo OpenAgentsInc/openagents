@@ -120,7 +120,9 @@ fn validate_changes_relevance(changes: &[serde_json::Value], issue_title: &str) 
 
 /// Checks if a word is too common to be meaningful
 fn is_common_word(word: &str) -> bool {
-    let common_words = ["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for"];
+    let common_words = [
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+    ];
     common_words.contains(&word.to_lowercase().as_str())
 }
 
@@ -128,7 +130,7 @@ fn is_common_word(word: &str) -> bool {
 async fn gather_context(issue_title: &str, issue_description: &str) -> Result<String> {
     // First, identify key files that need to be examined based on the issue
     let mut relevant_files = Vec::new();
-    
+
     // For PR title generation, we know we need github.rs
     if issue_title.contains("PR title") || issue_description.contains("PR title") {
         relevant_files.push(GITHUB_RS_PATH);
@@ -165,11 +167,12 @@ fn fix_common_json_issues(json_str: &str) -> String {
 /// Validates the LLM response format and content
 fn validate_llm_response(json_str: &str, issue_title: &str) -> Result<bool> {
     // Parse JSON
-    let json: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|e| anyhow!("{}: {}", ERR_INVALID_JSON, e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| anyhow!("{}: {}", ERR_INVALID_JSON, e))?;
 
     // Check for changes array
-    let changes = json[KEY_CHANGES].as_array()
+    let changes = json[KEY_CHANGES]
+        .as_array()
         .ok_or_else(|| anyhow!(ERR_NO_CHANGES))?;
 
     // Validate each change
@@ -220,7 +223,10 @@ async fn retry_with_feedback(
         }
     }
 
-    Err(anyhow!("Failed to generate valid response after {} attempts", MAX_RETRIES))
+    Err(anyhow!(
+        "Failed to generate valid response after {} attempts",
+        MAX_RETRIES
+    ))
 }
 
 pub async fn handle_planning(
@@ -236,7 +242,7 @@ pub async fn handle_planning(
 
     info!(LOG_GENERATING);
     let context = PlanningContext::new(ollama_url)?;
-    
+
     // Use retry mechanism with feedback
     let json_str = retry_with_feedback(
         &context,
@@ -245,7 +251,8 @@ pub async fn handle_planning(
         description,
         repo_map,
         &file_context,
-    ).await?;
+    )
+    .await?;
 
     debug!(LOG_EXTRACTED_JSON, json_str);
     Ok(json_str)
@@ -275,7 +282,7 @@ More text"#;
             "replace": "new code",
             "reason": "Improve PR title generation"
         }]);
-        
+
         assert!(validate_changes_relevance(
             changes.as_array().unwrap(),
             "Improve PR title generation"

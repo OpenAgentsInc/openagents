@@ -1,5 +1,5 @@
-use crate::server::services::github_issue::{GitHubComment, GitHubIssue, GitHubService};
 use crate::server::services::deepseek::DeepSeekService;
+use crate::server::services::github_issue::{GitHubComment, GitHubIssue, GitHubService};
 use anyhow::{anyhow, Result};
 use tracing::{debug, info, warn};
 
@@ -72,7 +72,7 @@ Generate title:"#,
         let (response, _) = self.llm_service.chat(prompt, true).await?;
 
         let title = response.trim();
-        
+
         // Validate title
         if title.len() < 10 || title.len() > 72 {
             warn!("Generated title has invalid length: {}", title.len());
@@ -106,7 +106,7 @@ Generate title:"#,
         let title = self.generate_pr_title(issue_number, context).await?;
 
         info!("Creating PR with title: {}", title);
-        
+
         self.service
             .create_pull_request(
                 &self.owner,
@@ -145,10 +145,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_pr_title() {
-        let context = GitHubContext::new(
-            "test/repo",
-            "test_token".to_string(),
-        ).unwrap();
+        let context = GitHubContext::new("test/repo", "test_token".to_string()).unwrap();
 
         let test_context = "Add a multiply function that multiplies two integers";
         let title = context.generate_pr_title(123, test_context).await.unwrap();

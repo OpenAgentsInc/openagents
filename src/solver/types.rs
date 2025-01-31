@@ -95,7 +95,10 @@ pub fn validate_pr_title(title: &str) -> Result<()> {
 
     // Title must contain action verb
     let action_verbs = ["add", "fix", "update", "implement", "improve", "refactor"];
-    if !action_verbs.iter().any(|&verb| title.to_lowercase().contains(verb)) {
+    if !action_verbs
+        .iter()
+        .any(|&verb| title.to_lowercase().contains(verb))
+    {
         return Err(anyhow!("PR title must contain an action verb"));
     }
 
@@ -127,12 +130,13 @@ mod tests {
         // Valid titles
         assert!(validate_pr_title("Add multiply function to implement #123").is_ok());
         assert!(validate_pr_title("Fix JSON parsing in solver for #456").is_ok());
-        
+
         // Invalid titles
         assert!(validate_pr_title("Fix #123").is_err()); // Too short
         assert!(validate_pr_title("Add function").is_err()); // No issue reference
         assert!(validate_pr_title("The function needs to be added").is_err()); // No issue reference
-        assert!(validate_pr_title("Something something something something something something very long title that exceeds the limit").is_err()); // Too long
+        assert!(validate_pr_title("Something something something something something something very long title that exceeds the limit").is_err());
+        // Too long
     }
 
     #[test]
