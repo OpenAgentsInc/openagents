@@ -5,6 +5,19 @@ use openagents::server::services::Gateway;
 use openagents::solver::handle_plan_stream;
 use std::path::Path;
 use tracing::info;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RelevantFiles {
+    files: Vec<FileInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FileInfo {
+    path: String,
+    relevance_score: f32,
+    reason: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -57,26 +70,54 @@ async fn main() -> Result<()> {
     let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
     info!("Repository map:\n{}", repo_map);
     
-    let mistral = OllamaService::with_config(
-        "http://192.168.1.189:11434",
-        "mistral-small",
-    );
     let deepseek = OllamaService::with_config(
         "http://192.168.1.189:11434",
         "deepseek-r1:14b",
     );
 
     let prompt = format!(
-        "Speculate about this: {} - {}", 
+        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Issue: {} - {}\n\nRepository map:\n{}", 
         issue.title,
-        issue.body.clone().unwrap_or_default()
+        issue.body.clone().unwrap_or_default(),
+        repo_map
     );
 
     info!("Prompt: {}", prompt);
 
-    let stream = deepseek.chat_stream(prompt.clone(), true).await?;
-    let plan = handle_plan_stream(stream).await?;
-    info!("Plan: {}", plan);
+    let format = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "files": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string"
+                        },
+                        "relevance_score": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "reason": {
+                            "type": "string"
+                        }
+                    },
+                    "required": ["path", "relevance_score", "reason"]
+                }
+            }
+        },
+        "required": ["files"]
+    });
+
+    let relevant_files: RelevantFiles = deepseek.chat_structured(prompt, format).await?;
+    
+    println!("\nRelevant files to modify:");
+    for file in relevant_files.files {
+        println!("- {} (score: {:.2})", file.path, file.relevance_score);
+        println!("  Reason: {}", file.reason);
+    }
 
     println!("Success.");
 
