@@ -1,6 +1,7 @@
 use tokio::runtime::Runtime;
 use std::sync::Once;
 use lazy_static::lazy_static;
+use serial_test::serial;
 
 lazy_static! {
     static ref TEST_RUNTIME: Runtime = Runtime::new().unwrap();
