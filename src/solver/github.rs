@@ -143,40 +143,44 @@ mod tests {
     use super::*;
     use mockito::Server;
     use serde_json::json;
+    use tokio::runtime::Runtime;
 
-    #[tokio::test]
-    async fn test_generate_pr_title() -> Result<()> {
-        let mut server = Server::new();
-        let mock_response = json!({
-            "choices": [{
-                "message": {
-                    "content": "feat: add multiply function"
-                }
-            }]
-        });
+    #[test]
+    fn test_generate_pr_title() -> Result<()> {
+        let rt = Runtime::new()?;
+        rt.block_on(async {
+            let mut server = Server::new();
+            let mock_response = json!({
+                "choices": [{
+                    "message": {
+                        "content": "feat: add multiply function"
+                    }
+                }]
+            });
 
-        let mock = server.mock("POST", "/v1/chat/completions")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(mock_response.to_string())
-            .create();
+            let mock = server.mock("POST", "/v1/chat/completions")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(mock_response.to_string())
+                .create();
 
-        std::env::set_var("DEEPSEEK_API_URL", &server.url());
-        
-        let context = GitHubContext::new(
-            "test/repo",
-            "test_token".to_string(),
-        )?;
+            std::env::set_var("DEEPSEEK_API_URL", &server.url());
+            
+            let context = GitHubContext::new(
+                "test/repo",
+                "test_token".to_string(),
+            )?;
 
-        let test_context = "Add a multiply function that multiplies two integers";
-        let title = context.generate_pr_title(123, test_context).await?;
+            let test_context = "Add a multiply function that multiplies two integers";
+            let title = context.generate_pr_title(123, test_context).await?;
 
-        mock.assert();
-        assert!(title.starts_with("feat:"));
-        assert!(title.contains("multiply"));
-        assert!(title.len() <= 72);
-        assert!(title.len() >= 10);
-        Ok(())
+            mock.assert();
+            assert!(title.starts_with("feat:"));
+            assert!(title.contains("multiply"));
+            assert!(title.len() <= 72);
+            assert!(title.len() >= 10);
+            Ok(())
+        })
     }
 
     #[test]
