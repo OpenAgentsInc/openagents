@@ -12,7 +12,8 @@ pub mod state;
 pub mod streaming;
 pub mod types;
 
-pub use changes::*;
+// Re-export specific types instead of globs to avoid conflicts
+pub use changes::generation::*;
 pub use cli::*;
 pub use config::*;
 pub use context::*;
@@ -21,9 +22,9 @@ pub use file_list::*;
 pub use github::*;
 pub use json::*;
 pub use planning::*;
-pub use state::*;
+pub use state::{SolverState, SolverStatus, FileState};
 pub use streaming::*;
-pub use types::*;
+pub use types::Change as TypeChange;  // Rename to avoid conflict
 
 // Re-export octocrab types that we use
 pub use octocrab::models::issues::{Comment, Issue};
