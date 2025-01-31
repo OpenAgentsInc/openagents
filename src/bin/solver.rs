@@ -67,6 +67,9 @@ async fn main() -> Result<()> {
         issue.title,
         issue.body.clone().unwrap_or_default()
     );
+
+    info!("Prompt: {}", prompt);
+
     let stream = ollama.chat_stream(prompt.clone(), true).await?;
     let plan = handle_plan_stream(stream).await?;
     info!("Plan: {}", plan);
