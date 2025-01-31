@@ -73,9 +73,10 @@ async fn main() -> Result<()> {
     );
 
     let prompt = format!(
-        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}", 
+        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}\n\nRepository map:\n{}", 
         issue.title,
-        issue.body.clone().unwrap_or_default()
+        issue.body.clone().unwrap_or_default(),
+        repo_map
     );
 
     info!("Prompt: {}", prompt);
