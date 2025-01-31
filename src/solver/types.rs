@@ -57,7 +57,7 @@ impl Change {
 }
 
 /// Errors that can occur during change operations
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum ChangeError {
     #[error("File path cannot be empty")]
     EmptyPath,
