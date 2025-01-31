@@ -54,8 +54,7 @@ async fn main() -> Result<()> {
     info!("Fetching issue #{}", cli.issue);
     let issue = github.get_issue(owner, name, cli.issue).await?;
     let comments = github.get_issue_comments(owner, name, cli.issue).await?;
-
-    info!("Fetched comments: {:?}", comments);
+    info!("Fetched comments");
 
     // Generate repository map
     info!("Generating repository map...");
