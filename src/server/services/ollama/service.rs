@@ -5,6 +5,7 @@ use std::pin::Pin;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, error};
+use serde_json::Value;
 
 pub struct OllamaService {
     config: super::config::OllamaConfig,
@@ -30,6 +31,33 @@ impl OllamaService {
                 model: model.to_string(),
             },
         }
+    }
+
+    pub async fn chat_structured<T>(&self, prompt: String, format: Value) -> Result<T> 
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{}/api/chat", self.config.base_url))
+            .json(&serde_json::json!({
+                "model": self.config.model,
+                "messages": [{
+                    "role": "user",
+                    "content": prompt
+                }],
+                "stream": false,
+                "format": format
+            }))
+            .send()
+            .await?;
+
+        let response_json = response.json::<serde_json::Value>().await?;
+        let content = response_json["message"]["content"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid response format from Ollama"))?;
+
+        serde_json::from_str(content).map_err(|e| anyhow::anyhow!("Failed to parse structured response: {}", e))
     }
 }
 
