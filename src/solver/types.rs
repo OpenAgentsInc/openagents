@@ -57,7 +57,7 @@ impl Change {
 }
 
 /// Errors that can occur during change operations
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug)]
 pub enum ChangeError {
     #[error("File path cannot be empty")]
     EmptyPath,
@@ -77,6 +77,24 @@ pub enum ChangeError {
     IrrelevantChanges,
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+}
+
+impl PartialEq for ChangeError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::EmptyPath, Self::EmptyPath) => true,
+            (Self::EmptyContent, Self::EmptyContent) => true,
+            (Self::FileNotFound(a), Self::FileNotFound(b)) => a == b,
+            (Self::NoMatch, Self::NoMatch) => true,
+            (Self::MultipleMatches, Self::MultipleMatches) => true,
+            (Self::InvalidFormat, Self::InvalidFormat) => true,
+            (Self::InvalidJsonString, Self::InvalidJsonString) => true,
+            (Self::IrrelevantChanges, Self::IrrelevantChanges) => true,
+            // IoError is special - we don't compare the actual errors
+            (Self::IoError(_), Self::IoError(_)) => true,
+            _ => false,
+        }
+    }
 }
 
 /// Result type for change operations
@@ -167,5 +185,16 @@ mod tests {
             "".to_string(),
         );
         assert!(change.validate().is_err());
+    }
+
+    #[test]
+    fn test_change_error_equality() {
+        assert_eq!(ChangeError::NoMatch, ChangeError::NoMatch);
+        assert_eq!(
+            ChangeError::FileNotFound(PathBuf::from("test.rs")),
+            ChangeError::FileNotFound(PathBuf::from("test.rs"))
+        );
+        assert_eq!(ChangeError::IoError(std::io::Error::last_os_error()), ChangeError::IoError(std::io::Error::last_os_error()));
+        assert_ne!(ChangeError::NoMatch, ChangeError::EmptyPath);
     }
 }
