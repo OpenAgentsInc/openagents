@@ -13,6 +13,11 @@ async fn main() -> Result<()> {
     // Load environment variables
     dotenvy::dotenv().ok();
 
+    // Hardcode our 'descriptive PR titles'
+    let owner = "OpenAgentsInc";
+    let name = "openagents";
+    let issue_num = 637;
+
     // Get GitHub token from environment
     let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
 
@@ -20,7 +25,20 @@ async fn main() -> Result<()> {
     let ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
-    println!("Hello.");
+    // Initialize GitHub service
+    let github = GitHubService::new(Some(github_token.clone()))
+        .context("Failed to initialize GitHub service")?;
+
+    // Fetch issue details
+    info!("Fetching issue #{}", issue_num);
+    let issue = github.get_issue(owner, name, issue_num).await?;
+    let comments = github.get_issue_comments(owner, name, issue_num).await?;
+
+    println!("Title: #{}", issue.title);
+    println!("Body: #{}", issue.body);
+    println!("State: #{}", issue.state);
+
+    println!("Success.");
 
     Ok(())
 }
