@@ -10,3 +10,8 @@ pub mod solution;
 pub mod streaming;
 pub mod test_helpers;
 pub mod types;
+
+// Re-export commonly used types
+pub use types::{Change, ChangeError};
+pub use context::SolverContext;
+pub use github::GitHubContext;
