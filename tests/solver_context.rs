@@ -21,12 +21,11 @@ fn test_apply_changes_new_file() -> Result<()> {
     let (context, temp_dir) = setup_test_context()?;
     let test_file = temp_dir.path().join("new_function.rs");
 
-    let changes = vec![Change {
-        path: test_file.to_str().unwrap().to_string(),
-        search: String::new(),
-        replace: "fn new_function() {}".to_string(),
-        reason: Some("Adding new function".to_string()),
-    }];
+    let changes = vec![Change::new(
+        test_file.to_str().unwrap().to_string(),
+        String::new(),
+        "fn new_function() {}".to_string(),
+    )];
 
     context.apply_changes(&changes)?;
     assert!(test_file.exists());
@@ -43,12 +42,11 @@ fn test_apply_changes_modify_file() -> Result<()> {
     // Create initial file
     fs::write(&test_file, "fn old_function() {}")?;
 
-    let changes = vec![Change {
-        path: test_file.to_str().unwrap().to_string(),
-        search: "fn old_function() {}".to_string(),
-        replace: "fn new_function() {}".to_string(),
-        reason: Some("Updating function name".to_string()),
-    }];
+    let changes = vec![Change::new(
+        test_file.to_str().unwrap().to_string(),
+        "fn old_function() {}".to_string(),
+        "fn new_function() {}".to_string(),
+    )];
 
     context.apply_changes(&changes)?;
     assert_eq!(fs::read_to_string(&test_file)?, "fn new_function() {}");
@@ -64,15 +62,14 @@ fn test_apply_changes_no_match() -> Result<()> {
     // Create initial file
     fs::write(&test_file, "fn existing_function() {}")?;
 
-    let changes = vec![Change {
-        path: test_file.to_str().unwrap().to_string(),
-        search: "fn non_existent() {}".to_string(),
-        replace: "fn new_function() {}".to_string(),
-        reason: Some("Updating non-existent function".to_string()),
-    }];
+    let changes = vec![Change::new(
+        test_file.to_str().unwrap().to_string(),
+        "fn non_existent() {}".to_string(),
+        "fn new_function() {}".to_string(),
+    )];
 
     let result = context.apply_changes(&changes);
-    assert!(matches!(result, Err(e) if e.downcast_ref::<ChangeError>().is_some()));
+    assert!(matches!(result, Err(e) if e == ChangeError::NoMatch));
     assert_eq!(
         fs::read_to_string(&test_file)?,
         "fn existing_function() {}"
@@ -86,15 +83,14 @@ fn test_apply_changes_file_not_found() -> Result<()> {
     let (context, temp_dir) = setup_test_context()?;
     let test_file = temp_dir.path().join("non_existent.rs");
 
-    let changes = vec![Change {
-        path: test_file.to_str().unwrap().to_string(),
-        search: "fn old() {}".to_string(),
-        replace: "fn new() {}".to_string(),
-        reason: Some("Updating non-existent file".to_string()),
-    }];
+    let changes = vec![Change::new(
+        test_file.to_str().unwrap().to_string(),
+        "fn old() {}".to_string(),
+        "fn new() {}".to_string(),
+    )];
 
     let result = context.apply_changes(&changes);
-    assert!(matches!(result, Err(e) if e.downcast_ref::<ChangeError>().is_some()));
+    assert!(matches!(result, Err(e) if matches!(e, ChangeError::FileNotFound(_))));
 
     Ok(())
 }
