@@ -74,7 +74,7 @@ mod tests {
 
         std::env::set_var("DEEPSEEK_API_URL", &server.url());
         
-        let context = PlanningContext::new("test_url")?;
+        let context = PlanningContext::new("test_url").unwrap();
         let mut stream = context.generate_plan(
             123,
             "Add multiply function",
