@@ -144,6 +144,7 @@ mod tests {
     use tokio;
 
     #[tokio::test]
+    #[ignore = "requires LLM setup"]
     async fn test_generate_pr_title() {
         let context = GitHubContext::new("test/repo", "test_token".to_string()).unwrap();
 
