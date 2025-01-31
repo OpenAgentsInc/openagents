@@ -38,7 +38,6 @@ impl OllamaService {
         T: serde::de::DeserializeOwned,
     {
         let client = reqwest::Client::new();
-        let format_str = serde_json::to_string(&format)?;
         let request_body = serde_json::json!({
             "model": self.config.model,
             "messages": [{
@@ -46,7 +45,7 @@ impl OllamaService {
                 "content": prompt
             }],
             "stream": false,
-            "format": format_str,
+            "format": format,
             "options": {
                 "temperature": 0
             }
