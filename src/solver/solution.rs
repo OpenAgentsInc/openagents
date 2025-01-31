@@ -113,8 +113,10 @@ mod tests {
     use mockito::Server;
     use serde_json::json;
     use crate::solver::test_helpers::run_async_test;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_handle_solution() {
         run_async_test(async {
             let temp_dir = tempdir()?;
