@@ -1,42 +1,49 @@
 use anyhow::Result;
 use openagents::solver::changes::{generate_changes, parse_search_replace};
 use openagents::solver::types::ChangeError;
+use openagents::solver::test_helpers::run_async_test;
 
-#[tokio::test]
-async fn test_change_generation() -> Result<()> {
-    let (changes, reasoning) = generate_changes(
-        "src/lib.rs",
-        "pub fn add(a: i32, b: i32) -> i32 { a + b }",
-        "Add multiply function",
-        "Add a multiply function that multiplies two integers",
-        "test_url",
-    )
-    .await?;
+#[test]
+fn test_change_generation() -> Result<()> {
+    run_async_test(async {
+        let (changes, reasoning) = generate_changes(
+            "src/lib.rs",
+            "pub fn add(a: i32, b: i32) -> i32 { a + b }",
+            "Add multiply function",
+            "Add a multiply function that multiplies two integers",
+            "test_url",
+        )
+        .await?;
 
-    // Verify changes
-    assert_eq!(changes.len(), 1);
-    assert_eq!(changes[0].path, "src/lib.rs");
-    assert!(changes[0].replace.contains("multiply"));
-    assert!(changes[0].replace.contains("add")); // Original function preserved
-    assert!(reasoning.contains("Implement solution for #634: Add multiply function"));
+        // Verify changes
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, "src/lib.rs");
+        assert!(changes[0].replace.contains("multiply"));
+        assert!(changes[0].replace.contains("add")); // Original function preserved
+        assert!(reasoning.contains("Implement solution for #634: Add multiply function"));
 
+        Ok(())
+    }).unwrap();
     Ok(())
 }
 
-#[tokio::test]
-async fn test_change_generation_no_changes() -> Result<()> {
-    let (changes, reasoning) = generate_changes(
-        "src/main.rs",
-        "fn main() { println!(\"Hello\"); }",
-        "Add multiply function",
-        "Add a multiply function to lib.rs",
-        "test_url",
-    )
-    .await?;
+#[test]
+fn test_change_generation_no_changes() -> Result<()> {
+    run_async_test(async {
+        let (changes, reasoning) = generate_changes(
+            "src/main.rs",
+            "fn main() { println!(\"Hello\"); }",
+            "Add multiply function",
+            "Add a multiply function to lib.rs",
+            "test_url",
+        )
+        .await?;
 
-    assert!(changes.is_empty());
-    assert_eq!(reasoning, "No changes needed");
+        assert!(changes.is_empty());
+        assert_eq!(reasoning, "No changes needed");
 
+        Ok(())
+    }).unwrap();
     Ok(())
 }
 
