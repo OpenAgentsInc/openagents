@@ -1,7 +1,6 @@
 use anyhow::{Context as _, Result};
 use openagents::server::services::github_issue::GitHubService;
-use std::path::Path;
-use tracing::{debug, info};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -42,7 +41,8 @@ async fn main() -> Result<()> {
     if !comments.is_empty() {
         println!("Comments:");
         for comment in comments {
-            println!("- {}", comment.body.unwrap_or_default());
+            let body = comment.body.unwrap_or_else(|| "".to_string());
+            println!("- {}", body);
         }
     } else {
         println!("No comments found.");
