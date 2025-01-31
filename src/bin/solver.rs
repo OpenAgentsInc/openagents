@@ -66,18 +66,16 @@ async fn main() -> Result<()> {
     // Generate repository map
     info!("Generating repository map...");
     let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
-    info!("Repository map:\n{}", repo_map);
     
-    let deepseek = OllamaService::with_config(
+    let mistral = OllamaService::with_config(
         "http://192.168.1.189:11434",
-        "deepseek-r1:14b",
+        "mistral-small",
     );
 
     let prompt = format!(
-        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}\n\nRepository map:\n{}", 
+        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}", 
         issue.title,
-        issue.body.clone().unwrap_or_default(),
-        repo_map
+        issue.body.clone().unwrap_or_default()
     );
 
     info!("Prompt: {}", prompt);
@@ -109,7 +107,7 @@ async fn main() -> Result<()> {
         "required": ["files"]
     });
 
-    let relevant_files: RelevantFiles = deepseek.chat_structured(prompt, format).await?;
+    let relevant_files: RelevantFiles = mistral.chat_structured(prompt, format).await?;
     
     println!("\nRelevant files to modify:");
     for file in relevant_files.files {
