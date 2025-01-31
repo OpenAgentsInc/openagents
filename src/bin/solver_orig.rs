@@ -2,6 +2,7 @@ use anyhow::{Context as _, Result};
 use clap::Parser;
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::info;
 
@@ -10,7 +11,7 @@ use tracing::info;
 struct Args {
     /// Issue number to solve
     #[arg(short, long)]
-    issue: u64,
+    issue: i32,  // Changed from u64 to i32 to match API
 
     /// Repository owner/name (default: OpenAgentsInc/openagents)
     #[arg(short, long)]
@@ -19,6 +20,18 @@ struct Args {
     /// Live mode - actually create branch and PR
     #[arg(short, long)]
     live: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RelevantFiles {
+    files: Vec<FileInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FileInfo {
+    path: String,
+    relevance_score: f32,
+    reason: String,
 }
 
 #[tokio::main]
@@ -108,8 +121,13 @@ async fn main() -> Result<()> {
         "required": ["files"]
     });
 
-    let response = mistral.chat_structured(prompt, format).await?;
-    println!("Response: {:?}", response);
+    let response: RelevantFiles = mistral.chat_structured(prompt, format).await?;
+    
+    println!("\nRelevant files to modify:");
+    for file in response.files {
+        println!("- {} (score: {:.2})", file.path, file.relevance_score);
+        println!("  Reason: {}", file.reason);
+    }
 
     println!("Success.");
 
