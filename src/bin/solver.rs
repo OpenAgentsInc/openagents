@@ -57,7 +57,11 @@ async fn main() -> Result<()> {
     let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
     info!("Repository map:\n{}", repo_map);
     
-    let ollama = OllamaService::with_config(
+    let mistral = OllamaService::with_config(
+        "http://192.168.1.189:11434",
+        "mistral-small",
+    );
+    let deepseek = OllamaService::with_config(
         "http://192.168.1.189:11434",
         "deepseek-r1:14b",
     );
@@ -70,7 +74,7 @@ async fn main() -> Result<()> {
 
     info!("Prompt: {}", prompt);
 
-    let stream = ollama.chat_stream(prompt.clone(), true).await?;
+    let stream = deepseek.chat_stream(prompt.clone(), true).await?;
     let plan = handle_plan_stream(stream).await?;
     info!("Plan: {}", plan);
 
