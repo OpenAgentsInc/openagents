@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     if !comments.is_empty() {
         println!("Comments:");
         for comment in comments {
-            let body = comment.body.unwrap_or_default();
+            let body = comment.body.clone().unwrap_or_default();
             println!("- {}", body);
         }
     } else {
