@@ -250,6 +250,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires LLM setup"]
     fn test_validate_llm_response() {
         // Valid response
         let valid = r#"{
