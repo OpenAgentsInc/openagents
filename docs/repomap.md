@@ -142,11 +142,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -158,15 +158,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -443,7 +443,16 @@ src/solver/planning.rs:
 
 src/solver/solution.rs:
 │fn handle_solution
-│fn test_handle_solution
+
+src/solver/state.rs:
+│fn new
+│fn add_file
+│fn update_status
+│fn add_change
+│fn test_solver_state_creation
+│fn test_add_file
+│fn test_add_change
+│fn test_update_status
 
 src/solver/streaming.rs:
 │fn handle_plan_stream
@@ -452,13 +461,15 @@ src/solver/types.rs:
 │fn new
 │fn with_reason
 │fn validate
+│fn eq
 │fn validate_pr_title
 │fn test_change_with_reason
 │fn test_validate_pr_title
 │fn test_change_validation
+│fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -558,7 +569,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/company.html:
 │class of
@@ -726,22 +737,6 @@ tests/solver_changes.rs:
 │fn test_change_generation
 │fn add
 │fn test_change_generation_no_changes
-│fn main
-│fn test_parse_search_replace_blocks
-│fn add
-│fn add
-│fn multiply
-│fn add
-│fn test_parse_search_replace_multiple_files
-│fn add
-│fn add
-│fn multiply
-│fn main
-│fn main
-│fn test_parse_search_replace_new_file
-│fn multiply
-│fn test_parse_search_replace_invalid
-│fn test_parse_search_replace_missing_path
 
 tests/solver_context.rs:
 │fn setup_test_context
@@ -763,7 +758,6 @@ tests/solver_context.rs:
 │fn old
 │fn new
 │fn test_cleanup
-│fn test
 
 tests/solver_file_list.rs:
 │fn setup_test_repo
@@ -787,6 +781,14 @@ tests/solver_ollama.rs:
 │fn test_ollama_changes
 │fn add
 
+tests/solver_state.rs:
+│fn test_state_serialization
+│fn old_code
+│fn new_code
+│fn test_state_transitions
+│fn test_file_management
+│fn test_json_schema_compatibility
+
 tests/solver_types.rs:
 │fn test_change_validation
 │fn old
@@ -808,3 +810,4 @@ tests/tool_selection.rs:
 
 tests/user.rs:
 │fn test_user_creation
+
