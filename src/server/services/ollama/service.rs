@@ -38,7 +38,6 @@ impl OllamaService {
         T: serde::de::DeserializeOwned,
     {
         let client = reqwest::Client::new();
-        let format_str = serde_json::to_string(&format)?;
         let request_body = serde_json::json!({
             "model": self.config.model,
             "messages": [{
@@ -46,10 +45,13 @@ impl OllamaService {
                 "content": prompt
             }],
             "stream": false,
-            "format": format_str
+            "format": format,
+            "options": {
+                "temperature": 0
+            }
         });
 
-        info!("Sending request to Ollama with body: {}", serde_json::to_string_pretty(&request_body)?);
+        info!("Sending request to Ollama");
 
         let response = client
             .post(format!("{}/api/chat", self.config.base_url))
@@ -57,19 +59,12 @@ impl OllamaService {
             .send()
             .await?;
 
-        let response_text = response.text().await?;
-        info!("Raw response from Ollama: {}", response_text);
-
-        let response_json: Value = serde_json::from_str(&response_text)?;
-        info!("Parsed JSON response: {}", serde_json::to_string_pretty(&response_json)?);
-
+        let response_json = response.json::<serde_json::Value>().await?;
         let content = response_json["message"]["content"]
             .as_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid response format from Ollama - content not found in message"))?;
+            .ok_or_else(|| anyhow::anyhow!("Invalid response format from Ollama"))?;
 
-        info!("Extracted content: {}", content);
-
-        serde_json::from_str(content).map_err(|e| anyhow::anyhow!("Failed to parse structured response: {} - Raw content: {}", e, content))
+        serde_json::from_str(content).map_err(|e| anyhow::anyhow!("Failed to parse structured response: {}", e))
     }
 }
 
