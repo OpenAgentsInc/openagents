@@ -38,6 +38,16 @@ async fn main() -> Result<()> {
     println!("Body: {}", issue.body.unwrap_or_default());
     println!("State: {}", issue.state);
 
+    // Print comments
+    if !comments.is_empty() {
+        println!("Comments:");
+        for comment in comments {
+            println!("- {}", comment.body.unwrap_or_default());
+        }
+    } else {
+        println!("No comments found.");
+    }
+
     println!("Success.");
 
     Ok(())

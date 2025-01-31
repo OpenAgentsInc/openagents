@@ -14,3 +14,8 @@ pub struct Repository {
     pub owner: String,
     pub description: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Comment {
+    pub body: Option<String>,
+}
