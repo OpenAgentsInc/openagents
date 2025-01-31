@@ -69,7 +69,7 @@ fn test_apply_changes_no_match() -> Result<()> {
     )];
 
     let result = context.apply_changes(&changes);
-    assert!(matches!(result, Err(e) if e == ChangeError::NoMatch));
+    assert!(matches!(result, Err(ChangeError::NoMatch)));
     assert_eq!(
         fs::read_to_string(&test_file)?,
         "fn existing_function() {}"
@@ -90,7 +90,7 @@ fn test_apply_changes_file_not_found() -> Result<()> {
     )];
 
     let result = context.apply_changes(&changes);
-    assert!(matches!(result, Err(e) if matches!(e, ChangeError::FileNotFound(_))));
+    assert!(matches!(result, Err(ChangeError::FileNotFound(_))));
 
     Ok(())
 }
