@@ -55,10 +55,8 @@ mod tests {
     use mockito::Server;
     use serde_json::json;
     use crate::solver::test_helpers::run_async_test;
-    use serial_test::serial;
 
     #[test]
-    #[serial]
     fn test_validate_llm_response() {
         run_async_test(async {
             let mut server = Server::new();
@@ -94,6 +92,7 @@ mod tests {
 
             mock.assert();
             assert!(!response.is_empty());
-        });
+            Ok::<(), anyhow::Error>(())
+        }).unwrap();
     }
 }
