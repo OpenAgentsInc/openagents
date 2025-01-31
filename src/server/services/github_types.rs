@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Issue {
     pub title: String,
-    pub body: String,
+    pub body: Option<String>,
     pub number: i32,
     pub state: String,
 }

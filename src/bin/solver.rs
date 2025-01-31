@@ -34,9 +34,9 @@ async fn main() -> Result<()> {
     let issue = github.get_issue(owner, name, issue_num).await?;
     let comments = github.get_issue_comments(owner, name, issue_num).await?;
 
-    println!("Title: #{}", issue.title);
-    println!("Body: #{}", issue.body);
-    println!("State: #{}", issue.state);
+    println!("Title: {}", issue.title);
+    println!("Body: {}", issue.body.unwrap_or_default());
+    println!("State: {}", issue.state);
 
     println!("Success.");
 
