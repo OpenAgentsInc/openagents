@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
         "deepseek-r1:14b",
     );
 
-    let prompt = "Speculate about this: ${issue.title}, ${issue.body}".to_string();
+    let prompt = "Speculate about this: " + issue.title + " - " + issue.body.to_string();
     let stream = ollama.chat_stream(prompt.clone(), true).await?;
     let plan = handle_plan_stream(stream).await?;
     info!("Plan: {}", plan);
