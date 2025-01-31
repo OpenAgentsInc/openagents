@@ -54,42 +54,44 @@ mod tests {
     use super::*;
     use mockito::Server;
     use serde_json::json;
-    use tokio::test;
+    use crate::solver::test_helpers::run_async_test;
 
     #[test]
-    async fn test_validate_llm_response() {
-        let mut server = Server::new();
-        let mock_response = json!({
-            "choices": [{
-                "message": {
-                    "content": "feat: add multiply function"
-                }
-            }]
+    fn test_validate_llm_response() {
+        run_async_test(async {
+            let mut server = Server::new();
+            let mock_response = json!({
+                "choices": [{
+                    "message": {
+                        "content": "feat: add multiply function"
+                    }
+                }]
+            });
+
+            let mock = server.mock("POST", "/v1/chat/completions")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(mock_response.to_string())
+                .create();
+
+            std::env::set_var("DEEPSEEK_API_URL", &server.url());
+            
+            let context = PlanningContext::new("test_url").unwrap();
+            let mut stream = context.generate_plan(
+                123,
+                "Add multiply function",
+                "Add a multiply function",
+                "src/main.rs",
+                "test context",
+            ).await.unwrap();
+
+            let mut response = String::new();
+            while let Some(chunk) = stream.next().await {
+                response.push_str(&chunk.unwrap());
+            }
+
+            mock.assert();
+            assert!(!response.is_empty());
         });
-
-        let mock = server.mock("POST", "/v1/chat/completions")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(mock_response.to_string())
-            .create();
-
-        std::env::set_var("DEEPSEEK_API_URL", &server.url());
-        
-        let context = PlanningContext::new("test_url").unwrap();
-        let mut stream = context.generate_plan(
-            123,
-            "Add multiply function",
-            "Add a multiply function",
-            "src/main.rs",
-            "test context",
-        ).await.unwrap();
-
-        let mut response = String::new();
-        while let Some(chunk) = stream.next().await {
-            response.push_str(&chunk.unwrap());
-        }
-
-        mock.assert();
-        assert!(!response.is_empty());
     }
 }
