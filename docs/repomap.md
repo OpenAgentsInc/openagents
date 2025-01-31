@@ -98,6 +98,9 @@ src/bin/solver_impl/planning.rs:
 src/bin/solver_impl/solution.rs:
 │fn handle_solution
 
+src/bin/solver_orig.rs:
+│fn main
+
 src/configuration.rs:
 │fn default
 │fn connect_options
@@ -281,6 +284,7 @@ src/server/services/ollama/service.rs:
 │fn default
 │fn new
 │fn with_config
+│fn chat_structured
 │fn metadata
 │fn chat
 │fn chat_stream
