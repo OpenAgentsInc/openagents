@@ -22,7 +22,7 @@ fn test_change_generation() -> Result<()> {
         assert!(changes[0].replace.contains("add")); // Original function preserved
         assert!(reasoning.contains("Implement solution for #634: Add multiply function"));
 
-        Ok(())
+        Ok::<(), anyhow::Error>(())
     }).unwrap();
     Ok(())
 }
@@ -42,7 +42,7 @@ fn test_change_generation_no_changes() -> Result<()> {
         assert!(changes.is_empty());
         assert_eq!(reasoning, "No changes needed");
 
-        Ok(())
+        Ok::<(), anyhow::Error>(())
     }).unwrap();
     Ok(())
 }
