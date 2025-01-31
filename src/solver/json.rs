@@ -8,11 +8,7 @@ pub fn escape_json_string(s: &str) -> String {
 }
 
 pub fn is_valid_json_string(s: &str) -> bool {
-    if let Ok(Value::String(_)) = serde_json::from_str(&format!("\"{}\"", s)) {
-        true
-    } else {
-        false
-    }
+    matches!(serde_json::from_str(&format!("\"{}\"", s)), Ok(Value::String(_)))
 }
 
 pub fn fix_common_json_issues(json: &str) -> String {
