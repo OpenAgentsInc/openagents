@@ -23,6 +23,7 @@ pub struct CallbackParams {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SignupForm {
     email: String,
     password: String,
