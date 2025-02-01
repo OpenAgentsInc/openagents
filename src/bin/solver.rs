@@ -65,7 +65,7 @@ async fn identify_files(
     state.update_status(SolverStatus::Thinking);
 
     let prompt = format!(
-        "Based on this analysis, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields.\n\nAnalysis:\n{}", 
+        "Based on this analysis, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path' (relative path, no leading slash), 'relevance_score' (0-1), and 'reason' fields.\n\nAnalysis:\n{}", 
         state.analysis
     );
 
@@ -98,8 +98,12 @@ async fn identify_files(
 
     let relevant_files: RelevantFiles = mistral.chat_structured(prompt, format).await?;
 
-    // Add files to state
-    for file in relevant_files.files {
+    // Add files to state, ensuring paths are relative
+    for mut file in relevant_files.files {
+        // Remove leading slash if present
+        if file.path.starts_with('/') {
+            file.path = file.path[1..].to_string();
+        }
         state.add_file(file.path, file.reason, file.relevance_score);
     }
 
