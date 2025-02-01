@@ -52,8 +52,8 @@ impl OllamaService {
         });
 
         info!(
-            "Sending request to Ollama with body: {}",
-            serde_json::to_string_pretty(&request_body)?
+            "Sending request to Ollama",
+            // serde_json::to_string_pretty(&request_body)?
         );
 
         let response = client
