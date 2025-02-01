@@ -9,20 +9,24 @@ use tracing::{debug, error, info};
 type ChangeResult<T> = Result<T, ChangeError>;
 
 /// Applies a single change to a file
-fn apply_change_to_file(change: &Change, file_path: &Path) -> ChangeResult<()> {
+fn apply_change_to_file(change: &Change, base_path: &Path, file_path: &Path) -> ChangeResult<()> {
+    // Get the full path by joining base_path and file_path
+    let full_path = base_path.join(file_path);
+    debug!("Full path: {}", full_path.display());
+
     // Read the file content
-    let content = fs::read_to_string(file_path).map_err(|e| {
-        error!("Failed to read file {}: {}", file_path.display(), e);
+    let content = fs::read_to_string(&full_path).map_err(|e| {
+        error!("Failed to read file {}: {}", full_path.display(), e);
         ChangeError::IoError(e)
     })?;
 
     // If search is empty, this is a new file
     if change.search.is_empty() {
-        debug!("Creating new file {}", file_path.display());
-        if let Some(parent) = file_path.parent() {
+        debug!("Creating new file {}", full_path.display());
+        if let Some(parent) = full_path.parent() {
             fs::create_dir_all(parent).map_err(ChangeError::IoError)?;
         }
-        fs::write(file_path, &change.replace).map_err(ChangeError::IoError)?;
+        fs::write(&full_path, &change.replace).map_err(ChangeError::IoError)?;
         return Ok(());
     }
 
@@ -34,7 +38,7 @@ fn apply_change_to_file(change: &Change, file_path: &Path) -> ChangeResult<()> {
         0 => {
             error!(
                 "No matches found for search pattern in {}",
-                file_path.display()
+                full_path.display()
             );
             Err(ChangeError::NoMatch)
         }
@@ -46,15 +50,15 @@ fn apply_change_to_file(change: &Change, file_path: &Path) -> ChangeResult<()> {
             new_content.push_str(&content[start + change.search.len()..]);
 
             // Write the modified content back to the file
-            debug!("Writing changes to {}", file_path.display());
-            fs::write(file_path, new_content).map_err(ChangeError::IoError)?;
+            debug!("Writing changes to {}", full_path.display());
+            fs::write(&full_path, new_content).map_err(ChangeError::IoError)?;
             Ok(())
         }
         _ => {
             error!(
                 "Multiple matches ({}) found for search pattern in {}",
                 matches.len(),
-                file_path.display()
+                full_path.display()
             );
             Err(ChangeError::MultipleMatches)
         }
@@ -64,6 +68,9 @@ fn apply_change_to_file(change: &Change, file_path: &Path) -> ChangeResult<()> {
 /// Applies all changes in the solver state
 pub fn apply_changes(state: &mut SolverState) -> Result<()> {
     info!("Applying changes to files...");
+
+    // Get the base path from the repomap generation
+    let base_path = Path::new(".");
 
     for file in &state.files {
         let file_path = Path::new(&file.path);
@@ -78,7 +85,7 @@ pub fn apply_changes(state: &mut SolverState) -> Result<()> {
 
         // Apply each change
         for change in &file.changes {
-            match apply_change_to_file(change, file_path) {
+            match apply_change_to_file(change, base_path, file_path) {
                 Ok(_) => {
                     info!("Applied change to {}: {}", file_path.display(), change.analysis);
                 }
@@ -108,10 +115,11 @@ mod tests {
     #[test]
     fn test_apply_change_to_file() {
         let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test.txt");
+        let file_path = Path::new("test.txt");
+        let full_path = dir.path().join(file_path);
 
         // Create test file
-        fs::write(&file_path, "Hello World").unwrap();
+        fs::write(&full_path, "Hello World").unwrap();
 
         // Test simple replacement
         let change = Change {
@@ -120,8 +128,8 @@ mod tests {
             analysis: "Test change".to_string(),
         };
 
-        apply_change_to_file(&change, &file_path).unwrap();
-        assert_eq!(fs::read_to_string(&file_path).unwrap(), "Hello Rust");
+        apply_change_to_file(&change, dir.path(), file_path).unwrap();
+        assert_eq!(fs::read_to_string(&full_path).unwrap(), "Hello Rust");
 
         // Test no match
         let change = Change {
@@ -131,12 +139,12 @@ mod tests {
         };
 
         assert!(matches!(
-            apply_change_to_file(&change, &file_path),
+            apply_change_to_file(&change, dir.path(), file_path),
             Err(ChangeError::NoMatch)
         ));
 
         // Test multiple matches
-        fs::write(&file_path, "test test").unwrap();
+        fs::write(&full_path, "test test").unwrap();
         let change = Change {
             search: "test".to_string(),
             replace: "new".to_string(),
@@ -144,7 +152,7 @@ mod tests {
         };
 
         assert!(matches!(
-            apply_change_to_file(&change, &file_path),
+            apply_change_to_file(&change, dir.path(), file_path),
             Err(ChangeError::MultipleMatches)
         ));
     }
@@ -152,10 +160,11 @@ mod tests {
     #[test]
     fn test_apply_changes() {
         let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test.txt");
+        let file_path = Path::new("test.txt");
+        let full_path = dir.path().join(file_path);
 
         // Create test file
-        fs::write(&file_path, "Hello World").unwrap();
+        fs::write(&full_path, "Hello World").unwrap();
 
         // Create solver state with changes
         let mut state = SolverState::new("Test state".to_string());
@@ -178,6 +187,6 @@ mod tests {
         apply_changes(&mut state).unwrap();
 
         // Verify changes were applied
-        assert_eq!(fs::read_to_string(&file_path).unwrap(), "Hello Rust");
+        assert_eq!(fs::read_to_string(&full_path).unwrap(), "Hello Rust");
     }
 }
