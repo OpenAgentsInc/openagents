@@ -1,19 +1,11 @@
 use anyhow::Result;
 use openagents::solver::state::{SolverState, SolverStatus};
-use openagents::server::services::github_issue::GitHubService;
-use openagents::server::services::ollama::OllamaService;
-use std::env;
 
 #[tokio::test]
 async fn test_solver_loop_state_transitions() -> Result<()> {
     // Initialize state
     let mut state = SolverState::new("Test solver state".to_string());
     assert_eq!(state.status, SolverStatus::CollectingContext);
-
-    // Mock services
-    let github_token = env::var("GITHUB_TOKEN").unwrap_or_else(|_| "test_token".to_string());
-    let github = GitHubService::new(Some(github_token))?;
-    let mistral = OllamaService::with_config("http://localhost:11434", "mistral-small");
 
     // Test context collection
     state.update_status(SolverStatus::CollectingContext);
