@@ -76,7 +76,7 @@ async fn collect_context(
             .collect::<Vec<_>>()
             .join("\n"),
         repo_map,
-        valid_paths.iter().collect::<Vec<_>>().join("\n")
+        valid_paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n")
     );
 
     // Return both the repo directory and valid paths
@@ -93,7 +93,7 @@ async fn identify_files(
 
     let prompt = format!(
         "Based on this analysis, suggest up to 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path' (relative path, no leading slash), 'relevance_score' (0-1), and 'reason' fields.\n\nIMPORTANT: You MUST ONLY use paths from this list:\n{}\n\nAnalysis:\n{}", 
-        valid_paths.iter().collect::<Vec<_>>().join("\n"),
+        valid_paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"),
         state.analysis
     );
 
