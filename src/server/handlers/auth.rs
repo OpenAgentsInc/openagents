@@ -27,7 +27,9 @@ pub struct CallbackParams {
 pub struct SignupForm {
     email: String,
     password: String,
+    #[serde(rename = "password-confirm")]
     password_confirmation: String,
+    #[serde(rename = "terms")]
     terms_accepted: bool,
 }
 
