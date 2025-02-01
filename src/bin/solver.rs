@@ -5,7 +5,7 @@ use openagents::solver::changes::apply_changes;
 use openagents::solver::state::{SolverState, SolverStatus};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use tracing::info;
+use tracing::{debug, info};
 
 const OLLAMA_URL: &str = "http://192.168.1.189:11434";
 
@@ -27,7 +27,7 @@ async fn collect_context(
     owner: &str,
     name: &str,
     issue_num: i32,
-) -> Result<()> {
+) -> Result<String> {
     info!("Collecting context...");
     state.update_status(SolverStatus::CollectingContext);
 
@@ -38,7 +38,8 @@ async fn collect_context(
 
     // Generate repository map
     info!("Generating repository map...");
-    let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
+    let repo_dir = Path::new(".");
+    let repo_map = openagents::repomap::generate_repo_map(repo_dir);
 
     // Update state with initial analysis
     state.analysis = format!(
@@ -54,7 +55,8 @@ async fn collect_context(
         repo_map
     );
 
-    Ok(())
+    // Return the repo directory for later use
+    Ok(repo_dir.to_string_lossy().to_string())
 }
 
 async fn identify_files(
@@ -118,10 +120,15 @@ async fn generate_changes(
     state.update_status(SolverStatus::GeneratingCode);
 
     for file in &mut state.files {
+        // First read the current file content
+        let file_content = std::fs::read_to_string(&file.path)?;
+        debug!("Current content of {}: {}", file.path, file_content);
+
         let prompt = format!(
-            "Based on the analysis and file path, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}", 
+            "Based on the analysis and current file content, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}\nContent:\n{}", 
             state.analysis,
-            file.path
+            file.path,
+            file_content
         );
 
         let format = serde_json::json!({
@@ -173,12 +180,12 @@ async fn generate_changes(
     Ok(())
 }
 
-async fn apply_file_changes(state: &mut SolverState) -> Result<()> {
+async fn apply_file_changes(state: &mut SolverState, repo_dir: &str) -> Result<()> {
     info!("Applying code changes...");
     state.update_status(SolverStatus::Testing);
 
     // Apply changes using the new apply_changes function
-    apply_changes(state)?;
+    apply_changes(state, repo_dir)?;
 
     state.update_status(SolverStatus::CreatingPr);
     Ok(())
@@ -214,10 +221,10 @@ async fn main() -> Result<()> {
     let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
     // Execute solver loop
-    collect_context(&mut state, &github, owner, name, issue_num).await?;
+    let repo_dir = collect_context(&mut state, &github, owner, name, issue_num).await?;
     identify_files(&mut state, &mistral).await?;
     generate_changes(&mut state, &mistral).await?;
-    apply_file_changes(&mut state).await?;
+    apply_file_changes(&mut state, &repo_dir).await?;
 
     // Print final state
     println!("\nFinal solver state:");
