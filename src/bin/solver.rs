@@ -1,6 +1,7 @@
 use anyhow::{Context as _, Result};
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
+use openagents::solver::changes::apply_changes;
 use openagents::solver::state::{SolverState, SolverStatus};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -168,12 +169,12 @@ async fn generate_changes(
     Ok(())
 }
 
-async fn apply_changes(state: &mut SolverState) -> Result<()> {
+async fn apply_file_changes(state: &mut SolverState) -> Result<()> {
     info!("Applying code changes...");
     state.update_status(SolverStatus::Testing);
 
-    // TODO: Implement actual file modifications
-    warn!("File modifications not yet implemented");
+    // Apply changes using the new apply_changes function
+    apply_changes(state)?;
 
     state.update_status(SolverStatus::CreatingPr);
     Ok(())
@@ -212,7 +213,7 @@ async fn main() -> Result<()> {
     collect_context(&mut state, &github, owner, name, issue_num).await?;
     identify_files(&mut state, &mistral).await?;
     generate_changes(&mut state, &mistral).await?;
-    apply_changes(&mut state).await?;
+    apply_file_changes(&mut state).await?;
 
     // Print final state
     println!("\nFinal solver state:");
@@ -225,7 +226,7 @@ async fn main() -> Result<()> {
             println!("  Change:");
             println!("    Search:  {}", change.search);
             println!("    Replace: {}", change.replace);
-            println!("    Reason:  {}", change.analysis);
+            println!("    Reason:  {}", change.reason.as_ref().unwrap_or(&String::new()));
         }
     }
 
