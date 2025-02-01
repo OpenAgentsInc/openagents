@@ -29,6 +29,12 @@ docs/solve-runs/20250130-1225.md:
 
 docs/solve-runs/20250130-1240.md:
 
+docs/solve-runs/20250131-1830.md:
+
+docs/solve-runs/20250131-1845.md:
+
+docs/solve-runs/20250131-1905.md:
+
 docs/solver.md:
 
 docs/templates.md:
@@ -52,7 +58,12 @@ src/bin/repo.rs:
 │fn main
 
 src/bin/solver.rs:
+│fn collect_context
+│fn identify_files
+│fn generate_changes
+│fn apply_file_changes
 │fn main
+│const OLLAMA_URL
 
 src/bin/solver_impl/issue.rs:
 │fn handle_issue
@@ -142,11 +153,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -158,15 +169,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -344,6 +355,12 @@ src/server/ws/transport.rs:
 src/server/ws/types.rs:
 │fn fmt
 
+src/solver/changes/apply.rs:
+│fn apply_change_to_file
+│fn apply_changes
+│fn test_apply_change_to_file
+│fn test_apply_changes
+
 src/solver/changes/generation.rs:
 │fn extract_json_from_markdown
 │fn parse_llm_response
@@ -469,7 +486,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -569,7 +586,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/company.html:
 │class of
@@ -771,6 +788,11 @@ tests/solver_file_list.rs:
 │fn add
 │fn test_file_list_empty_repo
 
+tests/solver_loop.rs:
+│fn test_solver_loop_state_transitions
+│fn test_solver_loop_error_handling
+│fn test_solver_loop_file_management
+
 tests/solver_ollama.rs:
 │fn setup_test_repo
 │fn main
@@ -810,3 +832,4 @@ tests/tool_selection.rs:
 
 tests/user.rs:
 │fn test_user_creation
+
