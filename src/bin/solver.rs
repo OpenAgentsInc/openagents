@@ -7,6 +7,8 @@ use std::fs;
 use std::path::Path;
 use chrono::Local;
 use std::io::Write;
+use std::sync::Mutex;
+use tracing_subscriber::fmt::MakeWriter;
 
 mod solver_impl;
 use solver_impl::{
@@ -17,15 +19,54 @@ use solver_impl::{
 
 const OLLAMA_URL: &str = "http://192.168.1.189:11434";
 
+// Custom writer to capture log output
+#[derive(Clone)]
+struct LogWriter {
+    buffer: std::sync::Arc<Mutex<Vec<String>>>,
+}
+
+impl LogWriter {
+    fn new() -> Self {
+        Self {
+            buffer: std::sync::Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn get_logs(&self) -> Vec<String> {
+        self.buffer.lock().unwrap().clone()
+    }
+}
+
+impl std::io::Write for LogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Ok(s) = String::from_utf8(buf.to_vec()) {
+            self.buffer.lock().unwrap().push(s);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> MakeWriter<'a> for LogWriter {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging with custom writer to capture output
-    let (tx, rx) = std::sync::mpsc::channel();
-    let writer = std::sync::Arc::new(LogWriter::new(tx));
+    let writer = LogWriter::new();
+    let writer_clone = writer.clone();
     
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_writer(writer.clone())
+        .with_writer(move || writer_clone.clone())
         .init();
 
     // Load environment variables
@@ -88,7 +129,7 @@ async fn main() -> Result<()> {
     write!(log_file, "  openagents git:(solver/state-loop-651) cargo run --bin solver -- --issue {}\n", issue_num)?;
     
     // Write the captured output
-    for line in rx.try_iter() {
+    for line in writer.get_logs() {
         write!(log_file, "{}", line)?;
     }
     
@@ -96,28 +137,4 @@ async fn main() -> Result<()> {
 
     info!("\nSolver completed successfully.");
     Ok(())
-}
-
-// Custom writer to capture log output
-struct LogWriter {
-    tx: std::sync::mpsc::Sender<String>,
-}
-
-impl LogWriter {
-    fn new(tx: std::sync::mpsc::Sender<String>) -> Self {
-        Self { tx }
-    }
-}
-
-impl std::io::Write for LogWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if let Ok(s) = String::from_utf8(buf.to_vec()) {
-            self.tx.send(s).unwrap();
-        }
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }
