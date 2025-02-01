@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Query, State, Form},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
     Json,
@@ -19,6 +19,14 @@ const SESSION_DURATION_DAYS: i64 = 7;
 pub struct CallbackParams {
     code: String,
     flow: Option<String>, // Optional flow parameter to distinguish login vs signup
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SignupForm {
+    email: String,
+    password: String,
+    password_confirmation: String,
+    terms_accepted: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -54,6 +62,47 @@ pub async fn signup(State(state): State<AppState>) -> impl IntoResponse {
     let auth_url = state.service.authorization_url_for_signup().unwrap();
     debug!("Redirecting to signup URL: {}", auth_url);
     Redirect::temporary(&auth_url)
+}
+
+pub async fn handle_signup_form(
+    State(state): State<AppState>,
+    Form(form): Form<SignupForm>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    // Basic form validation
+    if form.password != form.password_confirmation {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Passwords do not match".to_string(),
+            }),
+        ));
+    }
+
+    if !form.terms_accepted {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Terms must be accepted".to_string(),
+            }),
+        ));
+    }
+
+    // Generate signup URL and redirect
+    let auth_url = state
+        .service
+        .authorization_url_for_signup()
+        .map_err(|e| {
+            error!("Failed to generate auth URL: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?;
+
+    debug!("Redirecting to signup URL: {}", auth_url);
+    Ok(Redirect::temporary(&auth_url))
 }
 
 pub async fn callback(
