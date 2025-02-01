@@ -11,10 +11,7 @@ use std::sync::Arc;
 use time::Duration;
 use tracing::{debug, error, info};
 
-use crate::server::{
-    services::auth::{OIDCConfig, OIDCService},
-    ws::transport::WebSocketState,
-};
+use crate::server::services::auth::{OIDCConfig, OIDCService};
 
 const SESSION_COOKIE_NAME: &str = "session";
 const SESSION_DURATION_DAYS: i64 = 7;
@@ -43,21 +40,34 @@ pub struct LoginResponse {
     url: String,
 }
 
-pub async fn login(State(state): State<Arc<WebSocketState>>) -> impl IntoResponse {
-    let auth_url = state.oidc_service.authorization_url_for_login().unwrap();
+#[derive(Clone)]
+pub struct AuthState {
+    pub service: Arc<OIDCService>,
+}
+
+impl AuthState {
+    pub fn new(config: OIDCConfig, pool: PgPool) -> Self {
+        Self {
+            service: Arc::new(OIDCService::new(pool, config)),
+        }
+    }
+}
+
+pub async fn login(State(state): State<AuthState>) -> impl IntoResponse {
+    let auth_url = state.service.authorization_url_for_login().unwrap();
     debug!("Redirecting to auth URL: {}", auth_url);
     Redirect::temporary(&auth_url)
 }
 
-pub async fn signup(State(state): State<Arc<WebSocketState>>) -> impl IntoResponse {
-    let auth_url = state.oidc_service.authorization_url_for_signup().unwrap();
+pub async fn signup(State(state): State<AuthState>) -> impl IntoResponse {
+    let auth_url = state.service.authorization_url_for_signup().unwrap();
     debug!("Redirecting to signup URL: {}", auth_url);
     Redirect::temporary(&auth_url)
 }
 
 // New handler for signup form submission
 pub async fn handle_signup(
-    State(state): State<Arc<WebSocketState>>,
+    State(state): State<AuthState>,
     Form(form): Form<SignupForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     // Basic validation
@@ -80,7 +90,7 @@ pub async fn handle_signup(
 
     // Generate signup URL with prompt=create
     let auth_url = state
-        .oidc_service
+        .service
         .authorization_url_for_signup()
         .map_err(|e| {
             error!("Failed to generate auth URL: {}", e);
@@ -97,7 +107,7 @@ pub async fn handle_signup(
 }
 
 pub async fn callback(
-    State(state): State<Arc<WebSocketState>>,
+    State(state): State<AuthState>,
     Query(params): Query<CallbackParams>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     debug!("Received callback with code length: {}", params.code.len());
@@ -111,9 +121,9 @@ pub async fn callback(
 
     // Use appropriate service method based on flow
     let user = if is_signup {
-        state.oidc_service.signup(params.code).await
+        state.service.signup(params.code).await
     } else {
-        state.oidc_service.login(params.code).await
+        state.service.login(params.code).await
     }
     .map_err(|e| {
         error!("Authentication error: {}", e.to_string());
