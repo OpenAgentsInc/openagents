@@ -36,6 +36,13 @@ pub fn configure_app() -> Router {
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
     let repomap_service = Arc::new(RepomapService::new(aider_api_key));
 
+    // Create auth state
+    let auth_state = server::handlers::AuthState::new(
+        server::services::auth::OIDCConfig::default(),
+        sqlx::PgPool::connect_lazy(&env::var("DATABASE_URL").expect("DATABASE_URL must be set"))
+            .expect("Failed to create database pool"),
+    );
+
     // Create the main router
     let app = Router::new()
         // Main routes
@@ -53,7 +60,10 @@ pub fn configure_app() -> Router {
         .route("/login", get(routes::login))
         .route("/signup", get(routes::signup))
         .route("/auth/signup", post(server::handlers::auth::handle_signup))
-        .with_state(ws_state);
+        .with_state(auth_state);
+
+    // Add WebSocket state
+    let app = app.with_state(ws_state);
 
     // Add repomap routes with repomap state
     let app = app
