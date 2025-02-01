@@ -5,7 +5,7 @@ use openagents::solver::changes::apply_changes;
 use openagents::solver::state::{SolverState, SolverStatus};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 
 const OLLAMA_URL: &str = "http://192.168.1.189:11434";
 
@@ -126,16 +126,27 @@ async fn generate_changes(
     state.update_status(SolverStatus::GeneratingCode);
 
     for file in &mut state.files {
-        // Log both relative and absolute paths before attempting to read
+        // Log paths BEFORE any operations
         let relative_path = &file.path;
         let absolute_path = Path::new(repo_dir).join(relative_path);
-        debug!("Attempting to read file:");
-        debug!("  Relative path: {}", relative_path);
-        debug!("  Absolute path: {}", absolute_path.display());
+        info!("Processing file:");
+        info!("  Relative path: {}", relative_path);
+        info!("  Absolute path: {}", absolute_path.display());
         
-        // First read the current file content
-        let file_content = std::fs::read_to_string(&absolute_path)?;
-        debug!("Successfully read file content");
+        // Try to read the file content
+        let file_content = match std::fs::read_to_string(&absolute_path) {
+            Ok(content) => {
+                debug!("Successfully read file content");
+                content
+            },
+            Err(e) => {
+                error!("Failed to read file:");
+                error!("  Relative path: {}", relative_path);
+                error!("  Absolute path: {}", absolute_path.display());
+                error!("  Error: {}", e);
+                return Err(e.into());
+            }
+        };
 
         let prompt = format!(
             "Based on the analysis and EXACT current file content, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}\nContent:\n{}\n\nIMPORTANT: The 'search' field must contain EXACT code that exists in the file. The 'replace' field must contain the complete new code to replace it. Do not use descriptions - only actual code.", 
