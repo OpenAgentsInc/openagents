@@ -38,8 +38,13 @@ async fn collect_context(
 
     // Generate repository map
     info!("Generating repository map...");
-    let repo_dir = Path::new(".");
-    let repo_map = openagents::repomap::generate_repo_map(repo_dir);
+    let repo_dir = std::env::current_dir()?;
+    debug!("Current directory: {}", repo_dir.display());
+    debug!("Directory contents: {:?}", std::fs::read_dir(&repo_dir)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .collect::<Vec<_>>());
+    let repo_map = openagents::repomap::generate_repo_map(&repo_dir);
 
     // Update state with initial analysis
     state.analysis = format!(
@@ -125,7 +130,7 @@ async fn generate_changes(
         debug!("Current content of {}: {}", file.path, file_content);
 
         let prompt = format!(
-            "Based on the analysis and current file content, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}\nContent:\n{}", 
+            "Based on the analysis and EXACT current file content, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}\nContent:\n{}\n\nIMPORTANT: The 'search' field must contain EXACT code that exists in the file. The 'replace' field must contain the complete new code to replace it. Do not use descriptions - only actual code.", 
             state.analysis,
             file.path,
             file_content
@@ -183,6 +188,14 @@ async fn generate_changes(
 async fn apply_file_changes(state: &mut SolverState, repo_dir: &str) -> Result<()> {
     info!("Applying code changes...");
     state.update_status(SolverStatus::Testing);
+
+    // Log directory information
+    let base_path = Path::new(repo_dir);
+    debug!("Base path: {}", base_path.display());
+    debug!("Base path contents: {:?}", std::fs::read_dir(base_path)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .collect::<Vec<_>>());
 
     // Apply changes using the new apply_changes function
     apply_changes(state, repo_dir)?;
