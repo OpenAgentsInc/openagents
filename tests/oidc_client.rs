@@ -12,8 +12,8 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use openagents::server::{
-    handlers::{callback, login, logout, AppState},
-    services::OIDCConfig,
+    handlers::{callback, login, logout, AuthState},
+    services::auth::OIDCConfig,
 };
 mod common;
 use common::setup_test_db;
@@ -58,7 +58,7 @@ async fn test_full_auth_flow() {
     let pool = setup_test_db().await;
 
     // Create app state and router
-    let state = AppState::new(config.clone(), pool.clone());
+    let state = AuthState::new(config.clone(), pool.clone());
     let app = Router::new()
         .route("/login", get(login))
         .route("/callback", get(callback))
@@ -172,7 +172,7 @@ async fn test_invalid_callback() {
     let pool = setup_test_db().await;
 
     // Create app state and router
-    let state = AppState::new(config.clone(), pool.clone());
+    let state = AuthState::new(config.clone(), pool.clone());
     let app = Router::new()
         .route("/callback", get(callback))
         .with_state(state);
@@ -224,7 +224,7 @@ async fn test_duplicate_login() {
     let pool = setup_test_db().await;
 
     // Create app state and router
-    let state = AppState::new(config.clone(), pool.clone());
+    let state = AuthState::new(config.clone(), pool.clone());
     let app = Router::new()
         .route("/callback", get(callback))
         .with_state(state);
