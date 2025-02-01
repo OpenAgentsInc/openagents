@@ -22,6 +22,16 @@ pub struct CallbackParams {
     flow: Option<String>, // Optional flow parameter to distinguish login vs signup
 }
 
+// Custom deserializer for HTML checkbox
+fn deserialize_checkbox<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // HTML checkboxes only send a value when checked
+    // If the field is missing, it means unchecked
+    Option::deserialize(deserializer).map(|x| x.is_some())
+}
+
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub struct SignupForm {
@@ -29,7 +39,7 @@ pub struct SignupForm {
     password: String,
     #[serde(rename = "password-confirm")]
     password_confirmation: String,
-    #[serde(rename = "terms")]
+    #[serde(rename = "terms", deserialize_with = "deserialize_checkbox")]
     terms_accepted: bool,
 }
 
