@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::{info, warn};
 
+const OLLAMA_URL: &str = "http://192.168.1.189:11434";
+
 #[derive(Debug, Serialize, Deserialize)]
 struct RelevantFiles {
     files: Vec<FileInfo>,
@@ -202,7 +204,9 @@ async fn main() -> Result<()> {
     let github = GitHubService::new(Some(github_token.clone()))
         .context("Failed to initialize GitHub service")?;
 
-    let mistral = OllamaService::with_config("http://localhost:11434", "mistral-small");
+    // Use hardcoded Ollama URL but allow override from environment
+    let ollama_url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| OLLAMA_URL.to_string());
+    let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
     // Execute solver loop
     collect_context(&mut state, &github, owner, name, issue_num).await?;
