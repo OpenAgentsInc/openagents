@@ -45,7 +45,7 @@ async fn collect_context(
         issue.body.unwrap_or_default(),
         comments
             .iter()
-            .map(|c| format!("- {}", c.body.clone().unwrap_or_default()))
+            .map(|c| format!("- {}", c.body.unwrap_or_default()))
             .collect::<Vec<_>>()
             .join("\n"),
         repo_map
