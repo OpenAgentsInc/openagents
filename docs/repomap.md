@@ -15,6 +15,22 @@ docs/repomap.md:
 
 docs/repomap_generation.md:
 
+docs/solve-runs/20250130-1045.md:
+
+docs/solve-runs/20250130-1105.md:
+
+docs/solve-runs/20250130-1120.md:
+
+docs/solve-runs/20250130-1130.md:
+
+docs/solve-runs/20250130-1145.md:
+
+docs/solve-runs/20250130-1225.md:
+
+docs/solve-runs/20250130-1240.md:
+
+docs/solver.md:
+
 docs/templates.md:
 
 docs/test-failures-analysis.md:
@@ -42,11 +58,48 @@ src/bin/solver_impl/issue.rs:
 │fn handle_issue
 
 src/bin/solver_impl/planning.rs:
+│fn generate_pr_title
+│fn escape_json_string
 │fn extract_json_from_markdown
+│fn validate_changes_relevance
+│fn is_common_word
+│fn gather_context
+│fn fix_common_json_issues
+│fn validate_llm_response
+│fn retry_with_feedback
 │fn handle_planning
+│fn test_extract_json_from_markdown
+│fn test_validate_changes_relevance
+│fn test_fix_common_json_issues
+│const ERR_NO_JSON
+│const ERR_NO_CHANGES
+│const ERR_WRONG_TARGET
+│const ERR_INVALID_JSON
+│const ERR_INVALID_CHANGES
+│const GITHUB_RS_PATH
+│const JSON_RS_PATH
+│const KEY_CHANGES
+│const KEY_PATH
+│const KEY_SEARCH
+│const KEY_REPLACE
+│const KEY_REASON
+│const LOG_GATHERING
+│const LOG_GENERATING
+│const LOG_FILE_CONTEXT
+│const LOG_FULL_RESPONSE
+│const LOG_EXTRACTED_JSON
+│const LOG_RETRY_ATTEMPT
+│const LOG_VALIDATION_ERROR
+│const GITHUB_RS_CONTENT
+│const TARGET_FUNCTION
+│const EMPTY_STR
+│const MAX_RETRIES
 
 src/bin/solver_impl/solution.rs:
 │fn handle_solution
+
+src/bin/solver_orig.rs:
+│fn main
 
 src/configuration.rs:
 │fn default
@@ -89,11 +142,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn 
+│fn
 │fn extract_id
 │fn extract_function_name
-│fn 
-│fn 
+│fn
+│fn
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -105,15 +158,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class 
-│class 
-│class 
-│class 
+│class
+│class
+│class
+│class
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const 
-│const 
-│const 
+│const
+│const
+│const
 │const TEST_CONST
 
 src/routes.rs:
@@ -231,6 +284,7 @@ src/server/services/ollama/service.rs:
 │fn default
 │fn new
 │fn with_config
+│fn chat_structured
 │fn metadata
 │fn chat
 │fn chat_stream
@@ -292,9 +346,17 @@ src/server/ws/types.rs:
 
 src/solver/changes/generation.rs:
 │fn extract_json_from_markdown
+│fn parse_llm_response
+│fn validate_changes_relevance
+│fn extract_keywords
+│fn is_common_word
 │fn generate_changes
 │fn add
 │fn add
+│fn test_extract_json_from_markdown
+│fn test_validate_changes_relevance
+│fn test_extract_keywords
+│const MAX_RETRIES
 
 src/solver/changes/parsing.rs:
 │fn parse_search_replace
@@ -306,17 +368,29 @@ src/solver/changes/tests.rs:
 │fn test_parse_search_replace_multiple
 │fn test_parse_search_replace_invalid
 
+src/solver/changes/types.rs:
+│fn validate
+│fn test_change_block_validation
+
 src/solver/config.rs:
 │fn load
 
 src/solver/context.rs:
 │fn new
 │fn new_with_dir
+│fn with_github
+│fn create_branch
+│fn create_pull_request
 │fn generate_file_list
 │fn generate_changes
 │fn parse_changes
 │fn apply_changes
 │fn cleanup
+│fn test_apply_changes
+│fn test
+│fn test
+│fn test
+│fn test_cleanup
 
 src/solver/display.rs:
 │fn print_colored
@@ -336,29 +410,66 @@ src/solver/file_list.rs:
 src/solver/github.rs:
 │fn new
 │fn create_branch
+│fn generate_pr_title
 │fn create_pull_request
 │fn post_comment
 │fn get_issue
 │fn get_issue_comments
+│fn test_generate_pr_title
+│fn test_new_with_invalid_repo
+
+src/solver/json.rs:
+│fn escape_json_string
+│fn is_valid_json_string
+│fn fix_common_json_issues
+│fn test_escape_json_string
+│fn test_is_valid_json_string
+│fn test_fix_common_json_issues
 
 src/solver/planning.rs:
 │fn new
+│fn validate_llm_response
+│fn generate_prompt
+│fn retry_with_feedback
 │fn generate_plan
 │fn generate_plan_sync
+│fn test_validate_llm_response
+│fn generate_pr_title
+│fn generate_pr_title
+│fn test_something
+│fn test_something_new
+│fn test_generate_prompt
+│const MAX_RETRIES
 
 src/solver/solution.rs:
 │fn handle_solution
+
+src/solver/state.rs:
+│fn new
+│fn add_file
+│fn update_status
+│fn add_change
+│fn test_solver_state_creation
+│fn test_add_file
+│fn test_add_change
+│fn test_update_status
 
 src/solver/streaming.rs:
 │fn handle_plan_stream
 
 src/solver/types.rs:
 │fn new
+│fn with_reason
 │fn validate
+│fn eq
 │fn validate_pr_title
+│fn test_change_with_reason
+│fn test_validate_pr_title
+│fn test_change_validation
+│fn test_change_error_equality
 
 tailwind.config.cjs:
-│const 
+│const
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -458,7 +569,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class 
+│class
 
 templates/pages/company.html:
 │class of
@@ -626,22 +737,6 @@ tests/solver_changes.rs:
 │fn test_change_generation
 │fn add
 │fn test_change_generation_no_changes
-│fn main
-│fn test_parse_search_replace_blocks
-│fn add
-│fn add
-│fn multiply
-│fn add
-│fn test_parse_search_replace_multiple_files
-│fn add
-│fn add
-│fn multiply
-│fn main
-│fn main
-│fn test_parse_search_replace_new_file
-│fn multiply
-│fn test_parse_search_replace_invalid
-│fn test_parse_search_replace_missing_path
 
 tests/solver_context.rs:
 │fn setup_test_context
@@ -663,7 +758,6 @@ tests/solver_context.rs:
 │fn old
 │fn new
 │fn test_cleanup
-│fn test
 
 tests/solver_file_list.rs:
 │fn setup_test_repo
@@ -687,6 +781,14 @@ tests/solver_ollama.rs:
 │fn test_ollama_changes
 │fn add
 
+tests/solver_state.rs:
+│fn test_state_serialization
+│fn old_code
+│fn new_code
+│fn test_state_transitions
+│fn test_file_management
+│fn test_json_schema_compatibility
+
 tests/solver_types.rs:
 │fn test_change_validation
 │fn old
@@ -708,4 +810,3 @@ tests/tool_selection.rs:
 
 tests/user.rs:
 │fn test_user_creation
-

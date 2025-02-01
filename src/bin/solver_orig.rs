@@ -1,9 +1,26 @@
 use anyhow::{Context as _, Result};
+use clap::Parser;
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::info;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Issue number to solve
+    #[arg(short, long)]
+    issue: i32, // Changed from u64 to i32 to match API
+
+    /// Repository owner/name (default: OpenAgentsInc/openagents)
+    #[arg(short, long)]
+    repo: Option<String>,
+
+    /// Live mode - actually create branch and PR
+    #[arg(short, long)]
+    live: bool,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RelevantFiles {
@@ -27,16 +44,26 @@ async fn main() -> Result<()> {
     // Load environment variables
     dotenvy::dotenv().ok();
 
-    // Hardcode our 'descriptive PR titles'
-    let owner = "OpenAgentsInc";
-    let name = "openagents";
-    let issue_num = 637;
+    // Parse command line arguments
+    let cli = Args::parse();
+
+    // Parse repo owner/name
+    let (owner, name) = match cli.repo {
+        Some(ref repo) => {
+            let parts: Vec<&str> = repo.split('/').collect();
+            if parts.len() != 2 {
+                anyhow::bail!("Invalid repo format. Expected owner/name");
+            }
+            (parts[0].to_string(), parts[1].to_string())
+        }
+        None => ("OpenAgentsInc".to_string(), "openagents".to_string()),
+    };
 
     // Get GitHub token from environment
     let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
 
     // Get Ollama URL from environment or use default
-    let _ollama_url =
+    let ollama_url =
         std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
     // Initialize GitHub service
@@ -44,33 +71,22 @@ async fn main() -> Result<()> {
         .context("Failed to initialize GitHub service")?;
 
     // Fetch issue details
-    info!("Fetching issue #{}", issue_num);
-    let issue = github.get_issue(owner, name, issue_num).await?;
-    let comments = github.get_issue_comments(owner, name, issue_num).await?;
+    info!("Fetching issue #{}", cli.issue);
+    let issue = github.get_issue(&owner, &name, cli.issue).await?;
+    let _comments = github.get_issue_comments(&owner, &name, cli.issue).await?;
 
     println!("Title: {}", issue.title);
     println!("Body: {}", issue.body.clone().unwrap_or_default());
     println!("State: {}", issue.state);
 
-    // Print comments
-    if !comments.is_empty() {
-        println!("Comments:");
-        for comment in comments {
-            let body = comment.body.clone();
-            println!("- {}", body);
-        }
-    } else {
-        println!("No comments found.");
-    }
-
     // Generate repository map
     info!("Generating repository map...");
     let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
 
-    let mistral = OllamaService::with_config("http://192.168.1.189:11434", "mistral-small");
+    let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
     let prompt = format!(
-        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}\n\nRepository map:\n{}", 
+        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}\\n\\nRepository map:\\n{}", 
         issue.title,
         issue.body.clone().unwrap_or_default(),
         repo_map
@@ -105,10 +121,10 @@ async fn main() -> Result<()> {
         "required": ["files"]
     });
 
-    let relevant_files: RelevantFiles = mistral.chat_structured(prompt, format).await?;
+    let response: RelevantFiles = mistral.chat_structured(prompt, format).await?;
 
     println!("\nRelevant files to modify:");
-    for file in relevant_files.files {
+    for file in response.files {
         println!("- {} (score: {:.2})", file.path, file.relevance_score);
         println!("  Reason: {}", file.reason);
     }
