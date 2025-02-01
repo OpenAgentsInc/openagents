@@ -5,6 +5,7 @@ use openagents::solver::changes::apply_changes;
 use openagents::solver::state::{SolverState, SolverStatus};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::collections::HashSet;
 use tracing::{debug, info, error};
 
 const OLLAMA_URL: &str = "http://192.168.1.189:11434";
@@ -21,13 +22,27 @@ struct FileInfo {
     reason: String,
 }
 
+fn extract_paths_from_repomap(repo_map: &str) -> HashSet<String> {
+    let mut paths = HashSet::new();
+    for line in repo_map.lines() {
+        if line.contains(".rs:") {
+            if let Some(path) = line.split(':').next() {
+                paths.insert(path.trim().to_string());
+            }
+        }
+    }
+    debug!("Found {} valid paths in repo map", paths.len());
+    debug!("Valid paths: {:?}", paths);
+    paths
+}
+
 async fn collect_context(
     state: &mut SolverState,
     github: &GitHubService,
     owner: &str,
     name: &str,
     issue_num: i32,
-) -> Result<String> {
+) -> Result<(String, HashSet<String>)> {
     info!("Collecting context...");
     state.update_status(SolverStatus::CollectingContext);
 
@@ -45,10 +60,13 @@ async fn collect_context(
         .map(|e| e.path())
         .collect::<Vec<_>>());
     let repo_map = openagents::repomap::generate_repo_map(&repo_dir);
+    
+    // Extract valid paths from repo map
+    let valid_paths = extract_paths_from_repomap(&repo_map);
 
     // Update state with initial analysis
     state.analysis = format!(
-        "Issue #{}: {}\n\nDescription: {}\n\nComments:\n{}\n\nRepository Map:\n{}",
+        "Issue #{}: {}\n\nDescription: {}\n\nComments:\n{}\n\nRepository Map:\n{}\n\nValid file paths for modifications:\n{}", 
         issue_num,
         issue.title,
         issue.body.unwrap_or_default(),
@@ -57,22 +75,25 @@ async fn collect_context(
             .map(|c| format!("- {}", c.body))
             .collect::<Vec<_>>()
             .join("\n"),
-        repo_map
+        repo_map,
+        valid_paths.iter().collect::<Vec<_>>().join("\n")
     );
 
-    // Return the repo directory for later use
-    Ok(repo_dir.to_string_lossy().to_string())
+    // Return both the repo directory and valid paths
+    Ok((repo_dir.to_string_lossy().to_string(), valid_paths))
 }
 
 async fn identify_files(
     state: &mut SolverState,
     mistral: &OllamaService,
+    valid_paths: &HashSet<String>,
 ) -> Result<()> {
     info!("Identifying relevant files...");
     state.update_status(SolverStatus::Thinking);
 
     let prompt = format!(
-        "Based on this analysis, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path' (relative path, no leading slash), 'relevance_score' (0-1), and 'reason' fields.\n\nAnalysis:\n{}", 
+        "Based on this analysis, suggest up to 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path' (relative path, no leading slash), 'relevance_score' (0-1), and 'reason' fields.\n\nIMPORTANT: You MUST ONLY use paths from this list:\n{}\n\nAnalysis:\n{}", 
+        valid_paths.iter().collect::<Vec<_>>().join("\n"),
         state.analysis
     );
 
@@ -105,13 +126,20 @@ async fn identify_files(
 
     let relevant_files: RelevantFiles = mistral.chat_structured(prompt, format).await?;
 
-    // Add files to state, ensuring paths are relative
+    // Add files to state, ensuring paths are relative and valid
     for mut file in relevant_files.files {
         // Remove leading slash if present
         if file.path.starts_with('/') {
             file.path = file.path[1..].to_string();
         }
-        state.add_file(file.path, file.reason, file.relevance_score);
+
+        // Only add if path is in valid_paths
+        if valid_paths.contains(&file.path) {
+            debug!("Adding valid file: {}", file.path);
+            state.add_file(file.path, file.reason, file.relevance_score);
+        } else {
+            error!("Skipping invalid file path: {}", file.path);
+        }
     }
 
     Ok(())
@@ -253,8 +281,8 @@ async fn main() -> Result<()> {
     let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
     // Execute solver loop
-    let repo_dir = collect_context(&mut state, &github, owner, name, issue_num).await?;
-    identify_files(&mut state, &mistral).await?;
+    let (repo_dir, valid_paths) = collect_context(&mut state, &github, owner, name, issue_num).await?;
+    identify_files(&mut state, &mistral, &valid_paths).await?;
     generate_changes(&mut state, &mistral, &repo_dir).await?;
     apply_file_changes(&mut state, &repo_dir).await?;
 
