@@ -1,9 +1,12 @@
-use crate::solver::state::SolverState;
-use crate::solver::types::{Change, ChangeError, ChangeResult};
+use crate::solver::state::{Change, SolverState};
+use crate::solver::types::ChangeError;
 use anyhow::{anyhow, Result};
 use std::fs;
 use std::path::Path;
 use tracing::{debug, error, info};
+
+/// Result type for change operations
+type ChangeResult<T> = Result<T, ChangeError>;
 
 /// Applies a single change to a file
 fn apply_change_to_file(change: &Change, file_path: &Path) -> ChangeResult<()> {
@@ -77,11 +80,7 @@ pub fn apply_changes(state: &mut SolverState) -> Result<()> {
         for change in &file.changes {
             match apply_change_to_file(change, file_path) {
                 Ok(_) => {
-                    if let Some(reason) = &change.reason {
-                        info!("Applied change to {}: {}", file_path.display(), reason);
-                    } else {
-                        info!("Applied change to {}", file_path.display());
-                    }
+                    info!("Applied change to {}: {}", file_path.display(), change.analysis);
                 }
                 Err(e) => {
                     error!(
@@ -115,23 +114,21 @@ mod tests {
         fs::write(&file_path, "Hello World").unwrap();
 
         // Test simple replacement
-        let change = Change::with_reason(
-            file_path.to_str().unwrap().to_string(),
-            "World".to_string(),
-            "Rust".to_string(),
-            "Test change".to_string(),
-        );
+        let change = Change {
+            search: "World".to_string(),
+            replace: "Rust".to_string(),
+            analysis: "Test change".to_string(),
+        };
 
         apply_change_to_file(&change, &file_path).unwrap();
         assert_eq!(fs::read_to_string(&file_path).unwrap(), "Hello Rust");
 
         // Test no match
-        let change = Change::with_reason(
-            file_path.to_str().unwrap().to_string(),
-            "NotFound".to_string(),
-            "NewContent".to_string(),
-            "Test change".to_string(),
-        );
+        let change = Change {
+            search: "NotFound".to_string(),
+            replace: "NewContent".to_string(),
+            analysis: "Test change".to_string(),
+        };
 
         assert!(matches!(
             apply_change_to_file(&change, &file_path),
@@ -140,12 +137,11 @@ mod tests {
 
         // Test multiple matches
         fs::write(&file_path, "test test").unwrap();
-        let change = Change::with_reason(
-            file_path.to_str().unwrap().to_string(),
-            "test".to_string(),
-            "new".to_string(),
-            "Test change".to_string(),
-        );
+        let change = Change {
+            search: "test".to_string(),
+            replace: "new".to_string(),
+            analysis: "Test change".to_string(),
+        };
 
         assert!(matches!(
             apply_change_to_file(&change, &file_path),
@@ -163,11 +159,13 @@ mod tests {
 
         // Create solver state with changes
         let mut state = SolverState::new("Test state".to_string());
-        let mut file_state = FileState::new(
-            file_path.to_str().unwrap().to_string(),
-            "Test file".to_string(),
-            1.0,
-        );
+        let mut file_state = FileState {
+            id: "test".to_string(),
+            path: file_path.to_str().unwrap().to_string(),
+            analysis: "Test file".to_string(),
+            relevance_score: 1.0,
+            changes: vec![],
+        };
 
         file_state.add_change(
             "World".to_string(),
