@@ -29,6 +29,12 @@ docs/solve-runs/20250130-1225.md:
 
 docs/solve-runs/20250130-1240.md:
 
+docs/solve-runs/20250131-1830.md:
+
+docs/solve-runs/20250131-1845.md:
+
+docs/solve-runs/20250131-1905.md:
+
 docs/solver.md:
 
 docs/templates.md:
@@ -52,7 +58,12 @@ src/bin/repo.rs:
 │fn main
 
 src/bin/solver.rs:
+│fn collect_context
+│fn identify_files
+│fn generate_changes
+│fn apply_file_changes
 │fn main
+│const OLLAMA_URL
 
 src/bin/solver_impl/issue.rs:
 │fn handle_issue
@@ -343,6 +354,12 @@ src/server/ws/transport.rs:
 
 src/server/ws/types.rs:
 │fn fmt
+
+src/solver/changes/apply.rs:
+│fn apply_change_to_file
+│fn apply_changes
+│fn test_apply_change_to_file
+│fn test_apply_changes
 
 src/solver/changes/generation.rs:
 │fn extract_json_from_markdown
@@ -770,6 +787,11 @@ tests/solver_file_list.rs:
 │fn main
 │fn add
 │fn test_file_list_empty_repo
+
+tests/solver_loop.rs:
+│fn test_solver_loop_state_transitions
+│fn test_solver_loop_error_handling
+│fn test_solver_loop_file_management
 
 tests/solver_ollama.rs:
 │fn setup_test_repo

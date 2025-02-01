@@ -1,119 +1,162 @@
 use anyhow::{Context as _, Result};
+use chrono::Local;
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
-use serde::{Deserialize, Serialize};
+use openagents::solver::state::SolverState;
+use std::fs;
+use std::io::Write;
 use std::path::Path;
+use std::sync::Mutex;
 use tracing::info;
+use tracing_subscriber::fmt::MakeWriter;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct RelevantFiles {
-    files: Vec<FileInfo>,
+mod solver_impl;
+use solver_impl::{
+    changes::{apply_file_changes, generate_changes},
+    context::collect_context,
+    files::identify_files,
+};
+
+const OLLAMA_URL: &str = "http://192.168.1.189:11434";
+
+// Custom writer to capture log output
+#[derive(Clone)]
+struct LogWriter {
+    buffer: std::sync::Arc<Mutex<Vec<String>>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct FileInfo {
-    path: String,
-    relevance_score: f32,
-    reason: String,
+impl LogWriter {
+    fn new() -> Self {
+        Self {
+            buffer: std::sync::Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn get_logs(&self) -> Vec<String> {
+        self.buffer.lock().unwrap().clone()
+    }
+}
+
+impl std::io::Write for LogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Ok(s) = String::from_utf8(buf.to_vec()) {
+            // Write to stdout as well
+            print!("{}", s);
+            self.buffer.lock().unwrap().push(s);
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        std::io::stdout().flush()?;
+        Ok(())
+    }
+}
+
+impl<'a> MakeWriter<'a> for LogWriter {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
+    // Initialize logging with custom writer to capture output
+    let writer = LogWriter::new();
+    let writer_clone = writer.clone();
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(move || writer_clone.clone())
         .init();
+
+    info!("Starting solver...");
 
     // Load environment variables
     dotenvy::dotenv().ok();
 
-    // Hardcode our 'descriptive PR titles'
+    // Initialize state
+    let mut state = SolverState::new("Initial solver state".to_string());
+
+    // Configuration
     let owner = "OpenAgentsInc";
     let name = "openagents";
-    let issue_num = 637;
+    let issue_num = 651;
+
+    info!("Fetching issue #{}", issue_num);
 
     // Get GitHub token from environment
     let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
 
-    // Get Ollama URL from environment or use default
-    let _ollama_url =
-        std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
-
-    // Initialize GitHub service
+    // Initialize services
     let github = GitHubService::new(Some(github_token.clone()))
         .context("Failed to initialize GitHub service")?;
 
-    // Fetch issue details
-    info!("Fetching issue #{}", issue_num);
-    let issue = github.get_issue(owner, name, issue_num).await?;
-    let comments = github.get_issue_comments(owner, name, issue_num).await?;
+    // Use hardcoded Ollama URL but allow override from environment
+    let ollama_url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| OLLAMA_URL.to_string());
+    let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
-    println!("Title: {}", issue.title);
-    println!("Body: {}", issue.body.clone().unwrap_or_default());
-    println!("State: {}", issue.state);
+    info!("Initialized services");
 
-    // Print comments
-    if !comments.is_empty() {
-        println!("Comments:");
-        for comment in comments {
-            let body = comment.body.clone();
-            println!("- {}", body);
-        }
-    } else {
-        println!("No comments found.");
-    }
+    // Execute solver loop
+    info!("Starting solver loop...");
+    let (repo_dir, valid_paths) =
+        collect_context(&mut state, &github, owner, name, issue_num).await?;
+    info!("Context collected");
 
-    // Generate repository map
-    info!("Generating repository map...");
-    let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
+    identify_files(&mut state, &mistral, &valid_paths).await?;
+    info!("Files identified");
 
-    let mistral = OllamaService::with_config("http://192.168.1.189:11434", "mistral-small");
+    generate_changes(&mut state, &mistral, &repo_dir).await?;
+    info!("Changes generated");
 
-    let prompt = format!(
-        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}\n\nRepository map:\n{}", 
-        issue.title,
-        issue.body.clone().unwrap_or_default(),
-        repo_map
-    );
+    apply_file_changes(&mut state, &repo_dir).await?;
+    info!("Changes applied");
 
-    info!("Prompt: {}", prompt);
-
-    let format = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "files": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string"
-                        },
-                        "relevance_score": {
-                            "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
-                        },
-                        "reason": {
-                            "type": "string"
-                        }
-                    },
-                    "required": ["path", "relevance_score", "reason"]
-                }
-            }
-        },
-        "required": ["files"]
-    });
-
-    let relevant_files: RelevantFiles = mistral.chat_structured(prompt, format).await?;
-
-    println!("\nRelevant files to modify:");
-    for file in relevant_files.files {
+    // Print final state
+    println!("\nFinal solver state:");
+    println!("Status: {:?}", state.status);
+    println!("Files to modify:");
+    for file in &state.files {
         println!("- {} (score: {:.2})", file.path, file.relevance_score);
-        println!("  Reason: {}", file.reason);
+        println!("  Analysis: {}", file.analysis);
+        for change in &file.changes {
+            println!("  Change:");
+            println!("    Search:  {}", change.search);
+            println!("    Replace: {}", change.replace);
+            println!("    Analysis: {}", change.analysis);
+        }
     }
 
-    println!("Success.");
+    // Create solve-runs directory if it doesn't exist
+    let solve_runs_dir = Path::new("docs/solve-runs");
+    fs::create_dir_all(solve_runs_dir)?;
 
+    // Generate timestamp and create log file
+    let now = Local::now();
+    let timestamp = now.format("%Y%m%d-%H%M");
+    let log_file_path = solve_runs_dir.join(format!("{}.md", timestamp));
+
+    // Write captured output to file
+    let mut log_file = fs::File::create(&log_file_path)?;
+    writeln!(log_file, "````bash")?;
+
+    // Write the command that was run
+    writeln!(
+        log_file,
+        "  openagents git:(solver/state-loop-651) cargo run --bin solver -- --issue {}",
+        issue_num
+    )?;
+
+    // Write the captured output
+    for line in writer.get_logs() {
+        write!(log_file, "{}", line)?;
+    }
+
+    writeln!(log_file, "````")?;
+
+    info!("\nSolver completed successfully.");
     Ok(())
 }
