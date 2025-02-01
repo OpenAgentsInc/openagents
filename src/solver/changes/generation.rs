@@ -56,7 +56,7 @@ fn validate_changes_relevance(
     let changes_match = changes.iter().any(|c| {
         keywords
             .iter()
-            .any(|k| c.reason.as_ref().map_or(false, |r| r.contains(k)))
+            .any(|k| c.reason.as_ref().is_some_and(|r| r.contains(k)))
     });
 
     reasoning_matches || changes_match
