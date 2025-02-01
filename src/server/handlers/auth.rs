@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State, Form},
+    extract::{Form, Query, State},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
     response::{IntoResponse, Redirect},
     Json,
@@ -64,11 +64,20 @@ pub async fn signup(State(state): State<AppState>) -> impl IntoResponse {
     Redirect::temporary(&auth_url)
 }
 
-pub async fn handle_signup_form(
+// New handler for signup form submission
+pub async fn handle_signup(
     State(state): State<AppState>,
     Form(form): Form<SignupForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    // Basic form validation
+    // Basic validation
+    if !form.terms_accepted {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Terms must be accepted".to_string(),
+            }),
+        ));
+    }
     if form.password != form.password_confirmation {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -78,16 +87,7 @@ pub async fn handle_signup_form(
         ));
     }
 
-    if !form.terms_accepted {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Terms must be accepted".to_string(),
-            }),
-        ));
-    }
-
-    // Generate signup URL and redirect
+    // Generate signup URL with prompt=create
     let auth_url = state
         .service
         .authorization_url_for_signup()
