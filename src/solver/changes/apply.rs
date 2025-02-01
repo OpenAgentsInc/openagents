@@ -66,14 +66,16 @@ fn apply_change_to_file(change: &Change, base_path: &Path, file_path: &Path) -> 
 }
 
 /// Applies all changes in the solver state
-pub fn apply_changes(state: &mut SolverState) -> Result<()> {
+pub fn apply_changes(state: &mut SolverState, repo_dir: &str) -> Result<()> {
     info!("Applying changes to files...");
+    debug!("Using repo directory: {}", repo_dir);
 
-    // Get the base path from the repomap generation
-    let base_path = Path::new(".");
+    let base_path = Path::new(repo_dir);
+    debug!("Base path: {}", base_path.display());
 
     for file in &state.files {
         let file_path = Path::new(&file.path);
+        debug!("Processing file: {}", file_path.display());
 
         // Skip files with no changes
         if file.changes.is_empty() {
@@ -184,7 +186,7 @@ mod tests {
         state.files.push(file_state);
 
         // Apply changes
-        apply_changes(&mut state).unwrap();
+        apply_changes(&mut state, dir.path().to_str().unwrap()).unwrap();
 
         // Verify changes were applied
         assert_eq!(fs::read_to_string(&full_path).unwrap(), "Hello Rust");
