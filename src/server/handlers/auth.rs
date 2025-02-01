@@ -29,7 +29,7 @@ where
 {
     // HTML checkboxes only send a value when checked
     // If the field is missing, it means unchecked
-    Option::deserialize(deserializer).map(|x| x.is_some())
+    Option::<String>::deserialize(deserializer).map(|x| x.is_some())
 }
 
 #[derive(Debug, Deserialize)]
