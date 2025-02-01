@@ -45,7 +45,7 @@ pub async fn collect_context(
             .collect::<Vec<_>>()
     );
     let repo_map = openagents::repomap::generate_repo_map(&repo_dir);
-    
+
     // Extract valid paths from repo map
     let valid_paths = extract_paths_from_repomap(&repo_map);
 

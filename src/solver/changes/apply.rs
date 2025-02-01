@@ -89,14 +89,14 @@ pub fn apply_changes(state: &mut SolverState, repo_dir: &str) -> Result<()> {
         for change in &file.changes {
             match apply_change_to_file(change, base_path, file_path) {
                 Ok(_) => {
-                    info!("Applied change to {}: {}", file_path.display(), change.analysis);
+                    info!(
+                        "Applied change to {}: {}",
+                        file_path.display(),
+                        change.analysis
+                    );
                 }
                 Err(e) => {
-                    error!(
-                        "Failed to apply change to {}: {}",
-                        file_path.display(),
-                        e
-                    );
+                    error!("Failed to apply change to {}: {}", file_path.display(), e);
                     return Err(anyhow!("Failed to apply changes: {}", e));
                 }
             }

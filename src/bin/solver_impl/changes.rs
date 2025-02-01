@@ -1,9 +1,9 @@
+use crate::solver_impl::types::Changes;
 use anyhow::Result;
 use openagents::server::services::ollama::OllamaService;
 use openagents::solver::state::{SolverState, SolverStatus};
 use std::path::Path;
 use tracing::{debug, error, info};
-use crate::solver_impl::types::Changes;
 
 pub async fn generate_changes(
     state: &mut SolverState,
@@ -20,13 +20,13 @@ pub async fn generate_changes(
         info!("Processing file:");
         info!("  Relative path: {}", relative_path);
         info!("  Absolute path: {}", absolute_path.display());
-        
+
         // Try to read the file content
         let file_content = match std::fs::read_to_string(&absolute_path) {
             Ok(content) => {
                 debug!("Successfully read file content");
                 content
-            },
+            }
             Err(e) => {
                 error!("Failed to read file:");
                 error!("  Relative path: {}", relative_path);

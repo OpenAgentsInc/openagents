@@ -1,9 +1,9 @@
+use crate::solver_impl::types::RelevantFiles;
 use anyhow::Result;
 use openagents::server::services::ollama::OllamaService;
 use openagents::solver::state::{SolverState, SolverStatus};
 use std::collections::HashSet;
 use tracing::{debug, error, info};
-use crate::solver_impl::types::RelevantFiles;
 
 pub async fn identify_files(
     state: &mut SolverState,

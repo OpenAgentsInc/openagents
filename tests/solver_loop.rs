@@ -16,16 +16,8 @@ async fn test_solver_loop_state_transitions() -> Result<()> {
     assert_eq!(state.status, SolverStatus::Thinking);
 
     // Add test files
-    state.add_file(
-        "src/test1.rs".to_string(),
-        "Test file 1".to_string(),
-        0.9,
-    );
-    state.add_file(
-        "src/test2.rs".to_string(),
-        "Test file 2".to_string(),
-        0.8,
-    );
+    state.add_file("src/test1.rs".to_string(), "Test file 1".to_string(), 0.9);
+    state.add_file("src/test2.rs".to_string(), "Test file 2".to_string(), 0.8);
     assert_eq!(state.files.len(), 2);
 
     // Test code generation
@@ -80,22 +72,14 @@ async fn test_solver_loop_file_management() -> Result<()> {
     let mut state = SolverState::new("Test file management".to_string());
 
     // Add files
-    let file1 = state.add_file(
-        "src/test1.rs".to_string(),
-        "Test file 1".to_string(),
-        0.9,
-    );
+    let file1 = state.add_file("src/test1.rs".to_string(), "Test file 1".to_string(), 0.9);
     file1.add_change(
         "old code 1".to_string(),
         "new code 1".to_string(),
         "Change 1".to_string(),
     );
 
-    let file2 = state.add_file(
-        "src/test2.rs".to_string(),
-        "Test file 2".to_string(),
-        0.8,
-    );
+    let file2 = state.add_file("src/test2.rs".to_string(), "Test file 2".to_string(), 0.8);
     file2.add_change(
         "old code 2".to_string(),
         "new code 2".to_string(),

@@ -1,20 +1,20 @@
 use anyhow::{Context as _, Result};
+use chrono::Local;
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
 use openagents::solver::state::SolverState;
-use tracing::info;
 use std::fs;
-use std::path::Path;
-use chrono::Local;
 use std::io::Write;
+use std::path::Path;
 use std::sync::Mutex;
+use tracing::info;
 use tracing_subscriber::fmt::MakeWriter;
 
 mod solver_impl;
 use solver_impl::{
+    changes::{apply_file_changes, generate_changes},
     context::collect_context,
     files::identify_files,
-    changes::{generate_changes, apply_file_changes},
 };
 
 const OLLAMA_URL: &str = "http://192.168.1.189:11434";
@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
     // Initialize logging with custom writer to capture output
     let writer = LogWriter::new();
     let writer_clone = writer.clone();
-    
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_writer(move || writer_clone.clone())
@@ -102,15 +102,16 @@ async fn main() -> Result<()> {
 
     // Execute solver loop
     info!("Starting solver loop...");
-    let (repo_dir, valid_paths) = collect_context(&mut state, &github, owner, name, issue_num).await?;
+    let (repo_dir, valid_paths) =
+        collect_context(&mut state, &github, owner, name, issue_num).await?;
     info!("Context collected");
-    
+
     identify_files(&mut state, &mistral, &valid_paths).await?;
     info!("Files identified");
-    
+
     generate_changes(&mut state, &mistral, &repo_dir).await?;
     info!("Changes generated");
-    
+
     apply_file_changes(&mut state, &repo_dir).await?;
     info!("Changes applied");
 
@@ -140,17 +141,21 @@ async fn main() -> Result<()> {
 
     // Write captured output to file
     let mut log_file = fs::File::create(&log_file_path)?;
-    write!(log_file, "````bash\n")?;
-    
+    writeln!(log_file, "````bash")?;
+
     // Write the command that was run
-    write!(log_file, "  openagents git:(solver/state-loop-651) cargo run --bin solver -- --issue {}\n", issue_num)?;
-    
+    writeln!(
+        log_file,
+        "  openagents git:(solver/state-loop-651) cargo run --bin solver -- --issue {}",
+        issue_num
+    )?;
+
     // Write the captured output
     for line in writer.get_logs() {
         write!(log_file, "{}", line)?;
     }
-    
-    write!(log_file, "````\n")?;
+
+    writeln!(log_file, "````")?;
 
     info!("\nSolver completed successfully.");
     Ok(())
