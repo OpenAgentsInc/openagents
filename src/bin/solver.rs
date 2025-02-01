@@ -1,9 +1,10 @@
 use anyhow::{Context as _, Result};
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
+use openagents::solver::state::{SolverState, SolverStatus};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RelevantFiles {
@@ -17,66 +18,53 @@ struct FileInfo {
     reason: String,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
-    // Load environment variables
-    dotenvy::dotenv().ok();
-
-    // Hardcode our 'descriptive PR titles'
-    let owner = "OpenAgentsInc";
-    let name = "openagents";
-    let issue_num = 637;
-
-    // Get GitHub token from environment
-    let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
-
-    // Get Ollama URL from environment or use default
-    let _ollama_url =
-        std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
-
-    // Initialize GitHub service
-    let github = GitHubService::new(Some(github_token.clone()))
-        .context("Failed to initialize GitHub service")?;
+async fn collect_context(
+    state: &mut SolverState,
+    github: &GitHubService,
+    owner: &str,
+    name: &str,
+    issue_num: i32,
+) -> Result<()> {
+    info!("Collecting context...");
+    state.update_status(SolverStatus::CollectingContext);
 
     // Fetch issue details
     info!("Fetching issue #{}", issue_num);
     let issue = github.get_issue(owner, name, issue_num).await?;
     let comments = github.get_issue_comments(owner, name, issue_num).await?;
 
-    println!("Title: {}", issue.title);
-    println!("Body: {}", issue.body.clone().unwrap_or_default());
-    println!("State: {}", issue.state);
-
-    // Print comments
-    if !comments.is_empty() {
-        println!("Comments:");
-        for comment in comments {
-            let body = comment.body.clone();
-            println!("- {}", body);
-        }
-    } else {
-        println!("No comments found.");
-    }
-
     // Generate repository map
     info!("Generating repository map...");
     let repo_map = openagents::repomap::generate_repo_map(Path::new("."));
 
-    let mistral = OllamaService::with_config("http://192.168.1.189:11434", "mistral-small");
-
-    let prompt = format!(
-        "Based on this issue and repository map, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields. Issue: {} - {}\n\nRepository map:\n{}", 
+    // Update state with initial analysis
+    state.analysis = format!(
+        "Issue #{}: {}\n\nDescription: {}\n\nComments:\n{}\n\nRepository Map:\n{}",
+        issue_num,
         issue.title,
-        issue.body.clone().unwrap_or_default(),
+        issue.body.unwrap_or_default(),
+        comments
+            .iter()
+            .map(|c| format!("- {}", c.body.clone().unwrap_or_default()))
+            .collect::<Vec<_>>()
+            .join("\n"),
         repo_map
     );
 
-    info!("Prompt: {}", prompt);
+    Ok(())
+}
+
+async fn identify_files(
+    state: &mut SolverState,
+    mistral: &OllamaService,
+) -> Result<()> {
+    info!("Identifying relevant files...");
+    state.update_status(SolverStatus::Thinking);
+
+    let prompt = format!(
+        "Based on this analysis, suggest 5 most relevant files that need to be modified. Return a JSON object with a 'files' array containing objects with 'path', 'relevance_score' (0-1), and 'reason' fields.\n\nAnalysis:\n{}", 
+        state.analysis
+    );
 
     let format = serde_json::json!({
         "type": "object",
@@ -107,13 +95,138 @@ async fn main() -> Result<()> {
 
     let relevant_files: RelevantFiles = mistral.chat_structured(prompt, format).await?;
 
-    println!("\nRelevant files to modify:");
+    // Add files to state
     for file in relevant_files.files {
-        println!("- {} (score: {:.2})", file.path, file.relevance_score);
-        println!("  Reason: {}", file.reason);
+        state.add_file(file.path, file.reason, file.relevance_score);
     }
 
-    println!("Success.");
+    Ok(())
+}
+
+async fn generate_changes(
+    state: &mut SolverState,
+    mistral: &OllamaService,
+) -> Result<()> {
+    info!("Generating code changes...");
+    state.update_status(SolverStatus::GeneratingCode);
+
+    for file in &mut state.files {
+        let prompt = format!(
+            "Based on the analysis and file path, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}", 
+            state.analysis,
+            file.path
+        );
+
+        let format = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "changes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "search": {
+                                "type": "string"
+                            },
+                            "replace": {
+                                "type": "string"
+                            },
+                            "analysis": {
+                                "type": "string"
+                            }
+                        },
+                        "required": ["search", "replace", "analysis"]
+                    }
+                }
+            },
+            "required": ["changes"]
+        });
+
+        #[derive(Debug, Serialize, Deserialize)]
+        struct Changes {
+            changes: Vec<Change>,
+        }
+
+        #[derive(Debug, Serialize, Deserialize)]
+        struct Change {
+            search: String,
+            replace: String,
+            analysis: String,
+        }
+
+        let changes: Changes = mistral.chat_structured(prompt, format).await?;
+
+        // Add changes to file state
+        for change in changes.changes {
+            file.add_change(change.search, change.replace, change.analysis);
+        }
+    }
+
+    state.update_status(SolverStatus::ReadyForCoding);
+    Ok(())
+}
+
+async fn apply_changes(state: &mut SolverState) -> Result<()> {
+    info!("Applying code changes...");
+    state.update_status(SolverStatus::Testing);
+
+    // TODO: Implement actual file modifications
+    warn!("File modifications not yet implemented");
+
+    state.update_status(SolverStatus::CreatingPr);
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize logging
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
+    // Load environment variables
+    dotenvy::dotenv().ok();
+
+    // Initialize state
+    let mut state = SolverState::new("Initial solver state".to_string());
+
+    // Configuration
+    let owner = "OpenAgentsInc";
+    let name = "openagents";
+    let issue_num = 651;
+
+    // Get GitHub token from environment
+    let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
+
+    // Initialize services
+    let github = GitHubService::new(Some(github_token.clone()))
+        .context("Failed to initialize GitHub service")?;
+
+    let mistral = OllamaService::with_config("http://localhost:11434", "mistral-small");
+
+    // Execute solver loop
+    collect_context(&mut state, &github, owner, name, issue_num).await?;
+    identify_files(&mut state, &mistral).await?;
+    generate_changes(&mut state, &mistral).await?;
+    apply_changes(&mut state).await?;
+
+    // Print final state
+    println!("\nFinal solver state:");
+    println!("Status: {:?}", state.status);
+    println!("Files to modify:");
+    for file in &state.files {
+        println!("- {} (score: {:.2})", file.path, file.relevance_score);
+        println!("  Analysis: {}", file.analysis);
+        for change in &file.changes {
+            println!("  Change:");
+            println!("    Search:  {}", change.search);
+            println!("    Replace: {}", change.replace);
+            println!("    Reason:  {}", change.analysis);
+        }
+    }
+
+    state.update_status(SolverStatus::Complete);
+    println!("\nSolver completed successfully.");
 
     Ok(())
 }
