@@ -120,14 +120,22 @@ async fn identify_files(
 async fn generate_changes(
     state: &mut SolverState,
     mistral: &OllamaService,
+    repo_dir: &str,
 ) -> Result<()> {
     info!("Generating code changes...");
     state.update_status(SolverStatus::GeneratingCode);
 
     for file in &mut state.files {
+        // Log both relative and absolute paths before attempting to read
+        let relative_path = &file.path;
+        let absolute_path = Path::new(repo_dir).join(relative_path);
+        debug!("Attempting to read file:");
+        debug!("  Relative path: {}", relative_path);
+        debug!("  Absolute path: {}", absolute_path.display());
+        
         // First read the current file content
-        let file_content = std::fs::read_to_string(&file.path)?;
-        debug!("Current content of {}: {}", file.path, file_content);
+        let file_content = std::fs::read_to_string(&absolute_path)?;
+        debug!("Successfully read file content");
 
         let prompt = format!(
             "Based on the analysis and EXACT current file content, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}\nContent:\n{}\n\nIMPORTANT: The 'search' field must contain EXACT code that exists in the file. The 'replace' field must contain the complete new code to replace it. Do not use descriptions - only actual code.", 
@@ -236,7 +244,7 @@ async fn main() -> Result<()> {
     // Execute solver loop
     let repo_dir = collect_context(&mut state, &github, owner, name, issue_num).await?;
     identify_files(&mut state, &mistral).await?;
-    generate_changes(&mut state, &mistral).await?;
+    generate_changes(&mut state, &mistral, &repo_dir).await?;
     apply_file_changes(&mut state, &repo_dir).await?;
 
     // Print final state
