@@ -52,6 +52,7 @@ pub fn configure_app() -> Router {
         // Auth routes
         .route("/login", get(routes::login))
         .route("/signup", get(routes::signup))
+        .route("/auth/signup", post(server::handlers::auth::handle_signup_form))
         .with_state(ws_state);
 
     // Add repomap routes with repomap state
