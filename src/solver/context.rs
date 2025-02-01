@@ -1,5 +1,6 @@
 use crate::solver::changes::parsing::parse_search_replace;
 use crate::solver::file_list::generate_file_list;
+use crate::solver::github::GitHubContext;
 use crate::solver::types::{Change, ChangeError, ChangeResult};
 use anyhow::Result;
 use std::fs;
@@ -8,16 +9,51 @@ use tracing::{debug, error};
 
 pub struct SolverContext {
     pub temp_dir: PathBuf,
+    pub github: Option<GitHubContext>,
 }
 
 impl SolverContext {
     pub fn new() -> Result<Self> {
         let temp_dir = tempfile::tempdir()?.into_path();
-        Ok(Self { temp_dir })
+        Ok(Self {
+            temp_dir,
+            github: None,
+        })
     }
 
     pub fn new_with_dir(temp_dir: PathBuf) -> Self {
-        Self { temp_dir }
+        Self {
+            temp_dir,
+            github: None,
+        }
+    }
+
+    pub fn with_github(mut self, github: GitHubContext) -> Self {
+        self.github = Some(github);
+        self
+    }
+
+    pub async fn create_branch(&self, branch_name: &str, base_branch: &str) -> Result<()> {
+        if let Some(github) = &self.github {
+            github.create_branch(branch_name, base_branch).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn create_pull_request(
+        &self,
+        branch_name: &str,
+        base_branch: &str,
+        context: &str,
+        description: &str,
+        issue_number: i32,
+    ) -> Result<()> {
+        if let Some(github) = &self.github {
+            github
+                .create_pull_request(branch_name, base_branch, context, description, issue_number)
+                .await?;
+        }
+        Ok(())
     }
 
     pub async fn generate_file_list(
@@ -100,5 +136,49 @@ impl SolverContext {
             fs::remove_dir_all(&self.temp_dir)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_apply_changes() {
+        let temp_dir = tempdir().unwrap();
+        let context = SolverContext::new_with_dir(temp_dir.path().to_path_buf());
+
+        // Test new file creation
+        let changes = vec![Change::with_reason(
+            "test.rs".to_string(),
+            "".to_string(),
+            "fn test() {}".to_string(),
+            "Add test function".to_string(),
+        )];
+        assert!(context.apply_changes(&changes).is_ok());
+
+        // Test content modification
+        let changes = vec![Change::with_reason(
+            "test.rs".to_string(),
+            "fn test() {}".to_string(),
+            "fn test() { println!(\"test\"); }".to_string(),
+            "Add print statement".to_string(),
+        )];
+        assert!(context.apply_changes(&changes).is_ok());
+    }
+
+    #[test]
+    fn test_cleanup() {
+        let temp_dir = tempdir().unwrap();
+        let context = SolverContext::new_with_dir(temp_dir.path().to_path_buf());
+
+        // Create some test files
+        let test_file = context.temp_dir.join("test.txt");
+        fs::write(&test_file, "test").unwrap();
+
+        // Cleanup should remove everything
+        assert!(context.cleanup().is_ok());
+        assert!(!test_file.exists());
     }
 }
