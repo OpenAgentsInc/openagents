@@ -5,7 +5,7 @@ use openagents::solver::changes::apply_changes;
 use openagents::solver::state::{SolverState, SolverStatus};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use tracing::{info, warn};
+use tracing::info;
 
 const OLLAMA_URL: &str = "http://192.168.1.189:11434";
 
@@ -226,7 +226,7 @@ async fn main() -> Result<()> {
             println!("  Change:");
             println!("    Search:  {}", change.search);
             println!("    Replace: {}", change.replace);
-            println!("    Reason:  {}", change.reason.as_ref().unwrap_or(&String::new()));
+            println!("    Analysis: {}", change.analysis);
         }
     }
 
