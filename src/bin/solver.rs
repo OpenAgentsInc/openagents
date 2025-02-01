@@ -40,12 +40,15 @@ impl LogWriter {
 impl std::io::Write for LogWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if let Ok(s) = String::from_utf8(buf.to_vec()) {
+            // Write to stdout as well
+            print!("{}", s);
             self.buffer.lock().unwrap().push(s);
         }
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
+        std::io::stdout().flush()?;
         Ok(())
     }
 }
@@ -69,6 +72,8 @@ async fn main() -> Result<()> {
         .with_writer(move || writer_clone.clone())
         .init();
 
+    info!("Starting solver...");
+
     // Load environment variables
     dotenvy::dotenv().ok();
 
@@ -79,6 +84,8 @@ async fn main() -> Result<()> {
     let owner = "OpenAgentsInc";
     let name = "openagents";
     let issue_num = 651;
+
+    info!("Fetching issue #{}", issue_num);
 
     // Get GitHub token from environment
     let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
@@ -91,11 +98,21 @@ async fn main() -> Result<()> {
     let ollama_url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| OLLAMA_URL.to_string());
     let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
+    info!("Initialized services");
+
     // Execute solver loop
+    info!("Starting solver loop...");
     let (repo_dir, valid_paths) = collect_context(&mut state, &github, owner, name, issue_num).await?;
+    info!("Context collected");
+    
     identify_files(&mut state, &mistral, &valid_paths).await?;
+    info!("Files identified");
+    
     generate_changes(&mut state, &mistral, &repo_dir).await?;
+    info!("Changes generated");
+    
     apply_file_changes(&mut state, &repo_dir).await?;
+    info!("Changes applied");
 
     // Print final state
     println!("\nFinal solver state:");
