@@ -1,4 +1,5 @@
 use anyhow::Result;
+use futures_util::StreamExt;
 use openagents::server::services::deepseek::DeepSeekService;
 use openagents::solver::state::SolverState;
 use std::path::Path;
