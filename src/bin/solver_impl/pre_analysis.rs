@@ -19,7 +19,7 @@ pub async fn analyze_with_deepseek(
         IMPORTANT: You MUST ONLY consider paths from this list:\n{}\n\n\
         Analysis:\n{}\n\n\
         Think through this step by step, explaining your reasoning. \
-        At the end, provide a final conclusion listing the most relevant files (max 3) with their relevance scores (0-1) \
+        At the end, provide a final conclusion listing the most relevant files (up to 10) with their relevance scores (1-10, where 10 is most relevant) \
         and reasons for modification.",
         valid_paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"),
         state.analysis
