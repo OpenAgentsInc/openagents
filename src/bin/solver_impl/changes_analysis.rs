@@ -48,12 +48,12 @@ pub async fn analyze_changes_with_deepseek(
                 response.push_str(&content);
                 reasoning.push_str(&content);
             }
-            StreamUpdate::Error(e) => {
-                debug!("DeepSeek error: {}", e);
-            }
             StreamUpdate::Done => {
                 debug!("DeepSeek stream complete");
                 break;
+            }
+            _ => {
+                debug!("Unexpected stream update");
             }
         }
     }
