@@ -9,7 +9,7 @@ pub async fn analyze_with_deepseek(
     state: &mut SolverState,
     deepseek: &DeepSeekService,
     valid_paths: &HashSet<String>,
-) -> Result<String> {
+) -> Result<(String, String)> {
     info!("Starting DeepSeek pre-analysis...");
     state.update_status(SolverStatus::Thinking);
 
@@ -30,6 +30,7 @@ pub async fn analyze_with_deepseek(
     let mut full_response = String::new();
     let mut reasoning = String::new();
 
+    println!("\nThinking process:\n");
     while let Some(update) = stream.recv().await {
         match update {
             StreamUpdate::Content(content) => {
@@ -38,6 +39,8 @@ pub async fn analyze_with_deepseek(
                 full_response.push_str(&content);
             }
             StreamUpdate::Reasoning(r) => {
+                print!("🤔 {}", r);
+                std::io::stdout().flush()?;
                 reasoning.push_str(&r);
             }
             StreamUpdate::Done => break,
@@ -47,10 +50,7 @@ pub async fn analyze_with_deepseek(
 
     println!("\nDeepSeek analysis complete.\n");
     debug!("Full response: {}", full_response);
-    
-    if !reasoning.is_empty() {
-        debug!("Reasoning trace: {}", reasoning);
-    }
+    debug!("Reasoning trace: {}", reasoning);
 
-    Ok(full_response)
+    Ok((full_response, reasoning))
 }
