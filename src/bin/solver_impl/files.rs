@@ -1,6 +1,6 @@
 use crate::solver_impl::types::RelevantFiles;
 use anyhow::Result;
-use openagents::server::services::deepseek::{DeepSeekService, StreamUpdate};
+use openagents::server::services::deepseek::DeepSeekService;
 use openagents::server::services::ollama::OllamaService;
 use openagents::solver::state::{SolverState, SolverStatus};
 use std::collections::HashSet;
