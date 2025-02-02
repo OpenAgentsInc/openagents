@@ -18,7 +18,7 @@ pub async fn identify_files(
     state.update_status(SolverStatus::Thinking);
 
     // First get DeepSeek's analysis
-    let deepseek_analysis = analyze_with_deepseek(state, deepseek, valid_paths).await?;
+    let (response, reasoning) = analyze_with_deepseek(state, deepseek, valid_paths).await?;
 
     // Now use Mistral to structure the output
     let prompt = format!(
@@ -27,10 +27,12 @@ pub async fn identify_files(
         'relevance_score' (1-10, where 10 is most relevant), and 'reason' fields.\n\n\
         IMPORTANT: You MUST ONLY use paths from this list:\n{}\n\n\
         Analysis:\n{}\n\n\
-        Previous AI's Analysis:\n{}", 
+        Previous AI's Analysis:\n{}\n\n\
+        Previous AI's Reasoning Process:\n{}", 
         valid_paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"),
         state.analysis,
-        deepseek_analysis
+        response,
+        reasoning
     );
 
     let format = serde_json::json!({
