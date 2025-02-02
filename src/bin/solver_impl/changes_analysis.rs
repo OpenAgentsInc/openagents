@@ -1,5 +1,4 @@
 use anyhow::Result;
-use futures_util::StreamExt;
 use openagents::server::services::deepseek::DeepSeekService;
 use openagents::solver::state::SolverState;
 use std::path::Path;
@@ -38,11 +37,12 @@ pub async fn analyze_changes_with_deepseek(
     let mut response = String::new();
     let mut reasoning = String::new();
     
-    let (tx, mut rx) = deepseek.chat_stream(prompt, false).await;
+    let mut rx = deepseek.chat_stream(prompt, false).await;
     
     while let Some(update) = rx.recv().await {
         match update {
             Ok(content) => {
+                let content = content.to_string();
                 debug!("DeepSeek chunk: {}", content);
                 response.push_str(&content);
                 reasoning.push_str(&content);
