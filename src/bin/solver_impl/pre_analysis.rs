@@ -1,7 +1,9 @@
 use anyhow::Result;
 use openagents::server::services::deepseek::DeepSeekService;
+use openagents::server::services::deepseek::streaming::StreamUpdate;
 use openagents::solver::state::{SolverState, SolverStatus};
 use std::collections::HashSet;
+use std::io::Write;
 use tracing::{debug, info};
 
 pub async fn analyze_with_deepseek(
