@@ -19,7 +19,6 @@ use solver_impl::{
 };
 
 const OLLAMA_URL: &str = "http://192.168.1.189:11434";
-const DEEPSEEK_URL: &str = "http://localhost:8000";
 
 // Custom writer to capture log output
 #[derive(Clone)]
@@ -101,7 +100,6 @@ async fn main() -> Result<()> {
     let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
     // Initialize DeepSeek service
-    let deepseek_url = std::env::var("DEEPSEEK_URL").unwrap_or_else(|_| DEEPSEEK_URL.to_string());
     let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").context("DEEPSEEK_API_KEY not set")?;
     let deepseek = DeepSeekService::new(deepseek_api_key);
 
