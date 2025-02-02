@@ -1,5 +1,6 @@
 use anyhow::Result;
 use openagents::server::services::deepseek::DeepSeekService;
+use openagents::server::services::gateway::types::StreamUpdate;
 use openagents::solver::state::SolverState;
 use std::path::Path;
 use tracing::{debug, info};
@@ -41,14 +42,18 @@ pub async fn analyze_changes_with_deepseek(
     
     while let Some(update) = rx.recv().await {
         match update {
-            Ok(content) => {
+            StreamUpdate::Content(content) => {
                 let content = content.to_string();
                 debug!("DeepSeek chunk: {}", content);
                 response.push_str(&content);
                 reasoning.push_str(&content);
             }
-            Err(e) => {
+            StreamUpdate::Error(e) => {
                 debug!("DeepSeek error: {}", e);
+            }
+            StreamUpdate::Done => {
+                debug!("DeepSeek stream complete");
+                break;
             }
         }
     }
