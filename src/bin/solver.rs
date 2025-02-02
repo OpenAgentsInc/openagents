@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
     // Initialize DeepSeek service
     let deepseek_url = std::env::var("DEEPSEEK_URL").unwrap_or_else(|_| DEEPSEEK_URL.to_string());
     let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").context("DEEPSEEK_API_KEY not set")?;
-    let deepseek = DeepSeekService::with_base_url(deepseek_api_key, deepseek_url);
+    let deepseek = DeepSeekService::new(deepseek_api_key);
 
     info!("Initialized services");
 
