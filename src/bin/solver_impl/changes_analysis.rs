@@ -1,6 +1,6 @@
 use anyhow::Result;
 use openagents::server::services::deepseek::DeepSeekService;
-use openagents::server::services::gateway::types::StreamUpdate;
+use openagents::services::StreamUpdate;
 use openagents::solver::state::SolverState;
 use std::path::Path;
 use tracing::{debug, info};
