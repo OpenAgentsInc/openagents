@@ -76,7 +76,7 @@ pub async fn identify_files(
         if valid_paths.contains(&file.path) {
             debug!("Adding valid file: {}", file.path);
             // Convert relevance score from 1-10 to 0-1 for state storage
-            let normalized_score = file.relevance_score as f32 / 10.0;
+            let normalized_score = file.relevance_score / 10.0;
             state.add_file(file.path, file.reason, normalized_score);
         } else {
             error!("Skipping invalid file path: {}", file.path);
