@@ -1,6 +1,6 @@
 use crate::solver_impl::types::RelevantFiles;
 use anyhow::Result;
-use openagents::server::services::deepseek::DeepSeekService;
+use openagents::server::services::deepseek::{DeepSeekService, StreamUpdate};
 use openagents::server::services::ollama::OllamaService;
 use openagents::solver::state::{SolverState, SolverStatus};
 use std::collections::HashSet;
@@ -22,9 +22,9 @@ pub async fn identify_files(
 
     // Now use Mistral to structure the output
     let prompt = format!(
-        "Based on this analysis from another AI, suggest up to 3 most relevant files that need to be modified. \
+        "Based on this analysis from another AI, suggest up to 10 most relevant files that need to be modified. \
         Return a JSON object with a 'files' array containing objects with 'path' (relative path, no leading slash), \
-        'relevance_score' (0-1), and 'reason' fields.\n\n\
+        'relevance_score' (1-10, where 10 is most relevant), and 'reason' fields.\n\n\
         IMPORTANT: You MUST ONLY use paths from this list:\n{}\n\n\
         Analysis:\n{}\n\n\
         Previous AI's Analysis:\n{}", 
@@ -46,8 +46,8 @@ pub async fn identify_files(
                         },
                         "relevance_score": {
                             "type": "number",
-                            "minimum": 0,
-                            "maximum": 1
+                            "minimum": 1,
+                            "maximum": 10
                         },
                         "reason": {
                             "type": "string"
@@ -55,7 +55,7 @@ pub async fn identify_files(
                     },
                     "required": ["path", "relevance_score", "reason"]
                 },
-                "maxItems": 3
+                "maxItems": 10
             }
         },
         "required": ["files"]
@@ -73,7 +73,9 @@ pub async fn identify_files(
         // Only add if path is in valid_paths
         if valid_paths.contains(&file.path) {
             debug!("Adding valid file: {}", file.path);
-            state.add_file(file.path, file.reason, file.relevance_score);
+            // Convert relevance score from 1-10 to 0-1 for state storage
+            let normalized_score = file.relevance_score as f32 / 10.0;
+            state.add_file(file.path, file.reason, normalized_score);
         } else {
             error!("Skipping invalid file path: {}", file.path);
         }
