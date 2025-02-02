@@ -45,12 +45,19 @@ pub async fn generate_changes(
         };
 
         let prompt = format!(
-            "Based on this analysis from DeepSeek and the EXACT current file content, structure the suggested changes into JSON format. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\n\
+            "Based on DeepSeek's analysis and the current file content, generate specific code changes in JSON format.\n\n\
             DeepSeek Analysis:\n{}\n\n\
             DeepSeek Reasoning:\n{}\n\n\
             File: {}\n\
             Content:\n{}\n\n\
-            IMPORTANT: The 'search' field must contain EXACT code that exists in the file. The 'replace' field must contain the complete new code to replace it. Do not use descriptions - only actual code.", 
+            IMPORTANT RULES:\n\
+            1. The 'search' field MUST contain EXACT code that exists in the file content above\n\
+            2. The 'replace' field must contain the complete new code to replace it\n\
+            3. Do not use empty search strings - you must match existing code\n\
+            4. Do not use code block markers like ```rust - just the raw code\n\
+            5. For new additions, find a suitable insertion point in the existing code\n\
+            6. Verify each search string exists in the file content before including it\n\n\
+            Return a JSON object with a 'changes' array containing objects with 'search', 'replace', and 'analysis' fields.", 
             response,
             reasoning,
             file.path,
@@ -66,13 +73,16 @@ pub async fn generate_changes(
                         "type": "object",
                         "properties": {
                             "search": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
                             },
                             "replace": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
                             },
                             "analysis": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
                             }
                         },
                         "required": ["search", "replace", "analysis"]
@@ -84,8 +94,13 @@ pub async fn generate_changes(
 
         let changes: Changes = mistral.chat_structured(prompt, format).await?;
 
-        // Add changes to file state
+        // Validate and add changes to file state
         for change in changes.changes {
+            // Verify the search string exists in the file content
+            if !file_content.contains(&change.search) {
+                error!("Search string not found in file: {}", change.search);
+                continue;
+            }
             file.add_change(change.search, change.replace, change.analysis);
         }
     }
