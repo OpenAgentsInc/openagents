@@ -1,5 +1,6 @@
-use crate::solver_impl::types::Changes;
+use crate::solver_impl::{changes_analysis::analyze_changes_with_deepseek, types::Changes};
 use anyhow::Result;
+use openagents::server::services::deepseek::DeepSeekService;
 use openagents::server::services::ollama::OllamaService;
 use openagents::solver::state::{SolverState, SolverStatus};
 use std::path::Path;
@@ -8,11 +9,18 @@ use tracing::{debug, error, info};
 pub async fn generate_changes(
     state: &mut SolverState,
     mistral: &OllamaService,
+    deepseek: &DeepSeekService,
     repo_dir: &str,
 ) -> Result<()> {
     info!("Generating code changes...");
     state.update_status(SolverStatus::GeneratingCode);
 
+    // First get DeepSeek's analysis of all files
+    let (response, reasoning) = analyze_changes_with_deepseek(state, deepseek, Path::new(repo_dir)).await?;
+    info!("DeepSeek analysis complete");
+    debug!("DeepSeek reasoning: {}", reasoning);
+
+    // Now process each file with Mistral using DeepSeek's analysis
     for file in &mut state.files {
         // Log paths BEFORE any operations
         let relative_path = &file.path;
@@ -37,8 +45,14 @@ pub async fn generate_changes(
         };
 
         let prompt = format!(
-            "Based on the analysis and EXACT current file content, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}\nContent:\n{}\n\nIMPORTANT: The 'search' field must contain EXACT code that exists in the file. The 'replace' field must contain the complete new code to replace it. Do not use descriptions - only actual code.", 
-            state.analysis,
+            "Based on this analysis from DeepSeek and the EXACT current file content, structure the suggested changes into JSON format. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\n\
+            DeepSeek Analysis:\n{}\n\n\
+            DeepSeek Reasoning:\n{}\n\n\
+            File: {}\n\
+            Content:\n{}\n\n\
+            IMPORTANT: The 'search' field must contain EXACT code that exists in the file. The 'replace' field must contain the complete new code to replace it. Do not use descriptions - only actual code.", 
+            response,
+            reasoning,
             file.path,
             file_content
         );
