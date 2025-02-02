@@ -38,12 +38,19 @@ pub async fn analyze_changes_with_deepseek(
     let mut response = String::new();
     let mut reasoning = String::new();
     
-    let mut stream = deepseek.chat_stream(prompt).await?;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
-        debug!("DeepSeek chunk: {}", chunk);
-        response.push_str(&chunk);
-        reasoning.push_str(&chunk);
+    let (tx, mut rx) = deepseek.chat_stream(prompt, false).await;
+    
+    while let Some(update) = rx.recv().await {
+        match update {
+            Ok(content) => {
+                debug!("DeepSeek chunk: {}", content);
+                response.push_str(&content);
+                reasoning.push_str(&content);
+            }
+            Err(e) => {
+                debug!("DeepSeek error: {}", e);
+            }
+        }
     }
 
     Ok((response, reasoning))
