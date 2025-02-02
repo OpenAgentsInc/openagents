@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Result};
 use chrono::Local;
+use openagents::server::services::deepseek::DeepSeekService;
 use openagents::server::services::github_issue::GitHubService;
 use openagents::server::services::ollama::OllamaService;
 use openagents::solver::state::SolverState;
@@ -98,6 +99,10 @@ async fn main() -> Result<()> {
     let ollama_url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| OLLAMA_URL.to_string());
     let mistral = OllamaService::with_config(&ollama_url, "mistral-small");
 
+    // Initialize DeepSeek service
+    let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").context("DEEPSEEK_API_KEY not set")?;
+    let deepseek = DeepSeekService::new(deepseek_api_key);
+
     info!("Initialized services");
 
     // Execute solver loop
@@ -106,7 +111,7 @@ async fn main() -> Result<()> {
         collect_context(&mut state, &github, owner, name, issue_num).await?;
     info!("Context collected");
 
-    identify_files(&mut state, &mistral, &valid_paths).await?;
+    identify_files(&mut state, &mistral, &deepseek, &valid_paths).await?;
     info!("Files identified");
 
     generate_changes(&mut state, &mistral, &repo_dir).await?;
