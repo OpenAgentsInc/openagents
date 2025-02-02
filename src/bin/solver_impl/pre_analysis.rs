@@ -1,6 +1,6 @@
 use anyhow::Result;
 use openagents::server::services::deepseek::DeepSeekService;
-use openagents::server::services::deepseek::streaming::StreamUpdate;
+use openagents::server::services::StreamUpdate;
 use openagents::solver::state::{SolverState, SolverStatus};
 use std::collections::HashSet;
 use std::io::Write;
