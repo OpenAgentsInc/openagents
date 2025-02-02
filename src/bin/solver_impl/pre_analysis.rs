@@ -29,6 +29,7 @@ pub async fn analyze_with_deepseek(
     let mut stream = deepseek.chat_stream(prompt, true).await;
     let mut full_response = String::new();
     let mut reasoning = String::new();
+    let mut current_reasoning = String::new();
 
     println!("\nThinking process:\n");
     while let Some(update) = stream.recv().await {
@@ -39,13 +40,23 @@ pub async fn analyze_with_deepseek(
                 full_response.push_str(&content);
             }
             StreamUpdate::Reasoning(r) => {
-                print!("🤔 {}", r);
-                std::io::stdout().flush()?;
-                reasoning.push_str(&r);
+                current_reasoning.push_str(&r);
+                // Only print when we have a complete sentence or thought
+                if r.ends_with('.') || r.ends_with('!') || r.ends_with('?') || r.ends_with('\n') {
+                    println!("🤔 {}", current_reasoning);
+                    reasoning.push_str(&current_reasoning);
+                    current_reasoning.clear();
+                }
             }
             StreamUpdate::Done => break,
             _ => {}
         }
+    }
+
+    // Handle any remaining reasoning content
+    if !current_reasoning.is_empty() {
+        println!("🤔 {}", current_reasoning);
+        reasoning.push_str(&current_reasoning);
     }
 
     println!("\nDeepSeek analysis complete.\n");
