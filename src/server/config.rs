@@ -49,6 +49,7 @@ pub fn configure_app() -> Router {
         .route("/coming-soon", get(routes::coming_soon))
         .route("/health", get(routes::health_check))
         .route("/repomap", get(routes::repomap))
+        .route("/cota", get(routes::cota))
         // Auth routes
         .route("/login", get(routes::login))
         .route("/signup", get(routes::signup))
