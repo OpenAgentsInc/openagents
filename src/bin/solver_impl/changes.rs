@@ -1,5 +1,6 @@
-use crate::solver_impl::types::Changes;
+use crate::solver_impl::{changes_analysis::analyze_changes_with_deepseek, types::Changes};
 use anyhow::Result;
+use openagents::server::services::deepseek::DeepSeekService;
 use openagents::server::services::ollama::OllamaService;
 use openagents::solver::state::{SolverState, SolverStatus};
 use std::path::Path;
@@ -8,11 +9,19 @@ use tracing::{debug, error, info};
 pub async fn generate_changes(
     state: &mut SolverState,
     mistral: &OllamaService,
+    deepseek: &DeepSeekService,
     repo_dir: &str,
 ) -> Result<()> {
     info!("Generating code changes...");
     state.update_status(SolverStatus::GeneratingCode);
 
+    // First get DeepSeek's analysis of all files
+    let (response, reasoning) =
+        analyze_changes_with_deepseek(state, deepseek, Path::new(repo_dir)).await?;
+    info!("DeepSeek analysis complete");
+    debug!("DeepSeek reasoning: {}", reasoning);
+
+    // Now process each file with Mistral using DeepSeek's analysis
     for file in &mut state.files {
         // Log paths BEFORE any operations
         let relative_path = &file.path;
@@ -37,8 +46,24 @@ pub async fn generate_changes(
         };
 
         let prompt = format!(
-            "Based on the analysis and EXACT current file content, suggest specific code changes needed. Return a JSON object with a 'changes' array containing objects with 'search' (exact code to replace), 'replace' (new code), and 'analysis' (reason) fields.\n\nAnalysis:\n{}\n\nFile: {}\nContent:\n{}\n\nIMPORTANT: The 'search' field must contain EXACT code that exists in the file. The 'replace' field must contain the complete new code to replace it. Do not use descriptions - only actual code.", 
-            state.analysis,
+            "Based on DeepSeek's analysis and the current file content, generate specific code changes in JSON format.\n\n\
+            DeepSeek Analysis:\n{}\n\n\
+            DeepSeek Reasoning:\n{}\n\n\
+            File: {}\n\
+            Content:\n{}\n\n\
+            IMPORTANT RULES:\n\
+            1. The 'search' field MUST contain EXACT code that exists in the file content above\n\
+            2. The 'replace' field must contain the complete new code to replace it\n\
+            3. Do not use empty search strings - you must match existing code\n\
+            4. Do not use code block markers like ```rust - just the raw code\n\
+            5. For new additions, find a suitable insertion point in the existing code\n\
+            6. Verify each search string exists in the file content before including it\n\
+            7. Make sure search strings are unique - they should only match once in the file\n\
+            8. Use #[test] for test attributes, not [test]\n\
+            9. Include enough surrounding context in search strings to ensure unique matches\n\n\
+            Return a JSON object with a 'changes' array containing objects with 'search', 'replace', and 'analysis' fields.", 
+            response,
+            reasoning,
             file.path,
             file_content
         );
@@ -52,13 +77,16 @@ pub async fn generate_changes(
                         "type": "object",
                         "properties": {
                             "search": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
                             },
                             "replace": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
                             },
                             "analysis": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
                             }
                         },
                         "required": ["search", "replace", "analysis"]
@@ -70,9 +98,27 @@ pub async fn generate_changes(
 
         let changes: Changes = mistral.chat_structured(prompt, format).await?;
 
-        // Add changes to file state
+        // Validate and add changes to file state
         for change in changes.changes {
-            file.add_change(change.search, change.replace, change.analysis);
+            // Verify the search string exists in the file content
+            let matches: Vec<_> = file_content.match_indices(&change.search).collect();
+            match matches.len() {
+                0 => {
+                    error!("Search string not found in file: {}", change.search);
+                    continue;
+                }
+                1 => {
+                    debug!("Found unique match for search string");
+                    file.add_change(change.search, change.replace, change.analysis);
+                }
+                n => {
+                    error!(
+                        "Found {} matches for search string - must be unique: {}",
+                        n, change.search
+                    );
+                    continue;
+                }
+            }
         }
     }
 
