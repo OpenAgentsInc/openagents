@@ -152,7 +152,7 @@ async fn main() -> Result<()> {
     println!("Transcription complete");
 
     // Format transcription with line breaks using llama-3.3-70b-versatile
-    println!("Formatting transcription...");
+    println!("Formatting transcription for Markdown...");
     let format_response = client
         .post("https://api.groq.com/openai/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", api_key))
@@ -161,7 +161,7 @@ async fn main() -> Result<()> {
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a text formatter. Add appropriate line breaks to make the text more readable. Break at natural pauses, new thoughts, or every few sentences. Keep the original text exactly as is, just add line breaks."
+                    "content": "You are a Markdown text formatter. Format the given transcription text with proper Markdown line breaks. In Markdown, a single line break is ignored, so use double line breaks (two newlines) between paragraphs or logical sections. Keep the original text exactly as is, just add double line breaks at natural pauses, speaker changes, or topic transitions. Do not add any other Markdown formatting, just the double line breaks."
                 },
                 {
                     "role": "user",
