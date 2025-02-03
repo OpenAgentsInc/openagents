@@ -2369,6 +2369,10 @@ textarea:focus {
   color: rgb(147 197 253 / var(--tw-text-opacity, 1));
 }
 
+.hover\:opacity-75:hover {
+  opacity: 0.75;
+}
+
 .hover\:shadow-nav-hover:hover {
   --tw-shadow: 3px 3px 0 0 rgba(255, 255, 255, 0.5);
   --tw-shadow-colored: 3px 3px 0 0 var(--tw-shadow-color);
