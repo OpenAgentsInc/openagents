@@ -42,5 +42,27 @@
       how we can make AI systems show not just their thinking, but also their
       tool use and actions in achieving tasks.
     </p>
+
+    <h2 class="text-white">An Example</h2>
+    <p>
+      This month we'll release our first "problem solver" product, an agent that turns a GitHub issue into a pull request through a combination of reasoning and tool use. The agent traverses codebases and documentation, uses CI tools and tests, and importantly, shows the full trace of both its reasoning (using DeepSeek R1) and tool use (displaying input/output of each tool as sent to the LLM).
+    </p>
+
+    <p>
+      The workflow combines multiple models and tools:
+    </p>
+
+    <ul class="list-disc list-inside text-white">
+      <li>Build repository map from issue context (automated script)</li>
+      <li>Identify relevant files (DeepSeek R1 for reasoning, Mistral Small for structured output)</li>
+      <li>Traverse and analyze codebase (file readers, AST parsers)</li>
+      <li>Plan changes (DeepSeek R1 with full reasoning trace)</li>
+      <li>Generate and test code changes (coding tools, CI integration)</li>
+      <li>Create pull request with detailed explanation (GitHub API tools)</li>
+    </ul>
+
+    <p>
+      At each step, both the reasoning process and tool interactions are logged and displayed, creating a complete audit trail of how the solution was developed.
+    </p>
   </article>
 </div>
