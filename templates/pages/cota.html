@@ -3,8 +3,8 @@
     <h1 class="text-white">Chains of Thought and Action (CoTA)</h1>
     <p>
       We define a <i>chain of thought and action</i> as a series of reasoning
-      steps and visible tool use whereby agentic AI systems show both the
-      intermediate reasoning and the inputs and outputs of actions taken.
+      steps and tool use whereby agentic AI systems show both the intermediate
+      reasoning and the inputs and outputs of actions taken.
     </p>
 
     <h2 class="text-white">Chain of Thought</h2>
@@ -18,7 +18,9 @@
         target="_blank"
         >Chain-of-Thought Prompting Elicits Reasoning in Large Language
         Models</a
-      >, this technique demonstrated a 20-30% improvement in reasoning accuracy by having models explain their solutions step-by-step, rather than jumping directly to answers.
+      >, this technique demonstrated a 20-30% improvement in reasoning accuracy
+      by having models explain their solutions step-by-step, rather than jumping
+      directly to answers.
     </p>
 
     <p>
@@ -45,24 +47,41 @@
 
     <h2 class="text-white">An Example</h2>
     <p>
-      This month we'll release our first "problem solver" product, an agent that turns a GitHub issue into a pull request through a combination of reasoning and tool use. The agent traverses codebases and documentation, uses CI tools and tests, and importantly, shows the full trace of both its reasoning (using DeepSeek R1) and tool use (displaying input/output of each tool as sent to the LLM).
+      Imagine a 'GitHub issue solver' agent that submits a pull request with
+      code that solves a given GitHub issue. It would combine multi-step
+      reasoning and tool use to understand codebases and documentation, use CI
+      tools and tests, and interact with the GitHub and other external APIs.
     </p>
-
     <p>
-      The workflow combines multiple models and tools:
+      Importantly, this agent would show the full trace of its CoTA: including
+      both its reasoning (using a model like DeepSeek R1) and tool use
+      (displaying input/output of each tool as sent to the LLM).
     </p>
+    <p>The workflow combines multiple models and tools, perhaps:</p>
 
     <ul class="list-disc list-inside text-white">
       <li>Build repository map from issue context (automated script)</li>
-      <li>Identify relevant files (DeepSeek R1 for reasoning, Mistral Small for structured output)</li>
+      <li>
+        Identify relevant files (DeepSeek R1 for reasoning, Mistral Small for
+        structured output)
+      </li>
       <li>Traverse and analyze codebase (file readers, AST parsers)</li>
       <li>Plan changes (DeepSeek R1 with full reasoning trace)</li>
       <li>Generate and test code changes (coding tools, CI integration)</li>
       <li>Create pull request with detailed explanation (GitHub API tools)</li>
     </ul>
-
     <p>
-      At each step, both the reasoning process and tool interactions are logged and displayed, creating a complete audit trail of how the solution was developed.
+      At each step, both the reasoning process and tool interactions are logged
+      and displayed, creating a complete audit trail of how the solution was
+      developed.
+    </p>
+    <p>
+      Entrusting such an agent to make sensitive edits to a codebase may be
+      foolish if its creator were to refuse to show you its thought process!
+    </p>
+    <p>
+      We will build the above 'issue solver' agent over the next few videos of
+      our <a class="text-white hover:opacity-75 underline">series</a>.
     </p>
   </article>
 </div>

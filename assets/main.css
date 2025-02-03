@@ -845,14 +845,14 @@ textarea:focus {
 
 .prose {
   color: var(--tw-prose-body);
-  max-width: 90ch;
+  max-width: 85ch;
 }
 
 .prose :where(p):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
   margin-top: 1.25em;
   margin-bottom: 1.25em;
   font-size: 0.9rem;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .prose :where([class~="lead"]):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
@@ -995,7 +995,7 @@ textarea:focus {
 .prose :where(h2):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
   color: var(--tw-prose-headings);
   font-weight: 700;
-  font-size: 0.875rem;
+  font-size: 1rem;
   margin-top: 2em;
   margin-bottom: 1em;
   line-height: 1.5;
@@ -1253,7 +1253,7 @@ textarea:focus {
 .prose :where(li):not(:where([class~="not-prose"],[class~="not-prose"] *)) {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   line-height: 1.5;
 }
 
@@ -1678,6 +1678,10 @@ textarea:focus {
 
 .resize {
   resize: both;
+}
+
+.list-inside {
+  list-style-position: inside;
 }
 
 .list-disc {
