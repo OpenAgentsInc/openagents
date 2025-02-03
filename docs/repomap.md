@@ -35,6 +35,28 @@ docs/solve-runs/20250131-1845.md:
 
 docs/solve-runs/20250131-1905.md:
 
+docs/solve-runs/20250131-1915.md:
+
+docs/solve-runs/20250131-1925.md:
+
+docs/solve-runs/20250131-1940.md:
+
+docs/solve-runs/20250131-1945.md:
+
+docs/solve-runs/20250131-1950.md:
+
+docs/solve-runs/20250131-2025.md:
+
+docs/solve-runs/20250131-2050.md:
+
+docs/solve-runs/20250131-2150.md:
+
+docs/solve-runs/20250202-1640.md:
+
+docs/solve-runs/20250202-1720.md:
+
+docs/solve-runs/20250202-1730.md:
+
 docs/solver.md:
 
 docs/templates.md:
@@ -58,56 +80,33 @@ src/bin/repo.rs:
 │fn main
 
 src/bin/solver.rs:
-│fn collect_context
-│fn identify_files
-│fn generate_changes
-│fn apply_file_changes
+│fn new
+│fn get_logs
+│fn write
+│fn flush
+│fn make_writer
 │fn main
 │const OLLAMA_URL
+
+src/bin/solver_impl/changes.rs:
+│fn generate_changes
+│fn apply_file_changes
+
+src/bin/solver_impl/changes_analysis.rs:
+│fn analyze_changes_with_deepseek
+
+src/bin/solver_impl/context.rs:
+│fn extract_paths_from_repomap
+│fn collect_context
+
+src/bin/solver_impl/files.rs:
+│fn identify_files
 
 src/bin/solver_impl/issue.rs:
 │fn handle_issue
 
-src/bin/solver_impl/planning.rs:
-│fn generate_pr_title
-│fn escape_json_string
-│fn extract_json_from_markdown
-│fn validate_changes_relevance
-│fn is_common_word
-│fn gather_context
-│fn fix_common_json_issues
-│fn validate_llm_response
-│fn retry_with_feedback
-│fn handle_planning
-│fn test_extract_json_from_markdown
-│fn test_validate_changes_relevance
-│fn test_fix_common_json_issues
-│const ERR_NO_JSON
-│const ERR_NO_CHANGES
-│const ERR_WRONG_TARGET
-│const ERR_INVALID_JSON
-│const ERR_INVALID_CHANGES
-│const GITHUB_RS_PATH
-│const JSON_RS_PATH
-│const KEY_CHANGES
-│const KEY_PATH
-│const KEY_SEARCH
-│const KEY_REPLACE
-│const KEY_REASON
-│const LOG_GATHERING
-│const LOG_GENERATING
-│const LOG_FILE_CONTEXT
-│const LOG_FULL_RESPONSE
-│const LOG_EXTRACTED_JSON
-│const LOG_RETRY_ATTEMPT
-│const LOG_VALIDATION_ERROR
-│const GITHUB_RS_CONTENT
-│const TARGET_FUNCTION
-│const EMPTY_STR
-│const MAX_RETRIES
-
-src/bin/solver_impl/solution.rs:
-│fn handle_solution
+src/bin/solver_impl/pre_analysis.rs:
+│fn analyze_with_deepseek
 
 src/bin/solver_orig.rs:
 │fn main
@@ -153,11 +152,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -169,15 +168,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -486,7 +485,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -586,7 +585,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/company.html:
 │class of
@@ -832,3 +831,4 @@ tests/tool_selection.rs:
 
 tests/user.rs:
 │fn test_user_creation
+
