@@ -16,7 +16,8 @@ pub async fn generate_changes(
     state.update_status(SolverStatus::GeneratingCode);
 
     // First get DeepSeek's analysis of all files
-    let (response, reasoning) = analyze_changes_with_deepseek(state, deepseek, Path::new(repo_dir)).await?;
+    let (response, reasoning) =
+        analyze_changes_with_deepseek(state, deepseek, Path::new(repo_dir)).await?;
     info!("DeepSeek analysis complete");
     debug!("DeepSeek reasoning: {}", reasoning);
 
@@ -111,7 +112,10 @@ pub async fn generate_changes(
                     file.add_change(change.search, change.replace, change.analysis);
                 }
                 n => {
-                    error!("Found {} matches for search string - must be unique: {}", n, change.search);
+                    error!(
+                        "Found {} matches for search string - must be unique: {}",
+                        n, change.search
+                    );
                     continue;
                 }
             }

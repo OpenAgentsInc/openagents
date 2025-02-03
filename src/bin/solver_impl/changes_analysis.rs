@@ -37,9 +37,9 @@ pub async fn analyze_changes_with_deepseek(
     // Get streaming response from DeepSeek
     let mut response = String::new();
     let mut reasoning = String::new();
-    
+
     let mut rx = deepseek.chat_stream(prompt, false).await;
-    
+
     while let Some(update) = rx.recv().await {
         match update {
             StreamUpdate::Content(content) => {
