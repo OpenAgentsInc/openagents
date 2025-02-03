@@ -54,6 +54,8 @@ tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["fs", "trace", "cors"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 reqwest = { version = "0.11.27", features = ["json", "stream", "multipart", "blocking"] }
+native-tls = "0.2.13"
+openssl = { version = "0.10.70", features = ["vendored"] }
 pulldown-cmark = "0.9"
 askama_escape = "0.1"
 bytes = "1.5"
