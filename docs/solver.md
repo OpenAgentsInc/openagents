@@ -43,6 +43,7 @@ The `handle_issue` function:
 The file identification process now uses a two-step approach:
 
 1. DeepSeek Pre-Analysis:
+
    - Streams real-time reasoning about which files need modification
    - Shows step-by-step thinking process
    - Provides detailed analysis with reasoning

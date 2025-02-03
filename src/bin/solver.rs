@@ -114,7 +114,7 @@ async fn main() -> Result<()> {
     identify_files(&mut state, &mistral, &deepseek, &valid_paths).await?;
     info!("Files identified");
 
-    generate_changes(&mut state, &mistral, &repo_dir).await?;
+    generate_changes(&mut state, &mistral, &deepseek, &repo_dir).await?;
     info!("Changes generated");
 
     apply_file_changes(&mut state, &repo_dir).await?;
