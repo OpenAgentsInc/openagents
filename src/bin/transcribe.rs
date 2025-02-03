@@ -3,6 +3,7 @@ use chrono::Local;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
+use reqwest::multipart;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -72,10 +73,11 @@ async fn main() -> Result<()> {
     println!("Transcribing {}...", input_path.display());
 
     // Prepare multipart form
-    let form = reqwest::multipart::Form::new()
+    let file_part = multipart::Part::file("file", &audio_file)?;
+    let form = multipart::Form::new()
         .text("model", "whisper-large-v3")
         .text("response_format", "text")
-        .file_from_path("file", &audio_file)?;
+        .part("file", file_part);
 
     // Make API request
     let client = reqwest::Client::new();
