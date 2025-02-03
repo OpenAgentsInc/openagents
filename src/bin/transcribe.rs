@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
-use chrono::Local;
+use chrono::{Local, TimeZone};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
 use reqwest::multipart;
+use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,15 +25,24 @@ async fn main() -> Result<()> {
         anyhow::bail!("File not found: {}", input_path.display());
     }
 
-    // Get file extension
+    // Get file extension and name
     let extension = input_path
         .extension()
         .and_then(|e| e.to_str())
         .context("Invalid file extension")?
         .to_lowercase();
+    
+    let file_name = input_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("Invalid filename")?
+        .to_string();
+
+    println!("Processing file: {}", file_name);
 
     // Prepare audio file
     let audio_file = if extension == "mp4" {
+        println!("Converting video to audio...");
         // For MP4, extract audio to temporary FLAC file
         let temp_dir = env::temp_dir();
         let temp_file = temp_dir.join("temp_audio.flac");
@@ -52,6 +62,7 @@ async fn main() -> Result<()> {
         if !status.success() {
             anyhow::bail!("ffmpeg failed to extract audio");
         }
+        println!("Audio extraction complete");
 
         temp_file
     } else {
@@ -66,11 +77,47 @@ async fn main() -> Result<()> {
     let transcripts_dir = Path::new("docs/transcripts");
     fs::create_dir_all(transcripts_dir)?;
 
-    // Generate output filename with timestamp
-    let timestamp = Local::now().format("%Y%m%d-%H%M%S");
-    let output_path = transcripts_dir.join(format!("{}.md", timestamp));
+    // Generate slug using llama-3.1-8b-instant
+    println!("Generating filename slug...");
+    let client = reqwest::Client::new();
+    let slug_response = client
+        .post("https://api.groq.com/openai/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&json!({
+            "model": "llama-3.1-8b-instant",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a filename generator. Generate a slug from the given filename, keeping numbers and converting spaces and special characters to hyphens. Example: 'My Video 123.mp4' -> 'my-video-123'"
+                },
+                {
+                    "role": "user",
+                    "content": file_name
+                }
+            ],
+            "temperature": 0.0
+        }))
+        .send()
+        .await?;
 
-    println!("Transcribing {}...", input_path.display());
+    let slug = if slug_response.status().is_success() {
+        let json: serde_json::Value = slug_response.json().await?;
+        json["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("transcript")
+            .trim()
+            .to_string()
+    } else {
+        println!("Warning: Failed to generate slug, using 'transcript'");
+        "transcript".to_string()
+    };
+
+    // Generate timestamp in military time (Central US)
+    let central_time = Local::now();
+    let timestamp = central_time.format("%Y%m%d-%H%M");
+    let output_path = transcripts_dir.join(format!("{}-{}.md", timestamp, slug));
+
+    println!("Transcribing audio...");
 
     // Read file contents
     let file_contents = fs::read(&audio_file)?;
@@ -86,8 +133,7 @@ async fn main() -> Result<()> {
         .text("response_format", "text")
         .part("file", file_part);
 
-    // Make API request
-    let client = reqwest::Client::new();
+    // Make API request for transcription
     let response = client
         .post("https://api.groq.com/openai/v1/audio/transcriptions")
         .header("Authorization", format!("Bearer {}", api_key))
@@ -98,18 +144,52 @@ async fn main() -> Result<()> {
     // Check for errors
     if !response.status().is_success() {
         let error = response.text().await?;
-        anyhow::bail!("API request failed: {}", error);
+        anyhow::bail!("Transcription API request failed: {}", error);
     }
 
     // Get transcription text
     let transcription = response.text().await?;
+    println!("Transcription complete");
+
+    // Format transcription with line breaks using llama-3.3-70b-versatile
+    println!("Formatting transcription...");
+    let format_response = client
+        .post("https://api.groq.com/openai/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&json!({
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a text formatter. Add appropriate line breaks to make the text more readable. Break at natural pauses, new thoughts, or every few sentences. Keep the original text exactly as is, just add line breaks."
+                },
+                {
+                    "role": "user",
+                    "content": transcription
+                }
+            ],
+            "temperature": 0.0
+        }))
+        .send()
+        .await?;
+
+    let formatted_text = if format_response.status().is_success() {
+        let json: serde_json::Value = format_response.json().await?;
+        json["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or(&transcription)
+            .to_string()
+    } else {
+        println!("Warning: Failed to format text, using original transcription");
+        transcription
+    };
 
     // Write output file with metadata
     let output_content = format!(
         "---\nsource_file: {}\ntimestamp: {}\nmodel: whisper-large-v3\n---\n\n{}",
-        input_path.display(),
-        Local::now().to_rfc3339(),
-        transcription
+        file_name,
+        central_time.to_rfc3339(),
+        formatted_text
     );
     fs::write(&output_path, output_content)?;
 
