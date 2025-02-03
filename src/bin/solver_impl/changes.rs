@@ -56,7 +56,10 @@ pub async fn generate_changes(
             3. Do not use empty search strings - you must match existing code\n\
             4. Do not use code block markers like ```rust - just the raw code\n\
             5. For new additions, find a suitable insertion point in the existing code\n\
-            6. Verify each search string exists in the file content before including it\n\n\
+            6. Verify each search string exists in the file content before including it\n\
+            7. Make sure search strings are unique - they should only match once in the file\n\
+            8. Use #[test] for test attributes, not [test]\n\
+            9. Include enough surrounding context in search strings to ensure unique matches\n\n\
             Return a JSON object with a 'changes' array containing objects with 'search', 'replace', and 'analysis' fields.", 
             response,
             reasoning,
@@ -97,11 +100,21 @@ pub async fn generate_changes(
         // Validate and add changes to file state
         for change in changes.changes {
             // Verify the search string exists in the file content
-            if !file_content.contains(&change.search) {
-                error!("Search string not found in file: {}", change.search);
-                continue;
+            let matches: Vec<_> = file_content.match_indices(&change.search).collect();
+            match matches.len() {
+                0 => {
+                    error!("Search string not found in file: {}", change.search);
+                    continue;
+                }
+                1 => {
+                    debug!("Found unique match for search string");
+                    file.add_change(change.search, change.replace, change.analysis);
+                }
+                n => {
+                    error!("Found {} matches for search string - must be unique: {}", n, change.search);
+                    continue;
+                }
             }
-            file.add_change(change.search, change.replace, change.analysis);
         }
     }
 
