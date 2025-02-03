@@ -72,8 +72,15 @@ async fn main() -> Result<()> {
 
     println!("Transcribing {}...", input_path.display());
 
+    // Read file contents
+    let file_contents = fs::read(&audio_file)?;
+    let file_name = audio_file.file_name().unwrap().to_string_lossy();
+
     // Prepare multipart form
-    let file_part = multipart::Part::file("file", &audio_file)?;
+    let file_part = multipart::Part::bytes(file_contents)
+        .file_name(file_name.to_string())
+        .mime_str("audio/flac")?;
+
     let form = multipart::Form::new()
         .text("model", "whisper-large-v3")
         .text("response_format", "text")
