@@ -26,11 +26,11 @@ module.exports = {
       typography: {
         DEFAULT: {
           css: {
-            maxWidth: "65ch",
+            maxWidth: "90ch",
             fontSize: "0.75rem",
             lineHeight: "1.5",
             p: {
-              fontSize: "0.75rem",
+              fontSize: "0.9rem",
               lineHeight: "1.5",
             },
             li: {
