@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
     let form = reqwest::multipart::Form::new()
         .text("model", "whisper-large-v3")
         .text("response_format", "text")
-        .file("file", &audio_file)?;
+        .file_from_path("file", &audio_file)?;
 
     // Make API request
     let client = reqwest::Client::new();
