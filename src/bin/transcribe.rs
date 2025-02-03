@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::{Local, TimeZone};
+use chrono::Local;
 use reqwest::multipart;
 use serde_json::json;
 use std::path::{Path, PathBuf};
