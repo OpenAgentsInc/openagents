@@ -7,22 +7,26 @@ This tool transcribes audio and video files using Groq's Whisper API.
 1. Install ffmpeg (required for video support):
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt update
 sudo apt install ffmpeg
 ```
 
 **macOS:**
+
 ```bash
 brew install ffmpeg
 ```
 
 **Windows:**
+
 ```bash
 choco install ffmpeg
 ```
 
 2. Set your Groq API key in `.env`:
+
 ```bash
 GROQ_API_KEY=your-api-key-here
 ```
@@ -34,26 +38,31 @@ cargo run --bin transcribe path/to/file.[mp4|mp3|flac|...]
 ```
 
 Supported formats:
+
 - Video: `.mp4` (automatically extracts audio)
 - Audio: `.flac`, `.mp3`, `.mpeg`, `.mpga`, `.m4a`, `.ogg`, `.wav`, `.webm`
 
 ## Output
 
 Transcriptions are saved to `docs/transcripts/` with filenames in the format:
+
 ```
 YYYYMMDD-HHMM-slug.md
 ```
 
 For example:
+
 ```
 20240305-1423-ep-157.md
 ```
 
 The output file contains:
+
 - YAML frontmatter with metadata
 - Markdown-formatted transcription text with proper paragraph breaks
 
 Example output:
+
 ```markdown
 ---
 source_file: ep157.mp4

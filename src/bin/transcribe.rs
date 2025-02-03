@@ -1,16 +1,16 @@
 use anyhow::{Context, Result};
 use chrono::{Local, TimeZone};
+use reqwest::multipart;
+use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
-use reqwest::multipart;
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load environment variables
     dotenvy::dotenv().ok();
-    
+
     // Get GROQ_API_KEY from environment
     let api_key = env::var("GROQ_API_KEY").context("GROQ_API_KEY not set")?;
 
@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
     if args.len() != 2 {
         anyhow::bail!("Usage: {} <audio/video file>", args[0]);
     }
-    
+
     let input_path = PathBuf::from(&args[1]);
     if !input_path.exists() {
         anyhow::bail!("File not found: {}", input_path.display());
@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
         .and_then(|e| e.to_str())
         .context("Invalid file extension")?
         .to_lowercase();
-    
+
     let file_name = input_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -46,14 +46,18 @@ async fn main() -> Result<()> {
         // For MP4, extract audio to temporary FLAC file
         let temp_dir = env::temp_dir();
         let temp_file = temp_dir.join("temp_audio.flac");
-        
+
         let status = Command::new("ffmpeg")
             .args([
-                "-i", input_path.to_str().unwrap(),
-                "-vn",                // Skip video
-                "-acodec", "flac",    // Use FLAC codec
-                "-ar", "16000",       // 16kHz sample rate
-                "-ac", "1",           // Mono audio
+                "-i",
+                input_path.to_str().unwrap(),
+                "-vn", // Skip video
+                "-acodec",
+                "flac", // Use FLAC codec
+                "-ar",
+                "16000", // 16kHz sample rate
+                "-ac",
+                "1", // Mono audio
                 temp_file.to_str().unwrap(),
             ])
             .status()
