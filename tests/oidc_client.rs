@@ -78,13 +78,14 @@ async fn test_full_auth_flow() {
     let location = response.headers().get("location").unwrap().to_str().unwrap();
     info!("Login redirect location: {}", location);
     assert!(location.contains("/auth"));
+    assert!(location.contains("flow=login"));
 
     // Test callback
     info!("Testing callback");
     let response = app.clone()
         .oneshot(
             Request::builder()
-                .uri("/auth/callback?code=test_code")
+                .uri("/auth/callback?code=test_code&flow=login")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -147,7 +148,7 @@ async fn test_invalid_callback() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/auth/callback?code=invalid_code")
+                .uri("/auth/callback?code=invalid_code&flow=login")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -198,7 +199,7 @@ async fn test_duplicate_login() {
     let response = app.clone()
         .oneshot(
             Request::builder()
-                .uri("/auth/callback?code=test_code")
+                .uri("/auth/callback?code=test_code&flow=signup")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -213,7 +214,7 @@ async fn test_duplicate_login() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/auth/callback?code=test_code")
+                .uri("/auth/callback?code=test_code&flow=signup")
                 .body(Body::empty())
                 .unwrap(),
         )
