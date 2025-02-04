@@ -207,7 +207,7 @@ impl OIDCService {
             })?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
-            return Ok(updated_user);
+            return Err(AuthError::UserAlreadyExists(updated_user));
         }
 
         // Create new user
