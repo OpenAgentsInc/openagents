@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use time::Duration;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::server::{
     config::AppState,
@@ -63,6 +63,7 @@ pub struct AuthState {
 
 impl AuthState {
     pub fn new(config: OIDCConfig, pool: PgPool) -> Self {
+        info!("Creating new AuthState");
         Self {
             service: Arc::new(OIDCService::new(pool, config)),
         }
@@ -74,17 +75,21 @@ pub async fn login(State(state): State<AppState>) -> Response {
     match state.auth_state.service.authorization_url_for_login() {
         Ok(auth_url) => {
             info!("Generated login auth URL: {}", auth_url);
-            Redirect::temporary(&auth_url).into_response()
+            let response = Redirect::temporary(&auth_url).into_response();
+            info!("Login response status: {}", response.status());
+            response
         }
         Err(e) => {
             error!("Failed to generate login auth URL: {}", e);
-            (
+            let response = (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: "Failed to generate authorization URL".to_string(),
+                    error: format!("Failed to generate authorization URL: {}", e),
                 }),
             )
-                .into_response()
+                .into_response();
+            error!("Login error response status: {}", response.status());
+            response
         }
     }
 }
@@ -94,17 +99,21 @@ pub async fn signup(State(state): State<AppState>) -> Response {
     match state.auth_state.service.authorization_url_for_signup("") {
         Ok(auth_url) => {
             info!("Generated signup auth URL: {}", auth_url);
-            Redirect::temporary(&auth_url).into_response()
+            let response = Redirect::temporary(&auth_url).into_response();
+            info!("Signup response status: {}", response.status());
+            response
         }
         Err(e) => {
             error!("Failed to generate signup auth URL: {}", e);
-            (
+            let response = (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: "Failed to generate authorization URL".to_string(),
+                    error: format!("Failed to generate authorization URL: {}", e),
                 }),
             )
-                .into_response()
+                .into_response();
+            error!("Signup error response status: {}", response.status());
+            response
         }
     }
 }
@@ -145,7 +154,7 @@ pub async fn handle_signup(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
+                    error: format!("Internal server error: {}", e),
                 }),
             )
         })?;
@@ -187,7 +196,7 @@ pub async fn callback(
             return Err((
                 StatusCode::from(e.clone()),
                 Json(ErrorResponse {
-                    error: e.to_string(),
+                    error: format!("Authentication error: {}", e),
                 }),
             ));
         }
