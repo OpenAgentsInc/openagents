@@ -1,9 +1,7 @@
 use axum::{
-    body::to_bytes,
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
-    Json,
 };
-use bytes::Bytes;
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -40,12 +38,15 @@ async fn test_error_component_included() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/json")
-                .body(Json(json!({
-                    "email": "test@example.com",
-                    "password": "password123",
-                    "password_confirmation": "password123",
-                    "terms_accepted": false
-                })).to_string().into())
+                .body(Body::from(
+                    json!({
+                        "email": "test@example.com",
+                        "password": "password123",
+                        "password_confirmation": "password123",
+                        "terms_accepted": false
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
@@ -88,12 +89,15 @@ async fn test_error_js_included() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/json")
-                .body(Json(json!({
-                    "email": "test@example.com",
-                    "password": "password123",
-                    "password_confirmation": "password456",
-                    "terms_accepted": true
-                })).to_string().into())
+                .body(Body::from(
+                    json!({
+                        "email": "test@example.com",
+                        "password": "password123",
+                        "password_confirmation": "password456",
+                        "terms_accepted": true
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
@@ -136,12 +140,15 @@ async fn test_error_component_accessibility() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/json")
-                .body(Json(json!({
-                    "email": "test@example.com",
-                    "password": "password123",
-                    "password_confirmation": "password123",
-                    "terms_accepted": false
-                })).to_string().into())
+                .body(Body::from(
+                    json!({
+                        "email": "test@example.com",
+                        "password": "password123",
+                        "password_confirmation": "password123",
+                        "terms_accepted": false
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
