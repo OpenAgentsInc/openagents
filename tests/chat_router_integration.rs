@@ -59,11 +59,11 @@ async fn test_chat_router_integration() {
         .await;
 
     // Create test services with mock server URL
-    let tool_model = Arc::new(DeepSeekService::new_with_base_url(
+    let tool_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
         mock_server.uri(),
     ));
-    let chat_model = Arc::new(DeepSeekService::new_with_base_url(
+    let chat_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
         mock_server.uri(),
     ));
@@ -139,11 +139,11 @@ async fn test_chat_router_streaming() {
         .await;
 
     // Create test services with mock server URL
-    let tool_model = Arc::new(DeepSeekService::new_with_base_url(
+    let tool_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
         mock_server.uri(),
     ));
-    let chat_model = Arc::new(DeepSeekService::new_with_base_url(
+    let chat_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
         mock_server.uri(),
     ));
