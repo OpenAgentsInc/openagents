@@ -4,7 +4,7 @@ use axum::{
 };
 use serde_json::json;
 use tower::ServiceExt;
-use tracing::{error, info};
+use tracing::info;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
@@ -17,8 +17,7 @@ const MAX_SIZE: usize = 1024 * 1024; // 1MB limit for response bodies
 
 async fn setup_test_env(mock_server: &MockServer) {
     // Set up test database
-    let pool = setup_test_db().await;
-    info!("Test database set up successfully");
+    let _pool = setup_test_db().await;
 
     // Set required environment variables for app configuration
     std::env::set_var("DEEPSEEK_API_KEY", "test_key");
@@ -33,10 +32,6 @@ async fn setup_test_env(mock_server: &MockServer) {
         "http://localhost:8000/auth/callback".to_string(),
     );
     std::env::set_var("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/test");
-
-    info!("Environment variables set up successfully");
-    info!("OIDC_AUTH_URL: {}", std::env::var("OIDC_AUTH_URL").unwrap());
-    info!("OIDC_TOKEN_URL: {}", std::env::var("OIDC_TOKEN_URL").unwrap());
 }
 
 #[tokio::test]
