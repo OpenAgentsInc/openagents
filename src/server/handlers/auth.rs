@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use time::Duration;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 
 use crate::server::{
     config::AppState,
@@ -75,21 +75,17 @@ pub async fn login(State(state): State<AppState>) -> Response {
     match state.auth_state.service.authorization_url_for_login() {
         Ok(auth_url) => {
             info!("Generated login auth URL: {}", auth_url);
-            let response = Redirect::temporary(&auth_url).into_response();
-            info!("Login response status: {}", response.status());
-            response
+            Redirect::temporary(&auth_url).into_response()
         }
         Err(e) => {
             error!("Failed to generate login auth URL: {}", e);
-            let response = (
+            (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: format!("Failed to generate authorization URL: {}", e),
                 }),
             )
-                .into_response();
-            error!("Login error response status: {}", response.status());
-            response
+                .into_response()
         }
     }
 }
@@ -99,21 +95,17 @@ pub async fn signup(State(state): State<AppState>) -> Response {
     match state.auth_state.service.authorization_url_for_signup("") {
         Ok(auth_url) => {
             info!("Generated signup auth URL: {}", auth_url);
-            let response = Redirect::temporary(&auth_url).into_response();
-            info!("Signup response status: {}", response.status());
-            response
+            Redirect::temporary(&auth_url).into_response()
         }
         Err(e) => {
             error!("Failed to generate signup auth URL: {}", e);
-            let response = (
+            (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: format!("Failed to generate authorization URL: {}", e),
                 }),
             )
-                .into_response();
-            error!("Signup error response status: {}", response.status());
-            response
+                .into_response()
         }
     }
 }
@@ -121,35 +113,42 @@ pub async fn signup(State(state): State<AppState>) -> Response {
 pub async fn handle_signup(
     State(state): State<AppState>,
     Form(form): Form<SignupForm>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+) -> Response {
     info!("Received signup form: {:?}", form);
 
     // Basic validation
     if !form.terms_accepted {
         error!("Terms not accepted");
-        return Err((
+        return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "Terms must be accepted".to_string(),
             }),
-        ));
+        )
+            .into_response();
     }
     if form.password != form.password_confirmation {
         error!("Passwords do not match");
-        return Err((
+        return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "Passwords do not match".to_string(),
             }),
-        ));
+        )
+            .into_response();
     }
 
     // Generate signup URL with prompt=create and email
-    let auth_url = state
+    match state
         .auth_state
         .service
         .authorization_url_for_signup(&form.email)
-        .map_err(|e| {
+    {
+        Ok(auth_url) => {
+            info!("Redirecting to signup URL: {}", auth_url);
+            Redirect::temporary(&auth_url).into_response()
+        }
+        Err(e) => {
             error!("Failed to generate auth URL: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -157,16 +156,15 @@ pub async fn handle_signup(
                     error: format!("Internal server error: {}", e),
                 }),
             )
-        })?;
-
-    info!("Redirecting to signup URL: {}", auth_url);
-    Ok(Redirect::temporary(&auth_url))
+                .into_response()
+        }
+    }
 }
 
 pub async fn callback(
     State(state): State<AppState>,
     Query(params): Query<CallbackParams>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+) -> Response {
     info!("Received callback with code length: {}", params.code.len());
     info!("Flow parameter: {:?}", params.flow);
 
@@ -186,44 +184,42 @@ pub async fn callback(
         state.auth_state.service.login(params.code).await
     };
 
-    let user = match result {
+    match result {
         Ok(user) => {
             info!("Successfully processed user: {:?}", user);
-            user
+            
+            // Create session cookie
+            let cookie = Cookie::build((SESSION_COOKIE_NAME, user.scramble_id.clone()))
+                .path("/")
+                .secure(true)
+                .http_only(true)
+                .same_site(SameSite::Lax)
+                .max_age(Duration::days(SESSION_DURATION_DAYS))
+                .build();
+
+            info!("Created session cookie: {}", cookie.to_string());
+
+            // Set cookie and redirect to home
+            let mut headers = HeaderMap::new();
+            headers.insert(SET_COOKIE, cookie.to_string().parse().unwrap());
+
+            info!("Redirecting to home with session cookie");
+            (headers, Redirect::temporary("/")).into_response()
         }
         Err(e) => {
             error!("Authentication error: {}", e);
-            return Err((
-                StatusCode::from(e.clone()),
+            (
+                StatusCode::from(e),
                 Json(ErrorResponse {
                     error: format!("Authentication error: {}", e),
                 }),
-            ));
+            )
+                .into_response()
         }
-    };
-
-    info!("User authenticated with scramble_id: {}", user.scramble_id);
-
-    // Create session cookie
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, user.scramble_id.clone()))
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        .max_age(Duration::days(SESSION_DURATION_DAYS))
-        .build();
-
-    info!("Created session cookie: {}", cookie.to_string());
-
-    // Set cookie and redirect to home
-    let mut headers = HeaderMap::new();
-    headers.insert(SET_COOKIE, cookie.to_string().parse().unwrap());
-
-    info!("Redirecting to home with session cookie");
-    Ok((headers, Redirect::temporary("/")))
+    }
 }
 
-pub async fn logout() -> impl IntoResponse {
+pub async fn logout() -> Response {
     info!("Processing logout request");
 
     // Create cookie that will expire immediately
@@ -241,5 +237,5 @@ pub async fn logout() -> impl IntoResponse {
     info!("Created logout cookie: {}", cookie.to_string());
     info!("Redirecting to home after logout");
 
-    (headers, Redirect::temporary("/"))
+    (headers, Redirect::temporary("/")).into_response()
 }
