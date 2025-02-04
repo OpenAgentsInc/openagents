@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use serde_json::json;
@@ -10,7 +10,7 @@ use wiremock::{
 };
 
 use openagents::server::{
-    handlers::{callback, login, logout, AuthState},
+    handlers::auth::AuthState,
     services::auth::OIDCConfig,
 };
 
@@ -32,7 +32,7 @@ async fn test_full_auth_flow() {
         format!("{}/token", mock_server.uri()),
     )
     .unwrap();
-    let auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool);
 
     let app = openagents::server::config::configure_app();
 
@@ -49,7 +49,7 @@ async fn test_full_auth_flow() {
         .await;
 
     // Test login redirect
-    let response = app
+    let response = app.clone()
         .oneshot(
             Request::builder()
                 .uri("/auth/login")
@@ -69,7 +69,7 @@ async fn test_full_auth_flow() {
         .contains("/auth"));
 
     // Test callback
-    let response = app
+    let response = app.clone()
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code")
@@ -124,7 +124,7 @@ async fn test_invalid_callback() {
         format!("{}/token", mock_server.uri()),
     )
     .unwrap();
-    let auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool);
 
     let app = openagents::server::config::configure_app();
 
@@ -151,7 +151,7 @@ async fn test_invalid_callback() {
 
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
 
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body()).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert!(error_response["error"]
@@ -175,7 +175,7 @@ async fn test_duplicate_login() {
         format!("{}/token", mock_server.uri()),
     )
     .unwrap();
-    let auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool);
 
     let app = openagents::server::config::configure_app();
 
@@ -192,7 +192,7 @@ async fn test_duplicate_login() {
         .await;
 
     // First login should succeed
-    let response = app
+    let response = app.clone()
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code")
