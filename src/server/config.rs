@@ -74,8 +74,10 @@ pub fn configure_app() -> Router {
 
     // Create auth router with auth state
     let auth_router = Router::new()
+        .route("/auth/login", get(server::handlers::auth::login))
         .route("/auth/signup", post(server::handlers::auth::handle_signup))
         .route("/auth/callback", get(server::handlers::auth::callback))
+        .route("/auth/logout", get(server::handlers::auth::logout))
         .with_state(auth_state);
 
     // Create repomap router with repomap state
