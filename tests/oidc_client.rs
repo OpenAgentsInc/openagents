@@ -1,8 +1,7 @@
 use axum::{
-    body::to_bytes,
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use bytes::Bytes;
 use serde_json::json;
 use tower::ServiceExt;
 use wiremock::{
@@ -56,7 +55,7 @@ async fn test_full_auth_flow() {
         .oneshot(
             Request::builder()
                 .uri("/auth/login")
-                .body(String::new().into())
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -76,7 +75,7 @@ async fn test_full_auth_flow() {
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code")
-                .body(String::new().into())
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -96,7 +95,7 @@ async fn test_full_auth_flow() {
         .oneshot(
             Request::builder()
                 .uri("/auth/logout")
-                .body(String::new().into())
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -146,7 +145,7 @@ async fn test_invalid_callback() {
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=invalid_code")
-                .body(String::new().into())
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -199,7 +198,7 @@ async fn test_duplicate_login() {
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code")
-                .body(String::new().into())
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -212,7 +211,7 @@ async fn test_duplicate_login() {
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code")
-                .body(String::new().into())
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
