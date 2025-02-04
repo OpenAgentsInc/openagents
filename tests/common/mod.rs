@@ -8,11 +8,12 @@ static DB_SETUP: OnceLock<Mutex<()>> = OnceLock::new();
 pub async fn setup_test_db() -> PgPool {
     info!("Setting up test database");
 
-    // Use a hardcoded test database URL
-    let database_url = "postgres://postgres:postgres@localhost:5432/postgres";
+    // Use DATABASE_URL from environment, fall back to default for local dev
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     info!("Connecting to database: {}", database_url);
 
-    let pool = PgPool::connect(database_url)
+    let pool = PgPool::connect(&database_url)
         .await
         .expect("Failed to connect to database");
 
