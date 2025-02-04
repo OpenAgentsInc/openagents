@@ -17,7 +17,11 @@ async fn create_test_service(mock_server: &MockServer) -> OIDCService {
     )
     .expect("Failed to create OIDC config");
 
-    let pool = PgPool::connect("postgres://postgres:postgres@localhost:5432/postgres")
+    // Use DATABASE_URL from environment, fall back to default for local dev
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+
+    let pool = PgPool::connect(&database_url)
         .await
         .expect("Failed to connect to database");
 

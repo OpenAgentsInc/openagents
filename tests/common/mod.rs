@@ -10,7 +10,7 @@ pub async fn setup_test_db() -> PgPool {
 
     // Use DATABASE_URL from environment, fall back to default for local dev
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
     info!("Connecting to database: {}", database_url);
 
     let pool = PgPool::connect(&database_url)
