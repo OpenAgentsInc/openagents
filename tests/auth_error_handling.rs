@@ -1,7 +1,9 @@
 use axum::{
-    body::{to_bytes, Body},
+    body::to_bytes,
     http::{Request, StatusCode},
+    Json,
 };
+use bytes::Bytes;
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -12,6 +14,8 @@ use openagents::server::{
 
 mod common;
 use common::setup_test_db;
+
+const MAX_SIZE: usize = 1024 * 1024; // 1MB limit for response bodies
 
 #[tokio::test]
 async fn test_error_component_included() {
@@ -29,22 +33,19 @@ async fn test_error_component_included() {
 
     let app = openagents::server::config::configure_app();
 
-    // Create signup form with missing terms acceptance
-    let form_data = SignupForm {
-        email: "test@example.com".to_string(),
-        password: "password123".to_string(),
-        password_confirmation: "password123".to_string(),
-        terms_accepted: false,
-    };
-
-    // Submit form
+    // Submit signup request
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/auth/signup")
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(form_data.email.into())
+                .header("Content-Type", "application/json")
+                .body(Json(json!({
+                    "email": "test@example.com",
+                    "password": "password123",
+                    "password_confirmation": "password123",
+                    "terms_accepted": false
+                })).to_string().into())
                 .unwrap(),
         )
         .await
@@ -53,7 +54,7 @@ async fn test_error_component_included() {
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(
@@ -80,22 +81,19 @@ async fn test_error_js_included() {
 
     let app = openagents::server::config::configure_app();
 
-    // Create signup form with mismatched passwords
-    let form_data = SignupForm {
-        email: "test@example.com".to_string(),
-        password: "password123".to_string(),
-        password_confirmation: "password456".to_string(),
-        terms_accepted: true,
-    };
-
-    // Submit form
+    // Submit signup request with mismatched passwords
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/auth/signup")
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(form_data.email.into())
+                .header("Content-Type", "application/json")
+                .body(Json(json!({
+                    "email": "test@example.com",
+                    "password": "password123",
+                    "password_confirmation": "password456",
+                    "terms_accepted": true
+                })).to_string().into())
                 .unwrap(),
         )
         .await
@@ -104,7 +102,7 @@ async fn test_error_js_included() {
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(
@@ -131,22 +129,19 @@ async fn test_error_component_accessibility() {
 
     let app = openagents::server::config::configure_app();
 
-    // Create signup form with missing terms acceptance
-    let form_data = SignupForm {
-        email: "test@example.com".to_string(),
-        password: "password123".to_string(),
-        password_confirmation: "password123".to_string(),
-        terms_accepted: false,
-    };
-
-    // Submit form
+    // Submit signup request with missing terms acceptance
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/auth/signup")
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(form_data.email.into())
+                .header("Content-Type", "application/json")
+                .body(Json(json!({
+                    "email": "test@example.com",
+                    "password": "password123",
+                    "password_confirmation": "password123",
+                    "terms_accepted": false
+                })).to_string().into())
                 .unwrap(),
         )
         .await
@@ -155,7 +150,7 @@ async fn test_error_component_accessibility() {
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(
