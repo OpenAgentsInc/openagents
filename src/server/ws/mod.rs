@@ -26,11 +26,11 @@ pub async fn ws_handler(
     let jar = CookieJar::from_headers(request.headers());
 
     // Validate session and get user_id
-    match WebSocketState::validate_session(&jar).await {
+    match state.ws_state.validate_session(&jar).await {
         Ok(user_id) => {
             info!("WebSocket connection authenticated for user {}", user_id);
             // Create chat handler
-            let chat_handler = WebSocketState::create_handlers(state.ws_state);
+            let chat_handler = state.ws_state.create_handlers();
 
             // Upgrade connection with user_id
             ws.on_upgrade(move |socket| {
