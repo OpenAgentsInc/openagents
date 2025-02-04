@@ -159,11 +159,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn 
+│fn
 │fn extract_id
 │fn extract_function_name
-│fn 
-│fn 
+│fn
+│fn
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -175,15 +175,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class 
-│class 
-│class 
-│class 
+│class
+│class
+│class
+│class
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const 
-│const 
-│const 
+│const
+│const
+│const
 │const TEST_CONST
 
 src/routes.rs:
@@ -499,7 +499,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const 
+│const
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -599,7 +599,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class 
+│class
 
 templates/pages/company.html:
 │class of
@@ -848,4 +848,3 @@ tests/tool_selection.rs:
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
-

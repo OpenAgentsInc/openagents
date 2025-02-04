@@ -14,7 +14,10 @@ use common::setup_test_db;
 const MAX_SIZE: usize = 1024 * 1024; // 1MB limit for response bodies
 
 #[tokio::test]
-#[cfg_attr(not(feature = "local-tests"), ignore = "This test is only for local development")]
+#[cfg_attr(
+    not(feature = "local-tests"),
+    ignore = "This test is only for local development"
+)]
 async fn test_error_component_included() {
     // Create test app
     let pool = setup_test_db().await;
@@ -62,7 +65,10 @@ async fn test_error_component_included() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "local-tests"), ignore = "This test is only for local development")]
+#[cfg_attr(
+    not(feature = "local-tests"),
+    ignore = "This test is only for local development"
+)]
 async fn test_error_js_included() {
     // Create test app
     let pool = setup_test_db().await;
@@ -110,7 +116,10 @@ async fn test_error_js_included() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "local-tests"), ignore = "This test is only for local development")]
+#[cfg_attr(
+    not(feature = "local-tests"),
+    ignore = "This test is only for local development"
+)]
 async fn test_error_component_accessibility() {
     // Create test app
     let pool = setup_test_db().await;
