@@ -2234,6 +2234,7 @@ dependencies = [
  "serde",
  "serde-aux",
  "serde_json",
+ "serde_urlencoded",
  "serial_test",
  "sqlx",
  "streaming-iterator",
