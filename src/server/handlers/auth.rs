@@ -11,7 +11,10 @@ use std::sync::Arc;
 use time::Duration;
 use tracing::{error, info};
 
-use crate::server::services::auth::{OIDCConfig, OIDCService};
+use crate::server::{
+    config::AppState,
+    services::auth::{OIDCConfig, OIDCService},
+};
 
 const SESSION_COOKIE_NAME: &str = "session";
 const SESSION_DURATION_DAYS: i64 = 7;
@@ -66,9 +69,9 @@ impl AuthState {
     }
 }
 
-pub async fn login(State(state): State<Arc<AuthState>>) -> Response {
+pub async fn login(State(state): State<AppState>) -> Response {
     info!("Handling login request");
-    match state.service.authorization_url_for_login() {
+    match state.auth_state.service.authorization_url_for_login() {
         Ok(auth_url) => {
             info!("Generated login auth URL: {}", auth_url);
             Redirect::temporary(&auth_url).into_response()
@@ -86,9 +89,9 @@ pub async fn login(State(state): State<Arc<AuthState>>) -> Response {
     }
 }
 
-pub async fn signup(State(state): State<Arc<AuthState>>) -> Response {
+pub async fn signup(State(state): State<AppState>) -> Response {
     info!("Handling signup request");
-    match state.service.authorization_url_for_signup("") {
+    match state.auth_state.service.authorization_url_for_signup("") {
         Ok(auth_url) => {
             info!("Generated signup auth URL: {}", auth_url);
             Redirect::temporary(&auth_url).into_response()
@@ -107,7 +110,7 @@ pub async fn signup(State(state): State<Arc<AuthState>>) -> Response {
 }
 
 pub async fn handle_signup(
-    State(state): State<Arc<AuthState>>,
+    State(state): State<AppState>,
     Form(form): Form<SignupForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     info!("Received signup form: {:?}", form);
@@ -134,6 +137,7 @@ pub async fn handle_signup(
 
     // Generate signup URL with prompt=create and email
     let auth_url = state
+        .auth_state
         .service
         .authorization_url_for_signup(&form.email)
         .map_err(|e| {
@@ -151,7 +155,7 @@ pub async fn handle_signup(
 }
 
 pub async fn callback(
-    State(state): State<Arc<AuthState>>,
+    State(state): State<AppState>,
     Query(params): Query<CallbackParams>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     info!("Received callback with code length: {}", params.code.len());
@@ -167,10 +171,10 @@ pub async fn callback(
     // Use appropriate service method based on flow
     let result = if is_signup {
         info!("Processing as signup flow");
-        state.service.signup(params.code).await
+        state.auth_state.service.signup(params.code).await
     } else {
         info!("Processing as login flow");
-        state.service.login(params.code).await
+        state.auth_state.service.login(params.code).await
     };
 
     let user = match result {
