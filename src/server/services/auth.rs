@@ -246,25 +246,24 @@ impl OIDCService {
                 AuthError::TokenExchangeFailed(e.to_string())
             })?;
 
-        if !response.status().is_success() {
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            error!("Token exchange failed with status {}: {}", response.status(), error_text);
-            return Err(AuthError::TokenExchangeFailed(error_text));
+        let status = response.status();
+        let response_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+
+        if !status.is_success() {
+            error!("Token exchange failed with status {}: {}", status, response_text);
+            return Err(AuthError::TokenExchangeFailed(response_text));
         }
 
         info!("Received successful response from token endpoint");
 
-        // First parse as Value to check for required fields
-        let json_value: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| {
-                error!("Failed to parse token response as JSON: {}", e);
-                AuthError::TokenExchangeFailed(e.to_string())
-            })?;
+        // Parse response as JSON
+        let json_value: serde_json::Value = serde_json::from_str(&response_text).map_err(|e| {
+            error!("Failed to parse token response as JSON: {}", e);
+            AuthError::TokenExchangeFailed(e.to_string())
+        })?;
 
         // Get id_token field
         let id_token = match json_value.get("id_token") {
@@ -287,11 +286,10 @@ impl OIDCService {
         }
 
         // Now try to parse into TokenResponse
-        let token_response: TokenResponse =
-            serde_json::from_value(json_value.clone()).map_err(|e| {
-                error!("Failed to parse token response: {}", e);
-                AuthError::TokenExchangeFailed(format!("error decoding response body: {}", e))
-            })?;
+        let token_response: TokenResponse = serde_json::from_value(json_value).map_err(|e| {
+            error!("Failed to parse token response: {}", e);
+            AuthError::TokenExchangeFailed(format!("error decoding response body: {}", e))
+        })?;
 
         info!("Successfully parsed token response");
         Ok(token_response)
