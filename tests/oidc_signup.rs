@@ -7,9 +7,6 @@ use wiremock::{
 use base64::Engine;
 use uuid::Uuid;
 
-mod common;
-use common::setup_test_db;
-
 async fn create_test_service(mock_server: &MockServer) -> OIDCService {
     let config = OIDCConfig::new(
         format!("test_client_{}", Uuid::new_v4()),
@@ -20,7 +17,16 @@ async fn create_test_service(mock_server: &MockServer) -> OIDCService {
     )
     .expect("Failed to create OIDC config");
 
-    let pool = setup_test_db().await;
+    let pool = PgPool::connect("postgres://postgres:postgres@localhost:5432/postgres")
+        .await
+        .expect("Failed to connect to database");
+
+    // Clean up any existing test data
+    sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
+        .execute(&pool)
+        .await
+        .expect("Failed to clean up test data");
+
     OIDCService::new(pool, config)
 }
 
@@ -53,9 +59,6 @@ async fn test_signup_flow() {
     let mock_server = MockServer::start().await;
     let service = create_test_service(&mock_server).await;
 
-    // Start a transaction for test isolation
-    let mut tx = service.pool.begin().await.unwrap();
-
     // Generate unique test user ID
     let test_user_id = format!("test_user_{}", Uuid::new_v4());
 
@@ -84,23 +87,23 @@ async fn test_signup_flow() {
         "SELECT scramble_id FROM users WHERE scramble_id = $1",
         test_user_id
     )
-    .fetch_one(&mut *tx)
+    .fetch_one(&service.pool)
     .await
     .unwrap();
 
     assert_eq!(db_user.scramble_id, test_user_id);
 
-    // Rollback the transaction
-    tx.rollback().await.unwrap();
+    // Clean up test data
+    sqlx::query!("DELETE FROM users WHERE scramble_id = $1", test_user_id)
+        .execute(&service.pool)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn test_duplicate_signup() {
     let mock_server = MockServer::start().await;
     let service = create_test_service(&mock_server).await;
-
-    // Start a transaction for test isolation
-    let mut tx = service.pool.begin().await.unwrap();
 
     // Generate unique test user ID
     let test_user_id = format!("test_user_{}", Uuid::new_v4());
@@ -129,7 +132,7 @@ async fn test_duplicate_signup() {
         "SELECT COUNT(*) as count FROM users WHERE scramble_id = $1",
         test_user_id
     )
-    .fetch_one(&mut *tx)
+    .fetch_one(&service.pool)
     .await
     .unwrap()
     .count
@@ -148,13 +151,16 @@ async fn test_duplicate_signup() {
         "SELECT COUNT(*) as count FROM users WHERE scramble_id = $1",
         test_user_id
     )
-    .fetch_one(&mut *tx)
+    .fetch_one(&service.pool)
     .await
     .unwrap()
     .count
     .unwrap_or(0);
     assert_eq!(count, 1, "Should still be only one user");
 
-    // Rollback the transaction
-    tx.rollback().await.unwrap();
+    // Clean up test data
+    sqlx::query!("DELETE FROM users WHERE scramble_id = $1", test_user_id)
+        .execute(&service.pool)
+        .await
+        .unwrap();
 }
