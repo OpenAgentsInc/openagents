@@ -1,7 +1,7 @@
 use axum::{
     extract::{Form, Query, State},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Redirect, Response},
     Json,
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
@@ -66,12 +66,12 @@ impl AuthState {
     }
 }
 
-pub async fn login(State(state): State<AuthState>) -> impl IntoResponse {
+pub async fn login(State(state): State<AuthState>) -> Response {
     info!("Handling login request");
     match state.service.authorization_url_for_login() {
         Ok(auth_url) => {
             info!("Generated login auth URL: {}", auth_url);
-            Redirect::temporary(&auth_url)
+            Redirect::temporary(&auth_url).into_response()
         }
         Err(e) => {
             error!("Failed to generate login auth URL: {}", e);
@@ -86,12 +86,12 @@ pub async fn login(State(state): State<AuthState>) -> impl IntoResponse {
     }
 }
 
-pub async fn signup(State(state): State<AuthState>) -> impl IntoResponse {
+pub async fn signup(State(state): State<AuthState>) -> Response {
     info!("Handling signup request");
     match state.service.authorization_url_for_signup("") {
         Ok(auth_url) => {
             info!("Generated signup auth URL: {}", auth_url);
-            Redirect::temporary(&auth_url)
+            Redirect::temporary(&auth_url).into_response()
         }
         Err(e) => {
             error!("Failed to generate signup auth URL: {}", e);
