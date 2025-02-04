@@ -8,7 +8,7 @@ use openagents::server::{
     },
     tools::create_tools,
     ws::{
-        handlers::chat::ChatHandler,
+        handlers::{chat::ChatHandler, MessageHandler},
         transport::WebSocketState,
     },
 };
