@@ -51,6 +51,12 @@ docs/solve-runs/20250131-2050.md:
 
 docs/solve-runs/20250131-2150.md:
 
+docs/solve-runs/20250202-1640.md:
+
+docs/solve-runs/20250202-1720.md:
+
+docs/solve-runs/20250202-1730.md:
+
 docs/solver.md:
 
 docs/templates.md:
@@ -86,6 +92,9 @@ src/bin/solver_impl/changes.rs:
 │fn generate_changes
 │fn apply_file_changes
 
+src/bin/solver_impl/changes_analysis.rs:
+│fn analyze_changes_with_deepseek
+
 src/bin/solver_impl/context.rs:
 │fn extract_paths_from_repomap
 │fn collect_context
@@ -95,6 +104,9 @@ src/bin/solver_impl/files.rs:
 
 src/bin/solver_impl/issue.rs:
 │fn handle_issue
+
+src/bin/solver_impl/pre_analysis.rs:
+│fn analyze_with_deepseek
 
 src/bin/solver_orig.rs:
 │fn main
@@ -185,11 +197,9 @@ src/server/config.rs:
 │fn configure_app
 
 src/server/handlers/auth.rs:
-│fn deserialize_checkbox
 │fn new
 │fn login
 │fn signup
-│fn handle_signup
 │fn callback
 │fn logout
 │const SESSION_COOKIE_NAME
@@ -203,7 +213,6 @@ src/server/models/chat.rs:
 │fn new
 
 src/server/services/auth.rs:
-│fn default
 │fn new
 │fn fmt
 │fn from
