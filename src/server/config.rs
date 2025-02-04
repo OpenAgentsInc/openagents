@@ -67,21 +67,24 @@ pub fn configure_app() -> Router {
         .route("/health", get(routes::health_check))
         .route("/repomap", get(routes::repomap))
         .route("/cota", get(routes::cota))
-        // Auth routes
+        // Auth pages
         .route("/login", get(routes::login))
         .route("/signup", get(routes::signup))
         .with_state(ws_state);
 
-    // Add auth routes with auth state
-    let app = app
+    // Create auth router with auth state
+    let auth_router = Router::new()
         .route("/auth/signup", post(server::handlers::auth::handle_signup))
         .route("/auth/callback", get(server::handlers::auth::callback))
         .with_state(auth_state);
 
-    // Add repomap routes with repomap state
-    let app = app
+    // Create repomap router with repomap state
+    let repomap_router = Router::new()
         .route("/repomap/generate", post(routes::generate_repomap))
         .with_state(repomap_service);
+
+    // Merge all routers
+    let app = app.merge(auth_router).merge(repomap_router);
 
     // Static files
     app.nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
