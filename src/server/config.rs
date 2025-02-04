@@ -10,6 +10,13 @@ use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
 use tracing::info;
 
+#[derive(Clone)]
+pub struct AppState {
+    pub ws_state: Arc<WebSocketState>,
+    pub repomap_service: Arc<RepomapService>,
+    pub auth_state: Arc<server::handlers::auth::AuthState>,
+}
+
 pub fn configure_app() -> Router {
     // Load environment variables
     dotenvy::dotenv().ok();
@@ -34,7 +41,7 @@ pub fn configure_app() -> Router {
     let tools = create_tools();
 
     // Create WebSocket state with services
-    let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
+    let ws_state = Arc::new(WebSocketState::new(tool_model, chat_model, github_service.clone(), tools));
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
@@ -54,7 +61,14 @@ pub fn configure_app() -> Router {
     let pool = sqlx::PgPool::connect_lazy(&env::var("DATABASE_URL").expect("DATABASE_URL must be set"))
         .expect("Failed to create database pool");
 
-    let auth_state = Arc::new(server::handlers::AuthState::new(oidc_config, pool));
+    let auth_state = Arc::new(server::handlers::auth::AuthState::new(oidc_config, pool));
+
+    // Create shared app state
+    let app_state = AppState {
+        ws_state,
+        repomap_service,
+        auth_state,
+    };
 
     // Create the main router
     Router::new()
@@ -86,8 +100,6 @@ pub fn configure_app() -> Router {
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
         )
-        // States
-        .with_state(ws_state)
-        .with_state(repomap_service)
-        .with_state(auth_state)
+        // State
+        .with_state(app_state)
 }
