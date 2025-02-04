@@ -45,6 +45,10 @@ impl TestContext {
         // Set up test database
         let _pool = setup_test_db().await;
 
+        // Use DATABASE_URL from environment, fall back to CI default
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+
         // Create config for this test's mock server
         let config = AppConfig {
             oidc_auth_url: format!("{}/auth", mock_server.uri()),
@@ -52,7 +56,7 @@ impl TestContext {
             oidc_client_id: "test_client".to_string(),
             oidc_client_secret: "test_secret".to_string(),
             oidc_redirect_uri: "http://localhost:8000/auth/callback".to_string(),
-            database_url: "postgres://postgres:postgres@localhost:5432/postgres".to_string(),
+            database_url,
         };
 
         let app = openagents::server::config::configure_app_with_config(Some(config));
@@ -103,10 +107,6 @@ impl TestContext {
 }
 
 #[tokio::test]
-#[cfg_attr(
-    not(feature = "local-tests"),
-    ignore = "This test is only for local development"
-)]
 async fn test_full_auth_flow() {
     init_logging();
 
@@ -226,10 +226,6 @@ async fn test_invalid_callback() {
 }
 
 #[tokio::test]
-#[cfg_attr(
-    not(feature = "local-tests"),
-    ignore = "This test is only for local development"
-)]
 async fn test_duplicate_login() {
     init_logging();
 
