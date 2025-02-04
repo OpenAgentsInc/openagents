@@ -2,7 +2,8 @@ use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use serde_json::json;
 use tower::ServiceExt;
 use tracing::info;
@@ -39,8 +40,8 @@ async fn setup_test_env(mock_server: &MockServer) {
 }
 
 fn create_test_jwt() -> String {
-    let header = STANDARD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
-    let claims = STANDARD.encode(r#"{"sub":"test_user"}"#);
+    let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+    let claims = URL_SAFE_NO_PAD.encode(r#"{"sub":"test_user"}"#);
     format!("{}.{}.signature", header, claims)
 }
 
