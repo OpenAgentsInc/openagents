@@ -82,7 +82,7 @@ impl From<AuthError> for StatusCode {
             AuthError::AuthenticationFailed => StatusCode::UNAUTHORIZED,
             AuthError::TokenExchangeFailed(_) => StatusCode::BAD_GATEWAY,
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::UserAlreadyExists(_) => StatusCode::TEMPORARY_REDIRECT,
+            AuthError::UserAlreadyExists(_) => StatusCode::OK, // Changed from TEMPORARY_REDIRECT
         }
     }
 }
@@ -204,7 +204,7 @@ impl OIDCService {
             })?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
-            return Err(AuthError::UserAlreadyExists(updated_user));
+            return Ok(updated_user); // Changed from Err(AuthError::UserAlreadyExists(updated_user))
         }
 
         // Create new user
