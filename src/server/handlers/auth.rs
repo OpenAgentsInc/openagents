@@ -13,7 +13,7 @@ use tracing::{error, info};
 
 use crate::server::{
     config::AppState,
-    services::auth::{OIDCConfig, OIDCService},
+    services::auth::{OIDCConfig, OIDCService, AuthError},
 };
 
 const SESSION_COOKIE_NAME: &str = "session";
@@ -187,37 +187,45 @@ pub async fn callback(
     match result {
         Ok(user) => {
             info!("Successfully processed user: {:?}", user);
-            
-            // Create session cookie
-            let cookie = Cookie::build((SESSION_COOKIE_NAME, user.scramble_id.clone()))
-                .path("/")
-                .secure(true)
-                .http_only(true)
-                .same_site(SameSite::Lax)
-                .max_age(Duration::days(SESSION_DURATION_DAYS))
-                .build();
-
-            info!("Created session cookie: {}", cookie.to_string());
-
-            // Set cookie and redirect to home
-            let mut headers = HeaderMap::new();
-            headers.insert(SET_COOKIE, cookie.to_string().parse().unwrap());
-
-            info!("Redirecting to home with session cookie");
-            (headers, Redirect::temporary("/")).into_response()
+            create_session_and_redirect(user)
         }
         Err(e) => {
-            error!("Authentication error: {}", &e);
-            let status = StatusCode::from(e.clone());
-            (
-                status,
-                Json(ErrorResponse {
-                    error: format!("Authentication error: {}", e),
-                }),
-            )
-                .into_response()
+            match e {
+                AuthError::UserAlreadyExists(user) => {
+                    info!("User already exists, creating session and redirecting");
+                    create_session_and_redirect(user)
+                }
+                other_error => {
+                    error!("Authentication error: {}", &other_error);
+                    (
+                        StatusCode::from(other_error.clone()),
+                        Json(ErrorResponse {
+                            error: format!("Authentication error: {}", other_error),
+                        }),
+                    )
+                        .into_response()
+                }
+            }
         }
     }
+}
+
+fn create_session_and_redirect(user: crate::server::models::user::User) -> Response {
+    let cookie = Cookie::build((SESSION_COOKIE_NAME, user.scramble_id))
+        .path("/")
+        .secure(true)
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(Duration::days(SESSION_DURATION_DAYS))
+        .build();
+
+    info!("Created session cookie: {}", cookie.to_string());
+
+    let mut headers = HeaderMap::new();
+    headers.insert(SET_COOKIE, cookie.to_string().parse().unwrap());
+
+    info!("Redirecting to home with session cookie");
+    (headers, Redirect::temporary("/")).into_response()
 }
 
 pub async fn logout() -> Response {
