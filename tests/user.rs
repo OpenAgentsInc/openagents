@@ -1,4 +1,4 @@
-use openagents::server::{handlers::auth::AuthState, models::user::User};
+use openagents::server::models::user::User;
 use sqlx::PgPool;
 
 mod common;
