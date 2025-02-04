@@ -37,15 +37,15 @@ async fn test_error_component_included() {
             Request::builder()
                 .method("POST")
                 .uri("/auth/signup")
-                .header("Content-Type", "application/json")
+                .header("Content-Type", "application/x-www-form-urlencoded")
                 .body(Body::from(
-                    json!({
+                    serde_urlencoded::to_string(&json!({
                         "email": "test@example.com",
                         "password": "password123",
-                        "password_confirmation": "password123",
-                        "terms_accepted": false
-                    })
-                    .to_string(),
+                        "password-confirm": "password123",
+                        "terms": ""
+                    }))
+                    .unwrap(),
                 ))
                 .unwrap(),
         )
@@ -88,15 +88,15 @@ async fn test_error_js_included() {
             Request::builder()
                 .method("POST")
                 .uri("/auth/signup")
-                .header("Content-Type", "application/json")
+                .header("Content-Type", "application/x-www-form-urlencoded")
                 .body(Body::from(
-                    json!({
+                    serde_urlencoded::to_string(&json!({
                         "email": "test@example.com",
                         "password": "password123",
-                        "password_confirmation": "password456",
-                        "terms_accepted": true
-                    })
-                    .to_string(),
+                        "password-confirm": "password456",
+                        "terms": "on"
+                    }))
+                    .unwrap(),
                 ))
                 .unwrap(),
         )
@@ -139,15 +139,15 @@ async fn test_error_component_accessibility() {
             Request::builder()
                 .method("POST")
                 .uri("/auth/signup")
-                .header("Content-Type", "application/json")
+                .header("Content-Type", "application/x-www-form-urlencoded")
                 .body(Body::from(
-                    json!({
+                    serde_urlencoded::to_string(&json!({
                         "email": "test@example.com",
                         "password": "password123",
-                        "password_confirmation": "password123",
-                        "terms_accepted": false
-                    })
-                    .to_string(),
+                        "password-confirm": "password123",
+                        "terms": ""
+                    }))
+                    .unwrap(),
                 ))
                 .unwrap(),
         )
