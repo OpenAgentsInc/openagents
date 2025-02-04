@@ -116,7 +116,7 @@ jobs:
           # Verify environment setting
           echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
           # Run tests with environment tracing
-          RUST_LOG=debug cargo test -- --nocapture
+          RUST_LOG=debug cargo test --features local-tests -- --nocapture
 
       - name: Check that queries are fresh
         env:
@@ -252,7 +252,7 @@ jobs:
         run: |
           echo "APP_ENVIRONMENT=production" >> $GITHUB_ENV
           echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
-          RUST_LOG=debug cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+          RUST_LOG=debug cargo llvm-cov --features local-tests --all-features --workspace --lcov --output-path lcov.info
 
       - name: Generate report
         run: cargo llvm-cov report --html --output-dir coverage
