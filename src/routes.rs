@@ -1,13 +1,13 @@
 use askama::Template;
 use axum::{
+    extract::State,
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
     Json,
 };
 use serde_json::json;
-use std::sync::Arc;
 
-use crate::server::services::RepomapService;
+use crate::server::config::AppState;
 
 #[derive(Template)]
 #[template(path = "layouts/base.html", escape = "none")]
@@ -243,10 +243,10 @@ pub async fn repomap() -> Response {
 }
 
 pub async fn generate_repomap(
-    axum::extract::State(service): axum::extract::State<Arc<RepomapService>>,
-    axum::Json(body): axum::Json<serde_json::Value>,
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
-    match service.generate_repomap(body.to_string()).await {
+    match state.repomap_service.generate_repomap(body.to_string()).await {
         Ok(result) => Json(json!({ "result": result })),
         Err(e) => Json(json!({ "error": e.to_string() })),
     }
