@@ -33,27 +33,25 @@ async fn test_error_component_included() {
     let app = openagents::server::config::configure_app();
 
     // Submit signup request
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/auth/signup")
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!(
-                    "email=test%40example.com&password=password123&password-confirm=password123&terms="
-                )))
-                .unwrap(),
-        )
-        .await
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/signup")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(Body::from(format!(
+            "email=test%40example.com&password=password123&password-confirm=password123&terms="
+        )))
         .unwrap();
 
-    info!("Response status: {}", response.status());
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    info!("Response status: {}", status);
+
     let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let body_str = String::from_utf8_lossy(&body);
     info!("Response body: {}", body_str);
 
     // Verify error response
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(
@@ -81,27 +79,25 @@ async fn test_error_js_included() {
     let app = openagents::server::config::configure_app();
 
     // Submit signup request with mismatched passwords
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/auth/signup")
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!(
-                    "email=test%40example.com&password=password123&password-confirm=password456&terms=on"
-                )))
-                .unwrap(),
-        )
-        .await
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/signup")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(Body::from(format!(
+            "email=test%40example.com&password=password123&password-confirm=password456&terms=on"
+        )))
         .unwrap();
 
-    info!("Response status: {}", response.status());
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    info!("Response status: {}", status);
+
     let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let body_str = String::from_utf8_lossy(&body);
     info!("Response body: {}", body_str);
 
     // Verify error response
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(
@@ -129,27 +125,25 @@ async fn test_error_component_accessibility() {
     let app = openagents::server::config::configure_app();
 
     // Submit signup request with missing terms acceptance
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/auth/signup")
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!(
-                    "email=test%40example.com&password=password123&password-confirm=password123&terms="
-                )))
-                .unwrap(),
-        )
-        .await
+    let request = Request::builder()
+        .method("POST")
+        .uri("/auth/signup")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(Body::from(format!(
+            "email=test%40example.com&password=password123&password-confirm=password123&terms="
+        )))
         .unwrap();
 
-    info!("Response status: {}", response.status());
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    info!("Response status: {}", status);
+
     let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let body_str = String::from_utf8_lossy(&body);
     info!("Response body: {}", body_str);
 
     // Verify error response
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(
