@@ -24,31 +24,33 @@ async fn test_full_auth_flow() {
     // Create mock OIDC server
     let mock_server = MockServer::start().await;
 
-    // Create test app
-    let pool = setup_test_db().await;
-    let config = OIDCConfig::new(
-        "test_client".to_string(),
-        "test_secret".to_string(),
+    // Set required environment variables for app configuration
+    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
+    std::env::set_var("GITHUB_TOKEN", "test_token");
+    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+    std::env::set_var("OIDC_CLIENT_ID", "test_client");
+    std::env::set_var("OIDC_CLIENT_SECRET", "test_secret");
+    std::env::set_var("OIDC_AUTH_URL", format!("{}/auth", mock_server.uri()));
+    std::env::set_var("OIDC_TOKEN_URL", format!("{}/token", mock_server.uri()));
+    std::env::set_var(
+        "OIDC_REDIRECT_URI",
         "http://localhost:8000/auth/callback".to_string(),
-        format!("{}/auth", mock_server.uri()),
-        format!("{}/token", mock_server.uri()),
-    )
-    .unwrap();
-    let _auth_state = AuthState::new(config, pool);
-
-    let app = openagents::server::config::configure_app();
+    );
+    std::env::set_var("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/test");
 
     // Mock token endpoint
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
-            "id_token": "test_id_token",
+            "id_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3VzZXIifQ.signature",
             "token_type": "Bearer",
             "expires_in": 3600
         })))
         .mount(&mock_server)
         .await;
+
+    let app = openagents::server::config::configure_app();
 
     // Test login redirect
     let response = app.clone()
@@ -116,19 +118,19 @@ async fn test_invalid_callback() {
     // Create mock OIDC server
     let mock_server = MockServer::start().await;
 
-    // Create test app
-    let pool = setup_test_db().await;
-    let config = OIDCConfig::new(
-        "test_client".to_string(),
-        "test_secret".to_string(),
+    // Set required environment variables for app configuration
+    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
+    std::env::set_var("GITHUB_TOKEN", "test_token");
+    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+    std::env::set_var("OIDC_CLIENT_ID", "test_client");
+    std::env::set_var("OIDC_CLIENT_SECRET", "test_secret");
+    std::env::set_var("OIDC_AUTH_URL", format!("{}/auth", mock_server.uri()));
+    std::env::set_var("OIDC_TOKEN_URL", format!("{}/token", mock_server.uri()));
+    std::env::set_var(
+        "OIDC_REDIRECT_URI",
         "http://localhost:8000/auth/callback".to_string(),
-        format!("{}/auth", mock_server.uri()),
-        format!("{}/token", mock_server.uri()),
-    )
-    .unwrap();
-    let _auth_state = AuthState::new(config, pool);
-
-    let app = openagents::server::config::configure_app();
+    );
+    std::env::set_var("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/test");
 
     // Mock token endpoint with error
     Mock::given(method("POST"))
@@ -139,6 +141,8 @@ async fn test_invalid_callback() {
         })))
         .mount(&mock_server)
         .await;
+
+    let app = openagents::server::config::configure_app();
 
     // Test callback with invalid code
     let response = app
@@ -167,31 +171,33 @@ async fn test_duplicate_login() {
     // Create mock OIDC server
     let mock_server = MockServer::start().await;
 
-    // Create test app
-    let pool = setup_test_db().await;
-    let config = OIDCConfig::new(
-        "test_client".to_string(),
-        "test_secret".to_string(),
+    // Set required environment variables for app configuration
+    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
+    std::env::set_var("GITHUB_TOKEN", "test_token");
+    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+    std::env::set_var("OIDC_CLIENT_ID", "test_client");
+    std::env::set_var("OIDC_CLIENT_SECRET", "test_secret");
+    std::env::set_var("OIDC_AUTH_URL", format!("{}/auth", mock_server.uri()));
+    std::env::set_var("OIDC_TOKEN_URL", format!("{}/token", mock_server.uri()));
+    std::env::set_var(
+        "OIDC_REDIRECT_URI",
         "http://localhost:8000/auth/callback".to_string(),
-        format!("{}/auth", mock_server.uri()),
-        format!("{}/token", mock_server.uri()),
-    )
-    .unwrap();
-    let _auth_state = AuthState::new(config, pool);
-
-    let app = openagents::server::config::configure_app();
+    );
+    std::env::set_var("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/test");
 
     // Mock token endpoint
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
-            "id_token": "test_id_token",
+            "id_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3VzZXIifQ.signature",
             "token_type": "Bearer",
             "expires_in": 3600
         })))
         .mount(&mock_server)
         .await;
+
+    let app = openagents::server::config::configure_app();
 
     // First login should succeed
     let response = app.clone()
