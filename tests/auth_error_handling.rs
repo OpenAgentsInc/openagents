@@ -4,6 +4,7 @@ use axum::{
 };
 use serde_json::json;
 use tower::ServiceExt;
+use tracing::{debug, error, info};
 
 use openagents::server::{
     handlers::auth::AuthState,
@@ -38,26 +39,23 @@ async fn test_error_component_included() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(Body::from(
-                    serde_urlencoded::to_string(&json!({
-                        "email": "test@example.com",
-                        "password": "password123",
-                        "password-confirm": "password123",
-                        "terms": ""
-                    }))
-                    .unwrap(),
-                ))
+                .body(Body::from(format!(
+                    "email=test%40example.com&password=password123&password-confirm=password123&terms="
+                )))
                 .unwrap(),
         )
         .await
         .unwrap();
 
+    info!("Response status: {}", response.status());
+    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
+    let body_str = String::from_utf8_lossy(&body);
+    info!("Response body: {}", body_str);
+
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
     assert_eq!(
         error_response,
         json!({
@@ -89,26 +87,23 @@ async fn test_error_js_included() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(Body::from(
-                    serde_urlencoded::to_string(&json!({
-                        "email": "test@example.com",
-                        "password": "password123",
-                        "password-confirm": "password456",
-                        "terms": "on"
-                    }))
-                    .unwrap(),
-                ))
+                .body(Body::from(format!(
+                    "email=test%40example.com&password=password123&password-confirm=password456&terms=on"
+                )))
                 .unwrap(),
         )
         .await
         .unwrap();
 
+    info!("Response status: {}", response.status());
+    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
+    let body_str = String::from_utf8_lossy(&body);
+    info!("Response body: {}", body_str);
+
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
     assert_eq!(
         error_response,
         json!({
@@ -140,26 +135,23 @@ async fn test_error_component_accessibility() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(Body::from(
-                    serde_urlencoded::to_string(&json!({
-                        "email": "test@example.com",
-                        "password": "password123",
-                        "password-confirm": "password123",
-                        "terms": ""
-                    }))
-                    .unwrap(),
-                ))
+                .body(Body::from(format!(
+                    "email=test%40example.com&password=password123&password-confirm=password123&terms="
+                )))
                 .unwrap(),
         )
         .await
         .unwrap();
 
+    info!("Response status: {}", response.status());
+    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
+    let body_str = String::from_utf8_lossy(&body);
+    info!("Response body: {}", body_str);
+
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
     assert_eq!(
         error_response,
         json!({
