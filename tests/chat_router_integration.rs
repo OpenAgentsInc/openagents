@@ -61,11 +61,11 @@ async fn test_chat_router_integration() {
     // Create test services with mock server URL
     let tool_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
-        mock_server.uri(),
+        format!("{}/v1", mock_server.uri()),
     ));
     let chat_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
-        mock_server.uri(),
+        format!("{}/v1", mock_server.uri()),
     ));
     let github_service = Arc::new(
         GitHubService::new(Some("test_token".to_string())).expect("Failed to create GitHub service"),
@@ -101,7 +101,7 @@ async fn test_chat_router_integration() {
         match response {
             Message::Text(text) => {
                 let response: serde_json::Value = serde_json::from_str(&text).unwrap();
-                assert_eq!(response["type"], "assistant");
+                assert_eq!(response["type"], "chat");
                 assert!(response["content"].is_string());
             }
             _ => panic!("Expected text message"),
@@ -141,11 +141,11 @@ async fn test_chat_router_streaming() {
     // Create test services with mock server URL
     let tool_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
-        mock_server.uri(),
+        format!("{}/v1", mock_server.uri()),
     ));
     let chat_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
-        mock_server.uri(),
+        format!("{}/v1", mock_server.uri()),
     ));
     let github_service = Arc::new(
         GitHubService::new(Some("test_token".to_string())).expect("Failed to create GitHub service"),
@@ -182,7 +182,7 @@ async fn test_chat_router_streaming() {
         match response {
             Message::Text(text) => {
                 let response: serde_json::Value = serde_json::from_str(&text).unwrap();
-                assert_eq!(response["type"], "assistant");
+                assert_eq!(response["type"], "chat");
                 responses.push(response);
             }
             _ => panic!("Expected text message"),
