@@ -39,7 +39,7 @@ pub struct SignupForm {
     password: String,
     #[serde(rename = "password-confirm")]
     password_confirmation: String,
-    #[serde(rename = "terms", deserialize_with = "deserialize_checkbox")]
+    #[serde(rename = "terms", deserialize_with = "deserialize_checkbox", default)]
     terms_accepted: bool,
 }
 
