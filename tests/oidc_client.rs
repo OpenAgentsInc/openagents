@@ -46,7 +46,7 @@ async fn setup_test_env(mock_server: &MockServer) {
     );
     std::env::set_var(
         "DATABASE_URL",
-        "postgres://postgres:postgres@localhost:5432/test",
+        "postgres://postgres:postgres@localhost:5432/postgres",
     );
 }
 
