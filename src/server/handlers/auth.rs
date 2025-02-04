@@ -193,20 +193,12 @@ pub async fn callback(
         }
         Err(e) => {
             error!("Authentication error: {}", e);
-            match e {
-                AuthError::UserAlreadyExists(user) => {
-                    info!("User already exists, creating session");
-                    user
-                }
-                _ => {
-                    return Err((
-                        StatusCode::from(e.clone()),
-                        Json(ErrorResponse {
-                            error: format!("Authentication error: {}", e),
-                        }),
-                    ));
-                }
-            }
+            return Err((
+                StatusCode::from(e.clone()),
+                Json(ErrorResponse {
+                    error: format!("Authentication error: {}", e),
+                }),
+            ));
         }
     };
 
