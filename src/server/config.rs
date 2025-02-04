@@ -53,12 +53,6 @@ pub fn configure_app() -> Router {
             .expect("Failed to create database pool"),
     );
 
-    // Create the main router with auth routes
-    let auth_router = Router::new()
-        .route("/auth/signup", post(server::handlers::auth::handle_signup))
-        .route("/auth/callback", get(server::handlers::auth::callback))
-        .with_state(auth_state);
-
     // Create the main router with WebSocket state
     let app = Router::new()
         // Main routes
@@ -76,8 +70,13 @@ pub fn configure_app() -> Router {
         // Auth routes
         .route("/login", get(routes::login))
         .route("/signup", get(routes::signup))
-        .merge(auth_router)
         .with_state(ws_state);
+
+    // Add auth routes with auth state
+    let app = app
+        .route("/auth/signup", post(server::handlers::auth::handle_signup))
+        .route("/auth/callback", get(server::handlers::auth::callback))
+        .with_state(auth_state);
 
     // Add repomap routes with repomap state
     let app = app
