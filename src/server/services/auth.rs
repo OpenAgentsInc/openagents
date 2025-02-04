@@ -22,6 +22,18 @@ pub struct OIDCConfig {
     pub token_url: String,
 }
 
+impl Default for OIDCConfig {
+    fn default() -> Self {
+        Self {
+            client_id: std::env::var("OIDC_CLIENT_ID").unwrap_or_default(),
+            client_secret: std::env::var("OIDC_CLIENT_SECRET").unwrap_or_default(),
+            redirect_uri: std::env::var("OIDC_REDIRECT_URI").unwrap_or_default(),
+            auth_url: std::env::var("OIDC_AUTH_URL").unwrap_or_default(),
+            token_url: std::env::var("OIDC_TOKEN_URL").unwrap_or_default(),
+        }
+    }
+}
+
 impl OIDCConfig {
     pub fn new(
         client_id: String,
@@ -102,7 +114,7 @@ impl OIDCService {
         Ok(url)
     }
 
-    pub fn authorization_url_for_signup(&self) -> Result<String, AuthError> {
+    pub fn authorization_url_for_signup(&self, email: &str) -> Result<String, AuthError> {
         let mut url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
             self.config.auth_url,
@@ -110,6 +122,7 @@ impl OIDCService {
             urlencoding::encode(&self.config.redirect_uri)
         );
         url.push_str("&prompt=create");
+        url.push_str(&format!("&email={}", urlencoding::encode(email)));
         Ok(url)
     }
 
