@@ -159,11 +159,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -175,15 +175,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -211,6 +211,7 @@ src/server/handlers/auth.rs:
 │fn signup
 │fn handle_signup
 │fn callback
+│fn create_session_and_redirect
 │fn logout
 │const SESSION_COOKIE_NAME
 │const SESSION_DURATION_DAYS
@@ -496,7 +497,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -596,7 +597,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/company.html:
 │class of
@@ -723,6 +724,7 @@ tests/model_router_service/tool_execution.rs:
 
 tests/oidc_client.rs:
 │fn setup_test_env
+│fn create_test_jwt
 │fn test_full_auth_flow
 │fn test_invalid_callback
 │fn test_duplicate_login
@@ -842,3 +844,4 @@ tests/tool_selection.rs:
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
+
