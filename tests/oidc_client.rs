@@ -1,6 +1,7 @@
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -26,6 +27,52 @@ fn init_logging() {
         .with_thread_names(true)
         .with_target(true)
         .try_init();
+}
+
+struct TestContext {
+    mock_server: MockServer,
+    app: Router,
+}
+
+impl TestContext {
+    async fn new() -> Self {
+        let mock_server = MockServer::start().await;
+        info!("Mock server started at: {}", mock_server.uri());
+
+        // Set up test environment with THIS mock server's URL
+        setup_test_env(&mock_server).await;
+
+        let app = openagents::server::config::configure_app();
+        info!("App configured");
+
+        Self { mock_server, app }
+    }
+
+    async fn mock_token_success(&self) {
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "test_access_token",
+                "id_token": create_test_jwt(),
+                "token_type": "Bearer",
+                "expires_in": 3600
+            })))
+            .mount(&self.mock_server)
+            .await;
+        info!("Mock token endpoint configured for success");
+    }
+
+    async fn mock_token_error(&self) {
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "error": "invalid_grant",
+                "error_description": "Invalid authorization code"
+            })))
+            .mount(&self.mock_server)
+            .await;
+        info!("Mock token endpoint configured for error");
+    }
 }
 
 async fn setup_test_env(mock_server: &MockServer) {
@@ -62,33 +109,12 @@ fn create_test_jwt() -> String {
 async fn test_full_auth_flow() {
     init_logging();
     
-    // Create mock OIDC server
-    let mock_server = MockServer::start().await;
-    info!("Mock server started at: {}", mock_server.uri());
-
-    // Set up test environment
-    setup_test_env(&mock_server).await;
-
-    // Mock token endpoint
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "access_token": "test_access_token",
-            "id_token": create_test_jwt(),
-            "token_type": "Bearer",
-            "expires_in": 3600
-        })))
-        .mount(&mock_server)
-        .await;
-
-    info!("Mock token endpoint configured");
-
-    let app = openagents::server::config::configure_app();
-    info!("App configured");
+    let ctx = TestContext::new().await;
+    ctx.mock_token_success().await;
 
     // Test login redirect
     info!("Testing login redirect");
-    let response = app
+    let response = ctx.app
         .clone()
         .oneshot(
             Request::builder()
@@ -114,7 +140,7 @@ async fn test_full_auth_flow() {
 
     // Test callback
     info!("Testing callback");
-    let response = app
+    let response = ctx.app
         .clone()
         .oneshot(
             Request::builder()
@@ -139,7 +165,7 @@ async fn test_full_auth_flow() {
 
     // Test logout
     info!("Testing logout");
-    let response = app
+    let response = ctx.app
         .oneshot(
             Request::builder()
                 .uri("/auth/logout")
@@ -166,31 +192,12 @@ async fn test_full_auth_flow() {
 async fn test_invalid_callback() {
     init_logging();
     
-    // Create mock OIDC server
-    let mock_server = MockServer::start().await;
-    info!("Mock server started at: {}", mock_server.uri());
-
-    // Set up test environment
-    setup_test_env(&mock_server).await;
-
-    // Mock token endpoint with error
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(400).set_body_json(json!({
-            "error": "invalid_grant",
-            "error_description": "Invalid authorization code"
-        })))
-        .mount(&mock_server)
-        .await;
-
-    info!("Mock token endpoint configured with error response");
-
-    let app = openagents::server::config::configure_app();
-    info!("App configured");
+    let ctx = TestContext::new().await;
+    ctx.mock_token_error().await;
 
     // Test callback with invalid code
     info!("Testing callback with invalid code");
-    let response = app
+    let response = ctx.app
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=invalid_code&flow=login")
@@ -217,33 +224,12 @@ async fn test_invalid_callback() {
 async fn test_duplicate_login() {
     init_logging();
     
-    // Create mock OIDC server
-    let mock_server = MockServer::start().await;
-    info!("Mock server started at: {}", mock_server.uri());
-
-    // Set up test environment
-    setup_test_env(&mock_server).await;
-
-    // Mock token endpoint
-    Mock::given(method("POST"))
-        .and(path("/token"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "access_token": "test_access_token",
-            "id_token": create_test_jwt(),
-            "token_type": "Bearer",
-            "expires_in": 3600
-        })))
-        .mount(&mock_server)
-        .await;
-
-    info!("Mock token endpoint configured");
-
-    let app = openagents::server::config::configure_app();
-    info!("App configured");
+    let ctx = TestContext::new().await;
+    ctx.mock_token_success().await;
 
     // First login should succeed
     info!("Testing first login");
-    let response = app
+    let response = ctx.app
         .clone()
         .oneshot(
             Request::builder()
@@ -259,7 +245,7 @@ async fn test_duplicate_login() {
 
     // Second login should also succeed (update last_login_at)
     info!("Testing second login");
-    let response = app
+    let response = ctx.app
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code&flow=signup")
