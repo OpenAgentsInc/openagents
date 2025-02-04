@@ -15,6 +15,7 @@ use wiremock::{
 
 mod common;
 use common::setup_test_db;
+use openagents::server::config::AppConfig;
 
 const MAX_SIZE: usize = 1024 * 1024; // 1MB limit for response bodies
 
@@ -39,10 +40,20 @@ impl TestContext {
         let mock_server = MockServer::start().await;
         info!("Mock server started at: {}", mock_server.uri());
 
-        // Set up test environment with THIS mock server's URL
-        setup_test_env(&mock_server).await;
+        // Set up test database
+        let _pool = setup_test_db().await;
 
-        let app = openagents::server::config::configure_app();
+        // Create config for this test's mock server
+        let config = AppConfig {
+            oidc_auth_url: format!("{}/auth", mock_server.uri()),
+            oidc_token_url: format!("{}/token", mock_server.uri()),
+            oidc_client_id: "test_client".to_string(),
+            oidc_client_secret: "test_secret".to_string(),
+            oidc_redirect_uri: "http://localhost:8000/auth/callback".to_string(),
+            database_url: "postgres://postgres:postgres@localhost:5432/postgres".to_string(),
+        };
+
+        let app = openagents::server::config::configure_app_with_config(Some(config));
         info!("App configured");
 
         Self { mock_server, app }
@@ -73,28 +84,6 @@ impl TestContext {
             .await;
         info!("Mock token endpoint configured for error");
     }
-}
-
-async fn setup_test_env(mock_server: &MockServer) {
-    // Set up test database
-    let _pool = setup_test_db().await;
-
-    // Set required environment variables for app configuration
-    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
-    std::env::set_var("GITHUB_TOKEN", "test_token");
-    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
-    std::env::set_var("OIDC_CLIENT_ID", "test_client");
-    std::env::set_var("OIDC_CLIENT_SECRET", "test_secret");
-    std::env::set_var("OIDC_AUTH_URL", format!("{}/auth", mock_server.uri()));
-    std::env::set_var("OIDC_TOKEN_URL", format!("{}/token", mock_server.uri()));
-    std::env::set_var(
-        "OIDC_REDIRECT_URI",
-        "http://localhost:8000/auth/callback".to_string(),
-    );
-    std::env::set_var(
-        "DATABASE_URL",
-        "postgres://postgres:postgres@localhost:5432/postgres",
-    );
 }
 
 fn create_test_jwt() -> String {
