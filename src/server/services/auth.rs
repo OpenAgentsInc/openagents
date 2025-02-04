@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{URL_SAFE_NO_PAD, STANDARD};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -324,7 +324,7 @@ fn is_valid_jwt_format(token: &str) -> bool {
 
     // Try to decode each part as base64
     for (i, part) in parts[..2].iter().enumerate() {
-        if URL_SAFE_NO_PAD.decode(part).is_err() {
+        if STANDARD.decode(part).is_err() || URL_SAFE_NO_PAD.decode(part).is_err() {
             error!("Invalid JWT format: part {} is not valid base64", i);
             return false;
         }
