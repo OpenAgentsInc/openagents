@@ -22,18 +22,6 @@ pub struct OIDCConfig {
     pub token_url: String,
 }
 
-impl Default for OIDCConfig {
-    fn default() -> Self {
-        Self {
-            client_id: std::env::var("OIDC_CLIENT_ID").unwrap_or_default(),
-            client_secret: std::env::var("OIDC_CLIENT_SECRET").unwrap_or_default(),
-            redirect_uri: std::env::var("OIDC_REDIRECT_URI").unwrap_or_default(),
-            auth_url: std::env::var("OIDC_AUTH_URL").unwrap_or_default(),
-            token_url: std::env::var("OIDC_TOKEN_URL").unwrap_or_default(),
-        }
-    }
-}
-
 impl OIDCConfig {
     pub fn new(
         client_id: String,
