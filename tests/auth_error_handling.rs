@@ -6,7 +6,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use openagents::server::{
-    handlers::{auth::AuthState, auth::SignupForm},
+    handlers::auth::AuthState,
     services::auth::OIDCConfig,
 };
 
