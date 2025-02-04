@@ -58,7 +58,7 @@ pub enum AuthError {
     AuthenticationFailed,
     TokenExchangeFailed(String),
     DatabaseError(String),
-    UserAlreadyExists,
+    UserAlreadyExists(User),
 }
 
 impl std::fmt::Display for AuthError {
@@ -68,7 +68,7 @@ impl std::fmt::Display for AuthError {
             AuthError::AuthenticationFailed => write!(f, "Authentication failed"),
             AuthError::TokenExchangeFailed(msg) => write!(f, "Token exchange failed: {}", msg),
             AuthError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
-            AuthError::UserAlreadyExists => write!(f, "User already exists"),
+            AuthError::UserAlreadyExists(_) => write!(f, "User already exists"),
         }
     }
 }
@@ -82,7 +82,7 @@ impl From<AuthError> for StatusCode {
             AuthError::AuthenticationFailed => StatusCode::UNAUTHORIZED,
             AuthError::TokenExchangeFailed(_) => StatusCode::BAD_GATEWAY,
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::UserAlreadyExists => StatusCode::TEMPORARY_REDIRECT, // Changed from CONFLICT
+            AuthError::UserAlreadyExists(_) => StatusCode::TEMPORARY_REDIRECT,
         }
     }
 }
@@ -167,8 +167,13 @@ impl OIDCService {
 
         // Check if user already exists
         info!("Checking if user exists with pseudonym: {}", pseudonym);
-        let existing_user = sqlx::query!(
-            "SELECT id FROM users WHERE scramble_id = $1",
+        let existing_user = sqlx::query_as!(
+            User,
+            r#"
+            SELECT id, scramble_id, metadata, last_login_at, created_at, updated_at
+            FROM users 
+            WHERE scramble_id = $1
+            "#,
             pseudonym
         )
         .fetch_optional(&self.pool)
@@ -178,9 +183,28 @@ impl OIDCService {
             AuthError::DatabaseError(e.to_string())
         })?;
 
-        if existing_user.is_some() {
+        if let Some(user) = existing_user {
             info!("User already exists with pseudonym: {}", pseudonym);
-            return Err(AuthError::UserAlreadyExists);
+            // Update last_login_at and return as UserAlreadyExists
+            let updated_user = sqlx::query_as!(
+                User,
+                r#"
+                UPDATE users 
+                SET last_login_at = NOW()
+                WHERE scramble_id = $1
+                RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+                "#,
+                pseudonym
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Database error updating existing user: {}", e);
+                AuthError::DatabaseError(e.to_string())
+            })?;
+
+            info!("Successfully updated existing user: {:?}", updated_user);
+            return Err(AuthError::UserAlreadyExists(updated_user));
         }
 
         // Create new user
