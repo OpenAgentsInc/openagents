@@ -22,8 +22,8 @@ async fn main() {
     info!("Starting server on {}", addr);
 
     // Start the server
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    info!("✨ Server ready:");
+    info!("  🌎 http://{}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap();
 }
