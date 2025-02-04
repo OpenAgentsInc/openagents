@@ -37,11 +37,12 @@ async fn test_error_component_included() {
         .method("POST")
         .uri("/auth/signup")
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(Body::from(format!(
-            "email=test%40example.com&password=password123&password-confirm=password123&terms="
-        )))
+        .body(Body::from(
+            "email=test%40example.com&password=password123&password-confirm=password123&terms=",
+        ))
         .unwrap();
 
+    info!("Sending request: {:?}", request);
     let response = app.oneshot(request).await.unwrap();
     let status = response.status();
     info!("Response status: {}", status);
@@ -83,11 +84,12 @@ async fn test_error_js_included() {
         .method("POST")
         .uri("/auth/signup")
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(Body::from(format!(
-            "email=test%40example.com&password=password123&password-confirm=password456&terms=on"
-        )))
+        .body(Body::from(
+            "email=test%40example.com&password=password123&password-confirm=password456&terms=on",
+        ))
         .unwrap();
 
+    info!("Sending request: {:?}", request);
     let response = app.oneshot(request).await.unwrap();
     let status = response.status();
     info!("Response status: {}", status);
@@ -129,11 +131,12 @@ async fn test_error_component_accessibility() {
         .method("POST")
         .uri("/auth/signup")
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(Body::from(format!(
-            "email=test%40example.com&password=password123&password-confirm=password123&terms="
-        )))
+        .body(Body::from(
+            "email=test%40example.com&password=password123&password-confirm=password123&terms=",
+        ))
         .unwrap();
 
+    info!("Sending request: {:?}", request);
     let response = app.oneshot(request).await.unwrap();
     let status = response.status();
     info!("Response status: {}", status);
