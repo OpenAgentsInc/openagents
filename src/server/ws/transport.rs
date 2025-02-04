@@ -28,13 +28,13 @@ impl WebSocketState {
         chat_model: Arc<DeepSeekService>,
         github_service: Arc<GitHubService>,
         tools: Vec<Tool>,
-    ) -> Arc<Self> {
+    ) -> Self {
         let model_router = Arc::new(ModelRouter::new(tool_model, chat_model, tools));
-        Arc::new(Self {
+        Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             model_router,
             github_service,
-        })
+        }
     }
 
     pub fn create_handlers(&self) -> Arc<ChatHandler> {
