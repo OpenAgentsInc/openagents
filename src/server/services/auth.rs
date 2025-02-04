@@ -3,7 +3,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 
 use crate::server::models::user::User;
 
@@ -82,7 +82,7 @@ impl From<AuthError> for StatusCode {
             AuthError::AuthenticationFailed => StatusCode::UNAUTHORIZED,
             AuthError::TokenExchangeFailed(_) => StatusCode::BAD_GATEWAY,
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::UserAlreadyExists(_) => StatusCode::OK, // Changed from TEMPORARY_REDIRECT
+            AuthError::UserAlreadyExists(_) => StatusCode::TEMPORARY_REDIRECT,
         }
     }
 }
@@ -204,7 +204,7 @@ impl OIDCService {
             })?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
-            return Ok(updated_user); // Changed from Err(AuthError::UserAlreadyExists(updated_user))
+            return Err(AuthError::UserAlreadyExists(updated_user));
         }
 
         // Create new user
@@ -319,7 +319,6 @@ fn is_valid_jwt_format(token: &str) -> bool {
     true
 }
 
-// Helper function to extract pseudonym from ID token
 fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
     info!("Extracting pseudonym from token");
     let parts: Vec<&str> = id_token.split('.').collect();
