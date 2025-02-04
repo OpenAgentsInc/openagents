@@ -3,7 +3,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::server::models::user::User;
 
@@ -93,16 +93,19 @@ impl OIDCService {
     }
 
     pub fn authorization_url_for_login(&self) -> Result<String, AuthError> {
+        info!("Generating login authorization URL");
         let url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
             self.config.auth_url,
             self.config.client_id,
             urlencoding::encode(&self.config.redirect_uri)
         );
+        info!("Generated login URL: {}", url);
         Ok(url)
     }
 
     pub fn authorization_url_for_signup(&self, email: &str) -> Result<String, AuthError> {
+        info!("Generating signup authorization URL for email: {}", email);
         let mut url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
             self.config.auth_url,
@@ -111,17 +114,23 @@ impl OIDCService {
         );
         url.push_str("&prompt=create");
         url.push_str(&format!("&email={}", urlencoding::encode(email)));
+        info!("Generated signup URL: {}", url);
         Ok(url)
     }
 
     pub async fn login(&self, code: String) -> Result<User, AuthError> {
+        info!("Processing login with code length: {}", code.len());
+
         // Exchange code for tokens
         let token_response = self.exchange_code(code).await?;
+        info!("Successfully exchanged code for tokens");
 
         // Extract pseudonym from ID token claims
         let pseudonym = extract_pseudonym(&token_response.id_token)?;
+        info!("Extracted pseudonym: {}", pseudonym);
 
         // Get or create user
+        info!("Attempting to get or create user with pseudonym: {}", pseudonym);
         let user = sqlx::query_as!(
             User,
             r#"
@@ -136,33 +145,41 @@ impl OIDCService {
         )
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        .map_err(|e| {
+            error!("Database error during login: {}", e);
+            AuthError::DatabaseError(e.to_string())
+        })?;
 
+        info!("Successfully processed login for user: {:?}", user);
         Ok(user)
     }
 
     pub async fn signup(&self, code: String) -> Result<User, AuthError> {
-        debug!("Starting signup process with code length: {}", code.len());
+        info!("Processing signup with code length: {}", code.len());
 
         // Exchange code for tokens
         let token_response = self.exchange_code(code).await?;
-        debug!("Received token response");
+        info!("Successfully exchanged code for tokens");
 
         // Extract pseudonym from ID token claims
         let pseudonym = extract_pseudonym(&token_response.id_token)?;
         info!("Extracted pseudonym: {}", pseudonym);
 
         // Check if user already exists
+        info!("Checking if user exists with pseudonym: {}", pseudonym);
         let existing_user = sqlx::query!(
             "SELECT id FROM users WHERE scramble_id = $1",
             pseudonym
         )
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        .map_err(|e| {
+            error!("Database error checking existing user: {}", e);
+            AuthError::DatabaseError(e.to_string())
+        })?;
 
         if existing_user.is_some() {
-            debug!("User already exists with pseudonym: {}", pseudonym);
+            info!("User already exists with pseudonym: {}", pseudonym);
             // Instead of returning an error, update last_login_at and return the user
             let user = sqlx::query_as!(
                 User,
@@ -176,12 +193,17 @@ impl OIDCService {
             )
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+            .map_err(|e| {
+                error!("Database error updating existing user: {}", e);
+                AuthError::DatabaseError(e.to_string())
+            })?;
 
+            info!("Successfully updated existing user: {:?}", user);
             return Ok(user);
         }
 
         // Create new user
+        info!("Creating new user with pseudonym: {}", pseudonym);
         let user = sqlx::query_as!(
             User,
             r#"
@@ -194,16 +216,20 @@ impl OIDCService {
         )
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        .map_err(|e| {
+            error!("Database error creating new user: {}", e);
+            AuthError::DatabaseError(e.to_string())
+        })?;
 
-        info!("Created new user with pseudonym: {}", pseudonym);
+        info!("Successfully created new user: {:?}", user);
         Ok(user)
     }
 
     async fn exchange_code(&self, code: String) -> Result<TokenResponse, AuthError> {
-        debug!("Exchanging code for tokens");
+        info!("Exchanging code for tokens, code length: {}", code.len());
         let client = reqwest::Client::new();
 
+        info!("Sending token exchange request to: {}", self.config.token_url);
         let response = client
             .post(&self.config.token_url)
             .form(&[
@@ -215,22 +241,30 @@ impl OIDCService {
             ])
             .send()
             .await
-            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to send token exchange request: {}", e);
+                AuthError::TokenExchangeFailed(e.to_string())
+            })?;
 
         if !response.status().is_success() {
             let error_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
-            error!("Token exchange failed: {}", error_text);
+            error!("Token exchange failed with status {}: {}", response.status(), error_text);
             return Err(AuthError::TokenExchangeFailed(error_text));
         }
+
+        info!("Received successful response from token endpoint");
 
         // First parse as Value to check for required fields
         let json_value: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to parse token response as JSON: {}", e);
+                AuthError::TokenExchangeFailed(e.to_string())
+            })?;
 
         // Get id_token field
         let id_token = match json_value.get("id_token") {
@@ -259,7 +293,7 @@ impl OIDCService {
                 AuthError::TokenExchangeFailed(format!("error decoding response body: {}", e))
             })?;
 
-        debug!("Successfully exchanged code for tokens");
+        info!("Successfully parsed token response");
         Ok(token_response)
     }
 }
@@ -267,13 +301,14 @@ impl OIDCService {
 fn is_valid_jwt_format(token: &str) -> bool {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
+        error!("Invalid JWT format: wrong number of parts ({})", parts.len());
         return false;
     }
 
     // Try to decode each part as base64
-    for part in &parts[..2] {
-        // Only check header and payload
+    for (i, part) in parts[..2].iter().enumerate() {
         if URL_SAFE_NO_PAD.decode(part).is_err() {
+            error!("Invalid JWT format: part {} is not valid base64", i);
             return false;
         }
     }
@@ -283,7 +318,7 @@ fn is_valid_jwt_format(token: &str) -> bool {
 
 // Helper function to extract pseudonym from ID token
 fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
-    debug!("Extracting pseudonym from token: {}", id_token);
+    info!("Extracting pseudonym from token");
     let parts: Vec<&str> = id_token.split('.').collect();
     if parts.len() != 3 {
         error!(
@@ -303,7 +338,7 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
         AuthError::AuthenticationFailed
     })?;
 
-    debug!("Parsed claims: {:?}", claims);
+    info!("Parsed claims: {:?}", claims);
 
     claims["sub"]
         .as_str()
