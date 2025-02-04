@@ -83,8 +83,11 @@ pub async fn handle_signup(
     State(state): State<AuthState>,
     Form(form): Form<SignupForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    info!("Received signup form: {:?}", form);
+
     // Basic validation
     if !form.terms_accepted {
+        error!("Terms not accepted");
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -93,6 +96,7 @@ pub async fn handle_signup(
         ));
     }
     if form.password != form.password_confirmation {
+        error!("Passwords do not match");
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
