@@ -102,7 +102,7 @@ impl OIDCService {
         Ok(url)
     }
 
-    pub fn authorization_url_for_signup(&self) -> Result<String, AuthError> {
+    pub fn authorization_url_for_signup(&self, email: &str) -> Result<String, AuthError> {
         let mut url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
             self.config.auth_url,
@@ -110,6 +110,7 @@ impl OIDCService {
             urlencoding::encode(&self.config.redirect_uri)
         );
         url.push_str("&prompt=create");
+        url.push_str(&format!("&email={}", urlencoding::encode(email)));
         Ok(url)
     }
 
