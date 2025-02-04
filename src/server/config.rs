@@ -40,7 +40,12 @@ pub fn configure_app() -> Router {
     let tools = create_tools();
 
     // Create WebSocket state with services
-    let ws_state = Arc::new(WebSocketState::new(tool_model, chat_model, github_service.clone(), tools));
+    let ws_state = Arc::new(WebSocketState::new(
+        tool_model,
+        chat_model,
+        github_service.clone(),
+        tools,
+    ));
 
     // Initialize repomap service
     let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
