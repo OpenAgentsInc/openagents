@@ -1,7 +1,7 @@
 use sqlx::PgPool;
+use std::sync::OnceLock;
 use tokio::sync::Mutex;
 use tracing::info;
-use std::sync::OnceLock;
 
 static DB_SETUP: OnceLock<Mutex<()>> = OnceLock::new();
 

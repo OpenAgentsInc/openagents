@@ -2,15 +2,12 @@ use std::sync::Arc;
 
 use axum::extract::ws::Message;
 use openagents::server::{
-    services::{
-        deepseek::DeepSeekService,
-        github_issue::GitHubService,
-    },
+    services::{deepseek::DeepSeekService, github_issue::GitHubService},
     tools::create_tools,
     ws::{
         handlers::{chat::ChatHandler, MessageHandler},
-        types::ChatMessage,
         transport::WebSocketState,
+        types::ChatMessage,
     },
 };
 use serde_json::json;
@@ -68,7 +65,8 @@ async fn test_chat_router_integration() {
         format!("{}/v1", mock_server.uri()),
     ));
     let github_service = Arc::new(
-        GitHubService::new(Some("test_token".to_string())).expect("Failed to create GitHub service"),
+        GitHubService::new(Some("test_token".to_string()))
+            .expect("Failed to create GitHub service"),
     );
 
     // Create tools
@@ -94,7 +92,10 @@ async fn test_chat_router_integration() {
         content: "Hello, world!".to_string(),
     };
 
-    chat_handler.handle_message(msg, "test_conn".to_string()).await.unwrap();
+    chat_handler
+        .handle_message(msg, "test_conn".to_string())
+        .await
+        .unwrap();
 
     // Check response
     if let Ok(response) = rx.try_recv() {
@@ -148,7 +149,8 @@ async fn test_chat_router_streaming() {
         format!("{}/v1", mock_server.uri()),
     ));
     let github_service = Arc::new(
-        GitHubService::new(Some("test_token".to_string())).expect("Failed to create GitHub service"),
+        GitHubService::new(Some("test_token".to_string()))
+            .expect("Failed to create GitHub service"),
     );
 
     // Create tools
@@ -174,7 +176,10 @@ async fn test_chat_router_streaming() {
         content: "Stream this response".to_string(),
     };
 
-    chat_handler.handle_message(msg, "test_conn".to_string()).await.unwrap();
+    chat_handler
+        .handle_message(msg, "test_conn".to_string())
+        .await
+        .unwrap();
 
     // Check streaming responses
     let mut responses = Vec::new();

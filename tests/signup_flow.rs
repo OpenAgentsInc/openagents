@@ -155,10 +155,7 @@ async fn test_duplicate_signup() {
     // Second signup with same pseudonym should fail with UserAlreadyExists
     debug!("Attempting duplicate signup");
     let err = service.signup("test_code".to_string()).await.unwrap_err();
-    assert!(matches!(
-        err,
-        AuthError::UserAlreadyExists(_)
-    ));
+    assert!(matches!(err, AuthError::UserAlreadyExists(_)));
 
     // Verify still only one user exists
     let count = sqlx::query!(

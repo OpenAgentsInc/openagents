@@ -32,7 +32,8 @@ impl Default for AppConfig {
             oidc_auth_url: env::var("OIDC_AUTH_URL").expect("OIDC_AUTH_URL must be set"),
             oidc_token_url: env::var("OIDC_TOKEN_URL").expect("OIDC_TOKEN_URL must be set"),
             oidc_client_id: env::var("OIDC_CLIENT_ID").expect("OIDC_CLIENT_ID must be set"),
-            oidc_client_secret: env::var("OIDC_CLIENT_SECRET").expect("OIDC_CLIENT_SECRET must be set"),
+            oidc_client_secret: env::var("OIDC_CLIENT_SECRET")
+                .expect("OIDC_CLIENT_SECRET must be set"),
             oidc_redirect_uri: env::var("OIDC_REDIRECT_URI")
                 .unwrap_or_else(|_| "http://localhost:8000/auth/callback".to_string()),
             database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
@@ -91,8 +92,8 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
     )
     .expect("Failed to create OIDC config");
 
-    let pool = sqlx::PgPool::connect_lazy(&config.database_url)
-        .expect("Failed to create database pool");
+    let pool =
+        sqlx::PgPool::connect_lazy(&config.database_url).expect("Failed to create database pool");
 
     let auth_state = Arc::new(server::handlers::auth::AuthState::new(oidc_config, pool));
 

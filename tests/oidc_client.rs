@@ -60,7 +60,11 @@ impl TestContext {
 
         let user_id = format!("test_user_{}", Uuid::new_v4());
 
-        Self { mock_server, app, user_id }
+        Self {
+            mock_server,
+            app,
+            user_id,
+        }
     }
 
     async fn mock_token_success(&self) {
@@ -101,13 +105,14 @@ impl TestContext {
 #[tokio::test]
 async fn test_full_auth_flow() {
     init_logging();
-    
+
     let ctx = TestContext::new().await;
     ctx.mock_token_success().await;
 
     // Test login redirect
     info!("Testing login redirect");
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
         .oneshot(
             Request::builder()
@@ -133,7 +138,8 @@ async fn test_full_auth_flow() {
 
     // Test callback
     info!("Testing callback");
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
         .oneshot(
             Request::builder()
@@ -158,7 +164,8 @@ async fn test_full_auth_flow() {
 
     // Test logout
     info!("Testing logout");
-    let response = ctx.app
+    let response = ctx
+        .app
         .oneshot(
             Request::builder()
                 .uri("/auth/logout")
@@ -184,13 +191,14 @@ async fn test_full_auth_flow() {
 #[tokio::test]
 async fn test_invalid_callback() {
     init_logging();
-    
+
     let ctx = TestContext::new().await;
     ctx.mock_token_error().await;
 
     // Test callback with invalid code
     info!("Testing callback with invalid code");
-    let response = ctx.app
+    let response = ctx
+        .app
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=invalid_code&flow=login")
@@ -216,13 +224,14 @@ async fn test_invalid_callback() {
 #[tokio::test]
 async fn test_duplicate_login() {
     init_logging();
-    
+
     let ctx = TestContext::new().await;
     ctx.mock_token_success().await;
 
     // First login should succeed
     info!("Testing first login");
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
         .oneshot(
             Request::builder()
@@ -238,7 +247,8 @@ async fn test_duplicate_login() {
 
     // Second login should also succeed (update last_login_at)
     info!("Testing second login");
-    let response = ctx.app
+    let response = ctx
+        .app
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code&flow=signup")

@@ -1,11 +1,11 @@
+use base64::Engine;
 use openagents::server::services::auth::{AuthError, OIDCConfig, OIDCService};
 use sqlx::PgPool;
+use uuid::Uuid;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
 };
-use base64::Engine;
-use uuid::Uuid;
 
 async fn create_test_service(mock_server: &MockServer) -> OIDCService {
     let config = OIDCConfig::new(
@@ -31,12 +31,11 @@ async fn create_test_service(mock_server: &MockServer) -> OIDCService {
 }
 
 fn create_test_token(sub: &str) -> String {
-    let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(r#"{"alg":"HS256","typ":"JWT"}"#);
-    let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(format!(r#"{{"sub":"{}"}}"#, sub));
-    let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(b"signature");
+    let header =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+    let claims =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(r#"{{"sub":"{}"}}"#, sub));
+    let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b"signature");
     format!("{}.{}.{}", header, claims, signature)
 }
 
@@ -65,14 +64,12 @@ async fn test_signup_flow() {
     // Mock token endpoint
     Mock::given(method("POST"))
         .and(path("/token"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "access_token": "test_access_token",
-                "id_token": create_test_token(&test_user_id),
-                "token_type": "Bearer",
-                "expires_in": 3600
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "test_access_token",
+            "id_token": create_test_token(&test_user_id),
+            "token_type": "Bearer",
+            "expires_in": 3600
+        })))
         .mount(&mock_server)
         .await;
 
@@ -111,14 +108,12 @@ async fn test_duplicate_signup() {
     // Mock token endpoint for both requests
     Mock::given(method("POST"))
         .and(path("/token"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "access_token": "test_access_token",
-                "id_token": create_test_token(&test_user_id),
-                "token_type": "Bearer",
-                "expires_in": 3600
-            })),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "access_token": "test_access_token",
+            "id_token": create_test_token(&test_user_id),
+            "token_type": "Bearer",
+            "expires_in": 3600
+        })))
         .expect(2) // Expect two calls
         .mount(&mock_server)
         .await;
@@ -141,10 +136,11 @@ async fn test_duplicate_signup() {
 
     // Second signup should return UserAlreadyExists
     let result = service.signup("test_code".to_string()).await;
-    assert!(matches!(
-        result,
-        Err(AuthError::UserAlreadyExists(_))
-    ), "Expected UserAlreadyExists error, got: {:?}", result);
+    assert!(
+        matches!(result, Err(AuthError::UserAlreadyExists(_))),
+        "Expected UserAlreadyExists error, got: {:?}",
+        result
+    );
 
     // Verify still only one user exists
     let count = sqlx::query!(
