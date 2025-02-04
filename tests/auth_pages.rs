@@ -10,8 +10,30 @@ use wiremock::{
 
 use openagents::server::config::configure_app;
 
+fn setup_test_env() {
+    // Load .env file
+    dotenvy::dotenv().ok();
+
+    // Set required test environment variables if not already set
+    if std::env::var("DEEPSEEK_API_KEY").is_err() {
+        std::env::set_var("DEEPSEEK_API_KEY", "test_key");
+    }
+    if std::env::var("GITHUB_TOKEN").is_err() {
+        std::env::set_var("GITHUB_TOKEN", "test_token");
+    }
+    if std::env::var("FIRECRAWL_API_KEY").is_err() {
+        std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+    }
+    if std::env::var("OIDC_CLIENT_ID").is_err() {
+        std::env::set_var("OIDC_CLIENT_ID", "test_client_id");
+    }
+}
+
 #[tokio::test]
 async fn test_login_page() {
+    // Load environment variables
+    setup_test_env();
+
     // Create mock server for DeepSeek API
     let mock_server = MockServer::start().await;
 
@@ -28,11 +50,6 @@ async fn test_login_page() {
         })))
         .mount(&mock_server)
         .await;
-
-    // Set environment variables for testing
-    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
-    std::env::set_var("GITHUB_TOKEN", "test_token");
-    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
 
     // Initialize the app
     let app = configure_app();
@@ -66,6 +83,9 @@ async fn test_login_page() {
 
 #[tokio::test]
 async fn test_signup_page() {
+    // Load environment variables
+    setup_test_env();
+
     // Create mock server for DeepSeek API
     let mock_server = MockServer::start().await;
 
@@ -82,11 +102,6 @@ async fn test_signup_page() {
         })))
         .mount(&mock_server)
         .await;
-
-    // Set environment variables for testing
-    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
-    std::env::set_var("GITHUB_TOKEN", "test_token");
-    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
 
     // Initialize the app
     let app = configure_app();
