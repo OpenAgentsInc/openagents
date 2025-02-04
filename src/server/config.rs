@@ -40,10 +40,12 @@ pub fn configure_app() -> Router {
     let oidc_config = server::services::auth::OIDCConfig::new(
         env::var("OIDC_CLIENT_ID").expect("OIDC_CLIENT_ID must be set"),
         env::var("OIDC_CLIENT_SECRET").expect("OIDC_CLIENT_SECRET must be set"),
-        env::var("OIDC_REDIRECT_URI").unwrap_or_else(|_| "http://localhost:8000/auth/callback".to_string()),
+        env::var("OIDC_REDIRECT_URI")
+            .unwrap_or_else(|_| "http://localhost:8000/auth/callback".to_string()),
         env::var("OIDC_AUTH_URL").expect("OIDC_AUTH_URL must be set"),
         env::var("OIDC_TOKEN_URL").expect("OIDC_TOKEN_URL must be set"),
-    ).expect("Failed to create OIDC config");
+    )
+    .expect("Failed to create OIDC config");
 
     let auth_state = server::handlers::AuthState::new(
         oidc_config,
