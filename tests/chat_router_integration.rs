@@ -13,7 +13,12 @@ use openagents::server::{
         transport::WebSocketState,
     },
 };
+use serde_json::json;
 use tracing_subscriber;
+use wiremock::{
+    matchers::{method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
 fn init_logging() {
     let _ = tracing_subscriber::fmt()
@@ -30,9 +35,38 @@ fn init_logging() {
 async fn test_chat_router_integration() {
     init_logging();
 
-    // Create test services
-    let tool_model = Arc::new(DeepSeekService::new("test_key".to_string()));
-    let chat_model = Arc::new(DeepSeekService::new("test_key".to_string()));
+    // Start mock DeepSeek API server
+    let mock_server = MockServer::start().await;
+
+    // Mock the DeepSeek API response
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "test_response",
+            "object": "chat.completion",
+            "created": 1234567890,
+            "model": "deepseek-chat",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello! How can I help you today?"
+                },
+                "finish_reason": "stop"
+            }]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Create test services with mock server URL
+    let tool_model = Arc::new(DeepSeekService::new_with_base_url(
+        "test_key".to_string(),
+        mock_server.uri(),
+    ));
+    let chat_model = Arc::new(DeepSeekService::new_with_base_url(
+        "test_key".to_string(),
+        mock_server.uri(),
+    ));
     let github_service = Arc::new(
         GitHubService::new(Some("test_token".to_string())).expect("Failed to create GitHub service"),
     );
@@ -81,9 +115,38 @@ async fn test_chat_router_integration() {
 async fn test_chat_router_streaming() {
     init_logging();
 
-    // Create test services
-    let tool_model = Arc::new(DeepSeekService::new("test_key".to_string()));
-    let chat_model = Arc::new(DeepSeekService::new("test_key".to_string()));
+    // Start mock DeepSeek API server
+    let mock_server = MockServer::start().await;
+
+    // Mock the DeepSeek API streaming response
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "test_response",
+            "object": "chat.completion",
+            "created": 1234567890,
+            "model": "deepseek-chat",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "This is a streaming response"
+                },
+                "finish_reason": "stop"
+            }]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    // Create test services with mock server URL
+    let tool_model = Arc::new(DeepSeekService::new_with_base_url(
+        "test_key".to_string(),
+        mock_server.uri(),
+    ));
+    let chat_model = Arc::new(DeepSeekService::new_with_base_url(
+        "test_key".to_string(),
+        mock_server.uri(),
+    ));
     let github_service = Arc::new(
         GitHubService::new(Some("test_token".to_string())).expect("Failed to create GitHub service"),
     );
