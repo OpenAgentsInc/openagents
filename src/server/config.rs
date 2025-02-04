@@ -8,7 +8,6 @@ use axum::{
 };
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
-use tracing::info;
 
 #[derive(Clone)]
 pub struct AppState {
