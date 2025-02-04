@@ -4,7 +4,7 @@ use axum::{
 };
 use serde_json::json;
 use tower::ServiceExt;
-use tracing::{debug, error, info};
+use tracing::info;
 
 use openagents::server::{
     handlers::auth::AuthState,
