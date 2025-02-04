@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use time::Duration;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 
 use crate::server::services::auth::{OIDCConfig, OIDCService};
 
@@ -66,7 +66,7 @@ impl AuthState {
     }
 }
 
-pub async fn login(State(state): State<AuthState>) -> Response {
+pub async fn login(State(state): State<Arc<AuthState>>) -> Response {
     info!("Handling login request");
     match state.service.authorization_url_for_login() {
         Ok(auth_url) => {
@@ -86,7 +86,7 @@ pub async fn login(State(state): State<AuthState>) -> Response {
     }
 }
 
-pub async fn signup(State(state): State<AuthState>) -> Response {
+pub async fn signup(State(state): State<Arc<AuthState>>) -> Response {
     info!("Handling signup request");
     match state.service.authorization_url_for_signup("") {
         Ok(auth_url) => {
@@ -107,7 +107,7 @@ pub async fn signup(State(state): State<AuthState>) -> Response {
 }
 
 pub async fn handle_signup(
-    State(state): State<AuthState>,
+    State(state): State<Arc<AuthState>>,
     Form(form): Form<SignupForm>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     info!("Received signup form: {:?}", form);
@@ -151,7 +151,7 @@ pub async fn handle_signup(
 }
 
 pub async fn callback(
-    State(state): State<AuthState>,
+    State(state): State<Arc<AuthState>>,
     Query(params): Query<CallbackParams>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     info!("Received callback with code length: {}", params.code.len());
@@ -200,7 +200,7 @@ pub async fn callback(
         .max_age(Duration::days(SESSION_DURATION_DAYS))
         .build();
 
-    debug!("Created session cookie: {}", cookie.to_string());
+    info!("Created session cookie: {}", cookie.to_string());
 
     // Set cookie and redirect to home
     let mut headers = HeaderMap::new();
