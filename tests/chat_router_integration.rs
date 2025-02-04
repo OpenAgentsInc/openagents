@@ -1,137 +1,68 @@
-use axum::extract::ws::Message;
-use dotenvy::dotenv;
-use openagents::server::services::{
-    deepseek::{DeepSeekService, Tool},
-    github_issue::GitHubService,
-};
-use openagents::server::ws::handlers::MessageHandler;
-use openagents::server::ws::{handlers::chat::ChatHandler, transport::WebSocketState};
-use serde_json::json;
 use std::sync::Arc;
-use tracing::Level;
+
+use axum::extract::ws::Message;
+use openagents::server::{
+    services::{deepseek::DeepSeekService, github_issue::GitHubService},
+    tools::create_tools,
+    ws::{
+        handlers::{chat::ChatHandler, MessageHandler},
+        transport::WebSocketState,
+        types::ChatMessage,
+    },
+};
+use serde_json::json;
 use tracing_subscriber;
 use wiremock::{
-    matchers::{header, method, path},
+    matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
-// Helper function to initialize logging once
 fn init_logging() {
     let _ = tracing_subscriber::fmt()
-        .with_max_level(Level::INFO)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_target(true)
         .try_init();
-}
-
-// Helper function to create test tools
-fn create_test_tools() -> Vec<Tool> {
-    vec![
-        // GitHub issue tool
-        DeepSeekService::create_tool(
-            "read_github_issue".to_string(),
-            Some("Read a GitHub issue by number".to_string()),
-            json!({
-                "type": "object",
-                "properties": {
-                    "owner": {
-                        "type": "string",
-                        "description": "The owner of the repository"
-                    },
-                    "repo": {
-                        "type": "string",
-                        "description": "The name of the repository"
-                    },
-                    "issue_number": {
-                        "type": "integer",
-                        "description": "The issue number"
-                    }
-                },
-                "required": ["owner", "repo", "issue_number"]
-            }),
-        ),
-        // Calculator tool
-        DeepSeekService::create_tool(
-            "calculate".to_string(),
-            Some("Perform a calculation".to_string()),
-            json!({
-                "type": "object",
-                "properties": {
-                    "expression": {
-                        "type": "string",
-                        "description": "The mathematical expression to evaluate"
-                    }
-                },
-                "required": ["expression"]
-            }),
-        ),
-    ]
 }
 
 #[tokio::test]
 async fn test_chat_router_integration() {
-    // Initialize logging
     init_logging();
 
-    // Load environment variables from .env file
-    dotenv().ok();
-
-    // Create mock server
+    // Start mock DeepSeek API server
     let mock_server = MockServer::start().await;
 
-    // Mock routing decision response
-    let routing_decision_response = json!({
-        "choices": [{
-            "message": {
-                "content": json!({
-                    "needs_tool": true,
-                    "reasoning": "User is requesting to view a GitHub issue",
-                    "suggested_tool": "read_github_issue"
-                }).to_string(),
-                "role": "assistant"
-            }
-        }]
-    });
-
-    // Mock tool execution response
-    let tool_execution_response = json!({
-        "choices": [{
-            "message": {
-                "content": "Let me fetch that GitHub issue for you.",
-                "role": "assistant",
-                "tool_calls": [{
-                    "id": "call_123",
-                    "type": "function",
-                    "function": {
-                        "name": "read_github_issue",
-                        "arguments": "{\"owner\":\"OpenAgentsInc\",\"repo\":\"openagents\",\"issue_number\":595}"
-                    }
-                }]
-            }
-        }]
-    });
-
-    // Set up mocks
+    // Mock the DeepSeek API response
     Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .and(header("content-type", "application/json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&routing_decision_response))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "test_response",
+            "object": "chat.completion",
+            "created": 1234567890,
+            "model": "deepseek-chat",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello! How can I help you today?"
+                },
+                "finish_reason": "stop"
+            }]
+        })))
         .mount(&mock_server)
         .await;
 
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .and(header("content-type", "application/json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&tool_execution_response))
-        .mount(&mock_server)
-        .await;
-
-    // Create services with mock server
+    // Create test services with mock server URL
     let tool_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
-        mock_server.uri(),
+        format!("{}/v1", mock_server.uri()),
     ));
     let chat_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
-        mock_server.uri(),
+        format!("{}/v1", mock_server.uri()),
     ));
     let github_service = Arc::new(
         GitHubService::new(Some("test_token".to_string()))
@@ -139,95 +70,83 @@ async fn test_chat_router_integration() {
     );
 
     // Create tools
-    let tools = create_test_tools();
+    let tools = create_tools();
 
     // Create WebSocket state
-    let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
+    let ws_state = WebSocketState::new(
+        tool_model.clone(),
+        chat_model.clone(),
+        github_service.clone(),
+        tools,
+    );
+    let ws_state = Arc::new(ws_state);
 
-    // Add test connection with test user_id
+    // Add test connection
     let mut rx = ws_state.add_test_connection("test_conn", 1).await;
 
     // Create chat handler
     let chat_handler = ChatHandler::new(ws_state.clone(), github_service.clone());
 
-    // Test message that should trigger GitHub tool
-    let test_message = openagents::server::ws::types::ChatMessage::UserMessage {
-        content: "Can you check issue #595?".to_string(),
+    // Test message handling
+    let msg = ChatMessage::UserMessage {
+        content: "Hello, world!".to_string(),
     };
 
-    // Process message
-    let result = chat_handler
-        .handle_message(test_message, "test_conn".to_string())
-        .await;
+    chat_handler
+        .handle_message(msg, "test_conn".to_string())
+        .await
+        .unwrap();
 
-    // Verify success
-    assert!(result.is_ok(), "Message handling should succeed");
-
-    // Verify messages sent to WebSocket
-    while let Ok(msg) = rx.try_recv() {
-        if let Message::Text(text) = msg {
-            println!("Received WebSocket message: {}", text);
+    // Check response
+    if let Ok(response) = rx.try_recv() {
+        match response {
+            Message::Text(text) => {
+                let response: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(response["type"], "chat");
+                assert!(response["content"].is_string());
+            }
+            _ => panic!("Expected text message"),
         }
-    }
-
-    // Test message that should use chat model
-    let test_message = openagents::server::ws::types::ChatMessage::UserMessage {
-        content: "Hello, how are you?".to_string(),
-    };
-
-    // Process message
-    let result = chat_handler
-        .handle_message(test_message, "test_conn".to_string())
-        .await;
-
-    // Verify success
-    assert!(result.is_ok(), "Message handling should succeed");
-
-    // Verify messages sent to WebSocket
-    while let Ok(msg) = rx.try_recv() {
-        if let Message::Text(text) = msg {
-            println!("Received WebSocket message: {}", text);
-        }
+    } else {
+        panic!("No response received");
     }
 }
 
 #[tokio::test]
 async fn test_chat_router_streaming() {
-    // Initialize logging
     init_logging();
 
-    // Load environment variables from .env file
-    dotenv().ok();
-
-    // Create mock server
+    // Start mock DeepSeek API server
     let mock_server = MockServer::start().await;
 
-    // Mock streaming response
-    let stream_response = json!({
-        "choices": [{
-            "message": {
-                "content": "Hello! I'm doing well, thank you for asking.",
-                "role": "assistant"
-            }
-        }]
-    });
-
-    // Set up mock
+    // Mock the DeepSeek API streaming response
     Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .and(header("content-type", "application/json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&stream_response))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "test_response",
+            "object": "chat.completion",
+            "created": 1234567890,
+            "model": "deepseek-chat",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "This is a streaming response"
+                },
+                "finish_reason": "stop"
+            }]
+        })))
         .mount(&mock_server)
         .await;
 
-    // Create services with mock server
+    // Create test services with mock server URL
     let tool_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
-        mock_server.uri(),
+        format!("{}/v1", mock_server.uri()),
     ));
     let chat_model = Arc::new(DeepSeekService::with_base_url(
         "test_key".to_string(),
-        mock_server.uri(),
+        format!("{}/v1", mock_server.uri()),
     ));
     let github_service = Arc::new(
         GitHubService::new(Some("test_token".to_string()))
@@ -235,34 +154,45 @@ async fn test_chat_router_streaming() {
     );
 
     // Create tools
-    let tools = create_test_tools();
+    let tools = create_tools();
 
     // Create WebSocket state
-    let ws_state = WebSocketState::new(tool_model, chat_model, github_service.clone(), tools);
+    let ws_state = WebSocketState::new(
+        tool_model.clone(),
+        chat_model.clone(),
+        github_service.clone(),
+        tools,
+    );
+    let ws_state = Arc::new(ws_state);
 
-    // Add test connection with test user_id
+    // Add test connection
     let mut rx = ws_state.add_test_connection("test_conn", 1).await;
 
     // Create chat handler
     let chat_handler = ChatHandler::new(ws_state.clone(), github_service.clone());
 
-    // Test message that should use streaming
-    let test_message = openagents::server::ws::types::ChatMessage::UserMessage {
-        content: "Hello, how are you?".to_string(),
+    // Test streaming message
+    let msg = ChatMessage::UserMessage {
+        content: "Stream this response".to_string(),
     };
 
-    // Process message
-    let result = chat_handler
-        .handle_message(test_message, "test_conn".to_string())
-        .await;
+    chat_handler
+        .handle_message(msg, "test_conn".to_string())
+        .await
+        .unwrap();
 
-    // Verify success
-    assert!(result.is_ok(), "Message handling should succeed");
-
-    // Verify messages sent to WebSocket
-    while let Ok(msg) = rx.try_recv() {
-        if let Message::Text(text) = msg {
-            println!("Received WebSocket message: {}", text);
+    // Check streaming responses
+    let mut responses = Vec::new();
+    while let Ok(response) = rx.try_recv() {
+        match response {
+            Message::Text(text) => {
+                let response: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(response["type"], "chat");
+                responses.push(response);
+            }
+            _ => panic!("Expected text message"),
         }
     }
+
+    assert!(!responses.is_empty(), "No streaming responses received");
 }
