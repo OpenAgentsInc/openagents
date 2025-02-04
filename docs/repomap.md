@@ -360,6 +360,7 @@ src/server/ws/transport.rs:
 │fn send_to
 │fn get_user_id
 │fn add_test_connection
+│fn clone
 
 src/server/ws/types.rs:
 │fn fmt
@@ -721,6 +722,7 @@ tests/model_router_service/tool_execution.rs:
 │fn test_model_router_tool_execution
 
 tests/oidc_client.rs:
+│fn setup_test_env
 │fn test_full_auth_flow
 │fn test_invalid_callback
 │fn test_duplicate_login
