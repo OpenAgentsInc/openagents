@@ -11,7 +11,7 @@
       {
         "ordinal": 1,
         "name": "scramble_id",
-        "type_info": "Varchar"
+        "type_info": "Text"
       },
       {
         "ordinal": 2,
@@ -37,7 +37,7 @@
     "parameters": {
       "Left": ["Text"]
     },
-    "nullable": [false, false, true, true, true, true]
+    "nullable": [false, false, false, true, false, false]
   },
   "hash": "39f355610ff262b60ca2462e4e1337c57828645b77cbc1c834b55e069a427b0d"
 }
