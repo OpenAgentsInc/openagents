@@ -31,6 +31,11 @@ pub struct LoginResponse {
     url: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SignupRequest {
+    email: String,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub service: OIDCService,
@@ -50,10 +55,21 @@ pub async fn login(State(state): State<AppState>) -> impl IntoResponse {
     Redirect::temporary(&auth_url)
 }
 
-pub async fn signup(State(state): State<AppState>) -> impl IntoResponse {
-    let auth_url = state.service.authorization_url_for_signup().unwrap();
+pub async fn signup(
+    State(state): State<AppState>,
+    Json(payload): Json<SignupRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let auth_url = state.service.authorization_url_for_signup(&payload.email).map_err(|e| {
+        error!("Failed to generate signup URL: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
     debug!("Redirecting to signup URL: {}", auth_url);
-    Redirect::temporary(&auth_url)
+    Ok(Redirect::temporary(&auth_url))
 }
 
 pub async fn callback(
