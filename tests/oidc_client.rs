@@ -103,6 +103,7 @@ impl TestContext {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "local-tests"), ignore = "This test is only for local development")]
 async fn test_full_auth_flow() {
     init_logging();
 
@@ -222,6 +223,7 @@ async fn test_invalid_callback() {
 }
 
 #[tokio::test]
+#[cfg_attr(not(feature = "local-tests"), ignore = "This test is only for local development")]
 async fn test_duplicate_login() {
     init_logging();
 
