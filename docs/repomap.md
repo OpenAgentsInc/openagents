@@ -63,6 +63,10 @@ docs/templates.md:
 
 docs/test-failures-analysis.md:
 
+docs/transcribe.md:
+
+docs/transcripts/20250203-1157-ep-157.md:
+
 src/bin/chat.rs:
 │fn print_colored
 │fn main
@@ -111,6 +115,9 @@ src/bin/solver_impl/pre_analysis.rs:
 src/bin/solver_orig.rs:
 │fn main
 
+src/bin/transcribe.rs:
+│fn main
+
 src/configuration.rs:
 │fn default
 │fn connect_options
@@ -152,11 +159,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -168,15 +175,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -190,6 +197,7 @@ src/routes.rs:
 │fn video_series
 │fn company
 │fn coming_soon
+│fn cota
 │fn repomap
 │fn generate_repomap
 
@@ -197,9 +205,11 @@ src/server/config.rs:
 │fn configure_app
 
 src/server/handlers/auth.rs:
+│fn deserialize_checkbox
 │fn new
 │fn login
 │fn signup
+│fn handle_signup
 │fn callback
 │fn logout
 │const SESSION_COOKIE_NAME
@@ -485,7 +495,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -585,7 +595,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/company.html:
 │class of
@@ -648,11 +658,10 @@ templates/pages/solver.html:
 │const data
 
 tests/auth_error_handling.rs:
-│#id: auth-error
-│#id: auth-error-message
 │fn test_error_component_included
 │fn test_error_js_included
 │fn test_error_component_accessibility
+│const MAX_SIZE
 
 tests/auth_pages.rs:
 │fn test_login_page
@@ -711,10 +720,10 @@ tests/model_router_service/tool_execution.rs:
 │fn test_model_router_tool_execution
 
 tests/oidc_client.rs:
-│fn create_test_token
 │fn test_full_auth_flow
 │fn test_invalid_callback
 │fn test_duplicate_login
+│const MAX_SIZE
 
 tests/oidc_signup.rs:
 │fn create_test_service
@@ -735,13 +744,11 @@ tests/repomap.rs:
 │fn handle_repomap
 
 tests/signup_flow.rs:
-│fn init_test_logging
 │fn create_test_service
 │fn create_test_token
 │fn test_signup_authorization_url
 │fn test_signup_flow
 │fn test_duplicate_signup
-│fn test_signup_error_handling
 
 tests/solver.rs:
 │fn test_branch_creation
@@ -831,3 +838,5 @@ tests/tool_selection.rs:
 
 tests/user.rs:
 │fn test_user_creation
+│fn create_test_user
+
