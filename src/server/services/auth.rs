@@ -153,14 +153,32 @@ impl OIDCService {
         info!("Extracted pseudonym: {}", pseudonym);
 
         // Check if user already exists
-        let existing_user = sqlx::query!("SELECT id FROM users WHERE scramble_id = $1", pseudonym)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        let existing_user = sqlx::query!(
+            "SELECT id FROM users WHERE scramble_id = $1",
+            pseudonym
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
         if existing_user.is_some() {
             debug!("User already exists with pseudonym: {}", pseudonym);
-            return Err(AuthError::UserAlreadyExists);
+            // Instead of returning an error, update last_login_at and return the user
+            let user = sqlx::query_as!(
+                User,
+                r#"
+                UPDATE users 
+                SET last_login_at = NOW()
+                WHERE scramble_id = $1
+                RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+                "#,
+                pseudonym
+            )
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+            return Ok(user);
         }
 
         // Create new user
