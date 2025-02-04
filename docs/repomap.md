@@ -159,11 +159,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -175,15 +175,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -202,7 +202,9 @@ src/routes.rs:
 │fn generate_repomap
 
 src/server/config.rs:
+│fn default
 │fn configure_app
+│fn configure_app_with_config
 
 src/server/handlers/auth.rs:
 │fn deserialize_checkbox
@@ -497,7 +499,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -597,7 +599,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/company.html:
 │class of
@@ -683,7 +685,6 @@ tests/chat_database.rs:
 
 tests/chat_router_integration.rs:
 │fn init_logging
-│fn create_test_tools
 │fn test_chat_router_integration
 │fn test_chat_router_streaming
 
@@ -723,7 +724,10 @@ tests/model_router_service/tool_execution.rs:
 │fn test_model_router_tool_execution
 
 tests/oidc_client.rs:
-│fn setup_test_env
+│fn init_logging
+│fn new
+│fn mock_token_success
+│fn mock_token_error
 │fn create_test_jwt
 │fn test_full_auth_flow
 │fn test_invalid_callback
@@ -844,3 +848,4 @@ tests/tool_selection.rs:
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
+
