@@ -79,7 +79,7 @@ async fn test_duplicate_signup() {
     let mock_server = MockServer::start().await;
     let service = create_test_service(&mock_server).await;
 
-    // Mock token endpoint
+    // Mock token endpoint for both requests
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(
@@ -90,17 +90,18 @@ async fn test_duplicate_signup() {
                 "expires_in": 3600
             })),
         )
+        .expect(2) // Expect two calls
         .mount(&mock_server)
         .await;
 
     // First signup should succeed
     let result = service.signup("test_code".to_string()).await;
-    assert!(result.is_ok());
+    assert!(result.is_ok(), "First signup failed: {:?}", result.err());
 
     // Second signup should return UserAlreadyExists
     let result = service.signup("test_code".to_string()).await;
     assert!(matches!(
         result,
         Err(AuthError::UserAlreadyExists(_))
-    ));
+    ), "Expected UserAlreadyExists error, got: {:?}", result);
 }
