@@ -38,7 +38,7 @@ async fn test_error_component_included() {
         .uri("/auth/signup")
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(Body::from(
-            "email=test%40example.com&password=password123&password-confirm=password123&terms=",
+            "email=test%40example.com&password=password123&password-confirm=password123",
         ))
         .unwrap();
 
@@ -132,7 +132,7 @@ async fn test_error_component_accessibility() {
         .uri("/auth/signup")
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(Body::from(
-            "email=test%40example.com&password=password123&password-confirm=password123&terms=",
+            "email=test%40example.com&password=password123&password-confirm=password123",
         ))
         .unwrap();
 
