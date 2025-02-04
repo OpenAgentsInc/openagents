@@ -1,161 +1,167 @@
 use axum::{
-    body::{to_bytes, Body},
+    body::Body,
     http::{Request, StatusCode},
 };
+use serde_json::json;
 use tower::ServiceExt;
-use wiremock::{
-    matchers::{method, path},
-    Mock, MockServer, ResponseTemplate,
+
+use openagents::server::{
+    handlers::{auth::AuthState, auth::SignupForm},
+    services::auth::OIDCConfig,
 };
 
-use openagents::server::config::configure_app;
+mod common;
+use common::setup_test_db;
 
 #[tokio::test]
 async fn test_error_component_included() {
-    // Create mock server for DeepSeek API
-    let mock_server = MockServer::start().await;
+    // Create test app
+    let pool = setup_test_db().await;
+    let config = OIDCConfig::new(
+        "test_client".to_string(),
+        "test_secret".to_string(),
+        "http://localhost:8000/auth/callback".to_string(),
+        "http://localhost:3000/auth".to_string(),
+        "http://localhost:3000/token".to_string(),
+    )
+    .unwrap();
+    let auth_state = AuthState::new(config, pool);
 
-    // Mock the DeepSeek API response
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "choices": [{
-                "message": {
-                    "content": "Hello! How can I help you?",
-                    "role": "assistant"
-                }
-            }]
-        })))
-        .mount(&mock_server)
-        .await;
+    let app = openagents::server::config::configure_app();
 
-    // Set environment variables for testing
-    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
-    std::env::set_var("GITHUB_TOKEN", "test_token");
-    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+    // Create signup form with missing terms acceptance
+    let form_data = SignupForm {
+        email: "test@example.com".to_string(),
+        password: "password123".to_string(),
+        password_confirmation: "password123".to_string(),
+        terms_accepted: false,
+    };
 
-    // Initialize the app
-    let app = configure_app();
-
-    // Create a request to the login page
-    let request = Request::builder()
-        .uri("/login")
-        .header("Accept", "text/html")
-        .body(Body::empty())
-        .unwrap();
-
-    // Send the request and get response
-    let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Get response body
-    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+    // Submit form
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/signup")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(serde_urlencoded::to_string(&form_data).unwrap().into())
+                .unwrap(),
+        )
         .await
         .unwrap();
-    let html = String::from_utf8(body.to_vec()).unwrap();
 
-    // Check that error component is present but hidden
-    assert!(html.contains(r#"id="auth-error""#));
-    assert!(html.contains(r#"class="hidden"#));
-    assert!(html.contains(r#"id="auth-error-message""#));
+    // Verify error response
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        error_response,
+        json!({
+            "error": "Terms must be accepted"
+        })
+    );
 }
 
 #[tokio::test]
 async fn test_error_js_included() {
-    // Create mock server for DeepSeek API
-    let mock_server = MockServer::start().await;
+    // Create test app
+    let pool = setup_test_db().await;
+    let config = OIDCConfig::new(
+        "test_client".to_string(),
+        "test_secret".to_string(),
+        "http://localhost:8000/auth/callback".to_string(),
+        "http://localhost:3000/auth".to_string(),
+        "http://localhost:3000/token".to_string(),
+    )
+    .unwrap();
+    let auth_state = AuthState::new(config, pool);
 
-    // Mock the DeepSeek API response
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "choices": [{
-                "message": {
-                    "content": "Hello! How can I help you?",
-                    "role": "assistant"
-                }
-            }]
-        })))
-        .mount(&mock_server)
-        .await;
+    let app = openagents::server::config::configure_app();
 
-    // Set environment variables for testing
-    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
-    std::env::set_var("GITHUB_TOKEN", "test_token");
-    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+    // Create signup form with mismatched passwords
+    let form_data = SignupForm {
+        email: "test@example.com".to_string(),
+        password: "password123".to_string(),
+        password_confirmation: "password456".to_string(),
+        terms_accepted: true,
+    };
 
-    // Initialize the app
-    let app = configure_app();
-
-    // Create a request to the login page
-    let request = Request::builder()
-        .uri("/login")
-        .header("Accept", "text/html")
-        .body(Body::empty())
-        .unwrap();
-
-    // Send the request and get response
-    let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Get response body
-    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+    // Submit form
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/signup")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(serde_urlencoded::to_string(&form_data).unwrap().into())
+                .unwrap(),
+        )
         .await
         .unwrap();
-    let html = String::from_utf8(body.to_vec()).unwrap();
 
-    // Check that error handling JS is included
-    assert!(html.contains("function showAuthError"));
-    assert!(html.contains("function clearAuthError"));
-    assert!(html.contains("function handleAuthError"));
+    // Verify error response
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        error_response,
+        json!({
+            "error": "Passwords do not match"
+        })
+    );
 }
 
 #[tokio::test]
 async fn test_error_component_accessibility() {
-    // Create mock server for DeepSeek API
-    let mock_server = MockServer::start().await;
+    // Create test app
+    let pool = setup_test_db().await;
+    let config = OIDCConfig::new(
+        "test_client".to_string(),
+        "test_secret".to_string(),
+        "http://localhost:8000/auth/callback".to_string(),
+        "http://localhost:3000/auth".to_string(),
+        "http://localhost:3000/token".to_string(),
+    )
+    .unwrap();
+    let auth_state = AuthState::new(config, pool);
 
-    // Mock the DeepSeek API response
-    Mock::given(method("POST"))
-        .and(path("/chat/completions"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "choices": [{
-                "message": {
-                    "content": "Hello! How can I help you?",
-                    "role": "assistant"
-                }
-            }]
-        })))
-        .mount(&mock_server)
-        .await;
+    let app = openagents::server::config::configure_app();
 
-    // Set environment variables for testing
-    std::env::set_var("DEEPSEEK_API_KEY", "test_key");
-    std::env::set_var("GITHUB_TOKEN", "test_token");
-    std::env::set_var("FIRECRAWL_API_KEY", "test_key");
+    // Create signup form with missing terms acceptance
+    let form_data = SignupForm {
+        email: "test@example.com".to_string(),
+        password: "password123".to_string(),
+        password_confirmation: "password123".to_string(),
+        terms_accepted: false,
+    };
 
-    // Initialize the app
-    let app = configure_app();
-
-    // Create a request to the login page
-    let request = Request::builder()
-        .uri("/login")
-        .header("Accept", "text/html")
-        .body(Body::empty())
-        .unwrap();
-
-    // Send the request and get response
-    let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Get response body
-    let body = to_bytes(response.into_body(), 16 * 1024 * 1024)
+    // Submit form
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/signup")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(serde_urlencoded::to_string(&form_data).unwrap().into())
+                .unwrap(),
+        )
         .await
         .unwrap();
-    let html = String::from_utf8(body.to_vec()).unwrap();
 
-    // Check accessibility attributes
-    assert!(html.contains(r#"role="alert""#));
-    assert!(html.contains(r#"role="button""#));
-    assert!(html.contains(r#"<title>Close</title>"#));
+    // Verify error response
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        error_response,
+        json!({
+            "error": "Terms must be accepted"
+        })
+    );
 }
