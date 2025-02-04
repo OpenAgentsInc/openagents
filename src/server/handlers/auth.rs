@@ -73,7 +73,7 @@ pub async fn login(State(state): State<AuthState>) -> impl IntoResponse {
 }
 
 pub async fn signup(State(state): State<AuthState>) -> impl IntoResponse {
-    let auth_url = state.service.authorization_url_for_signup().unwrap();
+    let auth_url = state.service.authorization_url_for_signup("").unwrap();
     debug!("Redirecting to signup URL: {}", auth_url);
     Redirect::temporary(&auth_url)
 }
@@ -101,10 +101,10 @@ pub async fn handle_signup(
         ));
     }
 
-    // Generate signup URL with prompt=create
+    // Generate signup URL with prompt=create and email
     let auth_url = state
         .service
-        .authorization_url_for_signup()
+        .authorization_url_for_signup(&form.email)
         .map_err(|e| {
             error!("Failed to generate auth URL: {}", e);
             (
