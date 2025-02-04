@@ -7,7 +7,8 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde_json::json;
 use tower::ServiceExt;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
+use uuid::Uuid;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
@@ -33,6 +34,7 @@ fn init_logging() {
 struct TestContext {
     mock_server: MockServer,
     app: Router,
+    user_id: String,
 }
 
 impl TestContext {
@@ -56,7 +58,9 @@ impl TestContext {
         let app = openagents::server::config::configure_app_with_config(Some(config));
         info!("App configured");
 
-        Self { mock_server, app }
+        let user_id = format!("test_user_{}", Uuid::new_v4());
+
+        Self { mock_server, app, user_id }
     }
 
     async fn mock_token_success(&self) {
@@ -64,7 +68,7 @@ impl TestContext {
             .and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "access_token": "test_access_token",
-                "id_token": create_test_jwt(),
+                "id_token": self.create_test_jwt(),
                 "token_type": "Bearer",
                 "expires_in": 3600
             })))
@@ -84,14 +88,14 @@ impl TestContext {
             .await;
         info!("Mock token endpoint configured for error");
     }
-}
 
-fn create_test_jwt() -> String {
-    let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
-    let claims = URL_SAFE_NO_PAD.encode(r#"{"sub":"test_user"}"#);
-    let token = format!("{}.{}.signature", header, claims);
-    debug!("Created test JWT: {}", token);
-    token
+    fn create_test_jwt(&self) -> String {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+        let claims = URL_SAFE_NO_PAD.encode(&format!(r#"{{"sub":"{}"}}"#, self.user_id));
+        let token = format!("{}.{}.signature", header, claims);
+        debug!("Created test JWT: {}", token);
+        token
+    }
 }
 
 #[tokio::test]
