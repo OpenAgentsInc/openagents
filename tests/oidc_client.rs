@@ -6,7 +6,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde_json::json;
 use tower::ServiceExt;
-use tracing::info;
+use tracing::{debug, error, info};
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
@@ -16,6 +16,17 @@ mod common;
 use common::setup_test_db;
 
 const MAX_SIZE: usize = 1024 * 1024; // 1MB limit for response bodies
+
+fn init_logging() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_target(true)
+        .try_init();
+}
 
 async fn setup_test_env(mock_server: &MockServer) {
     // Set up test database
@@ -42,11 +53,15 @@ async fn setup_test_env(mock_server: &MockServer) {
 fn create_test_jwt() -> String {
     let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
     let claims = URL_SAFE_NO_PAD.encode(r#"{"sub":"test_user"}"#);
-    format!("{}.{}.signature", header, claims)
+    let token = format!("{}.{}.signature", header, claims);
+    debug!("Created test JWT: {}", token);
+    token
 }
 
 #[tokio::test]
 async fn test_full_auth_flow() {
+    init_logging();
+    
     // Create mock OIDC server
     let mock_server = MockServer::start().await;
     info!("Mock server started at: {}", mock_server.uri());
@@ -149,6 +164,8 @@ async fn test_full_auth_flow() {
 
 #[tokio::test]
 async fn test_invalid_callback() {
+    init_logging();
+    
     // Create mock OIDC server
     let mock_server = MockServer::start().await;
     info!("Mock server started at: {}", mock_server.uri());
@@ -198,6 +215,8 @@ async fn test_invalid_callback() {
 
 #[tokio::test]
 async fn test_duplicate_login() {
+    init_logging();
+    
     // Create mock OIDC server
     let mock_server = MockServer::start().await;
     info!("Mock server started at: {}", mock_server.uri());
