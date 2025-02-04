@@ -82,7 +82,7 @@ impl From<AuthError> for StatusCode {
             AuthError::AuthenticationFailed => StatusCode::UNAUTHORIZED,
             AuthError::TokenExchangeFailed(_) => StatusCode::BAD_GATEWAY,
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::UserAlreadyExists => StatusCode::CONFLICT,
+            AuthError::UserAlreadyExists => StatusCode::TEMPORARY_REDIRECT, // Changed from CONFLICT
         }
     }
 }
@@ -95,7 +95,7 @@ impl OIDCService {
     pub fn authorization_url_for_login(&self) -> Result<String, AuthError> {
         info!("Generating login authorization URL");
         let url = format!(
-            "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
+            "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid&flow=login",
             self.config.auth_url,
             self.config.client_id,
             urlencoding::encode(&self.config.redirect_uri)
@@ -107,7 +107,7 @@ impl OIDCService {
     pub fn authorization_url_for_signup(&self, email: &str) -> Result<String, AuthError> {
         info!("Generating signup authorization URL for email: {}", email);
         let mut url = format!(
-            "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid",
+            "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid&flow=signup",
             self.config.auth_url,
             self.config.client_id,
             urlencoding::encode(&self.config.redirect_uri)
@@ -180,26 +180,7 @@ impl OIDCService {
 
         if existing_user.is_some() {
             info!("User already exists with pseudonym: {}", pseudonym);
-            // Instead of returning an error, update last_login_at and return the user
-            let user = sqlx::query_as!(
-                User,
-                r#"
-                UPDATE users 
-                SET last_login_at = NOW()
-                WHERE scramble_id = $1
-                RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
-                "#,
-                pseudonym
-            )
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| {
-                error!("Database error updating existing user: {}", e);
-                AuthError::DatabaseError(e.to_string())
-            })?;
-
-            info!("Successfully updated existing user: {:?}", user);
-            return Ok(user);
+            return Err(AuthError::UserAlreadyExists);
         }
 
         // Create new user
