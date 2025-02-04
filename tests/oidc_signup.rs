@@ -4,10 +4,12 @@ use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
 };
+use base64::Engine;
+use uuid::Uuid;
 
 async fn create_test_service(mock_server: &MockServer) -> OIDCService {
     let config = OIDCConfig::new(
-        "test_client".to_string(),
+        format!("test_client_{}", Uuid::new_v4()),
         "test_secret".to_string(),
         "http://localhost:8000/auth/callback".to_string(),
         format!("{}/auth", mock_server.uri()),
@@ -27,7 +29,9 @@ fn create_test_token() -> String {
         .encode(r#"{"alg":"HS256","typ":"JWT"}"#);
     let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .encode(r#"{"sub":"test_user"}"#);
-    format!("{}.{}.signature", header, claims)
+    let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(b"signature");
+    format!("{}.{}.{}", header, claims, signature)
 }
 
 #[tokio::test]
@@ -97,6 +101,6 @@ async fn test_duplicate_signup() {
     let result = service.signup("test_code".to_string()).await;
     assert!(matches!(
         result,
-        Ok(_) // Now returns Ok since we're handling existing users as a success case
+        Err(AuthError::UserAlreadyExists(_))
     ));
 }
