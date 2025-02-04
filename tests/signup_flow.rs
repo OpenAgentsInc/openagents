@@ -7,7 +7,7 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
 };
 
-use openagents::server::services::auth::{OIDCConfig, OIDCService};
+use openagents::server::services::auth::{AuthError, OIDCConfig, OIDCService};
 mod common;
 use common::setup_test_db;
 
@@ -152,12 +152,12 @@ async fn test_duplicate_signup() {
     .unwrap_or(0);
     assert_eq!(count, 1, "First user should exist");
 
-    // Second signup with same pseudonym should fail
+    // Second signup with same pseudonym should fail with UserAlreadyExists
     debug!("Attempting duplicate signup");
     let err = service.signup("test_code".to_string()).await.unwrap_err();
     assert!(matches!(
         err,
-        openagents::server::services::auth::AuthError::UserAlreadyExists
+        AuthError::UserAlreadyExists(_)
     ));
 
     // Verify still only one user exists
