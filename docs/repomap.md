@@ -664,6 +664,7 @@ tests/auth_error_handling.rs:
 │const MAX_SIZE
 
 tests/auth_pages.rs:
+│fn setup_test_env
 │fn test_login_page
 │fn test_signup_page
 
