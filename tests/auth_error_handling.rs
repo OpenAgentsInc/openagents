@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use serde_json::json;
@@ -25,7 +25,7 @@ async fn test_error_component_included() {
         "http://localhost:3000/token".to_string(),
     )
     .unwrap();
-    let auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool);
 
     let app = openagents::server::config::configure_app();
 
@@ -44,7 +44,7 @@ async fn test_error_component_included() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(serde_urlencoded::to_string(&form_data).unwrap().into())
+                .body(form_data.email.into())
                 .unwrap(),
         )
         .await
@@ -53,7 +53,7 @@ async fn test_error_component_included() {
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body()).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(
@@ -76,7 +76,7 @@ async fn test_error_js_included() {
         "http://localhost:3000/token".to_string(),
     )
     .unwrap();
-    let auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool);
 
     let app = openagents::server::config::configure_app();
 
@@ -95,7 +95,7 @@ async fn test_error_js_included() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(serde_urlencoded::to_string(&form_data).unwrap().into())
+                .body(form_data.email.into())
                 .unwrap(),
         )
         .await
@@ -104,7 +104,7 @@ async fn test_error_js_included() {
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body()).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(
@@ -127,7 +127,7 @@ async fn test_error_component_accessibility() {
         "http://localhost:3000/token".to_string(),
     )
     .unwrap();
-    let auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool);
 
     let app = openagents::server::config::configure_app();
 
@@ -146,7 +146,7 @@ async fn test_error_component_accessibility() {
                 .method("POST")
                 .uri("/auth/signup")
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .body(serde_urlencoded::to_string(&form_data).unwrap().into())
+                .body(form_data.email.into())
                 .unwrap(),
         )
         .await
@@ -155,7 +155,7 @@ async fn test_error_component_accessibility() {
     // Verify error response
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body()).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(
