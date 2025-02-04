@@ -25,6 +25,11 @@ jobs:
       DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
       AIDER_API_KEY: ${{ secrets.AIDER_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+      OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+      OIDC_AUTH_URL: ${{ secrets.OIDC_AUTH_URL }}
+      OIDC_TOKEN_URL: ${{ secrets.OIDC_TOKEN_URL }}
+      OIDC_REDIRECT_URI: ${{ secrets.OIDC_REDIRECT_URI }}
       GITHUB_TOKEN: ${{ github.token }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     services:
@@ -111,7 +116,7 @@ jobs:
           # Verify environment setting
           echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
           # Run tests with environment tracing
-          RUST_LOG=debug cargo test -- --nocapture
+          RUST_LOG=debug cargo test --features local-tests -- --nocapture
 
       - name: Check that queries are fresh
         env:
@@ -156,6 +161,11 @@ jobs:
       AIDER_API_KEY: ${{ secrets.AIDER_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       GITHUB_TOKEN: ${{ github.token }}
+      OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+      OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+      OIDC_AUTH_URL: ${{ secrets.OIDC_AUTH_URL }}
+      OIDC_TOKEN_URL: ${{ secrets.OIDC_TOKEN_URL }}
+      OIDC_REDIRECT_URI: ${{ secrets.OIDC_REDIRECT_URI }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     services:
       postgres:
@@ -242,7 +252,7 @@ jobs:
         run: |
           echo "APP_ENVIRONMENT=production" >> $GITHUB_ENV
           echo "APP_ENVIRONMENT=$APP_ENVIRONMENT"
-          RUST_LOG=debug cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+          RUST_LOG=debug cargo llvm-cov --features local-tests --all-features --workspace --lcov --output-path lcov.info
 
       - name: Generate report
         run: cargo llvm-cov report --html --output-dir coverage

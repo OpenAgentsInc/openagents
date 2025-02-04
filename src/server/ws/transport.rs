@@ -28,23 +28,23 @@ impl WebSocketState {
         chat_model: Arc<DeepSeekService>,
         github_service: Arc<GitHubService>,
         tools: Vec<Tool>,
-    ) -> Arc<Self> {
+    ) -> Self {
         let model_router = Arc::new(ModelRouter::new(tool_model, chat_model, tools));
-        Arc::new(Self {
+        Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             model_router,
             github_service,
-        })
+        }
     }
 
-    pub fn create_handlers(ws_state: Arc<WebSocketState>) -> Arc<ChatHandler> {
+    pub fn create_handlers(&self) -> Arc<ChatHandler> {
         Arc::new(ChatHandler::new(
-            ws_state.clone(),
-            ws_state.github_service.clone(),
+            Arc::new(self.clone()),
+            self.github_service.clone(),
         ))
     }
 
-    pub async fn validate_session(jar: &CookieJar) -> Result<i32, WebSocketError> {
+    pub async fn validate_session(&self, jar: &CookieJar) -> Result<i32, WebSocketError> {
         // Get session cookie
         let _session_cookie = jar
             .get("session")
@@ -213,5 +213,15 @@ impl WebSocketState {
             },
         );
         rx
+    }
+}
+
+impl Clone for WebSocketState {
+    fn clone(&self) -> Self {
+        Self {
+            connections: self.connections.clone(),
+            model_router: self.model_router.clone(),
+            github_service: self.github_service.clone(),
+        }
     }
 }
