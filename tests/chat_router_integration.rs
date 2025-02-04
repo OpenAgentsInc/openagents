@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::ws::Message;
 use openagents::server::{
     services::{
-        deepseek::{DeepSeekService, Tool},
+        deepseek::DeepSeekService,
         github_issue::GitHubService,
     },
     tools::create_tools,
@@ -60,7 +60,7 @@ async fn test_chat_router_integration() {
         content: "Hello, world!".to_string(),
     };
 
-    chat_handler.handle_message("test_conn", msg).await;
+    chat_handler.handle_message(msg, "test_conn".to_string()).await.unwrap();
 
     // Check response
     if let Ok(response) = rx.try_recv() {
@@ -111,7 +111,7 @@ async fn test_chat_router_streaming() {
         content: "Stream this response".to_string(),
     };
 
-    chat_handler.handle_message("test_conn", msg).await;
+    chat_handler.handle_message(msg, "test_conn".to_string()).await.unwrap();
 
     // Check streaming responses
     let mut responses = Vec::new();
