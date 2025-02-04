@@ -55,7 +55,7 @@ pub fn configure_app() -> Router {
 
     // Create the main router with auth routes
     let auth_router = Router::new()
-        .route("/auth/signup", post(server::handlers::auth::signup))
+        .route("/auth/signup", post(server::handlers::auth::handle_signup))
         .route("/auth/callback", get(server::handlers::auth::callback))
         .with_state(auth_state);
 
