@@ -2,6 +2,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::json;
 use tower::ServiceExt;
 use tracing::info;
@@ -34,6 +35,12 @@ async fn setup_test_env(mock_server: &MockServer) {
     std::env::set_var("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/test");
 }
 
+fn create_test_jwt() -> String {
+    let header = STANDARD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+    let claims = STANDARD.encode(r#"{"sub":"test_user"}"#);
+    format!("{}.{}.signature", header, claims)
+}
+
 #[tokio::test]
 async fn test_full_auth_flow() {
     // Create mock OIDC server
@@ -48,7 +55,7 @@ async fn test_full_auth_flow() {
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
-            "id_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3VzZXIifQ.signature",
+            "id_token": create_test_jwt(),
             "token_type": "Bearer",
             "expires_in": 3600
         })))
@@ -182,7 +189,7 @@ async fn test_duplicate_login() {
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "test_access_token",
-            "id_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3VzZXIifQ.signature",
+            "id_token": create_test_jwt(),
             "token_type": "Bearer",
             "expires_in": 3600
         })))
