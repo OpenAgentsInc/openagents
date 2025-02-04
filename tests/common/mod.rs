@@ -1,5 +1,9 @@
 use sqlx::PgPool;
+use tokio::sync::Mutex;
 use tracing::info;
+use std::sync::OnceLock;
+
+static DB_SETUP: OnceLock<Mutex<()>> = OnceLock::new();
 
 pub async fn setup_test_db() -> PgPool {
     info!("Setting up test database");
@@ -13,6 +17,10 @@ pub async fn setup_test_db() -> PgPool {
         .expect("Failed to connect to database");
 
     info!("Connected to database successfully");
+
+    // Ensure only one test can set up the database at a time
+    let lock = DB_SETUP.get_or_init(|| Mutex::new(()));
+    let _guard = lock.lock().await;
 
     // Drop existing sequence and table if they exist
     sqlx::query!("DROP SEQUENCE IF EXISTS users_id_seq CASCADE")
