@@ -293,6 +293,8 @@ impl OIDCService {
             }
         };
 
+        info!("Received id_token: {}", id_token);
+
         // Validate JWT format after successful parsing
         if !is_valid_jwt_format(id_token) {
             error!("Invalid JWT format in id_token");
@@ -322,10 +324,16 @@ fn is_valid_jwt_format(token: &str) -> bool {
         return false;
     }
 
-    // Try to decode each part as base64
+        // Try to decode each part as base64
     for (i, part) in parts[..2].iter().enumerate() {
-        if STANDARD.decode(part).is_err() || URL_SAFE_NO_PAD.decode(part).is_err() {
+        info!("Attempting to decode part {}: {}", i, part);
+        let standard_result = STANDARD.decode(part);
+        let url_safe_result = URL_SAFE_NO_PAD.decode(part);
+        
+        if standard_result.is_err() && url_safe_result.is_err() {
             error!("Invalid JWT format: part {} is not valid base64", i);
+            error!("Standard decode error: {:?}", standard_result.err());
+            error!("URL-safe decode error: {:?}", url_safe_result.err());
             return false;
         }
     }
@@ -334,8 +342,10 @@ fn is_valid_jwt_format(token: &str) -> bool {
 }
 
 fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
-    info!("Extracting pseudonym from token");
+    info!("Extracting pseudonym from token: {}", id_token);
     let parts: Vec<&str> = id_token.split('.').collect();
+    info!("Token parts: {:?}", parts);
+    
     if parts.len() != 3 {
         error!(
             "Invalid token format - expected 3 parts, got {}",
@@ -347,12 +357,12 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
     }
 
     let claims = URL_SAFE_NO_PAD.decode(parts[1]).map_err(|e| {
-        error!("Failed to decode claims: {}", e);
+        error!("Failed to decode claims with URL_SAFE_NO_PAD: {}", e);
         AuthError::TokenExchangeFailed("Failed to decode claims".to_string())
     })?;
 
     let claims: serde_json::Value = serde_json::from_slice(&claims).map_err(|e| {
-        error!("Failed to parse claims: {}", e);
+        error!("Failed to parse claims as JSON: {}", e);
         AuthError::TokenExchangeFailed("Failed to parse claims".to_string())
     })?;
 
