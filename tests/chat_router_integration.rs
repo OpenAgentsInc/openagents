@@ -1,19 +1,19 @@
 use std::sync::Arc;
 
+use axum::extract::ws::Message;
 use openagents::server::{
     services::{
         deepseek::DeepSeekService,
         github_issue::GitHubService,
-        model_router::ModelRouter,
     },
-    tools::create_tools,
+    tools::{create_tools, Tool},
     ws::{
         handlers::{chat::ChatHandler, MessageHandler},
+        messages::ChatMessage,
         transport::WebSocketState,
     },
 };
-use tokio::sync::broadcast;
-use tracing::info;
+use tracing_subscriber;
 
 fn init_logging() {
     let _ = tracing_subscriber::fmt()
@@ -26,7 +26,7 @@ fn init_logging() {
         .try_init();
 }
 
-fn create_test_tools() -> Vec<serde_json::Value> {
+fn create_test_tools() -> Vec<Tool> {
     create_tools()
 }
 
@@ -54,25 +54,31 @@ async fn test_chat_router_integration() {
     let ws_state = Arc::new(ws_state);
 
     // Add test connection
-    let mut rx = ws_state.add_test_connection("test_conn", 1).await;
+    let mut rx = ws_state.add_test_connection("test_conn".to_string(), 1).await;
 
     // Create chat handler
     let chat_handler = ChatHandler::new(ws_state.clone(), github_service.clone());
 
     // Test message handling
-    let msg = serde_json::json!({
-        "type": "chat",
-        "content": "Hello, world!",
-        "conversation_id": "test_conv"
-    });
+    let msg = ChatMessage {
+        r#type: "chat".to_string(),
+        content: "Hello, world!".to_string(),
+        conversation_id: "test_conv".to_string(),
+        stream: None,
+    };
 
-    chat_handler.handle_message("test_conn", msg).await;
+    chat_handler.handle_message("test_conn".to_string(), msg).await;
 
     // Check response
     if let Ok(response) = rx.try_recv() {
-        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
-        assert_eq!(response["type"], "chat");
-        assert!(response["content"].is_string());
+        match response {
+            Message::Text(text) => {
+                let response: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(response["type"], "chat");
+                assert!(response["content"].is_string());
+            }
+            _ => panic!("Expected text message"),
+        }
     } else {
         panic!("No response received");
     }
@@ -102,27 +108,32 @@ async fn test_chat_router_streaming() {
     let ws_state = Arc::new(ws_state);
 
     // Add test connection
-    let mut rx = ws_state.add_test_connection("test_conn", 1).await;
+    let mut rx = ws_state.add_test_connection("test_conn".to_string(), 1).await;
 
     // Create chat handler
     let chat_handler = ChatHandler::new(ws_state.clone(), github_service.clone());
 
     // Test streaming message
-    let msg = serde_json::json!({
-        "type": "chat",
-        "content": "Stream this response",
-        "conversation_id": "test_conv",
-        "stream": true
-    });
+    let msg = ChatMessage {
+        r#type: "chat".to_string(),
+        content: "Stream this response".to_string(),
+        conversation_id: "test_conv".to_string(),
+        stream: Some(true),
+    };
 
-    chat_handler.handle_message("test_conn", msg).await;
+    chat_handler.handle_message("test_conn".to_string(), msg).await;
 
     // Check streaming responses
     let mut responses = Vec::new();
     while let Ok(response) = rx.try_recv() {
-        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
-        assert_eq!(response["type"], "chat");
-        responses.push(response);
+        match response {
+            Message::Text(text) => {
+                let response: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(response["type"], "chat");
+                responses.push(response);
+            }
+            _ => panic!("Expected text message"),
+        }
     }
 
     assert!(!responses.is_empty(), "No streaming responses received");
