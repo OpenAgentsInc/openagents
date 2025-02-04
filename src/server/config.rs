@@ -49,7 +49,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
     // Load environment variables
     dotenvy::dotenv().ok();
 
-    let config = config.unwrap_or_else(AppConfig::default);
+    let config = config.unwrap_or_default();
 
     // Create shared services
     let tool_model = Arc::new(DeepSeekService::new(
