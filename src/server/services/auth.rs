@@ -183,7 +183,7 @@ impl OIDCService {
             AuthError::DatabaseError(e.to_string())
         })?;
 
-        if let Some(user) = existing_user {
+        if let Some(existing_user) = existing_user {
             info!("User already exists with pseudonym: {}", pseudonym);
             // Update last_login_at and return as UserAlreadyExists
             let updated_user = sqlx::query_as!(
