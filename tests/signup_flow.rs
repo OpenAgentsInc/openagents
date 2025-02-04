@@ -47,7 +47,9 @@ async fn test_signup_authorization_url() {
     let mock_server = MockServer::start().await;
     let service = create_test_service(mock_server.uri()).await;
 
-    let url = service.authorization_url_for_signup("test@example.com").unwrap();
+    let url = service
+        .authorization_url_for_signup("test@example.com")
+        .unwrap();
 
     assert!(url.contains("response_type=code"));
     assert!(url.contains("prompt=create"));

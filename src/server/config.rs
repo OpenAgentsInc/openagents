@@ -62,8 +62,9 @@ pub fn configure_app() -> Router {
     )
     .expect("Failed to create OIDC config");
 
-    let pool = sqlx::PgPool::connect_lazy(&env::var("DATABASE_URL").expect("DATABASE_URL must be set"))
-        .expect("Failed to create database pool");
+    let pool =
+        sqlx::PgPool::connect_lazy(&env::var("DATABASE_URL").expect("DATABASE_URL must be set"))
+            .expect("Failed to create database pool");
 
     let auth_state = Arc::new(server::handlers::auth::AuthState::new(oidc_config, pool));
 

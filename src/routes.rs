@@ -246,7 +246,11 @@ pub async fn generate_repomap(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
-    match state.repomap_service.generate_repomap(body.to_string()).await {
+    match state
+        .repomap_service
+        .generate_repomap(body.to_string())
+        .await
+    {
         Ok(result) => Json(json!({ "result": result })),
         Err(e) => Json(json!({ "error": e.to_string() })),
     }

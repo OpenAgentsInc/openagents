@@ -8,8 +8,8 @@ use axum::{
 use axum_extra::extract::cookie::CookieJar;
 use tracing::{error, info};
 
-use crate::server::config::AppState;
 use self::transport::WebSocketState;
+use crate::server::config::AppState;
 
 pub mod handlers;
 pub mod transport;

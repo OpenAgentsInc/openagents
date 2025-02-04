@@ -32,7 +32,10 @@ async fn setup_test_env(mock_server: &MockServer) {
         "OIDC_REDIRECT_URI",
         "http://localhost:8000/auth/callback".to_string(),
     );
-    std::env::set_var("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/test");
+    std::env::set_var(
+        "DATABASE_URL",
+        "postgres://postgres:postgres@localhost:5432/test",
+    );
 }
 
 fn create_test_jwt() -> String {
@@ -69,7 +72,8 @@ async fn test_full_auth_flow() {
 
     // Test login redirect
     info!("Testing login redirect");
-    let response = app.clone()
+    let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/auth/login")
@@ -82,14 +86,20 @@ async fn test_full_auth_flow() {
     info!("Login redirect response status: {}", response.status());
     assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
 
-    let location = response.headers().get("location").unwrap().to_str().unwrap();
+    let location = response
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap();
     info!("Login redirect location: {}", location);
     assert!(location.contains("/auth"));
     assert!(location.contains("flow=login"));
 
     // Test callback
     info!("Testing callback");
-    let response = app.clone()
+    let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code&flow=login")
@@ -102,7 +112,12 @@ async fn test_full_auth_flow() {
     info!("Callback response status: {}", response.status());
     assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
 
-    let cookie = response.headers().get("set-cookie").unwrap().to_str().unwrap();
+    let cookie = response
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap();
     info!("Callback set-cookie: {}", cookie);
     assert!(cookie.contains("session="));
 
@@ -121,7 +136,12 @@ async fn test_full_auth_flow() {
     info!("Logout response status: {}", response.status());
     assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
 
-    let cookie = response.headers().get("set-cookie").unwrap().to_str().unwrap();
+    let cookie = response
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap();
     info!("Logout set-cookie: {}", cookie);
     assert!(cookie.contains("session=;"));
 }
@@ -203,7 +223,8 @@ async fn test_duplicate_login() {
 
     // First login should succeed
     info!("Testing first login");
-    let response = app.clone()
+    let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code&flow=signup")

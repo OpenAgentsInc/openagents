@@ -6,10 +6,7 @@ use serde_json::json;
 use tower::ServiceExt;
 use tracing::info;
 
-use openagents::server::{
-    handlers::auth::AuthState,
-    services::auth::OIDCConfig,
-};
+use openagents::server::{handlers::auth::AuthState, services::auth::OIDCConfig};
 
 mod common;
 use common::setup_test_db;

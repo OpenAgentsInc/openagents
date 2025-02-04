@@ -79,7 +79,7 @@ impl From<AuthError> for StatusCode {
     fn from(error: AuthError) -> Self {
         match error {
             AuthError::InvalidConfig => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::AuthenticationFailed => StatusCode::UNAUTHORIZED,
+            AuthError::AuthenticationFailed => StatusCode::BAD_GATEWAY,
             AuthError::TokenExchangeFailed(_) => StatusCode::BAD_GATEWAY,
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthError::UserAlreadyExists(_) => StatusCode::TEMPORARY_REDIRECT,
@@ -130,7 +130,10 @@ impl OIDCService {
         info!("Extracted pseudonym: {}", pseudonym);
 
         // Get or create user
-        info!("Attempting to get or create user with pseudonym: {}", pseudonym);
+        info!(
+            "Attempting to get or create user with pseudonym: {}",
+            pseudonym
+        );
         let user = sqlx::query_as!(
             User,
             r#"
@@ -204,7 +207,7 @@ impl OIDCService {
             })?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
-            return Err(AuthError::UserAlreadyExists(updated_user));
+            return Ok(updated_user);
         }
 
         // Create new user
@@ -234,7 +237,10 @@ impl OIDCService {
         info!("Exchanging code for tokens, code length: {}", code.len());
         let client = reqwest::Client::new();
 
-        info!("Sending token exchange request to: {}", self.config.token_url);
+        info!(
+            "Sending token exchange request to: {}",
+            self.config.token_url
+        );
         let response = client
             .post(&self.config.token_url)
             .form(&[
@@ -258,7 +264,10 @@ impl OIDCService {
             .unwrap_or_else(|_| "Unknown error".to_string());
 
         if !status.is_success() {
-            error!("Token exchange failed with status {}: {}", status, response_text);
+            error!(
+                "Token exchange failed with status {}: {}",
+                status, response_text
+            );
             return Err(AuthError::TokenExchangeFailed(response_text));
         }
 
@@ -287,7 +296,9 @@ impl OIDCService {
         // Validate JWT format after successful parsing
         if !is_valid_jwt_format(id_token) {
             error!("Invalid JWT format in id_token");
-            return Err(AuthError::AuthenticationFailed);
+            return Err(AuthError::TokenExchangeFailed(
+                "Invalid JWT format".to_string(),
+            ));
         }
 
         // Now try to parse into TokenResponse
@@ -304,7 +315,10 @@ impl OIDCService {
 fn is_valid_jwt_format(token: &str) -> bool {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
-        error!("Invalid JWT format: wrong number of parts ({})", parts.len());
+        error!(
+            "Invalid JWT format: wrong number of parts ({})",
+            parts.len()
+        );
         return false;
     }
 
@@ -327,17 +341,19 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
             "Invalid token format - expected 3 parts, got {}",
             parts.len()
         );
-        return Err(AuthError::AuthenticationFailed);
+        return Err(AuthError::TokenExchangeFailed(
+            "Invalid token format".to_string(),
+        ));
     }
 
     let claims = URL_SAFE_NO_PAD.decode(parts[1]).map_err(|e| {
         error!("Failed to decode claims: {}", e);
-        AuthError::AuthenticationFailed
+        AuthError::TokenExchangeFailed("Failed to decode claims".to_string())
     })?;
 
     let claims: serde_json::Value = serde_json::from_slice(&claims).map_err(|e| {
         error!("Failed to parse claims: {}", e);
-        AuthError::AuthenticationFailed
+        AuthError::TokenExchangeFailed("Failed to parse claims".to_string())
     })?;
 
     info!("Parsed claims: {:?}", claims);
@@ -346,7 +362,7 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
         .as_str()
         .ok_or_else(|| {
             error!("No 'sub' claim found in token");
-            AuthError::AuthenticationFailed
+            AuthError::TokenExchangeFailed("No 'sub' claim found in token".to_string())
         })
         .map(String::from)
 }

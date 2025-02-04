@@ -13,7 +13,7 @@ use tracing::{error, info};
 
 use crate::server::{
     config::AppState,
-    services::auth::{OIDCConfig, OIDCService, AuthError},
+    services::auth::{AuthError, OIDCConfig, OIDCService},
 };
 
 const SESSION_COOKIE_NAME: &str = "session";
@@ -189,24 +189,22 @@ pub async fn callback(
             info!("Successfully processed user: {:?}", user);
             create_session_and_redirect(user)
         }
-        Err(e) => {
-            match e {
-                AuthError::UserAlreadyExists(user) => {
-                    info!("User already exists, creating session and redirecting");
-                    create_session_and_redirect(user)
-                }
-                other_error => {
-                    error!("Authentication error: {}", &other_error);
-                    (
-                        StatusCode::from(other_error.clone()),
-                        Json(ErrorResponse {
-                            error: format!("Authentication error: {}", other_error),
-                        }),
-                    )
-                        .into_response()
-                }
+        Err(e) => match e {
+            AuthError::UserAlreadyExists(user) => {
+                info!("User already exists, creating session and redirecting");
+                create_session_and_redirect(user)
             }
-        }
+            other_error => {
+                error!("Authentication error: {}", &other_error);
+                (
+                    StatusCode::from(other_error.clone()),
+                    Json(ErrorResponse {
+                        error: format!("Authentication error: {}", other_error),
+                    }),
+                )
+                    .into_response()
+            }
+        },
     }
 }
 
