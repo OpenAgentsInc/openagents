@@ -1,5 +1,4 @@
-mod auth;
-mod user;
+pub mod auth;
+pub mod user;
 
-pub use auth::{callback, login, logout, signup, AppState};
-pub use user::create_user;
+pub use auth::{callback, login, logout, signup, AuthState};
