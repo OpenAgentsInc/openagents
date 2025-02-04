@@ -1,7 +1,8 @@
 use axum::{
-    body::{to_bytes, Body},
+    body::to_bytes,
     http::{Request, StatusCode},
 };
+use bytes::Bytes;
 use serde_json::json;
 use tower::ServiceExt;
 use wiremock::{
@@ -16,6 +17,8 @@ use openagents::server::{
 
 mod common;
 use common::setup_test_db;
+
+const MAX_SIZE: usize = 1024 * 1024; // 1MB limit for response bodies
 
 #[tokio::test]
 async fn test_full_auth_flow() {
@@ -53,7 +56,7 @@ async fn test_full_auth_flow() {
         .oneshot(
             Request::builder()
                 .uri("/auth/login")
-                .body(Body::empty())
+                .body(String::new().into())
                 .unwrap(),
         )
         .await
@@ -73,7 +76,7 @@ async fn test_full_auth_flow() {
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code")
-                .body(Body::empty())
+                .body(String::new().into())
                 .unwrap(),
         )
         .await
@@ -93,7 +96,7 @@ async fn test_full_auth_flow() {
         .oneshot(
             Request::builder()
                 .uri("/auth/logout")
-                .body(Body::empty())
+                .body(String::new().into())
                 .unwrap(),
         )
         .await
@@ -143,7 +146,7 @@ async fn test_invalid_callback() {
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=invalid_code")
-                .body(Body::empty())
+                .body(String::new().into())
                 .unwrap(),
         )
         .await
@@ -151,7 +154,7 @@ async fn test_invalid_callback() {
 
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
 
-    let body = to_bytes(response.into_body()).await.unwrap();
+    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
     let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert!(error_response["error"]
@@ -196,7 +199,7 @@ async fn test_duplicate_login() {
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code")
-                .body(Body::empty())
+                .body(String::new().into())
                 .unwrap(),
         )
         .await
@@ -209,7 +212,7 @@ async fn test_duplicate_login() {
         .oneshot(
             Request::builder()
                 .uri("/auth/callback?code=test_code")
-                .body(Body::empty())
+                .body(String::new().into())
                 .unwrap(),
         )
         .await
