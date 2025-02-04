@@ -14,10 +14,21 @@ pub async fn setup_test_db() -> PgPool {
 
     info!("Connected to database successfully");
 
-    // Create users table if it doesn't exist
+    // Drop existing sequence and table if they exist
+    sqlx::query!("DROP SEQUENCE IF EXISTS users_id_seq CASCADE")
+        .execute(&pool)
+        .await
+        .expect("Failed to drop sequence");
+
+    sqlx::query!("DROP TABLE IF EXISTS users CASCADE")
+        .execute(&pool)
+        .await
+        .expect("Failed to drop table");
+
+    // Create users table with sequence
     sqlx::query!(
         r#"
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE users (
             id SERIAL PRIMARY KEY,
             scramble_id TEXT NOT NULL UNIQUE,
             metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
