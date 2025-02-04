@@ -13,7 +13,7 @@ use tracing::{error, info};
 
 use crate::server::{
     config::AppState,
-    services::auth::{AuthError, OIDCConfig, OIDCService},
+    services::auth::{OIDCConfig, OIDCService},
 };
 
 const SESSION_COOKIE_NAME: &str = "session";
@@ -207,9 +207,10 @@ pub async fn callback(
             (headers, Redirect::temporary("/")).into_response()
         }
         Err(e) => {
-            error!("Authentication error: {}", e);
+            error!("Authentication error: {}", &e);
+            let status = StatusCode::from(e.clone());
             (
-                StatusCode::from(e),
+                status,
                 Json(ErrorResponse {
                     error: format!("Authentication error: {}", e),
                 }),
