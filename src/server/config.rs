@@ -119,13 +119,25 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         .route("/repomap", get(routes::repomap))
         .route("/cota", get(routes::cota))
         // Auth pages
-        .route("/login", get(routes::login))
-        .route("/signup", get(routes::signup))
+        .route("/login", get(server::handlers::auth::login::login_page))
+        .route("/signup", get(server::handlers::auth::signup::signup_page))
         // Auth routes
-        .route("/auth/login", get(server::handlers::auth::login))
-        .route("/auth/signup", post(server::handlers::auth::handle_signup))
-        .route("/auth/callback", get(server::handlers::auth::callback))
-        .route("/auth/logout", get(server::handlers::auth::logout))
+        .route(
+            "/auth/login",
+            post(server::handlers::auth::login::handle_login),
+        )
+        .route(
+            "/auth/signup",
+            post(server::handlers::auth::signup::handle_signup),
+        )
+        .route(
+            "/auth/callback",
+            get(server::handlers::auth::callback),
+        )
+        .route(
+            "/auth/logout",
+            get(server::handlers::auth::session::clear_session_and_redirect),
+        )
         // Repomap routes
         .route("/repomap/generate", post(routes::generate_repomap))
         // Static files
