@@ -41,7 +41,7 @@ pub fn create_session_and_redirect(user: User) -> Response {
     (headers, Redirect::temporary("/")).into_response()
 }
 
-pub fn clear_session_and_redirect() -> Response {
+pub async fn clear_session_and_redirect() -> Response {
     info!("Processing logout request");
 
     // Create cookie that will expire immediately
