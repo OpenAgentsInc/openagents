@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-02-02 21:33:09
+Generated on: 2025-02-04 20:07:26
 
 ### Structure
 
@@ -46,6 +46,8 @@ Generated on: 2025-02-02 21:33:09
 |   |   |-- 20250202-1640.md
 |   |   |-- 20250202-1720.md
 |   |   `-- 20250202-1730.md
+|   |-- transcripts/
+|   |   `-- 20250203-1157-ep-157.md
 |   |-- adding-tools.md
 |   |-- chat_template.md
 |   |-- configuration.md
@@ -55,7 +57,8 @@ Generated on: 2025-02-02 21:33:09
 |   |-- repomap_generation.md
 |   |-- solver.md
 |   |-- templates.md
-|   `-- test-failures-analysis.md
+|   |-- test-failures-analysis.md
+|   `-- transcribe.md
 |-- migrations/
 |   |-- 20240126000000_create_chat_tables.sql
 |   |-- 20250110000000_initial.sql
@@ -80,7 +83,8 @@ Generated on: 2025-02-02 21:33:09
 |   |   |-- generate-repomap.rs
 |   |   |-- repo.rs
 |   |   |-- solver.rs
-|   |   `-- solver_orig.rs
+|   |   |-- solver_orig.rs
+|   |   `-- transcribe.rs
 |   |-- repo/
 |   |   |-- analysis.rs
 |   |   |-- git.rs
@@ -89,7 +93,12 @@ Generated on: 2025-02-02 21:33:09
 |   |   `-- types.rs
 |   |-- server/
 |   |   |-- handlers/
-|   |   |   |-- auth.rs
+|   |   |   |-- auth/
+|   |   |   |   |-- forms.rs
+|   |   |   |   |-- login.rs
+|   |   |   |   |-- mod.rs
+|   |   |   |   |-- session.rs
+|   |   |   |   `-- signup.rs
 |   |   |   |-- mod.rs
 |   |   |   `-- user.rs
 |   |   |-- models/
@@ -208,6 +217,7 @@ Generated on: 2025-02-02 21:33:09
 |   |   |-- chat.html
 |   |   |-- coming-soon.html
 |   |   |-- company.html
+|   |   |-- cota.html
 |   |   |-- home.html
 |   |   |-- login.html
 |   |   |-- onyx.html
@@ -263,5 +273,5 @@ Generated on: 2025-02-02 21:33:09
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-38 directories, 219 files
+40 directories, 227 files
 ```
