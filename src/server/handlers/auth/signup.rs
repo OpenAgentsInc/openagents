@@ -12,7 +12,7 @@ use super::{forms::SignupForm, ErrorResponse};
 
 pub async fn signup_page() -> Response {
     info!("Serving signup page");
-    super::session::render_template("pages/signup.html").into_response()
+    super::session::render_signup_template()
 }
 
 pub async fn handle_signup(
