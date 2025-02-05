@@ -19,7 +19,7 @@ pub async fn handle_signup(
     State(state): State<AppState>,
     Form(form): Form<SignupForm>,
 ) -> Response {
-    info!("Received signup form: {:?}", form);
+    info!("Received signup form");
 
     // Basic validation
     if !form.terms_accepted {
