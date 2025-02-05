@@ -16,7 +16,7 @@ pub async fn login_page() -> Response {
 }
 
 pub async fn handle_login(State(state): State<AppState>, Form(form): Form<LoginForm>) -> Response {
-    info!("Received login form: {:?}", form);
+    info!("Received login form");
 
     // Validate form input
     if let Err(e) = form.validate() {
