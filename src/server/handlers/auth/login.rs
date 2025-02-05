@@ -15,22 +15,13 @@ pub async fn login_page() -> Response {
     super::session::render_login_template()
 }
 
-pub async fn handle_login(
-    State(state): State<AppState>,
-    Form(form): Form<LoginForm>,
-) -> Response {
+pub async fn handle_login(State(state): State<AppState>, Form(form): Form<LoginForm>) -> Response {
     info!("Received login form: {:?}", form);
 
     // Validate form input
     if let Err(e) = form.validate() {
         error!("Login form validation failed: {}", e);
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: e,
-            }),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e })).into_response();
     }
 
     // Generate login URL
@@ -52,10 +43,7 @@ pub async fn handle_login(
     }
 }
 
-pub async fn handle_login_callback(
-    State(state): State<AppState>,
-    code: String,
-) -> Response {
+pub async fn handle_login_callback(State(state): State<AppState>, code: String) -> Response {
     info!("Processing login callback with code length: {}", code.len());
 
     match state.auth_state.service.login(code).await {

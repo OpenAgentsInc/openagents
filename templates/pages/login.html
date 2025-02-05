@@ -42,7 +42,9 @@
         id="loading-spinner"
         class="hidden fixed top-0 left-0 right-0 bottom-0 w-full h-screen z-50 overflow-hidden bg-gray-700 opacity-75 flex flex-col items-center justify-center"
       >
-        <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+        <div
+          class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"
+        ></div>
         <h2 class="text-center text-white text-xl font-semibold">Loading...</h2>
         <p class="w-1/3 text-center text-white">This may take a few seconds</p>
       </div>
@@ -98,44 +100,42 @@
         }
 
         // Form submission handler
-        document.getElementById("login-form").addEventListener("submit", async function(e) {
-          e.preventDefault();
-          clearAuthError();
-          showLoading();
+        document
+          .getElementById("login-form")
+          .addEventListener("submit", async function (e) {
+            e.preventDefault();
+            clearAuthError();
+            showLoading();
 
-          const formData = new FormData(this);
-          try {
-            const response = await fetch("/auth/login", {
-              method: "POST",
-              body: formData,
-            });
+            const formData = new FormData(this);
+            try {
+              const response = await fetch("/auth/login", {
+                method: "POST",
+                body: formData,
+              });
 
-            if (response.ok) {
-              // If response is a redirect, follow it
-              const location = response.headers.get("Location");
-              if (location) {
-                window.location.href = location;
-                return;
+              if (response.ok) {
+                // If response is a redirect, follow it
+                const location = response.headers.get("Location");
+                if (location) {
+                  window.location.href = location;
+                  return;
+                }
+                // Otherwise reload the page
+                window.location.reload();
+              } else {
+                const data = await response.json();
+                handleAuthError(data.error);
               }
-              // Otherwise reload the page
-              window.location.reload();
-            } else {
-              const data = await response.json();
-              handleAuthError(data.error);
+            } catch (error) {
+              handleAuthError("network_error");
+            } finally {
+              hideLoading();
             }
-          } catch (error) {
-            handleAuthError("network_error");
-          } finally {
-            hideLoading();
-          }
-        });
+          });
       </script>
 
-      <form
-        id="login-form"
-        class="space-y-6"
-        method="POST"
-      >
+      <form id="login-form" class="space-y-6" method="POST">
         <div>
           <label for="email" class="block text-sm font-medium text-gray-700">
             Email address
@@ -227,20 +227,28 @@
 </div>
 
 <style>
-.loader {
-  border-top-color: #3498db;
-  -webkit-animation: spinner 1.5s linear infinite;
-  animation: spinner 1.5s linear infinite;
-}
+  .loader {
+    border-top-color: #3498db;
+    -webkit-animation: spinner 1.5s linear infinite;
+    animation: spinner 1.5s linear infinite;
+  }
 
-@-webkit-keyframes spinner {
-  0% { -webkit-transform: rotate(0deg); }
-  100% { -webkit-transform: rotate(360deg); }
-}
+  @-webkit-keyframes spinner {
+    0% {
+      -webkit-transform: rotate(0deg);
+    }
+    100% {
+      -webkit-transform: rotate(360deg);
+    }
+  }
 
-@keyframes spinner {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
+  @keyframes spinner {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
 </style>
 {% endblock %}

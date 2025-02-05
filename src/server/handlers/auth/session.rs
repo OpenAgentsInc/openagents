@@ -1,3 +1,4 @@
+use askama::Template;
 use axum::{
     http::{header::SET_COOKIE, HeaderMap},
     response::{Html, IntoResponse, Redirect, Response},
@@ -5,7 +6,6 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use time::Duration;
 use tracing::info;
-use askama::Template;
 
 use crate::server::models::user::User;
 

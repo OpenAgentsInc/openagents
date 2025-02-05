@@ -25,7 +25,11 @@ pub struct SignupForm {
 pub struct LoginForm {
     pub email: String,
     pub password: String,
-    #[serde(rename = "remember-me", deserialize_with = "deserialize_checkbox", default)]
+    #[serde(
+        rename = "remember-me",
+        deserialize_with = "deserialize_checkbox",
+        default
+    )]
     pub remember_me: bool,
 }
 

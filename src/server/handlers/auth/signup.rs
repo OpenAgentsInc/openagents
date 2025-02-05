@@ -66,11 +66,11 @@ pub async fn handle_signup(
     }
 }
 
-pub async fn handle_signup_callback(
-    State(state): State<AppState>,
-    code: String,
-) -> Response {
-    info!("Processing signup callback with code length: {}", code.len());
+pub async fn handle_signup_callback(State(state): State<AppState>, code: String) -> Response {
+    info!(
+        "Processing signup callback with code length: {}",
+        code.len()
+    );
 
     match state.auth_state.service.signup(code).await {
         Ok(user) => {
