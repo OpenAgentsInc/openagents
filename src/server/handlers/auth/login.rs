@@ -33,8 +33,8 @@ pub async fn handle_login(
             .into_response();
     }
 
-    // Generate login URL with email
-    match state.auth_state.service.authorization_url_for_login(&form.email) {
+    // Generate login URL
+    match state.auth_state.service.authorization_url_for_login() {
         Ok(auth_url) => {
             info!("Redirecting to login URL: {}", auth_url);
             Redirect::temporary(&auth_url).into_response()
