@@ -92,14 +92,15 @@ impl OIDCService {
         Self { config, pool }
     }
 
-    pub fn authorization_url_for_login(&self) -> Result<String, AuthError> {
-        info!("Generating login authorization URL");
-        let url = format!(
+    pub fn authorization_url_for_login(&self, email: &str) -> Result<String, AuthError> {
+        info!("Generating login authorization URL for email: {}", email);
+        let mut url = format!(
             "{}?client_id={}&redirect_uri={}&response_type=code&scope=openid&flow=login",
             self.config.auth_url,
             self.config.client_id,
             urlencoding::encode(&self.config.redirect_uri)
         );
+        url.push_str(&format!("&email={}", urlencoding::encode(email)));
         info!("Generated login URL: {}", url);
         Ok(url)
     }
