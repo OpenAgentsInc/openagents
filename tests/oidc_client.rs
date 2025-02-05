@@ -120,8 +120,10 @@ async fn test_full_auth_flow() {
         .clone()
         .oneshot(
             Request::builder()
+                .method("POST")
                 .uri("/auth/login")
-                .body(Body::empty())
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(Body::from("email=test%40example.com&password=password123&remember-me=true"))
                 .unwrap(),
         )
         .await
