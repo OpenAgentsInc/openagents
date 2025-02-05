@@ -206,17 +206,32 @@ src/server/config.rs:
 │fn configure_app
 │fn configure_app_with_config
 
-src/server/handlers/auth.rs:
+src/server/handlers/auth/forms.rs:
 │fn deserialize_checkbox
+│fn validate
+
+src/server/handlers/auth/login.rs:
+│fn login_page
+│fn handle_login
+│fn handle_login_callback
+
+src/server/handlers/auth/mod.rs:
 │fn new
-│fn login
-│fn signup
-│fn handle_signup
+│fn handle_auth_error
 │fn callback
-│fn create_session_and_redirect
-│fn logout
 │const SESSION_COOKIE_NAME
 │const SESSION_DURATION_DAYS
+
+src/server/handlers/auth/session.rs:
+│fn create_session_and_redirect
+│fn clear_session_and_redirect
+│fn render_login_template
+│fn render_signup_template
+
+src/server/handlers/auth/signup.rs:
+│fn signup_page
+│fn handle_signup
+│fn handle_signup_callback
 
 src/server/handlers/user.rs:
 │fn create_user
@@ -607,14 +622,22 @@ templates/pages/company.html:
 templates/pages/login.html:
 │#id: auth-error
 │#id: auth-error-message
+│#id: loading-spinner
+│#id: login-form
 │#id: email
 │#id: password
 │#id: remember-me
 │const errorDiv
 │const errorMessage
 │const errorDiv
+│const spinner
+│const spinner
 │const errorMessages
 │const message
+│const formData
+│const response
+│const location
+│const data
 
 templates/pages/repomap.html:
 │#id: repo_url
