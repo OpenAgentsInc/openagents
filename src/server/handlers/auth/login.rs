@@ -12,7 +12,7 @@ use super::{forms::LoginForm, ErrorResponse};
 
 pub async fn login_page() -> Response {
     info!("Serving login page");
-    super::session::render_template("pages/login.html").into_response()
+    super::session::render_login_template()
 }
 
 pub async fn handle_login(
