@@ -25,7 +25,11 @@ pub async fn handle_login(State(state): State<AppState>, Form(form): Form<LoginF
     }
 
     // Generate login URL with email
-    match state.auth_state.service.authorization_url_for_login(&form.email) {
+    match state
+        .auth_state
+        .service
+        .authorization_url_for_login(&form.email)
+    {
         Ok(auth_url) => {
             info!("Redirecting to login URL: {}", auth_url);
             Redirect::temporary(&auth_url).into_response()
