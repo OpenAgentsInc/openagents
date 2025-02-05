@@ -1,6 +1,6 @@
 use axum::{
     http::{header::SET_COOKIE, HeaderMap},
-    response::{IntoResponse, Redirect, Response},
+    response::{Html, IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use time::Duration;
@@ -9,6 +9,18 @@ use tracing::info;
 use crate::server::models::user::User;
 
 use super::SESSION_COOKIE_NAME;
+
+#[derive(askama::Template)]
+#[template(path = "pages/login.html")]
+struct LoginTemplate {
+    title: String,
+}
+
+#[derive(askama::Template)]
+#[template(path = "pages/signup.html")]
+struct SignupTemplate {
+    title: String,
+}
 
 pub fn create_session_and_redirect(user: User) -> Response {
     let cookie = Cookie::build((SESSION_COOKIE_NAME, user.scramble_id))
@@ -49,9 +61,16 @@ pub fn clear_session_and_redirect() -> Response {
     (headers, Redirect::temporary("/")).into_response()
 }
 
-// Helper function to render templates
-pub fn render_template(template: &str) -> String {
-    // TODO: Implement actual template rendering
-    // For now, just return a placeholder
-    format!("Template: {}", template)
+pub fn render_login_template() -> Response {
+    let template = LoginTemplate {
+        title: "Log in".to_string(),
+    };
+    Html(template.render().unwrap()).into_response()
+}
+
+pub fn render_signup_template() -> Response {
+    let template = SignupTemplate {
+        title: "Sign up".to_string(),
+    };
+    Html(template.render().unwrap()).into_response()
 }
