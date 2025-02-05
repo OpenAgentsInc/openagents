@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -67,4 +67,52 @@ pub fn handle_auth_error(error: AuthError) -> Response {
         }),
     )
         .into_response()
+}
+
+// Callback handler
+pub async fn callback(
+    State(state): State<AppState>,
+    Query(params): Query<CallbackParams>,
+) -> Response {
+    info!("Received callback with code length: {}", params.code.len());
+    info!("Flow parameter: {:?}", params.flow);
+
+    // Determine if this is a signup flow
+    let is_signup = params.flow.as_deref() == Some("signup");
+    info!(
+        "Callback flow: {}",
+        if is_signup { "signup" } else { "login" }
+    );
+
+    // Use appropriate service method based on flow
+    let result = if is_signup {
+        info!("Processing as signup flow");
+        state.auth_state.service.signup(params.code).await
+    } else {
+        info!("Processing as login flow");
+        state.auth_state.service.login(params.code).await
+    };
+
+    match result {
+        Ok(user) => {
+            info!("Successfully processed user: {:?}", user);
+            create_session_and_redirect(user)
+        }
+        Err(e) => match e {
+            AuthError::UserAlreadyExists(user) => {
+                info!("User already exists, creating session and redirecting");
+                create_session_and_redirect(user)
+            }
+            other_error => {
+                error!("Authentication error: {}", &other_error);
+                (
+                    StatusCode::from(other_error.clone()),
+                    Json(ErrorResponse {
+                        error: format!("Authentication error: {}", other_error),
+                    }),
+                )
+                    .into_response()
+            }
+        },
+    }
 }
