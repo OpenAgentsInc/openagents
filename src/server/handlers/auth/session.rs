@@ -5,18 +5,19 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use time::Duration;
 use tracing::info;
+use askama::Template;
 
 use crate::server::models::user::User;
 
 use super::SESSION_COOKIE_NAME;
 
-#[derive(askama::Template)]
+#[derive(Template)]
 #[template(path = "pages/login.html")]
 struct LoginTemplate {
     title: String,
 }
 
-#[derive(askama::Template)]
+#[derive(Template)]
 #[template(path = "pages/signup.html")]
 struct SignupTemplate {
     title: String,
