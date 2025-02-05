@@ -46,6 +46,15 @@ pub struct SignupForm {
     terms_accepted: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct LoginForm {
+    email: String,
+    password: String,
+    #[serde(rename = "remember-me", deserialize_with = "deserialize_checkbox", default)]
+    remember_me: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     error: String,
@@ -83,6 +92,35 @@ pub async fn login(State(state): State<AppState>) -> Response {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: format!("Failed to generate authorization URL: {}", e),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+pub async fn handle_login(
+    State(state): State<AppState>,
+    Form(form): Form<LoginForm>,
+) -> Response {
+    info!("Received login form: {:?}", form);
+
+    // Generate login URL with email
+    match state
+        .auth_state
+        .service
+        .authorization_url_for_login_with_email(&form.email)
+    {
+        Ok(auth_url) => {
+            info!("Redirecting to login URL: {}", auth_url);
+            Redirect::temporary(&auth_url).into_response()
+        }
+        Err(e) => {
+            error!("Failed to generate auth URL: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("Internal server error: {}", e),
                 }),
             )
                 .into_response()
