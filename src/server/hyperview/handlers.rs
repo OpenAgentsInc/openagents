@@ -10,7 +10,8 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
         .body(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
 <doc xmlns="https://hyperview.org/hyperview">
   <screen>
     <styles>
@@ -18,7 +19,7 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
       <style id="container" flex="1" justifyContent="flex-end" paddingBottom="24" />
       <style id="header" marginLeft="24" marginBottom="16" />
       <style id="headerText" color="#808080" fontSize="16" />
-      <style id="inputContainer" flexDirection="row" alignItems="center" marginHorizontal="24" borderWidth="1" borderColor="#808080" borderRadius="8" paddingHorizontal="12" paddingVertical="8" />
+      <style id="inputContainer" flexDirection="row" alignItems="center" marginLeft="24" marginRight="24" borderWidth="1" borderColor="#808080" borderRadius="8" paddingLeft="12" paddingRight="12" paddingTop="8" paddingBottom="8" />
       <style id="input" flex="1" color="white" fontSize="16" />
       <style id="submitButton" width="24" height="24" justifyContent="center" alignItems="center" marginLeft="8" />
       <style id="submitArrow" color="#808080" fontSize="24" />
@@ -33,7 +34,7 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
           <view style="inputContainer">
             <text-field 
               style="input"
-              placeholder="Ask anything"
+              placeholder="Ask anything..."
               placeholderTextColor="#808080"
             />
             <view style="submitButton">
@@ -45,8 +46,8 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
     </body>
   </screen>
 </doc>"#
-                .to_string()
-                .into(),
+            )
+            .into(),
         )
         .unwrap()
 }
