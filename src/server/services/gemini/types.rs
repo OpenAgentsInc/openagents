@@ -3,16 +3,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GeminiRequest {
     pub contents: Vec<Content>,
-    pub safety_settings: Vec<SafetySetting>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub safety_settings: Option<Vec<SafetySetting>>,
     pub generation_config: GenerationConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Content {
     pub parts: Vec<Part>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Part {
     pub text: String,
 }
@@ -42,13 +43,20 @@ pub struct GeminiResponse {
 pub struct Candidate {
     pub content: Content,
     pub finish_reason: String,
-    pub safety_ratings: Vec<SafetyRating>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub safety_ratings: Option<Vec<SafetyRating>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SafetyRating {
     pub category: String,
     pub probability: String,
+}
+
+#[derive(Debug)]
+pub enum StreamUpdate {
+    Content(String),
+    Done,
 }
 
 impl Default for GenerationConfig {
@@ -68,7 +76,7 @@ impl Default for GeminiRequest {
     fn default() -> Self {
         Self {
             contents: vec![],
-            safety_settings: vec![],
+            safety_settings: None,
             generation_config: GenerationConfig::default(),
         }
     }
