@@ -1,10 +1,10 @@
-use crate::solver::json::{fix_common_json_issues, is_valid_json_string};
+use crate::solver::json::fix_common_json_issues;
 use crate::solver::types::Change;
-use crate::solver::changes::types::{ChangeBlock, ChangeResponse};
+use crate::solver::changes::types::ChangeResponse;
 use anyhow::{anyhow, Result};
 use tracing::{debug, error, info};
 
-pub fn generate_changes(
+pub async fn generate_changes(
     title: &str,
     description: &str,
     response: &str,
@@ -79,26 +79,20 @@ fn is_common_word(word: &str) -> bool {
 
 fn process_change_response(
     response: ChangeResponse,
-    title: &str,
-    description: &str,
+    _title: &str,
+    _description: &str,
 ) -> Result<Vec<Change>> {
     let mut changes = Vec::new();
 
     for block in response.changes {
-        let change = Change::with_reason(
-            block.path,
-            block.search,
-            block.replace,
-            block.reason,
-        );
-
-        match change.validate() {
-            Ok(_) => changes.push(change),
-            Err(e) => {
-                error!("Invalid change block: {}", e);
-                continue;
-            }
-        }
+        let change = Change {
+            path: block.path,
+            search: block.search,
+            replace: block.replace,
+            reason: Some(block.reason),
+            analysis: String::new(),
+        };
+        changes.push(change);
     }
 
     if changes.is_empty() {
@@ -127,19 +121,20 @@ mod tests {
             ]
         }"#;
 
-        let changes = generate_changes(title, description, response).unwrap();
+        let changes = tokio_test::block_on(generate_changes(title, description, response)).unwrap();
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].path, "src/auth.rs");
     }
 
     #[test]
     fn test_validate_changes_relevance() {
-        let change = Change::with_reason(
-            "test.rs".to_string(),
-            "old".to_string(),
-            "new".to_string(),
-            "Fix login bug".to_string(),
-        );
+        let change = Change {
+            path: "test.rs".to_string(),
+            search: "old".to_string(),
+            replace: "new".to_string(),
+            reason: Some("Fix login bug".to_string()),
+            analysis: String::new(),
+        };
 
         let relevant = validate_changes_relevance(
             &[change],
