@@ -150,7 +150,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         .route("/auth/callback", get(server::handlers::callback))
         .route(
             "/auth/logout",
-            get(server::handlers::clear_session_and_redirect),
+            get(server::handlers::auth::clear_session_and_redirect),
         )
         // GitHub auth routes
         .route(
