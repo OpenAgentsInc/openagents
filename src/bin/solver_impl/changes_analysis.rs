@@ -12,16 +12,14 @@ pub async fn analyze_changes_with_deepseek(
 ) -> Result<(String, String)> {
     info!("Starting DeepSeek changes analysis...");
 
-    // Collect all file contents
     let mut file_contents = String::new();
-    for file in &state.files {
-        let path = repo_dir.join(&file.path);
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            file_contents.push_str(&format!("\nFile: {}\nContent:\n{}\n", file.path, content));
+    for (path, file) in &state.files {
+        let abs_path = repo_dir.join(path);
+        if let Ok(content) = std::fs::read_to_string(&abs_path) {
+            file_contents.push_str(&format!("\nFile: {}\nContent:\n{}\n", path, content));
         }
     }
 
-    // Create the prompt for DeepSeek
     let prompt = format!(
         "Analyze these files and suggest specific code changes to implement the following issue:\n\n\
         Issue Analysis:\n{}\n\n\
@@ -34,7 +32,6 @@ pub async fn analyze_changes_with_deepseek(
         file_contents
     );
 
-    // Get streaming response from DeepSeek
     let mut response = String::new();
     let mut reasoning = String::new();
 
