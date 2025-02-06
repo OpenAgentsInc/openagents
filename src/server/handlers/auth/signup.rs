@@ -7,7 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::server::{config::AppState, models::user::User};
+use crate::server::config::AppState;
 
 pub async fn signup_page() -> Response {
     super::session::render_signup_template().await
