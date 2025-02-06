@@ -1,9 +1,9 @@
 use anyhow::{Context as _, Result};
 use openagents::server::services::github_issue::GitHubService;
 use openagents::solver::state::{SolverState, SolverStatus};
-use std::collections::HashSet;
-use tracing::{debug, info};
+use tracing::debug;
 
+mod solver_impl;
 use solver_impl::{files::identify_files, issue::handle_issue};
 
 #[derive(Debug)]
@@ -15,13 +15,32 @@ pub struct Args {
 
 impl Args {
     pub fn parse() -> Result<Self> {
-        let mut args = pico_args::Arguments::from_env();
+        let mut args = std::env::args().skip(1);
+        let mut issue = None;
+        let mut repo = None;
+        let mut live = false;
+
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--issue" => {
+                    if let Some(val) = args.next() {
+                        issue = Some(val.parse()?);
+                    }
+                }
+                "--repo" => {
+                    if let Some(val) = args.next() {
+                        repo = Some(val);
+                    }
+                }
+                "--live" => live = true,
+                _ => {}
+            }
+        }
+
         Ok(Args {
-            issue: args.value_from_str("--issue")?,
-            repo: args
-                .value_from_str("--repo")
-                .unwrap_or_else(|_| "OpenAgentsInc/openagents".to_string()),
-            live: args.contains("--live"),
+            issue: issue.context("--issue argument is required")?,
+            repo: repo.unwrap_or_else(|| "OpenAgentsInc/openagents".to_string()),
+            live,
         })
     }
 }
@@ -41,7 +60,7 @@ async fn main() -> Result<()> {
 
     // Initialize GitHub service
     let github_token = std::env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
-    let github = GitHubService::new(&github_token);
+    let github = GitHubService::new(Some(github_token))?;
 
     // Parse owner/repo
     let (owner, repo) = args
