@@ -1,7 +1,6 @@
 use anyhow::Result;
-use openagents::server::services::github_issue::GitHubService;
+use openagents::server::services::github_issue::{GitHubService, GitHubIssue, GitHubComment};
 use octocrab::models::issues::{Issue, Comment};
-use openagents::server::services::github_issue::types::{GitHubIssue, GitHubComment};
 
 pub async fn handle_issue(
     github: &GitHubService,
