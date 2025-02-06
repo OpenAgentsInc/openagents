@@ -192,7 +192,7 @@ impl ChatHandler {
 
             while let Some(update) = stream.recv().await {
                 match update {
-                    crate::server::services::deepseek::StreamUpdate::Content(content) => {
+                    StreamUpdate::Content(content) => {
                         full_response.push_str(&content);
                         let response_json = json!({
                             "type": "chat",
@@ -204,18 +204,7 @@ impl ChatHandler {
                             .send_to(conn_id, &response_json.to_string())
                             .await?;
                     }
-                    crate::server::services::deepseek::StreamUpdate::Reasoning(reasoning) => {
-                        let reasoning_json = json!({
-                            "type": "chat",
-                            "content": &reasoning,
-                            "sender": "ai",
-                            "status": "thinking"
-                        });
-                        self.ws_state
-                            .send_to(conn_id, &reasoning_json.to_string())
-                            .await?;
-                    }
-                    crate::server::services::deepseek::StreamUpdate::Done => {
+                    StreamUpdate::Done => {
                         let response_json = json!({
                             "type": "chat",
                             "content": full_response,
@@ -227,7 +216,6 @@ impl ChatHandler {
                             .await?;
                         break;
                     }
-                    _ => {}
                 }
             }
         }
