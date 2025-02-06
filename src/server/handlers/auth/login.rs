@@ -7,7 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::server::{config::AppState, models::user::User};
+use crate::server::config::AppState;
 
 pub async fn login_page() -> Response {
     super::session::render_login_template().await
