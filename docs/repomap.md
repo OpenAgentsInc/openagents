@@ -9,6 +9,8 @@ docs/configuration.md:
 
 docs/hierarchy.md:
 
+docs/hyperview.md:
+
 docs/local-repos.md:
 
 docs/repomap.md:
@@ -235,6 +237,14 @@ src/server/handlers/auth/signup.rs:
 
 src/server/handlers/user.rs:
 │fn create_user
+
+src/server/hyperview/handlers.rs:
+│#id: text
+│#id: textstyle
+│fn hello_world
+
+src/server/hyperview/routes.rs:
+│fn hyperview_routes
 
 src/server/models/chat.rs:
 │fn new
