@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-02-04 20:07:26
+Generated on: 2025-02-05 21:53:43
 
 ### Structure
 
@@ -120,6 +120,10 @@ Generated on: 2025-02-04 20:07:26
 |   |   |   |-- gateway/
 |   |   |   |   |-- mod.rs
 |   |   |   |   |-- streaming.rs
+|   |   |   |   `-- types.rs
+|   |   |   |-- gemini/
+|   |   |   |   |-- mod.rs
+|   |   |   |   |-- service.rs
 |   |   |   |   `-- types.rs
 |   |   |   |-- github_issue/
 |   |   |   |   |-- conversions.rs
@@ -243,6 +247,7 @@ Generated on: 2025-02-04 20:07:26
 |   |-- chat_router_integration.rs
 |   |-- deepseek.rs
 |   |-- gateway.rs
+|   |-- gemini.rs
 |   |-- health_check.rs
 |   |-- mod.rs
 |   |-- model_router.rs
@@ -273,5 +278,5 @@ Generated on: 2025-02-04 20:07:26
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-40 directories, 227 files
+41 directories, 231 files
 ```
