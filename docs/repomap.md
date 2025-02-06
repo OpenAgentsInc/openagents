@@ -84,13 +84,8 @@ src/bin/repo.rs:
 │fn main
 
 src/bin/solver.rs:
-│fn new
-│fn get_logs
-│fn write
-│fn flush
-│fn make_writer
+│fn parse
 │fn main
-│const OLLAMA_URL
 
 src/bin/solver_impl/changes.rs:
 │fn generate_changes
@@ -111,6 +106,9 @@ src/bin/solver_impl/issue.rs:
 
 src/bin/solver_impl/pre_analysis.rs:
 │fn analyze_with_deepseek
+
+src/bin/solver_impl/types.rs:
+│fn from
 
 src/bin/solver_orig.rs:
 │fn main
@@ -290,6 +288,17 @@ src/server/services/gateway/mod.rs:
 │fn chat
 │fn chat_stream
 
+src/server/services/gemini/service.rs:
+│fn new
+│fn analyze_files
+│fn analyze_files_stream
+│const GEMINI_API_URL
+│const GEMINI_STREAM_URL
+
+src/server/services/gemini/types.rs:
+│fn default
+│fn default
+
 src/server/services/github_issue/conversions.rs:
 │fn try_from
 │fn try_from
@@ -384,24 +393,17 @@ src/server/ws/types.rs:
 │fn fmt
 
 src/solver/changes/apply.rs:
-│fn apply_change_to_file
 │fn apply_changes
-│fn test_apply_change_to_file
-│fn test_apply_changes
 
 src/solver/changes/generation.rs:
-│fn extract_json_from_markdown
-│fn parse_llm_response
+│fn generate_changes
 │fn validate_changes_relevance
 │fn extract_keywords
 │fn is_common_word
-│fn generate_changes
-│fn add
-│fn add
-│fn test_extract_json_from_markdown
+│fn process_change_response
+│fn test_generate_changes
 │fn test_validate_changes_relevance
 │fn test_extract_keywords
-│const MAX_RETRIES
 
 src/solver/changes/parsing.rs:
 │fn parse_search_replace
@@ -413,29 +415,14 @@ src/solver/changes/tests.rs:
 │fn test_parse_search_replace_multiple
 │fn test_parse_search_replace_invalid
 
-src/solver/changes/types.rs:
-│fn validate
-│fn test_change_block_validation
-
 src/solver/config.rs:
 │fn load
 
 src/solver/context.rs:
 │fn new
-│fn new_with_dir
-│fn with_github
-│fn create_branch
-│fn create_pull_request
-│fn generate_file_list
+│fn analyze_files
 │fn generate_changes
-│fn parse_changes
 │fn apply_changes
-│fn cleanup
-│fn test_apply_changes
-│fn test
-│fn test
-│fn test
-│fn test_cleanup
 
 src/solver/display.rs:
 │fn print_colored
@@ -474,30 +461,20 @@ src/solver/json.rs:
 src/solver/planning.rs:
 │fn new
 │fn validate_llm_response
-│fn generate_prompt
-│fn retry_with_feedback
 │fn generate_plan
-│fn generate_plan_sync
+│fn generate_pr_title
 │fn test_validate_llm_response
-│fn generate_pr_title
-│fn generate_pr_title
-│fn test_something
-│fn test_something_new
-│fn test_generate_prompt
-│const MAX_RETRIES
+│fn test_generate_pr_title
 
 src/solver/solution.rs:
 │fn handle_solution
+│fn test_handle_solution
 
 src/solver/state.rs:
 │fn new
 │fn add_file
 │fn update_status
 │fn add_change
-│fn test_solver_state_creation
-│fn test_add_file
-│fn test_add_change
-│fn test_update_status
 
 src/solver/streaming.rs:
 │fn handle_plan_stream
@@ -505,13 +482,9 @@ src/solver/streaming.rs:
 src/solver/types.rs:
 │fn new
 │fn with_reason
-│fn validate
+│fn new
+│fn add_change
 │fn eq
-│fn validate_pr_title
-│fn test_change_with_reason
-│fn test_validate_pr_title
-│fn test_change_validation
-│fn test_change_error_equality
 
 tailwind.config.cjs:
 │const 
@@ -725,6 +698,9 @@ tests/gateway.rs:
 │fn test_openrouter_chat_stream
 │fn test_openrouter_with_config
 │fn test_openrouter_error_handling
+
+tests/gemini.rs:
+│fn test_gemini_file_analysis
 
 tests/health_check.rs:
 │fn health_check_works
