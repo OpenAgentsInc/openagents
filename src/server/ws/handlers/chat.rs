@@ -1,11 +1,13 @@
 use super::MessageHandler;
 use crate::server::services::github_issue::GitHubService;
+use crate::server::services::gemini::service::GeminiService;
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
 use serde_json::json;
 use std::error::Error;
 use std::sync::Arc;
 use tracing::{error, info};
+use regex::Regex;
 
 pub struct ChatHandler {
     ws_state: Arc<WebSocketState>,
@@ -38,95 +40,78 @@ impl ChatHandler {
             .send_to(conn_id, &typing_json.to_string())
             .await?;
 
-        // Get routing decision
-        let (decision, tool_calls) = self
-            .ws_state
-            .model_router
-            .route_message(content.clone())
-            .await?;
+        // Check if it's a GitHub issue URL
+        let re = Regex::new(r"https://github\.com/([^/]+)/([^/]+)/issues/(\d+)").unwrap();
+        if let Some(captures) = re.captures(&content) {
+            let owner = captures.get(1).unwrap().as_str();
+            let repo = captures.get(2).unwrap().as_str();
+            let issue_number = captures.get(3).unwrap().as_str().parse::<i32>()?;
 
-        // Send routing status
-        let routing_json = json!({
-            "type": "chat",
-            "content": decision.reasoning,
-            "sender": "ai",
-            "status": "thinking"
-        });
-        self.ws_state
-            .send_to(conn_id, &routing_json.to_string())
-            .await?;
+            // Send status update
+            let status_json = json!({
+                "type": "chat",
+                "content": format!("Fetching GitHub issue #{} from {}/{}", issue_number, owner, repo),
+                "sender": "ai",
+                "status": "tool_calls"
+            });
+            self.ws_state
+                .send_to(conn_id, &status_json.to_string())
+                .await?;
 
-        if decision.needs_tool {
-            // Handle tool execution
-            if let Some(tool_calls) = tool_calls {
-                for tool_call in tool_calls {
-                    if tool_call.function.name == "read_github_issue" {
-                        // Parse tool call arguments
-                        let args: serde_json::Value =
-                            serde_json::from_str(&tool_call.function.arguments)?;
-                        let owner = args["owner"].as_str().unwrap_or("OpenAgentsInc");
-                        let repo = args["repo"].as_str().unwrap_or("openagents");
-                        let issue_number = args["issue_number"].as_i64().unwrap_or(0) as i32;
+            // Fetch the issue
+            let issue = self
+                .github_service
+                .get_issue(owner, repo, issue_number)
+                .await?;
 
-                        // Send tool call status
-                        let tool_call_json = json!({
+            // Initialize Gemini service
+            let gemini = match GeminiService::new() {
+                Ok(service) => service,
+                Err(e) => {
+                    let error_json = json!({
+                        "type": "chat",
+                        "content": format!("Error initializing Gemini service: {}", e),
+                        "sender": "system",
+                        "status": "error"
+                    });
+                    self.ws_state
+                        .send_to(conn_id, &error_json.to_string())
+                        .await?;
+                    return Ok(());
+                }
+            };
+
+            // Get repository context (this would be expanded in a real implementation)
+            let repo_context = "Repository context would be here";
+
+            // Stream the file analysis
+            let mut stream = gemini.analyze_files_stream(
+                &issue.body.unwrap_or_default(),
+                &vec!["src/lib.rs".to_string()], // This would be replaced with actual file list
+                repo_context,
+            ).await;
+
+            let mut full_response = String::new();
+            
+            // Process the streaming response
+            while let Some(update) = stream.recv().await {
+                match update {
+                    crate::server::services::gemini::types::StreamUpdate::Content(content) => {
+                        let response_json = json!({
                             "type": "chat",
-                            "content": format!("Fetching GitHub issue #{} from {}/{}", issue_number, owner, repo),
+                            "content": &content,
                             "sender": "ai",
-                            "status": "tool_calls"
+                            "status": "streaming"
                         });
                         self.ws_state
-                            .send_to(conn_id, &tool_call_json.to_string())
+                            .send_to(conn_id, &response_json.to_string())
                             .await?;
-
-                        // Fetch the issue
-                        let issue = self
-                            .github_service
-                            .get_issue(owner, repo, issue_number)
-                            .await?;
-
-                        // Create messages for tool response
-                        let user_message = crate::server::services::deepseek::ChatMessage {
-                            role: "user".to_string(),
-                            content: content.clone(),
-                            tool_call_id: None,
-                            tool_calls: None,
-                        };
-
-                        let assistant_message =
-                            crate::server::services::deepseek::AssistantMessage {
-                                role: "assistant".to_string(),
-                                content: format!(
-                                    "Let me fetch GitHub issue #{} for you.",
-                                    issue_number
-                                ),
-                                tool_call_id: None,
-                                tool_calls: Some(vec![tool_call.clone()]),
-                            };
-
-                        let issue_message = crate::server::services::deepseek::ChatMessage {
-                            role: "tool".to_string(),
-                            content: serde_json::to_string(&issue)?,
-                            tool_call_id: Some(tool_call.id),
-                            tool_calls: None,
-                        };
-
-                        // Get final response with tool results
-                        let messages = vec![
-                            user_message,
-                            crate::server::services::deepseek::ChatMessage::from(assistant_message),
-                        ];
-
-                        let (final_content, _, _) = self
-                            .ws_state
-                            .model_router
-                            .handle_tool_response(messages, issue_message)
-                            .await?;
-
-                        // Send final response
+                        full_response.push_str(&content);
+                    }
+                    crate::server::services::gemini::types::StreamUpdate::Done => {
                         let final_json = json!({
                             "type": "chat",
-                            "content": final_content,
+                            "content": full_response,
                             "sender": "ai",
                             "status": "complete"
                         });
@@ -135,20 +120,9 @@ impl ChatHandler {
                             .await?;
                     }
                 }
-            } else {
-                // If no tool calls but tool was needed, send error
-                let error_json = json!({
-                    "type": "chat",
-                    "content": "I determined a tool was needed but couldn't execute it properly.",
-                    "sender": "system",
-                    "status": "error"
-                });
-                self.ws_state
-                    .send_to(conn_id, &error_json.to_string())
-                    .await?;
             }
         } else {
-            // Use regular chat stream for non-tool messages
+            // For non-GitHub issue messages, use regular chat
             let mut stream = self.ws_state.model_router.chat_stream(content).await;
             let mut full_response = String::new();
 
