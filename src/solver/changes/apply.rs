@@ -1,14 +1,13 @@
-use crate::solver::types::Change;
 use crate::solver::state::SolverState;
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 pub async fn apply_file_changes(state: &SolverState, repo_dir: &Path) -> Result<()> {
     info!("Applying file changes...");
 
-    for (path, file) in &state.files {
+    for (_path, file) in &state.files {
         let file_path = Path::new(&file.path);
         let full_path = repo_dir.join(file_path);
 
