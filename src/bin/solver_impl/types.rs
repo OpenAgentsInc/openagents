@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RelevantFiles {
+    pub files: Vec<FileInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileInfo {
+    pub path: String,
+    pub relevance_score: f32,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Changes {
     pub changes: Vec<Change>,
@@ -18,6 +30,8 @@ impl From<Change> for openagents::solver::Change {
             search: change.search,
             replace: change.replace,
             analysis: change.analysis,
+            path: String::new(), // Will be set by state.add_change
+            reason: change.analysis.clone(),
         }
     }
 }
