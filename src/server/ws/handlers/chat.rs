@@ -2,12 +2,16 @@ use super::MessageHandler;
 use crate::server::services::github_issue::GitHubService;
 use crate::server::services::gemini::{service::GeminiService, StreamUpdate};
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
+use crate::repomap::generate_repo_map;
 use async_trait::async_trait;
 use serde_json::json;
 use std::error::Error;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use regex::Regex;
+use std::path::Path;
+use tempfile::TempDir;
+use tokio::process::Command;
 
 pub struct ChatHandler {
     ws_state: Arc<WebSocketState>,
@@ -20,6 +24,20 @@ impl ChatHandler {
             ws_state,
             github_service,
         }
+    }
+
+    async fn clone_repo(&self, owner: &str, repo: &str) -> Result<TempDir, Box<dyn Error + Send + Sync>> {
+        let temp_dir = tempfile::tempdir()?;
+        let repo_url = format!("https://github.com/{}/{}.git", owner, repo);
+        
+        Command::new("git")
+            .arg("clone")
+            .arg(&repo_url)
+            .arg(temp_dir.path())
+            .output()
+            .await?;
+
+        Ok(temp_dir)
     }
 
     async fn process_message(
@@ -64,6 +82,35 @@ impl ChatHandler {
                 .get_issue(owner, repo, issue_number)
                 .await?;
 
+            // Send repo cloning status
+            let clone_status = json!({
+                "type": "chat",
+                "content": format!("Cloning repository {}/{} for analysis...", owner, repo),
+                "sender": "ai",
+                "status": "tool_calls"
+            });
+            self.ws_state
+                .send_to(conn_id, &clone_status.to_string())
+                .await?;
+
+            // Clone repo and generate map
+            let temp_dir = self.clone_repo(owner, repo).await?;
+            
+            // Send mapping status
+            let mapping_status = json!({
+                "type": "chat",
+                "content": "Generating repository map...",
+                "sender": "ai",
+                "status": "tool_calls"
+            });
+            self.ws_state
+                .send_to(conn_id, &mapping_status.to_string())
+                .await?;
+
+            // Generate repo map
+            let repo_map = generate_repo_map(temp_dir.path());
+            debug!("Generated repo map:\n{}", repo_map);
+
             // Initialize Gemini service
             let gemini = match GeminiService::new() {
                 Ok(service) => service,
@@ -81,14 +128,29 @@ impl ChatHandler {
                 }
             };
 
-            // Get repository context (this would be expanded in a real implementation)
-            let repo_context = "Repository context would be here";
+            // Extract valid paths from repo map
+            let valid_paths: Vec<String> = repo_map
+                .lines()
+                .filter(|line| !line.starts_with('│') && !line.is_empty())
+                .map(|line| line.trim_end_matches(':').to_string())
+                .collect();
+
+            // Send analysis status
+            let analysis_status = json!({
+                "type": "chat",
+                "content": "Analyzing repository structure...",
+                "sender": "ai",
+                "status": "tool_calls"
+            });
+            self.ws_state
+                .send_to(conn_id, &analysis_status.to_string())
+                .await?;
 
             // Stream the file analysis
             let mut stream = gemini.analyze_files_stream(
                 &issue.body.unwrap_or_default(),
-                &vec!["src/lib.rs".to_string()], // This would be replaced with actual file list
-                repo_context,
+                &valid_paths,
+                &repo_map,
             ).await;
 
             let mut full_response = String::new();
@@ -121,6 +183,9 @@ impl ChatHandler {
                     }
                 }
             }
+
+            // Clean up
+            let _ = temp_dir.close();
         } else {
             // For non-GitHub issue messages, use regular chat
             let mut stream = self.ws_state.model_router.chat_stream(content).await;
