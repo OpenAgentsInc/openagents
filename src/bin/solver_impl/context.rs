@@ -26,14 +26,12 @@ pub async fn collect_context(
     issue_num: i32,
 ) -> Result<(String, HashSet<String>)> {
     info!("Collecting context...");
-    state.update_status(SolverStatus::CollectingContext);
+    state.update_status(SolverStatus::Analyzing);
 
-    // Fetch issue details
     info!("Fetching issue #{}", issue_num);
     let issue = github.get_issue(owner, name, issue_num).await?;
     let comments = github.get_issue_comments(owner, name, issue_num).await?;
 
-    // Generate repository map
     info!("Generating repository map...");
     let repo_dir = std::env::current_dir()?;
     debug!("Current directory: {}", repo_dir.display());
@@ -46,10 +44,8 @@ pub async fn collect_context(
     );
     let repo_map = openagents::repomap::generate_repo_map(&repo_dir);
 
-    // Extract valid paths from repo map
     let valid_paths = extract_paths_from_repomap(&repo_map);
 
-    // Update state with initial analysis
     state.analysis = format!(
         "Issue #{}: {}\n\nDescription: {}\n\nComments:\n{}\n\nRepository Map:\n{}\n\nValid file paths for modifications:\n{}", 
         issue_num,
@@ -64,6 +60,5 @@ pub async fn collect_context(
         valid_paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n")
     );
 
-    // Return both the repo directory and valid paths
     Ok((repo_dir.to_string_lossy().to_string(), valid_paths))
 }
