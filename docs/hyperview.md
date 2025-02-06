@@ -5,6 +5,7 @@ OpenAgents uses [Hyperview](https://hyperview.org) to serve server-driven UI to 
 ## Overview
 
 Hyperview consists of two main parts:
+
 1. Server-side HXML generation (this repo)
 2. Client-side HXML rendering (Onyx repo)
 
@@ -22,6 +23,7 @@ Base URL: `https://openagents.com/hyperview/`
 ### MIME Type
 
 All HXML responses use the content type:
+
 ```
 application/vnd.hyperview+xml
 ```
@@ -62,6 +64,7 @@ src/server/hyperview/
 ### Adding New Endpoints
 
 1. Create handler function in `handlers.rs`:
+
 ```rust
 pub async fn my_screen(State(state): State<AppState>) -> Response {
     Response::builder()
@@ -73,6 +76,7 @@ pub async fn my_screen(State(state): State<AppState>) -> Response {
 ```
 
 2. Add route in `routes.rs`:
+
 ```rust
 pub fn hyperview_routes() -> Router<AppState> {
     Router::new()
