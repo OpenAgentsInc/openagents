@@ -1,23 +1,25 @@
 use axum::{
+    extract::State,
     http::{header, StatusCode},
     response::{IntoResponse, Response},
 };
+use axum_extra::extract::cookie::{Cookie, SameSite};
 use time::{Duration, OffsetDateTime};
-use tower_cookies::{Cookie, Cookies};
 use tracing::info;
 
 use crate::server::models::user::User;
 
 use super::SESSION_COOKIE_NAME;
 
-pub fn create_session_and_redirect(user: User) -> Response {
+pub async fn create_session_and_redirect(user: User) -> Response {
     info!("Creating session for user: {:?}", user);
 
     let cookie = Cookie::build(SESSION_COOKIE_NAME, user.scramble_id.clone())
         .path("/")
         .secure(true)
         .http_only(true)
-        .expires(OffsetDateTime::now_utc() + Duration::days(7))
+        .same_site(SameSite::Lax)
+        .max_age(Duration::days(7))
         .build();
 
     Response::builder()
@@ -28,14 +30,15 @@ pub fn create_session_and_redirect(user: User) -> Response {
         .unwrap()
 }
 
-pub fn clear_session_and_redirect() -> Response {
+pub async fn clear_session_and_redirect() -> Response {
     info!("Clearing session");
 
     let cookie = Cookie::build(SESSION_COOKIE_NAME, "")
         .path("/")
         .secure(true)
         .http_only(true)
-        .expires(OffsetDateTime::now_utc() - Duration::days(1))
+        .same_site(SameSite::Lax)
+        .max_age(Duration::seconds(0))
         .build();
 
     Response::builder()
@@ -46,7 +49,7 @@ pub fn clear_session_and_redirect() -> Response {
         .unwrap()
 }
 
-pub fn render_login_template() -> Response {
+pub async fn render_login_template() -> Response {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/html")
@@ -54,7 +57,7 @@ pub fn render_login_template() -> Response {
         .unwrap()
 }
 
-pub fn render_signup_template() -> Response {
+pub async fn render_signup_template() -> Response {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/html")
