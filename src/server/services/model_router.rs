@@ -5,9 +5,9 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use super::deepseek::{
-    ChatMessage, DeepSeekService, StreamUpdate, Tool, ToolCallResponse, ToolChoice,
+    ChatMessage, DeepSeekService, Tool, ToolCallResponse, ToolChoice,
 };
-use super::gemini::service::GeminiService;
+use super::gemini::{service::GeminiService, StreamUpdate};
 
 #[derive(Debug, Deserialize)]
 pub struct RoutingDecision {
@@ -205,7 +205,40 @@ Here's what I found: [Explain results]""#,
     }
 
     pub async fn chat_stream(&self, message: String) -> mpsc::Receiver<StreamUpdate> {
-        self.chat_model.chat_stream(message, true).await
+        // Try to use Gemini for streaming if available
+        if let Some(gemini) = &self.gemini {
+            let (tx, rx) = mpsc::channel(100);
+            let mut stream = gemini.analyze_files_stream(&message, &vec![], "").await;
+            
+            tokio::spawn(async move {
+                while let Some(update) = stream.recv().await {
+                    let _ = tx.send(update).await;
+                }
+            });
+            
+            rx
+        } else {
+            // Convert DeepSeek stream to Gemini StreamUpdate format
+            let (tx, rx) = mpsc::channel(100);
+            let mut stream = self.chat_model.chat_stream(message, true).await;
+            
+            tokio::spawn(async move {
+                while let Some(update) = stream.recv().await {
+                    match update {
+                        super::deepseek::StreamUpdate::Content(content) => {
+                            let _ = tx.send(StreamUpdate::Content(content)).await;
+                        }
+                        super::deepseek::StreamUpdate::Done => {
+                            let _ = tx.send(StreamUpdate::Done).await;
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+            
+            rx
+        }
     }
 
     pub async fn handle_tool_response(
