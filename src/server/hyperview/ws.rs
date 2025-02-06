@@ -12,7 +12,7 @@ use crate::server::config::AppState;
 use crate::server::ws::{
     transport::WebSocketState,
     handlers::MessageHandler,
-    types::{ChatMessage, ConnectionState},
+    types::ChatMessage,
 };
 
 #[axum::debug_handler]
