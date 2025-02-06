@@ -9,11 +9,11 @@ pub mod ollama;
 pub mod openrouter;
 pub mod repomap;
 
-pub use auth::AuthService;
-pub use chat_database::ChatDatabaseService;
 pub use deepseek::DeepSeekService;
+pub use gateway::{Gateway, GatewayMetadata};
 pub use gemini::service::GeminiService;
 pub use github_issue::GitHubService;
 pub use model_router::ModelRouter;
 pub use ollama::service::OllamaService;
-pub use openrouter::service::OpenRouterService;
+pub use openrouter::OpenRouterService;
+pub use repomap::RepomapService;
