@@ -5,15 +5,11 @@ use axum::{
 };
 use axum_extra::extract::cookie::CookieJar;
 use futures_util::{SinkExt, StreamExt};
-use tracing::{error, info};
 use std::sync::Arc;
+use tracing::{error, info};
 
 use crate::server::config::AppState;
-use crate::server::ws::{
-    transport::WebSocketState,
-    handlers::MessageHandler,
-    types::ChatMessage,
-};
+use crate::server::ws::{handlers::MessageHandler, transport::WebSocketState, types::ChatMessage};
 
 #[axum::debug_handler]
 pub async fn hyperview_ws_handler(
@@ -27,8 +23,11 @@ pub async fn hyperview_ws_handler(
     // Validate session and get user_id
     match state.ws_state.validate_session(&jar).await {
         Ok(user_id) => {
-            info!("Hyperview WebSocket connection authenticated for user {}", user_id);
-            
+            info!(
+                "Hyperview WebSocket connection authenticated for user {}",
+                user_id
+            );
+
             // Create chat handler
             let chat_handler = state.ws_state.create_handlers();
 
@@ -50,14 +49,20 @@ async fn handle_socket(
     chat_handler: Arc<crate::server::ws::handlers::chat::ChatHandler>,
     user_id: i32,
 ) {
-    info!("Handling Hyperview WebSocket connection for user {}", user_id);
-    
+    info!(
+        "Handling Hyperview WebSocket connection for user {}",
+        user_id
+    );
+
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
     // Generate unique connection ID
     let conn_id = uuid::Uuid::new_v4().to_string();
-    info!("New Hyperview WebSocket connection established: {}", conn_id);
+    info!(
+        "New Hyperview WebSocket connection established: {}",
+        conn_id
+    );
 
     // Store connection with user ID
     state.add_connection(&conn_id, user_id, tx.clone()).await;
@@ -89,9 +94,11 @@ async fn handle_socket(
                             };
 
                             // Handle the message
-                            if let Err(e) = chat_handler.handle_message(chat_msg, conn_id.clone()).await {
+                            if let Err(e) =
+                                chat_handler.handle_message(chat_msg, conn_id.clone()).await
+                            {
                                 error!("Error handling chat message: {}", e);
-                                
+
                                 // Send error response as HXML
                                 let error_xml = format!(
                                     r###"<?xml version="1.0" encoding="UTF-8"?>
@@ -100,8 +107,10 @@ async fn handle_socket(
 </view>"###,
                                     e
                                 );
-                                
-                                if let Err(e) = tx.send(axum::extract::ws::Message::Text(error_xml.into())) {
+
+                                if let Err(e) =
+                                    tx.send(axum::extract::ws::Message::Text(error_xml.into()))
+                                {
                                     error!("Failed to send error message: {}", e);
                                 }
                             }

@@ -102,7 +102,7 @@ pub async fn connected_status() -> Response {
 <text xmlns="https://hyperview.org/hyperview" style="statusText,statusConnected">
   Connected
 </text>"###
-            .into(),
+                .into(),
         )
         .unwrap()
 }
@@ -116,7 +116,7 @@ pub async fn disconnected_status() -> Response {
 <text xmlns="https://hyperview.org/hyperview" style="statusText,statusDisconnected">
   Disconnected - Reconnecting...
 </text>"###
-            .into(),
+                .into(),
         )
         .unwrap()
 }
