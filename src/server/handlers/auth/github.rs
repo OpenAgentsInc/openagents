@@ -19,7 +19,7 @@ pub struct GitHubCallback {
 }
 
 pub async fn github_login_page() -> Response {
-    render_login_template()
+    render_login_template().await
 }
 
 #[axum::debug_handler]
@@ -46,9 +46,9 @@ pub async fn handle_github_callback(
     info!("Handling GitHub callback");
 
     match state.github_auth.authenticate(callback.code).await {
-        Ok(user) => create_session_and_redirect(user),
+        Ok(user) => create_session_and_redirect(user).await,
         Err(GitHubAuthError::UserAlreadyExists(user)) => {
-            create_session_and_redirect(user)
+            create_session_and_redirect(user).await
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
