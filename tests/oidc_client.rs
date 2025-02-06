@@ -57,6 +57,9 @@ impl TestContext {
             oidc_client_secret: "test_secret".to_string(),
             oidc_redirect_uri: "http://localhost:8000/auth/callback".to_string(),
             database_url,
+            github_client_id: "test_github_client".to_string(),
+            github_client_secret: "test_github_secret".to_string(),
+            github_redirect_uri: "http://localhost:8000/auth/github/callback".to_string(),
         };
 
         let app = openagents::server::config::configure_app_with_config(Some(config));
