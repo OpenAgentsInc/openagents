@@ -116,11 +116,8 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         if decision.needs_tool {
             if let Some(suggested_tool_name) = &decision.suggested_tool {
                 if suggested_tool_name == "analyze_files" {
-                    // Use Gemini for file analysis if available
-                    if let Some(gemini) = &self.gemini {
-                        // File analysis will be handled by the solver using Gemini
-                        return Ok((decision, None));
-                    }
+                    // File analysis will be handled by the chat handler directly
+                    return Ok((decision, None));
                 }
                 
                 // For other tools, use the normal flow
