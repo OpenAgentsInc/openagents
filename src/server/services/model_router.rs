@@ -7,6 +7,7 @@ use tracing::info;
 use super::deepseek::{
     ChatMessage, DeepSeekService, StreamUpdate, Tool, ToolCallResponse, ToolChoice,
 };
+use super::gemini::service::GeminiService;
 
 #[derive(Debug, Deserialize)]
 pub struct RoutingDecision {
@@ -18,6 +19,7 @@ pub struct RoutingDecision {
 pub struct ModelRouter {
     tool_model: Arc<DeepSeekService>,
     chat_model: Arc<DeepSeekService>,
+    gemini: Option<Arc<GeminiService>>,
     available_tools: Vec<Tool>,
 }
 
@@ -27,9 +29,13 @@ impl ModelRouter {
         chat_model: Arc<DeepSeekService>,
         available_tools: Vec<Tool>,
     ) -> Self {
+        // Initialize Gemini service if possible
+        let gemini = GeminiService::new().ok().map(Arc::new);
+        
         Self {
             tool_model,
             chat_model,
+            gemini,
             available_tools,
         }
     }
@@ -50,6 +56,7 @@ DO NOT USE ANY TOOLS DIRECTLY. Instead, analyze the user's message and respond w
 Available tools:
 - read_github_issue: Read GitHub issues by number
 - calculate: Perform mathematical calculations
+- analyze_files: Analyze repository files for changes (handled by Gemini)
 
 IMPORTANT: Your response must be a valid JSON object and nothing else.
 
@@ -105,10 +112,18 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
             }
         };
 
-        // If tools are needed, try to execute the suggested tool
+        // Special handling for file analysis
         if decision.needs_tool {
             if let Some(suggested_tool_name) = &decision.suggested_tool {
-                // Find the suggested tool in available tools
+                if suggested_tool_name == "analyze_files" {
+                    // Use Gemini for file analysis if available
+                    if let Some(gemini) = &self.gemini {
+                        // File analysis will be handled by the solver using Gemini
+                        return Ok((decision, None));
+                    }
+                }
+                
+                // For other tools, use the normal flow
                 let tool = self
                     .available_tools
                     .iter()
