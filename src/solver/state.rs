@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use super::types::{Change, FileState};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SolverStatus {
     Starting,
@@ -18,6 +20,7 @@ pub struct SolverFile {
     pub path: String,
     pub reason: String,
     pub relevance: f32,
+    pub changes: Vec<Change>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,11 +52,21 @@ impl SolverState {
                 path,
                 reason,
                 relevance,
+                changes: Vec::new(),
             },
         );
     }
 
     pub fn update_status(&mut self, status: SolverStatus) {
         self.status = status;
+    }
+
+    pub fn add_change(&mut self, file_path: &str, change: Change) -> bool {
+        if let Some(file) = self.files.get_mut(file_path) {
+            file.changes.push(change);
+            true
+        } else {
+            false
+        }
     }
 }
