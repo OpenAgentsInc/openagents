@@ -20,8 +20,11 @@ pub async fn generate_changes(
     info!("DeepSeek analysis complete");
     debug!("DeepSeek reasoning: {}", reasoning);
 
-    for (path, _) in &mut state.files {
-        let absolute_path = Path::new(repo_dir).join(path);
+    // Get list of paths first to avoid mutable borrow issues
+    let paths: Vec<String> = state.files.keys().cloned().collect();
+
+    for path in paths {
+        let absolute_path = Path::new(repo_dir).join(&path);
         info!("Processing file:");
         info!("  Relative path: {}", path);
         info!("  Absolute path: {}", absolute_path.display());
@@ -102,7 +105,7 @@ pub async fn generate_changes(
                 }
                 1 => {
                     debug!("Found unique match for search string");
-                    state.add_change(path, change.into());
+                    state.add_change(&path, change.into());
                 }
                 n => {
                     error!(
