@@ -20,7 +20,7 @@ pub async fn generate_changes(
     info!("DeepSeek analysis complete");
     debug!("DeepSeek reasoning: {}", reasoning);
 
-    for (path, file) in &mut state.files {
+    for (path, _) in &mut state.files {
         let absolute_path = Path::new(repo_dir).join(path);
         info!("Processing file:");
         info!("  Relative path: {}", path);
@@ -102,7 +102,7 @@ pub async fn generate_changes(
                 }
                 1 => {
                     debug!("Found unique match for search string");
-                    state.add_change(path, change);
+                    state.add_change(path, change.into());
                 }
                 n => {
                     error!(
@@ -133,7 +133,7 @@ pub async fn apply_file_changes(state: &mut SolverState, repo_dir: &str) -> Resu
             .collect::<Vec<_>>()
     );
 
-    openagents::solver::changes::apply_changes(state, repo_dir)?;
+    openagents::solver::changes::apply::apply_changes(state, repo_dir)?;
 
     state.update_status(SolverStatus::Complete);
     Ok(())
