@@ -1,6 +1,5 @@
 pub mod handlers;
 pub mod routes;
-pub mod templates;
-pub mod types;
+pub mod ws;
 
 pub use routes::hyperview_routes;
