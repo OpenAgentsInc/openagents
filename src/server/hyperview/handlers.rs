@@ -10,8 +10,7 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
         .body(
-            format!(
-                r#"<?xml version="1.0" encoding="UTF-8"?>
+            r###"<?xml version="1.0" encoding="UTF-8"?>
 <doc xmlns="https://hyperview.org/hyperview">
   <screen>
     <styles>
@@ -45,8 +44,7 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
       </view>
     </body>
   </screen>
-</doc>"#
-            )
+</doc>"###
             .into(),
         )
         .unwrap()
