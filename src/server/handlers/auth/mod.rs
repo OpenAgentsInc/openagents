@@ -98,12 +98,12 @@ pub async fn callback(
     match result {
         Ok(user) => {
             info!("Successfully processed user: {:?}", user);
-            create_session_and_redirect(user)
+            create_session_and_redirect(user).await
         }
         Err(e) => match e {
             AuthError::UserAlreadyExists(user) => {
                 info!("User already exists, creating session and redirecting");
-                create_session_and_redirect(user)
+                create_session_and_redirect(user).await
             }
             other_error => {
                 error!("Authentication error: {}", &other_error);
