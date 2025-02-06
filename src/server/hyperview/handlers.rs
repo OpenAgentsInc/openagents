@@ -36,7 +36,7 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
       <behavior
         trigger="load"
         action="ws:connect"
-        ws:url="wss://openagents.com/ws/chat"
+        ws:url="ws://localhost:8000/hyperview/ws"
       />
 
       <!-- Connection status indicator -->
