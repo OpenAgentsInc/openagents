@@ -41,5 +41,24 @@ pub fn create_tools() -> Vec<Tool> {
                 "required": ["expression"]
             }),
         ),
+        // File analysis tool (handled by Gemini)
+        DeepSeekService::create_tool(
+            "analyze_files".to_string(),
+            Some("Analyze repository files for changes using Gemini".to_string()),
+            json!({
+                "type": "object",
+                "properties": {
+                    "issue_description": {
+                        "type": "string",
+                        "description": "The description of the issue to analyze"
+                    },
+                    "repo_context": {
+                        "type": "string",
+                        "description": "The repository context information"
+                    }
+                },
+                "required": ["issue_description", "repo_context"]
+            }),
+        ),
     ]
 }
