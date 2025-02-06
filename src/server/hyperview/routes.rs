@@ -1,4 +1,4 @@
-use super::handlers;
+use super::{handlers, ws};
 use crate::server::config::AppState;
 use axum::{routing::get, Router};
 
@@ -13,4 +13,5 @@ pub fn hyperview_routes() -> Router<AppState> {
             "/hyperview/fragments/disconnected-status",
             get(handlers::disconnected_status),
         )
+        .route("/hyperview/ws", get(ws::hyperview_ws_handler))
 }
