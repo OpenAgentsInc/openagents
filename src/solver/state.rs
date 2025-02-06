@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::types::{Change, FileState};
+use super::types::Change;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SolverStatus {
