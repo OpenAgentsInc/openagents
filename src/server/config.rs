@@ -1,4 +1,4 @@
-use super::services::{deepseek::DeepSeekService, github_issue::GitHubService, RepomapService};
+use super::services::{deepseek::DeepSeekService, github_issue::GitHubService, repomap::RepomapService};
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use crate::{routes, server};
