@@ -11,7 +11,7 @@ pub async fn analyze_repository(repo_path: &Path) -> Result<String> {
     Ok("Repository analysis placeholder".to_string())
 }
 
-pub async fn post_analysis(repo_path: &Path, analysis: &str) -> Result<()> {
+pub async fn post_analysis(repo_path: &Path, _analysis: &str) -> Result<()> {
     info!("Posting analysis for {}", repo_path.display());
     
     // TODO: Implement analysis posting
