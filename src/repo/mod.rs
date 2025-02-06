@@ -1,9 +1,9 @@
-mod git;
-mod test;
-mod types;
+pub mod analysis;
+pub mod git;
+pub mod test;
+pub mod types;
 
-pub use git::{
-    checkout_branch, cleanup_temp_dir, clone_repository, commit_changes, push_changes_with_token,
-};
-pub use test::run_cargo_tests;
-pub use types::RepoContext;
+pub use analysis::analyze_repository;
+pub use git::*;
+pub use test::*;
+pub use types::*;
