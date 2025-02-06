@@ -13,7 +13,7 @@ pub async fn analyze_changes_with_deepseek(
     info!("Starting DeepSeek changes analysis...");
 
     let mut file_contents = String::new();
-    for (path, file) in &state.files {
+    for (path, _) in &state.files {
         let abs_path = repo_dir.join(path);
         if let Ok(content) = std::fs::read_to_string(&abs_path) {
             file_contents.push_str(&format!("\nFile: {}\nContent:\n{}\n", path, content));
