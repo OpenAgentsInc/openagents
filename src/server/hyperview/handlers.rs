@@ -14,11 +14,12 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
 <doc xmlns="https://hyperview.org/hyperview">
   <screen>
     <styles>
-      <style id="text" alignItems="center" justifyContent="center" />
+      <style id="text" alignItems="center" justifyContent="center" height="800" backgroundColor="black" />
+      <style id="textstyle" color="white" fontWeight="bold" fontSize="24" />
     </styles>
     <body>
       <view style="text">
-        <text>Hello from OpenAgents!</text>
+        <text style="textstyle">Onyx</text>
       </view>
     </body>
   </screen>
