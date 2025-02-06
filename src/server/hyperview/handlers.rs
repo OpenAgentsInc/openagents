@@ -14,12 +14,33 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
 <doc xmlns="https://hyperview.org/hyperview">
   <screen>
     <styles>
-      <style id="text" alignItems="center" justifyContent="center" height="800" backgroundColor="black" />
-      <style id="textstyle" color="white" fontWeight="bold" fontSize="24" />
+      <style id="screen" flex="1" backgroundColor="black" />
+      <style id="container" flex="1" justifyContent="flex-end" paddingBottom="24" />
+      <style id="header" marginLeft="24" marginBottom="16" />
+      <style id="headerText" color="#808080" fontSize="16" />
+      <style id="inputContainer" flexDirection="row" alignItems="center" marginHorizontal="24" borderWidth="1" borderColor="#808080" borderRadius="8" paddingHorizontal="12" paddingVertical="8" />
+      <style id="input" flex="1" color="white" fontSize="16" />
+      <style id="submitButton" width="24" height="24" justifyContent="center" alignItems="center" marginLeft="8" />
+      <style id="submitArrow" color="#808080" fontSize="24" />
     </styles>
     <body>
-      <view style="text">
-        <text style="textstyle">Onyx</text>
+      <view style="screen">
+        <view style="container">
+          <view style="header">
+            <text style="headerText">New conversation</text>
+            <text style="headerText">Would you like to learn about what I can do?</text>
+          </view>
+          <view style="inputContainer">
+            <text-field 
+              style="input"
+              placeholder="Ask anything"
+              placeholderTextColor="#808080"
+            />
+            <view style="submitButton">
+              <text style="submitArrow">↑</text>
+            </view>
+          </view>
+        </view>
       </view>
     </body>
   </screen>
