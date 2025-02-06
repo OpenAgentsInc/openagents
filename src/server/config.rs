@@ -155,15 +155,15 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         // GitHub auth routes
         .route(
             "/auth/github",
-            get(server::handlers::auth::github::github_login_page),
+            get(server::handlers::auth::github_login_page),
         )
         .route(
             "/auth/github/login",
-            get(server::handlers::auth::github::handle_github_login),
+            get(server::handlers::auth::handle_github_login),
         )
         .route(
             "/auth/github/callback",
-            post(server::handlers::auth::github::handle_github_callback),
+            post(server::handlers::auth::handle_github_callback),
         )
         // Repomap routes
         .route("/repomap/generate", post(routes::generate_repomap))
