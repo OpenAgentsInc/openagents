@@ -3,8 +3,8 @@ use octocrab::models::issues::{Issue, Comment as IssueComment};
 use crate::solver_impl::types::FileInfo;
 
 pub async fn identify_files(
-    issue: &Issue,
-    comments: &[IssueComment],
+    _issue: &Issue,
+    _comments: &[IssueComment],
 ) -> Result<Vec<FileInfo>> {
     // For now, just return a test file
     Ok(vec![FileInfo {
