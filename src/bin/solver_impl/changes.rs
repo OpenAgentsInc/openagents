@@ -13,24 +13,19 @@ pub async fn generate_changes(
     repo_dir: &str,
 ) -> Result<()> {
     info!("Generating code changes...");
-    state.update_status(SolverStatus::GeneratingCode);
+    state.update_status(SolverStatus::Implementing);
 
-    // First get DeepSeek's analysis of all files
     let (response, reasoning) =
         analyze_changes_with_deepseek(state, deepseek, Path::new(repo_dir)).await?;
     info!("DeepSeek analysis complete");
     debug!("DeepSeek reasoning: {}", reasoning);
 
-    // Now process each file with Mistral using DeepSeek's analysis
-    for file in &mut state.files {
-        // Log paths BEFORE any operations
-        let relative_path = &file.path;
-        let absolute_path = Path::new(repo_dir).join(relative_path);
+    for (path, file) in &mut state.files {
+        let absolute_path = Path::new(repo_dir).join(path);
         info!("Processing file:");
-        info!("  Relative path: {}", relative_path);
+        info!("  Relative path: {}", path);
         info!("  Absolute path: {}", absolute_path.display());
 
-        // Try to read the file content
         let file_content = match std::fs::read_to_string(&absolute_path) {
             Ok(content) => {
                 debug!("Successfully read file content");
@@ -38,7 +33,7 @@ pub async fn generate_changes(
             }
             Err(e) => {
                 error!("Failed to read file:");
-                error!("  Relative path: {}", relative_path);
+                error!("  Relative path: {}", path);
                 error!("  Absolute path: {}", absolute_path.display());
                 error!("  Error: {}", e);
                 return Err(e.into());
@@ -64,7 +59,7 @@ pub async fn generate_changes(
             Return a JSON object with a 'changes' array containing objects with 'search', 'replace', and 'analysis' fields.", 
             response,
             reasoning,
-            file.path,
+            path,
             file_content
         );
 
@@ -98,9 +93,7 @@ pub async fn generate_changes(
 
         let changes: Changes = mistral.chat_structured(prompt, format).await?;
 
-        // Validate and add changes to file state
         for change in changes.changes {
-            // Verify the search string exists in the file content
             let matches: Vec<_> = file_content.match_indices(&change.search).collect();
             match matches.len() {
                 0 => {
@@ -109,7 +102,7 @@ pub async fn generate_changes(
                 }
                 1 => {
                     debug!("Found unique match for search string");
-                    file.add_change(change.search, change.replace, change.analysis);
+                    state.add_change(path, change);
                 }
                 n => {
                     error!(
@@ -122,7 +115,7 @@ pub async fn generate_changes(
         }
     }
 
-    state.update_status(SolverStatus::ReadyForCoding);
+    state.update_status(SolverStatus::Testing);
     Ok(())
 }
 
@@ -130,7 +123,6 @@ pub async fn apply_file_changes(state: &mut SolverState, repo_dir: &str) -> Resu
     info!("Applying code changes...");
     state.update_status(SolverStatus::Testing);
 
-    // Log directory information
     let base_path = Path::new(repo_dir);
     debug!("Base path: {}", base_path.display());
     debug!(
@@ -141,9 +133,8 @@ pub async fn apply_file_changes(state: &mut SolverState, repo_dir: &str) -> Resu
             .collect::<Vec<_>>()
     );
 
-    // Apply changes using the new apply_changes function
     openagents::solver::changes::apply_changes(state, repo_dir)?;
 
-    state.update_status(SolverStatus::CreatingPr);
+    state.update_status(SolverStatus::Complete);
     Ok(())
 }
