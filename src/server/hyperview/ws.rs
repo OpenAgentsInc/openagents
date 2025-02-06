@@ -4,12 +4,16 @@ use axum::{
     response::IntoResponse,
 };
 use axum_extra::extract::cookie::CookieJar;
-use serde_json::json;
+use futures_util::{SinkExt, StreamExt};
 use tracing::{error, info};
 use std::sync::Arc;
 
 use crate::server::config::AppState;
-use crate::server::ws::transport::WebSocketState;
+use crate::server::ws::{
+    transport::WebSocketState,
+    handlers::MessageHandler,
+    types::{ChatMessage, ConnectionState},
+};
 
 #[axum::debug_handler]
 pub async fn hyperview_ws_handler(
@@ -56,17 +60,8 @@ async fn handle_socket(
     info!("New Hyperview WebSocket connection established: {}", conn_id);
 
     // Store connection with user ID
-    {
-        let mut conns = state.connections.write().await;
-        conns.insert(
-            conn_id.clone(),
-            crate::server::ws::types::ConnectionState {
-                user_id,
-                tx: tx.clone(),
-            },
-        );
-        info!("Connection stored for user {}: {}", user_id, conn_id);
-    }
+    state.add_connection(&conn_id, user_id, tx.clone()).await;
+    info!("Connection stored for user {}: {}", user_id, conn_id);
 
     // Send connected status
     let connected_xml = r###"<?xml version="1.0" encoding="UTF-8"?>
@@ -89,7 +84,7 @@ async fn handle_socket(
                     if let Some(content) = data.get("content") {
                         if let Some(content_str) = content.as_str() {
                             // Create chat message
-                            let chat_msg = crate::server::ws::types::ChatMessage::UserMessage {
+                            let chat_msg = ChatMessage::UserMessage {
                                 content: content_str.to_string(),
                             };
 
@@ -106,7 +101,7 @@ async fn handle_socket(
                                     e
                                 );
                                 
-                                if let Err(e) = tx.send(axum::extract::ws::Message::Text(error_xml)) {
+                                if let Err(e) = tx.send(axum::extract::ws::Message::Text(error_xml.into())) {
                                     error!("Failed to send error message: {}", e);
                                 }
                             }
