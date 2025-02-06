@@ -15,11 +15,13 @@ use crate::server::{
 };
 
 pub mod forms;
+pub mod github;
 pub mod login;
 pub mod session;
 pub mod signup;
 
 pub use forms::*;
+pub use github::*;
 pub use login::*;
 pub use session::*;
 pub use signup::*;
