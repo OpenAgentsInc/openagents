@@ -1,4 +1,9 @@
-use super::services::{deepseek::DeepSeekService, github_issue::GitHubService, RepomapService};
+use super::services::{
+    deepseek::DeepSeekService,
+    github_auth::{GitHubAuthService, GitHubConfig},
+    github_issue::GitHubService,
+    RepomapService,
+};
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use crate::{routes, server};
@@ -14,6 +19,7 @@ pub struct AppState {
     pub ws_state: Arc<WebSocketState>,
     pub repomap_service: Arc<RepomapService>,
     pub auth_state: Arc<server::handlers::auth::AuthState>,
+    pub github_auth: Arc<GitHubAuthService>,
 }
 
 #[derive(Clone)]
@@ -24,6 +30,9 @@ pub struct AppConfig {
     pub oidc_client_secret: String,
     pub oidc_redirect_uri: String,
     pub database_url: String,
+    pub github_client_id: String,
+    pub github_client_secret: String,
+    pub github_redirect_uri: String,
 }
 
 impl Default for AppConfig {
@@ -37,6 +46,11 @@ impl Default for AppConfig {
             oidc_redirect_uri: env::var("OIDC_REDIRECT_URI")
                 .unwrap_or_else(|_| "http://localhost:8000/auth/callback".to_string()),
             database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
+            github_client_id: env::var("GITHUB_CLIENT_ID").expect("GITHUB_CLIENT_ID must be set"),
+            github_client_secret: env::var("GITHUB_CLIENT_SECRET")
+                .expect("GITHUB_CLIENT_SECRET must be set"),
+            github_redirect_uri: env::var("GITHUB_REDIRECT_URI")
+                .unwrap_or_else(|_| "http://localhost:8000/auth/github/callback".to_string()),
         }
     }
 }
@@ -95,13 +109,22 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
     let pool =
         sqlx::PgPool::connect_lazy(&config.database_url).expect("Failed to create database pool");
 
-    let auth_state = Arc::new(server::handlers::auth::AuthState::new(oidc_config, pool));
+    let auth_state = Arc::new(server::handlers::auth::AuthState::new(oidc_config, pool.clone()));
+
+    // Create GitHub auth service
+    let github_config = GitHubConfig {
+        client_id: config.github_client_id,
+        client_secret: config.github_client_secret,
+        redirect_uri: config.github_redirect_uri,
+    };
+    let github_auth = Arc::new(GitHubAuthService::new(pool, github_config));
 
     // Create shared app state
     let app_state = AppState {
         ws_state,
         repomap_service,
         auth_state,
+        github_auth,
     };
 
     // Create the main router
@@ -128,6 +151,19 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         .route(
             "/auth/logout",
             get(server::handlers::clear_session_and_redirect),
+        )
+        // GitHub auth routes
+        .route(
+            "/auth/github",
+            get(server::handlers::auth::github::github_login_page),
+        )
+        .route(
+            "/auth/github/login",
+            get(server::handlers::auth::github::handle_github_login),
+        )
+        .route(
+            "/auth/github/callback",
+            post(server::handlers::auth::github::handle_github_callback),
         )
         // Repomap routes
         .route("/repomap/generate", post(routes::generate_repomap))
