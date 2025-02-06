@@ -69,17 +69,8 @@ impl WebSocketState {
         info!("New WebSocket connection established: {}", conn_id);
 
         // Store connection with user ID
-        {
-            let mut conns = self.connections.write().await;
-            conns.insert(
-                conn_id.clone(),
-                ConnectionState {
-                    user_id,
-                    tx: tx.clone(),
-                },
-            );
-            info!("Connection stored for user {}: {}", user_id, conn_id);
-        }
+        self.add_connection(&conn_id, user_id, tx.clone()).await;
+        info!("Connection stored for user {}: {}", user_id, conn_id);
 
         // Handle outgoing messages
         let ws_state = self.clone();
@@ -93,8 +84,7 @@ impl WebSocketState {
                 }
             }
             // Connection closed, remove from state
-            let mut conns = ws_state.connections.write().await;
-            conns.remove(&send_conn_id);
+            ws_state.remove_connection(&send_conn_id).await;
             info!("Connection removed: {}", send_conn_id);
         });
 
@@ -195,6 +185,27 @@ impl WebSocketState {
             .await
             .get(conn_id)
             .map(|conn| conn.user_id)
+    }
+
+    pub async fn add_connection(
+        &self,
+        conn_id: &str,
+        user_id: i32,
+        tx: mpsc::UnboundedSender<Message>,
+    ) {
+        let mut conns = self.connections.write().await;
+        conns.insert(
+            conn_id.to_string(),
+            ConnectionState {
+                user_id,
+                tx: tx.clone(),
+            },
+        );
+    }
+
+    pub async fn remove_connection(&self, conn_id: &str) {
+        let mut conns = self.connections.write().await;
+        conns.remove(conn_id);
     }
 
     // Test helper method
