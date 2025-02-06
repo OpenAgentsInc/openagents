@@ -1,5 +1,3 @@
-mod service;
 mod types;
-
-pub use service::GeminiService;
 pub use types::*;
+pub mod service;
