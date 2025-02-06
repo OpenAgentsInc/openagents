@@ -1,6 +1,6 @@
 use super::MessageHandler;
 use crate::server::services::github_issue::GitHubService;
-use crate::server::services::gemini::service::GeminiService;
+use crate::server::services::gemini::{service::GeminiService, StreamUpdate};
 use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
 use async_trait::async_trait;
 use serde_json::json;
@@ -96,7 +96,7 @@ impl ChatHandler {
             // Process the streaming response
             while let Some(update) = stream.recv().await {
                 match update {
-                    crate::server::services::gemini::types::StreamUpdate::Content(content) => {
+                    StreamUpdate::Content(content) => {
                         let response_json = json!({
                             "type": "chat",
                             "content": &content,
@@ -108,7 +108,7 @@ impl ChatHandler {
                             .await?;
                         full_response.push_str(&content);
                     }
-                    crate::server::services::gemini::types::StreamUpdate::Done => {
+                    StreamUpdate::Done => {
                         let final_json = json!({
                             "type": "chat",
                             "content": full_response,
