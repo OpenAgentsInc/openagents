@@ -131,6 +131,8 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         )
         // Repomap routes
         .route("/repomap/generate", post(routes::generate_repomap))
+        // Hyperview routes
+        .merge(server::hyperview::hyperview_routes())
         // Static files
         .nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
         .nest_service(
