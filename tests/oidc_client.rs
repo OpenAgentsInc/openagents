@@ -125,9 +125,12 @@ async fn test_full_auth_flow() {
             Request::builder()
                 .method("POST")
                 .uri("/auth/login")
-                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("Content-Type", "application/json")
                 .body(Body::from(
-                    "email=test%40example.com&password=password123&remember-me=true",
+                    json!({
+                        "email": "test@example.com"
+                    })
+                    .to_string(),
                 ))
                 .unwrap(),
         )
@@ -135,17 +138,13 @@ async fn test_full_auth_flow() {
         .unwrap();
 
     info!("Login redirect response status: {}", response.status());
-    assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(response.status(), StatusCode::OK);
 
-    let location = response
-        .headers()
-        .get("location")
-        .unwrap()
-        .to_str()
-        .unwrap();
-    info!("Login redirect location: {}", location);
-    assert!(location.contains("/auth"));
-    assert!(location.contains("flow=login"));
+    let body = to_bytes(response.into_body(), MAX_SIZE).await.unwrap();
+    let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    info!("Login response: {:?}", response_json);
+    assert!(response_json["url"].as_str().unwrap().contains("/auth"));
+    assert!(response_json["url"].as_str().unwrap().contains("flow=login"));
 
     // Test callback
     info!("Testing callback");
