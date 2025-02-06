@@ -3,5 +3,14 @@ use crate::server::config::AppState;
 use axum::{routing::get, Router};
 
 pub fn hyperview_routes() -> Router<AppState> {
-    Router::new().route("/hyperview", get(handlers::hello_world))
+    Router::new()
+        .route("/hyperview", get(handlers::hello_world))
+        .route(
+            "/hyperview/fragments/connected-status",
+            get(handlers::connected_status),
+        )
+        .route(
+            "/hyperview/fragments/disconnected-status",
+            get(handlers::disconnected_status),
+        )
 }
