@@ -9,7 +9,6 @@ use std::error::Error;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 use regex::Regex;
-use std::path::Path;
 use tempfile::TempDir;
 use tokio::process::Command;
 
