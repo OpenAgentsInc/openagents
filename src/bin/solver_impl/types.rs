@@ -26,12 +26,13 @@ pub struct Change {
 
 impl From<Change> for openagents::solver::Change {
     fn from(change: Change) -> Self {
+        let analysis = change.analysis.clone();
         openagents::solver::Change {
             search: change.search,
             replace: change.replace,
             analysis: change.analysis,
             path: String::new(), // Will be set by state.add_change
-            reason: Some(change.analysis.clone()),
+            reason: Some(analysis),
         }
     }
 }
