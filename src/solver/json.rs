@@ -1,33 +1,35 @@
-use serde_json::Value;
+use anyhow::Result;
 
+/// Escapes special characters in a string for JSON
 pub fn escape_json_string(s: &str) -> String {
-    s.replace('\"', "\\\"")
+    s.replace('\\', "\\\\")
+        .replace('\"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
 }
 
+/// Checks if a string is valid JSON
 pub fn is_valid_json_string(s: &str) -> bool {
-    matches!(
-        serde_json::from_str(&format!("\"{}\"", s)),
-        Ok(Value::String(_))
-    )
+    serde_json::from_str::<serde_json::Value>(s).is_ok()
 }
 
-pub fn fix_common_json_issues(json: &str) -> String {
-    // Fix unescaped newlines in strings
-    let mut fixed = json.replace("\"\n", "\"\\n");
+/// Attempts to fix common JSON formatting issues
+pub fn fix_common_json_issues(s: &str) -> Result<String> {
+    let mut result = s.to_string();
 
-    // Fix unescaped quotes in strings
-    fixed = fixed
-        .replace("\\\"", "TEMP_QUOTE")
-        .replace("\"", "\\\"")
-        .replace("TEMP_QUOTE", "\\\"");
+    // Replace single quotes with double quotes
+    result = result.replace('\'', "\"");
 
-    // Fix missing commas between objects
-    fixed = fixed.replace("}\n{", "},\n{");
+    // Add quotes around unquoted keys
+    let re = regex::Regex::new(r#"(\{|\,)\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:"#)?;
+    result = re.replace_all(&result, "$1\"$2\":").to_string();
 
-    fixed
+    // Fix trailing commas
+    let re = regex::Regex::new(r",\s*([}\]])")?;
+    result = re.replace_all(&result, "$1").to_string();
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -36,23 +38,34 @@ mod tests {
 
     #[test]
     fn test_escape_json_string() {
-        assert_eq!(escape_json_string("hello\n"), "hello\\n");
-        assert_eq!(escape_json_string("\"quote\""), "\\\"quote\\\"");
-        assert_eq!(escape_json_string("tab\there"), "tab\\there");
+        assert_eq!(escape_json_string(r#"test"test"#), r#"test\"test"#);
+        assert_eq!(escape_json_string("test\ntest"), r#"test\ntest"#);
+        assert_eq!(escape_json_string(r#"test\test"#), r#"test\\test"#);
     }
 
     #[test]
     fn test_is_valid_json_string() {
-        assert!(is_valid_json_string("hello"));
-        assert!(is_valid_json_string("hello\\n"));
-        assert!(!is_valid_json_string("hello\""));
+        assert!(is_valid_json_string(r#"{"test": "value"}"#));
+        assert!(is_valid_json_string(r#"[1, 2, 3]"#));
+        assert!(!is_valid_json_string(r#"{"test": value}"#));
+        assert!(!is_valid_json_string("invalid"));
     }
 
     #[test]
-    #[ignore = "json escaping needs review"]
     fn test_fix_common_json_issues() {
-        let input = "{\n\"key\": \"value\"\n}\n{\"key2\": \"value2\"}";
-        let expected = "{\n\"key\": \"value\"\n},\n{\"key2\": \"value2\"}";
-        assert_eq!(fix_common_json_issues(input), expected);
+        // Test fixing unquoted keys
+        let input = r#"{test: "value"}"#;
+        let expected = r#"{"test":"value"}"#;
+        assert_eq!(fix_common_json_issues(input).unwrap(), expected);
+
+        // Test fixing single quotes
+        let input = r#"{'test': 'value'}"#;
+        let expected = r#"{"test": "value"}"#;
+        assert_eq!(fix_common_json_issues(input).unwrap(), expected);
+
+        // Test fixing trailing commas
+        let input = r#"{"test": "value",}"#;
+        let expected = r#"{"test": "value"}"#;
+        assert_eq!(fix_common_json_issues(input).unwrap(), expected);
     }
 }
