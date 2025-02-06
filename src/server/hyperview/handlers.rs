@@ -1,9 +1,11 @@
 use axum::{
     response::Response,
     http::{header, StatusCode},
+    extract::State,
 };
+use crate::server::config::AppState;
 
-pub async fn hello_world() -> Response {
+pub async fn hello_world(State(_state): State<AppState>) -> Response {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
