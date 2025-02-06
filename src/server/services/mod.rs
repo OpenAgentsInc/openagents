@@ -9,6 +9,8 @@ pub mod ollama;
 pub mod openrouter;
 pub mod repomap;
 
+pub use auth::OIDCService;
+pub use chat_database::ChatDatabase;
 pub use deepseek::DeepSeekService;
 pub use gateway::{Gateway, GatewayMetadata};
 pub use gemini::service::GeminiService;
