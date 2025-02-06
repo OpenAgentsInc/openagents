@@ -15,7 +15,8 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
   <screen>
     <styles>
       <style id="screen" flex="1" backgroundColor="black" />
-      <style id="container" flex="1" justifyContent="flex-end" paddingBottom="24" />
+      <style id="container" flex="1" height="100%" />
+      <style id="content" flex="1" justifyContent="flex-end" paddingBottom="24" />
       <style id="header" marginLeft="24" marginBottom="16" />
       <style id="headerText" color="#808080" fontSize="16" />
       <style id="inputContainer" flexDirection="row" alignItems="center" marginLeft="24" marginRight="24" borderWidth="1" borderColor="#808080" borderRadius="8" paddingLeft="12" paddingRight="12" paddingTop="8" paddingBottom="8" />
@@ -26,18 +27,20 @@ pub async fn hello_world(State(_state): State<AppState>) -> Response {
     <body>
       <view style="screen">
         <view style="container">
-          <view style="header">
-            <text style="headerText">New conversation</text>
-            <text style="headerText">Would you like to learn about what I can do?</text>
-          </view>
-          <view style="inputContainer">
-            <text-field 
-              style="input"
-              placeholder="Ask anything..."
-              placeholderTextColor="#808080"
-            />
-            <view style="submitButton">
-              <text style="submitArrow">↑</text>
+          <view style="content">
+            <view style="header">
+              <text style="headerText">New conversation</text>
+              <text style="headerText">Would you like to learn about what I can do?</text>
+            </view>
+            <view style="inputContainer">
+              <text-field 
+                style="input"
+                placeholder="Ask anything..."
+                placeholderTextColor="#808080"
+              />
+              <view style="submitButton">
+                <text style="submitArrow">↑</text>
+              </view>
             </view>
           </view>
         </view>
