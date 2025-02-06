@@ -1,3 +1,5 @@
-mod service;
+pub mod service;
+mod types;
 
-pub use service::{OpenRouterConfig, OpenRouterService};
+pub use service::OpenRouterService;
+pub use types::*;
