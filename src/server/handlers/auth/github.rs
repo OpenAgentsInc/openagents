@@ -8,9 +8,9 @@ use serde::Deserialize;
 use tracing::info;
 
 use crate::server::{
+    config::AppState,
     handlers::auth::session::{create_session_and_redirect, render_login_template},
-    services::github_auth::{GitHubAuthError, GitHubAuthService},
-    AppState,
+    services::github_auth::GitHubAuthError,
 };
 
 #[derive(Debug, Deserialize)]
@@ -19,9 +19,10 @@ pub struct GitHubCallback {
 }
 
 pub async fn github_login_page() -> Response {
-    render_login_template("github")
+    render_login_template()
 }
 
+#[axum::debug_handler]
 pub async fn handle_github_login(State(state): State<AppState>) -> Response {
     info!("Handling GitHub login request");
     
@@ -37,6 +38,7 @@ pub async fn handle_github_login(State(state): State<AppState>) -> Response {
     }
 }
 
+#[axum::debug_handler]
 pub async fn handle_github_callback(
     State(state): State<AppState>,
     Json(callback): Json<GitHubCallback>,
@@ -44,9 +46,9 @@ pub async fn handle_github_callback(
     info!("Handling GitHub callback");
 
     match state.github_auth.authenticate(callback.code).await {
-        Ok(user) => create_session_and_redirect(user, &state.pool).await,
+        Ok(user) => create_session_and_redirect(user),
         Err(GitHubAuthError::UserAlreadyExists(user)) => {
-            create_session_and_redirect(user, &state.pool).await
+            create_session_and_redirect(user)
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
