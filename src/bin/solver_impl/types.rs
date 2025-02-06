@@ -31,7 +31,7 @@ impl From<Change> for openagents::solver::Change {
             replace: change.replace,
             analysis: change.analysis,
             path: String::new(), // Will be set by state.add_change
-            reason: change.analysis.clone(),
+            reason: Some(change.analysis.clone()),
         }
     }
 }
