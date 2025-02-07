@@ -22,15 +22,17 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
       AIDER_API_KEY: ${{ secrets.AIDER_API_KEY }}
+      DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+      GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+      GITHUB_TOKEN: ${{ github.token }}
       OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
       OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
       OIDC_AUTH_URL: ${{ secrets.OIDC_AUTH_URL }}
       OIDC_TOKEN_URL: ${{ secrets.OIDC_TOKEN_URL }}
       OIDC_REDIRECT_URI: ${{ secrets.OIDC_REDIRECT_URI }}
-      GITHUB_TOKEN: ${{ github.token }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     services:
       postgres:
@@ -156,10 +158,12 @@ jobs:
     name: Code coverage
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
       APP_ENVIRONMENT: "production"
       AIDER_API_KEY: ${{ secrets.AIDER_API_KEY }}
+      DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+      GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
       GITHUB_TOKEN: ${{ github.token }}
       OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
       OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}

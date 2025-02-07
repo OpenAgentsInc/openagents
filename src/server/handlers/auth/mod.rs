@@ -15,11 +15,13 @@ use crate::server::{
 };
 
 pub mod forms;
+pub mod github;
 pub mod login;
 pub mod session;
 pub mod signup;
 
 pub use forms::*;
+pub use github::*;
 pub use login::*;
 pub use session::*;
 pub use signup::*;
@@ -31,6 +33,8 @@ pub const SESSION_DURATION_DAYS: i64 = 7;
 pub struct CallbackParams {
     pub code: String,
     pub flow: Option<String>, // Optional flow parameter to distinguish login vs signup
+    #[serde(default)]
+    pub platform: Option<String>, // Optional platform parameter to detect mobile
 }
 
 #[derive(Debug, Serialize)]
@@ -76,6 +80,7 @@ pub async fn callback(
 ) -> Response {
     info!("Received callback with code length: {}", params.code.len());
     info!("Flow parameter: {:?}", params.flow);
+    info!("Platform parameter: {:?}", params.platform);
 
     // Determine if this is a signup flow
     let is_signup = params.flow.as_deref() == Some("signup");
@@ -83,6 +88,9 @@ pub async fn callback(
         "Callback flow: {}",
         if is_signup { "signup" } else { "login" }
     );
+
+    // Check if request is from mobile app
+    let is_mobile = params.platform.as_deref() == Some("mobile");
 
     // Use appropriate service method based on flow
     let result = if is_signup {
@@ -96,12 +104,12 @@ pub async fn callback(
     match result {
         Ok(user) => {
             info!("Successfully processed user: {:?}", user);
-            create_session_and_redirect(user)
+            create_session_and_redirect(user, is_mobile).await
         }
         Err(e) => match e {
             AuthError::UserAlreadyExists(user) => {
                 info!("User already exists, creating session and redirecting");
-                create_session_and_redirect(user)
+                create_session_and_redirect(user, is_mobile).await
             }
             other_error => {
                 error!("Authentication error: {}", &other_error);

@@ -1,60 +1,87 @@
 use axum::{
-    extract::{Form, State},
+    extract::{Query, State},
     http::StatusCode,
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
     Json,
 };
-use tracing::{error, info};
+use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::server::config::AppState;
 
-use super::{forms::LoginForm, ErrorResponse};
-
 pub async fn login_page() -> Response {
-    info!("Serving login page");
-    super::session::render_login_template()
+    super::session::render_login_template().await
 }
 
-pub async fn handle_login(State(state): State<AppState>, Form(form): Form<LoginForm>) -> Response {
-    info!("Received login form");
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    #[serde(default)]
+    pub platform: Option<String>,
+}
 
-    // Validate form input
-    if let Err(e) = form.validate() {
-        error!("Login form validation failed: {}", e);
-        return (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e })).into_response();
-    }
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub url: String,
+}
 
-    // Generate login URL with email
+pub async fn handle_login(
+    State(state): State<AppState>,
+    Json(request): Json<LoginRequest>,
+) -> Response {
+    info!("Processing login request for email: {}", request.email);
+
     match state
         .auth_state
         .service
-        .authorization_url_for_login(&form.email)
+        .authorization_url_for_login(&request.email)
     {
-        Ok(auth_url) => {
-            info!("Redirecting to login URL: {}", auth_url);
-            Redirect::temporary(&auth_url).into_response()
+        Ok(url) => {
+            info!("Generated login URL: {}", url);
+            Json(LoginResponse { url }).into_response()
         }
         Err(e) => {
-            error!("Failed to generate auth URL: {}", e);
+            info!("Failed to generate login URL: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("Internal server error: {}", e),
-                }),
+                format!("Failed to generate login URL: {}", e),
             )
                 .into_response()
         }
     }
 }
 
-pub async fn handle_login_callback(State(state): State<AppState>, code: String) -> Response {
-    info!("Processing login callback with code length: {}", code.len());
+#[derive(Debug, Deserialize)]
+pub struct LoginCallbackRequest {
+    pub code: String,
+    #[serde(default)]
+    pub platform: Option<String>,
+}
 
-    match state.auth_state.service.login(code).await {
+pub async fn handle_login_callback(
+    State(state): State<AppState>,
+    Query(request): Query<LoginCallbackRequest>,
+) -> Response {
+    info!(
+        "Processing login callback with code length: {}",
+        request.code.len()
+    );
+
+    // Check if request is from mobile app
+    let is_mobile = request.platform.as_deref() == Some("mobile");
+
+    match state.auth_state.service.login(request.code).await {
         Ok(user) => {
-            info!("Login successful for user: {:?}", user);
-            super::session::create_session_and_redirect(user)
+            info!("Successfully logged in user: {:?}", user);
+            super::session::create_session_and_redirect(user, is_mobile).await
         }
-        Err(e) => super::handle_auth_error(e),
+        Err(e) => {
+            info!("Login failed: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Login failed: {}", e),
+            )
+                .into_response()
+        }
     }
 }
