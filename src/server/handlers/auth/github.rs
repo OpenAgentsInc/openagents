@@ -36,10 +36,10 @@ pub async fn handle_github_login(
     State(state): State<AppState>,
     Query(params): Query<GitHubLoginParams>,
 ) -> Response {
-    info!("Handling GitHub login request");
+    info!("Handling GitHub login request with platform: {:?}", params.platform);
     
     // Get authorization URL with platform in state
-    let url = match state.github_auth.authorization_url(params.platform) {
+    let url = match state.github_auth.authorization_url(params.platform.clone()) {
         Ok(url) => url,
         Err(e) => {
             return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
@@ -67,9 +67,15 @@ pub async fn handle_github_callback(
     let is_mobile = callback.platform.as_deref() == Some("mobile") 
         || callback.state.as_deref() == Some("mobile");
 
+    info!("Is mobile: {}", is_mobile);
+
     match state.github_auth.authenticate(callback.code).await {
-        Ok(user) => create_session_and_redirect(user, is_mobile).await,
+        Ok(user) => {
+            info!("Authentication successful, redirecting with is_mobile: {}", is_mobile);
+            create_session_and_redirect(user, is_mobile).await
+        }
         Err(GitHubAuthError::UserAlreadyExists(user)) => {
+            info!("User exists, redirecting with is_mobile: {}", is_mobile);
             create_session_and_redirect(user, is_mobile).await
         }
         Err(e) => {
