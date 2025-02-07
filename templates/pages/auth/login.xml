@@ -13,8 +13,8 @@
     <body style="container">
       <text style="title">Welcome to OpenAgents</text>
       
-      <!-- Loading State -->
-      <text id="loading-text" style="loading" hidden="true">Connecting to GitHub...</text>
+      <!-- Loading State (explicitly hidden) -->
+      <text id="loading-text" style="loading" display="none">Connecting to GitHub...</text>
       
       <!-- GitHub Login Button -->
       <view style="button" id="login-button">
@@ -26,21 +26,11 @@
           show-during-load="loading-text"
           hide-during-load="login-button"
         />
-        <text style="buttonText">
-          <behavior 
-            trigger="press" 
-            action="navigate"
-            href="/auth/github/login"
-            verb="GET"
-            show-during-load="loading-text"
-            hide-during-load="login-button"
-          />
-          Continue with GitHub
-        </text>
+        <text style="buttonText">Continue with GitHub</text>
       </view>
       
       <!-- Error Message -->
-      <text id="error-message" style="error" hidden="true" />
+      <text id="error-message" style="error" display="none" />
     </body>
   </screen>
 </doc>
