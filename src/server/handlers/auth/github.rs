@@ -20,6 +20,12 @@ pub struct GitHubCallback {
     platform: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GitHubLoginParams {
+    #[serde(default)]
+    platform: Option<String>,
+}
+
 pub async fn github_login_page() -> Response {
     render_login_template().await
 }
@@ -27,11 +33,11 @@ pub async fn github_login_page() -> Response {
 #[axum::debug_handler]
 pub async fn handle_github_login(
     State(state): State<AppState>,
-    Query(params): Query<GitHubCallback>,
+    Query(params): Query<GitHubLoginParams>,
 ) -> Response {
     info!("Handling GitHub login request");
     
-    // Add platform to authorization URL if provided
+    // Get base authorization URL
     let mut url = match state.github_auth.authorization_url() {
         Ok(url) => url,
         Err(e) => {
