@@ -21,7 +21,7 @@
         <behavior 
           trigger="press" 
           action="open-url"
-          href="/auth/github/login"
+          href="/auth/github/login?platform=mobile"
           verb="GET"
           show-during-load="loading-text"
           hide-during-load="login-button"
