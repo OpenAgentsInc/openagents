@@ -14,6 +14,7 @@ const MOBILE_APP_SCHEME: &str = "onyx";
 
 pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Response {
     info!("Creating session for user: {:?}", user);
+    info!("Is mobile: {}", is_mobile);
 
     let session_token = user.scramble_id.clone();
     let cookie = Cookie::build((SESSION_COOKIE_NAME, session_token.clone()))
@@ -26,10 +27,14 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
 
     // For mobile app, redirect to deep link with session token
     let redirect_url = if is_mobile {
+        info!("Redirecting to mobile app with token");
         format!("{}://auth/success?token={}", MOBILE_APP_SCHEME, session_token)
     } else {
+        info!("Redirecting to web app");
         "/".to_string()
     };
+
+    info!("Redirect URL: {}", redirect_url);
 
     Response::builder()
         .status(StatusCode::TEMPORARY_REDIRECT)
