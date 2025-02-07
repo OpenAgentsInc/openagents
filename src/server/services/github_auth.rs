@@ -197,26 +197,66 @@ impl GitHubAuthService {
         // Use GitHub ID as scramble_id
         let scramble_id = format!("github_{}", github_user.id);
 
-        let user = sqlx::query_as!(
+        // First try to find existing user
+        let existing_user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (scramble_id, metadata)
-            VALUES ($1, $2)
-            ON CONFLICT (scramble_id) DO UPDATE
-            SET metadata = $2,
-                last_login_at = NOW()
-            RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+            SELECT id, scramble_id, metadata, last_login_at, created_at, updated_at
+            FROM users
+            WHERE scramble_id = $1
             "#,
-            scramble_id,
-            metadata as _
+            scramble_id
         )
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
-            error!("Database error during user creation: {}", e);
+            error!("Database error checking for existing user: {}", e);
             GitHubAuthError::DatabaseError(e.to_string())
         })?;
 
-        Ok(user)
+        match existing_user {
+            Some(mut user) => {
+                // Update existing user
+                user = sqlx::query_as!(
+                    User,
+                    r#"
+                    UPDATE users
+                    SET metadata = $2,
+                        last_login_at = NOW()
+                    WHERE id = $1
+                    RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+                    "#,
+                    user.id,
+                    metadata as _
+                )
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| {
+                    error!("Database error updating user: {}", e);
+                    GitHubAuthError::DatabaseError(e.to_string())
+                })?;
+                Ok(user)
+            }
+            None => {
+                // Create new user
+                let user = sqlx::query_as!(
+                    User,
+                    r#"
+                    INSERT INTO users (scramble_id, metadata, last_login_at)
+                    VALUES ($1, $2, NOW())
+                    RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+                    "#,
+                    scramble_id,
+                    metadata as _
+                )
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| {
+                    error!("Database error creating user: {}", e);
+                    GitHubAuthError::DatabaseError(e.to_string())
+                })?;
+                Ok(user)
+            }
+        }
     }
 }
