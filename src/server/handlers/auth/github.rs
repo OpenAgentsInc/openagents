@@ -2,7 +2,6 @@ use axum::{
     extract::{Query, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::Deserialize;
 use tracing::info;
@@ -18,6 +17,8 @@ pub struct GitHubCallback {
     code: String,
     #[serde(default)]
     platform: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,7 +48,7 @@ pub async fn handle_github_login(
 
     // Append platform parameter if provided
     if let Some(platform) = params.platform {
-        url.push_str(&format!("&platform={}", platform));
+        url.push_str(&format!("&state={}", platform));
     }
 
     Response::builder()
@@ -63,15 +64,22 @@ pub async fn handle_github_callback(
     Query(callback): Query<GitHubCallback>,
 ) -> Response {
     info!("Handling GitHub callback");
+    info!("Code length: {}", callback.code.len());
+    info!("Platform: {:?}", callback.platform);
+    info!("State: {:?}", callback.state);
 
-    // Check if request is from mobile app
-    let is_mobile = callback.platform.as_deref() == Some("mobile");
+    // Check if request is from mobile app (either from platform param or state)
+    let is_mobile = callback.platform.as_deref() == Some("mobile") 
+        || callback.state.as_deref() == Some("mobile");
 
     match state.github_auth.authenticate(callback.code).await {
         Ok(user) => create_session_and_redirect(user, is_mobile).await,
         Err(GitHubAuthError::UserAlreadyExists(user)) => {
             create_session_and_redirect(user, is_mobile).await
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => {
+            info!("GitHub auth error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
     }
 }
