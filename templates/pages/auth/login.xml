@@ -4,17 +4,17 @@
     <styles>
       <style id="container" flex="1" backgroundColor="black" alignItems="center" justifyContent="center" />
       <style id="title" fontSize="24" color="white" marginBottom="32" />
-      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
+      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" display="flex" />
       <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
-      <style id="error" color="red" fontSize="14" marginTop="16" />
-      <style id="loading" color="white" fontSize="14" marginTop="16" />
+      <style id="error" color="red" fontSize="14" marginTop="16" display="none" />
+      <style id="loading" color="white" fontSize="14" marginTop="16" display="none" />
     </styles>
     
     <body style="container">
       <text style="title">Welcome to OpenAgents</text>
       
       <!-- Loading State -->
-      <text id="loading-text" style="loading" hidden="true">Connecting to GitHub...</text>
+      <text id="loading-text" style="loading">Connecting to GitHub...</text>
       
       <!-- GitHub Login Button -->
       <view style="button" id="login-button">
@@ -30,7 +30,7 @@
       </view>
       
       <!-- Error Message -->
-      <text id="error-message" style="error" hidden="true" />
+      <text id="error-message" style="error" />
     </body>
   </screen>
 </doc>
