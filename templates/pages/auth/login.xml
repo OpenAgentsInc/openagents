@@ -33,15 +33,13 @@
       <text id="error-message" style="error" display="none" />
 
       <!-- Auth Success Handler -->
-      <view id="auth-handler">
-        <behavior
-          trigger="load"
-          action="auth"
-          auth-action="set-token"
-          token="$params.token"
-          href="/hyperview/main"
-        />
-      </view>
+      <behavior
+        trigger="load"
+        action="auth"
+        auth-action="set-token"
+        token="$params.token"
+        href="/hyperview/main"
+      />
     </body>
   </screen>
 </doc>
