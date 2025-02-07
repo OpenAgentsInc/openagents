@@ -65,7 +65,8 @@ pub async fn handle_github_callback(
 
     // Check if request is from mobile app (either from platform param or state)
     let is_mobile = callback.platform.as_deref() == Some("mobile") 
-        || callback.state.as_deref() == Some("mobile");
+        || callback.state.as_deref() == Some("mobile")
+        || callback.state.as_deref() == Some("\"mobile\""); // Handle quoted state
 
     info!("Is mobile: {}", is_mobile);
 
