@@ -28,7 +28,10 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
     // For mobile app, redirect to deep link with session token
     let redirect_url = if is_mobile {
         info!("Redirecting to mobile app with token");
-        format!("{}://auth/success?token={}", MOBILE_APP_SCHEME, session_token)
+        format!(
+            "{}://auth/success?token={}",
+            MOBILE_APP_SCHEME, session_token
+        )
     } else {
         info!("Redirecting to web app");
         "/".to_string()
@@ -67,7 +70,9 @@ pub async fn render_login_template() -> Response {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/html")
-        .body(axum::body::Body::from(include_str!("../../../../templates/pages/login.html")))
+        .body(axum::body::Body::from(include_str!(
+            "../../../../templates/pages/login.html"
+        )))
         .unwrap()
 }
 
@@ -75,6 +80,8 @@ pub async fn render_signup_template() -> Response {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/html")
-        .body(axum::body::Body::from(include_str!("../../../../templates/pages/signup.html")))
+        .body(axum::body::Body::from(include_str!(
+            "../../../../templates/pages/signup.html"
+        )))
         .unwrap()
 }

@@ -109,7 +109,10 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
     let pool =
         sqlx::PgPool::connect_lazy(&config.database_url).expect("Failed to create database pool");
 
-    let auth_state = Arc::new(server::handlers::auth::AuthState::new(oidc_config, pool.clone()));
+    let auth_state = Arc::new(server::handlers::auth::AuthState::new(
+        oidc_config,
+        pool.clone(),
+    ));
 
     // Create GitHub auth service
     let github_config = GitHubConfig {

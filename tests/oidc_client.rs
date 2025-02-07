@@ -144,7 +144,10 @@ async fn test_full_auth_flow() {
     let response_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     info!("Login response: {:?}", response_json);
     assert!(response_json["url"].as_str().unwrap().contains("/auth"));
-    assert!(response_json["url"].as_str().unwrap().contains("flow=login"));
+    assert!(response_json["url"]
+        .as_str()
+        .unwrap()
+        .contains("flow=login"));
 
     // Test callback
     info!("Testing callback");

@@ -47,7 +47,9 @@ impl std::fmt::Display for GitHubAuthError {
         match self {
             GitHubAuthError::InvalidConfig => write!(f, "Invalid GitHub configuration"),
             GitHubAuthError::AuthenticationFailed => write!(f, "Authentication failed"),
-            GitHubAuthError::TokenExchangeFailed(msg) => write!(f, "Token exchange failed: {}", msg),
+            GitHubAuthError::TokenExchangeFailed(msg) => {
+                write!(f, "Token exchange failed: {}", msg)
+            }
             GitHubAuthError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             GitHubAuthError::UserAlreadyExists(_) => write!(f, "User already exists"),
         }
@@ -74,12 +76,15 @@ impl GitHubAuthService {
     }
 
     pub fn authorization_url(&self, platform: Option<String>) -> Result<String, GitHubAuthError> {
-        info!("Generating GitHub authorization URL with platform: {:?}", platform);
-        
+        info!(
+            "Generating GitHub authorization URL with platform: {:?}",
+            platform
+        );
+
         // Add platform to state if provided, otherwise use empty string
         let state = platform.unwrap_or_default();
         info!("Using state value: {}", state);
-        
+
         let url = format!(
             "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user%20repo&state={}",
             self.config.client_id,
@@ -91,7 +96,10 @@ impl GitHubAuthService {
     }
 
     pub async fn authenticate(&self, code: String) -> Result<User, GitHubAuthError> {
-        info!("Processing GitHub authentication with code length: {}", code.len());
+        info!(
+            "Processing GitHub authentication with code length: {}",
+            code.len()
+        );
 
         // Exchange code for token
         let token_response = self.exchange_code(code).await?;
@@ -104,7 +112,7 @@ impl GitHubAuthService {
         // Get or create user
         let user = self.get_or_create_user(github_user, token_response).await?;
         info!("Successfully processed GitHub auth for user: {:?}", user);
-        
+
         Ok(user)
     }
 

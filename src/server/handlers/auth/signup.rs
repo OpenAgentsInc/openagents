@@ -62,7 +62,10 @@ pub async fn handle_signup_callback(
     State(state): State<AppState>,
     Query(request): Query<SignupCallbackRequest>,
 ) -> Response {
-    info!("Processing signup callback with code length: {}", request.code.len());
+    info!(
+        "Processing signup callback with code length: {}",
+        request.code.len()
+    );
 
     // Check if request is from mobile app
     let is_mobile = request.platform.as_deref() == Some("mobile");
