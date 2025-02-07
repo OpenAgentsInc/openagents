@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<doc xmlns="https://hyperview.org/hyperview">
+  <screen>
+    <styles>
+      <style id="container" flex="1" backgroundColor="black" alignItems="center" justifyContent="center" />
+      <style id="title" fontSize="24" color="white" marginBottom="32" />
+      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
+      <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
+      <style id="error" color="red" fontSize="14" marginTop="16" />
+      <style id="loading" color="white" fontSize="14" marginTop="16" />
+    </styles>
+    
+    <body style="container">
+      <text style="title">Welcome to OpenAgents</text>
+      
+      <!-- Loading State -->
+      <text id="loading-text" style="loading" hidden="true">Connecting to GitHub...</text>
+      
+      <!-- GitHub Login Button -->
+      <view style="button" id="login-button">
+        <behavior 
+          trigger="press" 
+          action="open-url"
+          href="/auth/github/login"
+          verb="GET"
+          show-during-load="loading-text"
+          hide-during-load="login-button"
+        />
+        <text style="buttonText">Continue with GitHub</text>
+      </view>
+      
+      <!-- Error Message -->
+      <text id="error-message" style="error" hidden="true" />
+    </body>
+  </screen>
+</doc>
