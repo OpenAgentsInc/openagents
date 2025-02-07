@@ -10,10 +10,13 @@ use crate::server::models::user::User;
 
 use super::SESSION_COOKIE_NAME;
 
-pub async fn create_session_and_redirect(user: User) -> Response {
+const MOBILE_APP_SCHEME: &str = "onyx";
+
+pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Response {
     info!("Creating session for user: {:?}", user);
 
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, user.scramble_id.clone()))
+    let session_token = user.scramble_id.clone();
+    let cookie = Cookie::build((SESSION_COOKIE_NAME, session_token.clone()))
         .path("/")
         .secure(true)
         .http_only(true)
@@ -21,10 +24,17 @@ pub async fn create_session_and_redirect(user: User) -> Response {
         .max_age(Duration::days(7))
         .build();
 
+    // For mobile app, redirect to deep link with session token
+    let redirect_url = if is_mobile {
+        format!("{}://auth/success?token={}", MOBILE_APP_SCHEME, session_token)
+    } else {
+        "/".to_string()
+    };
+
     Response::builder()
         .status(StatusCode::TEMPORARY_REDIRECT)
         .header(header::SET_COOKIE, cookie.to_string())
-        .header(header::LOCATION, "/")
+        .header(header::LOCATION, redirect_url)
         .body(axum::body::Body::empty())
         .unwrap()
 }
