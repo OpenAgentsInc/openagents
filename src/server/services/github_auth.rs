@@ -73,12 +73,17 @@ impl GitHubAuthService {
         Self { config, pool }
     }
 
-    pub fn authorization_url(&self) -> Result<String, GitHubAuthError> {
+    pub fn authorization_url(&self, platform: Option<String>) -> Result<String, GitHubAuthError> {
         info!("Generating GitHub authorization URL");
+        
+        // Add platform to state if provided
+        let state = platform.unwrap_or_default();
+        
         let url = format!(
-            "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user%20repo",
+            "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user%20repo&state={}",
             self.config.client_id,
-            urlencoding::encode(&self.config.redirect_uri)
+            urlencoding::encode(&self.config.redirect_uri),
+            urlencoding::encode(&state)
         );
         info!("Generated GitHub URL: {}", url);
         Ok(url)
