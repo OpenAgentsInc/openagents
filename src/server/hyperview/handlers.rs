@@ -130,7 +130,7 @@ pub async fn main_screen(State(_state): State<AppState>) -> Response {
           trigger="press" 
           action="auth"
           auth-action="logout"
-          href="/templates/pages/auth/login.xml"
+          href="/auth/logout?platform=mobile"
           show-during-load="loading-text"
           hide-during-load="logout-button"
         />
