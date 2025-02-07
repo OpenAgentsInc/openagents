@@ -35,10 +35,8 @@
       <!-- Auth Success Handler -->
       <behavior
         trigger="load"
-        action="auth"
-        auth-action="set-token"
-        token="$params.token"
-        href="/hyperview/main"
+        action="reload"
+        href="/templates/pages/main.xml"
       />
     </body>
   </screen>
