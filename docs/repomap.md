@@ -161,11 +161,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -177,15 +177,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -212,6 +212,11 @@ src/server/handlers/auth/forms.rs:
 │fn deserialize_checkbox
 │fn validate
 
+src/server/handlers/auth/github.rs:
+│fn github_login_page
+│fn handle_github_login
+│fn handle_github_callback
+
 src/server/handlers/auth/login.rs:
 │fn login_page
 │fn handle_login
@@ -229,6 +234,7 @@ src/server/handlers/auth/session.rs:
 │fn clear_session_and_redirect
 │fn render_login_template
 │fn render_signup_template
+│const MOBILE_APP_SCHEME
 
 src/server/handlers/auth/signup.rs:
 │fn signup_page
@@ -239,12 +245,39 @@ src/server/handlers/user.rs:
 │fn create_user
 
 src/server/hyperview/handlers.rs:
-│#id: text
-│#id: textstyle
+│#id: main
+│#id: container
+│#id: header
+│#id: headerText
+│#id: messagesContainer
+│#id: message
+│#id: messageText
+│#id: inputContainer
+│#id: input
+│#id: submitButton
+│#id: submitArrow
+│#id: statusContainer
+│#id: statusText
+│#id: statusConnected
+│#id: statusDisconnected
+│#id: status
+│#id: messages
+│#id: chat-form
+│#id: container
+│#id: title
+│#id: button
+│#id: buttonText
 │fn hello_world
+│fn main_screen
+│fn connected_status
+│fn disconnected_status
 
 src/server/hyperview/routes.rs:
 │fn hyperview_routes
+
+src/server/hyperview/ws.rs:
+│fn hyperview_ws_handler
+│fn handle_socket
 
 src/server/models/chat.rs:
 │fn new
@@ -299,6 +332,16 @@ src/server/services/gateway/mod.rs:
 │fn metadata
 │fn chat
 │fn chat_stream
+
+src/server/services/github_auth.rs:
+│fn fmt
+│fn from
+│fn new
+│fn authorization_url
+│fn authenticate
+│fn exchange_code
+│fn get_github_user
+│fn get_or_create_user
 
 src/server/services/github_issue/conversions.rs:
 │fn try_from
@@ -387,6 +430,8 @@ src/server/ws/transport.rs:
 │fn broadcast
 │fn send_to
 │fn get_user_id
+│fn add_connection
+│fn remove_connection
 │fn add_test_connection
 │fn clone
 
@@ -524,7 +569,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -624,7 +669,39 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
+
+templates/pages/auth/callback.xml:
+│#id: container
+│#id: loading
+│#id: error
+│#id: loading-text
+│#id: error-message
+│#id: callback-response
+
+templates/pages/auth/error.xml:
+│#id: container
+│#id: title
+│#id: error
+│#id: button
+│#id: buttonText
+
+templates/pages/auth/loading.xml:
+│#id: container
+│#id: title
+│#id: message
+│#id: spinner
+
+templates/pages/auth/login.xml:
+│#id: container
+│#id: title
+│#id: button
+│#id: buttonText
+│#id: error
+│#id: loading
+│#id: loading-text
+│#id: login-button
+│#id: error-message
 
 templates/pages/company.html:
 │class of
@@ -648,6 +725,12 @@ templates/pages/login.html:
 │const response
 │const location
 │const data
+
+templates/pages/main.xml:
+│#id: container
+│#id: title
+│#id: button
+│#id: buttonText
 
 templates/pages/repomap.html:
 │#id: repo_url
@@ -881,3 +964,4 @@ tests/tool_selection.rs:
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
+
