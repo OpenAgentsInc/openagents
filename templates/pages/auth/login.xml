@@ -20,7 +20,7 @@
       <view style="button" id="login-button">
         <behavior 
           trigger="press" 
-          action="open-url"
+          action="navigate"
           href="/auth/github/login"
           verb="GET"
           show-during-load="loading-text"
@@ -29,7 +29,7 @@
         <text style="buttonText">
           <behavior 
             trigger="press" 
-            action="open-url"
+            action="navigate"
             href="/auth/github/login"
             verb="GET"
             show-during-load="loading-text"
