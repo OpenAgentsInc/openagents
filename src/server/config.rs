@@ -163,7 +163,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         )
         .route(
             "/auth/github/callback",
-            post(server::handlers::auth::handle_github_callback),
+            get(server::handlers::auth::handle_github_callback), // Changed from post to get
         )
         // Repomap routes
         .route("/repomap/generate", post(routes::generate_repomap))
