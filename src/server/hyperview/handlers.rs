@@ -132,6 +132,8 @@ pub async fn main_screen(State(_state): State<AppState>) -> Response {
           href="/hyperview/auth/logout?platform=mobile"
           verb="GET"
           target="logout-response"
+          show-during-load="loading-text"
+          hide-during-load="logout-button"
         />
         <text style="logoutText">Sign Out</text>
       </view>
