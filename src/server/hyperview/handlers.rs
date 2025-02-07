@@ -128,24 +128,13 @@ pub async fn main_screen(State(_state): State<AppState>) -> Response {
       <view style="logoutButton" id="logout-button">
         <behavior 
           trigger="press" 
-          action="fetch"
-          href="/hyperview/auth/logout?platform=mobile"
-          verb="GET"
-          target="logout-response"
+          action="auth"
+          auth-action="logout"
+          href="/templates/pages/auth/login.xml"
           show-during-load="loading-text"
           hide-during-load="logout-button"
         />
         <text style="logoutText">Sign Out</text>
-      </view>
-
-      <!-- Handle logout response -->
-      <view id="logout-response" display="none">
-        <behavior 
-          trigger="load"
-          action="auth"
-          auth-action="logout"
-          href="/templates/pages/auth/login.xml"
-        />
       </view>
 
       <!-- Loading State -->
