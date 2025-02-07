@@ -26,7 +26,17 @@
           show-during-load="loading-text"
           hide-during-load="login-button"
         />
-        <text style="buttonText">Continue with GitHub</text>
+        <text style="buttonText">
+          <behavior 
+            trigger="press" 
+            action="open-url"
+            href="/auth/github/login"
+            verb="GET"
+            show-during-load="loading-text"
+            hide-during-load="login-button"
+          />
+          Continue with GitHub
+        </text>
       </view>
       
       <!-- Error Message -->
