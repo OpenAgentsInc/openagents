@@ -30,7 +30,7 @@
           trigger="press" 
           action="auth"
           auth-action="logout"
-          href="/auth/login"
+          href="/templates/pages/auth/login.xml"
           show-during-load="loading-text"
           hide-during-load="logout-button"
         />
