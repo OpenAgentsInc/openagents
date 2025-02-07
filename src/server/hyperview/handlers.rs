@@ -106,6 +106,8 @@ pub async fn main_screen(State(_state): State<AppState>) -> Response {
       <style id="title" fontSize="24" color="white" marginBottom="32" />
       <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
       <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
+      <style id="logoutButton" backgroundColor="transparent" borderColor="white" borderWidth="1" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
+      <style id="logoutText" color="white" fontSize="16" fontWeight="600" />
     </styles>
     
     <body style="container">
@@ -119,6 +121,28 @@ pub async fn main_screen(State(_state): State<AppState>) -> Response {
           href="/hyperview"
         />
         <text style="buttonText">Start Chat</text>
+      </view>
+
+      <!-- Logout Button -->
+      <view style="logoutButton">
+        <behavior 
+          trigger="press" 
+          action="fetch"
+          href="/auth/logout?platform=mobile"
+          verb="GET"
+          target="logout-response"
+        />
+        <text style="logoutText">Sign Out</text>
+      </view>
+
+      <!-- Handle logout response -->
+      <view id="logout-response" hidden="true">
+        <behavior 
+          trigger="load"
+          action="auth"
+          auth-action="logout"
+          href="/auth/login"
+        />
       </view>
     </body>
   </screen>
