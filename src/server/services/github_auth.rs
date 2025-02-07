@@ -74,10 +74,11 @@ impl GitHubAuthService {
     }
 
     pub fn authorization_url(&self, platform: Option<String>) -> Result<String, GitHubAuthError> {
-        info!("Generating GitHub authorization URL");
+        info!("Generating GitHub authorization URL with platform: {:?}", platform);
         
-        // Add platform to state if provided
+        // Add platform to state if provided, otherwise use empty string
         let state = platform.unwrap_or_default();
+        info!("Using state value: {}", state);
         
         let url = format!(
             "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user%20repo&state={}",
