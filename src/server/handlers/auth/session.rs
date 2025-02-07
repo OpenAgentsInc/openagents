@@ -1,8 +1,10 @@
 use axum::{
+    extract::Query,
     http::{header, StatusCode},
     response::Response,
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
+use serde::Deserialize;
 use time::Duration;
 use tracing::info;
 
@@ -11,6 +13,11 @@ use crate::server::models::user::User;
 use super::SESSION_COOKIE_NAME;
 
 const MOBILE_APP_SCHEME: &str = "onyx";
+
+#[derive(Debug, Deserialize)]
+pub struct PlatformQuery {
+    platform: Option<String>,
+}
 
 pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Response {
     info!("Creating session for user: {:?}", user);
@@ -47,8 +54,9 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
         .unwrap()
 }
 
-pub async fn clear_session_and_redirect() -> Response {
+pub async fn clear_session_and_redirect(Query(params): Query<PlatformQuery>) -> Response {
     info!("Clearing session");
+    info!("Platform: {:?}", params.platform);
 
     let cookie = Cookie::build((SESSION_COOKIE_NAME, ""))
         .path("/")
@@ -58,10 +66,19 @@ pub async fn clear_session_and_redirect() -> Response {
         .max_age(Duration::seconds(0))
         .build();
 
+    // For mobile app, redirect to deep link
+    let redirect_url = if params.platform.as_deref() == Some("mobile") {
+        info!("Redirecting to mobile app after logout");
+        format!("{}://auth/logout", MOBILE_APP_SCHEME)
+    } else {
+        info!("Redirecting to web login");
+        "/login".to_string()
+    };
+
     Response::builder()
         .status(StatusCode::TEMPORARY_REDIRECT)
         .header(header::SET_COOKIE, cookie.to_string())
-        .header(header::LOCATION, "/login")
+        .header(header::LOCATION, redirect_url)
         .body(axum::body::Body::empty())
         .unwrap()
 }
