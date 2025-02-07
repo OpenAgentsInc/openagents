@@ -38,18 +38,13 @@ pub async fn handle_github_login(
 ) -> Response {
     info!("Handling GitHub login request");
     
-    // Get base authorization URL
-    let mut url = match state.github_auth.authorization_url() {
+    // Get authorization URL with platform in state
+    let url = match state.github_auth.authorization_url(params.platform) {
         Ok(url) => url,
         Err(e) => {
             return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
         }
     };
-
-    // Append platform parameter if provided
-    if let Some(platform) = params.platform {
-        url.push_str(&format!("&state={}", platform));
-    }
 
     Response::builder()
         .status(StatusCode::TEMPORARY_REDIRECT)
