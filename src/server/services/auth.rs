@@ -3,6 +3,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use tower_cookies::Cookie;
 use tracing::{error, info};
 
 use crate::server::models::user::User;
@@ -90,6 +91,38 @@ impl From<AuthError> for StatusCode {
 impl OIDCService {
     pub fn new(pool: PgPool, config: OIDCConfig) -> Self {
         Self { config, pool }
+    }
+
+    pub async fn validate_session(&self, session_token: &str) -> Result<i32, AuthError> {
+        info!("Validating session token");
+        
+        // Get user by scramble_id
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            SELECT id, scramble_id, metadata, last_login_at, created_at, updated_at
+            FROM users 
+            WHERE scramble_id = $1
+            "#,
+            session_token
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Database error validating session: {}", e);
+            AuthError::DatabaseError(e.to_string())
+        })?;
+
+        match user {
+            Some(user) => {
+                info!("Found user for session token: {:?}", user);
+                Ok(user.id)
+            }
+            None => {
+                error!("No user found for session token");
+                Err(AuthError::AuthenticationFailed)
+            }
+        }
     }
 
     pub fn authorization_url_for_login(&self, email: &str) -> Result<String, AuthError> {
