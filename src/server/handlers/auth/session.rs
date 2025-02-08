@@ -24,7 +24,7 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
     info!("Is mobile: {}", is_mobile);
 
     let session_token = user.scramble_id.clone();
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, session_token.clone()))
+    let cookie = Cookie::builder((SESSION_COOKIE_NAME, session_token.clone()))
         .path("/")
         .secure(true)
         .http_only(true)
@@ -55,13 +55,13 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
 }
 
 pub async fn clear_session_and_redirect(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Query(params): Query<PlatformQuery>,
 ) -> Response {
     info!("Clearing session");
     info!("Platform: {:?}", params.platform);
 
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, ""))
+    let cookie = Cookie::builder((SESSION_COOKIE_NAME, ""))
         .path("/")
         .secure(true)
         .http_only(true)
