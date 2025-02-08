@@ -267,6 +267,13 @@ src/server/hyperview/handlers.rs:
 │#id: title
 │#id: button
 │#id: buttonText
+│#id: logoutButton
+│#id: logoutText
+│#id: loading
+│#id: error
+│#id: logout-button
+│#id: loading-text
+│#id: error-message
 │fn hello_world
 │fn main_screen
 │fn connected_status
@@ -731,6 +738,11 @@ templates/pages/main.xml:
 │#id: title
 │#id: button
 │#id: buttonText
+│#id: loading
+│#id: error
+│#id: logout-button
+│#id: loading-text
+│#id: error-message
 
 templates/pages/repomap.html:
 │#id: repo_url
