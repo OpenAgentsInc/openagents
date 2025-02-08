@@ -141,6 +141,9 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
             "http://localhost:8000".parse::<HeaderValue>().unwrap(),
             "https://openagents.com".parse::<HeaderValue>().unwrap(),
             "onyx://localhost".parse::<HeaderValue>().unwrap(),
+            // Add development machine IP
+            "http://192.168.1.100:8000".parse::<HeaderValue>().unwrap(),
+            "http://192.168.1.100:3000".parse::<HeaderValue>().unwrap(),
         ])
         .allow_methods([
             Method::GET,
@@ -151,6 +154,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
             HeaderName::from_static("content-type"),
             HeaderName::from_static("authorization"),
             HeaderName::from_static("accept"),
+            HeaderName::from_static("cache-control"),
         ])
         .allow_credentials(true);
 
