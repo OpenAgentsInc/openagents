@@ -10,11 +10,12 @@ use crate::{routes, server};
 use axum::{
     routing::{get, post},
     Router,
+    http::{Method, HeaderName},
 };
 use std::{env, sync::Arc};
 use tower_http::{
     services::ServeDir,
-    cors::{Any, CorsLayer},
+    cors::{CorsLayer, AllowOrigin},
 };
 
 #[derive(Clone)]
@@ -133,11 +134,19 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         github_auth,
     };
 
-    // Configure CORS
+    // Configure CORS with specific allowed headers
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any)
+        .allow_origin(AllowOrigin::any())
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            HeaderName::from_static("content-type"),
+            HeaderName::from_static("authorization"),
+            HeaderName::from_static("accept"),
+        ])
         .allow_credentials(true);
 
     // Create the main router
@@ -176,7 +185,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         )
         .route(
             "/auth/github/callback",
-            get(server::handlers::auth::handle_github_callback), // Changed from post to get
+            get(server::handlers::auth::handle_github_callback),
         )
         // Repomap routes
         .route("/repomap/generate", post(routes::generate_repomap))
