@@ -31,13 +31,6 @@
 
       <!-- Error Message -->
       <text id="error-message" style="error" display="none" />
-
-      <!-- Auth Success Handler -->
-      <behavior
-        trigger="load"
-        action="reload"
-        href="/hyperview/main"
-      />
     </body>
   </screen>
 </doc>
