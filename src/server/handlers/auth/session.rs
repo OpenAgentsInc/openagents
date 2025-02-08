@@ -1,5 +1,5 @@
 use axum::{
-    extract::Query,
+    extract::{Query, State},
     http::{header, StatusCode},
     response::Response,
 };
@@ -8,7 +8,7 @@ use serde::Deserialize;
 use time::Duration;
 use tracing::info;
 
-use crate::server::models::user::User;
+use crate::server::{config::AppState, models::user::User};
 
 use super::SESSION_COOKIE_NAME;
 
@@ -54,7 +54,10 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
         .unwrap()
 }
 
-pub async fn clear_session_and_redirect(Query(params): Query<PlatformQuery>) -> Response {
+pub async fn clear_session_and_redirect(
+    State(state): State<AppState>,
+    Query(params): Query<PlatformQuery>,
+) -> Response {
     info!("Clearing session");
     info!("Platform: {:?}", params.platform);
 
@@ -76,10 +79,11 @@ pub async fn clear_session_and_redirect(Query(params): Query<PlatformQuery>) -> 
     };
 
     Response::builder()
-        .status(StatusCode::TEMPORARY_REDIRECT)
+        .status(StatusCode::OK)
         .header(header::SET_COOKIE, cookie.to_string())
         .header(header::LOCATION, redirect_url)
-        .body(axum::body::Body::empty())
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(r#"{"status":"ok"}"#))
         .unwrap()
 }
 
