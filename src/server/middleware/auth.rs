@@ -1,23 +1,22 @@
 use axum::{
-    extract::State,
-    http::{Request, StatusCode},
+    extract::{Request, State},
+    http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use tower_cookies::Cookies;
+use axum_extra::extract::cookie::CookieJar;
+use tracing::info;
 
 use crate::server::config::AppState;
 
-pub fn require_auth() -> axum::middleware::from_fn_with_state<AppState, RequireAuth> {
-    axum::middleware::from_fn_with_state(require_auth_middleware)
-}
-
-async fn require_auth_middleware<B>(
+pub async fn require_auth(
     State(state): State<AppState>,
-    cookies: Cookies,
-    mut req: Request<B>,
-    next: Next<B>,
+    cookies: CookieJar,
+    request: Request,
+    next: Next,
 ) -> Result<Response, StatusCode> {
+    info!("Validating auth for request");
+
     // Get session cookie
     let session_cookie = cookies
         .get("session")
@@ -27,41 +26,21 @@ async fn require_auth_middleware<B>(
     let session_token = session_cookie.value();
     let user_id = state
         .auth_state
+        .service
         .validate_session(session_token)
         .await
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     // Add user_id to request extensions
-    req.extensions_mut().insert(user_id);
+    request.extensions().insert(user_id);
 
     // Continue with the request
-    Ok(next.run(req).await)
+    Ok(next.run(request).await)
 }
 
-pub struct RequireAuth;
-
-impl<B> axum::middleware::FromFnWithState<AppState, B> for RequireAuth
+pub fn auth_middleware<B>() -> axum::middleware::from_fn_with_state<AppState, B, fn(State<AppState>, CookieJar, Request, Next) -> _> 
 where
     B: Send + 'static,
 {
-    type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>;
-
-    fn call<F>(
-        self,
-        state: State<AppState>,
-        cookies: Cookies,
-        req: Request<B>,
-        next: Next<B>,
-        middleware: F,
-    ) -> Self::Future
-    where
-        F: FnOnce(State<AppState>, Cookies, Request<B>, Next<B>) -> Self::Future + Send + 'static,
-    {
-        Box::pin(async move {
-            match middleware(state, cookies, req, next).await {
-                Ok(response) => response,
-                Err(status) => status.into_response(),
-            }
-        })
-    }
+    axum::middleware::from_fn_with_state(require_auth)
 }
