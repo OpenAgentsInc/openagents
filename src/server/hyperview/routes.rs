@@ -1,5 +1,5 @@
 use super::{handlers, ws};
-use crate::server::config::AppState;
+use crate::server::{config::AppState, middleware::auth::require_auth};
 use axum::{routing::get, Router};
 
 pub fn hyperview_routes() -> Router<AppState> {
@@ -15,4 +15,5 @@ pub fn hyperview_routes() -> Router<AppState> {
             get(handlers::disconnected_status),
         )
         .route("/hyperview/ws", get(ws::hyperview_ws_handler))
+        .layer(require_auth())
 }
