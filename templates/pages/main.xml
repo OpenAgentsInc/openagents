@@ -4,15 +4,17 @@
     <styles>
       <style id="container" flex="1" backgroundColor="black" alignItems="center" justifyContent="center" />
       <style id="title" fontSize="24" color="white" marginBottom="32" />
-      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" />
+      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
       <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
-      <style id="loading" color="white" fontSize="16" />
-      <style id="error" color="red" fontSize="16" />
+      <style id="logoutButton" backgroundColor="transparent" borderColor="white" borderWidth="1" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
+      <style id="logoutText" color="white" fontSize="16" fontWeight="600" />
+      <style id="loading" color="white" fontSize="16" marginTop="16" />
+      <style id="error" color="red" fontSize="16" marginTop="16" />
     </styles>
     <body style="container">
-      <text style="title">OpenAgents</text>
+      <text style="title">Welcome to OpenAgents</text>
       
-      <!-- Main Content -->
+      <!-- Chat Button -->
       <view style="button">
         <behavior 
           trigger="press" 
@@ -23,7 +25,7 @@
       </view>
 
       <!-- Logout Button -->
-      <view style="button" id="logout-button">
+      <view style="logoutButton" id="logout-button">
         <behavior 
           trigger="press" 
           action="auth"
@@ -32,16 +34,16 @@
           show-during-load="loading-text"
           hide-during-load="logout-button"
         />
-        <text style="buttonText">Sign Out</text>
+        <text style="logoutText">Sign Out</text>
       </view>
 
       <!-- Loading State -->
-      <text id="loading-text" style="loading" hidden="true">
+      <text id="loading-text" style="loading" display="none">
         Signing out...
       </text>
 
       <!-- Error State -->
-      <text id="error-message" style="error" hidden="true">
+      <text id="error-message" style="error" display="none">
         Error signing out. Please try again.
       </text>
     </body>
