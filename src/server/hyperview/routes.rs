@@ -1,8 +1,8 @@
 use super::{handlers, ws};
-use crate::server::{config::AppState, middleware::auth::auth_middleware};
+use crate::server::{config::AppState, middleware::auth::with_auth};
 use axum::{routing::get, Router};
 
-pub fn hyperview_routes() -> Router<AppState> {
+pub fn hyperview_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/hyperview", get(handlers::hello_world))
         .route("/hyperview/main", get(handlers::main_screen))
@@ -15,5 +15,5 @@ pub fn hyperview_routes() -> Router<AppState> {
             get(handlers::disconnected_status),
         )
         .route("/hyperview/ws", get(ws::hyperview_ws_handler))
-        .layer(auth_middleware())
+        .layer(with_auth(state))
 }
