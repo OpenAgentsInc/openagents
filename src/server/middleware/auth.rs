@@ -2,7 +2,7 @@ use axum::{
     extract::{Request, State},
     http::StatusCode,
     middleware::Next,
-    response::{IntoResponse, Response},
+    response::Response,
 };
 use axum_extra::extract::cookie::CookieJar;
 use tracing::{error, info};
@@ -12,7 +12,7 @@ use crate::server::config::AppState;
 pub async fn require_auth(
     State(state): State<AppState>,
     cookies: CookieJar,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
     info!("Validating auth for request to: {}", request.uri());
@@ -45,16 +45,18 @@ pub async fn require_auth(
     };
 
     // Add user_id to request extensions
-    request.extensions().insert(user_id);
+    request.extensions_mut().insert(user_id);
     info!("Added user_id to request extensions");
 
     // Continue with the request
     Ok(next.run(request).await)
 }
 
-pub fn auth_middleware<B>() -> axum::middleware::from_fn_with_state<AppState, B, fn(State<AppState>, CookieJar, Request, Next) -> _> 
+pub fn with_auth<B>(
+    state: AppState,
+) -> axum::middleware::from_fn_with_state<AppState, B, fn(State<AppState>, CookieJar, Request, Next) -> Result<Response, StatusCode>>
 where
     B: Send + 'static,
 {
-    axum::middleware::from_fn_with_state(require_auth)
+    axum::middleware::from_fn_with_state(state, require_auth)
 }
