@@ -6,7 +6,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde::Deserialize;
 use time::Duration;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::server::{config::AppState, models::user::User};
 
@@ -78,13 +78,19 @@ pub async fn clear_session_and_redirect(
         "/login".to_string()
     };
 
-    Response::builder()
+    info!("Setting cookie: {}", cookie.to_string());
+    info!("Redirect URL: {}", redirect_url);
+
+    let response = Response::builder()
         .status(StatusCode::OK)
         .header(header::SET_COOKIE, cookie.to_string())
         .header(header::LOCATION, redirect_url)
         .header(header::CONTENT_TYPE, "application/json")
         .body(axum::body::Body::from(r#"{"status":"ok"}"#))
-        .unwrap()
+        .unwrap();
+
+    info!("Sending logout response");
+    response
 }
 
 pub async fn render_login_template() -> Response {
