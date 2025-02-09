@@ -6,7 +6,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde::Deserialize;
 use time::Duration;
-use tracing::{error, info};
+use tracing::info;
 
 use crate::server::{config::AppState, models::user::User};
 
@@ -24,13 +24,13 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
     info!("Is mobile: {}", is_mobile);
 
     let session_token = user.scramble_id.clone();
-    let cookie = Cookie::builder((SESSION_COOKIE_NAME, session_token.clone()))
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        .max_age(Duration::days(7))
-        .build();
+    let cookie = Cookie::new(SESSION_COOKIE_NAME, session_token.clone())
+        .into_owned()
+        .with_path("/")
+        .with_secure(true)
+        .with_http_only(true)
+        .with_same_site(SameSite::Lax)
+        .with_max_age(Duration::days(7));
 
     // For mobile app, redirect to deep link with session token
     let redirect_url = if is_mobile {
@@ -61,13 +61,13 @@ pub async fn clear_session_and_redirect(
     info!("Clearing session");
     info!("Platform: {:?}", params.platform);
 
-    let cookie = Cookie::builder((SESSION_COOKIE_NAME, ""))
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        .max_age(Duration::seconds(0))
-        .build();
+    let cookie = Cookie::new(SESSION_COOKIE_NAME, "")
+        .into_owned()
+        .with_path("/")
+        .with_secure(true)
+        .with_http_only(true)
+        .with_same_site(SameSite::Lax)
+        .with_max_age(Duration::seconds(0));
 
     // For mobile app, redirect to deep link
     let redirect_url = if params.platform.as_deref() == Some("mobile") {
