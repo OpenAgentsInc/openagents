@@ -60,6 +60,26 @@ fn render_error_screen(error: &str) -> String {
 }
 
 fn render_repositories_screen(repos: Vec<Repository>) -> String {
+    let repo_items = repos
+        .into_iter()
+        .map(|repo| {
+            format!(
+                r###"<item style="repo_item" href="/hyperview/repo/{}/issues">
+                    <text style="repo_name">{}</text>
+                    {}
+                    <text style="repo_meta">Last updated: {}</text>
+                </item>"###,
+                repo.full_name,
+                repo.name,
+                repo.description
+                    .map(|d| format!(r###"<text style="repo_desc">{}</text>"###, d))
+                    .unwrap_or_default(),
+                repo.updated_at
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
     format!(
         r###"<?xml version="1.0" encoding="UTF-8"?>
 <doc xmlns="https://hyperview.org/hyperview">
@@ -81,24 +101,7 @@ fn render_repositories_screen(repos: Vec<Repository>) -> String {
                 <text style="title">Your Repositories</text>
             </header>
             <list style="list">
-                {}"###, 
-        repos.into_iter()
-            .map(|repo| format!(
-                r###"<item style="repo_item" href="/hyperview/repo/{}/issues">
-                    <text style="repo_name">{}</text>
-                    {}
-                    <text style="repo_meta">Last updated: {}</text>
-                </item>"###,
-                repo.full_name,
-                repo.name,
-                repo.description
-                    .map(|d| format!(r###"<text style="repo_desc">{}</text>"###, d))
-                    .unwrap_or_default(),
-                repo.updated_at
-            ))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        r###"
+                {repo_items}
             </list>
         </body>
     </screen>
@@ -106,6 +109,7 @@ fn render_repositories_screen(repos: Vec<Repository>) -> String {
     )
 }
 
+#[axum::debug_handler]
 pub async fn repositories_screen(
     State(state): State<AppState>,
     user: User,
@@ -114,7 +118,7 @@ pub async fn repositories_screen(
 
     // Get GitHub token from user metadata
     let metadata = match user.metadata {
-        Value::Object(m) => m,
+        Some(Value::Object(m)) => m,
         _ => {
             error!("Invalid metadata format for user: {}", user.id);
             return Response::builder()
