@@ -1,6 +1,11 @@
-use axum::extract::FromRef;
-use std::sync::Arc;
+use axum::{
+    extract::FromRef,
+    routing::{get, post},
+    Router,
+};
+use std::{env, sync::Arc};
 use sqlx::PgPool;
+use tower_http::services::ServeDir;
 
 use super::services::{
     deepseek::DeepSeekService,
@@ -11,6 +16,7 @@ use super::services::{
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use super::handlers::auth::AuthState;
+use super::routes;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -60,11 +66,11 @@ impl Default for AppConfig {
     }
 }
 
-pub fn configure_app() -> Router {
+pub fn configure_app() -> Router<AppState> {
     configure_app_with_config(None)
 }
 
-pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
+pub fn configure_app_with_config(config: Option<AppConfig>) -> Router<AppState> {
     // Load environment variables
     dotenvy::dotenv().ok();
 
@@ -102,7 +108,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
     let repomap_service = Arc::new(RepomapService::new(aider_api_key));
 
     // Create auth state with OIDC config
-    let oidc_config = server::services::auth::OIDCConfig::new(
+    let oidc_config = super::services::auth::OIDCConfig::new(
         config.oidc_client_id,
         config.oidc_client_secret,
         config.oidc_redirect_uri,
@@ -141,7 +147,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         // Main routes
         .route("/", get(routes::home))
         .route("/chat", get(routes::chat))
-        .route("/ws", get(server::ws::ws_handler))
+        .route("/ws", get(super::ws::ws_handler))
         .route("/onyx", get(routes::mobile_app))
         .route("/services", get(routes::business))
         .route("/video-series", get(routes::video_series))
@@ -151,33 +157,33 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         .route("/repomap", get(routes::repomap))
         .route("/cota", get(routes::cota))
         // Auth pages
-        .route("/login", get(server::handlers::login_page))
-        .route("/signup", get(server::handlers::signup_page))
+        .route("/login", get(super::handlers::login_page))
+        .route("/signup", get(super::handlers::signup_page))
         // Auth routes
-        .route("/auth/login", post(server::handlers::handle_login))
-        .route("/auth/signup", post(server::handlers::handle_signup))
-        .route("/auth/callback", get(server::handlers::callback))
+        .route("/auth/login", post(super::handlers::handle_login))
+        .route("/auth/signup", post(super::handlers::handle_signup))
+        .route("/auth/callback", get(super::handlers::callback))
         .route(
             "/auth/logout",
-            get(server::handlers::auth::clear_session_and_redirect),
+            get(super::handlers::auth::clear_session_and_redirect),
         )
         // GitHub auth routes
         .route(
             "/auth/github",
-            get(server::handlers::auth::github_login_page),
+            get(super::handlers::auth::github_login_page),
         )
         .route(
             "/auth/github/login",
-            get(server::handlers::auth::handle_github_login),
+            get(super::handlers::auth::handle_github_login),
         )
         .route(
             "/auth/github/callback",
-            get(server::handlers::auth::handle_github_callback),
+            get(super::handlers::auth::handle_github_callback),
         )
         // Repomap routes
         .route("/repomap/generate", post(routes::generate_repomap))
         // Hyperview routes
-        .merge(server::hyperview::hyperview_routes())
+        .merge(super::hyperview::hyperview_routes())
         // Static files
         .nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
         .nest_service(
