@@ -1,52 +1,64 @@
 use axum::{
-    async_trait,
     extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
 };
-use chrono::{DateTime, Utc};
+use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::PgPool;
+use time::OffsetDateTime;
 
 use crate::server::config::AppState;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: i32,
     pub scramble_id: String,
     pub metadata: Option<Value>,
-    pub last_login_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[serde(with = "time::serde::timestamp::option")]
+    pub last_login_at: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::timestamp::option")]
+    pub created_at: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::timestamp::option")]
+    pub updated_at: Option<OffsetDateTime>,
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for User
 where
-    PgPool: FromRef<S>,
     S: Send + Sync,
+    PgPool: FromRef<S>,
 {
     type Rejection = StatusCode;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        // TODO: Get user from session/token
-        // For now, return a mock user for testing
-        Ok(User {
-            id: 1,
-            scramble_id: "test_user".to_string(),
-            metadata: Some(serde_json::json!({
-                "github": {
-                    "id": 123456,
-                    "login": "test",
-                    "name": "Test User",
-                    "email": "test@example.com",
-                    "access_token": "gho_test",
-                    "scope": "repo,user"
-                }
-            })),
-            last_login_at: Some(Utc::now()),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+    fn from_request_parts<'life0, 'life1, 'async_trait>(
+        _parts: &'life0 mut Parts,
+        _state: &'life1 S,
+    ) -> BoxFuture<'async_trait, Result<Self, Self::Rejection>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async move {
+            // TODO: Get user from session/token
+            // For now, return a mock user for testing
+            Ok(User {
+                id: 1,
+                scramble_id: "test_user".to_string(),
+                metadata: Some(serde_json::json!({
+                    "github": {
+                        "id": 123456,
+                        "login": "test",
+                        "name": "Test User",
+                        "email": "test@example.com",
+                        "access_token": "gho_test",
+                        "scope": "repo,user"
+                    }
+                })),
+                last_login_at: Some(OffsetDateTime::now_utc()),
+                created_at: Some(OffsetDateTime::now_utc()),
+                updated_at: Some(OffsetDateTime::now_utc()),
+            })
         })
     }
 }
