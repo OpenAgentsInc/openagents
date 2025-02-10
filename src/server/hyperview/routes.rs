@@ -1,9 +1,9 @@
 use axum::{
-    routing::{get, post},
+    routing::get,
     Router,
 };
 
-use crate::server::AppState;
+use crate::server::config::AppState;
 
 use super::{handlers, ws::hyperview_ws_handler};
 
