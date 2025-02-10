@@ -111,7 +111,7 @@ fn render_repositories_screen(repos: Vec<Repository>) -> String {
 
 #[axum::debug_handler]
 pub async fn repositories_screen(
-    State(state): State<AppState>,
+    _: State<AppState>,
     user: User,
 ) -> Response {
     info!("Fetching repositories for user: {}", user.id);
