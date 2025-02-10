@@ -1,8 +1,6 @@
-use axum::{
-    async_trait,
-    extract::{FromRef, FromRequestParts},
-    http::{request::Parts, StatusCode},
-};
+use axum::extract::{FromRef, FromRequestParts};
+use axum::http::{request::Parts, StatusCode};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::PgPool;
