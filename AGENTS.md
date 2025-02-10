@@ -4,10 +4,83 @@ This document contains common patterns, gotchas, and best practices for developi
 
 ## Table of Contents
 
+- [Code Organization](#code-organization)
 - [Framework & Dependencies](#framework--dependencies)
 - [Hyperview](#hyperview)
 - [GitHub Integration](#github-integration)
 - [Error Handling](#error-handling)
+
+## Code Organization
+
+### Module System
+
+When working with Rust's module system, always:
+
+1. Check mod.rs files first:
+```rust
+// Before adding new files, check mod.rs to see how modules are organized
+pub mod handlers;
+pub mod routes;
+pub mod services;
+```
+
+2. Respect existing module structure:
+```rust
+// Good - Use the established pattern
+use crate::routes;  // For root modules
+use super::services::github;  // For sibling modules
+
+// Bad - Bypass module structure
+use crate::server::services::github::GithubService;  // Too specific
+```
+
+3. Export types properly:
+```rust
+// In mod.rs
+pub mod user;
+pub use user::User;  // Re-export important types
+
+// In consuming code
+use super::User;  // Clean import
+```
+
+### Common Mistakes
+
+1. Partial Implementation:
+```rust
+// Bad - Only implementing what you need
+pub struct AppState {
+    pub pool: PgPool,  // Breaks existing code that needs other fields
+}
+
+// Good - Preserve existing structure
+pub struct AppState {
+    pub ws_state: Arc<WebSocketState>,
+    pub repomap_service: Arc<RepomapService>,
+    pub auth_state: Arc<AuthState>,
+    pub github_auth: Arc<GitHubAuthService>,
+    pub pool: PgPool,
+}
+```
+
+2. Import Confusion:
+```rust
+// Bad - Using wrong import path
+use super::routes;  // Fails if routes is at crate root
+
+// Good - Check module structure first
+use crate::routes;  // For root modules
+use super::routes;  // For sibling modules
+```
+
+3. Breaking Changes:
+```rust
+// Bad - Changing type without checking usage
+type DateTime = chrono::DateTime<Utc>;  // Breaks code using time::OffsetDateTime
+
+// Good - Respect existing types
+type DateTime = time::OffsetDateTime;  // Maintains compatibility
+```
 
 ## Framework & Dependencies
 
