@@ -109,11 +109,7 @@ fn render_repositories_screen(repos: Vec<Repository>) -> String {
     )
 }
 
-#[axum::debug_handler]
-pub async fn repositories_screen(
-    _: State<AppState>,
-    user: User,
-) -> Response {
+pub async fn repositories_screen(_: State<AppState>, user: User) -> Response {
     info!("Fetching repositories for user: {}", user.id);
 
     // Get GitHub token from user metadata
