@@ -4,15 +4,50 @@ This document contains common patterns, gotchas, and best practices for developi
 
 ## Table of Contents
 
+- [Framework & Dependencies](#framework--dependencies)
 - [Hyperview](#hyperview)
 - [GitHub Integration](#github-integration)
 - [Error Handling](#error-handling)
+
+## Framework & Dependencies
+
+### Axum Web Framework
+
+OpenAgents uses the Axum web framework exclusively. Never mix in other frameworks or their dependencies.
+
+Common gotchas:
+1. Don't add Tower middleware directly - use Axum's built-in middleware support
+2. Don't use Actix extractors or types
+3. Always use Axum's extractors and routing
+
+Example of proper Axum handler:
+```rust
+use axum::{
+    extract::State,
+    response::Response,
+};
+
+#[axum::debug_handler]  // Helps with error messages
+pub async fn my_handler(
+    State(state): State<AppState>,
+    // Use Axum extractors
+) -> Response {
+    // Handler implementation
+}
+```
+
+### Dependencies to Avoid
+
+- `tower` (use Axum's re-exports instead)
+- `actix-web`
+- `warp`
+- `rocket`
 
 ## Hyperview
 
 ### XML String Escaping
 
-When working with Hyperview HXML templates, proper string escaping is crucial. Here are some key points:
+When working with Hyperview HXML templates, proper string escaping is crucial. Here are key points:
 
 1. Use triple-quoted raw strings (`r###"..."###`) for HXML templates to avoid escaping issues:
 ```rust
@@ -49,16 +84,16 @@ color="#999"
 4. When using format strings in HXML, separate the template from the closing tag:
 ```rust
 // Good
+let items = repos.iter().map(format_repo).collect::<Vec<_>>().join("\n");
 format!(
-    r###"<list>{}</list>"###,
-    items.join("\n")
+    r###"<list>{items}</list>"###
 )
 
 // Bad - can cause unused argument warnings
 format!(
     r###"<list>{}
 </list>"###,
-    items.join("\n")
+    items
 )
 ```
 
