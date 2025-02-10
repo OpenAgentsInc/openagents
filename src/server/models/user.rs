@@ -1,14 +1,12 @@
 use axum::{
+    async_trait,
     extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
 };
-use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::PgPool;
 use time::OffsetDateTime;
-
-use crate::server::config::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -23,6 +21,7 @@ pub struct User {
     pub updated_at: Option<OffsetDateTime>,
 }
 
+#[async_trait]
 impl<S> FromRequestParts<S> for User
 where
     S: Send + Sync,
@@ -30,35 +29,25 @@ where
 {
     type Rejection = StatusCode;
 
-    fn from_request_parts<'life0, 'life1, 'async_trait>(
-        _parts: &'life0 mut Parts,
-        _state: &'life1 S,
-    ) -> BoxFuture<'async_trait, Result<Self, Self::Rejection>>
-    where
-        'life0: 'async_trait,
-        'life1: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-            // TODO: Get user from session/token
-            // For now, return a mock user for testing
-            Ok(User {
-                id: 1,
-                scramble_id: "test_user".to_string(),
-                metadata: Some(serde_json::json!({
-                    "github": {
-                        "id": 123456,
-                        "login": "test",
-                        "name": "Test User",
-                        "email": "test@example.com",
-                        "access_token": "gho_test",
-                        "scope": "repo,user"
-                    }
-                })),
-                last_login_at: Some(OffsetDateTime::now_utc()),
-                created_at: Some(OffsetDateTime::now_utc()),
-                updated_at: Some(OffsetDateTime::now_utc()),
-            })
+    async fn from_request_parts(_parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // TODO: Get user from session/token
+        // For now, return a mock user for testing
+        Ok(User {
+            id: 1,
+            scramble_id: "test_user".to_string(),
+            metadata: Some(serde_json::json!({
+                "github": {
+                    "id": 123456,
+                    "login": "test",
+                    "name": "Test User",
+                    "email": "test@example.com",
+                    "access_token": "gho_test",
+                    "scope": "repo,user"
+                }
+            })),
+            last_login_at: Some(OffsetDateTime::now_utc()),
+            created_at: Some(OffsetDateTime::now_utc()),
+            updated_at: Some(OffsetDateTime::now_utc()),
         })
     }
 }
