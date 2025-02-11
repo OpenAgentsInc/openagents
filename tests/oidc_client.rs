@@ -16,7 +16,7 @@ use wiremock::{
 
 mod common;
 use common::setup_test_db;
-use openagents::server::config::{AppConfig, AppState, configure_app_with_config};
+use openagents::server::config::{configure_app_with_config, AppConfig, AppState};
 
 const MAX_SIZE: usize = 1024 * 1024; // 1MB limit for response bodies
 
