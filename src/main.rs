@@ -1,7 +1,7 @@
 use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
-use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
+use axum::Router;
 
 #[tokio::main]
 async fn main() {
@@ -29,6 +29,6 @@ async fn main() {
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     
     // Convert the Router<AppState> into a service that can handle TcpListener streams
-    let make_service = app.into_make_service_with_connect_info::<SocketAddr>();
-    axum::serve(listener, make_service).await.unwrap();
+    let app = Router::new().nest("/", app);
+    axum::serve(listener, app).await.unwrap();
 }
