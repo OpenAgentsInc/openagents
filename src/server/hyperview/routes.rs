@@ -4,8 +4,12 @@ use axum::{routing::get, Router};
 
 pub fn hyperview_routes() -> Router<AppState> {
     Router::new()
-        .route("/hyperview", get(handlers::hello_world))
-        .route("/hyperview/main", get(handlers::main_screen))
+        .route("/hyperview/main", get(handlers::main_page))
+        .route("/hyperview/fragments/user-info", get(handlers::user_info))
+        .route(
+            "/hyperview/fragments/github-repos",
+            get(handlers::github_repos),
+        )
         .route(
             "/hyperview/fragments/connected-status",
             get(handlers::connected_status),
@@ -15,4 +19,8 @@ pub fn hyperview_routes() -> Router<AppState> {
             get(handlers::disconnected_status),
         )
         .route("/hyperview/ws", get(ws::hyperview_ws_handler))
+        .route("/hyperview/fragments/content", get(handlers::content))
+        .route("/templates/pages/auth/login.xml", get(handlers::login_page))
+        .route("/templates/pages/main.xml", get(handlers::main_page))
+        .route("/hyperview/auth/logout", get(handlers::mobile_logout))
 }
