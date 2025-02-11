@@ -1,8 +1,6 @@
 use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
-use hyper::server::conn::AddrIncoming;
-use axum::Router;
 
 #[tokio::main]
 async fn main() {
@@ -28,8 +26,7 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", addr);
     
-    hyper::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let make_svc = app.into_make_service();
+    axum::serve(listener, make_svc).await.unwrap();
 }
