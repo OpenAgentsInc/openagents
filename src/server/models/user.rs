@@ -1,17 +1,15 @@
+use serde::{Deserialize, Serialize};
+use sqlx::types::JsonValue;
+use time::OffsetDateTime;
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::{request::Parts, StatusCode};
-use axum::response::IntoResponse;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use sqlx::PgPool;
-use time::OffsetDateTime;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct User {
     pub id: i32,
     pub scramble_id: String,
-    pub metadata: Option<Value>,
+    pub metadata: Option<JsonValue>,
     #[serde(with = "time::serde::timestamp::option")]
     pub last_login_at: Option<OffsetDateTime>,
     #[serde(with = "time::serde::timestamp::option")]
@@ -20,13 +18,19 @@ pub struct User {
     pub updated_at: Option<OffsetDateTime>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CreateUser {
+    pub scramble_id: String,
+    pub metadata: Option<JsonValue>,
+}
+
 #[async_trait]
 impl<S> FromRequestParts<S> for User
 where
     S: Send + Sync,
-    PgPool: FromRef<S>,
+    sqlx::PgPool: FromRef<S>,
 {
-    type Rejection = (StatusCode, String);
+    type Rejection = StatusCode;
 
     async fn from_request_parts(
         _parts: &mut Parts,
@@ -46,7 +50,7 @@ where
                     "access_token": "gho_test",
                     "scope": "repo,user"
                 }
-            })),
+            }).into()),
             last_login_at: Some(OffsetDateTime::now_utc()),
             created_at: Some(OffsetDateTime::now_utc()),
             updated_at: Some(OffsetDateTime::now_utc()),
