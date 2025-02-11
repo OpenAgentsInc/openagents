@@ -2,9 +2,9 @@ use axum::http::StatusCode;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sqlx::Error as SqlxError;
 use sqlx::PgPool;
 use tracing::{error, info};
-use sqlx::Error as SqlxError;
 
 use crate::server::models::user::User;
 

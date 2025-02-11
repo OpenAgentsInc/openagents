@@ -1,9 +1,9 @@
+use crate::server::services::auth::AuthError;
 use axum::http::StatusCode;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info};
-use crate::server::services::auth::AuthError;
 
 use crate::server::models::user::User;
 
@@ -224,10 +224,14 @@ impl GitHubAuthService {
         Ok(user)
     }
 
-    pub async fn exchange_code_for_token(&self, code: &str) -> Result<GitHubTokenResponse, AuthError> {
+    pub async fn exchange_code_for_token(
+        &self,
+        code: &str,
+    ) -> Result<GitHubTokenResponse, AuthError> {
         let token_url = "https://github.com/login/oauth/access_token";
 
-        let response = self.client
+        let response = self
+            .client
             .post(token_url)
             .json(&serde_json::json!({
                 "client_id": self.config.client_id,
@@ -249,13 +253,18 @@ impl GitHubAuthService {
     }
 
     pub async fn process_auth_code(&self, code: &str) -> Result<User, AuthError> {
-        info!("Processing GitHub authentication with code length: {}", code.len());
+        info!(
+            "Processing GitHub authentication with code length: {}",
+            code.len()
+        );
 
         // Exchange code for token
         let tokens = self.exchange_code_for_token(code).await?;
 
         // Get user info with token
-        let github_user = self.get_github_user(&tokens.access_token).await
+        let github_user = self
+            .get_github_user(&tokens.access_token)
+            .await
             .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
 
         // Create or update user

@@ -6,7 +6,10 @@ pub fn hyperview_routes() -> Router<AppState> {
     Router::new()
         .route("/hyperview/main", get(handlers::main_page))
         .route("/hyperview/fragments/user-info", get(handlers::user_info))
-        .route("/hyperview/fragments/github-repos", get(handlers::github_repos))
+        .route(
+            "/hyperview/fragments/github-repos",
+            get(handlers::github_repos),
+        )
         .route(
             "/hyperview/fragments/connected-status",
             get(handlers::connected_status),

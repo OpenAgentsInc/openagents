@@ -15,15 +15,14 @@ pub struct GitHubReposService {
 
 impl GitHubReposService {
     pub fn new(token: String) -> Result<Self> {
-        let client = Octocrab::builder()
-            .personal_token(token)
-            .build()?;
+        let client = Octocrab::builder().personal_token(token).build()?;
 
         Ok(Self { client })
     }
 
     pub async fn get_user_repos(&self) -> Result<Vec<RepoInfo>> {
-        let page = self.client
+        let page = self
+            .client
             .current()
             .list_repos_for_authenticated_user()
             .type_("owner")
@@ -32,14 +31,13 @@ impl GitHubReposService {
             .send()
             .await?;
 
-        let repos = page.items
+        let repos = page
+            .items
             .into_iter()
             .map(|repo| RepoInfo {
                 name: repo.name,
                 description: repo.description,
-                html_url: repo.html_url
-                    .map(|url| url.to_string())
-                    .unwrap_or_default(),
+                html_url: repo.html_url.map(|url| url.to_string()).unwrap_or_default(),
             })
             .collect();
 

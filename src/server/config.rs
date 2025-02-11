@@ -11,9 +11,9 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use sqlx::PgPool;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
-use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct AppState {

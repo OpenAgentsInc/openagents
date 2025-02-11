@@ -1,37 +1,15 @@
 use crate::server::config::AppState;
+use crate::server::handlers::auth::session::clear_session_cookie;
+use crate::server::models::user::User;
+use crate::server::services::github_repos::GitHubReposService;
 use axum::{
-    extract::{State, Query},
+    extract::{Query, State},
     http::{header, StatusCode},
     response::Response,
 };
-use crate::server::services::github_repos::GitHubReposService;
-use anyhow::Result;
-use serde_json::Value;
-use crate::server::models::user::User;
 use serde::Deserialize;
-use tracing::{info, error};
-use crate::server::handlers::auth::session::clear_session_cookie;
-
-fn extract_github_id(metadata: &Option<serde_json::Value>) -> Option<String> {
-    if let Some(metadata) = metadata {
-        if let Value::Object(obj) = metadata {
-            if let Some(Value::Object(github)) = obj.get("github") {
-                if let Some(Value::Number(id)) = github.get("id") {
-                    return Some(id.to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
-fn redirect_to_auth() -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-        .body(include_str!("../../../templates/pages/auth/login.xml").into())
-        .unwrap()
-}
+use serde_json::Value;
+use tracing::{error, info};
 
 pub async fn connected_status() -> Response {
     Response::builder()
@@ -62,20 +40,13 @@ pub async fn disconnected_status() -> Response {
 }
 
 // Helper function to get user from GitHub ID
-async fn get_user_from_github_id(
-    state: &AppState,
-    github_id: &str,
-) -> Option<User> {
+async fn get_user_from_github_id(state: &AppState, github_id: &str) -> Option<User> {
     let github_id: i64 = github_id.parse().ok()?;
 
-    let user = sqlx::query_as!(
-        User,
-        "SELECT * FROM users WHERE github_id = $1",
-        github_id
-    )
-    .fetch_optional(&state.pool)
-    .await
-    .ok()?;
+    let user = sqlx::query_as!(User, "SELECT * FROM users WHERE github_id = $1", github_id)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()?;
 
     user
 }
@@ -115,9 +86,11 @@ pub async fn user_info(
         "User"
     };
 
-    let xml = format!(r#"<view xmlns="https://hyperview.org/hyperview" id="user-info">
+    let xml = format!(
+        r#"<view xmlns="https://hyperview.org/hyperview" id="user-info">
         <text style="welcomeText">Welcome, {username}!</text>
-    </view>"#);
+    </view>"#
+    );
 
     Response::builder()
         .status(StatusCode::OK)
@@ -130,7 +103,8 @@ fn auth_error_fragment_response() -> Response {
     Response::builder()
         .status(StatusCode::UNAUTHORIZED)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-        .body(r#"<view xmlns="https://hyperview.org/hyperview">
+        .body(
+            r#"<view xmlns="https://hyperview.org/hyperview">
             <behavior
               trigger="load"
               action="navigate"
@@ -138,7 +112,9 @@ fn auth_error_fragment_response() -> Response {
               new-stack="true"
               force-reset="true"
             />
-        </view>"#.into())
+        </view>"#
+                .into(),
+        )
         .unwrap()
 }
 
@@ -210,13 +186,10 @@ pub async fn github_repos(
     };
 
     // Get user with GitHub token
-    let user = match sqlx::query_as!(
-        User,
-        "SELECT * FROM users WHERE github_id = $1",
-        github_id
-    )
-    .fetch_optional(&state.pool)
-    .await {
+    let user = match sqlx::query_as!(User, "SELECT * FROM users WHERE github_id = $1", github_id)
+        .fetch_optional(&state.pool)
+        .await
+    {
         Ok(Some(user)) => user,
         Ok(None) => return error_response("User not found"),
         Err(e) => return error_response(&format!("Database error: {}", e)),
@@ -245,17 +218,20 @@ pub async fn github_repos(
     let repos = repos.into_iter().take(10);
 
     // Generate HXML for repos with scrollview
-    let mut xml = String::from(r#"<view xmlns="https://hyperview.org/hyperview" id="repos-list" style="reposList">
+    let mut xml = String::from(
+        r#"<view xmlns="https://hyperview.org/hyperview" id="repos-list" style="reposList">
         <view
             style="reposScroll"
             content-container-style="reposScrollContent"
             scroll="true"
             scroll-orientation="vertical"
             shows-scroll-indicator="true"
-        >"#);
+        >"#,
+    );
 
     for repo in repos {
-        xml.push_str(&format!(r#"
+        xml.push_str(&format!(
+            r#"
             <view style="repoItem">
                 <text style="repoName">{}</text>
                 <text style="repoDescription">{}</text>
@@ -277,56 +253,12 @@ pub async fn github_repos(
 }
 
 fn error_response(message: &str) -> Response {
-    let xml = format!(r#"<view xmlns="https://hyperview.org/hyperview" id="repos-list" style="reposList">
+    let xml = format!(
+        r#"<view xmlns="https://hyperview.org/hyperview" id="repos-list" style="reposList">
         <text style="error">{}</text>
-    </view>"#, message);
-
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-        .body(xml.into())
-        .unwrap()
-}
-
-async fn get_user_github_token(state: &AppState, user_id: i32) -> Result<Option<String>> {
-    // Get user from database
-    let user = sqlx::query_as!(
-        User,
-        "SELECT * FROM users WHERE id = $1",
-        user_id
-    )
-    .fetch_optional(&state.pool)
-    .await?;
-
-    // Extract token from metadata
-    if let Some(user) = user {
-        if let Some(metadata) = user.metadata {
-            if let Value::Object(obj) = metadata {
-                if let Some(Value::Object(github)) = obj.get("github") {
-                    if let Some(Value::String(token)) = github.get("access_token") {
-                        return Ok(Some(token.clone()));
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(None)
-}
-
-#[derive(Deserialize)]
-pub struct ContentQuery {
-    section: String,
-    user_id: i32,
-}
-
-pub async fn content(
-    State(_state): State<AppState>,
-    Query(params): Query<ContentQuery>,
-) -> Response {
-    let xml = format!(r#"<view xmlns="https://hyperview.org/hyperview" id="content">
-        <text style="welcomeText">Content section: {}</text>
-    </view>"#, params.section);
+    </view>"#,
+        message
+    );
 
     Response::builder()
         .status(StatusCode::OK)
@@ -373,13 +305,39 @@ pub async fn mobile_logout() -> Response {
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
         .header(header::SET_COOKIE, cookie)
-        .body(r###"<behavior
+        .body(
+            r###"<behavior
             xmlns="https://hyperview.org/hyperview"
             trigger="load"
             action="navigate"
             href="/templates/pages/auth/login.xml"
             new-stack="true"
             force-reset="true"
-          />"###.into())
+          />"###
+                .into(),
+        )
+        .unwrap()
+}
+
+#[derive(Deserialize)]
+pub struct ContentQuery {
+    section: String,
+}
+
+pub async fn content(
+    State(_state): State<AppState>,
+    Query(params): Query<ContentQuery>,
+) -> Response {
+    let xml = format!(
+        r#"<view xmlns="https://hyperview.org/hyperview" id="content">
+        <text style="welcomeText">Content section: {}</text>
+    </view>"#,
+        params.section
+    );
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+        .body(xml.into())
         .unwrap()
 }

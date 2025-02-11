@@ -1,10 +1,10 @@
 use axum::{
     extract::{Query, State},
     http::{header, StatusCode},
-    response::{IntoResponse, Response, Redirect},
+    response::{IntoResponse, Redirect, Response},
 };
 use serde::Deserialize;
-use tracing::{info, error};
+use tracing::{error, info};
 
 use crate::server::{
     config::AppState,
@@ -75,7 +75,10 @@ pub async fn handle_github_callback(
 
     match state.github_auth.process_auth_code(&callback.code).await {
         Ok(user) => {
-            info!("Authentication successful, redirecting with is_mobile: {}", is_mobile);
+            info!(
+                "Authentication successful, redirecting with is_mobile: {}",
+                is_mobile
+            );
             if is_mobile {
                 // Redirect to main screen with auth token
                 let token = format!("github_{}", user.github_id.unwrap_or_default());
