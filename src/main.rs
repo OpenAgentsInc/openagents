@@ -2,7 +2,7 @@ use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
 use axum::routing::Router;
-use tower::ServiceBuilder;
+use tower::make::Shared;
 
 #[tokio::main]
 async fn main() {
@@ -29,8 +29,7 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     
-    let app = ServiceBuilder::new()
-        .service(app);
-
-    axum::serve(listener, app).await.unwrap();
+    let service = app.into_service();
+    let make_svc = Shared::new(service);
+    axum::serve(listener, make_svc).await.unwrap();
 }
