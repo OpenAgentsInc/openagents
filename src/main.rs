@@ -10,7 +10,7 @@ async fn main() {
     dotenvy::dotenv().ok();
 
     // Create and configure the app
-    let app = configure_app().into_make_service();
+    let app = configure_app();
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
@@ -25,5 +25,8 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
-    axum::serve(listener, app).await.unwrap();
+    axum::Server::bind(&addr)
+        .serve(app.into_service())
+        .await
+        .unwrap();
 }
