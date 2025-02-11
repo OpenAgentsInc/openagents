@@ -16,9 +16,9 @@ error[E0277]: `Serve<tokio::net::TcpListener, Router<AppState>, _>` is not a fut
 
 The issue stems from Axum 0.8's service architecture:
 
-1. A Router needs to be converted into a MakeService before it can be used with axum::serve()
+1. A Router needs to be converted into a Service before it can be used with axum::serve()
 2. The conversion method varies between Axum versions
-3. Our version (0.8.1) requires using into_make_service()
+3. Our version (0.8.1) requires using into_service()
 
 ## Solution
 
@@ -30,14 +30,14 @@ let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
 axum::serve(
     listener,
-    app.into_make_service()
+    app.into_service()
 )
 .await
 .unwrap();
 ```
 
 Key points:
-1. Use into_make_service() to convert the Router
+1. Use into_service() to convert the Router
 2. Pass the TcpListener and converted service to axum::serve()
 3. Await the result
 
@@ -49,10 +49,10 @@ Key points:
 axum::Server::bind(&addr)
 ```
 
-2. Using into_make_service_with_connect_info():
+2. Using into_make_service():
 ```rust
 // Wrong - Not available in axum 0.8
-app.into_make_service_with_connect_info::<SocketAddr>()
+app.into_make_service()
 ```
 
 3. Using the Router directly:
@@ -64,7 +64,7 @@ axum::serve(listener, app)
 ## Version Differences
 
 - Axum 0.7: Uses different service conversion methods
-- Axum 0.8: Uses into_make_service()
+- Axum 0.8: Uses into_service()
 - Axum 0.9+: Changes the server initialization API
 
 ## Best Practices
