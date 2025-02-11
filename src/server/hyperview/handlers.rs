@@ -9,7 +9,7 @@ use tracing::{error, info};
 
 use crate::server::{
     config::AppState,
-    models::{repository::Repository, user::User},
+    models::repository::Repository,
 };
 
 pub async fn hello_world() -> Response {
@@ -109,90 +109,29 @@ fn render_repositories_screen(repos: Vec<Repository>) -> String {
     )
 }
 
-pub async fn repositories_screen(_: State<AppState>, user: User) -> Response {
-    info!("Fetching repositories for user: {}", user.id);
-
-    // Get GitHub token from user metadata
-    let metadata = match user.metadata {
-        Some(Value::Object(m)) => m,
-        _ => {
-            error!("Invalid metadata format for user: {}", user.id);
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-                .body(render_error_screen("Invalid user metadata").into())
-                .unwrap();
-        }
-    };
-
-    let github = match metadata.get("github") {
-        Some(Value::Object(gh)) => gh,
-        _ => {
-            error!("GitHub metadata not found for user: {}", user.id);
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-                .body(render_error_screen("GitHub account not connected").into())
-                .unwrap();
-        }
-    };
-
-    let access_token = match github.get("access_token") {
-        Some(Value::String(token)) => token,
-        _ => {
-            error!("GitHub access token not found for user: {}", user.id);
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-                .body(render_error_screen("GitHub access token not found").into())
-                .unwrap();
-        }
-    };
-
-    // Fetch repositories from GitHub
-    let client = reqwest::Client::new();
-    let response = match client
-        .get("https://api.github.com/user/repos")
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("User-Agent", "OpenAgents")
-        .header("Accept", "application/vnd.github.v3+json")
-        .send()
-        .await
-    {
-        Ok(resp) => resp,
-        Err(e) => {
-            error!("Failed to fetch repositories: {}", e);
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-                .body(render_error_screen("Failed to fetch repositories").into())
-                .unwrap();
-        }
-    };
-
-    if !response.status().is_success() {
-        let error_text = response.text().await.unwrap_or_default();
-        error!("GitHub API error: {}", error_text);
-        return Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-            .body(render_error_screen("Failed to fetch repositories").into())
-            .unwrap();
-    }
-
-    let repos = match response.json::<Vec<Repository>>().await {
-        Ok(repos) => repos,
-        Err(e) => {
-            error!("Failed to parse repository response: {}", e);
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-                .body(render_error_screen("Failed to parse repository data").into())
-                .unwrap();
-        }
-    };
-
-    info!("Successfully fetched {} repositories", repos.len());
+pub async fn repositories_screen(State(state): State<AppState>) -> Response {
+    // TODO: Get user from session/token
+    // For now, return a mock list of repositories
+    let repos = vec![
+        Repository {
+            id: 1,
+            name: "openagents".to_string(),
+            full_name: "OpenAgentsInc/openagents".to_string(),
+            description: Some("OpenAgents server and API".to_string()),
+            private: false,
+            html_url: "https://github.com/OpenAgentsInc/openagents".to_string(),
+            updated_at: "2024-02-10T12:00:00Z".to_string(),
+        },
+        Repository {
+            id: 2,
+            name: "onyx".to_string(),
+            full_name: "OpenAgentsInc/onyx".to_string(),
+            description: Some("OpenAgents mobile app".to_string()),
+            private: false,
+            html_url: "https://github.com/OpenAgentsInc/onyx".to_string(),
+            updated_at: "2024-02-09T15:30:00Z".to_string(),
+        },
+    ];
 
     Response::builder()
         .status(StatusCode::OK)
