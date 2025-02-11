@@ -10,7 +10,7 @@ pub async fn setup_test_db() -> PgPool {
 
     // Use DATABASE_URL from environment, fall back to default for local dev
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     info!("Connecting to database: {}", database_url);
 
     let pool = PgPool::connect(&database_url)
@@ -24,11 +24,6 @@ pub async fn setup_test_db() -> PgPool {
     let _guard = lock.lock().await;
 
     // Drop existing sequence and table if they exist
-    sqlx::query!("DROP SEQUENCE IF EXISTS users_id_seq CASCADE")
-        .execute(&pool)
-        .await
-        .expect("Failed to drop sequence");
-
     sqlx::query!("DROP TABLE IF EXISTS users CASCADE")
         .execute(&pool)
         .await
@@ -39,11 +34,13 @@ pub async fn setup_test_db() -> PgPool {
         r#"
         CREATE TABLE users (
             id SERIAL PRIMARY KEY,
-            scramble_id TEXT NOT NULL UNIQUE,
-            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-            last_login_at TIMESTAMP WITH TIME ZONE,
-            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            scramble_id TEXT,
+            github_id BIGINT UNIQUE,
+            github_token TEXT,
+            metadata JSONB DEFAULT '{}'::jsonb,
+            last_login_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
         "#
     )
@@ -57,7 +54,7 @@ pub async fn setup_test_db() -> PgPool {
     sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
         .execute(&pool)
         .await
-        .expect("Failed to clean up existing test data");
+        .expect("Failed to clean up test data");
 
     info!("Cleaned up existing test data");
 
