@@ -363,46 +363,23 @@ pub async fn main_page(State(state): State<AppState>) -> Response {
     }
 }
 
-// Modify the logout handler
-pub async fn logout() -> Response {
-    info!("🔐 Handling logout request");
-
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-        .header(header::SET_COOKIE, "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
-        .body(r###"<behavior
-          xmlns="https://hyperview.org/hyperview"
-          trigger="load"
-          action="navigate"
-          href="/templates/pages/auth/login.xml"
-          new-stack="true"
-          force-reset="true"
-        />"###.into())
-        .unwrap()
-}
-
 pub async fn mobile_logout() -> Response {
     info!("🔐 Starting mobile logout request");
 
     let cookie = clear_session_cookie();
     info!("🔐 Created clear cookie: {}", cookie);
 
-    let response = Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
         .header(header::SET_COOKIE, cookie)
-        .body(r###"<view xmlns="https://hyperview.org/hyperview">
-          <behavior
+        .body(r###"<behavior
+            xmlns="https://hyperview.org/hyperview"
             trigger="load"
             action="navigate"
             href="/templates/pages/auth/login.xml"
             new-stack="true"
             force-reset="true"
-          />
-        </view>"###.into())
-        .unwrap();
-
-    info!("🔐 Sending logout response with navigation behavior");
-    response
+          />"###.into())
+        .unwrap()
 }
