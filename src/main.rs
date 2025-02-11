@@ -2,7 +2,7 @@ use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
 use axum::routing::Router;
-use tower_http::trace::TraceLayer;
+use tower::ServiceBuilder;
 
 #[tokio::main]
 async fn main() {
@@ -29,12 +29,8 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     
-    let app = app.layer(TraceLayer::new_for_http());
-    axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()).await.unwrap();
-}
+    let app = ServiceBuilder::new()
+        .service(app);
 
-async fn shutdown_signal() {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Failed to install CTRL+C signal handler");
+    axum::serve(listener, app).await.unwrap();
 }
