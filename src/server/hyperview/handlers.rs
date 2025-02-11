@@ -3,9 +3,6 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use reqwest;
-use serde_json::Value;
-use tracing::{error, info};
 
 use crate::server::{
     config::AppState,
@@ -34,29 +31,6 @@ pub async fn hello_world() -> Response {
                 .into(),
         )
         .unwrap()
-}
-
-fn render_error_screen(error: &str) -> String {
-    format!(
-        r###"<?xml version="1.0" encoding="UTF-8"?>
-<doc xmlns="https://hyperview.org/hyperview">
-    <screen>
-        <styles>
-            <style id="screen" backgroundColor="black" flex="1" />
-            <style id="error" color="red" fontSize="16" padding="16" textAlign="center" />
-            <style id="retry_button" backgroundColor="#333333" padding="12" margin="16" borderRadius="8" alignItems="center" />
-            <style id="retry_text" color="white" fontSize="14" />
-        </styles>
-        <body style="screen">
-            <text style="error">{}</text>
-            <view style="retry_button" href="/hyperview/repositories">
-                <text style="retry_text">Retry</text>
-            </view>
-        </body>
-    </screen>
-</doc>"###,
-        error
-    )
 }
 
 fn render_repositories_screen(repos: Vec<Repository>) -> String {
@@ -93,8 +67,6 @@ fn render_repositories_screen(repos: Vec<Repository>) -> String {
             <style id="repo_name" color="white" fontSize="16" fontWeight="bold" />
             <style id="repo_desc" color="#999999" fontSize="14" marginTop="4" />
             <style id="repo_meta" color="#666666" fontSize="12" marginTop="8" />
-            <style id="error" color="red" fontSize="16" padding="16" textAlign="center" />
-            <style id="loading" flex="1" justifyContent="center" alignItems="center" />
         </styles>
         <body style="screen">
             <header style="header">
@@ -109,9 +81,8 @@ fn render_repositories_screen(repos: Vec<Repository>) -> String {
     )
 }
 
-pub async fn repositories_screen(State(state): State<AppState>) -> Response {
-    // TODO: Get user from session/token
-    // For now, return a mock list of repositories
+pub async fn repositories_screen(State(_state): State<AppState>) -> Response {
+    // Just return mock data for now
     let repos = vec![
         Repository {
             id: 1,
