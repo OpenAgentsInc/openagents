@@ -88,13 +88,19 @@ pub async fn setup_test_db() -> PgPool {
     .await
     .expect("Failed to create trigger function");
 
+    // Drop existing trigger first
+    sqlx::query!("DROP TRIGGER IF EXISTS update_users_updated_at ON users")
+        .execute(&pool)
+        .await
+        .expect("Failed to drop trigger");
+
+    // Create new trigger
     sqlx::query!(
         r#"
-        DROP TRIGGER IF EXISTS update_users_updated_at ON users;
         CREATE TRIGGER update_users_updated_at
             BEFORE UPDATE ON users
             FOR EACH ROW
-            EXECUTE FUNCTION update_updated_at_column();
+            EXECUTE FUNCTION update_updated_at_column()
         "#
     )
     .execute(&pool)
