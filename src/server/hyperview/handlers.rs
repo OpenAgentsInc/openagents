@@ -373,6 +373,13 @@ pub async fn mobile_logout() -> Response {
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
         .header(header::SET_COOKIE, cookie)
-        .body(include_str!("../../../templates/pages/auth/login.xml").into())
+        .body(r###"<behavior
+            xmlns="https://hyperview.org/hyperview"
+            trigger="load"
+            action="navigate"
+            href="/templates/pages/auth/login.xml"
+            new-stack="true"
+            force-reset="true"
+          />"###.into())
         .unwrap()
 }
