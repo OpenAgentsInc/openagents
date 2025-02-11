@@ -11,7 +11,7 @@ async fn main() {
     dotenvy::dotenv().ok();
 
     // Create and configure the app
-    let app = configure_app();
+    let app = configure_app().into_make_service_with_connect_info::<SocketAddr>();
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
