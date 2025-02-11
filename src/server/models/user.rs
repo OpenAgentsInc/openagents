@@ -20,7 +20,7 @@ pub struct User {
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for User
+impl<S> FromRequestParts<S> for User 
 where
     S: Send + Sync,
     PgPool: FromRef<S>,
