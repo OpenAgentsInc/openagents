@@ -26,7 +26,7 @@ where
     S: Send + Sync,
     PgPool: FromRef<S>,
 {
-    type Rejection = StatusCode;
+    type Rejection = (StatusCode, String);
 
     async fn from_request_parts(
         _parts: &mut Parts,
