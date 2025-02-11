@@ -22,16 +22,19 @@ pub struct User {
 #[async_trait]
 impl<S> FromRequestParts<S> for User
 where
-    PgPool: FromRef<S>,
     S: Send + Sync,
+    PgPool: FromRef<S>,
 {
     type Rejection = StatusCode;
 
     #[allow(unused_variables)]
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts<'a>(
+        parts: &'a mut Parts,
+        state: &'a S,
+    ) -> Result<Self, Self::Rejection>
+    where
+        S: 'a,
+    {
         // TODO: Get user from session/token
         // For now, return a mock user for testing
         Ok(User {
