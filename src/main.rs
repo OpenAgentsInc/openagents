@@ -1,8 +1,6 @@
 use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
-use axum::routing::Router;
-use tower::make::Shared;
 
 #[tokio::main]
 async fn main() {
@@ -29,7 +27,7 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     
-    let service = app.into_service();
-    let make_svc = Shared::new(service);
-    axum::serve(listener, make_svc).await.unwrap();
+    // Convert the Router<AppState> into a service that can handle TcpListener streams
+    let make_service = app.into_make_service();
+    axum::serve(listener, make_service).await.unwrap();
 }
