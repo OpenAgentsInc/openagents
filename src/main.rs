@@ -1,8 +1,7 @@
 use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
-use tower_service::Service;
-use std::convert::Infallible;
+use axum::routing::IntoMakeService;
 
 #[tokio::main]
 async fn main() {
@@ -29,10 +28,10 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     
-    let service = tower::ServiceBuilder::new()
-        .service(app);
-
-    axum::serve(listener, service)
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        app.with_state(()).into_make_service()
+    )
+    .await
+    .unwrap();
 }
