@@ -22,11 +22,11 @@ async fn main() {
     info!("Starting server on {}", addr);
 
     // Start the server
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     info!("✨ Server ready:");
-    info!("  🌎 http://{}", addr);
+    info!("  🌎 http://{}", listener.local_addr().unwrap());
     
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+    axum::serve(listener, app.into_service())
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
