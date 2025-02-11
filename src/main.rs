@@ -1,7 +1,6 @@
 use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
-use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 
 #[tokio::main]
 async fn main() {
@@ -30,7 +29,7 @@ async fn main() {
     
     axum::serve(
         listener,
-        app.into_make_service()
+        app.into_service()
     )
     .await
     .unwrap();
