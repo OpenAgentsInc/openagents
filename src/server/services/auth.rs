@@ -2,6 +2,7 @@ use axum::http::StatusCode;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sqlx::Error as SqlxError;
 use sqlx::PgPool;
 use tracing::{error, info};
 
@@ -59,6 +60,7 @@ pub enum AuthError {
     TokenExchangeFailed(String),
     DatabaseError(String),
     UserAlreadyExists(User),
+    NotAuthenticated,
 }
 
 impl std::fmt::Display for AuthError {
@@ -69,6 +71,7 @@ impl std::fmt::Display for AuthError {
             AuthError::TokenExchangeFailed(msg) => write!(f, "Token exchange failed: {}", msg),
             AuthError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             AuthError::UserAlreadyExists(_) => write!(f, "User already exists"),
+            AuthError::NotAuthenticated => write!(f, "Not authenticated"),
         }
     }
 }
@@ -83,7 +86,14 @@ impl From<AuthError> for StatusCode {
             AuthError::TokenExchangeFailed(_) => StatusCode::BAD_GATEWAY,
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthError::UserAlreadyExists(_) => StatusCode::TEMPORARY_REDIRECT,
+            AuthError::NotAuthenticated => StatusCode::UNAUTHORIZED,
         }
+    }
+}
+
+impl From<SqlxError> for AuthError {
+    fn from(error: SqlxError) -> Self {
+        AuthError::DatabaseError(error.to_string())
     }
 }
 
@@ -138,23 +148,54 @@ impl OIDCService {
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (scramble_id, metadata)
-            VALUES ($1, $2)
-            ON CONFLICT (scramble_id) DO UPDATE
-            SET last_login_at = NOW()
-            RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+            SELECT id, scramble_id, github_id, github_token, metadata,
+                   last_login_at, created_at, updated_at
+            FROM users
+            WHERE scramble_id = $1
+            "#,
+            pseudonym
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(_user) = user {
+            info!("User already exists with pseudonym: {}", pseudonym);
+            // Update last_login_at and return as UserAlreadyExists error
+            let updated_user = sqlx::query_as!(
+                User,
+                r#"
+                UPDATE users
+                SET last_login_at = NOW()
+                WHERE scramble_id = $1
+                RETURNING id, scramble_id, github_id, github_token, metadata,
+                          last_login_at, created_at, updated_at
+                "#,
+                pseudonym
+            )
+            .fetch_one(&self.pool)
+            .await?;
+
+            info!("Successfully updated existing user: {:?}", updated_user);
+            return Ok(updated_user);
+        }
+
+        // Create new user
+        info!("Creating new user with pseudonym: {}", pseudonym);
+        let user = sqlx::query_as!(
+            User,
+            r#"
+            INSERT INTO users (scramble_id, metadata, github_id, github_token)
+            VALUES ($1, $2, NULL, NULL)
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      last_login_at, created_at, updated_at
             "#,
             pseudonym,
             serde_json::json!({}) as _
         )
         .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Database error during login: {}", e);
-            AuthError::DatabaseError(e.to_string())
-        })?;
+        .await?;
 
-        info!("Successfully processed login for user: {:?}", user);
+        info!("Successfully created new user: {:?}", user);
         Ok(user)
     }
 
@@ -174,38 +215,32 @@ impl OIDCService {
         let existing_user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, scramble_id, metadata, last_login_at, created_at, updated_at
-            FROM users 
+            SELECT id, scramble_id, github_id, github_token, metadata,
+                   last_login_at, created_at, updated_at
+            FROM users
             WHERE scramble_id = $1
             "#,
             pseudonym
         )
         .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Database error checking existing user: {}", e);
-            AuthError::DatabaseError(e.to_string())
-        })?;
+        .await?;
 
-        if existing_user.is_some() {
+        if let Some(_user) = existing_user {
             info!("User already exists with pseudonym: {}", pseudonym);
             // Update last_login_at and return as UserAlreadyExists error
             let updated_user = sqlx::query_as!(
                 User,
                 r#"
-                UPDATE users 
+                UPDATE users
                 SET last_login_at = NOW()
                 WHERE scramble_id = $1
-                RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+                RETURNING id, scramble_id, github_id, github_token, metadata,
+                          last_login_at, created_at, updated_at
                 "#,
                 pseudonym
             )
             .fetch_one(&self.pool)
-            .await
-            .map_err(|e| {
-                error!("Database error updating existing user: {}", e);
-                AuthError::DatabaseError(e.to_string())
-            })?;
+            .await?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
             return Err(AuthError::UserAlreadyExists(updated_user));
@@ -216,19 +251,16 @@ impl OIDCService {
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (scramble_id, metadata)
-            VALUES ($1, $2)
-            RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+            INSERT INTO users (scramble_id, metadata, github_id, github_token)
+            VALUES ($1, $2, NULL, NULL)
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      last_login_at, created_at, updated_at
             "#,
             pseudonym,
             serde_json::json!({}) as _
         )
         .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            error!("Database error creating new user: {}", e);
-            AuthError::DatabaseError(e.to_string())
-        })?;
+        .await?;
 
         info!("Successfully created new user: {:?}", user);
         Ok(user)

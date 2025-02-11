@@ -1,4 +1,6 @@
+use crate::server::services::auth::AuthError;
 use axum::http::StatusCode;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info};
@@ -9,6 +11,7 @@ use crate::server::models::user::User;
 pub struct GitHubAuthService {
     pub config: GitHubConfig,
     pub pool: PgPool,
+    client: Client,
 }
 
 #[derive(Debug, Clone)]
@@ -72,7 +75,11 @@ impl From<GitHubAuthError> for StatusCode {
 
 impl GitHubAuthService {
     pub fn new(pool: PgPool, config: GitHubConfig) -> Self {
-        Self { config, pool }
+        Self {
+            config,
+            pool,
+            client: Client::new(),
+        }
     }
 
     pub fn authorization_url(&self, platform: Option<String>) -> Result<String, GitHubAuthError> {
@@ -185,29 +192,26 @@ impl GitHubAuthService {
         // Store tokens and user info in metadata
         let metadata = serde_json::json!({
             "github": {
-                "id": github_user.id,
                 "login": github_user.login,
                 "name": github_user.name,
                 "email": github_user.email,
-                "access_token": tokens.access_token,
                 "scope": tokens.scope
             }
         });
 
-        // Use GitHub ID as scramble_id
-        let scramble_id = format!("github_{}", github_user.id);
-
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (scramble_id, metadata)
-            VALUES ($1, $2)
-            ON CONFLICT (scramble_id) DO UPDATE
-            SET metadata = $2,
+            INSERT INTO users (github_id, github_token, metadata)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (github_id) DO UPDATE
+            SET github_token = $2,
+                metadata = $3,
                 last_login_at = NOW()
-            RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+            RETURNING *
             "#,
-            scramble_id,
+            github_user.id,
+            tokens.access_token,
             metadata as _
         )
         .fetch_one(&self.pool)
@@ -218,5 +222,54 @@ impl GitHubAuthService {
         })?;
 
         Ok(user)
+    }
+
+    pub async fn exchange_code_for_token(
+        &self,
+        code: &str,
+    ) -> Result<GitHubTokenResponse, AuthError> {
+        let token_url = "https://github.com/login/oauth/access_token";
+
+        let response = self
+            .client
+            .post(token_url)
+            .json(&serde_json::json!({
+                "client_id": self.config.client_id,
+                "client_secret": self.config.client_secret,
+                "code": code
+            }))
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to exchange code for token: {}", e);
+                AuthError::TokenExchangeFailed(e.to_string())
+            })?;
+
+        response.json::<GitHubTokenResponse>().await.map_err(|e| {
+            error!("Failed to parse token response: {}", e);
+            AuthError::TokenExchangeFailed(format!("error decoding response body: {}", e))
+        })
+    }
+
+    pub async fn process_auth_code(&self, code: &str) -> Result<User, AuthError> {
+        info!(
+            "Processing GitHub authentication with code length: {}",
+            code.len()
+        );
+
+        // Exchange code for token
+        let tokens = self.exchange_code_for_token(code).await?;
+
+        // Get user info with token
+        let github_user = self
+            .get_github_user(&tokens.access_token)
+            .await
+            .map_err(|e| AuthError::TokenExchangeFailed(e.to_string()))?;
+
+        // Create or update user
+        self.get_or_create_user(github_user, tokens)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))
     }
 }
