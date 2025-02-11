@@ -1,5 +1,6 @@
 use openagents::server::config::configure_app;
 use tracing::info;
+use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
@@ -18,22 +19,15 @@ async fn main() {
         .and_then(|p| p.parse().ok())
         .unwrap_or(8000);
 
-    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("Starting server on {}", addr);
 
     // Start the server
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     info!("✨ Server ready:");
-    info!("  🌎 http://{}", listener.local_addr().unwrap());
+    info!("  🌎 http://{}", addr);
     
-    axum::serve(listener, app.into_service())
-        .with_graceful_shutdown(shutdown_signal())
+    axum::Server::bind(&addr)
+        .serve(app)
         .await
         .unwrap();
-}
-
-async fn shutdown_signal() {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Failed to install CTRL+C signal handler");
 }
