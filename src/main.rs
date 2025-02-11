@@ -1,6 +1,7 @@
 use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
+use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 
 #[tokio::main]
 async fn main() {
@@ -27,5 +28,7 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     
-    axum::serve(listener, app).await.unwrap();
+    let service = app.into_service();
+    let make_service = tower::make::Shared::new(service);
+    axum::serve(listener, make_service).await.unwrap();
 }
