@@ -13,6 +13,7 @@ use axum::{
 };
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -20,6 +21,7 @@ pub struct AppState {
     pub repomap_service: Arc<RepomapService>,
     pub auth_state: Arc<server::handlers::auth::AuthState>,
     pub github_auth: Arc<GitHubAuthService>,
+    pub pool: PgPool,
 }
 
 #[derive(Clone)]
@@ -120,7 +122,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         client_secret: config.github_client_secret,
         redirect_uri: config.github_redirect_uri,
     };
-    let github_auth = Arc::new(GitHubAuthService::new(pool, github_config));
+    let github_auth = Arc::new(GitHubAuthService::new(pool.clone(), github_config));
 
     // Create shared app state
     let app_state = AppState {
@@ -128,6 +130,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         repomap_service,
         auth_state,
         github_auth,
+        pool: pool.clone(),
     };
 
     // Create the main router

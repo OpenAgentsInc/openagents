@@ -6,19 +6,55 @@
       <style id="title" fontSize="24" color="white" marginBottom="32" />
       <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
       <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
+      <style id="reposList" width="100%" padding="16" />
+      <style id="repoItem" backgroundColor="#222" padding="16" marginBottom="8" borderRadius="8" />
+      <style id="repoName" color="white" fontSize="16" fontWeight="600" />
+      <style id="repoDescription" color="#808080" fontSize="14" marginTop="4" />
+      <style id="error" color="red" fontSize="16" fontWeight="600" />
+      <style id="welcomeText" color="white" fontSize="16" />
     </styles>
-    
+
     <body style="container">
+      <!-- This view will be populated by the server -->
+      <view id="user-info">
+        <behavior
+          trigger="load"
+          action="replace"
+          target="user-info"
+          href="/hyperview/fragments/user-info?github_id=14167547"
+        />
+      </view>
+
       <text style="title">Welcome to OpenAgents</text>
-      
+
+      <!-- GitHub Repos List -->
+      <view id="repos-list" style="reposList">
+        <behavior
+          trigger="load"
+          action="replace"
+          target="repos-list"
+          href="/hyperview/fragments/github-repos?github_id=14167547"
+        />
+      </view>
+
       <!-- Chat Button -->
       <view style="button">
-        <behavior 
-          trigger="press" 
+        <behavior
+          trigger="press"
           action="push"
           href="/hyperview/chat"
         />
         <text style="buttonText">Start Chat</text>
+      </view>
+
+      <!-- The behavior will pass query params -->
+      <view id="content">
+        <behavior
+          trigger="load"
+          action="replace"
+          target="content"
+          href="/hyperview/fragments/content?section=dashboard&user_id=123"
+        />
       </view>
     </body>
   </screen>

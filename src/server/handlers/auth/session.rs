@@ -17,7 +17,7 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
     info!("Is mobile: {}", is_mobile);
 
     let session_token = user.scramble_id.clone();
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, session_token.clone()))
+    let cookie = Cookie::build((SESSION_COOKIE_NAME, session_token.clone().unwrap_or_default()))
         .path("/")
         .secure(true)
         .http_only(true)
@@ -28,10 +28,7 @@ pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Respons
     // For mobile app, redirect to deep link with session token
     let redirect_url = if is_mobile {
         info!("Redirecting to mobile app with token");
-        format!(
-            "{}://auth/success?token={}",
-            MOBILE_APP_SCHEME, session_token
-        )
+        format!("{}://{}", MOBILE_APP_SCHEME, session_token.unwrap_or_default())
     } else {
         info!("Redirecting to web app");
         "/".to_string()

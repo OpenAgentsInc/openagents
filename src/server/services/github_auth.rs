@@ -185,29 +185,26 @@ impl GitHubAuthService {
         // Store tokens and user info in metadata
         let metadata = serde_json::json!({
             "github": {
-                "id": github_user.id,
                 "login": github_user.login,
                 "name": github_user.name,
                 "email": github_user.email,
-                "access_token": tokens.access_token,
                 "scope": tokens.scope
             }
         });
 
-        // Use GitHub ID as scramble_id
-        let scramble_id = format!("github_{}", github_user.id);
-
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (scramble_id, metadata)
-            VALUES ($1, $2)
-            ON CONFLICT (scramble_id) DO UPDATE
-            SET metadata = $2,
+            INSERT INTO users (github_id, github_token, metadata)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (github_id) DO UPDATE
+            SET github_token = $2,
+                metadata = $3,
                 last_login_at = NOW()
-            RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+            RETURNING *
             "#,
-            scramble_id,
+            github_user.id,
+            tokens.access_token,
             metadata as _
         )
         .fetch_one(&self.pool)
