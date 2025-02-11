@@ -1,6 +1,7 @@
 use openagents::server::config::configure_app;
 use tracing::info;
 use std::net::SocketAddr;
+use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 
 #[tokio::main]
 async fn main() {
@@ -11,7 +12,7 @@ async fn main() {
     dotenvy::dotenv().ok();
 
     // Create and configure the app
-    let app = configure_app().into_make_service_with_connect_info::<SocketAddr>();
+    let app = configure_app();
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
@@ -27,7 +28,10 @@ async fn main() {
     info!("✨ Server ready:");
     info!("  🌎 http://{}", listener.local_addr().unwrap());
     
-    axum::serve(listener, app)
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service()
+    )
+    .await
+    .unwrap();
 }
