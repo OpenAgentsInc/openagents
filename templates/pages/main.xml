@@ -32,7 +32,14 @@
               href="/hyperview/fragments/user-info?github_id=14167547"
             />
           </view>
-          <text style="logoutText logoutButton" href="/hyperview/auth/logout" href-action="push">
+          <view id="redirectContainer" />
+          <text style="logoutText logoutButton">
+            <behavior
+              trigger="press"
+              action="replace-inner"
+              target="redirectContainer"
+              href="/hyperview/auth/logout"
+            />
             Logout!
           </text>
         </view>
