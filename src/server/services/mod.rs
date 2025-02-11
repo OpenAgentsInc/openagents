@@ -4,6 +4,7 @@ pub mod deepseek;
 pub mod gateway;
 pub mod github_auth;
 pub mod github_issue;
+pub mod github_repos;
 pub mod github_types;
 pub mod model_router;
 pub mod ollama;

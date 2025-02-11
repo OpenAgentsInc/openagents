@@ -4,102 +4,13 @@ use axum::{
     http::{header, StatusCode},
     response::Response,
 };
-use super::services::GitHubReposService;
+use crate::server::services::github_repos::GitHubReposService;
 use anyhow::Result;
 use serde_json::Value;
 use crate::server::models::user::User;
 use serde::Deserialize;
 use tracing::{info, error};
-
-pub async fn main_screen(State(state): State<AppState>) -> Response {
-    info!("Handling main_screen request");
-
-    // Get the most recently logged in user with GitHub auth
-    let user = sqlx::query_as!(
-        User,
-        "SELECT * FROM users
-         WHERE github_id IS NOT NULL
-         ORDER BY last_login_at DESC NULLS LAST
-         LIMIT 1"
-    )
-    .fetch_optional(&state.pool)
-    .await;
-
-    match user {
-        Ok(Some(user)) => {
-            info!("Found most recent user: {:?}", user);
-            if let Some(github_id) = user.github_id {
-                info!("Extracted GitHub ID: {}", github_id);
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-                    .body(
-                        format!(r###"<?xml version="1.0" encoding="UTF-8" ?>
-<doc xmlns="https://hyperview.org/hyperview">
-  <screen>
-    <styles>
-      <style id="container" flex="1" backgroundColor="black" alignItems="center" justifyContent="center" />
-      <style id="title" fontSize="24" color="white" marginBottom="32" />
-      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
-      <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
-      <style id="reposList" width="100%" padding="16" />
-      <style id="repoItem" backgroundColor="#222" padding="16" marginBottom="8" borderRadius="8" />
-      <style id="repoName" color="white" fontSize="16" fontWeight="600" />
-      <style id="repoDescription" color="#808080" fontSize="14" marginTop="4" />
-      <style id="error" color="red" fontSize="16" fontWeight="600" />
-      <style id="welcomeText" color="white" fontSize="16" />
-    </styles>
-
-    <body style="container">
-      <view id="user-info">
-        <behavior
-          trigger="load"
-          action="replace"
-          target="user-info"
-          href="/hyperview/fragments/user-info?github_id={github_id}"
-        />
-      </view>
-
-      <text style="title">Welcome to OpenAgents</text>
-
-      <view id="repos-list" style="reposList">
-        <behavior
-          trigger="load"
-          action="replace"
-          target="repos-list"
-          href="/hyperview/fragments/github-repos?github_id={github_id}"
-        />
-      </view>
-
-      <!-- Chat Button -->
-      <view style="button">
-        <behavior
-          trigger="press"
-          action="push"
-          href="/hyperview/chat"
-        />
-        <text style="buttonText">Start Chat</text>
-      </view>
-    </body>
-  </screen>
-</doc>"###, github_id=github_id).into()
-                    )
-                    .unwrap()
-            } else {
-                error!("No GitHub ID found in user metadata");
-                redirect_to_auth()
-            }
-        }
-        Ok(None) => {
-            error!("No users found in database");
-            redirect_to_auth()
-        }
-        Err(e) => {
-            error!("Database error: {}", e);
-            redirect_to_auth()
-        }
-    }
-}
+use crate::server::handlers::auth::session::clear_session_cookie;
 
 fn extract_github_id(metadata: &Option<serde_json::Value>) -> Option<String> {
     if let Some(metadata) = metadata {
@@ -176,13 +87,13 @@ pub async fn user_info(
     // Get GitHub ID from params
     let github_id = match params.get("github_id") {
         Some(id) => id,
-        None => return error_response("GitHub ID not provided"),
+        None => return auth_error_fragment_response(),
     };
 
     // Get user from GitHub ID
     let user = match get_user_from_github_id(&state, github_id).await {
         Some(user) => user,
-        None => return error_response("User not found"),
+        None => return auth_error_fragment_response(),
     };
 
     // Get username from GitHub metadata
@@ -215,6 +126,68 @@ pub async fn user_info(
         .unwrap()
 }
 
+fn auth_error_fragment_response() -> Response {
+    Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+        .body(r#"<view xmlns="https://hyperview.org/hyperview">
+            <behavior
+              trigger="load"
+              action="navigate"
+              href="/auth/github/login?platform=mobile"
+              new-stack="true"
+              force-reset="true"
+            />
+        </view>"#.into())
+        .unwrap()
+}
+
+fn auth_error_response(_message: &str) -> Response {
+    Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+        .body(r###"<?xml version="1.0" encoding="UTF-8" ?>
+<doc xmlns="https://hyperview.org/hyperview">
+  <screen>
+    <styles>
+      <style id="container" flex="1" backgroundColor="black" alignItems="center" justifyContent="center" />
+      <style id="title" fontSize="24" color="white" marginBottom="32" />
+      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
+      <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
+      <style id="loading" color="white" fontSize="14" marginTop="16" />
+    </styles>
+    <body style="container">
+      <text style="title">Welcome to OpenAgents</text>
+
+      <!-- Loading State -->
+      <text id="loading-text" style="loading" display="none">Connecting to GitHub...</text>
+
+      <!-- GitHub Login Button -->
+      <view style="button" id="login-button">
+        <behavior
+          trigger="press"
+          action="open-url"
+          href="/auth/github/login?platform=mobile"
+          verb="GET"
+          show-during-load="loading-text"
+          hide-during-load="login-button"
+        />
+        <text style="buttonText">Continue with GitHub</text>
+      </view>
+    </body>
+  </screen>
+</doc>"###.into())
+        .unwrap()
+}
+
+pub async fn login_page() -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+        .body(include_str!("../../../templates/pages/auth/login.xml").into())
+        .unwrap()
+}
+
 pub async fn github_repos(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
@@ -225,7 +198,10 @@ pub async fn github_repos(
     let github_id = match params.get("github_id") {
         Some(id) => {
             info!("Got GitHub ID from params: {}", id);
-            id
+            match id.parse::<i64>() {
+                Ok(id) => id,
+                Err(_) => return error_response("Invalid GitHub ID"),
+            }
         }
         None => {
             error!("No GitHub ID provided in params");
@@ -233,45 +209,65 @@ pub async fn github_repos(
         }
     };
 
-    // Get user from GitHub ID
-    let user = match get_user_from_github_id(&state, github_id).await {
-        Some(user) => user,
-        None => return error_response("User not found"),
+    // Get user with GitHub token
+    let user = match sqlx::query_as!(
+        User,
+        "SELECT * FROM users WHERE github_id = $1",
+        github_id
+    )
+    .fetch_optional(&state.pool)
+    .await {
+        Ok(Some(user)) => user,
+        Ok(None) => return error_response("User not found"),
+        Err(e) => return error_response(&format!("Database error: {}", e)),
     };
 
     // Get GitHub token
-    let github_token = match get_user_github_token(&state, user.id).await {
-        Ok(Some(token)) => token,
-        _ => return error_response("No GitHub token found"),
+    let github_token = match user.github_token {
+        Some(token) => token,
+        None => return error_response("No GitHub token found"),
     };
 
     // Initialize GitHub service
     let github_service = match GitHubReposService::new(github_token) {
         Ok(service) => service,
-        Err(_) => return error_response("Failed to initialize GitHub service"),
+        Err(e) => return error_response(&format!("Failed to initialize GitHub service: {}", e)),
     };
 
     // Fetch repos
-    let repos = match github_service.get_user_repos().await {
+    let mut repos = match github_service.get_user_repos().await {
         Ok(repos) => repos,
-        Err(_) => return error_response("Failed to fetch repositories"),
+        Err(e) => return error_response(&format!("Failed to fetch repos: {}", e)),
     };
 
-    // Generate HXML for repos
-    let mut xml = String::from(r#"<view xmlns="https://hyperview.org/hyperview" id="repos-list" style="reposList">"#);
+    // Sort repos by updated_at (most recent first) and take first 10
+    repos.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    let repos = repos.into_iter().take(10);
+
+    // Generate HXML for repos with scrollview
+    let mut xml = String::from(r#"<view xmlns="https://hyperview.org/hyperview" id="repos-list" style="reposList">
+        <view
+            style="reposScroll"
+            content-container-style="reposScrollContent"
+            scroll="true"
+            scroll-orientation="vertical"
+            shows-scroll-indicator="true"
+        >"#);
 
     for repo in repos {
         xml.push_str(&format!(r#"
             <view style="repoItem">
                 <text style="repoName">{}</text>
                 <text style="repoDescription">{}</text>
+                <text style="repoUpdated">Updated {}</text>
             </view>"#,
             repo.name,
-            repo.description.unwrap_or_default()
+            repo.description.unwrap_or_default(),
+            repo.updated_at.split('T').next().unwrap_or("unknown")
         ));
     }
 
-    xml.push_str("</view>");
+    xml.push_str("</view></view>");
 
     Response::builder()
         .status(StatusCode::OK)
@@ -337,4 +333,76 @@ pub async fn content(
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
         .body(xml.into())
         .unwrap()
+}
+
+pub async fn main_page(State(state): State<AppState>) -> Response {
+    // Check auth first
+    let user = sqlx::query_as!(
+        User,
+        "SELECT * FROM users
+         WHERE github_id IS NOT NULL
+         ORDER BY last_login_at DESC NULLS LAST
+         LIMIT 1"
+    )
+    .fetch_optional(&state.pool)
+    .await;
+
+    match user {
+        Ok(Some(user)) if user.github_id.is_some() => {
+            // User is authenticated, serve the main page
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+                .body(include_str!("../../../templates/pages/main.xml").into())
+                .unwrap()
+        }
+        _ => {
+            // Not authenticated, force redirect to login
+            auth_error_response("Not authenticated")
+        }
+    }
+}
+
+// Modify the logout handler
+pub async fn logout() -> Response {
+    info!("🔐 Handling logout request");
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+        .header(header::SET_COOKIE, "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
+        .body(r###"<behavior
+          xmlns="https://hyperview.org/hyperview"
+          trigger="load"
+          action="navigate"
+          href="/templates/pages/auth/login.xml"
+          new-stack="true"
+          force-reset="true"
+        />"###.into())
+        .unwrap()
+}
+
+pub async fn mobile_logout() -> Response {
+    info!("🔐 Starting mobile logout request");
+
+    let cookie = clear_session_cookie();
+    info!("🔐 Created clear cookie: {}", cookie);
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+        .header(header::SET_COOKIE, cookie)
+        .body(r###"<view xmlns="https://hyperview.org/hyperview">
+          <behavior
+            trigger="load"
+            action="navigate"
+            href="/templates/pages/auth/login.xml"
+            new-stack="true"
+            force-reset="true"
+          />
+        </view>"###.into())
+        .unwrap();
+
+    info!("🔐 Sending logout response with navigation behavior");
+    response
 }

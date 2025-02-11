@@ -1,15 +1,15 @@
 use axum::{
     extract::{Query, State},
     http::{header, StatusCode},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Response, Redirect},
 };
 use serde::Deserialize;
-use tracing::info;
+use tracing::{info, error};
 
 use crate::server::{
     config::AppState,
     handlers::auth::session::{create_session_and_redirect, render_login_template},
-    services::github_auth::GitHubAuthError,
+    services::auth::AuthError,
 };
 
 #[derive(Debug, Deserialize)]
@@ -66,27 +66,35 @@ pub async fn handle_github_callback(
     info!("Platform: {:?}", callback.platform);
     info!("State: {:?}", callback.state);
 
-    // Check if request is from mobile app (either from platform param or state)
+    // Check if request is from mobile app
     let is_mobile = callback.platform.as_deref() == Some("mobile")
         || callback.state.as_deref() == Some("mobile")
-        || callback.state.as_deref() == Some("\"mobile\""); // Handle quoted state
+        || callback.state.as_deref() == Some("\"mobile\"");
 
     info!("Is mobile: {}", is_mobile);
 
-    match state.github_auth.authenticate(callback.code).await {
+    match state.github_auth.process_auth_code(&callback.code).await {
         Ok(user) => {
-            info!(
-                "Authentication successful, redirecting with is_mobile: {}",
-                is_mobile
-            );
-            create_session_and_redirect(user, is_mobile).await
+            info!("Authentication successful, redirecting with is_mobile: {}", is_mobile);
+            if is_mobile {
+                // Redirect to main screen with auth token
+                let token = format!("github_{}", user.github_id.unwrap_or_default());
+                let redirect_url = format!("onyx://?token={}&screen=main", token);
+                Redirect::to(&redirect_url).into_response()
+            } else {
+                create_session_and_redirect(user, false).await
+            }
         }
-        Err(GitHubAuthError::UserAlreadyExists(user)) => {
-            info!("User exists, redirecting with is_mobile: {}", is_mobile);
-            create_session_and_redirect(user, is_mobile).await
+        Err(AuthError::NotAuthenticated) => {
+            // Clean redirect back to login
+            if is_mobile {
+                Redirect::to("onyx://?screen=login").into_response()
+            } else {
+                render_login_template().await
+            }
         }
         Err(e) => {
-            info!("GitHub auth error: {}", e);
+            error!("GitHub auth error: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
         }
     }

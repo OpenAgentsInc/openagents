@@ -2,59 +2,76 @@
 <doc xmlns="https://hyperview.org/hyperview">
   <screen>
     <styles>
-      <style id="container" flex="1" backgroundColor="black" alignItems="center" justifyContent="center" />
-      <style id="title" fontSize="24" color="white" marginBottom="32" />
-      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
+      <style id="container" flex="1" backgroundColor="black" />
+      <style id="safeArea" flex="1" paddingTop="50" />
+      <style id="header" flexDirection="row" justifyContent="space-between" alignItems="center" width="100%" padding="16" />
+      <style id="title" fontSize="24" color="white" marginBottom="32" alignSelf="center" />
+      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" alignSelf="center" />
       <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
-      <style id="reposList" width="100%" padding="16" />
+      <style id="logoutButton" backgroundColor="red" padding="8" borderRadius="8" />
+      <style id="logoutText" color="white" fontSize="14" fontWeight="600" />
+      <style id="reposList" flex="1" width="100%" marginVertical="16" />
+      <style id="reposScroll" flex="1" width="100%" />
+      <style id="reposScrollContent" padding="16" />
       <style id="repoItem" backgroundColor="#222" padding="16" marginBottom="8" borderRadius="8" />
       <style id="repoName" color="white" fontSize="16" fontWeight="600" />
       <style id="repoDescription" color="#808080" fontSize="14" marginTop="4" />
+      <style id="repoUpdated" color="#666" fontSize="12" marginTop="8" />
       <style id="error" color="red" fontSize="16" fontWeight="600" />
       <style id="welcomeText" color="white" fontSize="16" />
     </styles>
 
     <body style="container">
-      <!-- This view will be populated by the server -->
-      <view id="user-info">
-        <behavior
-          trigger="load"
-          action="replace"
-          target="user-info"
-          href="/hyperview/fragments/user-info?github_id=14167547"
-        />
-      </view>
+      <view style="safeArea">
+        <view style="header">
+          <view id="user-info">
+            <behavior
+              trigger="load"
+              action="replace"
+              target="user-info"
+              href="/hyperview/fragments/user-info?github_id=14167547"
+            />
+          </view>
+          <view id="redirectContainer" />
+          <text style="logoutText logoutButton">
+            <behavior
+              trigger="press"
+              action="replace-inner"
+              target="redirectContainer"
+              href="/hyperview/auth/logout"
+            />
+            Logout!
+          </text>
+        </view>
 
-      <text style="title">Welcome to OpenAgents</text>
+        <text style="title">Welcome to OpenAgents 2</text>
 
-      <!-- GitHub Repos List -->
-      <view id="repos-list" style="reposList">
-        <behavior
-          trigger="load"
-          action="replace"
-          target="repos-list"
-          href="/hyperview/fragments/github-repos?github_id=14167547"
-        />
-      </view>
+        <view id="repos-list" style="reposList">
+          <behavior
+            trigger="load"
+            action="replace"
+            target="repos-list"
+            href="/hyperview/fragments/github-repos?github_id=14167547"
+          />
+        </view>
 
-      <!-- Chat Button -->
-      <view style="button">
-        <behavior
-          trigger="press"
-          action="push"
-          href="/hyperview/chat"
-        />
-        <text style="buttonText">Start Chat</text>
-      </view>
+        <view style="button">
+          <behavior
+            trigger="press"
+            action="push"
+            href="/hyperview/chat"
+          />
+          <text style="buttonText">Start Chat</text>
+        </view>
 
-      <!-- The behavior will pass query params -->
-      <view id="content">
-        <behavior
-          trigger="load"
-          action="replace"
-          target="content"
-          href="/hyperview/fragments/content?section=dashboard&user_id=123"
-        />
+        <view id="content">
+          <behavior
+            trigger="load"
+            action="replace"
+            target="content"
+            href="/hyperview/fragments/content?section=dashboard&user_id=123"
+          />
+        </view>
       </view>
     </body>
   </screen>

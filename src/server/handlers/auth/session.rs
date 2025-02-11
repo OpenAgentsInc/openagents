@@ -5,6 +5,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use time::Duration;
 use tracing::info;
+use axum::http::HeaderValue;
 
 use crate::server::models::user::User;
 
@@ -81,4 +82,8 @@ pub async fn render_signup_template() -> Response {
             "../../../../templates/pages/signup.html"
         )))
         .unwrap()
+}
+
+pub fn clear_session_cookie() -> String {
+    "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT".to_string()
 }

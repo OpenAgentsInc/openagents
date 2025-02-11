@@ -60,6 +60,7 @@ pub enum AuthError {
     TokenExchangeFailed(String),
     DatabaseError(String),
     UserAlreadyExists(User),
+    NotAuthenticated,
 }
 
 impl std::fmt::Display for AuthError {
@@ -70,6 +71,7 @@ impl std::fmt::Display for AuthError {
             AuthError::TokenExchangeFailed(msg) => write!(f, "Token exchange failed: {}", msg),
             AuthError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             AuthError::UserAlreadyExists(_) => write!(f, "User already exists"),
+            AuthError::NotAuthenticated => write!(f, "Not authenticated"),
         }
     }
 }
@@ -84,6 +86,7 @@ impl From<AuthError> for StatusCode {
             AuthError::TokenExchangeFailed(_) => StatusCode::BAD_GATEWAY,
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthError::UserAlreadyExists(_) => StatusCode::TEMPORARY_REDIRECT,
+            AuthError::NotAuthenticated => StatusCode::UNAUTHORIZED,
         }
     }
 }
@@ -155,7 +158,7 @@ impl OIDCService {
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some(user) = user {
+        if let Some(_user) = user {
             info!("User already exists with pseudonym: {}", pseudonym);
             // Update last_login_at and return as UserAlreadyExists error
             let updated_user = sqlx::query_as!(
@@ -222,7 +225,7 @@ impl OIDCService {
         .fetch_optional(&self.pool)
         .await?;
 
-        if let Some(user) = existing_user {
+        if let Some(_user) = existing_user {
             info!("User already exists with pseudonym: {}", pseudonym);
             // Update last_login_at and return as UserAlreadyExists error
             let updated_user = sqlx::query_as!(
