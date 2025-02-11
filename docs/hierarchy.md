@@ -1,6 +1,6 @@
 # Project Hierarchy
 
-Generated on: 2025-02-04 20:07:26
+Generated on: 2025-02-10 19:10:31
 
 ### Structure
 
@@ -52,6 +52,8 @@ Generated on: 2025-02-04 20:07:26
 |   |-- chat_template.md
 |   |-- configuration.md
 |   |-- hierarchy.md
+|   |-- hyperview.md
+|   |-- lifetime-failures.md
 |   |-- local-repos.md
 |   |-- repomap.md
 |   |-- repomap_generation.md
@@ -95,12 +97,20 @@ Generated on: 2025-02-04 20:07:26
 |   |   |-- handlers/
 |   |   |   |-- auth/
 |   |   |   |   |-- forms.rs
+|   |   |   |   |-- github.rs
 |   |   |   |   |-- login.rs
 |   |   |   |   |-- mod.rs
 |   |   |   |   |-- session.rs
 |   |   |   |   `-- signup.rs
 |   |   |   |-- mod.rs
 |   |   |   `-- user.rs
+|   |   |-- hyperview/
+|   |   |   |-- handlers.rs
+|   |   |   |-- mod.rs
+|   |   |   |-- routes.rs
+|   |   |   |-- templates.rs
+|   |   |   |-- types.rs
+|   |   |   `-- ws.rs
 |   |   |-- models/
 |   |   |   |-- chat.rs
 |   |   |   |-- mod.rs
@@ -135,6 +145,7 @@ Generated on: 2025-02-04 20:07:26
 |   |   |   |   `-- types.rs
 |   |   |   |-- auth.rs
 |   |   |   |-- chat_database.rs
+|   |   |   |-- github_auth.rs
 |   |   |   |-- github_types.rs
 |   |   |   |-- mod.rs
 |   |   |   |-- model_router.rs
@@ -213,6 +224,11 @@ Generated on: 2025-02-04 20:07:26
 |   |   |-- ui.html
 |   |   `-- video.html
 |   |-- pages/
+|   |   |-- auth/
+|   |   |   |-- callback.xml
+|   |   |   |-- error.xml
+|   |   |   |-- loading.xml
+|   |   |   `-- login.xml
 |   |   |-- 404.html
 |   |   |-- chat.html
 |   |   |-- coming-soon.html
@@ -220,6 +236,7 @@ Generated on: 2025-02-04 20:07:26
 |   |   |-- cota.html
 |   |   |-- home.html
 |   |   |-- login.html
+|   |   |-- main.xml
 |   |   |-- onyx.html
 |   |   |-- repomap.html
 |   |   |-- services.html
@@ -273,5 +290,5 @@ Generated on: 2025-02-04 20:07:26
 |-- spec.yaml
 `-- tailwind.config.cjs
 
-40 directories, 227 files
+42 directories, 242 files
 ```
