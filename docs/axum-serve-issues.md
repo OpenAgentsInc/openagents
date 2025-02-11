@@ -12,79 +12,70 @@ error[E0277]: the trait bound `for<'a> Router<AppState>: tower_service::Service<
 error[E0277]: `Serve<tokio::net::TcpListener, Router<AppState>, _>` is not a future
 ```
 
-## Understanding the Issue
+## Root Cause
 
-### 1. Service Trait Bound
+The issue stems from Axum 0.8's service architecture:
 
-The first error occurs because Axum's `serve()` function expects a type that implements `tower::Service<IncomingStream>`, but we're giving it a `Router<AppState>` directly. The Router needs to be converted into the right kind of service.
+1. A Router needs to be converted into a MakeService before it can be used with axum::serve()
+2. The conversion method varies between Axum versions
+3. Our version (0.8.1) requires using into_make_service()
 
-From Axum's source:
-```rust
-pub fn serve<L, M, S>(listener: L, make_service: M) -> Serve<L, M, S>
-where
-    M: for<'a> Service<IncomingStream<'a, L>, Error = Infallible, Response = S>,
-```
+## Solution
 
-### 2. Future Implementation
-
-The second error occurs because the `Serve` type returned by `axum::serve()` needs to be properly constructed to implement `Future`.
-
-## Attempted Solutions
-
-1. Using `into_service()`:
-```rust
-axum::serve(listener, app.into_service())  // Wrong - Router needs to be a MakeService
-```
-
-2. Using `into_make_service()`:
-```rust
-axum::serve(listener, app.into_make_service())  // Not available in Axum 0.8
-```
-
-3. Using `Server::bind()`:
-```rust
-axum::Server::bind(&addr)  // Wrong - Server doesn't exist in axum 0.8
-```
-
-## The Correct Solution
-
-For Axum 0.8, we need to:
-
-1. Convert the Router into a MakeService
-2. Use the correct service conversion method
-3. Handle the service type properly
-
-The solution should look like:
+For Axum 0.8.1, the correct server initialization is:
 
 ```rust
-let app = configure_app().into_make_service_with_connect_info::<SocketAddr>();
-axum::serve(listener, app).await.unwrap();
+let app = configure_app();
+let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+
+axum::serve(
+    listener,
+    app.into_make_service()
+)
+.await
+.unwrap();
 ```
 
-## Version Compatibility
+Key points:
+1. Use into_make_service() to convert the Router
+2. Pass the TcpListener and converted service to axum::serve()
+3. Await the result
 
-This issue specifically affects Axum 0.8. The server initialization API changed between versions:
+## Common Mistakes
 
-- Axum 0.7: Uses `Router::into_make_service()`
-- Axum 0.8: Requires explicit service conversion
-- Axum 0.9+: Changes the server initialization API again
+1. Using Server::bind():
+```rust
+// Wrong - Server doesn't exist in axum 0.8
+axum::Server::bind(&addr)
+```
 
-## Related Issues
+2. Using into_make_service_with_connect_info():
+```rust
+// Wrong - Not available in axum 0.8
+app.into_make_service_with_connect_info::<SocketAddr>()
+```
 
-- Tower service conversion
-- Axum's service architecture
-- TCP listener handling
-- State management with AppState
+3. Using the Router directly:
+```rust
+// Wrong - Router needs to be converted
+axum::serve(listener, app)
+```
 
-## Next Steps
+## Version Differences
 
-1. Verify Axum version in Cargo.toml
-2. Use the correct service conversion for our version
-3. Consider upgrading to a newer Axum version
-4. Add proper error handling and graceful shutdown
+- Axum 0.7: Uses different service conversion methods
+- Axum 0.8: Uses into_make_service()
+- Axum 0.9+: Changes the server initialization API
+
+## Best Practices
+
+1. Always check the Axum version in use
+2. Use the correct service conversion method for your version
+3. Handle errors properly
+4. Add graceful shutdown if needed
 
 ## References
 
-- [Axum Documentation](https://docs.rs/axum/0.8.1/axum/)
+- [Axum 0.8.1 Documentation](https://docs.rs/axum/0.8.1/axum/)
 - [Tower Service Documentation](https://docs.rs/tower-service/0.3.2/tower_service/)
-- [Related GitHub Issues](https://github.com/tokio-rs/axum/issues)
+- [Axum Examples](https://github.com/tokio-rs/axum/tree/main/examples)
