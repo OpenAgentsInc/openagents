@@ -91,7 +91,8 @@ Looking at axum's source code more carefully, I found that the trait is defined 
 ```rust
 #[async_trait]
 pub trait FromRequestParts<S>: Sized {
-    type Rejection;
+    type Rejection: IntoResponse;
+
     async fn from_request_parts(
         parts: &mut Parts,
         state: &S,
@@ -99,11 +100,47 @@ pub trait FromRequestParts<S>: Sized {
 }
 ```
 
-The key insight I missed is that the lifetimes in trait methods must match EXACTLY. I was trying to:
-1. Add my own lifetime parameters
-2. Modify the signature
-3. Work around the system
+The key insights I learned:
 
-When I should have just implemented it exactly as defined in the trait.
+1. The trait definition has NO lifetime parameters
+2. The `async_trait` macro handles the lifetime management internally
+3. Adding our own lifetime parameters causes a mismatch with the trait definition
+4. The error E0195 occurs because our implementation signature doesn't match EXACTLY
 
-This report will be updated as I learn more about the correct solution.
+### What Actually Fixed It
+
+The correct implementation should be:
+
+```rust
+#[async_trait]
+impl<S> FromRequestParts<S> for User
+where
+    S: Send + Sync,
+    PgPool: FromRef<S>,
+{
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        // Implementation...
+    }
+}
+```
+
+Key points:
+1. No lifetime parameters in the impl block
+2. No lifetime annotations on function parameters
+3. Let `async_trait` handle the lifetimes
+4. Match the trait definition EXACTLY
+
+### Still Getting E0195?
+
+If you're still getting E0195 after removing lifetime parameters, check:
+1. The return type matches EXACTLY (including `Result` type)
+2. No extra bounds or where clauses affecting lifetimes
+3. The trait is properly imported
+4. The `async_trait` macro is applied correctly
+
+This report will be updated as we learn more about the correct solution.
