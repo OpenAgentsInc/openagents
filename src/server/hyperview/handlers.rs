@@ -1,157 +1,202 @@
-use crate::server::config::AppState;
 use axum::{
     extract::State,
     http::{header, StatusCode},
     response::Response,
 };
+use reqwest;
+use serde_json::Value;
+use tracing::{error, info};
 
-pub async fn hello_world(State(_state): State<AppState>) -> Response {
+use crate::server::{
+    config::AppState,
+    models::{repository::Repository, user::User},
+};
+
+pub async fn hello_world() -> Response {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
         .body(
-            r###"<?xml version="1.0" encoding="UTF-8"?>
-<doc xmlns="https://hyperview.org/hyperview"
-     xmlns:ws="https://openagents.com/hyperview-websocket">
-  <screen>
-    <styles>
-      <style id="main" height="800" backgroundColor="black" />
-      <style id="container" flex="1" alignItems="center" justifyContent="flex-end" paddingBottom="24" />
-      <style id="header" width="100%" marginLeft="24" marginBottom="16" />
-      <style id="headerText" color="#808080" fontSize="16" />
-      <style id="messagesContainer" flex="1" width="100%" marginLeft="24" marginRight="24" />
-      <style id="message" marginBottom="12" />
-      <style id="messageText" color="white" fontSize="16" />
-      <style id="inputContainer" width="100%" flexDirection="row" alignItems="center" marginLeft="24" marginRight="24" borderWidth="1" borderColor="#808080" borderRadius="8" paddingLeft="12" paddingRight="12" paddingTop="8" paddingBottom="8" />
-      <style id="input" flex="1" color="white" fontSize="16" />
-      <style id="submitButton" width="24" height="24" justifyContent="center" alignItems="center" marginLeft="8" />
-      <style id="submitArrow" color="#808080" fontSize="24" />
-      <style id="statusContainer" position="absolute" top="0" left="0" right="0" height="24" justifyContent="center" alignItems="center" />
-      <style id="statusText" fontSize="12" />
-      <style id="statusConnected" color="#4CAF50" />
-      <style id="statusDisconnected" color="#F44336" />
-    </styles>
-    <body>
-      <!-- WebSocket connection -->
-      <behavior
-        trigger="load"
-        action="ws:connect"
-        ws:url="ws://localhost:8000/hyperview/ws"
-      />
-
-      <!-- Connection status indicator -->
-      <view id="status" style="statusContainer">
-        <behavior
-          trigger="ws:open"
-          action="replace"
-          href="/hyperview/fragments/connected-status"
-        />
-        <behavior
-          trigger="ws:close"
-          action="replace"
-          href="/hyperview/fragments/disconnected-status"
-        />
-        <text style="statusText,statusDisconnected">Connecting...</text>
-      </view>
-
-      <view style="main">
-        <view style="container">
-          <!-- Messages container -->
-          <view id="messages" style="messagesContainer" ws:swap="append">
-            <view style="message">
-              <text style="messageText">Welcome! Ask me anything.</text>
-            </view>
-          </view>
-
-          <!-- Input form -->
-          <form id="chat-form">
-            <view style="inputContainer">
-              <text-field 
-                name="message"
-                style="input"
-                placeholder="Ask anything..."
-                placeholderTextColor="#808080"
-              />
-              <view style="submitButton">
-                <behavior 
-                  trigger="press"
-                  action="ws:send"
-                  ws:message="$chat-form"
-                >
-                  <text style="submitArrow">↑</text>
-                </behavior>
-              </view>
-            </view>
-          </form>
-        </view>
-      </view>
-    </body>
-  </screen>
-</doc>"###
-            .into(),
-        )
-        .unwrap()
-}
-
-pub async fn main_screen(State(_state): State<AppState>) -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-        .body(
-            r###"<?xml version="1.0" encoding="UTF-8"?>
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <doc xmlns="https://hyperview.org/hyperview">
   <screen>
     <styles>
-      <style id="container" flex="1" backgroundColor="black" alignItems="center" justifyContent="center" />
-      <style id="title" fontSize="24" color="white" marginBottom="32" />
-      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" />
-      <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
+      <style id="text" alignItems="center" justifyContent="center" />
     </styles>
-    
-    <body style="container">
-      <text style="title">Welcome to OpenAgents</text>
-      
-      <!-- Chat Button -->
-      <view style="button">
-        <behavior 
-          trigger="press" 
-          action="push"
-          href="/hyperview"
-        />
-        <text style="buttonText">Start Chat</text>
+    <body>
+      <view style="text">
+        <text>Hello from OpenAgents!</text>
       </view>
     </body>
   </screen>
+</doc>"#
+                .to_string()
+                .into(),
+        )
+        .unwrap()
+}
+
+fn render_error_screen(error: &str) -> String {
+    format!(
+        r###"<?xml version="1.0" encoding="UTF-8"?>
+<doc xmlns="https://hyperview.org/hyperview">
+    <screen>
+        <styles>
+            <style id="screen" backgroundColor="black" flex="1" />
+            <style id="error" color="red" fontSize="16" padding="16" textAlign="center" />
+            <style id="retry_button" backgroundColor="#333333" padding="12" margin="16" borderRadius="8" alignItems="center" />
+            <style id="retry_text" color="white" fontSize="14" />
+        </styles>
+        <body style="screen">
+            <text style="error">{}</text>
+            <view style="retry_button" href="/hyperview/repositories">
+                <text style="retry_text">Retry</text>
+            </view>
+        </body>
+    </screen>
+</doc>"###,
+        error
+    )
+}
+
+fn render_repositories_screen(repos: Vec<Repository>) -> String {
+    let repo_items = repos
+        .into_iter()
+        .map(|repo| {
+            format!(
+                r###"<item style="repo_item" href="/hyperview/repo/{}/issues">
+                    <text style="repo_name">{}</text>
+                    {}
+                    <text style="repo_meta">Last updated: {}</text>
+                </item>"###,
+                repo.full_name,
+                repo.name,
+                repo.description
+                    .map(|d| format!(r###"<text style="repo_desc">{}</text>"###, d))
+                    .unwrap_or_default(),
+                repo.updated_at
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r###"<?xml version="1.0" encoding="UTF-8"?>
+<doc xmlns="https://hyperview.org/hyperview">
+    <screen>
+        <styles>
+            <style id="screen" backgroundColor="black" flex="1" />
+            <style id="header" backgroundColor="gray" padding="16" />
+            <style id="title" color="white" fontSize="20" fontWeight="bold" />
+            <style id="list" flex="1" />
+            <style id="repo_item" backgroundColor="#111111" marginBottom="8" padding="16" borderRadius="8" />
+            <style id="repo_name" color="white" fontSize="16" fontWeight="bold" />
+            <style id="repo_desc" color="#999999" fontSize="14" marginTop="4" />
+            <style id="repo_meta" color="#666666" fontSize="12" marginTop="8" />
+            <style id="error" color="red" fontSize="16" padding="16" textAlign="center" />
+            <style id="loading" flex="1" justifyContent="center" alignItems="center" />
+        </styles>
+        <body style="screen">
+            <header style="header">
+                <text style="title">Your Repositories</text>
+            </header>
+            <list style="list">
+                {repo_items}
+            </list>
+        </body>
+    </screen>
 </doc>"###
-            .into(),
-        )
-        .unwrap()
+    )
 }
 
-pub async fn connected_status() -> Response {
+pub async fn repositories_screen(_: State<AppState>, user: User) -> Response {
+    info!("Fetching repositories for user: {}", user.id);
+
+    // Get GitHub token from user metadata
+    let metadata = match user.metadata {
+        Some(Value::Object(m)) => m,
+        _ => {
+            error!("Invalid metadata format for user: {}", user.id);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+                .body(render_error_screen("Invalid user metadata").into())
+                .unwrap();
+        }
+    };
+
+    let github = match metadata.get("github") {
+        Some(Value::Object(gh)) => gh,
+        _ => {
+            error!("GitHub metadata not found for user: {}", user.id);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+                .body(render_error_screen("GitHub account not connected").into())
+                .unwrap();
+        }
+    };
+
+    let access_token = match github.get("access_token") {
+        Some(Value::String(token)) => token,
+        _ => {
+            error!("GitHub access token not found for user: {}", user.id);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+                .body(render_error_screen("GitHub access token not found").into())
+                .unwrap();
+        }
+    };
+
+    // Fetch repositories from GitHub
+    let client = reqwest::Client::new();
+    let response = match client
+        .get("https://api.github.com/user/repos")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("User-Agent", "OpenAgents")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!("Failed to fetch repositories: {}", e);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+                .body(render_error_screen("Failed to fetch repositories").into())
+                .unwrap();
+        }
+    };
+
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        error!("GitHub API error: {}", error_text);
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+            .body(render_error_screen("Failed to fetch repositories").into())
+            .unwrap();
+    }
+
+    let repos = match response.json::<Vec<Repository>>().await {
+        Ok(repos) => repos,
+        Err(e) => {
+            error!("Failed to parse repository response: {}", e);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+                .body(render_error_screen("Failed to parse repository data").into())
+                .unwrap();
+        }
+    };
+
+    info!("Successfully fetched {} repositories", repos.len());
+
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-        .body(
-            r###"<?xml version="1.0" encoding="UTF-8"?>
-<text xmlns="https://hyperview.org/hyperview" style="statusText,statusConnected">
-  Connected
-</text>"###
-                .into(),
-        )
-        .unwrap()
-}
-
-pub async fn disconnected_status() -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-        .body(
-            r###"<?xml version="1.0" encoding="UTF-8"?>
-<text xmlns="https://hyperview.org/hyperview" style="statusText,statusDisconnected">
-  Disconnected - Reconnecting...
-</text>"###
-                .into(),
-        )
+        .body(render_repositories_screen(repos).into())
         .unwrap()
 }

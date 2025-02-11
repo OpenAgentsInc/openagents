@@ -1,25 +1,41 @@
-use super::services::{
-    deepseek::DeepSeekService,
-    github_auth::{GitHubAuthService, GitHubConfig},
-    github_issue::GitHubService,
-    RepomapService,
-};
-use super::tools::create_tools;
-use super::ws::transport::WebSocketState;
-use crate::{routes, server};
 use axum::{
+    extract::FromRef,
     routing::{get, post},
     Router,
 };
 use std::{env, sync::Arc};
+use sqlx::PgPool;
 use tower_http::services::ServeDir;
+
+use crate::routes;
+use super::{
+    services::{
+        deepseek::DeepSeekService,
+        github_auth::{GitHubAuthService, GitHubConfig},
+        github_issue::GitHubService,
+        RepomapService,
+    },
+    tools::create_tools,
+    ws::transport::WebSocketState,
+    handlers::auth::AuthState,
+    hyperview,
+    ws,
+    handlers,
+};
 
 #[derive(Clone)]
 pub struct AppState {
     pub ws_state: Arc<WebSocketState>,
     pub repomap_service: Arc<RepomapService>,
-    pub auth_state: Arc<server::handlers::auth::AuthState>,
+    pub auth_state: Arc<AuthState>,
     pub github_auth: Arc<GitHubAuthService>,
+    pub pool: PgPool,
+}
+
+impl FromRef<AppState> for PgPool {
+    fn from_ref(state: &AppState) -> Self {
+        state.pool.clone()
+    }
 }
 
 #[derive(Clone)]
@@ -55,11 +71,11 @@ impl Default for AppConfig {
     }
 }
 
-pub fn configure_app() -> Router {
+pub fn configure_app() -> Router<AppState> {
     configure_app_with_config(None)
 }
 
-pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
+pub fn configure_app_with_config(config: Option<AppConfig>) -> Router<AppState> {
     // Load environment variables
     dotenvy::dotenv().ok();
 
@@ -97,7 +113,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
     let repomap_service = Arc::new(RepomapService::new(aider_api_key));
 
     // Create auth state with OIDC config
-    let oidc_config = server::services::auth::OIDCConfig::new(
+    let oidc_config = super::services::auth::OIDCConfig::new(
         config.oidc_client_id,
         config.oidc_client_secret,
         config.oidc_redirect_uri,
@@ -109,7 +125,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
     let pool =
         sqlx::PgPool::connect_lazy(&config.database_url).expect("Failed to create database pool");
 
-    let auth_state = Arc::new(server::handlers::auth::AuthState::new(
+    let auth_state = Arc::new(AuthState::new(
         oidc_config,
         pool.clone(),
     ));
@@ -120,7 +136,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         client_secret: config.github_client_secret,
         redirect_uri: config.github_redirect_uri,
     };
-    let github_auth = Arc::new(GitHubAuthService::new(pool, github_config));
+    let github_auth = Arc::new(GitHubAuthService::new(pool.clone(), github_config));
 
     // Create shared app state
     let app_state = AppState {
@@ -128,6 +144,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         repomap_service,
         auth_state,
         github_auth,
+        pool,
     };
 
     // Create the main router
@@ -135,7 +152,7 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         // Main routes
         .route("/", get(routes::home))
         .route("/chat", get(routes::chat))
-        .route("/ws", get(server::ws::ws_handler))
+        .route("/ws", get(ws::ws_handler))
         .route("/onyx", get(routes::mobile_app))
         .route("/services", get(routes::business))
         .route("/video-series", get(routes::video_series))
@@ -145,33 +162,33 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         .route("/repomap", get(routes::repomap))
         .route("/cota", get(routes::cota))
         // Auth pages
-        .route("/login", get(server::handlers::login_page))
-        .route("/signup", get(server::handlers::signup_page))
+        .route("/login", get(handlers::login_page))
+        .route("/signup", get(handlers::signup_page))
         // Auth routes
-        .route("/auth/login", post(server::handlers::handle_login))
-        .route("/auth/signup", post(server::handlers::handle_signup))
-        .route("/auth/callback", get(server::handlers::callback))
+        .route("/auth/login", post(handlers::handle_login))
+        .route("/auth/signup", post(handlers::handle_signup))
+        .route("/auth/callback", get(handlers::callback))
         .route(
             "/auth/logout",
-            get(server::handlers::auth::clear_session_and_redirect),
+            get(handlers::auth::clear_session_and_redirect),
         )
         // GitHub auth routes
         .route(
             "/auth/github",
-            get(server::handlers::auth::github_login_page),
+            get(handlers::auth::github_login_page),
         )
         .route(
             "/auth/github/login",
-            get(server::handlers::auth::handle_github_login),
+            get(handlers::auth::handle_github_login),
         )
         .route(
             "/auth/github/callback",
-            get(server::handlers::auth::handle_github_callback), // Changed from post to get
+            get(handlers::auth::handle_github_callback),
         )
         // Repomap routes
         .route("/repomap/generate", post(routes::generate_repomap))
         // Hyperview routes
-        .merge(server::hyperview::hyperview_routes())
+        .merge(hyperview::hyperview_routes())
         // Static files
         .nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
         .nest_service(
