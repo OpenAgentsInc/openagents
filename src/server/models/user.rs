@@ -1,5 +1,6 @@
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::{request::Parts, StatusCode};
+use axum::response::IntoResponse;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -28,8 +29,8 @@ where
     type Rejection = StatusCode;
 
     async fn from_request_parts(
-        parts: &mut Parts,
-        state: &S,
+        _parts: &mut Parts,
+        _state: &S,
     ) -> Result<Self, Self::Rejection> {
         // TODO: Get user from session/token
         // For now, return a mock user for testing
