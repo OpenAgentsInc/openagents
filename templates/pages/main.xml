@@ -32,16 +32,18 @@
               href="/hyperview/fragments/user-info?github_id=14167547"
             />
           </view>
-          <view style="logoutButton">
+          <view id="redirectContainer" />
+          <text style="logoutText logoutButton">
             <behavior
               trigger="press"
-              action="navigate"
+              action="replace-inner"
+              target="redirectContainer"
               href="/hyperview/auth/logout"
-              new-stack="true"
-              force-reset="true"
+              show-during-load="loadingSpinner"
             />
-            <text style="logoutText">Logout!</text>
-          </view>
+            Logout!
+          </text>
+          <spinner id="loadingSpinner" hide="true" />
         </view>
 
         <text style="title">Welcome to OpenAgents 2</text>
