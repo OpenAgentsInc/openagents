@@ -1,4 +1,4 @@
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
 use tracing::info;
