@@ -13,14 +13,13 @@ use serde_json::Value;
 use std::env;
 use tracing::{error, info};
 
-// ... [previous code remains unchanged until github_repos function] ...
+// ... [previous functions remain unchanged] ...
 
-pub async fn generate_repomap(
+pub async fn github_repos(
     State(state): State<AppState>,
-    Path((owner, repo)): Path<(String, String)>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Response {
-    info!("Handling repomap generation request for {}/{}", owner, repo);
+    info!("Handling github_repos request with params: {:?}", params);
 
     // Get GitHub ID from params
     let github_id = match params.get("github_id") {
@@ -53,41 +52,68 @@ pub async fn generate_repomap(
         None => return error_response("No GitHub token found"),
     };
 
-    // Create temp directory
-    let temp_dir = env::temp_dir().join("repomap_temp");
-    let repomap_service = RepomapService::new(temp_dir, Some(github_token));
+    // Initialize GitHub service
+    let github_service = match GitHubReposService::new(github_token) {
+        Ok(service) => service,
+        Err(e) => return error_response(&format!("Failed to initialize GitHub service: {}", e)),
+    };
 
-    // Generate repomap
-    match repomap_service.generate_repomap(&owner, &repo).await {
-        Ok(repomap) => {
-            let xml = format!(
-                r#"<doc xmlns="https://hyperview.org/hyperview">
-                    <screen>
-                        <styles>
-                            <style id="container" flex="1" backgroundColor="black" padding="16" />
-                            <style id="title" fontSize="24" color="white" marginBottom="16" />
-                            <style id="content" color="white" fontFamily="monospace" />
-                            <style id="scroll" flex="1" />
-                        </styles>
-                        <body style="container">
-                            <text style="title">Repository Map: {}/{}</text>
-                            <view style="scroll" scroll="true" scroll-orientation="vertical">
-                                <text style="content">{}</text>
-                            </view>
-                        </body>
-                    </screen>
-                </doc>"#,
-                owner, repo, repomap
-            );
+    // Fetch repos
+    let mut repos = match github_service.get_user_repos().await {
+        Ok(repos) => repos,
+        Err(e) => return error_response(&format!("Failed to fetch repos: {}", e)),
+    };
 
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
-                .body(xml.into())
-                .unwrap()
-        }
-        Err(e) => error_response(&format!("Failed to generate repomap: {}", e)),
+    // Sort repos by updated_at (most recent first) and take first 10
+    repos.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    let repos = repos.into_iter().take(10);
+
+    // Generate HXML for repos with scrollview
+    let mut xml = String::from(
+        r#"<view xmlns="https://hyperview.org/hyperview" id="repos-list" style="reposList">
+        <view
+            style="reposScroll"
+            content-container-style="reposScrollContent"
+            scroll="true"
+            scroll-orientation="vertical"
+            shows-scroll-indicator="true"
+        >"#,
+    );
+
+    for repo in repos {
+        xml.push_str(&format!(
+            r#"
+            <view style="repoItem">
+                <text style="repoName">{}</text>
+                <text style="repoDescription">{}</text>
+                <text style="repoUpdated">Updated {}</text>
+                <view style="repoActions">
+                    <view style="repoButton">
+                        <behavior
+                            trigger="press"
+                            action="push"
+                            href="/hyperview/repo/{}/{}/repomap?github_id={}"
+                        />
+                        <text style="repoButtonText">View Map</text>
+                    </view>
+                </view>
+            </view>"#,
+            repo.name,
+            repo.description.unwrap_or_default(),
+            repo.updated_at.split('T').next().unwrap_or("unknown"),
+            repo.owner.login,
+            repo.name,
+            github_id
+        ));
     }
+
+    xml.push_str("</view></view>");
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+        .body(xml.into())
+        .unwrap()
 }
 
 // ... [rest of the file remains unchanged] ...
