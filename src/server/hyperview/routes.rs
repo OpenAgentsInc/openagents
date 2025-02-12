@@ -9,7 +9,7 @@ pub fn hyperview_routes() -> Router<AppState> {
             get(github_repos),
         )
         .route(
-            "/hyperview/repo/:owner/:repo/repomap",
+            "/hyperview/repo/{owner}/{repo}/repomap",
             get(generate_repomap),
         )
 }
