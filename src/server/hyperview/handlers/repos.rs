@@ -102,13 +102,15 @@ pub async fn github_repos(
                 <text style="repoDescription">{}</text>
                 <text style="repoUpdated">Updated {}</text>
                 <view style="repoActions">
-                    <behavior
-                        trigger="press"
-                        action="push"
-                        href="/hyperview/repo/{}/{}/repomap?github_id={}"
-                        style="repoButton">
-                        <text style="repoButtonText">View Map</text>
-                    </behavior>
+                    <view style="repoButton">
+                        <text style="repoButtonText">
+                            <behavior
+                                trigger="press"
+                                action="push"
+                                href="/hyperview/repo/{}/{}/repomap?github_id={}"
+                            >View Map</behavior>
+                        </text>
+                    </view>
                 </view>
             </view>"#,
             repo.name,
