@@ -102,10 +102,14 @@ pub async fn github_repos(
                 <text style="repoDescription">{}</text>
                 <text style="repoUpdated">Updated {}</text>
                 <view style="repoActions">
-                    <text style="repoButton"
-                        href="/hyperview/repo/{}/{}/repomap?github_id={}"
-                        action="push"
-                        trigger="press">View Map</text>
+                    <text style="repoButton repoButtonText">
+                        <behavior
+                            trigger="press"
+                            action="push"
+                            href="/hyperview/repo/{}/{}/repomap?github_id={}"
+                        />
+                        View Map
+                    </text>
                 </view>
             </view>"#,
             repo.name,
@@ -118,6 +122,8 @@ pub async fn github_repos(
     }
 
     xml.push_str("</view></view>");
+
+    info!("Generated XML for repos list: {}", xml);
 
     Response::builder()
         .status(StatusCode::OK)
