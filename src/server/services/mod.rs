@@ -20,4 +20,4 @@ pub use github_issue::{GitHubComment, GitHubIssue, GitHubService, GitHubUser};
 pub use model_router::ModelRouter;
 pub use ollama::OllamaService;
 pub use openrouter::OpenRouterService;
-pub use repomap::RepomapService;
+pub use repomap::*;
