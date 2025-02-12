@@ -1,5 +1,6 @@
 use crate::server::services::gateway::types::GatewayMetadata;
 use crate::server::services::gateway::Gateway;
+use crate::server::services::openrouter::types::*;
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use reqwest::Client;

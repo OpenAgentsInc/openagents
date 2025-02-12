@@ -1,8 +1,9 @@
 use anyhow::Result;
-use crate::server::services::openrouter::{OpenRouterService, types::GitHubIssueAnalysis};
+use crate::server::services::openrouter::{OpenRouterService, GitHubIssueAnalysis};
 
+#[derive(Debug)]
 pub struct GitHubIssueAnalyzer {
-    openrouter: OpenRouterService,
+    pub(crate) openrouter: OpenRouterService,
 }
 
 impl GitHubIssueAnalyzer {

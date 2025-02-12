@@ -5,7 +5,6 @@ use anyhow::{anyhow, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
-use crate::server::services::openrouter::{OpenRouterService, types::GitHubIssueAnalysis};
 
 #[derive(Debug, Clone)]
 pub struct GitHubService {
@@ -58,7 +57,7 @@ struct PullRequestPayload {
 }
 
 pub use analyzer::GitHubIssueAnalyzer;
-pub use crate::server::services::openrouter::types::GitHubIssueAnalysis;
+pub use crate::server::services::openrouter::GitHubIssueAnalysis;
 
 impl GitHubService {
     pub fn new(token: Option<String>) -> Result<Self> {
@@ -369,16 +368,6 @@ impl GitHubService {
 
         debug!("Successfully created PR");
         Ok(())
-    }
-}
-
-impl GitHubIssueAnalyzer {
-    pub fn new(openrouter: OpenRouterService) -> Self {
-        Self { openrouter }
-    }
-
-    pub async fn analyze_issue(&self, issue_content: &str) -> Result<GitHubIssueAnalysis> {
-        self.openrouter.analyze_github_issue(issue_content).await
     }
 }
 

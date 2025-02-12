@@ -84,7 +84,7 @@ pub struct OpenRouterErrorDetail {
     pub r#type: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterUsage {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
@@ -114,7 +114,7 @@ impl Default for OpenRouterConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubIssueAnalysis {
     pub summary: String,
     pub priority: IssuePriority,
@@ -123,7 +123,7 @@ pub struct GitHubIssueAnalysis {
     pub action_items: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IssuePriority {
     #[serde(rename = "high")]
     High,
@@ -133,7 +133,7 @@ pub enum IssuePriority {
     Low,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IssueEffort {
     #[serde(rename = "small")]
     Small,
@@ -143,7 +143,7 @@ pub enum IssueEffort {
     Large,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterStructuredResponse<T> {
     pub id: String,
     pub choices: Vec<OpenRouterStructuredChoice<T>>,
@@ -151,14 +151,14 @@ pub struct OpenRouterStructuredResponse<T> {
     pub usage: Option<OpenRouterUsage>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterStructuredChoice<T> {
     pub message: OpenRouterStructuredMessage<T>,
     pub finish_reason: Option<String>,
     pub index: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterStructuredMessage<T> {
     pub role: String,
     pub content: String,
