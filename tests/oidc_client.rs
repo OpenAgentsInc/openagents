@@ -16,7 +16,7 @@ use wiremock::{
 
 mod common;
 use common::setup_test_db;
-use openagents::server::config::{configure_app_with_config, AppConfig, AppState};
+use openagents::server::config::{configure_app_with_config, AppConfig};
 
 const MAX_SIZE: usize = 1024 * 1024; // 1MB limit for response bodies
 
@@ -111,7 +111,7 @@ impl TestContext {
 
 async fn setup_test_app() -> Router {
     // Set up database first
-    let pool = setup_test_db().await;
+    let _pool = setup_test_db().await;
 
     // Create config for test
     let config = AppConfig {
@@ -132,13 +132,13 @@ async fn setup_test_app() -> Router {
 #[tokio::test]
 async fn test_full_auth_flow() {
     init_logging();
-    let app = setup_test_app().await;
+    let _app = setup_test_app().await;
     let ctx = TestContext::new().await;
     ctx.mock_token_success().await;
 
     // Test login redirect
     info!("Testing login redirect");
-    let response = app
+    let _response = ctx.app
         .clone()
         .oneshot(
             Request::builder()
