@@ -138,7 +138,8 @@ async fn test_full_auth_flow() {
 
     // Test login redirect
     info!("Testing login redirect");
-    let _response = ctx.app
+    let _response = ctx
+        .app
         .clone()
         .oneshot(
             Request::builder()
@@ -195,7 +196,7 @@ async fn test_invalid_callback() {
 #[tokio::test]
 async fn test_duplicate_login() {
     // Set up clean database and app for this test
-    let app = setup_test_app().await;
+    let _app = setup_test_app().await;
 
     // Rest of test...
 }
