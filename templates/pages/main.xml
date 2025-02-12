@@ -17,6 +17,9 @@
       <style id="repoName" color="white" fontSize="16" fontWeight="600" />
       <style id="repoDescription" color="#808080" fontSize="14" marginTop="4" />
       <style id="repoUpdated" color="#666" fontSize="12" marginTop="8" />
+      <style id="repoActions" flexDirection="row" justifyContent="flex-end" marginTop="8" />
+      <style id="repoButton" backgroundColor="#444" padding="8" borderRadius="4" marginLeft="8" />
+      <style id="repoButtonText" color="white" fontSize="12" fontWeight="600" />
       <style id="error" color="red" fontSize="16" fontWeight="600" />
       <style id="welcomeText" color="white" fontSize="16" />
     </styles>
