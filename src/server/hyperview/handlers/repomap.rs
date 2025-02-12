@@ -15,6 +15,7 @@ pub async fn generate_repomap(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Response {
     info!("Handling repomap generation request for {}/{}", owner, repo);
+    info!("Query params: {:?}", params);
 
     // Get GitHub ID from params
     let github_id = match params.get("github_id") {
@@ -51,9 +52,12 @@ pub async fn generate_repomap(
     let temp_dir = env::temp_dir().join("repomap_temp");
     let repomap_service = RepomapService::new(temp_dir, Some(github_token));
 
+    info!("Generating repomap for {}/{}", owner, repo);
+
     // Generate repomap
     match repomap_service.generate_repomap(&owner, &repo).await {
         Ok(repomap) => {
+            info!("Successfully generated repomap");
             let xml = format!(
                 r#"<doc xmlns="https://hyperview.org/hyperview">
                     <screen>
@@ -74,13 +78,18 @@ pub async fn generate_repomap(
                 owner, repo, repomap
             );
 
+            info!("Generated XML response: {}", xml);
+
             Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
                 .body(xml.into())
                 .unwrap()
         }
-        Err(e) => error_response(&format!("Failed to generate repomap: {}", e)),
+        Err(e) => {
+            error!("Failed to generate repomap: {}", e);
+            error_response(&format!("Failed to generate repomap: {}", e))
+        }
     }
 }
 
