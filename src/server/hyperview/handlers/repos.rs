@@ -7,6 +7,7 @@ use axum::{
     response::Response,
 };
 use tracing::{error, info};
+use std::collections::HashMap;
 
 fn error_response(message: &str) -> Response {
     let xml = format!(
@@ -137,4 +138,87 @@ pub async fn github_repos(
         .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
         .body(xml.into())
         .unwrap()
+}
+
+pub async fn github_issues(
+    State(state): State<AppState>,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let result = github_issues_internal(state, &owner, &repo, &params).await;
+    match result {
+        Ok(xml) => Response::builder()
+            .header("Content-Type", "application/vnd.hyperview+xml")
+            .body(xml.into())
+            .unwrap(),
+        Err(e) => Response::builder()
+            .header("Content-Type", "application/vnd.hyperview+xml")
+            .body(format!(
+                r#"<view xmlns="https://hyperview.org/hyperview">
+                    <text color="red">Error: {}</text>
+                </view>"#,
+                e
+            ).into())
+            .unwrap(),
+    }
+}
+
+async fn github_issues_internal(
+    state: AppState,
+    owner: &str,
+    repo: &str,
+    params: &HashMap<String, String>,
+) -> Result<String> {
+    let github_service = GitHubService::new(Some(state.github_token))?;
+    let issues = github_service.get_issues(owner, repo).await?;
+
+    let xml = format!(
+        r#"<view xmlns="https://hyperview.org/hyperview" id="issues_list" backgroundColor="black" flex="1" padding="16">
+            <text color="white" fontSize="24" marginBottom="16">Issues: {}/{}</text>
+            <view scroll="true" scroll-orientation="vertical">
+                {}
+            </view>
+        </view>"#,
+        owner,
+        repo,
+        issues
+            .iter()
+            .map(|issue| format!(
+                r#"<view style="issueItem" marginBottom="16">
+                    <text style="issueTitle" color="white" fontSize="18">{}</text>
+                    <text style="issueDescription" color="white" marginTop="4">{}</text>
+                    <view style="issueActions" flexDirection="row" marginTop="8">
+                        <text style="actionButton" backgroundColor="blue" padding="8" borderRadius="4" marginRight="8">
+                            <behavior
+                                trigger="press"
+                                action="replace"
+                                href="/hyperview/repo/{}/{}/issues/{}/analyze?github_id={}"
+                                target="issues_list"
+                            />
+                            Analyze Issue
+                        </text>
+                        <text style="actionButton" backgroundColor="gray" padding="8" borderRadius="4">
+                            <behavior
+                                trigger="press"
+                                action="replace"
+                                href="{}"
+                                target="issues_list"
+                            />
+                            View on GitHub
+                        </text>
+                    </view>
+                </view>"#,
+                issue.title,
+                issue.body.as_deref().unwrap_or("No description"),
+                owner,
+                repo,
+                issue.number,
+                params.get("github_id").unwrap_or(&String::new()),
+                issue.html_url
+            ))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    Ok(xml)
 }
