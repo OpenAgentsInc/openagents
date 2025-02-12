@@ -2,7 +2,6 @@ use super::services::{
     deepseek::DeepSeekService,
     github_auth::{GitHubAuthService, GitHubConfig},
     github_issue::GitHubService,
-    RepomapService,
 };
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
@@ -18,7 +17,6 @@ use tower_http::services::ServeDir;
 #[derive(Clone)]
 pub struct AppState {
     pub ws_state: Arc<WebSocketState>,
-    pub repomap_service: Arc<RepomapService>,
     pub auth_state: Arc<server::handlers::auth::AuthState>,
     pub github_auth: Arc<GitHubAuthService>,
     pub pool: PgPool,
@@ -94,10 +92,6 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         tools,
     ));
 
-    // Initialize repomap service
-    let aider_api_key = env::var("AIDER_API_KEY").unwrap_or_else(|_| "".to_string());
-    let repomap_service = Arc::new(RepomapService::new(aider_api_key));
-
     // Create auth state with OIDC config
     let oidc_config = server::services::auth::OIDCConfig::new(
         config.oidc_client_id,
@@ -127,7 +121,6 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
     // Create shared app state
     let app_state = AppState {
         ws_state,
-        repomap_service,
         auth_state,
         github_auth,
         pool: pool.clone(),
@@ -145,7 +138,6 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         .route("/company", get(routes::company))
         .route("/coming-soon", get(routes::coming_soon))
         .route("/health", get(routes::health_check))
-        .route("/repomap", get(routes::repomap))
         .route("/cota", get(routes::cota))
         // Auth pages
         .route("/login", get(server::handlers::login_page))
@@ -171,8 +163,6 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
             "/auth/github/callback",
             get(server::handlers::auth::handle_github_callback), // Changed from post to get
         )
-        // Repomap routes
-        .route("/repomap/generate", post(routes::generate_repomap))
         // Hyperview routes
         .merge(server::hyperview::hyperview_routes())
         // Static files

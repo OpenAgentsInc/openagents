@@ -15,7 +15,7 @@ async fn test_user_creation() {
     let db_user = sqlx::query_as!(
         User,
         r#"
-        SELECT id, scramble_id, metadata, last_login_at, created_at, updated_at
+        SELECT id, scramble_id, github_id, github_token, metadata, last_login_at, created_at, updated_at
         FROM users WHERE scramble_id = $1
         "#,
         user.scramble_id
@@ -31,12 +31,14 @@ async fn create_test_user(pool: &PgPool) -> User {
     sqlx::query_as!(
         User,
         r#"
-        INSERT INTO users (scramble_id, metadata)
-        VALUES ($1, $2)
-        RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+        INSERT INTO users (scramble_id, metadata, github_id, github_token)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, scramble_id, github_id, github_token, metadata, last_login_at, created_at, updated_at
         "#,
-        "test_user",
-        serde_json::json!({}) as _
+        Some("test_user"),
+        serde_json::json!({}) as _,
+        None::<i64>,
+        None::<String>
     )
     .fetch_one(pool)
     .await

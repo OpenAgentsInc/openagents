@@ -11,7 +11,7 @@
       {
         "ordinal": 1,
         "name": "scramble_id",
-        "type_info": "Varchar"
+        "type_info": "Text"
       },
       {
         "ordinal": 2,
@@ -25,13 +25,13 @@
       },
       {
         "ordinal": 4,
-        "name": "last_login_at",
-        "type_info": "Timestamptz"
+        "name": "metadata",
+        "type_info": "Jsonb"
       },
       {
         "ordinal": 5,
-        "name": "metadata",
-        "type_info": "Jsonb"
+        "name": "last_login_at",
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 6,

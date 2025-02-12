@@ -85,7 +85,7 @@ async fn test_signup_flow() {
     assert!(result.is_ok(), "Signup failed: {:?}", result.err());
 
     let user = result.unwrap();
-    assert_eq!(user.scramble_id, test_user_id);
+    assert_eq!(user.scramble_id, Some(test_user_id.clone()));
 
     // Verify user was created
     let db_user = sqlx::query!(
@@ -96,7 +96,7 @@ async fn test_signup_flow() {
     .await
     .unwrap();
 
-    assert_eq!(db_user.scramble_id, test_user_id);
+    assert_eq!(db_user.scramble_id, Some(test_user_id));
 
     // Rollback the transaction
     tx.rollback().await.unwrap();
