@@ -1,19 +1,27 @@
 use crate::server::config::AppState;
-use crate::server::handlers::auth::session::clear_session_cookie;
 use crate::server::models::user::User;
 use crate::server::services::github_repos::GitHubReposService;
-use crate::server::services::repomap::RepomapService;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::{header, StatusCode},
     response::Response,
 };
-use serde::Deserialize;
-use serde_json::Value;
-use std::env;
 use tracing::{error, info};
 
-// ... [previous functions remain unchanged] ...
+fn error_response(message: &str) -> Response {
+    let xml = format!(
+        r#"<view xmlns="https://hyperview.org/hyperview" id="repos-list" style="reposList">
+        <text style="error">{}</text>
+    </view>"#,
+        message
+    );
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/vnd.hyperview+xml")
+        .body(xml.into())
+        .unwrap()
+}
 
 pub async fn github_repos(
     State(state): State<AppState>,
@@ -81,6 +89,12 @@ pub async fn github_repos(
     );
 
     for repo in repos {
+        // Extract owner from html_url
+        let owner = repo.html_url
+            .split('/')
+            .nth(3)
+            .unwrap_or("unknown");
+
         xml.push_str(&format!(
             r#"
             <view style="repoItem">
@@ -101,7 +115,7 @@ pub async fn github_repos(
             repo.name,
             repo.description.unwrap_or_default(),
             repo.updated_at.split('T').next().unwrap_or("unknown"),
-            repo.owner.login,
+            owner,
             repo.name,
             github_id
         ));
@@ -115,5 +129,3 @@ pub async fn github_repos(
         .body(xml.into())
         .unwrap()
 }
-
-// ... [rest of the file remains unchanged] ...
