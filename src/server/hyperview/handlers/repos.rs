@@ -95,6 +95,9 @@ pub async fn github_repos(
             .nth(3)
             .unwrap_or("unknown");
 
+        let repomap_url = format!("/hyperview/repo/{}/{}/repomap?github_id={}", owner, repo.name, github_id);
+        info!("🔘 BUTTON: Generating View Map button with URL: {}", repomap_url);
+
         xml.push_str(&format!(
             r#"
             <view style="repoItem">
@@ -102,16 +105,15 @@ pub async fn github_repos(
                 <text style="repoDescription">{}</text>
                 <text style="repoUpdated">Updated {}</text>
                 <view style="repoActions">
-                    <view style="repoButton">
+                    <text style="repoButtonText repoButton">
                         <behavior
                             trigger="press"
-                            action="push"
+                            action="replace"
                             href="/hyperview/repo/{}/{}/repomap?github_id={}"
-                            show-during-load="loading-text"
-                            hide-during-load="repoButton"
+                            target="repos_list"
                         />
-                        <text style="repoButtonText">View Map</text>
-                    </view>
+                        View Map
+                    </text>
                 </view>
             </view>"#,
             repo.name,

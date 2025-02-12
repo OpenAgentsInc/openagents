@@ -14,8 +14,9 @@ pub async fn generate_repomap(
     Path((owner, repo)): Path<(String, String)>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Response {
-    info!("Handling repomap generation request for {}/{}", owner, repo);
-    info!("Query params: {:?}", params);
+    info!("🗺️ REPOMAP: Endpoint hit for {}/{}", owner, repo);
+    info!("🗺️ REPOMAP: Full request params: {:?}", params);
+    info!("🗺️ REPOMAP: Starting repomap generation request");
 
     // Get GitHub ID from params
     let github_id = match params.get("github_id") {
@@ -58,27 +59,26 @@ pub async fn generate_repomap(
     match repomap_service.generate_repomap(&owner, &repo).await {
         Ok(repomap) => {
             info!("Successfully generated repomap");
+            info!("🗺️ REPOMAP CONTENT: \n{}", repomap);
+
             let xml = format!(
-                r#"<doc xmlns="https://hyperview.org/hyperview">
-                    <screen>
-                        <styles>
-                            <style id="container" flex="1" backgroundColor="black" padding="16" />
-                            <style id="title" fontSize="24" color="white" marginBottom="16" />
-                            <style id="content" color="white" fontFamily="monospace" />
-                            <style id="scroll" flex="1" />
-                        </styles>
-                        <body style="container">
-                            <text style="title">Repository Map: {}/{}</text>
-                            <view style="scroll" scroll="true" scroll-orientation="vertical">
-                                <text style="content">{}</text>
-                            </view>
-                        </body>
-                    </screen>
-                </doc>"#,
-                owner, repo, repomap
+                r#"<view xmlns="https://hyperview.org/hyperview" id="repos_list" backgroundColor="black" flex="1" padding="16">
+                    <text color="white" fontSize="24" marginBottom="16">Repository Map: {}/{}</text>
+                    <text color="white" fontFamily="monospace" fontSize="14" whiteSpace="pre" marginBottom="16">{}</text>
+                    <text color="white" backgroundColor="gray" padding="8" borderRadius="4">
+                        <behavior
+                            trigger="press"
+                            action="replace"
+                            href="/hyperview/fragments/github-repos?github_id={}"
+                            target="repos_list"
+                        />
+                        Back to Repos
+                    </text>
+                </view>"#,
+                owner, repo, repomap, github_id
             );
 
-            info!("Generated XML response: {}", xml);
+            info!("🗺️ GENERATED XML: \n{}", xml);
 
             Response::builder()
                 .status(StatusCode::OK)
