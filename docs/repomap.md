@@ -11,6 +11,8 @@ docs/hierarchy.md:
 
 docs/hyperview.md:
 
+docs/hyperview_logout.md:
+
 docs/local-repos.md:
 
 docs/repomap.md:
@@ -161,11 +163,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -177,15 +179,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -200,8 +202,6 @@ src/routes.rs:
 │fn company
 │fn coming_soon
 │fn cota
-│fn repomap
-│fn generate_repomap
 
 src/server/config.rs:
 │fn default
@@ -234,6 +234,7 @@ src/server/handlers/auth/session.rs:
 │fn clear_session_and_redirect
 │fn render_login_template
 │fn render_signup_template
+│fn clear_session_cookie
 │const MOBILE_APP_SCHEME
 
 src/server/handlers/auth/signup.rs:
@@ -245,35 +246,36 @@ src/server/handlers/user.rs:
 │fn create_user
 
 src/server/hyperview/handlers.rs:
-│#id: main
-│#id: container
-│#id: header
-│#id: headerText
-│#id: messagesContainer
-│#id: message
-│#id: messageText
-│#id: inputContainer
-│#id: input
-│#id: submitButton
-│#id: submitArrow
-│#id: statusContainer
-│#id: statusText
-│#id: statusConnected
-│#id: statusDisconnected
-│#id: status
-│#id: messages
-│#id: chat-form
+│#id: user-info
 │#id: container
 │#id: title
 │#id: button
 │#id: buttonText
-│fn hello_world
-│fn main_screen
+│#id: loading
+│#id: loading-text
+│#id: login-button
+│#id: repos-list
+│#id: repos-list
+│#id: content
 │fn connected_status
 │fn disconnected_status
+│fn get_user_from_github_id
+│fn user_info
+│fn auth_error_fragment_response
+│fn auth_error_response
+│fn login_page
+│fn github_repos
+│fn error_response
+│fn main_page
+│fn mobile_logout
+│fn content
 
 src/server/hyperview/routes.rs:
 │fn hyperview_routes
+
+src/server/hyperview/services/github_repos.rs:
+│fn new
+│fn get_user_repos
 
 src/server/hyperview/ws.rs:
 │fn hyperview_ws_handler
@@ -286,6 +288,7 @@ src/server/models/chat.rs:
 src/server/services/auth.rs:
 │fn new
 │fn fmt
+│fn from
 │fn from
 │fn new
 │fn authorization_url_for_login
@@ -342,6 +345,8 @@ src/server/services/github_auth.rs:
 │fn exchange_code
 │fn get_github_user
 │fn get_or_create_user
+│fn exchange_code_for_token
+│fn process_auth_code
 
 src/server/services/github_issue/conversions.rs:
 │fn try_from
@@ -358,6 +363,10 @@ src/server/services/github_issue/mod.rs:
 │fn check_branch_has_commits
 │fn create_pull_request
 │fn post_github_comment
+
+src/server/services/github_repos.rs:
+│fn new
+│fn get_user_repos
 
 src/server/services/model_router.rs:
 │fn new
@@ -399,11 +408,6 @@ src/server/services/openrouter/service.rs:
 src/server/services/openrouter/types.rs:
 │fn from
 │fn default
-
-src/server/services/repomap.rs:
-│fn new
-│fn with_base_url
-│fn generate_repomap
 
 src/server/tools.rs:
 │fn create_tools
@@ -569,7 +573,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -669,7 +673,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/auth/callback.xml:
 │#id: container
@@ -728,9 +732,26 @@ templates/pages/login.html:
 
 templates/pages/main.xml:
 │#id: container
+│#id: safeArea
+│#id: header
 │#id: title
 │#id: button
 │#id: buttonText
+│#id: logoutButton
+│#id: logoutText
+│#id: reposList
+│#id: reposScroll
+│#id: reposScrollContent
+│#id: repoItem
+│#id: repoName
+│#id: repoDescription
+│#id: repoUpdated
+│#id: error
+│#id: welcomeText
+│#id: user-info
+│#id: redirectContainer
+│#id: repos-list
+│#id: content
 
 templates/pages/repomap.html:
 │#id: repo_url
@@ -845,6 +866,7 @@ tests/oidc_client.rs:
 │fn mock_token_success
 │fn mock_token_error
 │fn create_test_jwt
+│fn setup_test_app
 │fn test_full_auth_flow
 │fn test_invalid_callback
 │fn test_duplicate_login
@@ -863,10 +885,6 @@ tests/ollama.rs:
 │fn test_ollama_chat_stream
 │fn test_ollama_with_config
 │fn test_ollama_error_handling
-
-tests/repomap.rs:
-│fn test_repomap_endpoint
-│fn handle_repomap
 
 tests/signup_flow.rs:
 │fn create_test_service
@@ -964,3 +982,4 @@ tests/tool_selection.rs:
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
+
