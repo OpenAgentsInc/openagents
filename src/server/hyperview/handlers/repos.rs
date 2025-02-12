@@ -90,13 +90,16 @@ pub async fn github_repos(
 
     for repo in repos {
         // Extract owner from html_url
-        let owner = repo.html_url
-            .split('/')
-            .nth(3)
-            .unwrap_or("unknown");
+        let owner = repo.html_url.split('/').nth(3).unwrap_or("unknown");
 
-        let repomap_url = format!("/hyperview/repo/{}/{}/repomap?github_id={}", owner, repo.name, github_id);
-        info!("🔘 BUTTON: Generating View Map button with URL: {}", repomap_url);
+        let repomap_url = format!(
+            "/hyperview/repo/{}/{}/repomap?github_id={}",
+            owner, repo.name, github_id
+        );
+        info!(
+            "🔘 BUTTON: Generating View Map button with URL: {}",
+            repomap_url
+        );
 
         xml.push_str(&format!(
             r#"

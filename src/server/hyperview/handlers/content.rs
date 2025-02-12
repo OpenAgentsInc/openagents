@@ -1,10 +1,10 @@
+use crate::server::config::AppState;
 use axum::{
     extract::{Query, State},
     http::{header, StatusCode},
     response::Response,
 };
 use serde::Deserialize;
-use crate::server::config::AppState;
 
 #[derive(Deserialize)]
 pub struct ContentQuery {

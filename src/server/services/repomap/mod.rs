@@ -1,7 +1,7 @@
-use anyhow::Result;
-use std::path::PathBuf;
 use crate::repo::{cleanup_temp_dir, clone_repository, RepoContext};
 use crate::repomap::generate_repo_map;
+use anyhow::Result;
+use std::path::PathBuf;
 
 pub struct RepomapService {
     temp_dir: PathBuf,

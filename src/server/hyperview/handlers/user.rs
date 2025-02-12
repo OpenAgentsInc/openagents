@@ -52,7 +52,10 @@ pub async fn user_info(
 }
 
 // Helper function to get user from GitHub ID
-async fn get_user_from_github_id(state: &AppState, github_id: &str) -> Option<crate::server::models::user::User> {
+async fn get_user_from_github_id(
+    state: &AppState,
+    github_id: &str,
+) -> Option<crate::server::models::user::User> {
     let github_id: i64 = github_id.parse().ok()?;
 
     sqlx::query_as!(
