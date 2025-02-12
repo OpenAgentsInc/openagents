@@ -11,7 +11,7 @@
       {
         "ordinal": 1,
         "name": "scramble_id",
-        "type_info": "Varchar"
+        "type_info": "Text"
       },
       {
         "ordinal": 2,
@@ -45,7 +45,7 @@
       }
     ],
     "parameters": {
-      "Left": ["Varchar", "Jsonb"]
+      "Left": ["Text", "Jsonb"]
     },
     "nullable": [false, true, true, true, true, true, true, true]
   },

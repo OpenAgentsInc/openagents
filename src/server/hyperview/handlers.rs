@@ -43,12 +43,10 @@ pub async fn disconnected_status() -> Response {
 async fn get_user_from_github_id(state: &AppState, github_id: &str) -> Option<User> {
     let github_id: i64 = github_id.parse().ok()?;
 
-    let user = sqlx::query_as!(User, "SELECT * FROM users WHERE github_id = $1", github_id)
+    sqlx::query_as!(User, "SELECT * FROM users WHERE github_id = $1", github_id)
         .fetch_optional(&state.pool)
         .await
-        .ok()?;
-
-    user
+        .ok()?
 }
 
 pub async fn user_info(
@@ -68,14 +66,10 @@ pub async fn user_info(
     };
 
     // Get username from GitHub metadata
-    let username = if let Some(ref metadata) = user.metadata {
-        if let Value::Object(obj) = metadata {
-            if let Some(Value::Object(github)) = obj.get("github") {
-                if let Some(Value::String(name)) = github.get("name") {
-                    name.as_str()
-                } else {
-                    "User"
-                }
+    let username = if let Some(Value::Object(obj)) = user.metadata.as_ref() {
+        if let Some(Value::Object(github)) = obj.get("github") {
+            if let Some(Value::String(name)) = github.get("name") {
+                name.as_str()
             } else {
                 "User"
             }

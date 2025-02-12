@@ -1,13 +1,10 @@
 use askama::Template;
 use axum::{
-    extract::State,
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
     Json,
 };
 use serde_json::json;
-
-use crate::server::config::AppState;
 
 #[derive(Template)]
 #[template(path = "layouts/base.html", escape = "none")]
@@ -232,26 +229,5 @@ pub async fn cota(headers: HeaderMap) -> Response {
     } else {
         let template = PageTemplate { title, path };
         Html(template.render().unwrap()).into_response()
-    }
-}
-
-pub async fn repomap() -> Response {
-    let title = "Repository Map";
-    let path = "/repomap";
-    let template = PageTemplate { title, path };
-    Html(template.render().unwrap()).into_response()
-}
-
-pub async fn generate_repomap(
-    State(state): State<AppState>,
-    Json(body): Json<serde_json::Value>,
-) -> Json<serde_json::Value> {
-    match state
-        .repomap_service
-        .generate_repomap(body.to_string())
-        .await
-    {
-        Ok(result) => Json(json!({ "result": result })),
-        Err(e) => Json(json!({ "error": e.to_string() })),
     }
 }

@@ -1,12 +1,12 @@
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id SERIAL PRIMARY KEY,
-    scramble_id VARCHAR(255) UNIQUE,  -- Optional pseudonymous ID from Scramble OIDC
-    github_id BIGINT UNIQUE,          -- Optional GitHub user ID
-    github_token TEXT,                -- Optional GitHub access token
-    last_login_at TIMESTAMP WITH TIME ZONE,
-    metadata JSONB DEFAULT '{}'::jsonb,  -- Flexible storage for user attributes
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    scramble_id TEXT,
+    github_id BIGINT UNIQUE,
+    github_token TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Add indexes for faster lookups
