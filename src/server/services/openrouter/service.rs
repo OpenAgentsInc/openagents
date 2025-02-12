@@ -90,6 +90,35 @@ impl OpenRouterService {
         Ok(response)
     }
 
+    async fn make_structured_request<T>(&self, prompt: &str) -> Result<reqwest::Response>
+    where
+        T: Serialize + for<'de> Deserialize<'de>,
+    {
+        let model = self.get_model();
+        debug!("Using model: {}", model);
+
+        let response = self
+            .client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header(
+                "HTTP-Referer",
+                "https://github.com/OpenAgentsInc/openagents",
+            )
+            .json(&serde_json::json!({
+                "model": model,
+                "messages": self.prepare_messages(prompt),
+                "stream": false,
+                "response_format": {
+                    "type": "json_object"
+                }
+            }))
+            .send()
+            .await?;
+
+        Ok(response)
+    }
+
     fn process_stream_chunk(chunk: &[u8]) -> Result<Option<String>> {
         if chunk.is_empty() {
             return Ok(None);
@@ -110,6 +139,32 @@ impl OpenRouterService {
             Ok(None)
         } else {
             Ok(Some(content))
+        }
+    }
+
+    pub async fn analyze_github_issue(&self, issue_content: &str) -> Result<GitHubIssueAnalysis> {
+        let prompt = format!(
+            "Analyze the following GitHub issue and provide a structured response with summary, priority, estimated effort, tags, and action items:\n\n{}",
+            issue_content
+        );
+
+        let response = self.make_structured_request::<GitHubIssueAnalysis>(&prompt).await?;
+
+        if !response.status().is_success() {
+            let error: OpenRouterError = response.json().await?;
+            return Err(anyhow!("OpenRouter API error: {}", error.error.message));
+        }
+
+        let structured_response: OpenRouterStructuredResponse<GitHubIssueAnalysis> = response.json().await?;
+
+        if let Some(choice) = structured_response.choices.first() {
+            if let Some(analysis) = &choice.message.structured_output {
+                Ok(analysis.clone())
+            } else {
+                Err(anyhow!("No structured output in response"))
+            }
+        } else {
+            Err(anyhow!("No choices in response"))
         }
     }
 }

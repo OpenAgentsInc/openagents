@@ -113,3 +113,56 @@ impl Default for OpenRouterConfig {
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitHubIssueAnalysis {
+    pub summary: String,
+    pub priority: IssuePriority,
+    pub estimated_effort: IssueEffort,
+    pub tags: Vec<String>,
+    pub action_items: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum IssuePriority {
+    #[serde(rename = "high")]
+    High,
+    #[serde(rename = "medium")]
+    Medium,
+    #[serde(rename = "low")]
+    Low,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum IssueEffort {
+    #[serde(rename = "small")]
+    Small,
+    #[serde(rename = "medium")]
+    Medium,
+    #[serde(rename = "large")]
+    Large,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OpenRouterStructuredResponse<T> {
+    pub id: String,
+    pub choices: Vec<OpenRouterStructuredChoice<T>>,
+    pub model: String,
+    pub usage: Option<OpenRouterUsage>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OpenRouterStructuredChoice<T> {
+    pub message: OpenRouterStructuredMessage<T>,
+    pub finish_reason: Option<String>,
+    pub index: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OpenRouterStructuredMessage<T> {
+    pub role: String,
+    pub content: String,
+    pub structured_output: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
