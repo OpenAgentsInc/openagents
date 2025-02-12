@@ -23,4 +23,8 @@ pub fn hyperview_routes() -> Router<AppState> {
         .route("/templates/pages/auth/login.xml", get(handlers::login_page))
         .route("/templates/pages/main.xml", get(handlers::main_page))
         .route("/hyperview/auth/logout", get(handlers::mobile_logout))
+        .route(
+            "/hyperview/repo/:owner/:repo/repomap",
+            get(handlers::generate_repomap),
+        )
 }
