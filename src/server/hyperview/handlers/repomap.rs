@@ -57,9 +57,9 @@ pub async fn generate_repomap(
 
     // Generate repomap
     match repomap_service.generate_repomap(&owner, &repo).await {
-        Ok(repomap) => {
+        Ok((map_content, _repo_path)) => {
             info!("Successfully generated repomap");
-            info!("🗺️ REPOMAP CONTENT: \n{}", repomap);
+            info!("🗺️ REPOMAP CONTENT: \n{}", map_content);
 
             let xml = format!(
                 r#"<view xmlns="https://hyperview.org/hyperview" id="repos_list" backgroundColor="black" flex="1" padding="16">
@@ -75,7 +75,7 @@ pub async fn generate_repomap(
                         Back to Repos
                     </text>
                 </view>"#,
-                owner, repo, repomap, github_id
+                owner, repo, map_content, github_id
             );
 
             info!("🗺️ GENERATED XML: \n{}", xml);

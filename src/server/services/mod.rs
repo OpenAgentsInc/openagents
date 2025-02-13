@@ -10,6 +10,7 @@ pub mod model_router;
 pub mod ollama;
 pub mod openrouter;
 pub mod repomap;
+pub mod solver;
 
 pub use auth::OIDCConfig;
 pub use chat_database::ChatDatabase;

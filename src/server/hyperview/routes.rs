@@ -33,6 +33,10 @@ pub fn hyperview_routes() -> Router<AppState> {
             "/hyperview/repo/{owner}/{repo}/issues/{number}/analyze",
             get(handlers::analyze_issue),
         )
+        .route(
+            "/hyperview/solver/{solver_id}/status",
+            get(handlers::solver_status),
+        )
         .route("/hyperview/ws", get(ws::hyperview_ws_handler))
         .route("/hyperview/fragments/user-info", get(handlers::user_info))
         .route(
