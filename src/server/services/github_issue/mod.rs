@@ -369,6 +369,33 @@ impl GitHubService {
         debug!("Successfully created PR");
         Ok(())
     }
+
+    pub async fn list_issues(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<Vec<GitHubIssue>> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/issues",
+            owner, repo
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("User-Agent", "OpenAgents")
+            .header("Accept", "application/vnd.github.v3+json")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow!("GitHub API request failed: {}", response.status()));
+        }
+
+        let issues = response.json::<Vec<GitHubIssue>>().await?;
+        Ok(issues)
+    }
 }
 
 pub async fn post_github_comment(

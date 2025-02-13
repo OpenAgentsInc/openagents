@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crate::server::services::openrouter::{OpenRouterService, GitHubIssueAnalysis};
+use crate::server::services::openrouter::{OpenRouterService, types::GitHubIssueFiles};
 
 #[derive(Debug)]
 pub struct GitHubIssueAnalyzer {
@@ -11,8 +11,8 @@ impl GitHubIssueAnalyzer {
         Self { openrouter }
     }
 
-    pub async fn analyze_issue(&self, issue_content: &str) -> Result<GitHubIssueAnalysis> {
-        self.openrouter.analyze_github_issue(issue_content).await
+    pub async fn analyze_issue(&self, issue_content: &str) -> Result<GitHubIssueFiles> {
+        self.openrouter.analyze_issue(issue_content).await
     }
 }
 

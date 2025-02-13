@@ -37,16 +37,11 @@ async fn main() -> Result<()> {
 
     println!("Analysis Results:");
     println!("----------------");
-    println!("Summary: {}", analysis.summary);
-    println!("Priority: {:?}", analysis.priority);
-    println!("Estimated Effort: {:?}", analysis.estimated_effort);
-    println!("\nTags:");
-    for tag in &analysis.tags {
-        println!("- {}", tag);
-    }
-    println!("\nAction Items:");
-    for item in &analysis.action_items {
-        println!("- {}", item);
+    println!("Relevant Files:");
+    for file in &analysis.files {
+        println!("\nFile: {}", file.filepath);
+        println!("Comment: {}", file.comment);
+        println!("Priority: {}/10", file.priority);
     }
 
     Ok(())

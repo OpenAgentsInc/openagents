@@ -91,25 +91,19 @@ pub struct OpenRouterUsage {
     pub total_tokens: i32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterConfig {
-    pub temperature: f32,
-    pub max_tokens: Option<i32>,
-    pub top_p: Option<f32>,
-    pub frequency_penalty: Option<f32>,
-    pub presence_penalty: Option<f32>,
-    pub stop: Option<Vec<String>>,
+    pub model: String,
+    pub use_reasoner: bool,
+    pub test_mode: bool,
 }
 
 impl Default for OpenRouterConfig {
     fn default() -> Self {
         Self {
-            temperature: 0.7,
-            max_tokens: None,
-            top_p: None,
-            frequency_penalty: None,
-            presence_penalty: None,
-            stop: None,
+            model: "deepseek/deepseek-chat".to_string(),
+            use_reasoner: false,
+            test_mode: false,
         }
     }
 }
@@ -165,4 +159,16 @@ pub struct OpenRouterStructuredMessage<T> {
     pub structured_output: Option<T>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RelevantFile {
+    pub filepath: String,
+    pub comment: String,
+    pub priority: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitHubIssueFiles {
+    pub files: Vec<RelevantFile>,
 }
