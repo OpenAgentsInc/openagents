@@ -2,16 +2,14 @@ mod types;
 
 pub use types::*;
 
-use crate::server::services::{
-    deepseek::DeepSeekService,
-    openrouter::OpenRouterService,
-};
-use anyhow::{anyhow, Result};
+use crate::server::services::{deepseek::DeepSeekService, openrouter::OpenRouterService};
+use anyhow::Result;
 use sqlx::PgPool;
-use tracing::{debug, info, error};
+use std::fs;
 use std::path::Path;
+use tracing::{debug, error, info};
 
-#[allow(dead_code)]  // These methods will be used in future
+#[allow(dead_code)] // These methods will be used in future
 pub struct SolverService {
     pool: PgPool,
     openrouter: OpenRouterService,
@@ -19,11 +17,7 @@ pub struct SolverService {
 }
 
 impl SolverService {
-    pub fn new(
-        pool: PgPool,
-        openrouter: OpenRouterService,
-        deepseek: DeepSeekService,
-    ) -> Self {
+    pub fn new(pool: PgPool, openrouter: OpenRouterService, deepseek: DeepSeekService) -> Self {
         Self {
             pool,
             openrouter,
@@ -31,7 +25,12 @@ impl SolverService {
         }
     }
 
-    pub async fn create_solver(&self, issue_number: i32, issue_title: String, issue_body: String) -> Result<SolverState> {
+    pub async fn create_solver(
+        &self,
+        issue_number: i32,
+        issue_title: String,
+        issue_body: String,
+    ) -> Result<SolverState> {
         let state = SolverState::new(issue_number, issue_title, issue_body);
 
         // Store initial state in DB
@@ -86,7 +85,11 @@ impl SolverService {
         Ok(())
     }
 
-    pub async fn start_generating_changes(&self, state: &mut SolverState, repo_dir: &str) -> Result<()> {
+    pub async fn start_generating_changes(
+        &self,
+        state: &mut SolverState,
+        repo_dir: &str,
+    ) -> Result<()> {
         info!("Starting to generate changes for solver {}", state.id);
         state.status = SolverStatus::GeneratingChanges;
         state.set_repo_path(repo_dir.to_string());
@@ -215,66 +218,70 @@ impl SolverService {
                 }
             });
 
-            let changes = self.openrouter.analyze_issue_with_schema(&prompt, request_body).await?;
+            let changes = self
+                .openrouter
+                .analyze_issue_with_schema(&prompt, request_body)
+                .await?;
 
-            // Add changes to file state
-            for change in changes.files {
-                file.add_change(
-                    change.search,    // The exact code to search for
-                    change.replace,   // The new code to replace with
-                    change.comment,   // The explanation
+            info!("Generated changes for file: {}", file.path);
+            info!("Change summary:");
+            for (i, change) in changes.files.iter().enumerate() {
+                info!("  Change #{}", i + 1);
+                info!(
+                    "    Type: {}",
+                    if change.search.is_empty() {
+                        "New File Creation"
+                    } else {
+                        "File Modification"
+                    }
                 );
-            }
-        }
-
-        // Immediately apply changes without waiting for approval
-        self.apply_changes(state, repo_dir).await?;
-
-        Ok(())
-    }
-
-    pub async fn apply_changes(&self, state: &mut SolverState, repo_dir: &str) -> Result<()> {
-        info!("Applying changes for solver {}", state.id);
-        state.status = SolverStatus::ApplyingChanges;
-        self.update_solver(state).await?;
-
-        // Apply changes file by file
-        for file in &state.files {
-            let file_path = Path::new(repo_dir).join(&file.path);
-            info!("Applying changes to file: {}", file.path);
-
-            // Create parent directories if they don't exist
-            if let Some(parent) = file_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| anyhow!("Failed to create directories for {}: {}", file.path, e))?;
-            }
-
-            // Get current content or start with empty string for new files
-            let mut content = if file_path.exists() {
-                std::fs::read_to_string(&file_path)
-                    .map_err(|e| anyhow!("Failed to read {}: {}", file.path, e))?
-            } else {
-                info!("Creating new file: {}", file.path);
-                String::new()
-            };
-
-            // Apply all changes
-            for change in &file.changes {
-                if change.search.is_empty() {
-                    // This is a new file, use the replace content directly
-                    info!("Creating new file {} with initial content", file.path);
-                    content = change.replace.clone();
-                } else if let Some(pos) = content.find(&change.search) {
-                    info!("Applying change to {}: {}", file.path, change.analysis);
-                    content.replace_range(pos..pos + change.search.len(), &change.replace);
-                } else {
-                    error!("Could not find search string in {}: {}", file.path, change.search);
+                info!("    Description: {}", change.comment);
+                if !change.search.is_empty() {
+                    debug!("    Replacing: \n{}", change.search);
+                    debug!("    With: \n{}", change.replace);
                 }
             }
 
-            // Write back to file
-            std::fs::write(&file_path, content)
-                .map_err(|e| anyhow!("Failed to write {}: {}", file.path, e))?;
+            // Apply changes to file
+            for change in changes.files {
+                if change.search.is_empty() {
+                    // This is a new file
+                    info!("📝 Creating new file: {}", file.path);
+                    info!("   Reason: {}", change.comment);
+                    if let Some(parent) = path.parent() {
+                        info!("   Creating parent directories: {:?}", parent);
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::write(&path, &change.replace)?;
+                    info!("✅ Successfully created new file");
+                } else {
+                    // This is an existing file
+                    info!("🔄 Modifying file: {}", file.path);
+                    info!("   Change description: {}", change.comment);
+                    if path.exists() {
+                        let content = fs::read_to_string(&path)?;
+                        if let Some(start) = content.find(&change.search) {
+                            let mut new_content = content.clone();
+                            new_content
+                                .replace_range(start..start + change.search.len(), &change.replace);
+                            fs::write(&path, new_content)?;
+                            info!("✅ Successfully applied change to file");
+                        } else {
+                            error!("❌ Could not find search string in {}", file.path);
+                            error!("   Search string: {}", change.search);
+                            error!("   This change was skipped");
+                        }
+                    } else {
+                        error!("❌ File does not exist: {}", file.path);
+                    }
+                }
+            }
+        }
+
+        info!("🎉 All changes have been applied successfully");
+        info!("📊 Summary of changes:");
+        for file in &state.files {
+            info!("   - {}: {}", file.path, file.reason);
         }
 
         state.status = SolverStatus::Complete;

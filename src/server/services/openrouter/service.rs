@@ -1,11 +1,6 @@
 use crate::server::services::gateway::types::GatewayMetadata;
 use crate::server::services::gateway::Gateway;
-use crate::server::services::openrouter::types::{
-    GitHubIssueFiles, OpenRouterConfig, CodeChanges,
-    OpenRouterMessage, OpenRouterResponse, OpenRouterStreamResponse,
-    OpenRouterStreamChoice, OpenRouterDelta, OpenRouterError,
-    OpenRouterErrorDetail, OpenRouterUsage,
-};
+use crate::server::services::openrouter::types::{CodeChanges, GitHubIssueFiles, OpenRouterConfig};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use reqwest::{Client, ClientBuilder};
@@ -320,9 +315,16 @@ impl OpenRouterService {
         ))
     }
 
-    pub async fn analyze_issue_with_schema(&self, prompt: &str, request_body: serde_json::Value) -> Result<CodeChanges> {
+    pub async fn analyze_issue_with_schema(
+        &self,
+        _prompt: &str,
+        request_body: serde_json::Value,
+    ) -> Result<CodeChanges> {
         info!("Making OpenRouter request with schema");
-        debug!("Request body: {}", serde_json::to_string_pretty(&request_body)?);
+        debug!(
+            "Request body: {}",
+            serde_json::to_string_pretty(&request_body)?
+        );
 
         let response = self
             .client

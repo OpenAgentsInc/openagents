@@ -27,7 +27,7 @@ pub struct Change {
     pub replace: String,
     pub analysis: String,
     #[allow(dead_code)]
-    pub status: ChangeStatus,  // Keeping for future use
+    pub status: ChangeStatus, // Keeping for future use
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -40,7 +40,7 @@ pub enum SolverStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[allow(dead_code)]  // Keeping for future use
+#[allow(dead_code)] // Keeping for future use
 pub enum ChangeStatus {
     Pending,
     Approved,
@@ -60,7 +60,12 @@ impl SolverState {
         }
     }
 
-    pub fn add_file(&mut self, path: String, relevance_score: f32, reason: String) -> &mut FileState {
+    pub fn add_file(
+        &mut self,
+        path: String,
+        relevance_score: f32,
+        reason: String,
+    ) -> &mut FileState {
         let file_state = FileState {
             path,
             relevance_score,

@@ -1,8 +1,9 @@
+use crate::repo::cleanup_temp_dir;
 use crate::server::config::AppState;
 use crate::server::services::{
-    solver::{SolverService, SolverStatus},
     deepseek::DeepSeekService,
     openrouter::OpenRouterService,
+    solver::{SolverService, SolverStatus},
 };
 use anyhow::{anyhow, Result};
 use axum::{
@@ -11,8 +12,8 @@ use axum::{
 };
 use html_escape;
 use std::collections::HashMap;
-use tracing::{error, info};
 use std::path::PathBuf;
+use tracing::{error, info};
 
 pub async fn solver_status(
     State(state): State<AppState>,
@@ -77,7 +78,9 @@ async fn solver_status_internal(
 
     // If we're in Analyzing state and have the start parameter, begin generating changes
     if solver_state.status == SolverStatus::Analyzing && params.contains_key("start") {
-        solver.start_generating_changes(&mut solver_state, "/tmp/repo").await?;
+        solver
+            .start_generating_changes(&mut solver_state, "/tmp/repo")
+            .await?;
     }
 
     // Format the status page based on current state
@@ -91,7 +94,7 @@ async fn solver_status_internal(
                 cleanup_temp_dir(&PathBuf::from(repo_path));
             }
             "Changes Complete - Pull Request Created"
-        },
+        }
         SolverStatus::Error(ref msg) => msg,
     };
 
@@ -153,7 +156,10 @@ pub async fn approve_change(
     Path((solver_id, change_id)): Path<(String, String)>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    info!("Handling change approval for solver {} change {}", solver_id, change_id);
+    info!(
+        "Handling change approval for solver {} change {}",
+        solver_id, change_id
+    );
 
     let result = approve_change_internal(state, &solver_id, &change_id, &params).await;
     match result {
@@ -177,7 +183,10 @@ pub async fn reject_change(
     Path((solver_id, change_id)): Path<(String, String)>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    info!("Handling change rejection for solver {} change {}", solver_id, change_id);
+    info!(
+        "Handling change rejection for solver {} change {}",
+        solver_id, change_id
+    );
 
     let result = reject_change_internal(state, &solver_id, &change_id, &params).await;
     match result {

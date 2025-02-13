@@ -1,11 +1,11 @@
 use crate::server::config::AppState;
 use crate::server::models::user::User;
 use crate::server::services::{
+    deepseek::DeepSeekService,
     github_issue::{GitHubIssueAnalyzer, GitHubService},
     openrouter::OpenRouterService,
-    solver::SolverService,
-    deepseek::DeepSeekService,
     repomap::RepomapService,
+    solver::SolverService,
 };
 use anyhow::{anyhow, Result};
 use axum::{
@@ -14,8 +14,8 @@ use axum::{
 };
 use html_escape;
 use std::collections::HashMap;
-use tracing::{error, info};
 use std::env;
+use tracing::{error, info};
 
 pub async fn analyze_issue(
     State(state): State<AppState>,
@@ -168,9 +168,9 @@ async fn analyze_issue_internal(
     let repomap_service = RepomapService::new(temp_dir, Some(github_token.clone()));
 
     info!("Generating repomap for analysis");
-    let (repomap, repo_path) = repomap_service.generate_repomap(owner, repo).await?;
+    let (_repomap, repo_path) = repomap_service.generate_repomap(owner, repo).await?;
 
-    let openrouter = OpenRouterService::new(openrouter_key);
+    let openrouter = OpenRouterService::new(openrouter_key.clone());
     let analyzer = GitHubIssueAnalyzer::new(openrouter);
 
     info!("Sending issue content to OpenRouter for analysis");
@@ -182,11 +182,13 @@ async fn analyze_issue_internal(
     let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
 
     // Create solver state
-    let mut solver_state = solver.create_solver(
-        issue_number,
-        issue.title.clone(),
-        issue.body.as_ref().unwrap_or(&String::new()).clone(),
-    ).await?;
+    let mut solver_state = solver
+        .create_solver(
+            issue_number,
+            issue.title.clone(),
+            issue.body.as_ref().unwrap_or(&String::new()).clone(),
+        )
+        .await?;
 
     // Add analyzed files
     for file in &files.files {
@@ -201,7 +203,9 @@ async fn analyze_issue_internal(
     solver.update_solver(&solver_state).await?;
 
     // Start generating changes
-    solver.start_generating_changes(&mut solver_state, &repo_path.to_string_lossy()).await?;
+    solver
+        .start_generating_changes(&mut solver_state, &repo_path.to_string_lossy())
+        .await?;
 
     // Format response XML
     let xml = format!(
