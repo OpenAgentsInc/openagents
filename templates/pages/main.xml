@@ -92,7 +92,7 @@
         <view style="menuContainerTop">
           <view style="logoContainer">
           <view xmlns:local="https://openagents.com/hyperview-local">
-            <local:image src="logo" style="logo" />
+            <local:image src="loading" style="logo" />
           </view>
           </view>
           <view style="menuItem">
