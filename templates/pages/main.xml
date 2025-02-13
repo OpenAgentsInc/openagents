@@ -1,79 +1,120 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<doc xmlns="https://hyperview.org/hyperview">
-  <screen>
+<doc xmlns="https://hyperview.org/hyperview"
+     xmlns:local="https://openagents.com/hyperview-local">
+  <screen style="screen">
     <styles>
-      <style id="container" flex="1" backgroundColor="black" />
-      <style id="safeArea" flex="1" paddingTop="50" />
-      <style id="header" flexDirection="row" justifyContent="space-between" alignItems="center" width="100%" padding="16" />
-      <style id="title" fontSize="24" color="white" marginBottom="32" alignSelf="center" />
-      <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" alignSelf="center" />
-      <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
-      <style id="logoutButton" backgroundColor="red" padding="8" borderRadius="8" />
-      <style id="logoutText" color="white" fontSize="14" fontWeight="600" />
-      <style id="reposList" flex="1" width="100%" marginVertical="16" />
-      <style id="reposScroll" flex="1" width="100%" />
-      <style id="reposScrollContent" padding="16" />
-      <style id="repoItem" backgroundColor="#222" padding="16" marginBottom="8" borderRadius="8" />
-      <style id="repoName" color="white" fontSize="16" fontWeight="600" />
-      <style id="repoDescription" color="#808080" fontSize="14" marginTop="4" />
-      <style id="repoUpdated" color="#666" fontSize="12" marginTop="8" />
-      <style id="repoActions" flexDirection="row" justifyContent="flex-end" marginTop="8" />
-      <style id="repoButton" backgroundColor="#444" padding="8" borderRadius="4" marginLeft="8" />
-      <style id="repoButtonText" color="white" fontSize="12" fontWeight="600" />
-      <style id="error" color="red" fontSize="16" fontWeight="600" />
-      <style id="welcomeText" color="white" fontSize="16" />
+      <style id="screen"
+        backgroundColor="#000" />
+
+      <style id="body"
+        backgroundColor="#000"
+        flex="1"
+        flexDirection="column"
+        alignItems="center"
+        paddingTop="50" />
+
+      <style id="device"
+        backgroundColor="#000"
+        borderRadius="50"
+        flexDirection="column"
+        justifyContent="space-between"
+        alignItems="center"
+        width="100%"
+        flex="1"
+        padding="24" />
+
+      <style id="inputBox"
+        backgroundColor="#000"
+        borderRadius="18"
+        flexDirection="row"
+        justifyContent="space-between"
+        alignItems="center"
+        width="100%"
+        height="74" />
+
+      <style id="voiceContainer"
+        flexDirection="row"
+        alignItems="center"
+        paddingLeft="24" />
+
+      <style id="askAnything"
+        color="#515151"
+        marginLeft="24"
+        fontSize="16" />
+
+      <style id="sendContainer"
+        marginRight="30" />
+
+      <style id="menuItem"
+        flexDirection="row"
+        alignItems="center"
+        width="100%"
+        marginBottom="40" />
+
+      <style id="menuText"
+        color="#666"
+        fontSize="18" />
+
+      <style id="menuIconContainer"
+        width="56" />
+
+      <style id="whiteText"
+        color="#fff" />
+
+      <style id="conversationText"
+        color="#666"
+        marginBottom="60"
+        fontSize="18" />
+
+      <style id="menuContainerTop"
+        width="100%"
+        paddingTop="12"
+        paddingLeft="12" />
+
+      <style id="menuContainerBottom"
+        width="100%" />
+
+      <style id="conversationContainer"
+        width="100%"
+        flex="1"
+        justifyContent="center"
+        alignItems="center" />
+
+      <style id="logo"
+        width="256"
+        height="256"
+        marginBottom="24"
+        marginTop="-20" />
+
+      <style id="logoContainer"
+        width="100%"
+        alignItems="center"
+        marginBottom="24" />
     </styles>
 
-    <body style="container">
-      <view style="safeArea">
-        <view style="header">
-          <view id="user-info">
-            <behavior
-              trigger="load"
-              action="replace"
-              target="user-info"
-              href="/hyperview/fragments/user-info?github_id=14167547"
-            />
+    <body style="body">
+      <view style="device">
+        <!-- Top Section -->
+        <view style="menuContainerTop">
+          <local:svg src="arrow-right" width="20" height="20" />
+        </view>
+
+        <!-- Middle Section -->
+        <view style="conversationContainer">
+          <view>
+            <local:image src="loading" style="logo" />
           </view>
-          <view id="redirectContainer" />
-          <text style="logoutText logoutButton">
-            <behavior
-              trigger="press"
-              action="replace-inner"
-              target="redirectContainer"
-              href="/hyperview/auth/logout"
-            />
-            Logout!
-          </text>
         </view>
 
-        <text style="title">Welcome to OpenAgents 2</text>
-
-        <view id="repos-list" style="reposList">
-          <behavior
-            trigger="load"
-            action="replace"
-            target="repos-list"
-            href="/hyperview/fragments/github-repos?github_id=14167547"
-          />
-        </view>
-
-        <view style="button">
-          <behavior
-            trigger="press"
-            action="push"
-            href="/hyperview/chat"
-          />
-          <text style="buttonText">Start Chat</text>
-        </view>
-
-        <view id="content">
-          <behavior
-            trigger="load"
-            action="replace"
-            target="content"
-            href="/hyperview/fragments/content?section=dashboard&user_id=123"
-          />
+        <!-- Bottom Section -->
+        <view style="inputBox">
+          <view style="voiceContainer">
+            <local:svg src="voice" width="26" height="26" color="#515151" />
+            <text style="askAnything">Ask anything</text>
+          </view>
+          <view style="sendContainer">
+            <local:svg src="send" width="19" height="19" color="#515151" />
+          </view>
         </view>
       </view>
     </body>
