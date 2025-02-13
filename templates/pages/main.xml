@@ -5,11 +5,8 @@
       <style id="container" flex="1" backgroundColor="black" />
       <style id="safeArea" flex="1" paddingTop="50" />
       <style id="header" flexDirection="row" justifyContent="space-between" alignItems="center" width="100%" padding="16" />
-      <style id="title" fontSize="24" color="white" marginBottom="32" alignSelf="center" />
       <style id="button" backgroundColor="white" padding="16" borderRadius="8" marginTop="16" width="240" alignItems="center" alignSelf="center" />
       <style id="buttonText" color="black" fontSize="16" fontWeight="600" />
-      <style id="logoutButton" backgroundColor="red" padding="8" borderRadius="8" />
-      <style id="logoutText" color="white" fontSize="14" fontWeight="600" />
       <style id="reposList" flex="1" width="100%" marginVertical="16" />
       <style id="reposScroll" flex="1" width="100%" />
       <style id="reposScrollContent" padding="16" />
@@ -36,15 +33,6 @@
             />
           </view>
           <view id="redirectContainer" />
-          <text style="logoutText logoutButton">
-            <behavior
-              trigger="press"
-              action="replace-inner"
-              target="redirectContainer"
-              href="/hyperview/auth/logout"
-            />
-            Logout
-          </text>
         </view>
 
         <text style="title">Onyx</text>
