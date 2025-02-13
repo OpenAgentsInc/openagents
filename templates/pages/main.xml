@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<doc xmlns="https://hyperview.org/hyperview">
-  <screen>
+<doc xmlns="https://hyperview.org/hyperview"
+     xmlns:local="https://openagents.com/hyperview-local">
+  <screen style="screen">
     <styles>
+      <style id="screen"
+        backgroundColor="#000" />
+
       <style id="body"
         backgroundColor="#000"
         flex="1"
@@ -10,7 +14,7 @@
         paddingTop="50" />
 
       <style id="device"
-        backgroundColor="#0a0a0a"
+        backgroundColor="#000"
         borderRadius="50"
         flexDirection="column"
         justifyContent="space-between"
@@ -34,9 +38,9 @@
         paddingLeft="24" />
 
       <style id="askAnything"
-        color="#414141"
+        color="#515151"
         marginLeft="24"
-        fontSize="18" />
+        fontSize="16" />
 
       <style id="sendContainer"
         marginRight="30" />
@@ -64,7 +68,8 @@
 
       <style id="menuContainerTop"
         width="100%"
-        flex="1" />
+        paddingTop="12"
+        paddingLeft="12" />
 
       <style id="menuContainerBottom"
         width="100%" />
@@ -76,9 +81,10 @@
         alignItems="center" />
 
       <style id="logo"
-        width="74"
-        height="74"
-        marginBottom="24" />
+        width="256"
+        height="256"
+        marginBottom="24"
+        marginTop="-20" />
 
       <style id="logoContainer"
         width="100%"
@@ -90,38 +96,24 @@
       <view style="device">
         <!-- Top Section -->
         <view style="menuContainerTop">
-          <view style="logoContainer">
-          <view xmlns:local="https://openagents.com/hyperview-local">
-            <local:image src="loading" style="logo" />
-          </view>
-          </view>
-          <view style="menuItem">
-            <view style="menuIconContainer">
-              <text style="whiteText">≡</text>
-            </view>
-            <text style="menuText">Menu</text>
-          </view>
-          <view style="menuItem">
-            <view style="menuIconContainer">
-              <text style="whiteText">+</text>
-            </view>
-            <text style="menuText">New Chat</text>
-          </view>
+          <local:svg src="arrow-right" width="20" height="20" />
         </view>
 
         <!-- Middle Section -->
         <view style="conversationContainer">
-          <text style="conversationText">How can I help you today?</text>
+          <view>
+            <local:image src="loading" style="logo" />
+          </view>
         </view>
 
         <!-- Bottom Section -->
         <view style="inputBox">
           <view style="voiceContainer">
-            <text style="whiteText">◎</text>
-            <text style="askAnything">Ask anything...</text>
+            <local:svg src="voice" width="26" height="26" color="#515151" />
+            <text style="askAnything">Ask anything</text>
           </view>
           <view style="sendContainer">
-            <text style="whiteText">→</text>
+            <local:svg src="send" width="19" height="19" color="#515151" />
           </view>
         </view>
       </view>
