@@ -4,7 +4,6 @@ use crate::server::services::openrouter::types::{GitHubIssueFiles, OpenRouterCon
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use reqwest::{Client, ClientBuilder};
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{pin::Pin, time::Duration};
 use tokio_stream::Stream;
@@ -82,10 +81,7 @@ impl OpenRouterService {
         Ok(response)
     }
 
-    async fn make_structured_request<T>(&self, prompt: &str) -> Result<reqwest::Response>
-    where
-        T: Serialize + for<'de> Deserialize<'de>,
-    {
+    async fn make_structured_request(&self, prompt: &str) -> Result<reqwest::Response> {
         let model = self.get_model();
         info!("Making OpenRouter request to model: {}", model);
 
@@ -210,10 +206,7 @@ impl OpenRouterService {
         Err(last_error.unwrap_or_else(|| anyhow!("Request failed after retries")))
     }
 
-    async fn make_structured_request_with_retry<T>(&self, prompt: &str) -> Result<reqwest::Response>
-    where
-        T: Serialize + for<'de> Deserialize<'de>,
-    {
+    async fn make_structured_request_with_retry(&self, prompt: &str) -> Result<reqwest::Response> {
         let mut last_error = None;
 
         for retry in 0..=MAX_RETRIES {
@@ -222,7 +215,7 @@ impl OpenRouterService {
                 tokio::time::sleep(RETRY_DELAY).await;
             }
 
-            match self.make_structured_request::<T>(prompt).await {
+            match self.make_structured_request(prompt).await {
                 Ok(response) => {
                     if response.status().is_success() {
                         return Ok(response);
@@ -288,7 +281,7 @@ impl OpenRouterService {
         });
 
         let response = self
-            .make_structured_request_with_retry::<GitHubIssueFiles>(&request_body.to_string())
+            .make_structured_request_with_retry(&request_body.to_string())
             .await?;
         info!("Raw OpenRouter response: {:?}", response);
 
