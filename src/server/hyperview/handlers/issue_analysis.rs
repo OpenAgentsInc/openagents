@@ -3,6 +3,8 @@ use crate::server::models::user::User;
 use crate::server::services::{
     github_issue::{GitHubIssueAnalyzer, GitHubService},
     openrouter::OpenRouterService,
+    solver::SolverService,
+    deepseek::DeepSeekService,
 };
 use anyhow::{anyhow, Result};
 use axum::{
@@ -143,7 +145,7 @@ async fn analyze_issue_internal(
     let mut content = format!(
         "Title: {}\n\n{}\n\n",
         issue.title,
-        issue.body.unwrap_or_default()
+        issue.body.as_ref().unwrap_or(&String::new())
     );
     for comment in comments {
         content.push_str(&format!(
@@ -153,26 +155,62 @@ async fn analyze_issue_internal(
     }
 
     info!("Initializing OpenRouter service for analysis");
-    // Get OpenRouter API key from environment
+    // Get API keys from environment
     let openrouter_key = std::env::var("OPENROUTER_API_KEY")
         .map_err(|_| anyhow!("OPENROUTER_API_KEY environment variable not set"))?;
+    let deepseek_key = std::env::var("DEEPSEEK_API_KEY")
+        .map_err(|_| anyhow!("DEEPSEEK_API_KEY environment variable not set"))?;
 
-    let openrouter = OpenRouterService::new(openrouter_key);
+    let openrouter = OpenRouterService::new(openrouter_key.clone());
     let analyzer = GitHubIssueAnalyzer::new(openrouter);
 
     info!("Sending issue content to OpenRouter for analysis");
     let files = analyzer.analyze_issue(&content).await?;
 
-    info!("Formatting file list as XML");
-    // Format the files list as Hyperview XML
+    // Initialize solver with services
+    let openrouter = OpenRouterService::new(openrouter_key);
+    let deepseek = DeepSeekService::new(deepseek_key);
+    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+
+    // Create solver state
+    let mut solver_state = solver.create_solver(
+        issue_number,
+        issue.title.clone(),
+        issue.body.as_ref().unwrap_or(&String::new()).clone(),
+    ).await?;
+
+    // Add analyzed files
+    for file in &files.files {
+        solver_state.add_file(
+            file.filepath.clone(),
+            file.priority as f32 / 10.0,
+            file.comment.clone(),
+        );
+    }
+
+    // Update solver state in database
+    solver.update_solver(&solver_state).await?;
+
+    // Format response XML
     let xml = format!(
         r#"<view xmlns="https://hyperview.org/hyperview" id="issue_analysis" backgroundColor="black" flex="1" padding="16">
-            <text color="white" fontSize="24" marginBottom="16">Relevant Files for Issue #{}</text>
+            <text color="white" fontSize="24" marginBottom="16">Analysis Complete</text>
+            <text color="gray" marginBottom="16">Found {} relevant files</text>
 
             <view scroll="true" scroll-orientation="vertical" shows-scroll-indicator="true">
                 {}
 
-                <text color="white" backgroundColor="gray" padding="8" borderRadius="4" marginTop="16">
+                <text color="white" backgroundColor="blue" padding="8" borderRadius="4" marginTop="16">
+                    <behavior
+                        trigger="press"
+                        action="replace"
+                        href="/hyperview/solver/{}/status?github_id={}"
+                        target="issue_analysis"
+                    />
+                    Start Solving
+                </text>
+
+                <text color="white" backgroundColor="gray" padding="8" borderRadius="4" marginTop="8">
                     <behavior
                         trigger="press"
                         action="replace"
@@ -183,7 +221,7 @@ async fn analyze_issue_internal(
                 </text>
             </view>
         </view>"#,
-        issue_number,
+        files.files.len(),
         files.files
             .iter()
             .map(|file| format!(
@@ -198,11 +236,12 @@ async fn analyze_issue_internal(
             ))
             .collect::<Vec<_>>()
             .join("\n"),
+        solver_state.id,
+        github_id,
         owner,
         repo,
         github_id
     );
 
-    info!("Successfully generated files list XML");
     Ok(xml)
 }
