@@ -71,6 +71,9 @@ docs/transcribe.md:
 
 docs/transcripts/20250203-1157-ep-157.md:
 
+src/bin/analyze-issue.rs:
+│fn main
+
 src/bin/chat.rs:
 │fn print_colored
 │fn main
@@ -163,11 +166,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -179,15 +182,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -245,8 +248,21 @@ src/server/handlers/auth/signup.rs:
 src/server/handlers/user.rs:
 │fn create_user
 
-src/server/hyperview/handlers.rs:
-│#id: user-info
+src/server/hyperview/handlers/auth.rs:
+│fn mobile_logout
+
+src/server/hyperview/handlers/content.rs:
+│#id: content
+│fn content
+
+src/server/hyperview/handlers/issue_analysis.rs:
+│#id: issue_analysis
+│#id: issue_analysis
+│#id: issue_analysis
+│fn analyze_issue
+│fn analyze_issue_internal
+
+src/server/hyperview/handlers/pages.rs:
 │#id: container
 │#id: title
 │#id: button
@@ -254,21 +270,35 @@ src/server/hyperview/handlers.rs:
 │#id: loading
 │#id: loading-text
 │#id: login-button
+│fn main_page
+│fn login_page
+│fn auth_error_response
+
+src/server/hyperview/handlers/repomap.rs:
+│#id: repos_list
+│#id: container
+│#id: error
+│fn generate_repomap
+│fn error_response
+
+src/server/hyperview/handlers/repos.rs:
 │#id: repos-list
 │#id: repos-list
-│#id: content
+│#id: issues_list
+│fn error_response
+│fn github_repos
+│fn github_issues
+│fn github_issues_internal
+
+src/server/hyperview/handlers/status.rs:
 │fn connected_status
 │fn disconnected_status
-│fn get_user_from_github_id
+
+src/server/hyperview/handlers/user.rs:
+│#id: user-info
 │fn user_info
+│fn get_user_from_github_id
 │fn auth_error_fragment_response
-│fn auth_error_response
-│fn login_page
-│fn github_repos
-│fn error_response
-│fn main_page
-│fn mobile_logout
-│fn content
 
 src/server/hyperview/routes.rs:
 │fn hyperview_routes
@@ -348,6 +378,11 @@ src/server/services/github_auth.rs:
 │fn exchange_code_for_token
 │fn process_auth_code
 
+src/server/services/github_issue/analyzer.rs:
+│fn new
+│fn analyze_issue
+│fn test_analyze_issue
+
 src/server/services/github_issue/conversions.rs:
 │fn try_from
 │fn try_from
@@ -362,7 +397,9 @@ src/server/services/github_issue/mod.rs:
 │fn create_branch
 │fn check_branch_has_commits
 │fn create_pull_request
+│fn list_issues
 │fn post_github_comment
+│fn test_analyze_issue
 
 src/server/services/github_repos.rs:
 │fn new
@@ -393,21 +430,31 @@ src/server/services/ollama/types.rs:
 │fn default
 
 src/server/services/openrouter/service.rs:
-│fn default
 │fn new
 │fn with_config
 │fn is_test_mode
 │fn get_model
 │fn prepare_messages
 │fn make_request
+│fn make_structured_request
 │fn process_stream_chunk
+│fn make_request_with_retry
+│fn make_structured_request_with_retry
+│fn analyze_issue
 │fn metadata
 │fn chat
 │fn chat_stream
+│const REQUEST_TIMEOUT
+│const MAX_RETRIES
+│const RETRY_DELAY
 
 src/server/services/openrouter/types.rs:
 │fn from
 │fn default
+
+src/server/services/repomap/mod.rs:
+│fn new
+│fn generate_repomap
 
 src/server/tools.rs:
 │fn create_tools
@@ -573,7 +620,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -673,7 +720,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/auth/callback.xml:
 │#id: container
@@ -746,6 +793,9 @@ templates/pages/main.xml:
 │#id: repoName
 │#id: repoDescription
 │#id: repoUpdated
+│#id: repoActions
+│#id: repoButton
+│#id: repoButtonText
 │#id: error
 │#id: welcomeText
 │#id: user-info
@@ -799,9 +849,9 @@ templates/pages/solver.html:
 │const data
 
 tests/auth_error_handling.rs:
+│fn test_error_component_accessibility
 │fn test_error_component_included
 │fn test_error_js_included
-│fn test_error_component_accessibility
 │const MAX_SIZE
 
 tests/auth_pages.rs:
@@ -982,3 +1032,4 @@ tests/tool_selection.rs:
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
+
