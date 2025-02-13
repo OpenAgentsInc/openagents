@@ -83,14 +83,29 @@ async fn solver_status_internal(
     let status_text = match solver_state.status {
         SolverStatus::Analyzing => "Analyzing Files...",
         SolverStatus::GeneratingChanges => "Generating Changes...",
-        SolverStatus::ReviewingChanges => "Review Changes",
         SolverStatus::ApplyingChanges => "Applying Changes...",
-        SolverStatus::Complete => "Changes Complete",
+        SolverStatus::Complete => "Changes Complete - Pull Request Created",
         SolverStatus::Error(ref msg) => msg,
     };
 
-    let content = match solver_state.status {
-        SolverStatus::Analyzing | SolverStatus::GeneratingChanges => format!(
+    let content = if solver_state.status == SolverStatus::Complete {
+        format!(
+            r#"<text color="gray" marginBottom="16">{}</text>
+               <text color="white" backgroundColor="gray" padding="8" borderRadius="4" marginTop="16">
+                   <behavior
+                       trigger="press"
+                       action="replace"
+                       href="/hyperview/repo/{}/issues?github_id={}"
+                       target="solver_status"
+                   />
+                   Back to Issues
+               </text>"#,
+            status_text,
+            "owner", // TODO: Add owner/repo to solver state
+            github_id
+        )
+    } else {
+        format!(
             r#"<text color="gray" marginBottom="16">{}</text>
                <behavior
                    trigger="load"
@@ -100,61 +115,7 @@ async fn solver_status_internal(
                    delay="2000"
                />"#,
             status_text, solver_id, github_id
-        ),
-        SolverStatus::ReviewingChanges => {
-            let mut changes_xml = String::new();
-            for file in &solver_state.files {
-                if !file.changes.is_empty() {
-                    changes_xml.push_str(&format!(
-                        r#"<view style="fileSection" marginBottom="16">
-                            <text color="white" fontSize="18" marginBottom="8">{}</text>"#,
-                        html_escape::encode_text(&file.path)
-                    ));
-
-                    for change in &file.changes {
-                        changes_xml.push_str(&format!(
-                            r#"<view style="change" backgroundColor="rgb(34,34,34)" padding="16" marginBottom="8" borderRadius="8">
-                                <text color="white" fontFamily="monospace" fontSize="14" whiteSpace="pre">{}</text>
-                                <text color="gray" marginTop="8">{}</text>
-                                <view style="actions" flexDirection="row" marginTop="8">
-                                    <text style="button" backgroundColor="green" padding="8" borderRadius="4" marginRight="8">
-                                        <behavior
-                                            trigger="press"
-                                            action="replace"
-                                            href="/hyperview/solver/{}/change/{}/approve?github_id={}"
-                                            target="change_{}"
-                                        />
-                                        Approve
-                                    </text>
-                                    <text style="button" backgroundColor="red" padding="8" borderRadius="4">
-                                        <behavior
-                                            trigger="press"
-                                            action="replace"
-                                            href="/hyperview/solver/{}/change/{}/reject?github_id={}"
-                                            target="change_{}"
-                                        />
-                                        Reject
-                                    </text>
-                                </view>
-                            </view>"#,
-                            html_escape::encode_text(&change.replace),
-                            html_escape::encode_text(&change.analysis),
-                            solver_id,
-                            change.id,
-                            github_id,
-                            change.id,
-                            solver_id,
-                            change.id,
-                            github_id,
-                            change.id
-                        ));
-                    }
-                    changes_xml.push_str("</view>");
-                }
-            }
-            changes_xml
-        },
-        _ => format!(r#"<text color="gray" marginBottom="16">{}</text>"#, status_text),
+        )
     };
 
     let xml = format!(
@@ -179,6 +140,7 @@ fn error_xml(message: &str) -> String {
     )
 }
 
+#[allow(dead_code)]
 pub async fn approve_change(
     State(state): State<AppState>,
     Path((solver_id, change_id)): Path<(String, String)>,
@@ -202,6 +164,7 @@ pub async fn approve_change(
     }
 }
 
+#[allow(dead_code)]
 pub async fn reject_change(
     State(state): State<AppState>,
     Path((solver_id, change_id)): Path<(String, String)>,
@@ -258,25 +221,26 @@ async fn approve_change_internal(
     let deepseek = DeepSeekService::new(deepseek_key);
     let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
 
-    // Get and update solver state
+    // Get solver state
     let mut solver_state = solver
         .get_solver(solver_id)
         .await?
         .ok_or_else(|| anyhow!("Solver not found"))?;
 
+    // Approve the change
     solver.approve_change(&mut solver_state, change_id).await?;
 
-    // Check if all changes are reviewed
-    if solver.check_all_changes_reviewed(&solver_state).await {
-        solver.apply_changes(&mut solver_state, "/tmp/repo").await?;
-    }
-
-    // Return updated change view
+    // Return to status page
     Ok(format!(
-        r#"<view id="change_{}" style="change" backgroundColor="rgb(34,34,34)" padding="16" marginBottom="8" borderRadius="8">
-            <text color="green" fontSize="16">Change Approved</text>
+        r#"<view xmlns="https://hyperview.org/hyperview" id="solver_status">
+            <behavior
+                trigger="load"
+                action="replace"
+                href="/hyperview/solver/{}/status?github_id={}"
+                target="solver_status"
+            />
         </view>"#,
-        change_id
+        solver_id, github_id
     ))
 }
 
@@ -313,19 +277,25 @@ async fn reject_change_internal(
     let deepseek = DeepSeekService::new(deepseek_key);
     let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
 
-    // Get and update solver state
+    // Get solver state
     let mut solver_state = solver
         .get_solver(solver_id)
         .await?
         .ok_or_else(|| anyhow!("Solver not found"))?;
 
+    // Reject the change
     solver.reject_change(&mut solver_state, change_id).await?;
 
-    // Return updated change view
+    // Return to status page
     Ok(format!(
-        r#"<view id="change_{}" style="change" backgroundColor="rgb(34,34,34)" padding="16" marginBottom="8" borderRadius="8">
-            <text color="red" fontSize="16">Change Rejected</text>
+        r#"<view xmlns="https://hyperview.org/hyperview" id="solver_status">
+            <behavior
+                trigger="load"
+                action="replace"
+                href="/hyperview/solver/{}/status?github_id={}"
+                target="solver_status"
+            />
         </view>"#,
-        change_id
+        solver_id, github_id
     ))
 }

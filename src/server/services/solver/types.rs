@@ -25,20 +25,21 @@ pub struct Change {
     pub search: String,
     pub replace: String,
     pub analysis: String,
-    pub status: ChangeStatus,
+    #[allow(dead_code)]
+    pub status: ChangeStatus,  // Keeping for future use
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SolverStatus {
     Analyzing,
     GeneratingChanges,
-    ReviewingChanges,
     ApplyingChanges,
     Complete,
     Error(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[allow(dead_code)]  // Keeping for future use
 pub enum ChangeStatus {
     Pending,
     Approved,

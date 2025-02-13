@@ -8,9 +8,10 @@ use crate::server::services::{
 };
 use anyhow::{anyhow, Result};
 use sqlx::PgPool;
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 use std::path::Path;
 
+#[allow(dead_code)]  // These methods will be used in future
 pub struct SolverService {
     pool: PgPool,
     openrouter: OpenRouterService,
@@ -157,74 +158,41 @@ impl SolverService {
                 // Add changes to file state
                 for change in changes.files {
                     file.add_change(
-                        format!("// Location: {}", change.filepath),
-                        change.comment.clone(),
-                        change.comment,
+                        change.filepath,  // Use the actual code to search for
+                        change.comment.clone(),  // Use the new code to replace with
+                        change.comment,  // Keep the analysis
                     );
                 }
             }
         }
 
-        state.status = SolverStatus::ReviewingChanges;
-        self.update_solver(state).await?;
+        // Immediately apply changes without waiting for approval
+        self.apply_changes(state, repo_dir).await?;
 
         Ok(())
     }
 
-    pub async fn approve_change(&self, state: &mut SolverState, change_id: &str) -> Result<()> {
-        info!("Approving change {} for solver {}", change_id, state.id);
-
-        // Find and update the change status
-        for file in &mut state.files {
-            for change in &mut file.changes {
-                if change.id == change_id {
-                    change.status = ChangeStatus::Approved;
-                    self.update_solver(state).await?;
-                    return Ok(());
-                }
-            }
-        }
-
-        Err(anyhow!("Change not found"))
-    }
-
-    pub async fn reject_change(&self, state: &mut SolverState, change_id: &str) -> Result<()> {
-        info!("Rejecting change {} for solver {}", change_id, state.id);
-
-        // Find and update the change status
-        for file in &mut state.files {
-            for change in &mut file.changes {
-                if change.id == change_id {
-                    change.status = ChangeStatus::Rejected;
-                    self.update_solver(state).await?;
-                    return Ok(());
-                }
-            }
-        }
-
-        Err(anyhow!("Change not found"))
-    }
-
     pub async fn apply_changes(&self, state: &mut SolverState, repo_dir: &str) -> Result<()> {
-        info!("Applying approved changes for solver {}", state.id);
+        info!("Applying changes for solver {}", state.id);
         state.status = SolverStatus::ApplyingChanges;
         self.update_solver(state).await?;
 
         // Apply changes file by file
         for file in &state.files {
             let file_path = Path::new(repo_dir).join(&file.path);
+            info!("Applying changes to file: {}", file.path);
 
             // Read current content
             let mut content = std::fs::read_to_string(&file_path)
                 .map_err(|e| anyhow!("Failed to read {}: {}", file.path, e))?;
 
-            // Apply approved changes
+            // Apply all changes
             for change in &file.changes {
-                if change.status == ChangeStatus::Approved {
-                    // Apply the change
-                    if let Some(pos) = content.find(&change.search) {
-                        content.replace_range(pos..pos + change.search.len(), &change.replace);
-                    }
+                if let Some(pos) = content.find(&change.search) {
+                    info!("Applying change to {}: {}", file.path, change.analysis);
+                    content.replace_range(pos..pos + change.search.len(), &change.replace);
+                } else {
+                    error!("Could not find search string in {}: {}", file.path, change.search);
                 }
             }
 
@@ -239,14 +207,21 @@ impl SolverService {
         Ok(())
     }
 
-    pub async fn check_all_changes_reviewed(&self, state: &SolverState) -> bool {
-        for file in &state.files {
-            for change in &file.changes {
-                if change.status == ChangeStatus::Pending {
-                    return false;
-                }
-            }
-        }
+    // Keep these methods but mark as unused for future use
+    #[allow(dead_code)]
+    pub async fn approve_change(&self, state: &mut SolverState, change_id: &str) -> Result<()> {
+        info!("Approving change {} for solver {}", change_id, state.id);
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub async fn reject_change(&self, state: &mut SolverState, change_id: &str) -> Result<()> {
+        info!("Rejecting change {} for solver {}", change_id, state.id);
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub async fn check_all_changes_reviewed(&self, _state: &SolverState) -> bool {
         true
     }
 }
