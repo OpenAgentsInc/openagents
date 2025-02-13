@@ -43,11 +43,11 @@
               target="redirectContainer"
               href="/hyperview/auth/logout"
             />
-            Logout!
+            Logout
           </text>
         </view>
 
-        <text style="title">Welcome to OpenAgents 2</text>
+        <text style="title">Onyx</text>
 
         <view id="repos-list" style="reposList">
           <behavior
@@ -55,24 +55,6 @@
             action="replace"
             target="repos-list"
             href="/hyperview/fragments/github-repos?github_id=14167547"
-          />
-        </view>
-
-        <view style="button">
-          <behavior
-            trigger="press"
-            action="push"
-            href="/hyperview/chat"
-          />
-          <text style="buttonText">Start Chat</text>
-        </view>
-
-        <view id="content">
-          <behavior
-            trigger="load"
-            action="replace"
-            target="content"
-            href="/hyperview/fragments/content?section=dashboard&user_id=123"
           />
         </view>
       </view>
