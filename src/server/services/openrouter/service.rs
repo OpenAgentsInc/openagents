@@ -1,13 +1,17 @@
 use crate::server::services::gateway::types::GatewayMetadata;
 use crate::server::services::gateway::Gateway;
+use crate::server::services::openrouter::types::{GitHubIssueFiles, OpenRouterConfig};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::pin::Pin;
+use reqwest::{Client, ClientBuilder};
+use serde_json::{json, Value};
+use std::{pin::Pin, time::Duration};
 use tokio_stream::Stream;
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
+
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_RETRIES: u32 = 2;
+const RETRY_DELAY: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
 pub struct OpenRouterService {
@@ -16,27 +20,15 @@ pub struct OpenRouterService {
     config: OpenRouterConfig,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenRouterConfig {
-    pub model: String,
-    pub use_reasoner: bool,
-    pub test_mode: bool,
-}
-
-impl Default for OpenRouterConfig {
-    fn default() -> Self {
-        Self {
-            model: "deepseek/deepseek-chat".to_string(),
-            use_reasoner: false,
-            test_mode: false,
-        }
-    }
-}
-
 impl OpenRouterService {
     pub fn new(api_key: String) -> Self {
+        let client = ClientBuilder::new()
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
-            client: Client::new(),
+            client,
             api_key,
             config: OpenRouterConfig::default(),
         }
@@ -55,9 +47,8 @@ impl OpenRouterService {
     }
 
     fn get_model(&self) -> String {
-        // Always use Claude for now
-        //"anthropic/claude-3.5-sonnet".to_string()
-        "deepseek/deepseek-chat".to_string()
+        // Use Gemini for structured output
+        "google/gemini-2.0-flash-lite-preview-02-05:free".to_string()
     }
 
     fn prepare_messages(&self, prompt: &str) -> Vec<Value> {
@@ -90,6 +81,78 @@ impl OpenRouterService {
         Ok(response)
     }
 
+    async fn make_structured_request(&self, prompt: &str) -> Result<reqwest::Response> {
+        let model = self.get_model();
+        info!("Making OpenRouter request to model: {}", model);
+
+        let request_body = serde_json::json!({
+            "model": model,
+            "messages": self.prepare_messages(prompt),
+            "stream": false,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "github_issue_files",
+                    "strict": true,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "files": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "filepath": {
+                                            "type": "string",
+                                            "description": "Path to the relevant file"
+                                        },
+                                        "comment": {
+                                            "type": "string",
+                                            "description": "Why this file is relevant to the issue"
+                                        },
+                                        "priority": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 10,
+                                            "description": "Priority of this file from 1 (low) to 10 (high)"
+                                        }
+                                    },
+                                    "required": ["filepath", "comment", "priority"],
+                                    "additionalProperties": false
+                                }
+                            }
+                        },
+                        "required": ["files"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        });
+
+        info!("Sending request to OpenRouter API...");
+        debug!(
+            "Request body: {}",
+            serde_json::to_string_pretty(&request_body)?
+        );
+
+        let response = self
+            .client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header(
+                "HTTP-Referer",
+                "https://github.com/OpenAgentsInc/openagents",
+            )
+            .json(&request_body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        info!("OpenRouter API response status: {}", status);
+
+        Ok(response)
+    }
+
     fn process_stream_chunk(chunk: &[u8]) -> Result<Option<String>> {
         if chunk.is_empty() {
             return Ok(None);
@@ -111,6 +174,141 @@ impl OpenRouterService {
         } else {
             Ok(Some(content))
         }
+    }
+
+    async fn make_request_with_retry(
+        &self,
+        prompt: &str,
+        stream: bool,
+    ) -> Result<reqwest::Response> {
+        let mut last_error = None;
+
+        for retry in 0..=MAX_RETRIES {
+            if retry > 0 {
+                debug!("Retrying OpenRouter request (attempt {})", retry);
+                tokio::time::sleep(RETRY_DELAY).await;
+            }
+
+            match self.make_request(prompt, stream).await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return Ok(response);
+                    }
+                    let error = response.text().await?;
+                    last_error = Some(anyhow!("OpenRouter API error: {}", error));
+                }
+                Err(e) => {
+                    last_error = Some(anyhow!("Request failed: {}", e));
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| anyhow!("Request failed after retries")))
+    }
+
+    async fn make_structured_request_with_retry(&self, prompt: &str) -> Result<reqwest::Response> {
+        let mut last_error = None;
+
+        for retry in 0..=MAX_RETRIES {
+            if retry > 0 {
+                info!("Retrying OpenRouter request (attempt {})", retry + 1);
+                tokio::time::sleep(RETRY_DELAY).await;
+            }
+
+            match self.make_structured_request(prompt).await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return Ok(response);
+                    }
+                    let error = response.text().await?;
+                    error!("OpenRouter API error response: {}", error);
+                    last_error = Some(anyhow!("OpenRouter API error: {}", error));
+                }
+                Err(e) => {
+                    error!("OpenRouter request failed: {}", e);
+                    last_error = Some(anyhow!("Request failed: {}", e));
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| anyhow!("Request failed after retries")))
+    }
+
+    pub async fn analyze_issue(&self, content: &str) -> Result<GitHubIssueFiles> {
+        let json_schema = json!({
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "filepath": {
+                                "type": "string",
+                                "description": "Path to the relevant file"
+                            },
+                            "comment": {
+                                "type": "string",
+                                "description": "Why this file is relevant to the issue"
+                            },
+                            "priority": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 10,
+                                "description": "Priority of this file from 1 (low) to 10 (high)"
+                            }
+                        },
+                        "required": ["filepath", "comment", "priority"]
+                    }
+                }
+            },
+            "required": ["files"]
+        });
+
+        let request_body = json!({
+            "model": self.get_model(),
+            "messages": [{
+                "role": "user",
+                "content": format!(
+                    "Analyze this GitHub issue and list the most relevant files that would need to be understood or modified to solve it. For each file, explain why it's relevant and rate its priority from 1-10. Return the response in the exact JSON schema format specified, with no markdown formatting or additional text.\n\nIssue content:\n{}",
+                    content
+                )
+            }],
+            "response_format": {
+                "type": "json_schema",
+                "schema": json_schema
+            }
+        });
+
+        let response = self
+            .make_structured_request_with_retry(&request_body.to_string())
+            .await?;
+        info!("Raw OpenRouter response: {:?}", response);
+
+        let response_text = response.text().await?;
+        info!("Response text: {}", response_text);
+
+        // Try to parse the raw response first
+        if let Ok(files) = serde_json::from_str::<GitHubIssueFiles>(&response_text) {
+            info!("Successfully parsed raw response");
+            return Ok(files);
+        }
+
+        // If raw parsing fails, try to extract from OpenRouter response structure
+        if let Ok(router_response) = serde_json::from_str::<Value>(&response_text) {
+            if let Some(content) = router_response["choices"][0]["message"]["content"].as_str() {
+                if let Ok(files) = serde_json::from_str::<GitHubIssueFiles>(content) {
+                    info!("Successfully parsed nested response");
+                    return Ok(files);
+                }
+            }
+        }
+
+        error!("Failed to parse response in any format");
+        error!("Response content: {}", response_text);
+        Err(anyhow!(
+            "Failed to parse OpenRouter response into GitHubIssueFiles"
+        ))
     }
 }
 
@@ -135,7 +333,7 @@ impl Gateway for OpenRouterService {
             return Ok(("Test response".to_string(), None));
         }
 
-        let response = self.make_request(&prompt, false).await?;
+        let response = self.make_request_with_retry(&prompt, false).await?;
 
         if !response.status().is_success() {
             let error = response.text().await?;
@@ -166,7 +364,7 @@ impl Gateway for OpenRouterService {
             return Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)));
         }
 
-        let response = self.make_request(&prompt, true).await?;
+        let response = self.make_request_with_retry(&prompt, true).await?;
 
         if !response.status().is_success() {
             let error = response.text().await?;

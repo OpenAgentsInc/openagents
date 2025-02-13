@@ -68,7 +68,7 @@ hyper = { version = "1.2", features = ["full"] }
 http-body-util = "0.1"
 http = "1.0"
 tokio-stream = "0.1.17"
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 termcolor = "1.4"
 async-trait = "0.1"
 git2 = "0.20.0"

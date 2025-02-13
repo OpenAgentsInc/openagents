@@ -84,32 +84,91 @@ pub struct OpenRouterErrorDetail {
     pub r#type: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterUsage {
     pub prompt_tokens: i32,
     pub completion_tokens: i32,
     pub total_tokens: i32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterConfig {
-    pub temperature: f32,
-    pub max_tokens: Option<i32>,
-    pub top_p: Option<f32>,
-    pub frequency_penalty: Option<f32>,
-    pub presence_penalty: Option<f32>,
-    pub stop: Option<Vec<String>>,
+    pub model: String,
+    pub use_reasoner: bool,
+    pub test_mode: bool,
 }
 
 impl Default for OpenRouterConfig {
     fn default() -> Self {
         Self {
-            temperature: 0.7,
-            max_tokens: None,
-            top_p: None,
-            frequency_penalty: None,
-            presence_penalty: None,
-            stop: None,
+            model: "deepseek/deepseek-chat".to_string(),
+            use_reasoner: false,
+            test_mode: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubIssueAnalysis {
+    pub summary: String,
+    pub priority: IssuePriority,
+    pub estimated_effort: IssueEffort,
+    pub tags: Vec<String>,
+    pub action_items: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum IssuePriority {
+    #[serde(rename = "high")]
+    High,
+    #[serde(rename = "medium")]
+    Medium,
+    #[serde(rename = "low")]
+    Low,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum IssueEffort {
+    #[serde(rename = "small")]
+    Small,
+    #[serde(rename = "medium")]
+    Medium,
+    #[serde(rename = "large")]
+    Large,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterStructuredResponse<T> {
+    pub id: String,
+    pub choices: Vec<OpenRouterStructuredChoice<T>>,
+    pub model: String,
+    pub usage: Option<OpenRouterUsage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterStructuredChoice<T> {
+    pub message: OpenRouterStructuredMessage<T>,
+    pub finish_reason: Option<String>,
+    pub index: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRouterStructuredMessage<T> {
+    pub role: String,
+    pub content: String,
+    pub structured_output: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RelevantFile {
+    pub filepath: String,
+    pub comment: String,
+    pub priority: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitHubIssueFiles {
+    pub files: Vec<RelevantFile>,
 }
