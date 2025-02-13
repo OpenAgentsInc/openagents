@@ -1,6 +1,11 @@
 use crate::server::services::gateway::types::GatewayMetadata;
 use crate::server::services::gateway::Gateway;
-use crate::server::services::openrouter::types::{GitHubIssueFiles, OpenRouterConfig};
+use crate::server::services::openrouter::types::{
+    GitHubIssueFiles, OpenRouterConfig, CodeChanges,
+    OpenRouterMessage, OpenRouterResponse, OpenRouterStreamResponse,
+    OpenRouterStreamChoice, OpenRouterDelta, OpenRouterError,
+    OpenRouterErrorDetail, OpenRouterUsage,
+};
 use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use reqwest::{Client, ClientBuilder};
@@ -22,23 +27,28 @@ pub struct OpenRouterService {
 
 impl OpenRouterService {
     pub fn new(api_key: String) -> Self {
-        let client = ClientBuilder::new()
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .unwrap_or_else(|_| Client::new());
-
         Self {
-            client,
             api_key,
-            config: OpenRouterConfig::default(),
+            config: OpenRouterConfig {
+                model: "google/gemini-2.0-flash-lite-preview-02-05:free".to_string(),
+                test_mode: false,
+                use_reasoner: false,
+            },
+            client: ClientBuilder::new()
+                .timeout(REQUEST_TIMEOUT)
+                .build()
+                .unwrap_or_else(|_| Client::new()),
         }
     }
 
     pub fn with_config(api_key: String, config: OpenRouterConfig) -> Self {
         Self {
-            client: Client::new(),
             api_key,
             config,
+            client: ClientBuilder::new()
+                .timeout(REQUEST_TIMEOUT)
+                .build()
+                .unwrap_or_else(|_| Client::new()),
         }
     }
 
@@ -47,8 +57,7 @@ impl OpenRouterService {
     }
 
     fn get_model(&self) -> String {
-        // Use Gemini for structured output
-        "google/gemini-2.0-flash-lite-preview-02-05:free".to_string()
+        self.config.model.clone()
     }
 
     fn prepare_messages(&self, prompt: &str) -> Vec<Value> {
@@ -309,6 +318,49 @@ impl OpenRouterService {
         Err(anyhow!(
             "Failed to parse OpenRouter response into GitHubIssueFiles"
         ))
+    }
+
+    pub async fn analyze_issue_with_schema(&self, prompt: &str, request_body: serde_json::Value) -> Result<CodeChanges> {
+        info!("Making OpenRouter request with schema");
+        debug!("Request body: {}", serde_json::to_string_pretty(&request_body)?);
+
+        let response = self
+            .client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header(
+                "HTTP-Referer",
+                "https://github.com/OpenAgentsInc/openagents",
+            )
+            .json(&request_body)
+            .send()
+            .await?;
+
+        let status = response.status();
+        info!("OpenRouter API response status: {}", status);
+
+        if !status.is_success() {
+            let error = response.text().await?;
+            error!("OpenRouter API error response: {}", error);
+            return Err(anyhow!("OpenRouter API error: {}", error));
+        }
+
+        let response_text = response.text().await?;
+        info!("Response text: {}", response_text);
+
+        // Try to parse the response content from the OpenRouter response structure
+        if let Ok(router_response) = serde_json::from_str::<serde_json::Value>(&response_text) {
+            if let Some(content) = router_response["choices"][0]["message"]["content"].as_str() {
+                if let Ok(changes) = serde_json::from_str::<CodeChanges>(content) {
+                    info!("Successfully parsed response");
+                    return Ok(changes);
+                }
+            }
+        }
+
+        error!("Failed to parse response");
+        error!("Response content: {}", response_text);
+        Err(anyhow!("Failed to parse OpenRouter response"))
     }
 }
 

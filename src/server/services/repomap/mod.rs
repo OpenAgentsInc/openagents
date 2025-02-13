@@ -16,7 +16,7 @@ impl RepomapService {
         }
     }
 
-    pub async fn generate_repomap(&self, owner: &str, repo: &str) -> Result<String> {
+    pub async fn generate_repomap(&self, owner: &str, repo: &str) -> Result<(String, PathBuf)> {
         // Clean up any existing temp directory first
         cleanup_temp_dir(&self.temp_dir);
 
@@ -38,9 +38,11 @@ impl RepomapService {
         // Generate the repository map
         let map = generate_repo_map(&ctx.temp_dir);
 
-        // Clean up
-        cleanup_temp_dir(&self.temp_dir);
+        // Return both the map and the repository path
+        Ok((map, self.temp_dir.clone()))
+    }
 
-        Ok(map)
+    pub fn cleanup(&self) {
+        cleanup_temp_dir(&self.temp_dir);
     }
 }

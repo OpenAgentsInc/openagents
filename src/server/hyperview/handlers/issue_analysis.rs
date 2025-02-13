@@ -5,6 +5,7 @@ use crate::server::services::{
     openrouter::OpenRouterService,
     solver::SolverService,
     deepseek::DeepSeekService,
+    repomap::RepomapService,
 };
 use anyhow::{anyhow, Result};
 use axum::{
@@ -14,6 +15,7 @@ use axum::{
 use html_escape;
 use std::collections::HashMap;
 use tracing::{error, info};
+use std::env;
 
 pub async fn analyze_issue(
     State(state): State<AppState>,
@@ -135,7 +137,7 @@ async fn analyze_issue_internal(
         .ok_or_else(|| anyhow!("No GitHub token found"))?;
 
     info!("Fetching issue and comments from GitHub");
-    let github_service = GitHubService::new(Some(github_token))?;
+    let github_service = GitHubService::new(Some(github_token.clone()))?;
     let issue = github_service.get_issue(owner, repo, issue_number).await?;
     let comments = github_service
         .get_issue_comments(owner, repo, issue_number)
@@ -161,7 +163,14 @@ async fn analyze_issue_internal(
     let deepseek_key = std::env::var("DEEPSEEK_API_KEY")
         .map_err(|_| anyhow!("DEEPSEEK_API_KEY environment variable not set"))?;
 
-    let openrouter = OpenRouterService::new(openrouter_key.clone());
+    // Create temp directory for repository
+    let temp_dir = env::temp_dir().join(format!("solver_{}_{}", owner, repo));
+    let repomap_service = RepomapService::new(temp_dir, Some(github_token.clone()));
+
+    info!("Generating repomap for analysis");
+    let (repomap, repo_path) = repomap_service.generate_repomap(owner, repo).await?;
+
+    let openrouter = OpenRouterService::new(openrouter_key);
     let analyzer = GitHubIssueAnalyzer::new(openrouter);
 
     info!("Sending issue content to OpenRouter for analysis");
@@ -191,6 +200,9 @@ async fn analyze_issue_internal(
     // Update solver state in database
     solver.update_solver(&solver_state).await?;
 
+    // Start generating changes
+    solver.start_generating_changes(&mut solver_state, &repo_path.to_string_lossy()).await?;
+
     // Format response XML
     let xml = format!(
         r#"<view xmlns="https://hyperview.org/hyperview" id="issue_analysis" backgroundColor="black" flex="1" padding="16">
@@ -204,8 +216,8 @@ async fn analyze_issue_internal(
                     <behavior
                         trigger="press"
                         action="replace"
-                        href="/hyperview/solver/{}/status?github_id={}"
-                        target="issue_analysis"
+                        href="/hyperview/solver/{}/status?github_id={}&start=true"
+                        target="solver_status"
                     />
                     Start Solving
                 </text>

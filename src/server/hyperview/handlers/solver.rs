@@ -12,6 +12,7 @@ use axum::{
 use html_escape;
 use std::collections::HashMap;
 use tracing::{error, info};
+use std::path::PathBuf;
 
 pub async fn solver_status(
     State(state): State<AppState>,
@@ -84,7 +85,13 @@ async fn solver_status_internal(
         SolverStatus::Analyzing => "Analyzing Files...",
         SolverStatus::GeneratingChanges => "Generating Changes...",
         SolverStatus::ApplyingChanges => "Applying Changes...",
-        SolverStatus::Complete => "Changes Complete - Pull Request Created",
+        SolverStatus::Complete => {
+            // Clean up repository when complete
+            if let Some(repo_path) = solver_state.repo_path.as_ref() {
+                cleanup_temp_dir(&PathBuf::from(repo_path));
+            }
+            "Changes Complete - Pull Request Created"
+        },
         SolverStatus::Error(ref msg) => msg,
     };
 

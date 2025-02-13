@@ -9,6 +9,7 @@ pub struct SolverState {
     pub issue_title: String,
     pub issue_body: String,
     pub files: Vec<FileState>,
+    pub repo_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +56,7 @@ impl SolverState {
             issue_title,
             issue_body,
             files: Vec::new(),
+            repo_path: None,
         }
     }
 
@@ -67,6 +69,10 @@ impl SolverState {
         };
         self.files.push(file_state);
         self.files.last_mut().unwrap()
+    }
+
+    pub fn set_repo_path(&mut self, path: String) {
+        self.repo_path = Some(path);
     }
 }
 

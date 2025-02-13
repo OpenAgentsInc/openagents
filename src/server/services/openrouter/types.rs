@@ -94,8 +94,8 @@ pub struct OpenRouterUsage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterConfig {
     pub model: String,
-    pub use_reasoner: bool,
     pub test_mode: bool,
+    pub use_reasoner: bool,
 }
 
 impl Default for OpenRouterConfig {
@@ -161,14 +161,26 @@ pub struct OpenRouterStructuredMessage<T> {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubIssueFiles {
+    pub files: Vec<RelevantFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelevantFile {
     pub filepath: String,
     pub comment: String,
     pub priority: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GitHubIssueFiles {
-    pub files: Vec<RelevantFile>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeChanges {
+    pub files: Vec<FileChange>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileChange {
+    pub search: String,
+    pub replace: String,
+    pub comment: String,
 }

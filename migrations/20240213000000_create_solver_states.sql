@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS solver_states (
     issue_title TEXT NOT NULL,
     issue_body TEXT NOT NULL,
     files JSONB NOT NULL,
+    repo_path TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
