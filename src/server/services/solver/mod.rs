@@ -6,7 +6,7 @@ use crate::server::services::{
     deepseek::DeepSeekService,
     openrouter::OpenRouterService,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use sqlx::PgPool;
 use tracing::{debug, info};
 use std::path::Path;
@@ -169,5 +169,84 @@ impl SolverService {
         self.update_solver(state).await?;
 
         Ok(())
+    }
+
+    pub async fn approve_change(&self, state: &mut SolverState, change_id: &str) -> Result<()> {
+        info!("Approving change {} for solver {}", change_id, state.id);
+
+        // Find and update the change status
+        for file in &mut state.files {
+            for change in &mut file.changes {
+                if change.id == change_id {
+                    change.status = ChangeStatus::Approved;
+                    self.update_solver(state).await?;
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(anyhow!("Change not found"))
+    }
+
+    pub async fn reject_change(&self, state: &mut SolverState, change_id: &str) -> Result<()> {
+        info!("Rejecting change {} for solver {}", change_id, state.id);
+
+        // Find and update the change status
+        for file in &mut state.files {
+            for change in &mut file.changes {
+                if change.id == change_id {
+                    change.status = ChangeStatus::Rejected;
+                    self.update_solver(state).await?;
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(anyhow!("Change not found"))
+    }
+
+    pub async fn apply_changes(&self, state: &mut SolverState, repo_dir: &str) -> Result<()> {
+        info!("Applying approved changes for solver {}", state.id);
+        state.status = SolverStatus::ApplyingChanges;
+        self.update_solver(state).await?;
+
+        // Apply changes file by file
+        for file in &state.files {
+            let file_path = Path::new(repo_dir).join(&file.path);
+
+            // Read current content
+            let mut content = std::fs::read_to_string(&file_path)
+                .map_err(|e| anyhow!("Failed to read {}: {}", file.path, e))?;
+
+            // Apply approved changes
+            for change in &file.changes {
+                if change.status == ChangeStatus::Approved {
+                    // Apply the change
+                    if let Some(pos) = content.find(&change.search) {
+                        content.replace_range(pos..pos + change.search.len(), &change.replace);
+                    }
+                }
+            }
+
+            // Write back to file
+            std::fs::write(&file_path, content)
+                .map_err(|e| anyhow!("Failed to write {}: {}", file.path, e))?;
+        }
+
+        state.status = SolverStatus::Complete;
+        self.update_solver(state).await?;
+
+        Ok(())
+    }
+
+    pub async fn check_all_changes_reviewed(&self, state: &SolverState) -> bool {
+        for file in &state.files {
+            for change in &file.changes {
+                if change.status == ChangeStatus::Pending {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }

@@ -178,3 +178,154 @@ fn error_xml(message: &str) -> String {
         html_escape::encode_text(message)
     )
 }
+
+pub async fn approve_change(
+    State(state): State<AppState>,
+    Path((solver_id, change_id)): Path<(String, String)>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    info!("Handling change approval for solver {} change {}", solver_id, change_id);
+
+    let result = approve_change_internal(state, &solver_id, &change_id, &params).await;
+    match result {
+        Ok(xml) => Response::builder()
+            .header("Content-Type", "application/vnd.hyperview+xml")
+            .body(xml.into())
+            .unwrap(),
+        Err(e) => {
+            error!("Failed to approve change: {}", e);
+            Response::builder()
+                .header("Content-Type", "application/vnd.hyperview+xml")
+                .body(error_xml(&e.to_string()).into())
+                .unwrap()
+        }
+    }
+}
+
+pub async fn reject_change(
+    State(state): State<AppState>,
+    Path((solver_id, change_id)): Path<(String, String)>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    info!("Handling change rejection for solver {} change {}", solver_id, change_id);
+
+    let result = reject_change_internal(state, &solver_id, &change_id, &params).await;
+    match result {
+        Ok(xml) => Response::builder()
+            .header("Content-Type", "application/vnd.hyperview+xml")
+            .body(xml.into())
+            .unwrap(),
+        Err(e) => {
+            error!("Failed to reject change: {}", e);
+            Response::builder()
+                .header("Content-Type", "application/vnd.hyperview+xml")
+                .body(error_xml(&e.to_string()).into())
+                .unwrap()
+        }
+    }
+}
+
+async fn approve_change_internal(
+    state: AppState,
+    solver_id: &str,
+    change_id: &str,
+    params: &HashMap<String, String>,
+) -> Result<String> {
+    // Get GitHub ID from params
+    let github_id = params
+        .get("github_id")
+        .ok_or_else(|| anyhow!("GitHub ID not provided"))?
+        .parse::<i64>()
+        .map_err(|_| anyhow!("Invalid GitHub ID"))?;
+
+    // Verify user exists and has access
+    let _exists = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE github_id = $1)",
+        github_id
+    )
+    .fetch_one(&state.pool)
+    .await?
+    .ok_or_else(|| anyhow!("User not found"))?;
+
+    // Get API keys from environment
+    let openrouter_key = std::env::var("OPENROUTER_API_KEY")
+        .map_err(|_| anyhow!("OPENROUTER_API_KEY environment variable not set"))?;
+    let deepseek_key = std::env::var("DEEPSEEK_API_KEY")
+        .map_err(|_| anyhow!("DEEPSEEK_API_KEY environment variable not set"))?;
+
+    // Initialize services
+    let openrouter = OpenRouterService::new(openrouter_key);
+    let deepseek = DeepSeekService::new(deepseek_key);
+    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+
+    // Get and update solver state
+    let mut solver_state = solver
+        .get_solver(solver_id)
+        .await?
+        .ok_or_else(|| anyhow!("Solver not found"))?;
+
+    solver.approve_change(&mut solver_state, change_id).await?;
+
+    // Check if all changes are reviewed
+    if solver.check_all_changes_reviewed(&solver_state).await {
+        solver.apply_changes(&mut solver_state, "/tmp/repo").await?;
+    }
+
+    // Return updated change view
+    Ok(format!(
+        r#"<view id="change_{}" style="change" backgroundColor="rgb(34,34,34)" padding="16" marginBottom="8" borderRadius="8">
+            <text color="green" fontSize="16">Change Approved</text>
+        </view>"#,
+        change_id
+    ))
+}
+
+async fn reject_change_internal(
+    state: AppState,
+    solver_id: &str,
+    change_id: &str,
+    params: &HashMap<String, String>,
+) -> Result<String> {
+    // Get GitHub ID from params
+    let github_id = params
+        .get("github_id")
+        .ok_or_else(|| anyhow!("GitHub ID not provided"))?
+        .parse::<i64>()
+        .map_err(|_| anyhow!("Invalid GitHub ID"))?;
+
+    // Verify user exists and has access
+    let _exists = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE github_id = $1)",
+        github_id
+    )
+    .fetch_one(&state.pool)
+    .await?
+    .ok_or_else(|| anyhow!("User not found"))?;
+
+    // Get API keys from environment
+    let openrouter_key = std::env::var("OPENROUTER_API_KEY")
+        .map_err(|_| anyhow!("OPENROUTER_API_KEY environment variable not set"))?;
+    let deepseek_key = std::env::var("DEEPSEEK_API_KEY")
+        .map_err(|_| anyhow!("DEEPSEEK_API_KEY environment variable not set"))?;
+
+    // Initialize services
+    let openrouter = OpenRouterService::new(openrouter_key);
+    let deepseek = DeepSeekService::new(deepseek_key);
+    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+
+    // Get and update solver state
+    let mut solver_state = solver
+        .get_solver(solver_id)
+        .await?
+        .ok_or_else(|| anyhow!("Solver not found"))?;
+
+    solver.reject_change(&mut solver_state, change_id).await?;
+
+    // Return updated change view
+    Ok(format!(
+        r#"<view id="change_{}" style="change" backgroundColor="rgb(34,34,34)" padding="16" marginBottom="8" borderRadius="8">
+            <text color="red" fontSize="16">Change Rejected</text>
+        </view>"#,
+        change_id
+    ))
+}
