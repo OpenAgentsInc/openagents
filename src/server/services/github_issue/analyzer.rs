@@ -1,5 +1,5 @@
+use crate::server::services::openrouter::{types::GitHubIssueFiles, OpenRouterService};
 use anyhow::Result;
-use crate::server::services::openrouter::{OpenRouterService, types::GitHubIssueFiles};
 
 #[derive(Debug)]
 pub struct GitHubIssueAnalyzer {
@@ -22,8 +22,19 @@ mod tests {
     use crate::server::services::openrouter::OpenRouterConfig;
 
     #[tokio::test]
+    #[ignore = "Requires OPENROUTER_API_KEY in environment"]
     async fn test_analyze_issue() {
-        let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
+        // Load .env file if it exists
+        dotenvy::dotenv().ok();
+
+        let api_key = match std::env::var("OPENROUTER_API_KEY") {
+            Ok(key) => key,
+            Err(_) => {
+                println!("Skipping test: OPENROUTER_API_KEY not set in environment");
+                return;
+            }
+        };
+
         let config = OpenRouterConfig {
             test_mode: true,
             ..Default::default()
@@ -43,8 +54,12 @@ mod tests {
         "#;
 
         let analysis = analyzer.analyze_issue(test_issue).await.unwrap();
-        assert!(!analysis.summary.is_empty());
-        assert!(!analysis.tags.is_empty());
-        assert!(!analysis.action_items.is_empty());
+        assert!(!analysis.files.is_empty());
+        assert!(analysis.files.iter().all(|f| !f.filepath.is_empty()));
+        assert!(analysis.files.iter().all(|f| !f.comment.is_empty()));
+        assert!(analysis
+            .files
+            .iter()
+            .all(|f| f.priority >= 1 && f.priority <= 10));
     }
 }

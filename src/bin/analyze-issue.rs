@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use openagents::server::services::{
     github_issue::GitHubIssueAnalyzer,
-    openrouter::{OpenRouterService, OpenRouterConfig},
+    openrouter::{OpenRouterConfig, OpenRouterService},
 };
 
 #[derive(Parser)]

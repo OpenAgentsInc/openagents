@@ -1,5 +1,5 @@
-mod conversions;
 mod analyzer;
+mod conversions;
 
 use anyhow::{anyhow, Result};
 use reqwest::Client;
@@ -56,8 +56,8 @@ struct PullRequestPayload {
     base: String,
 }
 
-pub use analyzer::GitHubIssueAnalyzer;
 pub use crate::server::services::openrouter::GitHubIssueAnalysis;
+pub use analyzer::GitHubIssueAnalyzer;
 
 impl GitHubService {
     pub fn new(token: Option<String>) -> Result<Self> {
@@ -370,15 +370,8 @@ impl GitHubService {
         Ok(())
     }
 
-    pub async fn list_issues(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Vec<GitHubIssue>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/issues",
-            owner, repo
-        );
+    pub async fn list_issues(&self, owner: &str, repo: &str) -> Result<Vec<GitHubIssue>> {
+        let url = format!("https://api.github.com/repos/{}/{}/issues", owner, repo);
 
         let response = self
             .client
@@ -414,11 +407,22 @@ pub async fn post_github_comment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::services::openrouter::OpenRouterConfig;
+    use crate::server::services::openrouter::{OpenRouterConfig, OpenRouterService};
 
     #[tokio::test]
+    #[ignore = "Requires OPENROUTER_API_KEY in environment"]
     async fn test_analyze_issue() {
-        let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set");
+        // Load .env file if it exists
+        dotenvy::dotenv().ok();
+
+        let api_key = match std::env::var("OPENROUTER_API_KEY") {
+            Ok(key) => key,
+            Err(_) => {
+                println!("Skipping test: OPENROUTER_API_KEY not set in environment");
+                return;
+            }
+        };
+
         let config = OpenRouterConfig {
             test_mode: true,
             ..Default::default()
@@ -438,8 +442,12 @@ mod tests {
         "#;
 
         let analysis = analyzer.analyze_issue(test_issue).await.unwrap();
-        assert!(!analysis.summary.is_empty());
-        assert!(!analysis.tags.is_empty());
-        assert!(!analysis.action_items.is_empty());
+        assert!(!analysis.files.is_empty());
+        assert!(analysis.files.iter().all(|f| !f.filepath.is_empty()));
+        assert!(analysis.files.iter().all(|f| !f.comment.is_empty()));
+        assert!(analysis
+            .files
+            .iter()
+            .all(|f| f.priority >= 1 && f.priority <= 10));
     }
 }

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{pin::Pin, time::Duration};
 use tokio_stream::Stream;
-use tracing::{debug, warn, error, info};
+use tracing::{debug, error, info, warn};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_RETRIES: u32 = 2;
@@ -134,7 +134,10 @@ impl OpenRouterService {
         });
 
         info!("Sending request to OpenRouter API...");
-        debug!("Request body: {}", serde_json::to_string_pretty(&request_body)?);
+        debug!(
+            "Request body: {}",
+            serde_json::to_string_pretty(&request_body)?
+        );
 
         let response = self
             .client
@@ -177,7 +180,11 @@ impl OpenRouterService {
         }
     }
 
-    async fn make_request_with_retry(&self, prompt: &str, stream: bool) -> Result<reqwest::Response> {
+    async fn make_request_with_retry(
+        &self,
+        prompt: &str,
+        stream: bool,
+    ) -> Result<reqwest::Response> {
         let mut last_error = None;
 
         for retry in 0..=MAX_RETRIES {
@@ -280,7 +287,9 @@ impl OpenRouterService {
             }
         });
 
-        let response = self.make_structured_request_with_retry::<GitHubIssueFiles>(&request_body.to_string()).await?;
+        let response = self
+            .make_structured_request_with_retry::<GitHubIssueFiles>(&request_body.to_string())
+            .await?;
         info!("Raw OpenRouter response: {:?}", response);
 
         let response_text = response.text().await?;
@@ -304,7 +313,9 @@ impl OpenRouterService {
 
         error!("Failed to parse response in any format");
         error!("Response content: {}", response_text);
-        Err(anyhow!("Failed to parse OpenRouter response into GitHubIssueFiles"))
+        Err(anyhow!(
+            "Failed to parse OpenRouter response into GitHubIssueFiles"
+        ))
     }
 }
 

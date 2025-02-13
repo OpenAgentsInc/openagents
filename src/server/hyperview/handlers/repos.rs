@@ -1,18 +1,15 @@
 use crate::server::config::AppState;
 use crate::server::models::user::User;
-use crate::server::services::{
-    github_issue::GitHubService,
-    github_repos::GitHubReposService,
-};
+use crate::server::services::{github_issue::GitHubService, github_repos::GitHubReposService};
 use anyhow::{anyhow, Result};
 use axum::{
     extract::{Path, Query, State},
     http::{header, StatusCode},
     response::Response,
 };
-use tracing::{error, info};
-use std::collections::HashMap;
 use html_escape;
+use std::collections::HashMap;
+use tracing::{error, info};
 
 fn error_response(message: &str) -> Response {
     let xml = format!(
@@ -171,12 +168,15 @@ pub async fn github_issues(
             .unwrap(),
         Err(e) => Response::builder()
             .header("Content-Type", "application/vnd.hyperview+xml")
-            .body(format!(
-                r#"<view xmlns="https://hyperview.org/hyperview">
+            .body(
+                format!(
+                    r#"<view xmlns="https://hyperview.org/hyperview">
                     <text color="red">Error: {}</text>
                 </view>"#,
-                e
-            ).into())
+                    e
+                )
+                .into(),
+            )
             .unwrap(),
     }
 }
@@ -201,7 +201,9 @@ async fn github_issues_internal(
         .ok_or_else(|| anyhow!("User not found"))?;
 
     // Get GitHub token
-    let github_token = user.github_token.ok_or_else(|| anyhow!("No GitHub token found"))?;
+    let github_token = user
+        .github_token
+        .ok_or_else(|| anyhow!("No GitHub token found"))?;
 
     let github_service = GitHubService::new(Some(github_token))?;
     let issues = github_service.list_issues(owner, repo).await?;
@@ -261,10 +263,7 @@ async fn github_issues_internal(
                 </text>
             </view>
         </view>"#,
-        owner,
-        repo,
-        issues_list,
-        github_id
+        owner, repo, issues_list, github_id
     );
 
     Ok(xml)

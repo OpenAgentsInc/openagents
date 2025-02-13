@@ -1,24 +1,27 @@
+use crate::server::config::AppState;
+use crate::server::models::user::User;
 use crate::server::services::{
     github_issue::{GitHubIssueAnalyzer, GitHubService},
     openrouter::OpenRouterService,
 };
-use crate::server::config::AppState;
-use crate::server::models::user::User;
 use anyhow::{anyhow, Result};
 use axum::{
     extract::{Path, Query, State},
     response::Response,
 };
-use std::collections::HashMap;
 use html_escape;
-use tracing::{info, error};
+use std::collections::HashMap;
+use tracing::{error, info};
 
 pub async fn analyze_issue(
     State(state): State<AppState>,
     Path((owner, repo, issue_number)): Path<(String, String, i32)>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    info!("Handling issue analysis request for {}/{} #{}", owner, repo, issue_number);
+    info!(
+        "Handling issue analysis request for {}/{} #{}",
+        owner, repo, issue_number
+    );
 
     let error_xml = |msg: &str| -> String {
         error!("Issue analysis error: {}", msg);
@@ -69,19 +72,28 @@ pub async fn analyze_issue(
             .unwrap();
     }
 
-    info!("Starting issue analysis for {}/{} #{}", owner, repo, issue_number);
+    info!(
+        "Starting issue analysis for {}/{} #{}",
+        owner, repo, issue_number
+    );
     let result = analyze_issue_internal(state, &owner, &repo, issue_number, &params).await;
 
     match result {
         Ok(xml) => {
-            info!("Successfully analyzed issue {}/{} #{}", owner, repo, issue_number);
+            info!(
+                "Successfully analyzed issue {}/{} #{}",
+                owner, repo, issue_number
+            );
             Response::builder()
                 .header("Content-Type", "application/vnd.hyperview+xml")
                 .body(xml.into())
                 .unwrap()
         }
         Err(e) => {
-            error!("Failed to analyze issue {}/{} #{}: {}", owner, repo, issue_number, e);
+            error!(
+                "Failed to analyze issue {}/{} #{}: {}",
+                owner, repo, issue_number, e
+            );
             Response::builder()
                 .header("Content-Type", "application/vnd.hyperview+xml")
                 .body(error_xml(&e.to_string()).into())
@@ -97,7 +109,10 @@ async fn analyze_issue_internal(
     issue_number: i32,
     params: &HashMap<String, String>,
 ) -> Result<String> {
-    info!("Fetching issue data for {}/{} #{}", owner, repo, issue_number);
+    info!(
+        "Fetching issue data for {}/{} #{}",
+        owner, repo, issue_number
+    );
 
     // Get GitHub ID from params
     let github_id = params
@@ -113,17 +128,28 @@ async fn analyze_issue_internal(
         .ok_or_else(|| anyhow!("User not found"))?;
 
     // Get GitHub token
-    let github_token = user.github_token.ok_or_else(|| anyhow!("No GitHub token found"))?;
+    let github_token = user
+        .github_token
+        .ok_or_else(|| anyhow!("No GitHub token found"))?;
 
     info!("Fetching issue and comments from GitHub");
     let github_service = GitHubService::new(Some(github_token))?;
     let issue = github_service.get_issue(owner, repo, issue_number).await?;
-    let comments = github_service.get_issue_comments(owner, repo, issue_number).await?;
+    let comments = github_service
+        .get_issue_comments(owner, repo, issue_number)
+        .await?;
 
     // Combine issue and comments into a single text for analysis
-    let mut content = format!("Title: {}\n\n{}\n\n", issue.title, issue.body.unwrap_or_default());
+    let mut content = format!(
+        "Title: {}\n\n{}\n\n",
+        issue.title,
+        issue.body.unwrap_or_default()
+    );
     for comment in comments {
-        content.push_str(&format!("Comment by {}: {}\n\n", comment.user.login, comment.body));
+        content.push_str(&format!(
+            "Comment by {}: {}\n\n",
+            comment.user.login, comment.body
+        ));
     }
 
     info!("Initializing OpenRouter service for analysis");
