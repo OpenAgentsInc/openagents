@@ -98,7 +98,7 @@ async fn solver_status_internal(
             }
             ("Complete", "Changes have been applied and PR created")
         }
-        SolverStatus::Error(ref msg) => ("Error", msg),
+        SolverStatus::Error(ref msg) => ("Error", msg.as_str()),
     };
 
     // Format the status section
