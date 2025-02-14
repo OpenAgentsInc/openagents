@@ -86,7 +86,8 @@
 
       <style id="logo"
         width="256"
-        height="256" />
+        height="256"
+        opacity="0.5" />
 
       <style id="logoContainer"
         width="100%"
@@ -94,9 +95,11 @@
         position="absolute"
         top="0"
         left="0"
+        right="0"
+        bottom="0"
         alignItems="center"
         justifyContent="center"
-        opacity="0.5" />
+        zIndex="0" />
 
       <style id="topContainer"
         flexDirection="row"
@@ -172,7 +175,7 @@
 
         <view style="conversationContainer">
           <view style="logoContainer">
-            <image style="logo" source="/static/images/logo.png" />
+            <local:image src="loading" style="logo" />
           </view>
           <view style="wsOutput" id="solve-demo-output" />
         </view>
