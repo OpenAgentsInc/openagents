@@ -29,7 +29,7 @@ pub async fn hyperview_ws_handler(
         // First try cookie
         let jar = CookieJar::from_headers(request.headers());
         let cookie_token = jar.get("session").map(|c| c.value().to_string());
-        if let Some(ref token) = cookie_token {
+        if let Some(ref _token) = cookie_token {
             info!("Found session token in cookie");
         } else {
             info!("No session token found in cookie, checking query params");
