@@ -15,7 +15,7 @@ use chrono::Utc;
 use axum::extract::ws::Message;
 use tokio::sync::mpsc::UnboundedSender;
 
-#[allow(dead_code)] // These methods will be used in future
+#[allow(dead_code)]
 pub struct SolverService {
     pool: PgPool,
     openrouter: OpenRouterService,
@@ -90,30 +90,25 @@ impl SolverService {
         &self,
         state: &mut SolverState,
         repo_dir: &str,
-        tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
+        tx: Option<UnboundedSender<String>>,
     ) -> Result<()> {
         info!("🚀 Starting to generate changes for solver {}", state.id);
         state.status = SolverStatus::GeneratingChanges;
         state.set_repo_path(repo_dir.to_string());
         self.update_solver(state).await?;
 
-        // First get OpenRouter's analysis of all files
+        // Gather file contents for analysis
         let mut file_contents = String::new();
         info!("📂 Gathering file contents for analysis...");
-
-        // Send status update
         if let Some(tx) = &tx {
             let _ = tx.send("Gathering file contents for analysis...".to_string());
         }
-
         for file in &state.files {
             info!("   Reading file: {}", file.path);
             let path = Path::new(repo_dir).join(&file.path);
             file_contents.push_str(&format!("\nFile: {}\n", file.path));
-
-            // Check if file exists
             if path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(content) = fs::read_to_string(&path) {
                     info!("   ✅ Successfully read {}", file.path);
                     file_contents.push_str(&format!("Content:\n{}\n", content));
                     if let Some(tx) = &tx {
@@ -135,12 +130,10 @@ impl SolverService {
             }
         }
 
-        // Create the prompt for analysis
         info!("📝 Creating analysis prompt...");
         if let Some(tx) = &tx {
             let _ = tx.send("Creating analysis prompt...".to_string());
         }
-
         let prompt = format!(
             "Analyze these files and suggest specific code changes to implement the following issue:\n\n\
             Issue Title: {}\n\n\
@@ -156,12 +149,11 @@ impl SolverService {
             file_contents
         );
 
-        // Get analysis from OpenRouter
+        // Start analysis stream
         info!("🤖 Starting OpenRouter analysis stream...");
         if let Some(tx) = &tx {
             let _ = tx.send("Starting OpenRouter analysis...".to_string());
         }
-
         let mut response = String::new();
         let mut stream = match self.openrouter.chat_stream(prompt, true).await {
             Ok(stream) => {
@@ -185,43 +177,32 @@ impl SolverService {
             chunk_count += 1;
             debug!("📨 Received chunk #{}: {}", chunk_count, chunk);
             response.push_str(&chunk);
-
-            // Forward raw chunks to UI with debug info
             if let Some(tx) = &tx {
                 let _ = tx.send(format!("CHUNK #{}: {}\n", chunk_count, chunk));
             }
         }
 
-        // Send final response for debugging
         if let Some(tx) = &tx {
             let _ = tx.send(format!(
                 "\n=== COMPLETE RAW RESPONSE ===\n{}\n=== END RESPONSE ===\n",
                 response
             ));
         }
-
-        info!(
-            "✅ Analysis stream complete - received {} chunks",
-            chunk_count
-        );
+        info!("✅ Analysis stream complete - received {} chunks", chunk_count);
         if let Some(tx) = &tx {
-            let _ = tx.send(format!(
-                "\n✅ Analysis complete - received {} chunks",
-                chunk_count
-            ));
+            let _ = tx.send(format!("\n✅ Analysis complete - received {} chunks", chunk_count));
         }
 
-        // Now use OpenRouter to generate specific changes for each file
         info!("🔄 Generating changes for each file...");
         if let Some(tx) = &tx {
             let _ = tx.send("\n🔄 Generating specific changes for each file...".to_string());
         }
 
+        // Process each file to generate changes
         for file in &mut state.files {
             info!("   Processing file: {}", file.path);
             let path = Path::new(repo_dir).join(&file.path);
             let file_exists = path.exists();
-
             let prompt = format!(
                 "Based on the analysis below, generate specific Rust code changes for this file.\n\n\
                 Analysis:\n{}\n\n\
@@ -231,7 +212,7 @@ impl SolverService {
                 response,
                 file.path,
                 if file_exists {
-                    if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(content) = fs::read_to_string(&path) {
                         format!("Existing file content:\n{}", content)
                     } else {
                         "Error reading existing file".to_string()
@@ -314,15 +295,14 @@ impl SolverService {
                 );
                 info!("       Description: {}", change.comment);
                 if !change.search.is_empty() {
-                    debug!("       Replacing: \n{}", change.search);
-                    debug!("       With: \n{}", change.replace);
+                    debug!("       Replacing:\n{}", change.search);
+                    debug!("       With:\n{}", change.replace);
                 }
             }
 
-            // Apply changes to file
+            // Apply changes
             for change in changes.files {
                 if change.search.is_empty() {
-                    // This is a new file
                     info!("   📝 Creating new file: {}", file.path);
                     info!("      Reason: {}", change.comment);
                     info!("      Content to write:\n{}", change.replace);
@@ -338,8 +318,6 @@ impl SolverService {
                         continue;
                     }
                     info!("      ✅ Successfully created new file");
-
-                    // Forward change info to UI
                     if let Some(tx) = &tx {
                         let _ = tx.send(format!(
                             "\n=== NEW FILE: {} ===\nReason: {}\nContent:\n{}\n=== END FILE ===\n",
@@ -347,7 +325,6 @@ impl SolverService {
                         ));
                     }
                 } else {
-                    // This is an existing file
                     info!("   🔄 Modifying file: {}", file.path);
                     info!("      Change description: {}", change.comment);
                     info!("      Replacing:\n{}", change.search);
@@ -366,24 +343,21 @@ impl SolverService {
                                         continue;
                                     }
                                     info!("      ✅ Successfully applied change to file");
-
-                                    // Forward change info to UI
                                     if let Some(tx) = &tx {
-                                        let _ = tx.send(format!("\n=== MODIFYING FILE: {} ===\nReason: {}\nReplacing:\n{}\nWith:\n{}\n=== END CHANGE ===\n",
-                                            file.path, change.comment, change.search, change.replace));
+                                        let _ = tx.send(format!(
+                                            "\n=== MODIFYING FILE: {} ===\nReason: {}\nReplacing:\n{}\nWith:\n{}\n=== END CHANGE ===\n",
+                                            file.path, change.comment, change.search, change.replace
+                                        ));
                                     }
                                 } else {
-                                    error!(
-                                        "      ❌ Could not find search string in {}",
-                                        file.path
-                                    );
+                                    error!("      ❌ Could not find search string in {}", file.path);
                                     error!("      Search string: {}", change.search);
                                     error!("      This change was skipped");
-
-                                    // Forward error to UI
                                     if let Some(tx) = &tx {
-                                        let _ = tx.send(format!("\n=== ERROR: Failed to modify {} ===\nCould not find text to replace:\n{}\n=== END ERROR ===\n",
-                                            file.path, change.search));
+                                        let _ = tx.send(format!(
+                                            "\n=== ERROR: Failed to modify {} ===\nCould not find text to replace:\n{}\n=== END ERROR ===\n",
+                                            file.path, change.search
+                                        ));
                                     }
                                 }
                             }
@@ -404,14 +378,11 @@ impl SolverService {
         for file in &state.files {
             info!("   - {}: {}", file.path, file.reason);
         }
-
         state.status = SolverStatus::Complete;
         self.update_solver(state).await?;
-
         Ok(())
     }
 
-    // Keep these methods but mark as unused for future use
     #[allow(dead_code)]
     pub async fn approve_change(&self, state: &mut SolverState, change_id: &str) -> Result<()> {
         info!("Approving change {} for solver {}", change_id, state.id);
@@ -433,10 +404,7 @@ impl SolverService {
         &self,
         prompt: String,
     ) -> tokio::sync::mpsc::UnboundedReceiver<StreamUpdate> {
-        // Create an unbounded channel
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-
-        // Get the stream from OpenRouter
         let mut stream = match self.openrouter.chat_stream(prompt, true).await {
             Ok(stream) => stream,
             Err(e) => {
@@ -446,43 +414,33 @@ impl SolverService {
                 return rx;
             }
         };
-
-        // Spawn a task to forward messages
         tokio::spawn(async move {
             let mut is_reasoning = true;
             while let Some(Ok(chunk)) = stream.next().await {
-                // Check for transition marker
                 if chunk.contains("Final Changes:") {
                     is_reasoning = false;
                     continue;
                 }
-
-                // Send appropriate update type
                 let update = if is_reasoning {
                     StreamUpdate::Reasoning(chunk)
                 } else {
                     StreamUpdate::Content(chunk)
                 };
-
                 if tx.send(update).is_err() {
                     break;
                 }
             }
             let _ = tx.send(StreamUpdate::Done);
         });
-
         rx
     }
 
     pub async fn solve_demo_repo(&self, ws_tx: UnboundedSender<Message>) -> Result<()> {
-        // Create solver state for issue #579
         let mut state = SolverState::new(
             579,
             "Add repomap caching by branch+sha".to_string(),
             "Add caching for repository maps to avoid regenerating them unnecessarily. Cache key should be based on repository branch and commit SHA.".to_string(),
         );
-
-        // Update status to Analyzing
         state.status = SolverStatus::Analyzing;
         ws_tx.send(Message::Text(
             serde_json::to_string(&SolverJsonMessage::StateUpdate {
@@ -492,8 +450,6 @@ impl SolverService {
                 timestamp: Utc::now().to_rfc3339(),
             })?.into()
         )).map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
-
-        // Add relevant files based on issue description
         state.add_file(
             "src/server/services/repomap/mod.rs".to_string(),
             0.9,
@@ -514,8 +470,6 @@ impl SolverService {
             0.7,
             "Database migration for cache table".to_string(),
         );
-
-        // Update status to generating changes
         state.status = SolverStatus::GeneratingChanges;
         ws_tx.send(Message::Text(
             serde_json::to_string(&SolverJsonMessage::StateUpdate {
@@ -525,22 +479,14 @@ impl SolverService {
                 timestamp: Utc::now().to_rfc3339(),
             })?.into()
         )).map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
-
-        // Create a string sender that wraps the websocket sender
         let (string_tx, mut string_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-
-        // Spawn a task to forward string messages to websocket messages
         let ws_tx_clone = ws_tx.clone();
         tokio::spawn(async move {
             while let Some(msg) = string_rx.recv().await {
                 let _ = ws_tx_clone.send(Message::Text(msg.into()));
             }
         });
-
-        // Start generating changes
         self.start_generating_changes(&mut state, "/tmp/openagents", Some(string_tx)).await?;
-
-        // Update status to complete
         state.status = SolverStatus::Complete;
         ws_tx.send(Message::Text(
             serde_json::to_string(&SolverJsonMessage::StateUpdate {
@@ -550,7 +496,6 @@ impl SolverService {
                 timestamp: Utc::now().to_rfc3339(),
             })?.into()
         )).map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
-
         Ok(())
     }
 
@@ -559,15 +504,12 @@ impl SolverService {
         ws_tx: UnboundedSender<Message>,
     ) -> Result<()> {
         info!("Starting repo solver process");
-
-        // Send error for now as this is not implemented
         ws_tx.send(Message::Text(
             serde_json::to_string(&SolverJsonMessage::Error {
                 message: "solve_repo is not implemented yet".to_string(),
                 timestamp: Utc::now().to_rfc3339(),
             })?.into()
         )).map_err(|e| anyhow::anyhow!("Failed to send error message: {}", e))?;
-
         Ok(())
     }
 }

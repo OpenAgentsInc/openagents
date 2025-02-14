@@ -154,10 +154,7 @@ impl WebSocketState {
                                     content: content_str.to_string(),
                                 };
                                 info!("Created chat message: {:?}", chat_msg);
-                                if let Err(e) = chat_handler
-                                    .handle_message(chat_msg, receive_conn_id.clone())
-                                    .await
-                                {
+                                if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
                                     error!("Error handling chat message: {}", e);
                                 }
                             }
@@ -166,14 +163,9 @@ impl WebSocketState {
                                 Some("chat") => {
                                     info!("Processing chat message");
                                     if let Some(message) = data.get("message") {
-                                        if let Ok(chat_msg) =
-                                            serde_json::from_value(message.clone())
-                                        {
+                                        if let Ok(chat_msg) = serde_json::from_value(message.clone()) {
                                             info!("Parsed chat message: {:?}", chat_msg);
-                                            if let Err(e) = chat_handler
-                                                .handle_message(chat_msg, receive_conn_id.clone())
-                                                .await
-                                            {
+                                            if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
                                                 error!("Error handling chat message: {}", e);
                                             }
                                         }
@@ -272,7 +264,7 @@ impl WebSocketState {
         rx
     }
 
-    pub async fn get_tx(&self, conn_id: &str) -> Result<mpsc::UnboundedSender<Message>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_tx(&self, conn_id: &str) -> Result<mpsc::UnboundedSender<Message>, Box<dyn Error + Send + Sync>> {
         if let Some(conn) = self.connections.read().await.get(conn_id) {
             Ok(conn.tx.clone())
         } else {
