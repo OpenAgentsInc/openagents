@@ -262,14 +262,14 @@ async fn handle_socket(
                                             accumulated_content.push_str(&chunk);
 
                                             // Send content token to UI
-                                            let raw_xml = format!(
+                                            let xml = format!(
                                                 r###"<?xml version="1.0" encoding="UTF-8"?>
-<view xmlns="https://hyperview.org/hyperview">
-  <text id="stream-content" style="deepseekChunk" action="replace" target="stream-content">{}</text>
-</view>"###,
+<doc xmlns="https://hyperview.org/hyperview">
+  <text id="stream_content" style="deepseekChunk" preformatted="true">{}</text>
+</doc>"###,
                                                 html_escape::encode_text(&accumulated_content)
                                             );
-                                            if let Err(e) = tx.send(axum::extract::ws::Message::Text(raw_xml.into())) {
+                                            if let Err(e) = tx.send(axum::extract::ws::Message::Text(xml.into())) {
                                                 error!("Failed to send content token: {}", e);
                                             }
                                         }
@@ -285,9 +285,9 @@ async fn handle_socket(
                                                 solver_content.push_str(&update);
                                                 let update_xml = format!(
                                                     r###"<?xml version="1.0" encoding="UTF-8"?>
-<view xmlns="https://hyperview.org/hyperview">
-  <text id="stream-content" style="deepseekChunk" action="replace" target="stream-content">{}</text>
-</view>"###,
+<doc xmlns="https://hyperview.org/hyperview">
+  <text id="stream_content" style="deepseekChunk" preformatted="true">{}</text>
+</doc>"###,
                                                     html_escape::encode_text(&solver_content)
                                                 );
                                                 if let Err(e) = solver_ws_tx.send(axum::extract::ws::Message::Text(update_xml.into())) {
