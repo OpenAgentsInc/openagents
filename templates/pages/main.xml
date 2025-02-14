@@ -90,13 +90,31 @@
         width="100%"
         alignItems="center"
         marginBottom="24" />
+
+      <style id="topContainer"
+        flexDirection="row"
+        justifyContent="space-between"
+        alignItems="center"
+        width="100%" />
+
+      <style id="demoButton"
+        color="#fff"
+        fontSize="16"
+        borderWidth="1"
+        borderColor="#fff"
+        borderRadius="8"
+        paddingVertical="8"
+        paddingHorizontal="16" />
     </styles>
 
     <body style="body">
       <view style="device">
         <!-- Top Section -->
         <view style="menuContainerTop">
-          <local:svg src="arrow-right" width="20" height="20" />
+          <view style="topContainer">
+            <local:svg src="arrow-right" width="20" height="20" />
+            <text style="demoButton" href="/solve-demo-repo" action="solve-demo-repo">Solve Demo Issue</text>
+          </view>
         </view>
 
         <!-- Middle Section -->
