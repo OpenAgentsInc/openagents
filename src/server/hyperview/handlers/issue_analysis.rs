@@ -168,14 +168,13 @@ async fn analyze_issue_internal(
     let (_repomap, repo_path) = repomap_service.generate_repomap(owner, repo).await?;
 
     let openrouter = OpenRouterService::new(openrouter_key.clone());
-    let analyzer = GitHubIssueAnalyzer::new(openrouter);
+    let mut analyzer = GitHubIssueAnalyzer::new(openrouter.clone());
 
     info!("Sending issue content to OpenRouter for analysis");
     let files = analyzer.analyze_issue(&content).await?;
 
     // Initialize services
-    let openrouter = OpenRouterService::new(std::env::var("OPENROUTER_API_KEY")?);
-    let solver = SolverService::new(state.pool.clone(), openrouter);
+    let mut solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Create solver state
     let mut solver_state = solver

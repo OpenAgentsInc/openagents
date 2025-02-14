@@ -3,8 +3,7 @@ pub mod types;
 pub use types::*;
 
 use super::StreamUpdate;
-use crate::server::services::{gateway::Gateway, openrouter::OpenRouterService};
-use crate::server::ws::types::SolverJsonMessage;
+use crate::server::services::{gateway::Gateway, openrouter::OpenRouterService, github_issue::GitHubService};
 use anyhow::Result;
 use futures_util::StreamExt;
 use sqlx::PgPool;
@@ -14,8 +13,10 @@ use tracing::{debug, error, info};
 use chrono::Utc;
 use axum::extract::ws::Message;
 use tokio::sync::mpsc::UnboundedSender;
+use tempfile;
+use git2::Repository;
 
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct SolverService {
     pool: PgPool,
     openrouter: OpenRouterService,
@@ -87,7 +88,7 @@ impl SolverService {
     }
 
     pub async fn start_generating_changes(
-        &self,
+        &mut self,
         state: &mut SolverState,
         repo_dir: &str,
         tx: Option<UnboundedSender<String>>,
@@ -166,19 +167,40 @@ impl SolverService {
             Err(e) => {
                 error!("❌ Failed to start OpenRouter stream: {}", e);
                 if let Some(tx) = &tx {
-                    let _ = tx.send(format!("❌ Error: {}", e));
+                    let error_msg = if e.to_string().contains("Rate limit exceeded") {
+                        "❌ Error: OpenRouter API rate limit exceeded. Please try again later or upgrade your API plan.".to_string()
+                    } else {
+                        format!("❌ Error: {}", e)
+                    };
+                    let _ = tx.send(error_msg);
                 }
                 return Err(anyhow::anyhow!("Failed to start OpenRouter stream: {}", e));
             }
         };
 
         let mut chunk_count = 0;
-        while let Some(Ok(chunk)) = stream.next().await {
-            chunk_count += 1;
-            debug!("📨 Received chunk #{}: {}", chunk_count, chunk);
-            response.push_str(&chunk);
-            if let Some(tx) = &tx {
-                let _ = tx.send(format!("CHUNK #{}: {}\n", chunk_count, chunk));
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(chunk) => {
+                    chunk_count += 1;
+                    debug!("📨 Received chunk #{}: {}", chunk_count, chunk);
+                    response.push_str(&chunk);
+                    if let Some(tx) = &tx {
+                        let _ = tx.send(format!("CHUNK #{}: {}\n", chunk_count, chunk));
+                    }
+                }
+                Err(e) => {
+                    error!("❌ Error receiving chunk: {}", e);
+                    if let Some(tx) = &tx {
+                        let error_msg = if e.to_string().contains("Rate limit exceeded") {
+                            "❌ Error: OpenRouter API rate limit exceeded. Please try again later or upgrade your API plan.".to_string()
+                        } else {
+                            format!("❌ Error receiving chunk: {}", e)
+                        };
+                        let _ = tx.send(error_msg);
+                    }
+                    return Err(anyhow::anyhow!("Error receiving chunk: {}", e));
+                }
             }
         }
 
@@ -401,7 +423,7 @@ impl SolverService {
     }
 
     pub async fn analyze_issue(
-        &self,
+        &mut self,
         prompt: String,
     ) -> tokio::sync::mpsc::UnboundedReceiver<StreamUpdate> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -416,18 +438,26 @@ impl SolverService {
         };
         tokio::spawn(async move {
             let mut is_reasoning = true;
-            while let Some(Ok(chunk)) = stream.next().await {
-                if chunk.contains("Final Changes:") {
-                    is_reasoning = false;
-                    continue;
-                }
-                let update = if is_reasoning {
-                    StreamUpdate::Reasoning(chunk)
-                } else {
-                    StreamUpdate::Content(chunk)
-                };
-                if tx.send(update).is_err() {
-                    break;
+            while let Some(result) = stream.next().await {
+                match result {
+                    Ok(chunk) => {
+                        if chunk.contains("Final Changes:") {
+                            is_reasoning = false;
+                            continue;
+                        }
+                        let update = if is_reasoning {
+                            StreamUpdate::Reasoning(chunk)
+                        } else {
+                            StreamUpdate::Content(chunk)
+                        };
+                        if tx.send(update).is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error receiving chunk: {}", e);
+                        break;
+                    }
                 }
             }
             let _ = tx.send(StreamUpdate::Done);
@@ -435,7 +465,7 @@ impl SolverService {
         rx
     }
 
-    pub async fn solve_demo_repo(&self, ws_tx: UnboundedSender<Message>) -> Result<()> {
+    pub async fn solve_demo_repo(&mut self, ws_tx: UnboundedSender<Message>) -> Result<()> {
         let mut state = SolverState::new(
             579,
             "Add repomap caching by branch+sha".to_string(),
@@ -492,18 +522,98 @@ impl SolverService {
     }
 
     pub async fn solve_repo(
-        &self,
+        &mut self,
         ws_tx: UnboundedSender<Message>,
+        repository: String,
+        issue_number: i32,
     ) -> Result<()> {
-        info!("Starting repo solver process");
-        ws_tx.send(Message::Text(
-            serde_json::to_string(&SolverJsonMessage::Error {
-                message: "solve_repo is not implemented yet".to_string(),
-                timestamp: Utc::now().to_rfc3339(),
-            })?
-            .into(),
-        ))
-        .map_err(|e| anyhow::anyhow!("Failed to send error message: {}", e))?;
+        info!("Starting repo solver process for {}, issue #{}", repository, issue_number);
+
+        // Check OpenRouter API key
+        if std::env::var("OPENROUTER_API_KEY").is_err() {
+            let error_msg = "OpenRouter API key not found. Please set the OPENROUTER_API_KEY environment variable.";
+            error!("{}", error_msg);
+            ws_tx.send(Message::Text(format!(
+                "❌ Error: {}", error_msg
+            ).into()))
+            .map_err(|e| anyhow::anyhow!("Failed to send error message: {}", e))?;
+            return Err(anyhow::anyhow!(error_msg));
+        }
+
+        // Parse repository owner and name
+        let parts: Vec<&str> = repository.split('/').collect();
+        if parts.len() != 2 {
+            return Err(anyhow::anyhow!("Invalid repository format. Expected owner/name"));
+        }
+        let (owner, name) = (parts[0], parts[1]);
+
+        // Get GitHub token from environment
+        let github_token = std::env::var("GITHUB_TOKEN")
+            .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not set"))?;
+
+        // Initialize GitHub service
+        let github = GitHubService::new(Some(github_token.clone()))
+            .map_err(|e| anyhow::anyhow!("Failed to initialize GitHub service: {}", e))?;
+
+        // Fetch issue details
+        info!("Fetching issue #{} from {}/{}", issue_number, owner, name);
+        let issue = github.get_issue(owner, name, issue_number).await?;
+
+        // Create solver state
+        let mut state = self.create_solver(
+            issue_number,
+            issue.title.clone(),
+            issue.body.unwrap_or_default(),
+        ).await?;
+
+        // Send initial status
+        ws_tx.send(Message::Text(format!(
+            "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
+            Utc::now().to_rfc3339()
+        ).into()))
+        .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+
+        // Create temporary directory for repository
+        let temp_dir = tempfile::tempdir()?;
+        let repo_path = temp_dir.path().to_path_buf();
+        info!("Created temporary directory at {:?}", repo_path);
+
+        // Clone repository
+        let repo_url = format!("https://github.com/{}/{}.git", owner, name);
+        info!("Cloning repository from {}", repo_url);
+        if let Err(e) = Repository::clone(&repo_url, &repo_path) {
+            error!("Failed to clone repository: {}", e);
+            return Err(anyhow::anyhow!("Failed to clone repository: {}", e));
+        }
+        info!("Repository cloned successfully");
+
+        // Create a channel for string messages
+        let (string_tx, mut string_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let ws_tx_clone = ws_tx.clone();
+
+        // Spawn a task to forward string messages to WebSocket
+        tokio::spawn(async move {
+            while let Some(msg) = string_rx.recv().await {
+                let _ = ws_tx_clone.send(Message::Text(msg.into()));
+            }
+        });
+
+        // Start generating changes
+        self.start_generating_changes(&mut state, &repo_path.to_string_lossy(), Some(string_tx))
+            .await?;
+
+        // Clean up temporary directory
+        if let Err(e) = std::fs::remove_dir_all(&repo_path) {
+            error!("Failed to clean up temporary directory: {}", e);
+        }
+
+        // Send completion status
+        ws_tx.send(Message::Text(format!(
+            "Status Update: complete, progress: 100.0, timestamp: {}",
+            Utc::now().to_rfc3339()
+        ).into()))
+        .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+
         Ok(())
     }
 }

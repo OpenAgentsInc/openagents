@@ -7,17 +7,18 @@ use crate::server::ws::{
 use async_trait::async_trait;
 use chrono::Utc;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use std::error::Error;
 use tracing::{error, info};
 use uuid::Uuid;
 
 pub struct SolverJsonHandler {
     ws_state: Arc<WebSocketState>,
-    solver_service: Arc<SolverService>,
+    solver_service: Arc<Mutex<SolverService>>,
 }
 
 impl SolverJsonHandler {
-    pub fn new(ws_state: Arc<WebSocketState>, solver_service: Arc<SolverService>) -> Self {
+    pub fn new(ws_state: Arc<WebSocketState>, solver_service: Arc<Mutex<SolverService>>) -> Self {
         Self {
             ws_state,
             solver_service,
@@ -34,7 +35,8 @@ impl SolverJsonHandler {
             SolverJsonMessage::SolveDemoRepo { .. } => {
                 info!("Starting demo repo solver process");
                 let tx = ws_state.get_tx(&conn_id).await?;
-                if let Err(e) = self.solver_service.solve_demo_repo(tx).await {
+                let mut solver = self.solver_service.lock().await;
+                if let Err(e) = solver.solve_demo_repo(tx).await {
                     error!("Error in demo repo solver process: {}", e);
                     ws_state.send_to(
                         &conn_id,
@@ -45,10 +47,11 @@ impl SolverJsonHandler {
                     ).await?;
                 }
             }
-            SolverJsonMessage::SolveRepo { .. } => {
-                info!("Starting repo solver process");
+            SolverJsonMessage::SolveRepo { repository, issue_number, .. } => {
+                info!("Starting repo solver process for {}, issue #{}", repository, issue_number);
                 let tx = ws_state.get_tx(&conn_id).await?;
-                if let Err(e) = self.solver_service.solve_repo(tx).await {
+                let mut solver = self.solver_service.lock().await;
+                if let Err(e) = solver.solve_repo(tx, repository, issue_number).await {
                     error!("Error in repo solver process: {}", e);
                     ws_state.send_to(
                         &conn_id,

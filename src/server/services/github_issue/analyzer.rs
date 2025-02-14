@@ -11,7 +11,7 @@ impl GitHubIssueAnalyzer {
         Self { openrouter }
     }
 
-    pub async fn analyze_issue(&self, issue_content: &str) -> Result<GitHubIssueFiles> {
+    pub async fn analyze_issue(&mut self, issue_content: &str) -> Result<GitHubIssueFiles> {
         self.openrouter.analyze_issue(issue_content).await
     }
 }

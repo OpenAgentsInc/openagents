@@ -61,7 +61,7 @@ async fn solver_status_internal(
 
     // Initialize services
     let openrouter = OpenRouterService::new(std::env::var("OPENROUTER_API_KEY")?);
-    let solver = SolverService::new(state.pool.clone(), openrouter);
+    let mut solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Get solver state
     let mut solver_state = solver

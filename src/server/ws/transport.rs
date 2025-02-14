@@ -4,7 +4,7 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, RwLock, Mutex};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use axum::extract::Request;
@@ -51,7 +51,7 @@ impl WebSocketState {
             )),
             Arc::new(SolverJsonHandler::new(
                 Arc::new(self.clone()),
-                self.solver_service.clone(),
+                Arc::new(Mutex::new((*self.solver_service).clone())),
             )),
         )
     }

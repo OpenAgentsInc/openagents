@@ -55,6 +55,8 @@ pub enum SolverJsonMessage {
     },
     #[serde(rename = "solve_repo")]
     SolveRepo {
+        repository: String,
+        issue_number: i32,
         timestamp: String,
     },
 }
