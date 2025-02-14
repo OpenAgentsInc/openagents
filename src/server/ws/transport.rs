@@ -7,19 +7,23 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+use axum::extract::Request;
+use url::form_urlencoded;
 
-use super::handlers::{chat::ChatHandler, MessageHandler};
+use super::handlers::{chat::ChatHandler, solver_json::SolverJsonHandler, MessageHandler};
 use super::types::{ChatMessage, ConnectionState, WebSocketError};
 use crate::server::services::{
     deepseek::{DeepSeekService, Tool},
     github_issue::GitHubService,
     model_router::ModelRouter,
+    solver::SolverService,
 };
 
 pub struct WebSocketState {
     connections: Arc<RwLock<HashMap<String, ConnectionState>>>,
     pub model_router: Arc<ModelRouter>,
     github_service: Arc<GitHubService>,
+    solver_service: Arc<SolverService>,
 }
 
 impl WebSocketState {
@@ -27,6 +31,7 @@ impl WebSocketState {
         tool_model: Arc<DeepSeekService>,
         chat_model: Arc<DeepSeekService>,
         github_service: Arc<GitHubService>,
+        solver_service: Arc<SolverService>,
         tools: Vec<Tool>,
     ) -> Self {
         let model_router = Arc::new(ModelRouter::new(tool_model, chat_model, tools));
@@ -34,45 +39,66 @@ impl WebSocketState {
             connections: Arc::new(RwLock::new(HashMap::new())),
             model_router,
             github_service,
+            solver_service,
         }
     }
 
-    pub fn create_handlers(&self) -> Arc<ChatHandler> {
-        Arc::new(ChatHandler::new(
-            Arc::new(self.clone()),
-            self.github_service.clone(),
-        ))
+    pub fn create_handlers(&self) -> (Arc<ChatHandler>, Arc<SolverJsonHandler>) {
+        (
+            Arc::new(ChatHandler::new(
+                Arc::new(self.clone()),
+                self.github_service.clone(),
+            )),
+            Arc::new(SolverJsonHandler::new(
+                Arc::new(self.clone()),
+                self.solver_service.clone(),
+            )),
+        )
     }
 
-    pub async fn validate_session(&self, jar: &CookieJar) -> Result<i32, WebSocketError> {
-        // Get session cookie
-        let _session_cookie = jar
-            .get("session")
-            .ok_or_else(|| WebSocketError::AuthenticationError("No session cookie found".into()))?;
-
-        // TODO: Validate session and get user_id from the session store
-        // For now, return a mock user_id
-        Ok(1)
-    }
-
-    pub async fn validate_session_token(&self, token: &str) -> Result<i32, WebSocketError> {
-        // TODO: Implement actual token validation logic
-        // This should:
-        // 1. Verify the token is valid
-        // 2. Extract and return the user_id from the token
-        // 3. Return WebSocketError if token is invalid
-
-        debug!("Validating session token: {}", token);
-
-        if !token.is_empty() {
-            info!("Session token validated successfully");
-            debug!("Using mock user_id=1 for development");
-            Ok(1) // Mock user_id for now
-        } else {
-            warn!("Session token validation failed: empty token");
-            debug!("Token validation details: length=0");
-            Err(WebSocketError::AuthenticationError("Invalid token".into()))
+    pub async fn validate_session(&self, jar: &CookieJar, request: Request<axum::body::Body>) -> Result<i32, WebSocketError> {
+        // First try to get session from cookie
+        if let Some(session_cookie) = jar.get("session") {
+            let session_id = session_cookie.value();
+            // Try parsing as numeric session ID
+            if let Ok(session_id) = session_id.parse::<i32>() {
+                debug!("Found numeric session cookie with id: {}", session_id);
+                return Ok(session_id);
+            }
+            // Try parsing as GitHub session ID
+            if session_id.starts_with("github_") {
+                if let Ok(github_id) = session_id.trim_start_matches("github_").parse::<i32>() {
+                    debug!("Found GitHub session cookie with id: {}", github_id);
+                    return Ok(github_id);
+                }
+            }
         }
+
+        // If no cookie found, try to get session from query params
+        let uri = request.uri();
+        if let Some(query_params) = uri.query() {
+            let params: HashMap<String, String> = form_urlencoded::parse(query_params.as_bytes())
+                .into_owned()
+                .collect();
+
+            if let Some(session_token) = params.get("session") {
+                // Try parsing as numeric session ID
+                if let Ok(session_id) = session_token.parse::<i32>() {
+                    debug!("Found numeric session token in query params with id: {}", session_id);
+                    return Ok(session_id);
+                }
+                // Try parsing as GitHub session ID
+                if session_token.starts_with("github_") {
+                    if let Ok(github_id) = session_token.trim_start_matches("github_").parse::<i32>() {
+                        debug!("Found GitHub session token in query params with id: {}", github_id);
+                        return Ok(github_id);
+                    }
+                }
+            }
+        }
+
+        warn!("No valid session token found in cookie or query params");
+        Err(WebSocketError::NoSession)
     }
 
     pub async fn handle_socket(
@@ -245,6 +271,14 @@ impl WebSocketState {
         );
         rx
     }
+
+    pub async fn get_tx(&self, conn_id: &str) -> Result<mpsc::UnboundedSender<Message>, Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(conn) = self.connections.read().await.get(conn_id) {
+            Ok(conn.tx.clone())
+        } else {
+            Err(Box::new(WebSocketError::ConnectionError(format!("Connection {} not found", conn_id))))
+        }
+    }
 }
 
 impl Clone for WebSocketState {
@@ -253,6 +287,7 @@ impl Clone for WebSocketState {
             connections: self.connections.clone(),
             model_router: self.model_router.clone(),
             github_service: self.github_service.clone(),
+            solver_service: self.solver_service.clone(),
         }
     }
 }

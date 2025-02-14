@@ -1,15 +1,19 @@
-mod types;
+pub mod types;
 
 pub use types::*;
 
 use super::StreamUpdate;
 use crate::server::services::{gateway::Gateway, openrouter::OpenRouterService};
+use crate::server::ws::types::{SolverJsonMessage, SolverJsonStatus};
 use anyhow::Result;
 use futures_util::StreamExt;
 use sqlx::PgPool;
 use std::fs;
 use std::path::Path;
 use tracing::{debug, error, info};
+use chrono::Utc;
+use axum::extract::ws::Message;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[allow(dead_code)] // These methods will be used in future
 pub struct SolverService {
@@ -468,5 +472,102 @@ impl SolverService {
         });
 
         rx
+    }
+
+    pub async fn solve_demo_repo(&self, ws_tx: UnboundedSender<Message>) -> Result<()> {
+        // Create solver state for issue #579
+        let mut state = SolverState::new(
+            579,
+            "Add repomap caching by branch+sha".to_string(),
+            "Add caching for repository maps to avoid regenerating them unnecessarily. Cache key should be based on repository branch and commit SHA.".to_string(),
+        );
+
+        // Update status to Analyzing
+        state.status = SolverStatus::Analyzing;
+        ws_tx.send(Message::Text(
+            serde_json::to_string(&SolverJsonMessage::StateUpdate {
+                status: SolverJsonStatus::AnalyzingFiles,
+                current_file: None,
+                progress: Some(0.0),
+                timestamp: Utc::now().to_rfc3339(),
+            })?.into()
+        )).map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+
+        // Add relevant files based on issue description
+        state.add_file(
+            "src/server/services/repomap/mod.rs".to_string(),
+            0.9,
+            "Main repomap service module that needs caching".to_string(),
+        );
+        state.add_file(
+            "src/server/services/repomap/cache.rs".to_string(),
+            0.9,
+            "New file for cache implementation".to_string(),
+        );
+        state.add_file(
+            "src/server/services/repomap/types.rs".to_string(),
+            0.8,
+            "Shared types for repomap caching".to_string(),
+        );
+        state.add_file(
+            "migrations/YYYYMMDDHHMMSS_add_repomap_cache.sql".to_string(),
+            0.7,
+            "Database migration for cache table".to_string(),
+        );
+
+        // Update status to generating changes
+        state.status = SolverStatus::GeneratingChanges;
+        ws_tx.send(Message::Text(
+            serde_json::to_string(&SolverJsonMessage::StateUpdate {
+                status: SolverJsonStatus::GeneratingChanges,
+                current_file: None,
+                progress: Some(25.0),
+                timestamp: Utc::now().to_rfc3339(),
+            })?.into()
+        )).map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+
+        // Create a string sender that wraps the websocket sender
+        let (string_tx, mut string_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+        // Spawn a task to forward string messages to websocket messages
+        let ws_tx_clone = ws_tx.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = string_rx.recv().await {
+                let _ = ws_tx_clone.send(Message::Text(msg.into()));
+            }
+        });
+
+        // Start generating changes
+        self.start_generating_changes(&mut state, "/tmp/openagents", Some(string_tx)).await?;
+
+        // Update status to complete
+        state.status = SolverStatus::Complete;
+        ws_tx.send(Message::Text(
+            serde_json::to_string(&SolverJsonMessage::StateUpdate {
+                status: SolverJsonStatus::Complete,
+                current_file: None,
+                progress: Some(100.0),
+                timestamp: Utc::now().to_rfc3339(),
+            })?.into()
+        )).map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+
+        Ok(())
+    }
+
+    pub async fn solve_repo(
+        &self,
+        ws_tx: UnboundedSender<Message>,
+    ) -> Result<()> {
+        info!("Starting repo solver process");
+
+        // Send error for now as this is not implemented
+        ws_tx.send(Message::Text(
+            serde_json::to_string(&SolverJsonMessage::Error {
+                message: "solve_repo is not implemented yet".to_string(),
+                timestamp: Utc::now().to_rfc3339(),
+            })?.into()
+        )).map_err(|e| anyhow::anyhow!("Failed to send error message: {}", e))?;
+
+        Ok(())
     }
 }
