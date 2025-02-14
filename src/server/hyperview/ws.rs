@@ -7,6 +7,8 @@ use axum_extra::extract::cookie::CookieJar;
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tracing::{error, info};
+use std::collections::HashMap;
+use url::form_urlencoded;
 
 use crate::server::config::AppState;
 use crate::server::ws::{handlers::MessageHandler, transport::WebSocketState, types::ChatMessage};
@@ -17,28 +19,80 @@ pub async fn hyperview_ws_handler(
     State(state): State<AppState>,
     request: Request<axum::body::Body>,
 ) -> impl IntoResponse {
-    // Extract cookies from request
-    let jar = CookieJar::from_headers(request.headers());
+    info!("Handling WebSocket upgrade request");
 
-    // Validate session and get user_id
-    match state.ws_state.validate_session(&jar).await {
-        Ok(user_id) => {
-            info!(
-                "Hyperview WebSocket connection authenticated for user {}",
-                user_id
-            );
+    // Log headers for debugging
+    info!("Request headers: {:?}", request.headers());
 
-            // Create chat handler
-            let chat_handler = state.ws_state.create_handlers();
-
-            // Upgrade connection with user_id
-            ws.on_upgrade(move |socket| {
-                handle_socket(socket, state.ws_state, chat_handler, user_id)
-            })
+    // Get session token from either cookie or query param
+    let session_token: Option<String> = {
+        // First try cookie
+        let jar = CookieJar::from_headers(request.headers());
+        let cookie_token = jar.get("session").map(|c| c.value().to_string());
+        if let Some(ref token) = cookie_token {
+            info!("Found session token in cookie");
+        } else {
+            info!("No session token found in cookie, checking query params");
         }
-        Err(e) => {
-            error!("Hyperview WebSocket authentication failed: {}", e);
-            (axum::http::StatusCode::UNAUTHORIZED, "Unauthorized").into_response()
+
+        // If no cookie, try query param
+        if cookie_token.is_none() {
+            let query_params = request.uri().query().unwrap_or("");
+            info!("Query parameters: {}", query_params);
+
+            let params: HashMap<String, String> = form_urlencoded::parse(query_params.as_bytes())
+                .into_iter()
+                .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                .collect();
+
+            info!("Parsed query parameters: {:?}", params);
+            let token = params.get("session").cloned();
+            if token.is_some() {
+                info!("Found session token in query parameters");
+            } else {
+                info!("No session token found in query parameters");
+            }
+            token
+        } else {
+            cookie_token
+        }
+    };
+
+    info!("Session token extraction result: {}", session_token.is_some());
+
+    // Validate session token and get user_id
+    match session_token {
+        Some(token) => {
+            info!("Attempting to validate session token");
+            match state.ws_state.validate_session_token(&token).await {
+                Ok(user_id) => {
+                    info!(
+                        "Hyperview WebSocket connection authenticated for user {}",
+                        user_id
+                    );
+
+                    // Create chat handler
+                    let chat_handler = state.ws_state.create_handlers();
+                    info!("Created chat handler for user {}", user_id);
+
+                    // Upgrade connection with user_id
+                    info!("Upgrading WebSocket connection for user {}", user_id);
+                    ws.on_upgrade(move |socket| {
+                        handle_socket(socket, state.ws_state, chat_handler, user_id)
+                    })
+                }
+                Err(e) => {
+                    error!("Hyperview WebSocket token validation failed: {}", e);
+                    error!("Token validation error details: {:?}", e);
+                    (axum::http::StatusCode::UNAUTHORIZED, "Invalid session token").into_response()
+                }
+            }
+        }
+        None => {
+            error!("No session token found in cookie or query params");
+            error!("Request URI: {}", request.uri());
+            error!("Available cookies: {:?}", CookieJar::from_headers(request.headers()));
+            (axum::http::StatusCode::UNAUTHORIZED, "No session token provided").into_response()
         }
     }
 }
