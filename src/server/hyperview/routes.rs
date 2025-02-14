@@ -8,6 +8,7 @@ pub fn hyperview_routes() -> Router<AppState> {
         .route("/hyperview/login", get(handlers::login_page))
         .route("/hyperview/mobile/logout", get(handlers::mobile_logout))
         .route("/hyperview/user", get(handlers::user_info))
+        .route("/hyperview/append", get(handlers::append_content))
         .route(
             "/hyperview/status/connected",
             get(handlers::connected_status),

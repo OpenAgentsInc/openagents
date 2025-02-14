@@ -1,11 +1,10 @@
 use crate::server::config::AppState;
 use crate::server::models::user::User;
 use crate::server::services::{
-    deepseek::DeepSeekService,
     github_issue::{GitHubIssueAnalyzer, GitHubService},
     openrouter::OpenRouterService,
-    repomap::RepomapService,
     solver::SolverService,
+    repomap::RepomapService,
 };
 use anyhow::{anyhow, Result};
 use axum::{
@@ -160,8 +159,6 @@ async fn analyze_issue_internal(
     // Get API keys from environment
     let openrouter_key = std::env::var("OPENROUTER_API_KEY")
         .map_err(|_| anyhow!("OPENROUTER_API_KEY environment variable not set"))?;
-    let deepseek_key = std::env::var("DEEPSEEK_API_KEY")
-        .map_err(|_| anyhow!("DEEPSEEK_API_KEY environment variable not set"))?;
 
     // Create temp directory for repository
     let temp_dir = env::temp_dir().join(format!("solver_{}_{}", owner, repo));
@@ -176,10 +173,9 @@ async fn analyze_issue_internal(
     info!("Sending issue content to OpenRouter for analysis");
     let files = analyzer.analyze_issue(&content).await?;
 
-    // Initialize solver with services
-    let openrouter = OpenRouterService::new(openrouter_key);
-    let deepseek = DeepSeekService::new(deepseek_key);
-    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+    // Initialize services
+    let openrouter = OpenRouterService::new(std::env::var("OPENROUTER_API_KEY")?);
+    let solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Create solver state
     let mut solver_state = solver
@@ -204,7 +200,7 @@ async fn analyze_issue_internal(
 
     // Start generating changes
     solver
-        .start_generating_changes(&mut solver_state, &repo_path.to_string_lossy())
+        .start_generating_changes(&mut solver_state, &repo_path.to_string_lossy(), None)
         .await?;
 
     // Format response XML

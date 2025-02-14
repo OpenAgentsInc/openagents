@@ -1,7 +1,6 @@
 use crate::repo::cleanup_temp_dir;
 use crate::server::config::AppState;
 use crate::server::services::{
-    deepseek::DeepSeekService,
     openrouter::OpenRouterService,
     solver::{SolverService, SolverStatus},
 };
@@ -61,8 +60,7 @@ async fn solver_status_internal(
 
     // Initialize services
     let openrouter = OpenRouterService::new(std::env::var("OPENROUTER_API_KEY")?);
-    let deepseek = DeepSeekService::new(std::env::var("DEEPSEEK_API_KEY")?);
-    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+    let solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Get solver state
     let mut solver_state = solver
@@ -73,7 +71,7 @@ async fn solver_status_internal(
     // If we're in Analyzing state and have the start parameter, begin generating changes
     if solver_state.status == SolverStatus::Analyzing && params.contains_key("start") {
         solver
-            .start_generating_changes(&mut solver_state, "/tmp/repo")
+            .start_generating_changes(&mut solver_state, "/tmp/repo", None)
             .await?;
     }
 
@@ -221,13 +219,10 @@ async fn approve_change_internal(
     // Get API keys from environment
     let openrouter_key = std::env::var("OPENROUTER_API_KEY")
         .map_err(|_| anyhow!("OPENROUTER_API_KEY environment variable not set"))?;
-    let deepseek_key = std::env::var("DEEPSEEK_API_KEY")
-        .map_err(|_| anyhow!("DEEPSEEK_API_KEY environment variable not set"))?;
 
     // Initialize services
     let openrouter = OpenRouterService::new(openrouter_key);
-    let deepseek = DeepSeekService::new(deepseek_key);
-    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+    let solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Get solver state
     let mut solver_state = solver
@@ -277,13 +272,10 @@ async fn reject_change_internal(
     // Get API keys from environment
     let openrouter_key = std::env::var("OPENROUTER_API_KEY")
         .map_err(|_| anyhow!("OPENROUTER_API_KEY environment variable not set"))?;
-    let deepseek_key = std::env::var("DEEPSEEK_API_KEY")
-        .map_err(|_| anyhow!("DEEPSEEK_API_KEY environment variable not set"))?;
 
     // Initialize services
     let openrouter = OpenRouterService::new(openrouter_key);
-    let deepseek = DeepSeekService::new(deepseek_key);
-    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+    let solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Get solver state
     let mut solver_state = solver
@@ -354,8 +346,7 @@ async fn solver_files_internal(
 
     // Initialize services
     let openrouter = OpenRouterService::new(std::env::var("OPENROUTER_API_KEY")?);
-    let deepseek = DeepSeekService::new(std::env::var("DEEPSEEK_API_KEY")?);
-    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+    let solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Get solver state
     let solver_state = solver
@@ -464,8 +455,7 @@ async fn solver_diffs_internal(
 
     // Initialize services
     let openrouter = OpenRouterService::new(std::env::var("OPENROUTER_API_KEY")?);
-    let deepseek = DeepSeekService::new(std::env::var("DEEPSEEK_API_KEY")?);
-    let solver = SolverService::new(state.pool.clone(), openrouter, deepseek);
+    let solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Get solver state
     let solver_state = solver

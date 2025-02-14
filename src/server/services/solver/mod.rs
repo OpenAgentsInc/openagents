@@ -2,26 +2,26 @@ mod types;
 
 pub use types::*;
 
-use crate::server::services::{deepseek::DeepSeekService, openrouter::OpenRouterService};
+use crate::server::services::{openrouter::OpenRouterService, gateway::Gateway};
 use anyhow::Result;
 use sqlx::PgPool;
 use std::fs;
 use std::path::Path;
 use tracing::{debug, error, info};
+use futures_util::StreamExt;
+use super::StreamUpdate;
 
 #[allow(dead_code)] // These methods will be used in future
 pub struct SolverService {
     pool: PgPool,
     openrouter: OpenRouterService,
-    deepseek: DeepSeekService,
 }
 
 impl SolverService {
-    pub fn new(pool: PgPool, openrouter: OpenRouterService, deepseek: DeepSeekService) -> Self {
+    pub fn new(pool: PgPool, openrouter: OpenRouterService) -> Self {
         Self {
             pool,
             openrouter,
-            deepseek,
         }
     }
 
@@ -89,31 +89,57 @@ impl SolverService {
         &self,
         state: &mut SolverState,
         repo_dir: &str,
+        tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
     ) -> Result<()> {
-        info!("Starting to generate changes for solver {}", state.id);
+        info!("🚀 Starting to generate changes for solver {}", state.id);
         state.status = SolverStatus::GeneratingChanges;
         state.set_repo_path(repo_dir.to_string());
         self.update_solver(state).await?;
 
-        // First get DeepSeek's analysis of all files
+        // First get OpenRouter's analysis of all files
         let mut file_contents = String::new();
+        info!("📂 Gathering file contents for analysis...");
+
+        // Send status update
+        if let Some(tx) = &tx {
+            let _ = tx.send("Gathering file contents for analysis...".to_string());
+        }
+
         for file in &state.files {
+            info!("   Reading file: {}", file.path);
             let path = Path::new(repo_dir).join(&file.path);
             file_contents.push_str(&format!("\nFile: {}\n", file.path));
 
             // Check if file exists
             if path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&path) {
+                    info!("   ✅ Successfully read {}", file.path);
                     file_contents.push_str(&format!("Content:\n{}\n", content));
+                    if let Some(tx) = &tx {
+                        let _ = tx.send(format!("✅ Read file: {}", file.path));
+                    }
                 } else {
+                    error!("   ❌ Error reading {}", file.path);
                     file_contents.push_str("Content: [Error reading file]\n");
+                    if let Some(tx) = &tx {
+                        let _ = tx.send(format!("❌ Error reading file: {}", file.path));
+                    }
                 }
             } else {
+                info!("   🆕 File will be created: {}", file.path);
                 file_contents.push_str("Content: [New file to be created]\n");
+                if let Some(tx) = &tx {
+                    let _ = tx.send(format!("🆕 Will create new file: {}", file.path));
+                }
             }
         }
 
-        // Create the prompt for DeepSeek
+        // Create the prompt for analysis
+        info!("📝 Creating analysis prompt...");
+        if let Some(tx) = &tx {
+            let _ = tx.send("Creating analysis prompt...".to_string());
+        }
+
         let prompt = format!(
             "Analyze these files and suggest specific code changes to implement the following issue:\n\n\
             Issue Title: {}\n\n\
@@ -129,29 +155,60 @@ impl SolverService {
             file_contents
         );
 
-        // Get analysis from DeepSeek
-        let mut response = String::new();
-        let mut rx = self.deepseek.chat_stream(prompt, false).await;
+        // Get analysis from OpenRouter
+        info!("🤖 Starting OpenRouter analysis stream...");
+        if let Some(tx) = &tx {
+            let _ = tx.send("Starting OpenRouter analysis...".to_string());
+        }
 
-        while let Some(update) = rx.recv().await {
-            match update {
-                crate::server::services::StreamUpdate::Content(content) => {
-                    let content = content.to_string();
-                    debug!("DeepSeek chunk: {}", content);
-                    response.push_str(&content);
+        let mut response = String::new();
+        let mut stream = match self.openrouter.chat_stream(prompt, true).await {
+            Ok(stream) => {
+                info!("✅ Successfully started OpenRouter stream");
+                if let Some(tx) = &tx {
+                    let _ = tx.send("✅ Connected to OpenRouter stream".to_string());
                 }
-                crate::server::services::StreamUpdate::Done => {
-                    debug!("DeepSeek stream complete");
-                    break;
+                stream
+            }
+            Err(e) => {
+                error!("❌ Failed to start OpenRouter stream: {}", e);
+                if let Some(tx) = &tx {
+                    let _ = tx.send(format!("❌ Error: {}", e));
                 }
-                _ => {
-                    debug!("Unexpected stream update");
-                }
+                return Err(anyhow::anyhow!("Failed to start OpenRouter stream: {}", e));
+            }
+        };
+
+        let mut chunk_count = 0;
+        while let Some(Ok(chunk)) = stream.next().await {
+            chunk_count += 1;
+            debug!("📨 Received chunk #{}: {}", chunk_count, chunk);
+            response.push_str(&chunk);
+
+            // Forward raw chunks to UI with debug info
+            if let Some(tx) = &tx {
+                let _ = tx.send(format!("CHUNK #{}: {}\n", chunk_count, chunk));
             }
         }
 
+        // Send final response for debugging
+        if let Some(tx) = &tx {
+            let _ = tx.send(format!("\n=== COMPLETE RAW RESPONSE ===\n{}\n=== END RESPONSE ===\n", response));
+        }
+
+        info!("✅ Analysis stream complete - received {} chunks", chunk_count);
+        if let Some(tx) = &tx {
+            let _ = tx.send(format!("\n✅ Analysis complete - received {} chunks", chunk_count));
+        }
+
         // Now use OpenRouter to generate specific changes for each file
+        info!("🔄 Generating changes for each file...");
+        if let Some(tx) = &tx {
+            let _ = tx.send("\n🔄 Generating specific changes for each file...".to_string());
+        }
+
         for file in &mut state.files {
+            info!("   Processing file: {}", file.path);
             let path = Path::new(repo_dir).join(&file.path);
             let file_exists = path.exists();
 
@@ -174,8 +231,9 @@ impl SolverService {
                 }
             );
 
+            info!("   🔍 Analyzing changes needed for {}", file.path);
             let request_body = serde_json::json!({
-                "model": "google/gemini-2.0-flash-lite-preview-02-05:free",
+                "model": "deepseek/deepseek-r1-distill-llama-70b:free",
                 "messages": [{
                     "role": "user",
                     "content": prompt
@@ -218,27 +276,35 @@ impl SolverService {
                 }
             });
 
-            let changes = self
+            let changes = match self
                 .openrouter
                 .analyze_issue_with_schema(&prompt, request_body)
-                .await?;
+                .await {
+                    Ok(changes) => {
+                        info!("   ✅ Successfully generated changes for {}", file.path);
+                        changes
+                    }
+                    Err(e) => {
+                        error!("   ❌ Failed to generate changes for {}: {}", file.path, e);
+                        continue;
+                    }
+                };
 
-            info!("Generated changes for file: {}", file.path);
-            info!("Change summary:");
+            info!("   📊 Change summary for {}:", file.path);
             for (i, change) in changes.files.iter().enumerate() {
-                info!("  Change #{}", i + 1);
+                info!("     Change #{}", i + 1);
                 info!(
-                    "    Type: {}",
+                    "       Type: {}",
                     if change.search.is_empty() {
                         "New File Creation"
                     } else {
                         "File Modification"
                     }
                 );
-                info!("    Description: {}", change.comment);
+                info!("       Description: {}", change.comment);
                 if !change.search.is_empty() {
-                    debug!("    Replacing: \n{}", change.search);
-                    debug!("    With: \n{}", change.replace);
+                    debug!("       Replacing: \n{}", change.search);
+                    debug!("       With: \n{}", change.replace);
                 }
             }
 
@@ -246,33 +312,70 @@ impl SolverService {
             for change in changes.files {
                 if change.search.is_empty() {
                     // This is a new file
-                    info!("📝 Creating new file: {}", file.path);
-                    info!("   Reason: {}", change.comment);
+                    info!("   📝 Creating new file: {}", file.path);
+                    info!("      Reason: {}", change.comment);
+                    info!("      Content to write:\n{}", change.replace);
                     if let Some(parent) = path.parent() {
-                        info!("   Creating parent directories: {:?}", parent);
-                        fs::create_dir_all(parent)?;
+                        info!("      Creating parent directories: {:?}", parent);
+                        if let Err(e) = fs::create_dir_all(parent) {
+                            error!("      ❌ Failed to create directories: {}", e);
+                            continue;
+                        }
                     }
-                    fs::write(&path, &change.replace)?;
-                    info!("✅ Successfully created new file");
+                    if let Err(e) = fs::write(&path, &change.replace) {
+                        error!("      ❌ Failed to write file: {}", e);
+                        continue;
+                    }
+                    info!("      ✅ Successfully created new file");
+
+                    // Forward change info to UI
+                    if let Some(tx) = &tx {
+                        let _ = tx.send(format!("\n=== NEW FILE: {} ===\nReason: {}\nContent:\n{}\n=== END FILE ===\n",
+                            file.path, change.comment, change.replace));
+                    }
                 } else {
                     // This is an existing file
-                    info!("🔄 Modifying file: {}", file.path);
-                    info!("   Change description: {}", change.comment);
+                    info!("   🔄 Modifying file: {}", file.path);
+                    info!("      Change description: {}", change.comment);
+                    info!("      Replacing:\n{}", change.search);
+                    info!("      With:\n{}", change.replace);
                     if path.exists() {
-                        let content = fs::read_to_string(&path)?;
-                        if let Some(start) = content.find(&change.search) {
-                            let mut new_content = content.clone();
-                            new_content
-                                .replace_range(start..start + change.search.len(), &change.replace);
-                            fs::write(&path, new_content)?;
-                            info!("✅ Successfully applied change to file");
-                        } else {
-                            error!("❌ Could not find search string in {}", file.path);
-                            error!("   Search string: {}", change.search);
-                            error!("   This change was skipped");
+                        match fs::read_to_string(&path) {
+                            Ok(content) => {
+                                if let Some(start) = content.find(&change.search) {
+                                    let mut new_content = content.clone();
+                                    new_content
+                                        .replace_range(start..start + change.search.len(), &change.replace);
+                                    if let Err(e) = fs::write(&path, new_content) {
+                                        error!("      ❌ Failed to write changes: {}", e);
+                                        continue;
+                                    }
+                                    info!("      ✅ Successfully applied change to file");
+
+                                    // Forward change info to UI
+                                    if let Some(tx) = &tx {
+                                        let _ = tx.send(format!("\n=== MODIFYING FILE: {} ===\nReason: {}\nReplacing:\n{}\nWith:\n{}\n=== END CHANGE ===\n",
+                                            file.path, change.comment, change.search, change.replace));
+                                    }
+                                } else {
+                                    error!("      ❌ Could not find search string in {}", file.path);
+                                    error!("      Search string: {}", change.search);
+                                    error!("      This change was skipped");
+
+                                    // Forward error to UI
+                                    if let Some(tx) = &tx {
+                                        let _ = tx.send(format!("\n=== ERROR: Failed to modify {} ===\nCould not find text to replace:\n{}\n=== END ERROR ===\n",
+                                            file.path, change.search));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("      ❌ Failed to read file: {}", e);
+                                continue;
+                            }
                         }
                     } else {
-                        error!("❌ File does not exist: {}", file.path);
+                        error!("      ❌ File does not exist: {}", file.path);
                     }
                 }
             }
@@ -306,5 +409,47 @@ impl SolverService {
     #[allow(dead_code)]
     pub async fn check_all_changes_reviewed(&self, _state: &SolverState) -> bool {
         true
+    }
+
+    pub async fn analyze_issue(&self, prompt: String) -> tokio::sync::mpsc::UnboundedReceiver<StreamUpdate> {
+        // Create an unbounded channel
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+
+        // Get the stream from OpenRouter
+        let mut stream = match self.openrouter.chat_stream(prompt, true).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                error!("Failed to start OpenRouter stream: {}", e);
+                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                let _ = tx.send(StreamUpdate::Done);
+                return rx;
+            }
+        };
+
+        // Spawn a task to forward messages
+        tokio::spawn(async move {
+            let mut is_reasoning = true;
+            while let Some(Ok(chunk)) = stream.next().await {
+                // Check for transition marker
+                if chunk.contains("Final Changes:") {
+                    is_reasoning = false;
+                    continue;
+                }
+
+                // Send appropriate update type
+                let update = if is_reasoning {
+                    StreamUpdate::Reasoning(chunk)
+                } else {
+                    StreamUpdate::Content(chunk)
+                };
+
+                if tx.send(update).is_err() {
+                    break;
+                }
+            }
+            let _ = tx.send(StreamUpdate::Done);
+        });
+
+        rx
     }
 }
