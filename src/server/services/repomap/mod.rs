@@ -71,7 +71,7 @@ impl RepomapService {
 
         // Clone the repository
         let repo_url = format!("https://github.com/{}", repo_name);
-        let _repo = clone_repository(&repo_url, &self.temp_dir)?;
+        let _repo = clone_repository(&repo_url, &self.temp_dir, self.github_token.as_deref())?;
 
         // Generate the repository map
         let map = generate_repo_map(&self.temp_dir);

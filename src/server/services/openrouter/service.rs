@@ -68,19 +68,19 @@ impl OpenRouterService {
 
         // Schedule removal of rate limit after 1 hour
         let model = model.to_string();
-        let mut config = self.config.clone();
+        let mut rate_limited_models = self.config.rate_limited_models.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(3600)).await;
-            config.rate_limited_models.remove(&model);
+            rate_limited_models.remove(&model);
             info!("Removed rate limit for model {}", model);
         });
     }
 
-    fn prepare_messages(&self, prompt: &str) -> Vec<Value> {
-        vec![serde_json::json!({
+    fn prepare_messages(&self, prompt: &str) -> Value {
+        json!([{
             "role": "user",
             "content": prompt
-        })]
+        }])
     }
 
     async fn make_request(&self, prompt: &str, stream: bool) -> Result<reqwest::Response> {
