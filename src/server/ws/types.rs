@@ -31,7 +31,9 @@ impl std::fmt::Display for WebSocketError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             WebSocketError::AuthenticationError(msg) => write!(f, "Authentication error: {}", msg),
-            WebSocketError::TokenValidationError(msg) => write!(f, "Token validation error: {}", msg),
+            WebSocketError::TokenValidationError(msg) => {
+                write!(f, "Token validation error: {}", msg)
+            }
             WebSocketError::ConnectionError(msg) => write!(f, "Connection error: {}", msg),
             WebSocketError::MessageError(msg) => write!(f, "Message error: {}", msg),
         }

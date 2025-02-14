@@ -5,9 +5,9 @@ use axum::{
 };
 use axum_extra::extract::cookie::CookieJar;
 use futures_util::{SinkExt, StreamExt};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{error, info};
-use std::collections::HashMap;
 use url::form_urlencoded;
 
 use crate::server::config::AppState;
@@ -58,7 +58,10 @@ pub async fn hyperview_ws_handler(
         }
     };
 
-    info!("Session token extraction result: {}", session_token.is_some());
+    info!(
+        "Session token extraction result: {}",
+        session_token.is_some()
+    );
 
     // Validate session token and get user_id
     match session_token {
@@ -84,15 +87,26 @@ pub async fn hyperview_ws_handler(
                 Err(e) => {
                     error!("Hyperview WebSocket token validation failed: {}", e);
                     error!("Token validation error details: {:?}", e);
-                    (axum::http::StatusCode::UNAUTHORIZED, "Invalid session token").into_response()
+                    (
+                        axum::http::StatusCode::UNAUTHORIZED,
+                        "Invalid session token",
+                    )
+                        .into_response()
                 }
             }
         }
         None => {
             error!("No session token found in cookie or query params");
             error!("Request URI: {}", request.uri());
-            error!("Available cookies: {:?}", CookieJar::from_headers(request.headers()));
-            (axum::http::StatusCode::UNAUTHORIZED, "No session token provided").into_response()
+            error!(
+                "Available cookies: {:?}",
+                CookieJar::from_headers(request.headers())
+            );
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                "No session token provided",
+            )
+                .into_response()
         }
     }
 }
@@ -151,7 +165,9 @@ async fn handle_socket(
   <text style="messageText">Starting demo repo analysis...</text>
 </view>"###;
 
-                                if let Err(e) = tx.send(axum::extract::ws::Message::Text(status_xml.into())) {
+                                if let Err(e) =
+                                    tx.send(axum::extract::ws::Message::Text(status_xml.into()))
+                                {
                                     error!("Failed to send status message: {}", e);
                                 }
 
@@ -163,7 +179,9 @@ async fn handle_socket(
   <text style="messageText">Found 3 issues to solve.</text>
 </view>"###;
 
-                                if let Err(e) = tx.send(axum::extract::ws::Message::Text(result_xml.into())) {
+                                if let Err(e) =
+                                    tx.send(axum::extract::ws::Message::Text(result_xml.into()))
+                                {
                                     error!("Failed to send result message: {}", e);
                                 }
                             }
@@ -176,8 +194,9 @@ async fn handle_socket(
                                         };
 
                                         // Handle the message
-                                        if let Err(e) =
-                                            chat_handler.handle_message(chat_msg, conn_id.clone()).await
+                                        if let Err(e) = chat_handler
+                                            .handle_message(chat_msg, conn_id.clone())
+                                            .await
                                         {
                                             error!("Error handling chat message: {}", e);
 
@@ -190,9 +209,9 @@ async fn handle_socket(
                                                 e
                                             );
 
-                                            if let Err(e) =
-                                                tx.send(axum::extract::ws::Message::Text(error_xml.into()))
-                                            {
+                                            if let Err(e) = tx.send(
+                                                axum::extract::ws::Message::Text(error_xml.into()),
+                                            ) {
                                                 error!("Failed to send error message: {}", e);
                                             }
                                         }
